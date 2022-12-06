@@ -1,0 +1,120 @@
+# shellcheck shell=sh disable=SC3043
+
+___x_cmd_hub_token(){
+    param:subcmd ___x_cmd_hub_token                  \
+        info    "Get token info"                     \
+        set     "Set token"                          \
+        ls      "List all tokens in your account"    \
+        rm      "Remove a token from your account"   \
+        clear   "Invalid other token"                \
+        gen     "Generate a token for your account"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_hub___util_subcmd_invalid "token" "$@"
+}
+
+___x_cmd_hub_token_set(){
+    param:dsl<<A
+option:
+    #1      "Token"
+A
+    param:run
+
+    local token="${1}"
+    ___x_cmd_hub_account___save_token "$token"
+}
+
+___x_cmd_hub_token_info(){
+    param:dsl<<A
+option:
+    --json|-j    "Output json format"
+A
+    param:run
+
+    local res
+    if ! res="$(___x_cmd_hub___util_curl get "/api/v0/token/$(___x_cmd_hub_account_token)")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get token info"
+        return 1
+    fi
+    [ -z "$json" ] || { printf "%s\n" "$res" ; return 0 ; }
+    ___x_cmd_hub___util_handle_resp true "" "Get token info successfully"
+    printf "[%s]" "$res" | x j2y
+}
+
+___x_cmd_hub_token_ls(){
+    param:dsl<<A
+option:
+    --json|-j    "Output json format"
+A
+    param:run
+
+    local res
+    if ! res="$(___x_cmd_hub___util_curl get /api/v0/token)" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to list tokens"
+        return 1
+    fi
+    [ -z "$json" ] || { printf "%s\n" "$res" ; return 0 ; }
+    ___x_cmd_hub___util_handle_resp true "" "List tokens successfully"
+    printf "%s" "$res" | x j2y
+}
+
+___x_cmd_hub_token_rm(){
+    param:dsl<<A
+option:
+    #1           "Token to remove"
+    --json|-j    "Output json format"
+A
+    param:run
+
+    local token="${1:?Provide token}"
+    local res
+    if ! res="$(___x_cmd_hub___util_curl delete "/api/v0/token/$token")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to remove token"
+        return 1
+    fi
+    ___x_cmd_hub___util_handle_resp true "$res" "Remove token successfully"
+}
+
+___x_cmd_hub_token_clear(){
+    param:dsl<<A
+option:
+    --json|-j    "Output json format"
+A
+    param:run
+
+    local res
+    if ! res="$(___x_cmd_hub___util_curl get /api/v0/token/invalid/other)" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to clear token"
+        return 1
+    fi
+    ___x_cmd_hub___util_handle_resp true "$res" "Clear token successfully"
+}
+
+___x_cmd_hub_token_gen(){
+    param:dsl<<A
+option:
+    --json|-j          "Output json format"
+    --policy|-p|m      "Policy for the token <prefix> <acl>"
+        <prefix>="/"
+        <acl>="write"    =  "read" "write"
+A
+    param:run
+
+    local prefix; local acl; local i; local body=""
+    for i in $(param_marg policy); do
+        prefix="$(param_marg policy "$i" 1)"
+        acl="$(param_marg policy "$i" 2)"
+        body="$body,$(x jo dict "prefix:/${prefix#/}" acl)"
+    done
+
+    local res
+    if ! res="$(___x_cmd_hub___util_curl post /api/v0/token "[${body#,}]")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to generate token"
+        return 1
+    fi
+    [ -z "$json" ] || { printf "%s" "$res" ; return 0 ; }
+    ___x_cmd_hub___util_handle_resp true "" "Generate token successfully"
+    printf "[%s]" "$res" | x j2y
+}

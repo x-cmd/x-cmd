@@ -1,0 +1,148 @@
+# Author:       Li Junhao           l@x-cmd.com
+# shellcheck    shell=sh            disable=SC3043,SC2164     # xrc
+
+# license:      GPLv3
+
+___x_cmd_rmrf(){
+    case "$1" in
+        "")     ___x_cmd_rmrf_regex_arr_ls; return ;;
+        +)      shift; ___x_cmd_rmrf_regex_arr_add "$@"; return ;;
+        -)      shift; ___x_cmd_rmrf_regex_arr_del "$@"; return ;;
+        --)     ___x_cmd_rmrf_regex_arr_clear; return ;;
+    esac
+
+    local i
+    for i in "$@"; do
+        # Using core:debug ...
+        case "$i" in
+            /)          x:error "Try to 'rm -rf $i'" ;;
+            /bin)       x:error "Try to 'rm -rf $i'" ;;
+            /usr)       x:error "Try to 'rm -rf $i'" ;;
+            /home)      x:error "Try to 'rm -rf $i'" ;;
+            /var)       x:error "Try to 'rm -rf $i'" ;;
+            *//*)
+                        x:warn "Path consists of //. Variable expansion might not behave as you want: $i"
+                        continue
+                        ;;
+            *)          continue
+        esac
+        return 1
+    done
+
+    local code
+    local rule
+    local target
+    if ! code="$(___x_cmd_rmrf___regex_arr_check "$@")"; then
+        eval "$code"
+        x:error "Try to 'rm -rf $target'. Violation of regex_arr: $rule"
+        return 1
+    fi
+
+    command rm -rf "$@"
+}
+
+# Section: regex_arr
+___x_cmd_rmrf_regex_arr_clear(){
+    ___X_CMD_RMRF_RULE_LIST=
+}
+
+___x_cmd_rmrf_regex_arr_add(){
+    local IFS="
+"
+    ___X_CMD_RMRF_RULE_LIST="$___X_CMD_RMRF_RULE_LIST
+$*
+"
+}
+
+___x_cmd_rmrf_regex_arr_ls(){
+    printf "%s" "$___X_CMD_RMRF_RULE_LIST" | awk '{
+        if ($0 == ""){ next; }
+        print $0
+    }'
+}
+
+___x_cmd_rmrf_regex_arr_del(){
+    local regex_arr
+    local tmp
+    for regex_arr in "$@"; do
+        tmp="${___X_CMD_RMRF_RULE_LIST#*
+"$regex_arr"
+}"
+        if [ "$tmp" != "$___X_CMD_RMRF_RULE_LIST" ]; then
+            x:info "Removing Rule: $regex_arr"
+            ___X_CMD_RMRF_RULE_LIST="${___X_CMD_RMRF_RULE_LIST%%
+"$regex_arr"
+*}
+${tmp}"
+        else
+            x:warn "Rule Not found: $regex_arr"
+        fi
+
+    done
+}
+
+# EndSection
+
+
+___x_cmd_rmrf___regex_arr_check(){
+    (
+        local IFS="$___X_CMD_UNSEENCHAR_001"
+        printf "%s\n" "$@"
+        printf "%s\n" "$___X_CMD_RMRF_RULE_LIST"
+    ) | (
+        awk '
+NR==1{
+    patharrl = split( $1, patharr, "\001" )
+}
+
+NR>1{
+    if ( $0 == "" ) next
+    rule_arr[ ++ rule_arrl ] = $0
+    r = $0
+    gsub(/\*\*/, ".+", r)
+    gsub(/\*/, "[^/]+", r)
+    regex_arr[ rule_arrl ] = r
+}
+
+function dbg( a ){
+    print a >"/dev/stderr"
+}
+
+END{
+    for (i=1; i<=patharrl; ++i) {
+        p = patharr[ i ]
+        for (j=1; j<=rule_arrl; ++j) {
+            if ( match( p, regex_arr[j] ) ) {
+                printf("rule='\''%s'\''\n", rule_arr[j])
+                printf("target=\"$%s\"", i )
+                exit(1)
+            }
+        }
+    }
+}
+
+'
+    )
+
+}
+
+# ___x_cmd_rmrf(){
+#     local i
+#     for i in "$@"; do
+#         # Using core:debug ...
+#         case "$i" in
+#             /)          printf "%s" "Try to 'rm -rf $i'" >&2 ;;
+#             /bin)       printf "%s" "Try to 'rm -rf $i'" >&2 ;;
+#             /usr)       printf "%s" "Try to 'rm -rf $i'" >&2 ;;
+#             /home)      printf "%s" "Try to 'rm -rf $i'" >&2 ;;
+#             /var)       printf "%s" "Try to 'rm -rf $i'" >&2 ;;
+#             *//*)       printf "%s" "Path consists of //. Variable expansion might not behave as you want." >&2 ;;
+#             *)          continue
+#         esac
+#         return 1
+#     done
+
+#     command rm -rf "$@"
+# }
+
+xrc setmain ___x_cmd_rmrf

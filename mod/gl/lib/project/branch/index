@@ -1,0 +1,160 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_gl_project_branch(){
+    param:subcmd ___x_cmd_gl_project_branch             \
+        "ls|l"              "list project branch"       \
+        "info|i"            "get project branch info"   \
+        create              "create project branch"     \
+        default             "set default branch"        \
+        rm                  "remove project branch"     \
+        protection          "protection branch management"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_project_branch _param_help_doc
+    return 1
+}
+
+# Section:list & info
+___x_cmd_gl_project_branch_ls(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --project       "The ID or URL-encoded path of the project owned by the authenticated user" <>
+    --search        "Return list of branches containing the search string"                      <>=""
+
+    --per_page      "Results per page"                                                  <>=30
+    --page          "Page number of the results to fetch."                              <>=1
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_project
+
+    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json BranchName=.name Protected=.protected Default=.default LastCommit=.commit.short_id -- $@' \
+         ___x_cmd_gl_get_multi "/projects/$owner_project/repository/branches" search
+}
+
+___x_cmd_gl_project_branch_info(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1          "branch name"                                                               <>:Branch
+    --project   "The ID or URL-encoded path of the project owned by the authenticated user" <>
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_get_multi "/projects/${owner_project}/repository/branches/$1" | _____x_cmd_gl_branch_ui_utils Info
+}
+
+# EndSection
+
+___x_cmd_gl_project_branch_create(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1          "branch name"                                         <>
+    --project   "The ID or URL-encoded path of the project."          <>
+    --ref       "Branch name or commit SHA to create branch from."    <>
+
+    --json|-j   "output json data"
+
+'
+    param:run
+    local branch="$1"
+    local gen_gl_json
+    gen_gl_json="$(param:option2json +branch)"
+
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_curl post "/projects/$owner_project/repository/branches" "gen_gl_json" | _____x_cmd_gl_branch_ui_utils Creating
+}
+
+# TODO: test
+# Section: default
+___x_cmd_gl_project_branch_default(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1          "branch name"                                   <>
+    --project   "The ID or URL-encoded path of the project."    <>:RepoName
+
+    --json|-j   "output json data"
+
+'
+    param:run
+
+    local default_branch="$1"
+    local gen_gl_json
+    gen_gl_json="$(param:option2json +default_branch)"
+
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_curl put "/projects/$owner_project" gen_gl_json | _____x_cmd_gl_branch_ui_utils Default
+}
+# EndSection
+
+# Section: branch rm
+___x_cmd_gl_project_branch_rm(){
+    param:dsl       '
+options:
+    #1          "branch name"                                   <>
+    --project   "The ID or URL-encoded path of the project."    <>:RepoName
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_curl delete "/projects/$owner_project/repository/branches/$1"| (
+        x jo env . error=.
+        if ___x_cmd_gl_http_error; then
+            ___x_cmd_ui_tf  true "del ${1} branch success"
+        else
+            ___x_cmd_ui_tf false "del ${1} branch fail" "ErrorMsg:$error"
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: branch utils
+_____x_cmd_gl_branch_ui_utils()(
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gl_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Info)
+            data="Protected=.protected sha=.commit.short_id merged=.merged url=.web_url"
+            msg="get project $project branch info success"
+            error_msg="get project $project branch info fail"
+            ;;
+        Creating)
+            data="Protected=.protected sha=.commit.short_id merged=.merged url=.web_url"
+            msg="Creating project $project branch success"
+            error_msg="Creating project $project branch fail"
+            ;;
+        Rename)
+            msg="branch renamed from $branch to $new_name successfully"
+            error_msg="${owner_project} branch rename from $branch to $new_name failed"
+            ;;
+        Default)
+            msg="Successfully set project default branch"
+            error_msg="Failed to set project default branch"
+            ;;
+    esac
+    x jo env . name=.name error=. $data
+    if [ -n "$name" ]; then
+        ___x_cmd_ui_tf true "$msg"  ${name+"Name: $name"}       ${Protected+"Protected: $Protected"} ${merged+"Merged: $merged"} \
+                                    ${sha+"LastCommit: $sha"}    ${url+"Url: $url"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)
+# EndSection

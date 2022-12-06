@@ -1,0 +1,140 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043,2154
+
+___x_cmd_gt_repo_pr_tester(){
+    param:scope     ___x_cmd_gt
+    param:subcmd ___x_cmd_gt_repo_pr_tester                 \
+        add             "Add tester"                        \
+        rm              "Reomve tester"                     \
+        reset           "Reset  tester"                     \
+        test            "Test pass"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_repo_pr_tester _param_help_doc
+    return 1
+}
+
+# Section: Add
+# https://gitee.com/api/v5/swagger#/postV5ReposOwnerRepoPullsNumberTesters
+___x_cmd_gt_repo_pr_tester_add(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                 "pr number"                                                          <>:NatureNumber
+    --testers          "testers username list. separated by commas(,)"                      <>:UserName
+    --repo|-r          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --json|-j          "output origin json data"
+'
+    param:run
+    local pr="${1:?"Please provide PR number"}"
+    ___parse_pr_init_owner_repo_and_pr
+
+    ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner_repo}/pulls/$pr/testers" -- testers | ___x_cmd_gt_repo_pr_tester_status_handler
+}
+
+# EndSection
+
+# Section: Remove
+# https://gitee.com/api/v5/swagger#/deleteV5ReposOwnerRepoPullsNumberTesters
+___x_cmd_gt_repo_pr_tester_rm(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                  "pr number"                                                          <>:NatureNumber
+    --testers           "testers username list. separated by commas(,)"                      <>:UserName
+    --repo|-r           "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --json|-j           "output origin json data"
+'
+    param:run
+    local pr="${1:?"Please provide PR number"}"
+    ___parse_pr_init_owner_repo_and_pr
+
+    ___x_cmd_gt_curl delete "https://gitee.com/api/v5/repos/${owner_repo}/pulls/$pr/testers" "$testers" | ___x_cmd_gt_repo_pr_tester_status_handler
+}
+
+# EndSection
+
+# Section: tester status handler
+___x_cmd_gt_repo_pr_tester_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . number=.number url=.html_url gt_resp_body=.
+        if [ -n "$number" ]; then
+            ___x_cmd_ui_tf true  "Resolve $testers to $owner_repo successfully" "PR Number: $number" "Url: $url"
+        else
+            ___x_cmd_ui_tf false "Resolve $testers to $owner_repo repo $number failure" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: Reset
+# https://gitee.com/api/v5/swagger#/patchV5ReposOwnerRepoPullsNumberTesters
+___x_cmd_gt_repo_pr_tester_reset(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                 "pr number"                                                           <>:NatureNumber
+    --repo|-r          "Provide ownerPath/RepoPath.(default owner: current user)"            <>:RepoPath
+    --reset_all        "reset all tester"
+    --json|-j          "output origin json data"
+'
+    param:run
+    local pr="${1:?"Please provide PR number"}"
+    reset_all=${reset_all:-false}
+    ___parse_pr_init_owner_repo_and_pr
+
+    ___x_cmd_gt_curl patch "https://gitee.com/api/v5/repos/${owner_repo}/pulls/$pr/testers" -- reset_all | ___x_cmd_gt_repo_pr_tester_reset_status_handler
+}
+
+___x_cmd_gt_repo_pr_tester_reset_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . number=.number gt_resp_body=.
+        if [ -n "$number" ]; then
+            ___x_cmd_ui_tf true  "Reset $number to $owner_repo tester successfully"
+        else
+            ___x_cmd_ui_tf false "Reset $number to $owner_repo tester failure" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: assign test
+# https://gitee.com/api/v5/swagger#/postV5ReposOwnerRepoPullsNumberTest
+# shellcheck disable=SC2034
+___x_cmd_gt_repo_pr_tester_test(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                "pr number"                                                           <>:NatureNumber
+    --repo|-r         "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --force           "force"
+    --json|-j         "output origin json data"
+'
+    param:run
+    local pr="${1:?"Please provide PR number"}"
+    force=${force:-false}
+    ___parse_pr_init_owner_repo_and_pr
+
+    if ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner_repo}/pulls/$pr/test" -- force | ___x_cmd_gt_curl_handler_no_content; then
+        ___x_cmd_ui_tf true  "Resolve $pr test pass to $owner_repo successfully"
+    else
+        ___x_cmd_ui_tf false "Resolve $pr test pass to $owner_repo failure" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+        return 1
+    fi
+}
+# EndSection

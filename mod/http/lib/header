@@ -1,0 +1,115 @@
+# shellcheck    shell=sh    disable=SC2039,SC3043
+
+___x_cmd_http_header() {
+    param:subcmd ___x_cmd_http_header               \
+        dump                "dump header"           \
+        get                 "get header"            \
+        put                 "put header"            \
+        mput                "mput header"           \
+        remove              "remove header"         \
+        referer             "set the referer"       \
+        type                "set header Content-Type"
+    param:subcmd:try
+    param:run
+
+    # content-type        "set the content-type"  \
+    # user-agent          "set the user-agent"
+    ___x_cmd_http_header _param_help_doc
+    return 1
+}
+
+# shellcheck disable=SC2120
+___x_cmd_http_header_dump(){
+    param:void
+    case "${1:-""}" in
+        json)
+            O=$O ___x_cmd_dict scope header | ___x_cmd_dict_pjson
+            ;;
+        curl)
+            ___x_cmd_http_header_dump | while read -r line; do
+                printf " -H \"%s\" " "$line"
+            done
+            ;;
+        *)
+            O=$O ___x_cmd_dict scope header | ITEM_SEP="\n" KV_SEP=": " ___x_cmd_dict_pprint ;;
+
+    esac
+}
+
+___x_cmd_http_header_get(){
+    param:void
+    O=$O ___x_cmd_dict get header "${1:?header key}"
+}
+
+___x_cmd_http_header_put(){
+    param:void
+    O=$O ___x_cmd_dict put header "${1:?header key}" "${2:?value}"
+}
+
+___x_cmd_http_header_mput(){
+    param:void
+    local value
+    for i in "$@"; do
+        # if [[ "$i" = *=* ]]; then
+        if [ "$i" != "${i%%=*}" ]; then
+            ___x_cmd_http_header_put "${i%=*}" "${i##*=}"
+        else
+            eval value="\"\$${i}\""
+            [ -z "$value" ] || ___x_cmd_http_header_put "$i" "$value"
+        fi
+    done
+}
+
+___x_cmd_http_header_remove(){
+    param:void
+    for i in "$@"; do
+        O=$O ___x_cmd_dict drop header "$i"
+    done
+}
+
+___x_cmd_http_header_type(){
+    param:void
+    # TODO: Using another individual mapping
+    ___x_cmd_http_header_content_type "$@"
+}
+
+___x_cmd_http_header_referer(){
+    param:void
+    ___x_cmd_http_header_put Referer "${1:?Referer}"
+}
+
+# # TODO: add more user-agent types, like mozilla, chrome, ie, etc.
+___x_cmd_http_header_agent(){
+    ___x_cmd_http_header_put User-Agent "${1:?User agent}"
+}
+
+# ___x_cmd_http_header(){
+#     echo "$(___x_cmd_http_header_dump)
+# $HEADER
+# "
+# }
+
+
+# TODO: add more content-type
+___x_cmd_http_header_content_type() {
+    if [ $# -eq 0 ]; then
+        if ___x_cmd_http_header_get "Content-Type"; then
+            return 0
+        else
+            # Provide a better help
+            printf "Candiates are as below: \n%s" "$___x_cmd_http_header_CONTENT_TYPE_LIST"
+            return 1
+        fi
+    fi
+
+    local IFS=","
+    local target
+    if target=$(awk -v query="$*" -f "$___X_CMD_ROOT/http/lib/header.awk"); then
+        http:debug "Add header: Content-Type=$target"
+        ___x_cmd_http_header put "Content-Type" "$target"
+    else
+        return 1
+    fi
+}
+
+# alias http.header.content-type.eq.json+utf8='___x_cmd_http_header_content_type_eq "application/json;charset=utf-8";'

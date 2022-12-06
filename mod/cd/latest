@@ -1,0 +1,329 @@
+# shellcheck shell=sh disable=SC3043,SC2164 # xrc
+
+# author:       Li Junhao           l@x-cmd.com
+# license:      GPLv3
+
+# Section: main
+
+# jump to a folder contains: jc bin
+# jump to a child folder: jc lib
+# jump to a father folder: jo opening; cd .
+
+# cd backward
+# cd forward = find
+# cd - = history in environment
+# cd <filename> = unmatch to search history or rules
+# cd ,<pattern> = find
+
+# cd /u/l/
+xrc ui/lib/gridselect
+
+___x_cmd_cd_set_domain(){
+    local varname="$1"
+    local value="$2"
+    # varname="$(printf "%s" "$1" | tr "[:lower:]" "[:upper:]")"  # optimized using bash/zsh inline
+
+    # xrc "$varname"
+    # if command "___x_cmd_$varname_cd" 2>/dev/
+
+    ___x_cmd_ldict_unshift  ___X_CMD_PWD "$varname" "$value"
+}
+
+___x_cmd_cd(){
+    local p="$1"
+
+    local nomatch=
+    case "$p" in
+        # alias
+        "")      ___x_cmd_cd_origin              ;;
+        -)
+                # cd to most recent
+                ___x_cmd_cd_origin -
+                ;;
+        *)
+                nomatch=1
+    esac
+
+    [ -z "$nomatch" ] && return 0
+
+    if [ -d "$p" ]; then
+        ___x_cmd_cd_origin "$p"
+        return
+    fi
+
+    # No such directory ... Then magic happens.
+    case "$p" in
+        :)          printf "%s" "${___X_CMD_CD_PWD_LIST#
+}" ;;
+        :*/*)     p=${p#:} ; ___x_cmd_cd_set_domain "${p%%/*}" "${p#*/}" ;;
+        :*)       p=${p#:} ; ___x_cmd_ldict_get ___X_CMD_PWD "${p%%/*}" ;;
+
+        # cd back
+        ...)     ___x_cmd_cd_origin ../..        ;;
+        ....)    ___x_cmd_cd_origin ../../../    ;;
+
+        .../*)    ___x_cmd_cd_back "${p#.../}"     ;;
+
+        # cd-forward
+        ./*)     ___x_cmd_cd_choose "$(find . -name "*${p#./}*" -type d 2>/dev/null)" ;;
+
+        # cd: about history
+        --list-history)
+            ___X_CMD_CD_HISTORY="$(printf "%s" "$___X_CMD_CD_HISTORY" | ___x_cmd_cd_util_uniq_head 200)"
+            printf "%s\n" "$___X_CMD_CD_HISTORY"
+            ;;
+        --clear-history)
+            # very less used
+            ___X_CMD_CD_HISTORY=
+            ;;
+
+        # cd: history
+        --)
+            ___X_CMD_CD_HISTORY="$(printf "%s" "$___X_CMD_CD_HISTORY" | ___x_cmd_cd_util_uniq_head 200)"
+            local target="${___X_CMD_CD_HISTORY#*
+*
+}"
+            [ "$target" = "$___X_CMD_CD_HISTORY" ] && printf "%s\n" "cd: no such directory: " >&2 && return
+            target="${target%%
+*}"
+            ___x_cmd_cd_origin "$target"
+            ;;
+        -*) # using the first match
+            ___X_CMD_CD_HISTORY="$(printf "%s" "$___X_CMD_CD_HISTORY" | ___x_cmd_cd_util_uniq_head 200)"
+            ___x_cmd_cd_origin "$(awk "FNR <= 1" <<A
+$(printf "%s" "$___X_CMD_CD_HISTORY" | grep "${p#-}")
+A
+)"
+            ;;
+
+        # cd with find
+        ,*)
+            p=${p#,}
+            local ans
+            ans="$(find "$HOME" \
+                -path "$HOME/Library" -prune \
+                -o -path "$HOME/.*" -prune \
+                -o -path "*/.git" -prune \
+                -o -name "*$p*" -type d -print 2>/dev/null)"
+            if [ "$ans" = "" ]; then
+                printf "%s\n" "not found: " 2>/dev/null
+                return 1
+            fi
+            ___x_cmd_cd_choose "$ans"
+            ;;
+
+        /*)    ___x_cmd_cd_choose "$(___x_cmd_cd_iter / "${p#/}")" ;;
+        */*)   ___x_cmd_cd_choose "$(___x_cmd_cd_iter . "${p}")"   ;;
+
+        *)
+            ___X_CMD_CD_HISTORY="$(printf "%s" "$___X_CMD_CD_HISTORY" | ___x_cmd_cd_util_uniq_head 200)"
+            ___x_cmd_cd_choose "$(printf "%s" "$___X_CMD_CD_HISTORY" | grep "${p#-}")"
+            ;;
+    esac
+}
+# EndSection
+
+# Section: choose
+
+# TODO: better ui
+___x_cmd_cd_choose_data(){
+    printf "%s\n" "Select an option to change directory:"
+    printf "%s\n" "$*"
+    printf "%s\n" "---
+---"
+}
+
+___x_cmd_cd_choose(){
+
+    # If no interactive, return false
+    if [ "$1" = "" ] || [ "${-#*i}${___X_CMD_FS_DEBUG}" = "$-" ]; then
+        printf "%s\n" "cd: no such directory: $p " >&2
+        return 1
+    fi
+    local ___X_CMD_UI_GRIDSELECT_CURRENT_ITEM
+    local ___X_CMD_UI_GRIDSELECT_FINAL_COMMAND
+    ___x_cmd_ui_gridselect num ___x_cmd_cd_choose_data "$@"
+    [ "$___X_CMD_UI_GRIDSELECT_FINAL_COMMAND" = "q" ] && return 0
+    ___x_cmd_cd_origin "$___X_CMD_UI_GRIDSELECT_CURRENT_ITEM"
+}
+# EndSection
+
+# Section: cd back
+___x_cmd_cd_back(){
+    local p
+    p="$(cd .. && pwd)"
+    local pat="$1"
+    local target
+    if target="$(printf "" | awk -v p="$p" -v target="$pat" '
+BEGIN {
+    return_code = 1
+    arrl = split(p, arr, "/")
+    for (i=arrl; i>=1; i--) {
+        if (match(arr[i], target)) {
+            res = ""
+            for (j=1; j<=i; ++j) {
+                if (arr[j] == "") continue
+                res = res "/" arr[j]
+            }
+            print res
+            return_code = 0
+            exit(0)
+        }
+    }
+    exit(1)
+}
+
+END {
+    exit(return_code)
+}
+'
+)"; then
+        ___x_cmd_cd_origin "$target"
+    fi
+}
+# EndSection
+
+# Section: iter and other...
+___x_cmd_cd_iter()(
+    local root="$1"
+    local iter_path="$2"
+
+    ___x_cmd_cd_origin "$root" 2>/dev/null
+
+    local cur="${iter_path%%/*}"
+
+    if [ "$cur" = "$iter_path" ]; then
+        # this is final
+        if [ "${cur%*}" = "$cur" ]; then
+            cur="$cur*"
+        fi
+        eval "ls -d $cur/" 2>/dev/null | awk -v root="$root" '{ printf("%s%s\n", root, $0) }'
+    else
+        local elem
+        iter_path="${iter_path#*/}"
+        if [ "${cur%*}" = "$cur" ]; then
+            cur="$cur*"
+        fi
+        eval "ls -d $cur/" 2>/dev/null | while read -r elem; do
+            ___x_cmd_cd_iter "${root%/}/$elem" "$iter_path"
+        done
+    fi
+)
+
+mkdir -p "$___X_CMD_ROOT/.tmp/cd"
+
+___x_cmd_cd_util_uniq_head(){
+    awk -v head="${1:-100}" '
+{
+    if (count > head) { exit(exit_code); }
+    if (uniq_map[$0] == "") {
+        uniq_map[$0] = 1
+        print $0
+        count = count + 1
+    } else {
+        exit_code = 1
+    }
+}
+END {
+    exit(exit_code)
+}
+'
+}
+
+___x_cmd_cd_load_history(){
+    if [ -f "$___X_CMD_ROOT/.tmp/cd/history" ]; then
+    ___X_CMD_CD_HISTORY=$(awk '
+BEGIN {
+    res_len = 0
+    len = 0
+}
+{
+    data[ len ] = $0
+    len = len + 1
+}
+END {
+    for (j=0; j<len && res_len<200; j++) {
+        if (map[ data[ len-j-1 ] ] != "") {
+            continue
+        }
+        map[ data[ len-j-1 ] ] = 1
+        res_len = res_len + 1
+        print data[ len-j-1 ]
+    }
+}' <"$___X_CMD_ROOT/.tmp/cd/history")
+fi
+
+    printf "%s" "$___X_CMD_CD_HISTORY" | awk '
+BEGIN {
+    res_len=0
+    len=0
+}
+{
+    data[ len ] = $0
+    len = len + 1
+}
+END {
+    for (j=0; j<len ; j++) {
+        print data[ len-j-1 ]
+    }
+}
+    ' > "$___X_CMD_ROOT/.tmp/cd/history"
+}
+___x_cmd_cd_load_history
+# EndSection
+
+# Section: cd origin
+
+# 1. Explictly Inject to cd: x cd :inject
+# alias cd=___x_cmd_cd_origin
+___x_cmd_cd_origin(){
+    # `command cd` will not execute buildin command `cd` in zsh, refer: https://linux.die.net/man/1/zshbuiltins
+    if [ -n "$ZSH_VERSION" ]; then
+        builtin cd "$@"
+    else
+        command cd "$@"
+    fi
+
+    if [ "${-#*i}${___X_CMD_FS_DEBUG}" != "$-" ] && [ -t 1 ] ; then
+        [ -f "$___X_CMD_ROOT/.tmp/cd/history" ] || x touch "$___X_CMD_ROOT/.tmp/cd/history"
+        printf "%s\n" "$PWD" >>"$___X_CMD_ROOT/.tmp/cd/history"
+        ___X_CMD_CD_HISTORY="$PWD${___X_CMD_CD_HISTORY:+
+}${___X_CMD_CD_HISTORY}"
+    fi
+#     ___X_CMD_CD_HISTORY="$(pwd | tee -a "$___X_CMD_ROOT/.tmp/cd/history")${___X_CMD_CD_HISTORY:+
+# }${___X_CMD_CD_HISTORY}"
+}
+
+# EndSection
+
+# Section: advise
+___x_cmd_cd_advise_candidates(){
+    local can="$1"
+    case "$can" in
+        "")
+            cat <<A
+=
+-
+...
+../
+$(ls)
+A
+        ;;
+        ./*)
+            ;;
+        ../*)
+            ;;
+        -)  ;;
+        --)
+            ;;
+        -*)
+            ;;
+        /*) ;;
+        */*) ;;
+
+
+    esac
+}
+# EndSection
+
+xrc setmain ___x_cmd_cd

@@ -1,0 +1,93 @@
+# shellcheck shell=dash
+
+___x_cmd_git_meta(){
+    local op="$1"; shift
+    case "$op" in
+        id|branch|tag|name|root|root_|config|sizetop)       "___x_cmd_git_meta_$op" "$@" ;
+    esac
+}
+
+
+___x_cmd_git_meta_id(){
+    ___x_cmd___git_origin rev-parse HEAD
+}
+
+
+___x_cmd_git_meta_branch(){
+    ___x_cmd___git_origin branch --show-current
+}
+
+
+___x_cmd_git_meta_tag(){
+    ___x_cmd___git_origin describe --tags --exact-match 2>/dev/null
+}
+
+___x_cmd_git_meta_root_(){
+    local s="${1:-$PWD}";   s="${s%/}"
+    if ___x_cmd_search_path_ "${s}" .git/config; then   ___X_CMD_GIT_META_ROOT_="$___X_CMD_SEARCH_PATH_RESULT"
+    else                                                ___X_CMD_GIT_META_ROOT_=
+    fi
+}
+
+___x_cmd_git_meta_root(){
+    local ___X_CMD_GIT_META_ROOT_
+    ___x_cmd_git_meta_root_ "$@"
+    printf "%s\n" "$___X_CMD_GIT_META_ROOT_"
+}
+
+___x_cmd_git_meta_name(){
+    ___x_cmd_git_meta_config | awk -v FS='=' '
+$1~/^[[:space:]]+url[[:space:]]+$/{
+    match($2, /[^:\/.]+\/[^.\/]+(.git)?$/)
+    print substr($2, RSTART, RLENGTH)
+}
+' | sort | uniq
+}
+
+___x_cmd_git_meta_config(){
+    local ___X_CMD_GIT_META_ROOT_
+    ___x_cmd_git_meta_root_ "$PWD" || {
+        git:error "Cannot locate .git/config"
+        return 1
+    }
+
+    cat "$___X_CMD_GIT_META_ROOT_/.git/config"
+}
+
+
+___x_cmd_git_meta_sizetop(){
+    local top="${1:-10}"
+    {
+        command git verify-pack -v .git/objects/pack/*.idx | sort -k 3 -n -r | head -n "${top}"
+        printf "%s\n" ---
+        command git rev-list --objects --all
+    } | awk '
+
+(PACK==1){    if (pack[ $1 ] != "")   pack[ $1, "name" ] = $2;  next; }
+($0 == "---") { PACK=1; next; }
+{ add_pack() }
+
+# SHA-1 type size size-in-packfile offset-in-packfile
+function add_pack(){
+    pack[$1] = $1
+    pack[$1, "type"] = $2
+    pack[$1, "size"] = $3
+    pack[$1, "size-in-packfile"] = $4
+    pack[$1, "offset-in-packfile"] = $5
+
+    pack[ pack[ "\001" ] = pack[ "\001" ] + 1 ] = $1
+}
+
+function human( size ){
+    return (size / 1024) "KB"
+}
+
+END {
+    for (i=1; i<=pack[ "\001" ]; ++i) {
+        sha1 = pack[ i ]
+        printf("%s %s %s %s %s %s\n", sha1, pack[sha1, "type"], pack[sha1, "size"], human(pack[sha1, "size"]), pack[sha1, "name"], pack[sha1, "size-in-packfile"])
+    }
+}
+'
+
+}

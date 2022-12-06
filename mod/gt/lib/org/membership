@@ -1,0 +1,173 @@
+
+
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gt_org_membership(){
+    param:subcmd ___x_cmd_gt_org_membership     \
+        "ls|l"          "List   org membership"             \
+        "info|i"        "Show   org membership user info"   \
+        "edit|ed"       "Update org membership role"        \
+        add             "Add    org membership"             \
+        rm              "Remove org membership"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_org_member _param_help_doc
+    return 1
+}
+
+# Section: List
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5OrgsOrgMembers
+___x_cmd_gt_org_membership_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --org           "org space address"              <>:Address
+    --role          "role"                           <>:UserRole="all"
+    --page          "page"                           <>=""
+    --per_page      "per_page"                       <>=""
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    local ___gt_error_msg="Couldn't find any data by: $org"
+    ___gt_ui_mutual '___ui_table_json NameSpace=.login Name=.name Role=.member_role Url=.html_url -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/orgs/${org##*/}/members" role
+}
+
+# EndSection
+
+# Section: Info
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5OrgsOrgMembershipsUsername
+___x_cmd_gt_org_membership_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl      '
+options:
+    #1              "username: user space address"   <>:UserName
+    --org           "org space address"              <>:Address
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/orgs/${org##*/}/memberships/${1##*/}" | ___x_cmd_gt_org_membership_info_status_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_org_membership_info_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . organization=.organization.name name=.user.name name_space=.user.login role=.role html_url=.user.html_url gt_resp_body=.
+        if [ -n "$organization" ]; then
+            ___x_cmd_ui_tf true  "Success" "Organization: $organization" "Name: $name" "NameSpace: $name_space" "Role: $role" "UserUrl: $html_url"
+        else
+            ___x_cmd_ui_tf false "Couldn't find any data by $org $username" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+
+# EndSection
+
+# Section: Add
+
+# shellcheck disable=SC2181
+# https://gitee.com/api/v5/swagger#/putV5OrgsOrgMembershipsUsername
+___x_cmd_gt_org_membership_add(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1              "user login name"            <>:UserName
+    --org           "org space address"          <>:Address
+    --role          "user role"                  <>:OrganizationsAccess=member
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    local username
+    for username in "$@"; do
+        ___x_cmd_gt_curl put "https://gitee.com/api/v5/orgs/${org##*/}/memberships/${username##*/}" -- role | (
+            ___x_cmd_gt_org_membership_resolve_status_handle
+        )
+    done
+}
+
+___x_cmd_gt_org_membership_resolve_status_handle(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        return
+    fi
+
+    x jo env . role=.role gt_resp_body=.
+    if [ -n "$role" ]; then
+        ___x_cmd_ui_tf true   "Resolve $username successfully" "Role: $role"
+    else
+        ___x_cmd_ui_tf false  "Creating organization failure by org: $org. user: $username" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+        ___x_cmd_gt_resp_body
+        return 1
+    fi
+}
+
+# EndSection
+
+# Section: Remove
+
+# shellcheck disable=SC2181,SC2154,SC2034
+# https://gitee.com/api/v5/swagger#/deleteV5OrgsOrgMembershipsUsername
+___x_cmd_gt_org_membership_rm(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1          "user login name"                       <>:UserName
+    --org       "org space address"                     <>:Address
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+
+    local username
+    local _exit_code=0
+    local gt_resp_body
+    for username in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
+        if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/orgs/${org##*/}/memberships/${username##*/}" | ___x_cmd_gt_curl_handler_no_content; then
+            ___x_cmd_ui_tf true  "Remove $username to $org successfully"
+            _exit_code=0
+        else
+            _exit_code=$?
+            ___x_cmd_ui_tf false "Remove $org user failure: $username" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+        fi
+    done
+    return "$_exit_code"
+}
+
+# EndSection
+
+# Section: Edit
+
+# shellcheck disable=SC2181
+# https://gitee.com/api/v5/swagger#/putV5OrgsOrgMembershipsUsername
+___x_cmd_gt_org_membership_edit(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1              "user login name"            <>:UserName
+    --org           "org space address"          <>:Address
+    --role          "user role"                  <>:OrganizationsAccess=member
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    ___x_cmd_gt_org_membership_add --org "$org" --role "$role" "$@"
+}
+
+# EndSection

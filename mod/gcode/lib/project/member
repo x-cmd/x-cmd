@@ -1,0 +1,184 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+# gcode project member +el:admin -user-a +user-b
+# shellcheck disable=SC2154,SC2086
+___x_cmd_gcode_project_member(){
+    param:subcmd ___x_cmd_gcode_project_member             \
+        ls              "List project member"           \
+        info            "Show project member user info" \
+        add             "Add project member"            \
+        edit            "Update project member"         \
+        rm              "Remove member"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_project_member _param_help_doc
+
+    return 1
+}
+
+# Section: list
+___x_cmd_gcode_project_member_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --project           "The URL-encoded path of the project."          <>
+    --query             "Search for specific users."                    <>=""
+    --skip_users        "Filter out users with the specified ID."       <>:integer_array=""
+    --show_seat_info    "Show seat information for users"
+
+    --page              "page"                                          <>:Per_page="1"
+    --per_page          "per_page"                                      <>:Numbers="30"
+    --json|-j           "output json data"
+'
+    param:run
+
+    ___x_cmd_gcode_param_init_owner_project
+
+    ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Id=.id Username=.username State=.state Access_level=.access_level web_url=.web_url -- $@' \
+        ___x_cmd_gcode_get_multi "/projects/$owner_project/members" query skip_users
+}
+# EndSection
+
+# Section: info
+___x_cmd_gcode_project_member_info(){
+    param:scope     ___x_cmd_gcode
+    param:dsl      '
+options:
+    #1              "The user ID of the member"                     <>:mumber
+    --project       "The URL-encoded path of the project."         <>
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gcode_param_init_owner_project
+    ___x_cmd_gcode_curl get "/projects/$owner_project/members/$1" | _____x_cmd_gcode_project_member_ui_utils Info
+}
+# EndSection
+
+# Section: add
+___x_cmd_gcode_project_member_add(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                  "The user ID of the new member or multiple IDs separated by commas"         <>
+    --project           "The URL-encoded path of the project."                                      <>:address
+    --access_level      "A valid access level"                                                      <>:Number = 10 20 30 40 50 guest reporter developer maintainer owner
+    --expires_at        "A date string in the format YEAR-MONTH-DAY"                                <>=""
+    --invite_source     "The source of the invitation that starts the member creation process."     <>=""
+    --tasks_to_be_done  "Tasks the inviter wants the member to focus on."                           <>=""
+    --tasks_project_id  "The project ID in which to create the task issues."                        <>=""
+    --json|-j           "output json data"
+'
+    param:run
+
+    ___x_cmd_gcode_param_init_owner_project
+    local user_id="${___X_CMD_TX}"
+
+    _____x_cmd_gcode_member_util
+
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -project +user_id)"
+
+    for user_id in "$@"; do
+        gcode_log debug "___x_cmd_gcode_repo_add_data:$(x tmpl "$gen_gcode_json"  "${user_id}")"
+        x tmpl "$gen_gcode_json"  "${user_id}" | \
+        ___x_cmd_gcode_curl post "/projects/$owner_project/members" "@-" | _____x_cmd_gcode_project_member_ui_utils Creating
+    done
+}
+# EndSection
+
+# Section: update
+# TODO: test!!
+___x_cmd_gcode_project_member_edit(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                  "The user ID of the member"                     <>
+    --project           "The URL-encoded path of the project."          <>:address
+    --access_level      "A valid access level"                          <>:Number = 10 20 30 40 50 guest reporter developer maintainer owner
+    --expires_at        "A date string in the format YEAR-MONTH-DAY"    <>=""
+    --json|-j           "output json data"
+'
+    param:run
+
+    _____x_cmd_gcode_member_util
+
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -project)"
+    ___x_cmd_gcode_param_init_owner_project
+    ___x_cmd_gcode_curl put "/projects/$owner_project/members/$1" gen_gcode_json | _____x_cmd_gcode_project_member_ui_utils Update
+}
+# EndSection
+
+# Section: member remove
+___x_cmd_gcode_project_member_rm(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                      "The user ID of the member"                     <>
+    --project               "The URL-encoded path of the project."          <>:address
+    --skip_subresources     ""
+    --unassign_issuables    ""
+    --yes|-y                "Ignore remove prompt interception"
+
+'
+    param:run
+
+    ___x_cmd_gcode_param_init_owner_project
+    local username
+    for username in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete member : $(___x_cmd_ui bold red "$username") ?" || continue
+        ___x_cmd_gcode_curl delete "/projects/$owner_project/members/$username" | (
+            x jo env . error=.
+            if  ___x_cmd_gcode_http_error; then
+                ___x_cmd_ui_tf true "Remove $username successfully."
+            else
+                ___x_cmd_ui_tf false "Remove $username failure"
+                return 1
+            fi
+        )
+    done
+}
+# EndSection
+
+# Section: project member utils
+_____x_cmd_gcode_project_member_ui_utils()(
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gcode_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Info)
+            data="username=.username name=.name url=.web_url state=.state access_level=.access_level"
+            msg="Get project member information successfully."
+            error_msg="Failed to get project member information."
+            ;;
+        Update)
+            data="username=.username name=.name url=.web_url state=.state access_level=.access_level"
+            msg="Update project member information successfully."
+            error_msg="Failed to update project member information."
+            ;;
+        Creating)
+            data="username=.username name=.name url=.web_url state=.state access_level=.access_level"
+            msg="Add user to $project project successfully."
+            error_msg="Failed to add user to $project project."
+            ;;
+    esac
+    x jo env . id=.id  error=. $data
+    if [ -n "$id" ]; then
+        ___x_cmd_ui_tf true "$msg" "User_id: $id" ${name+"Name: $name"} ${username+"Username: $username"} \
+            ${state+"State: $state"} ${access_level+"Access_level: $access_level"} ${url+"Url: $url"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)
+# EndSection

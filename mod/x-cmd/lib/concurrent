@@ -1,0 +1,126 @@
+
+# ___X_CMD_EVAL_CON_SEPERATOR="$(printf "\001")"
+___X_CMD_EVAL_CON_SEPERATOR=""
+
+___x_cmd_eval_concurrent_single_head(){
+    eval "$1"
+    printf "%s" "${___X_CMD_EVAL_CON_SEPERATOR}"
+}
+
+___x_cmd_eval_concurrent_single_head_without_end(){
+    printf "%s%s" "$(eval "$1")" "${___X_CMD_EVAL_CON_SEPERATOR}"
+}
+
+___x_cmd_eval_concurrent_single_tail(){
+    local s
+    local sep
+    sep="$(printf "\001")"
+    s="$(eval "$1"; printf "%s" "${___X_CMD_EVAL_CON_SEPERATOR}$sep")"
+    cat
+    printf "%s" "${s%"$sep"}"
+}
+
+___x_cmd_eval_concurrent_single_tail_without_end(){
+    local s
+    s="$(eval "$1")"
+    cat
+    printf "%s%s" "${s}" "${___X_CMD_EVAL_CON_SEPERATOR}"
+}
+
+# time x conjoin "sleep 1s; echo 1" "sleep 1s; echo 2" "sleep 1s; echo 3"
+# time sep=, x conjoin "sleep 1s; echo 1" "sleep 1s; echo 2" "sleep 1s; echo 3"
+___x_cmd_conjoin(){
+
+    if [ $# -le 1 ]; then
+        eval "$@"
+        return
+    fi
+
+    local cmd
+    local result
+    cmd='___x_cmd_eval_concurrent_single_head_without_end "$1"'
+    local i
+    for i in $(seq 2 $#); do
+        if [ "$i" -eq $# ]; then
+            cmd="$cmd | ___X_CMD_EVAL_CON_SEPERATOR= ___x_cmd_eval_concurrent_single_tail_without_end \"\$$i\""
+        else
+            cmd="$cmd | ___x_cmd_eval_concurrent_single_tail_without_end \"\$$i\""
+        fi
+    done
+    # eval "$cmd"
+
+    local ___X_CMD_EVAL_CON_SEPERATOR="${sep:-
+}"
+    eval "$cmd"
+}
+
+# time x con a= "sleep 1s; echo 1" b= "sleep 1s; echo 2" c= "sleep 1s; echo 3"
+# time x con a= "sleep 1s; echo 1" b:= "sleep 1s; echo 2" c= "sleep 1s; echo 3"
+___x_cmd_con(){
+    [ $# -le 1 ] && return 1
+
+    local cmd
+    local result
+    local var_namelist=
+    local i=2
+    local varname_eq
+
+    while [ $i -le $# ]; do
+        varname_eq="$(eval printf "%s" \""\$$((i-1))"\")"
+        case "$varname_eq" in
+            *:=)
+                eval "${varname_eq%:=}=s"
+                if [ -z "$var_namelist" ]; then
+                    var_namelist="${varname_eq%:=}"
+                else
+                    var_namelist="$var_namelist
+${varname_eq%:=}"
+                fi
+
+                if [ "$i" -eq 2 ]; then
+                    cmd='___x_cmd_eval_concurrent_single_head "$2"'
+                else
+                    cmd="$cmd | ___x_cmd_eval_concurrent_single_tail \"\$$i\""
+                fi
+                ;;
+            *=)
+                eval "${varname_eq}"
+                if [ -z "$var_namelist" ]; then
+                    var_namelist="${varname_eq%=}"
+                else
+                    var_namelist="$var_namelist
+${varname_eq%=}"
+                fi
+
+                if [ "$i" -eq 2 ]; then
+                    cmd='___x_cmd_eval_concurrent_single_head_without_end "$2"'
+                else
+                    cmd="$cmd | ___x_cmd_eval_concurrent_single_tail_without_end \"\$$i\""
+                fi
+                ;;
+            *)
+                printf "%s\n" "Expect to be *= but get $varname_eq" >&2
+                return 1
+        esac
+
+        i=$((i+2))
+    done
+
+    local ___X_CMD_EVAL_CON_SEPERATOR
+    ___X_CMD_EVAL_CON_SEPERATOR="$(printf "\001")"
+
+    result="$( eval "$cmd"; printf "$___X_CMD_EVAL_CON_SEPERATOR" )"
+    local varname
+    local item
+    local IFS=""
+    while read -r varname; do
+        item="${result%%${___X_CMD_EVAL_CON_SEPERATOR}*}"
+        eval "$varname=\"\$item\""
+        [ "$item" = "$result" ] && break
+        result="${result#*${___X_CMD_EVAL_CON_SEPERATOR}}"
+    done <<A
+$var_namelist
+A
+
+}
+

@@ -1,0 +1,195 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+# Should be like this.
+# gt repo member add el:admin
+# gt repo member remove user-a
+# gt repo member add user-b
+
+# gt repo member +el:admin -user-a +user-b
+___x_cmd_gt_enterprise_member(){
+    param:subcmd ___x_cmd_gt_enterprise_member              \
+        "ls|l"          "List member"                       \
+        "info|i"        "Show member user info"             \
+        "edit|ed"       "Edit member info"                  \
+        add             "Add member"                        \
+        rm              "Remove member"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_enterprise_member _param_help_doc
+    return 0
+}
+
+# Section: List
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5EnterprisesEnterpriseMembers
+___x_cmd_gt_enterprise_member_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+
+options:
+    --enterprise|-e    "* enterprise space address"        <>:Address
+    --role             "* role type"                       <>:UserRole="all"
+    --page             "page"                              <>=""
+    --per_page         "per_page"                          <>=""
+    --json|-j          "output origin json data"
+'
+    param:run
+
+    local ___gt_error_msg="Couldn't find any data by: ${enterprise}"
+    ___gt_ui_mutual '___ui_table_json NameSpace=.user.login Name=.user.name MarkName=.remark Role=.role IsOutSourced=.outsourced -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/enterprises/${enterprise##*/}/members" role page per_page
+}
+
+# EndSection
+
+# Section: Info
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5EnterprisesEnterpriseMembersUsername
+___x_cmd_gt_enterprise_member_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                  "username: user login name"     <>:UserName
+    --enterprise|-e     "enterprise: space address"     <>:Address
+    --json|-j           "output origin json data"
+'
+    param:run
+    local username="$1"
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/enterprises/${enterprise##*/}/members/${username}" | ___x_cmd_gt_enterprise_member_info_status_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_enterprise_member_info_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . url=.url name_space=.user.login mark_name=.remark role=.role is_active=.active is_out_sourced=.outsourced gt_resp_body=.
+        if [ -n "$url" ]; then
+            ___x_cmd_ui_tf true  "Successful" "NameSpace: $name_space" "MarkName: $mark_name" "Role: $role" "IsActive: $is_active" "IsOutSourced: $is_out_sourced"
+        else
+            ___x_cmd_ui_tf false "Couldn't find any data by: ${enterprise} ${username}" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+
+# EndSection
+
+# Section: Add
+
+# shellcheck disable=SC2034
+# https://gitee.com/api/v5/swagger#/postV5EnterprisesEnterpriseMembers
+___x_cmd_gt_enterprise_member_add(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                "user login name"                                  <>:UserName
+    --enterprise|-e   "enterprise space address"                         <>:Address
+
+    --role            "user role"                                        <>:EnterpriceAccess=member
+    --email           "member email separatedby commas"                  <>=""
+    --name            "member real name(mark name)"                      <>=""
+'
+    param:run
+    local username="${1:?Provide user login path}"
+    local gt_resp_body
+    local gen_gt_json
+
+    gen_gt_json="$(param:option2json +username)"
+    gt:debug "$gen_gt_json"
+    if ___x_cmd_gt_curl post "https://gitee.com/api/v5/enterprises/${enterprise##*/}/members" "gen_gt_json" 1>/dev/null && ___x_cmd_gt_curl_error; then
+        ___x_cmd_ui_tf true  "Add $username successfully"
+    else
+        ___x_cmd_ui_tf false "Add $username failure" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+        ___x_cmd_gt_resp_body
+    fi
+}
+
+# EndSection
+
+# Section: Remove
+
+# shellcheck disable=SC2181,SC2154,SC2034
+# https://gitee.com/api/v5/swagger#/deleteV5EnterprisesEnterpriseMembersUsername
+___x_cmd_gt_enterprise_member_rm(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                  "user login name"                       <>:UserName
+    --enterprise|-e     "enterprise space address"              <>:Address
+    --yes|-y            "Ignore remove prompt interception"
+'
+    param:run
+
+    local username="${1:?Provide user login path}"
+    local _exit_code=0
+    local gt_resp_body
+    for username in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $enterprise to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
+        if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/enterprises/${enterprise##*/}/members/${username##*/}" | ___x_cmd_gt_curl_handler_no_content; then
+            ___x_cmd_ui_tf true  "Remove $enterprise user successfully: $username"
+            _exit_code=0
+        else
+            _exit_code=$?
+            ___x_cmd_ui_tf false "Remove user failure by $username $enterprise" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+        fi
+    done
+    return "$_exit_code"
+}
+
+# EndSection
+
+# Section: Edit
+
+# shellcheck disable=SC2181
+# https://gitee.com/api/v5/swagger#/putV5EnterprisesEnterpriseMembersUsername
+___x_cmd_gt_enterprise_member_edit(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                      "user login name"                                 <>:UserName
+    --enterprise|-e         "enterprise: space address"                       <>:Address
+    --role                  "user role"                                       <>:EnterpriceAccess=member
+    --name                  "member real name(mark name)"                     <>=""
+    --active                "Access to visit enterprise resources"
+    --json|-j               "output origin json data"
+'
+    param:run
+    local username="${1:?Provide user login path}"
+    local gen_gt_json
+    gen_gt_json="$(param:option2json active=^active -enterprise)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl put "https://gitee.com/api/v5/enterprises/${enterprise##*/}/members/${username##*/}" "gen_gt_json" | ___x_cmd_gt_enterprise_member_edit_status_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_enterprise_member_edit_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . id=.user.id gt_resp_body=.
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true   "Modify user info successfully: $username"
+        else
+            ___x_cmd_ui_tf false  "Modify user info by $username $enterprise" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+
+}
+
+# EndSection

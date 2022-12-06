@@ -1,0 +1,120 @@
+# shellcheck shell=sh disable=SC3043
+
+# Refer: https://blog.csdn.net/m0_37282062/article/details/115770314
+
+___x_cmd_proxy_docker(){
+    param:dsl <<A
+subcommands:
+    url             "Provide url of mirror candidates"
+    get             "Get current registry"
+    replace|set     "Setting the mirror"
+    rollback        "Rollback the source to the old one configured"
+A
+    param:run
+
+    if ! command -v docker >/dev/null; then
+        proxy_log error "command not found: docker, you should install docker in your system."
+        return 1
+    elif [ -n "$PARAM_SUBCMD" ]; then
+        "___x_cmd_proxy_docker_${PARAM_SUBCMD}" "$@"
+    else
+        proxy_log info "Current Registry is:    " >&2
+        ___x_cmd_proxy_docker get 
+        ___x_cmd_proxy_docker _param_help_doc  >&2
+    fi
+}
+
+___x_cmd_proxy_docker_get(){
+    param:void
+    cat /etc/docker/daemon.json
+}
+
+___x_cmd_proxy_docker_url(){
+    param:dsl <<A
+option:
+    #1    "Mirror name"       <mirror-name>=ustc    = ustc netease docker-cn ali
+A
+    param:run
+
+    case "${1}" in
+        ustc)                    printf "https://docker.mirrors.ustc.edu.cn/"            ;;
+        netease)                 printf "https://hub-mirror.c.163.com/"                  ;;
+        docker-cn)               printf "https://registry.docker-cn.com"                 ;;
+        ali)                     printf "https://mirrors.aliyun.com/docker-ce/"          ;;
+    esac
+}
+
+___x_cmd_proxy_docker_replace(){
+    param:dsl <<A
+option:
+    #1    "Mirror name"       <mirror-name>=ustc    = ustc netease docker-cn ali
+A
+    param:run
+
+    local url
+    if url="$(___x_cmd_proxy_docker_url "${1}")";then
+        proxy_log info "Setting proxy_docker mirror :
+        $url"
+
+        sudo touch /etc/docker/daemon.json
+        
+        local src_path
+        src_path="/etc/docker/daemon.json"
+        ___proxy_backup /etc/docker/daemon.json docker
+
+        local tmp
+        tmp="$(cat $src_path)"
+
+        if [ "$(id -u)" -ne 0 ]; then
+        proxy_log info "using sudo"
+            printf "%s" "" | sudo awk -v tmp="$tmp" -v url="$url" 'BEGIN { tmp="";tmp=tmp "{\"registry-mirrors\":[\""url"\"]}";print tmp}' | sudo tee "$src_path"
+            sudo systemctl daemon-reload
+            sudo systemctl restart docker
+            # sudo service daemon-reload restart
+            # sudo service docker restart
+        else
+            printf "%s" "" | awk -v tmp="$tmp" -v url="$url" 'BEGIN { tmp="";tmp=tmp "{\"registry-mirrors\":[\""url"\"]}";print tmp}' > "$src_path"
+            systemctl daemon-reload
+            systemctl restart docker
+            # service daemon-reload restart
+            # service docker restart
+        fi      
+    fi
+
+}
+
+___x_cmd_proxy_docker_rollback(){
+    # param:void
+    param:dsl <<A
+advise:
+    #1          x proxy docker rollback ls
+option:
+    #1          "use the selected file to rollback"
+subcommand:
+    ls          "list all file you can rollback"
+A
+    param:run
+
+    if [ -n "$PARAM_SUBCMD" ]; then
+        ___x_cmd_proxy_docker_rollback_"${PARAM_SUBCMD}" "$@"
+        return
+    fi
+
+    if [ "$(id -u)" -ne 0 ]; then
+        proxy_log info "using sudo"
+        IS_ROOT=1 ___proxy_rollback /etc/docker/daemon.json docker "$1"
+    else
+        ___proxy_rollback /etc/docker/daemon.json docker "$1"
+    fi 
+}
+
+___x_cmd_proxy_docker_rollback_ls() {
+    param:void
+    ___proxy_rollback_ls docker
+}
+
+___x_cmd_proxy_docker_tutorial(){
+    param:void
+    cat <<A
+A
+}

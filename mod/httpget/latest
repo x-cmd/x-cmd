@@ -1,0 +1,195 @@
+# Author:       Li Junhao       l@x-cmd.com
+# shellcheck    shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+
+# license:      GPLv3
+
+# shellcheck    shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+
+xrc fileage
+
+___x_cmd_httpget_handle_resp_header(){
+    local url="${1:?Provide url}"
+    local code="${2:?Provide exit code of function ___x_cmd_httpget_inner}"
+
+    local http_code
+    http_code="$(awk 'NR==1{ printf("%s", $2); }')"
+    case "$http_code" in
+        20*)    return 0 ;;
+        40*)    x:debug "HTTP_CODE: $http_code. Fail to retrieve file from: $url"
+                return 4 ;;     # TODO: consider using exit code 70
+        "")     x:debug "Return code: $code. HTTP_CODE Unavialable. Fail to retrieve file from: $url"
+                return 1 ;;
+        5*)     x:debug "Return code: $code. Server internal error. Fail to retrieve file from: $url"
+                return 5 ;;     # TODO: consider using exit code 69
+        *)      x:debug "Unknow error. HTTP_CODE: $http_code. Fail to retrieve file from: $url"
+                return 2 ;;
+    esac
+}
+
+# TODO: rename to ___x_cmd_httpget_with_cache
+___x_cmd_httpget() {
+    # ___X_CMD_HTTPGET_AGE=-1
+    ___X_CMD_HTTPGET_AGE=
+
+    local url="${1:?Provide url}"
+    local cache="$2"
+    local cache_expiration="$3"
+    local error_msg_varname="$4"
+
+    local redirect_path=            # "&1"
+    if [ -n "$cache" ]; then
+        if [ -f "$cache" ]; then
+            # days
+            case "$cache_expiration" in
+                "") # infinite time
+                    x:debug "Function ___x_cmd_httpget() terminated. Because local cache existed with update flag unset: $cache"
+                    return 0
+                    ;;
+                -|0) # force update
+                    ;;
+                *)
+                    # days
+                    # if [ -n "$(find "$cache" -mtime "-$cache_expiration" 2>/dev/null)" ]; then
+                    if ! ___x_cmd_fileage_ "$cache"; then
+                        x:error "Fail to get file age: $cache"
+                        return 1
+                    fi
+
+                    if [ "$___X_CMD_FILEAGE_" -lt "$cache_expiration" ]; then
+                        ___X_CMD_HTTPGET_AGE="$___X_CMD_FILEAGE_"
+                        x:debug "Function ___x_cmd_httpget() terminated. Because local cache existed within days: $cache_expiration"
+                        return 0
+                    else
+                        ___X_CMD_HTTPGET_AGE="-$___X_CMD_FILEAGE_"
+                        ___X_CMD_FILEAGE_="-$___X_CMD_FILEAGE_"
+                    fi
+            esac
+        fi
+
+        # First make sure it works before webservice. Fail fast.
+        mkdir -p "$(dirname "$cache")"
+        redirect_path="$TMPDIR/x-bash-temp-download.$RANDOM"
+        # TODO: Consider using following code
+        # redirect_path="$(dirname "$cache")/x-bash-temp-download.$RANDOM"
+    fi
+
+    x:debug "URL is $url"
+    if ___x_cmd_httpget_inner "$url" "$redirect_path"; then
+        if [ -n "$cache" ]; then
+            x:debug "Copy the temp file to CACHE file: $cache"
+            mv "$redirect_path" "$cache"
+            ___X_CMD_HTTPGET_AGE=0
+        fi
+    else
+        code=$?
+        if [ -n "$cache" ] ; then
+            [ -n "$error_msg_varname" ] && eval "$error_msg_varname=\"$(cat "$redirect_path")\""
+            rm -f "$redirect_path" # In centos, file in "$redirect_path" is write protected.
+        fi
+        return $code
+    fi
+}
+
+# org reponame branch suburl
+# rename to ___x_cmd_httpget_gitx_with_cache
+___x_cmd_httpget_gitx(){   # Simple strategy
+    local owner="${1:?Provide owner}"
+    local reponame="${2:?Provide reponame}"
+    local branch="${3:?Provide branch}"
+    local suburl="${4:?Provide location like str}"
+    local cache="${5}"
+    local cache_expiration="${6}"
+
+    local IFS
+
+    ___x_cmd_mirror     # Reload ___X_CMD_MIRROR_LIST
+
+    local mirror
+    local lineno=1
+    local urlpath
+    while read -r mirror; do
+        # shellcheck disable=SC2059
+        urlpath="$(printf "$mirror" "$owner" "$reponame" "${branch}" "$suburl")"
+        ___x_cmd_httpget "$urlpath" "$cache" "$cache_expiration"
+
+        case $? in
+            0)  if [ "$lineno" -ne 1 ]; then
+                    x:debug "Current default mirror is $mirror"
+                    ___x_cmd_mirror "$mirror" "$(printf "%s" "$___X_CMD_MIRROR_LIST" | awk "NR!=$lineno{ print \$0 }" )"
+
+                    # Set CHINA_NET FLAG
+                    case "$mirror" in
+                        *gitee*|*codechina*)                    ___X_CMD_IN_CHINA_NET=1; ___X_CMD_WHICHNET=cn ;;
+                        *github*|*gitlab*)                      ___X_CMD_IN_CHINA_NET= ; ___X_CMD_WHICHNET=_ ;;
+                    esac
+                fi
+                return 0;;
+            1)  x:debug "Network unavailable."
+                return 1;;
+            4)  x:debug "Resource Not Found."
+                return 4;;
+            *)
+                x:debug "Network unavailable Or Mirror is down: $urlpath"
+                return 1;;
+        esac
+        lineno=$((lineno+1))
+    done <<A
+$___X_CMD_MIRROR_LIST
+A
+    return 1
+}
+
+# rename to ___x_cmd_httpget_gitx_official
+___x_cmd_httpget_gitx_official(){
+    ___x_cmd_httpget_gitx x-cmd "$___X_CMD_CODESORUCE_REPO" "${___X_CMD_CODESORUCE_REPO_BRANCH}" "${1:?Provide resource path}" "$2" "$3"
+}
+
+___x_cmd_httpget_curl___main()(
+    local url="${1:?Provide url}"
+    local cache="${2}"
+    x:debug "___x_cmd_httpget_curl___main_fn -L --dump - --output $cache --speed-time 5 --speed-limit 10 $url"
+
+    if [ -z "$cache" ]; then
+        exec 3>&1
+        ___X_CMD_HTTP_GET_INNER_HEADER="$(___x_cmd_httpget_curl___main_fn -L --silent --dump - --output /dev/stderr --speed-time 5 --speed-limit 10 "$url" 2>&3)"
+        exec 3>&-
+    else
+        ___X_CMD_HTTP_GET_INNER_HEADER="$(___x_cmd_httpget_curl___main_fn -L --silent --dump - --output "$cache" --speed-time 5 --speed-limit 10 "$url")"
+    fi
+
+    local code=$?
+    printf "%s" "$___X_CMD_HTTP_GET_INNER_HEADER" | ___x_cmd_httpget_handle_resp_header "$url" "$code"
+)
+
+# Section: httpget_inner
+# TODO: &3 is a global var. Must be handled in the proper way.
+if command -v curl >/dev/null; then
+    ___x_cmd_httpget_inner(){
+        ___x_cmd_httpget_curl___main_fn(){  curl "$@";   }
+        ___x_cmd_httpget_curl___main "$@"
+    }
+elif command -v wget >/dev/null && command -v ssl_client 1>/dev/null; then
+    ___x_cmd_httpget_inner()(
+        local url="${1:?Provide url}"
+        local cache="${2}"
+
+        if [ -z "$cache" ]; then
+            exec 3>&1
+            ___X_CMD_HTTP_GET_INNER_HEADER="$(wget -T 5 -qS "$url" 1>&3 2>/dev/stdout)"
+            exec 3>&-
+        else
+            ___X_CMD_HTTP_GET_INNER_HEADER="$(wget -T 5 -O "$cache" -qS "$url" 2>/dev/stdout)"
+        fi
+
+        local code=$?
+        printf "%s" "$___X_CMD_HTTP_GET_INNER_HEADER" | ___x_cmd_httpget_handle_resp_header "$url" "$code"
+    )
+else
+    ___x_cmd_httpget_inner(){
+        ___x_cmd_httpget_curl___main_fn(){  x curl "$@";   }
+        ___x_cmd_httpget_curl___main "$@"
+    }
+fi
+# EndSection
+
+xrc setmain ___x_cmd_httpget

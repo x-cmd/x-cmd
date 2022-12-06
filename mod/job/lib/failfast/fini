@@ -1,0 +1,117 @@
+
+# Section: framework init fini
+
+___x_cmd_job_failfast_fini___interrupt(){
+    ___X_CMD_JOB_FAILFAST_INTERRUPTED=1
+    local pid
+    x ldict vals ___X_CMD_JOB_FAILFAST | {
+        while read -r pid; do
+            job:warn "Fail Fast: sending kill signal to $pid"           # TODO: change to debug
+            kill "$pid"  2>/dev/null
+        done
+        job:info "Fail Fast: killing signal all sent"       # TODO: list all pid here.
+    }
+
+    kill "$waiting_usr1" 2>/dev/null
+}
+
+___x_cmd_job_failfast_fini()(
+    local IFS="
+"
+
+    local ___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM;   read -r ___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM
+    job:debug "UPSTREAM PID is: $___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM"
+
+    trap '' INT  # Ignore SIGINT
+
+    local exit_code=0
+    local job_count=0;      local job_count_fail=0;     local job_count_succ=0
+
+    local job_worker_count=0
+    local waiting_usr1=
+
+    local idx; local pid; local code;  local srccode
+    local line; while read -r line; do
+        case "$line" in
+            pid:*/*)
+                line="${line#pid:}";        idx="${line%%/*}"
+                pid="${line##*/}"
+                x ldict put ___X_CMD_JOB_FAILFAST "$idx" "$pid"
+                if [ -n "$___X_CMD_JOB_FAILFAST_INTERRUPTED" ]; then
+                    job:warn "Job[$idx] Reject new job but process already interrupted: sending kill signal to $pid"           # TODO: change to debug
+                    kill "$pid"  2>/dev/null
+                fi
+                ;;
+            start:*/*)
+                job_count="$((job_count + 1))"
+                line="${line#start:}";      idx="${line%%/*}"
+                srccode="${line#*/}"
+                job:info "Job[$idx] Starting: $srccode"
+                ;;
+
+            exit:*/*/*)
+                line="${line#exit:}";       idx="${line%%/*}"
+                line="${line#"$idx"/}";     code="${line%%/*}";     srccode="${line#"$code"/}"
+                x ldict rm ___X_CMD_JOB_FAILFAST "$idx"
+
+                if [ "$code" -eq 0 ]; then
+                    : $((job_count_succ++))
+                    job:info "Job[$idx] [${job_count_succ}:${job_count_fail}/${job_count}] Success: $srccode"
+
+                    ### request-usr1
+                    if [ -n "$waiting_usr1" ]; then
+                        job:debug "Sending USR1 to notify decrease count: $pid"
+                        kill "$waiting_usr1" 2>/dev/null
+                        waiting_usr1=
+                    else
+                        job_worker_count="$((job_worker_count+1))"
+                    fi
+                    ### request-usr1
+                else
+                    job_count_fail=$((job_count_fail+1))
+
+                    job:error "Job[$idx] [${job_count_succ}:${job_count_fail}/${job_count}] Fail Fast: $job_count_fail [code=$code] $srccode"
+
+                    [ "$job_count_fail" -eq 1 ] || continue
+                    exit_code=$code
+
+                    job:debug "Fail Fast: sending errexit signal to upstream signal $___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM"
+                    kill -s USR2 "$___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM" 2>/dev/null
+
+                    ___x_cmd_job_failfast_fini___interrupt
+                fi
+                ;;
+            interrupt)
+                job:warn "Recv interrupt from the upstream."
+                exit_code=130
+                ___x_cmd_job_failfast_fini___interrupt
+                ;;
+            request-usr1:*)
+                # request-usr1
+                job:debug "Recv request-usr1.: $job_worker_count"
+                if [ "$job_worker_count" -gt 0 ]; then
+                    job:debug "Sending USR1 to notify decrease count: $pid"
+                    kill "${line#*:}" 2>/dev/null
+                    job_worker_count="$((job_worker_count-1))"
+                    waiting_usr1=
+                else
+                    waiting_usr1="${line#*:}"
+                fi
+                # request-usr1
+                ;;
+            *)
+                job:warn "Not expected: $line"
+                ;;
+        esac
+    done
+
+    case "$exit_code" in
+        0)          job:info    "Total: $job_count jobs succeed."  ;;
+        130)        job:warn    "Abort because intterrupted after jobs run: $job_count" ;;
+        *)          job:error   "Total: $job_count_fail" ;;
+    esac
+
+    return "$exit_code"
+)
+
+## EndSection

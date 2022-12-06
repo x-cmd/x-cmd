@@ -1,0 +1,186 @@
+# shellcheck shell=sh   disable=SC2142,SC2154,SC3043
+
+# DICT_KEYS_SEP conflict. But it is OK.
+___X_CMD_PARAM_ARG_SEP="$___X_CMD_UNSEENCHAR_005"         # ARG_SEP in awk script
+___X_CMD_PARAM_HELP_ARG_SEP="$___X_CMD_UNSEENCHAR_002"
+
+# Section 1: scope plugin dsl
+alias param:advise='local ___X_CMD_PARAM_ADIVSE_NAME; ___x_cmd_param_define_advise_name'
+___x_cmd_param_define_advise_name(){ ___X_CMD_PARAM_ADIVSE_NAME="${1:?Please provide advise name}"; }
+
+alias param:scope='local ___X_CMD_PARAM_SCOPE; ___x_cmd_param_scope_set_id'
+alias param:plugin="local ___X_CMD_PARAM_PLUGIN_ID; ___x_cmd_param_plugin_set_id"
+alias param:dsl="local PARAM_SUBCMD_LIST=\"\$PARAM_SUBCMD_LIST\"; local ___X_CMD_PARAM_DSL 1>/dev/null; ___x_cmd_param_dsl_set "
+
+___x_cmd_param_scope_set_id(){          ___X_CMD_PARAM_SCOPE="${1:?Please provide scope}";      }
+___x_cmd_param_plugin_set_id(){         ___X_CMD_PARAM_PLUGIN_ID="${1:?Please provide scope}";  }
+___x_cmd_param_dsl_set(){               ___X_CMD_PARAM_DSL="${1:-"$(cat)"}";                    }
+# EndSection
+
+# Section 2: param alias definition
+# TODO: there is a better design.
+alias param:run='___x_cmd_param_int "$@" ; local _x_cmd_param_code="$?" ;
+    if [ "$_x_cmd_param_code" = 125 ]; then
+        eval "$(___x_cmd_param_exec_dsl "$@" )"
+        PARAM_SUBCMD_DEF=""
+    else
+        return $_x_cmd_param_code
+    fi'
+
+# alias param:void="local ___X_CMD_PARAM_SCOPE;  local ___X_CMD_PARAM_DSL; param:run"
+alias param:debug='local IFS; ___x_cmd_param_eval_echo "$(___x_cmd_param_exec_dsl "$@"  )"'
+
+___x_cmd_param_eval_echo(){
+    local IFS
+    printf "%s\n" "$*" >&2
+    eval "$*"
+}
+
+___x_cmd_param___void_json(){
+    printf "{\n%s\n:\n%s\n}\n" "\"#desc\"" "\"$1\""
+}
+
+alias param:void='if [ "$1" = _x_cmd_advise_json ]; then ___x_cmd_param___void_json "$2"; return 0; fi'
+# EndSection
+
+# Section 3: param:subcmd param:subcmd:try
+
+alias param:subcmd='local PARAM_EXEC=""; [ -n "$PARAM_SUBCMD_DEF" ] || local PARAM_SUBCMD_DEF; local ___X_CMD_PARAM_DSL 1>/dev/null; FIRST_ARG="$1" ___x_cmd_param_define_subcmd'
+___x_cmd_param_define_subcmd(){
+    PARAM_FUNCNAME="${1:?Provide prefix}"; shift
+    PARAM_SUBCMD_DEF="$PARAM_SUBCMD_DEF
+subcommand: $PARAM_FUNCNAME"
+
+    local subcmddef
+    while [ $# -ge 2 ]; do
+        subcmddef="|$1|"
+        if [ "$subcmddef" != "${subcmddef#*|"$FIRST_ARG"|}" ]; then
+            PARAM_EXEC="${PARAM_FUNCNAME}_${1%%|*}"
+            return
+        fi
+        PARAM_SUBCMD_DEF="$PARAM_SUBCMD_DEF
+    ${1}  \"${2}\"
+"
+        shift 2
+    done
+}
+
+alias param:subcmd:try='[ -n "${PARAM_EXEC}" ] && local PARAM_SUBCMD_LIST="$PARAM_SUBCMD_LIST$1$___X_CMD_PARAM_HELP_ARG_SEP" && shift 1 && PARAM_SUBCMD_DEF="" && { "$PARAM_EXEC" "$@"; return; }'
+
+# EndSection
+
+# Section 4: utils
+___x_cmd_param___type_print() {
+    local app_name="${1:?Provide app name}"
+    local varname="${PARAM_TYPE_VAR_PREFIX}${app_name}"
+    eval echo "\"\$$varname\""
+}
+
+___x_cmd_param___plugin_print() {
+    local plugin_id="${1:?Provide plugin id}"
+    local varname="${PARAM_SUBCMD_VAR_PREFIX}${plugin_id}"
+    eval echo "\"\$$varname\""
+}
+# EndSection
+
+# Section 5: intercept before execute dsl
+___X_CMD_PARAM_AWK_PATH="$___X_CMD_ROOT_MOD/param/lib/awk/main.awk"
+___x_cmd_param_int(){
+    case "$1" in
+        _x_cmd_help | _param_help_doc)
+            # ___X_CMD_PARAM_AWK_PATH="$___X_CMD_ROOT_MOD/param/lib/awk/help.awk"     ___x_cmd_param_exec_dsl
+            shift; ___x_cmd_advise_gen_help "$( xrc which "$___X_CMD_PARAM_ADIVSE_NAME/res/advise.jso" )" "${PARAM_SUBCMD_LIST%"$___X_CMD_PARAM_HELP_ARG_SEP"*}" "$@"
+            ;;
+        _x_cmd_advise_json)
+            eval "$(___X_CMD_PARAM_AWK_PATH="$___X_CMD_ROOT_MOD/param/lib/awk/advise.awk" ___x_cmd_param_exec_dsl "$@")"
+            ;;
+        _param_list_subcmd | _param_has_subcmd | _ls_subcmd | _ls_option | _ls_option_name | _ls_option_subcmd )
+            ___X_CMD_PARAM_AWK_PATH="$___X_CMD_ROOT_MOD/param/lib/awk/meta.awk"     ___x_cmd_param_exec_dsl "$@"
+            ;;
+        ___x_cmd_param_meta )   # TODO: place all of the subcmd above.
+            # subcmd, subcmd <name>, option, option_name, option_subcmd
+            shift 1; ___X_CMD_PARAM_AWK_PATH="$___X_CMD_ROOT_MOD/param/lib/awk/meta.awk"     ___x_cmd_param_exec_dsl "$@"
+            ;;
+        *)  return 125
+    esac
+}
+
+alias param:meta='___X_CMD_PARAM_REFLECT=1'
+___x_cmd_param_int_reflect(){
+    [ -n "${___X_CMD_PARAM_REFLECT}" ] || return 125
+    case "$1" in
+        help)
+            # ___X_CMD_PARAM_AWK_PATH="$___X_CMD_ROOT_MOD/param/lib/awk/help.awk"     ___x_cmd_param_exec_dsl
+            shift; ___x_cmd_advise_gen_help "$( xrc which "$___X_CMD_PARAM_ADIVSE_NAME/res/advise.jso" )" "${PARAM_SUBCMD_LIST%"$___X_CMD_PARAM_HELP_ARG_SEP"*}" "$@"
+            ;;
+        advise)
+            eval "$(___X_CMD_PARAM_AWK_PATH="$___X_CMD_ROOT_MOD/param/lib/awk/advise.awk" ___x_cmd_param_exec_dsl "$@")"
+            ;;
+        subcmd | option | subcmd_option )
+            ___X_CMD_PARAM_AWK_PATH="$___X_CMD_ROOT_MOD/param/lib/awk/meta.awk"     ___x_cmd_param_exec_dsl "$@"
+            ;;
+        *)  return 125
+    esac
+}
+# EndSection
+
+# Section 6: execute dsl
+___X_CMD_PARAM_RS_SEP="$___X_CMD_UNSEENCHAR_003"  # same as dict env: DICT_SEP
+___x_cmd_param_exec_dsl() {
+    if [ -n "$___X_BASH_PARAM_PLUGIN_ID" ]; then
+        if [ "plugin" = "$1" ]; then
+            printf "%s\n" shift
+            printf "param_plugin \"\$@\"\n"
+            printf "return 0 >/dev/null 2>/dev/null"
+            return 0
+        fi
+    fi
+
+    local ___X_CMD_PARAM_IS_INTERACTIVE=0;      [ -t 0 ] && [ "${-#*i}" != "$-" ]   && ___X_CMD_PARAM_IS_INTERACTIVE=1
+    local ___X_CMD_PARAM_STDERR_IS_TTY=0;       [ -t 2 ]                            && ___X_CMD_PARAM_STDERR_IS_TTY=1
+
+    {
+        local IFS  # TODO: Will remove
+        if [ -z "$___X_CMD_PARAM_SCOPE" ]; then
+            printf "$___X_CMD_PARAM_RS_SEP$___X_CMD_PARAM_RS_SEP"                                   # line 1: global types and subcmds are null
+        else                                                                                        # line 1: global types and subcmds
+            ___x_cmd_param___type_print "${___X_CMD_PARAM_SCOPE%%/*}"
+            printf "$___X_CMD_PARAM_RS_SEP"
+            if [ "${___X_CMD_PARAM_PLUGIN_ID}" != "" ] ;then
+                ___x_cmd_param___plugin_print "${___X_CMD_PARAM_PLUGIN_ID}"
+            fi
+            printf "$___X_CMD_PARAM_RS_SEP"
+        fi
+
+        printf "%s" "$PARAM_SUBCMD_DEF"                                                           # line 2: dsl
+        printf "%s" "$___X_CMD_PARAM_DSL"
+
+        IFS="$___X_CMD_PARAM_ARG_SEP"  # ARG_SEP in awk script
+        printf "$___X_CMD_PARAM_RS_SEP%s$___X_CMD_PARAM_RS_SEP" "$*"                                # line 3: running argument lines
+
+        [ -n "$___X_CMD_PARAM_SCOPE" ] && param_default dump_raw "$___X_CMD_PARAM_SCOPE"            # line 4: default dict
+    } | awk -v OBJECT_NAME="${O}" \
+            -v ARG_SEP="$___X_CMD_PARAM_ARG_SEP" \
+            -v HELP_ARG_SEP="$___X_CMD_PARAM_HELP_ARG_SEP" \
+            -v RS="$___X_CMD_PARAM_RS_SEP" \
+            -v COLUMNS="$COLUMNS" \
+            -v IS_INTERACTIVE="$___X_CMD_PARAM_IS_INTERACTIVE" \
+            -v IS_TTY="$___X_CMD_PARAM_STDERR_IS_TTY" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/re.awk" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/str.awk" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/seq.awk" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/arr.awk" \
+            -f "$___X_CMD_ROOT_MOD/param/lib/awk/assert.awk" \
+            -f "$___X_CMD_ROOT_MOD/param/lib/awk/util.awk" \
+            -f "$___X_CMD_ROOT_MOD/param/lib/awk/oo.awk" \
+            -f "$___X_CMD_ROOT_MOD/param/lib/awk/dsl.awk" \
+            -f "$___X_CMD_PARAM_AWK_PATH"
+
+    local code="$?"
+    # Notice: Must clear this variable.
+    ___X_CMD_PARAM_SCOPE=
+    PARAM_SUBCMD_DEF=
+    return $code
+}
+
+# EndSections

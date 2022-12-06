@@ -1,0 +1,149 @@
+# Author:       Li Junhao   l@x-cmd.com             # xrc
+# shellcheck    shell=sh    disable=SC3043,SC1091
+
+xrc:mod:lib x-cmd concurrent args cond util exe hashsum
+
+xrc alias
+
+# Section : x main function
+___x_cmd_main_otherwise(){
+    local subcmd="$1";  shift
+
+    local ___x_cmd_main_otherwise_code
+
+    ___x_cmd_alias_exec ___x_cmd "$subcmd" "$@"
+    ___x_cmd_main_otherwise_code=$?
+    if [ -n "$___X_CMD_ALIAS_EXEC_EXIST" ]; then
+        return $?
+    fi
+
+    if command -v "___x_cmd_$subcmd" 2>/dev/null 1>&2; then
+        "___x_cmd_$subcmd" "$@"
+        return
+    fi
+
+    local ___X_CMD_WHICH_ONE_RESULT
+    local ___X_CMD_WHICH_ONE_RESOURCE_TYPE
+    if ___X_CMD_NO_LOCAL=1 ___x_cmd_which_one "$subcmd" 2>/dev/null; then
+        x:debug "Executing Resource: [type=$___X_CMD_WHICH_ONE_RESOURCE_TYPE] [file=$___X_CMD_WHICH_ONE_RESULT]"
+        case "$___X_CMD_WHICH_ONE_RESOURCE_TYPE" in
+            # workspace)      ___x_cmd_exe_workspace  "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+            local)          ___x_cmd_run_by_file                "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+            hub|http)       ___x_cmd_run_by_file                "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+            official)       ___x_cmd___run_with_engine xrc      "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+        esac
+        ___x_cmd_main_otherwise_code=$?
+        x:debug "Resource Executed: [type=$___X_CMD_WHICH_ONE_RESOURCE_TYPE] [file=$___X_CMD_WHICH_ONE_RESULT] [code=$___x_cmd_main_otherwise_code]"
+        return "$___x_cmd_main_otherwise_code"
+    else
+        # TODO: If we fail to introduct from xbin. Please provide the interface, ask user for what he/she wants and whether set the alias for that module globally.
+        ___x_cmd_main_otherwise_code=$?
+        if x pkg xbin init "$subcmd"; then
+            # Introduce binmod
+            "___x_cmd_${subcmd}" "$@"
+        else
+            x:error "___x_cmd_main_otherwise(): ___x_cmd_which_one fail [code: ${___x_cmd_main_otherwise_code}]"
+            return 1
+        fi
+    fi
+}
+
+___x_cmd_alias_init ___x_cmd
+
+___x_cmd_main(){        # x:trace x     # TODO: will effect x log
+
+    local subcmd="$1"
+    case "$subcmd" in
+        log)                                    shift;  ___x_cmd_log "$@" ;;        # For efficiency
+
+        *:=)                                    shift;  ___x_cmd_varset "${subcmd%:=}" "$@" ;;
+        *=)                                     shift;  ___x_cmd_varset_without_end "${subcmd%=}" "$@" ;;
+        *=if)                                   ___x_cmd_eqifelse "$@" ;;
+        *=case)                                 ___x_cmd_eqcase "$@" ;;
+        *=join*)                                ___x_cmd___varjoin "$@" ;;
+
+        readl|rl)                               shift;  ___x_cmd_readl "$@"     ;;
+        readeval|reval)                         shift;  ___x_cmd_reval "$@"     ;;
+
+        js|node)                                shift;  xrc node ; ___x_cmd_node "$@"      ;;
+        js=*|node=*)                            shift;  xrc node ; ___X_CMD_PKG_XBIN_DEFAULT_node="${subcmd#*=}" ___x_cmd_node "$@"      ;;
+        npm)                                    shift;  xrc node ; ___x_cmd_npm "$@"       ;;
+
+        python|py)                              shift;  xrc python ; ___x_cmd_python "$@"    ;;
+        python=*|py=*)                          shift;  xrc python ; ___X_CMD_PKG_XBIN_DEFAULT_python="${subcmd#*=}" ___x_cmd_python "$@"    ;;
+        pip|pip3)                               shift;  xrc python ; ___x_cmd_pip3 "$@"      ;;
+
+        sh|bash|zsh|ksh|dash|ash)               shift;  ___x_cmd_shell_exec "$subcmd" "$@" ;;
+        run)                                    shift;  ___x_cmd_run_by_file "$@"       ;;
+
+        test)                                   shift;  { command -v ___x_cmd_test >/dev/null 2>&1 || xrc:mod test/latest; } && ___x_cmd_test "$@" ;;
+        login)                                  shift;  xrc hub/latest && ___x_cmd_hub login "$@" ;;
+
+        z|uz)                                           ( xrc zuz && ___x_cmd_zuz "$@" ) ;;   # zl)  ( xrc zuz && ___x_cmd_zuz_ls "$@"        ) ;;       # Using ls to replace
+        wsroot)                                 shift;  ___x_cmd_wsroot "$@" ;;
+
+        update|upgrade|clear|reinstall)         shift;  xrc update "$@" ;;
+        ""|help|-H|--help|-h)                   [ $# -lt 1 ] || shift;  ___x_cmd_x_cmd_help "$@" ;;
+
+        *.wx)                                           x wx run "$@" ;;
+        :*)                                     shift;  x xdk "${subcmd#:}" "$@" ;;
+        *)                                              ___x_cmd_main_otherwise "$@" ;;
+    esac
+}
+
+___x_cmd_wsroot_(){
+    if [ "${1:-.}" = . ]; then
+        local cur="$PWD"
+    else
+        cd "${1:-.}" 2>&1 && local cur="${PWD}" && cd "$OLDPWD" || return
+    fi
+
+    while [ ! "$cur" = "" ]; do
+        if [ -d "$cur/.x-cmd" ]; then
+            ___X_CMD_WSROOT_="$cur"
+            return 0
+        fi
+        cur=${cur%/*}
+    done
+    return 1
+}
+
+___x_cmd_wsroot(){
+    local ___X_CMD_WSROOT_; ___x_cmd_wsroot_ "$@"
+    printf "%s\n" "$___X_CMD_WSROOT_"
+}
+
+# EndSection
+
+x(){
+    ___x_cmd_main "$@"
+}
+
+if ___x_cmd_is_suitable_advise_env; then
+    command -v ___x_cmd_advise >/dev/null || xrc advise/latest
+    ___x_cmd_advise init x "$___X_CMD_ROOT_MOD/x-cmd/res/advise.jso"
+fi
+
+xi(){
+    # TODO: xi tmux xxx == x tmux @me/xxx
+    local name="$1"; shift
+    ___x_cmd_main "@me/$name" "$@"
+}
+
+___x_cmd_definelazyloader ___x_cmd_a       alias/latest
+___x_cmd_definelazyloader ___x_cmd_ua      alias/latest
+
+# deprecated in the future.
+___x_cmd_md5dir(){
+    cd "${1:?Provide diretory}" || {
+        x:error "Cannot cd into directory: $1"
+        return 1
+    }
+    find . | sort | while read -r line; do
+        if [ -d "$line" ]; then
+            printf "%s\n" "${line#./}"
+        else
+            printf "%s %s\n" "$(x md5 "$line")" "${line#./}"
+        fi
+    done | x md5
+}

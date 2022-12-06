@@ -1,0 +1,328 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+# define lazy loader
+# ___x_cmd_definelazyloader   ___x_cmd_gt_repo_ls             gt/lib/repo/main
+
+___x_cmd_gt_user(){
+    param:scope     ___x_cmd_gt
+    param:subcmd ___x_cmd_gt_user                   \
+        "info|i"    "Show information"              \
+        repo        "List all repos"                \
+        email       "Show user email"               \
+        issue       "List all issues"               \
+        key         "user key management"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_user _param_help_doc
+    return 1
+}
+
+# Section: info email issue
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5UsersUsername
+___x_cmd_gt_user_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1              "Provide user name.(default:the current user)"
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    local owner="$1"
+    if [ -z "$owner" ]; then
+        url="https://gitee.com/api/v5/user"
+    else
+        url="https://gitee.com/api/v5/users/$1"
+    fi
+
+    ___x_cmd_gt_curl get "$url" | ___x_cmd_gt_user_info_status_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_user_info_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . name=.login email=.email html_url=.html_url types=.type gt_resp_body=.
+        if [ -n "$name" ]; then
+            ___x_cmd_ui_tf true    "Success" "name: $name" "email: $email" "url: $html_url" "type: $types"
+        else
+            ___x_cmd_ui_tf false   "Couldn't find any data" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+
+# https://gitee.com/api/v5/swagger#/getV5Emails
+___x_cmd_gt_user_email(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --page          "page"                        <>="1"
+    --per_page      "per_page"                    <>="30"
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json Email=.email State=.state Scope=.scope -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/emails"
+}
+
+# https://gitee.com/api/v5/swagger#/getV5UserIssues
+___x_cmd_gt_user_issue(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --filter        "filter(assigned,created,all)"                 <>:IssueFilter="assigned"
+    --state         "state(open,progressing,closed,rejected)"      <>:IssueState="open"
+    --direction     "direction(asc、desc)"                         <>:Direction="desc"
+
+    --labels        "labels"                                       <>=""
+    --since         "since"                                        <>=""
+    --schedule      "schedule"                                     <>=""
+    --deadline      "deadline"                                     <>=""
+    --created_at    "create date"                                  <>=""
+    --finished_at   "finish date"                                  <>=""
+    --page          "page"                                         <>=""
+    --per_page      "per_page"                                     <>=""
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    ___gt_ui_mutual '___ui_table_json ID=.number State=.issue_state Assigner=.assignee.name \
+        Repo=.repository.full_name Type=.issue_type Title=.title Url=.html_url -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/user/issues" filter state direction labels \
+            since schedule deadline created_at finished_at
+}
+
+# EndSection
+
+___x_cmd_gt_user_repo(){
+    param:scope     ___x_cmd_gt
+    param:subcmd ___x_cmd_gt_user_repo              \
+        ls      "List repo of user"                 \
+        app     "Interactive UI show repo of user"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_user_repo _param_help_doc
+    return 1
+}
+
+# Section: Repo App
+# https://gitee.com/api/v5/swagger#/getV5UserRepos
+# https://gitee.com/api/v5/swagger#/getV5UsersUsernameRepos
+# shellcheck disable=SC2154,SC2034
+___x_cmd_gt_user_repo_app(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    Authority = all public private
+    Group = owner collaborator organization_member enterprise_member admin
+    Sort = created updated pushed full_name
+    Direction = desc asc
+options:
+    --type          "visibility"        <>:Authority="all"
+    --affiliation   "affiliation"       <>:Group="owner"
+    --sort          "sort"              <>:Sort="created"
+    --direction     "direction"         <>:Direction="desc"
+    --page          "page"              <>=""
+    --per_page      "per_page"          <>=""
+'
+    param:run
+
+    local url
+    local visibility="$type"
+    if [ "$#" -gt 0 ]; then
+        url="https://gitee.com/api/v5/users/$1/repos"
+    else
+        url="https://gitee.com/api/v5/user/repos"
+    fi
+    ___gt_ui_mutual '___ui_table_json Name=.name RepoPath=.full_name Private=.private Url=.html_url -- $@' \
+        ___x_cmd_gt_get_multi "$url" visibility affiliation sort direction
+
+    ___x_cmd_gt_user_repo_app_status_handler "$@"
+}
+
+___x_cmd_gt_user_repo_app_status_handler(){
+    if [ ! -t 1 ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    local _sep
+    _sep=$(printf "\003")
+    case "$___X_CMD_UI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_UI_TABLE_CUR_ROW_HEADER: $___X_CMD_UI_TABLE_CUR_ITEM"  ;;
+            "c")            ___x_cmd_gt_repo_add                                                            ;;
+            "u")            ___x_cmd_gt_repo_edit "${___X_CMD_UI_TABLE_CUR_LINE%%"$_sep"*}"               ;;
+            "d")            ___x_cmd_gt_repo_rm     "${___X_CMD_UI_TABLE_CUR_LINE%%"$_sep"*}"               ;;
+            "r")            NO_CACHE=1 ___x_cmd_gt_user_repo_ls "$@"                                        ;;
+            *)              return   ;;
+    esac
+}
+# EndSection
+
+# Section: Repo List
+# TODO: resolve `--limt` option cal offset list
+# https://gitee.com/api/v5/swagger#/getV5UserRepos
+# https://gitee.com/api/v5/swagger#/getV5UsersUsernameRepos
+# shellcheck disable=SC2154,SC2034
+___x_cmd_gt_user_repo_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    Authority = all public private
+    Group = owner collaborator organization_member enterprise_member admin
+    Sort = created updated pushed full_name
+    Direction = desc asc
+options:
+    --type          "visibility"                <>:Authority="all"
+    --affiliation   "affiliation"               <>:Group="owner"
+    --sort          "sort"                      <>:Sort="updated"
+    --direction     "direction"                 <>:Direction="desc"
+    --page          "page"                      <>="1"
+    --per_page      "per_page"                  <>="30"
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    local url
+    local visibility="$type"
+    if [ "$#" -gt 0 ]; then
+        url="https://gitee.com/api/v5/users/$1/repos"
+    else
+        url="https://gitee.com/api/v5/user/repos"
+    fi
+    ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json RepoPath=.full_name IsPrivate=.private Url=.html_url  -- $@' \
+        ___x_cmd_gt_get_multi "$url" visibility affiliation sort direction
+}
+
+# EndSection
+
+# Section: key
+
+# generate a key by openssl, then save it in the x-cmd cloud.
+___x_cmd_gt_user_key(){
+    param:scope      ___x_cmd_gt
+    param:subcmd ___x_cmd_gt_user_key           \
+        "ls|l"          "List all key"              \
+        "create|c"      "Create key"                \
+        "info|i"        "Get one key"               \
+        rm              "Reomve key"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_user_key _param_help_doc
+    return 1
+}
+
+# https://gitee.com/api/v5/swagger#/getV5UserKeys
+___x_cmd_gt_user_key_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --page        "page"                    <>=""
+    --per_page    "per_page"                <>=""
+    --json|-j     "output origin json data"
+'
+    param:run
+
+    ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json Id=.id Title=.title Key=.key -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/user/keys"
+}
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5UserKeysId
+___x_cmd_gt_user_key_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1          "provided key id"       <>:NatureNumber
+    --json|-j   "output origin json data"
+'
+    param:run
+    local id="$1"
+
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/user/keys/$id" | ___x_cmd_gt_user_key_get_status_handler
+}
+
+___x_cmd_gt_user_key_get_status_handler() {
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . key=.key gt_resp_body=.
+        if [ -n "$key" ]; then
+            printf "%s" "$key"
+        else
+            ___x_cmd_ui_tf false "Couldn't find key by $id" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+
+# shellcheck disable=SC2181,SC2034
+# https://gitee.com/api/v5/swagger#/deleteV5UserKeysId
+___x_cmd_gt_user_key_rm(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1        "provided key id"           <>:NatureNumber
+'
+    param:run
+
+    local gt_resp_body
+    if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/user/keys/$1" | ___x_cmd_gt_curl_handler_no_content; then
+        ___x_cmd_ui_tf true  "Deleted key successfully"
+    else
+        ___x_cmd_ui_tf false "Deleting key failure by $1." "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+        ___x_cmd_gt_resp_body
+        return 1
+    fi
+}
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/postV5UserKeys
+___x_cmd_gt_user_key_create(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --key       "add key"                   <>
+    --title     "add key title"             <>
+    --json|-j   "output origin json data"
+'
+    param:run
+
+    ___x_cmd_gt_curl post "https://gitee.com/api/v5/user/keys" -- key title | ___x_cmd_gt_user_key_create_status_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_user_key_create_status_handler() {
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . id=.id title=.title key=.key gt_resp_body=.
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true     "Success" "Id: $id" "title: $title" "key: $key"
+        else
+            ___x_cmd_ui_tf false    "Add user key failure." "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+# EndSection

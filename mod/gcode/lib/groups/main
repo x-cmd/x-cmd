@@ -1,0 +1,335 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+# define lazy loader
+# ___x_cmd_definelazyloader   ___x_cmd_gcode_groups_member           gcode/lib/groups/member
+
+___x_cmd_gcode_groups(){
+    param:scope     ___x_cmd_gcode
+    param:subcmd ___x_cmd_gcode_groups                                                 \
+        ls                      "List all groups"                                   \
+        info                    "Show groups information"                           \
+        create                  "Create groups"                                     \
+        member                  "groups member manage"                              \
+        update                  "Update group"                                      \
+        issue                   "groups issue list"                                 \
+        repo                    "group repo mange"                                  \
+        rm                      "remove group"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_groups _param_help_doc
+
+    return 1
+}
+
+___x_cmd_gcode_subgroup(){
+    param:scope     ___x_cmd_gcode
+    param:subcmd ___x_cmd_gcode_subgroup                   \
+        ls                      "List all subgroups"    \
+        create                  "Create subgroups"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_subgroup _param_help_doc
+
+    return 1
+}
+
+# Section: list & info
+# shellcheck disable=SC2154
+# skip_groups  正则	array of integers
+___x_cmd_gcode_groups_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+type:
+    order_by = name path id  similarity
+    sort = asc desc
+options:
+    --sort                      "Order groups in asc or desc order."                                <>=""
+    --search                    "Return the list of authorized groups matching the search criteria" <>=""
+    --order_by                  "Order groups by"                                                   <>=""
+    --skip_groups               "Skip the group IDs passed"                                         <>=""
+    --min_access_level          "Limit to groups where current user has at least this access level" <>:Number=""
+    --per_page                  "Results per page (max 100)"                                        <>=""
+    --page                      "Page number of the results to fetch."                              <>=""
+    --owned                     "Limit to groups explicitly owned by the current user"
+    --statistics                "Include group statistics"
+    --all_available             "Show all the groups you have access to"
+    --top_level_only            "Limit to top level groups, excluding all subgroups"
+    --with_custom_attributes    "Include custom attributes in response"
+
+    --json|-j                   "output json data"
+'
+    param:run
+    local ___gcode_error_msg="get groups list fail"
+    ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Id=.id Name=.name Path=.path Visibility=.visibility Url=.web_url -- $@' \
+        ___x_cmd_gcode_get_multi "/groups" sort search order_by per_page page skip_groups search min_access_level
+}
+
+___x_cmd_gcode_subgroup_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+type:
+    order_by = name path id  similarity
+    sort = asc desc
+options:
+    #1                          "The ID or URL-encoded path of the group of the immediate parent group" <>
+    --sort                      "Order groups in asc or desc order."                                    <>=""
+    --search                    "Return the list of authorized groups matching the search criteria"     <>=""
+    --order_by                  "Order groups by name, path or id. Default is name"                     <>=""
+    --skip_groups               "Skip the group IDs passed"                                             <>=""
+    --min_access_level          "Limit to groups where current user has at least this access level"     <>:Number=""
+    --owned                     "Limit to groups explicitly owned by the current user"
+    --statistics                "Include group statistics"
+    --all_available             "Show all the groups you have access to"
+    --top_level_only            "Limit to top level groups, excluding all subgroups"
+    --with_custom_attributes    "Include custom attributes in response"
+
+    --json|-j                   "output json data"
+'
+    param:run
+
+    local ___gcode_error_msg="get subgroup list fail"
+    ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Id=.id Name=.name Path=.path Visibility=.visibility Url=.web_url -- $@' \
+        ___x_cmd_gcode_get_multi "/groups/$1/subgroups" sort search order_by skip_groups min_access_level
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gcode_groups_info(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                          "The ID or URL-encoded path of the group"                                   <>
+    --with_projects             "Include details from projects that belong to the specified group"
+    --with_custom_attributes    "Include custom attributes in response"
+
+    --json|-j                   "output json data"
+'
+    param:run
+
+    ___x_cmd_gcode_curl get "/groups/$1" |_____x_cmd_groups_ui_utils Info
+}
+# EndSection
+
+# Section: create
+# shellcheck disable=SC2181
+# TODO:On gcode SaaS, you must use the gcode UI to create groups without a parent group. You cannot use the API to do this.???
+___x_cmd_gcode_groups_create(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    -p|--path                   "groups path"                   <>=""
+    --description               "The group description."        <>=""
+    --visibility                "The groups visibility."        <>="" = "" private internal public
+    --subgroup_creation_level   "Allowed to create subgroups."  <>="" = "" maintainer owner
+    #1                          "groups name"
+'
+    param:run
+    local name
+    name="$1"
+    [ $# -ne 0 ] || { gcode_log error "Please provide groups name"; return 1; }
+    local gcode_path="$name"
+    [ -z "$p" ] || gcode_path="$p"
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -p +name path=gcode_path)"
+
+    ___x_cmd_gcode_curl post "/groups" "$gen_gcode_json" || _____x_cmd_groups_ui_utils Creating
+}
+# EndSection
+
+# Section: create subgroup
+# shellcheck disable=SC2181
+# TODO:On gcode SaaS, you must use the gcode UI to create groups without a parent group. You cannot use the API to do this.???
+___x_cmd_gcode_subgroup_create(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --parent_id         "parent groups id."    <>
+    --subgroup_path     "subgroup path"        <>=""
+    --name              "subgroup name"        <>
+
+    --json|-j           "output json data"
+'
+    param:run
+    local group_path="$subgroup_path"
+    [ -n "$group_path" ] || group_path="$name"
+    gen_gcode_json="$(param:option2json -subgroup_path path=group_path)"
+    ___x_cmd_gcode_curl post "/groups" "gen_gcode_json"| _____x_cmd_groups_ui_utils Creating
+}
+# EndSection
+
+# Section:groups update
+___x_cmd_gcode_groups_update(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    -p|--path                   "groups path"                   <>=""
+    --name                      "The name of the group"         <>=""
+    --description               "The group description."        <>=""
+    --visibility                "The groups visibility."        <>="" = "" private internal public
+    --subgroup_creation_level   "Allowed to create subgroups."  <>="" = "" maintainer owner
+    #1                          "The ID of the group."
+
+    --json|-j                   "output json data"
+'
+    param:run
+    [ $# -ne 0 ] || { gcode_log error "Please provide groups ID"; return 1; }
+
+    local group_path="$p"
+
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -p path=gcode_path)"
+
+    ___x_cmd_gcode_curl put "/groups/$1" "gen_gcode_json" | _____x_cmd_groups_ui_utils Update
+}
+# EndSection
+
+___x_cmd_gcode_groups_rm(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                       "The ID of the group."
+    --full_path              "Full path of subgroup"                                            <>=""
+    --permanently_remove     "Immediately deletes a subgroup if it is marked for deletion"
+
+    --yes|-y                 "Ignore remove prompt interception"
+'
+    param:run
+
+    if [ $# -eq 0 ];then
+        gcode_log error "Please provide groups ID"
+        return 1
+    fi
+
+    local id
+    for id in "$@"; do
+        {
+            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure groups to remove: $(___x_cmd_ui bold red "$id") ?" || continue
+            ___x_cmd_gcode_curl delete "/groups/$id" | (
+                x jo env . error=.
+                if ___x_cmd_gcode_http_error; then
+                    ___x_cmd_ui_tf  true "del groups $id successfully."
+                else
+                    ___x_cmd_ui_tf false "del groups $id failure."
+                    return 1
+                fi
+            )
+
+        }
+    done
+}
+
+# Section: groups repo
+___x_cmd_gcode_groups_repo(){
+    param:subcmd ___x_cmd_gcode_groups_repo    \
+        ls          "list repo"
+        # create      "groups repo create"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_groups_repo _param_help_doc
+
+    return 1
+}
+
+___x_cmd_gcode_groups_repo_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1              "The ID or group path"          <>:Address
+    --page          "page"                          <>:NatureNumber=1
+    --per_page      "per_page"                      <>:NatureNumber=20
+    --visibility    "Limit by visibility"           <>=""
+    --archived      "Limit by archived status"
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    local ___gcode_error_msg="get repo list fail"
+    ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Id=.id Name=.name Path=.path Visibility=.visibility Url=.web_url -- $@' \
+        ___x_cmd_gcode_get_multi "/groups/$1/projects" page per_page visibility archived
+}
+## TODO: create project to groups
+# EndSection
+
+
+# Section: groups issue ls
+___x_cmd_gcode_groups_issue(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+   --id                                    "The ID or URL-encoded path of the project owned by the authenticated user"                                                  <>
+   --assignee_id                           "Return issues assigned to the given user id."                                                                               <>:Number=""
+   --assignee_username                     "Return issues assigned to the given username."                                                                              <>:array=""
+   --author_id                             "Return issues created by the given user id."                                                                                <>:Number=""
+   --author_username                       "Return issues created by the given username."                                                                               <>=""
+   --confidential                          "Filter confidential or public issues."
+   --created_after                         "Return issues created on or after the given time. Expected in ISO 8601 format"                                              <>:datetime=""
+   --created_before                        "Return issues created on or before the given time."                                                                         <>:datetime=""
+   --due_date                              "Return issues that have no due date,are overdue,or whose due date is this week,this month,or between two weeks ago and next month"     <>=""
+   --epic_id                               "Return issues associated with the given epic ID."                                                                           <>:Number=""
+   --iids                                  "Return only the issues having the given iid"                                                                                <>:array=""
+   --issue_type                            "Filter to a given type of issue. One of issue, incident, or test_case."                                                     <>=""
+   --iteration_id                          "Return issues assigned to the given iteration ID."                                                                          <>:Number=""
+   --iteration_title                       "Return issues assigned to the iteration with the given title."                                                              <>=""
+   --labels                                "Comma-separated list of label names, issues must have all labels to be returned. "                                          <>=""
+   --milestone                             "The milestone title. "                                                                                                      <>=""
+   --my_reaction_emoji                     "Return issues reacted by the authenticated user by the given emoji. "                                                       <>=""
+   --non_archived                          "Return issues only from non-archived projects.If false,the response returns issues from both archived and non-archived projects.Default is true"
+   --not                                   "Return issues that do not match the parameters supplied. "                                                                  <>:hash=""
+   --order_by                              "Return issues ordered by created_at,due_date,label_priority,milestone_due,popularity,priority,relative_position,title, updated_at,or weight fields.Default is created_at"         <>=""
+   --scope                                 "Return issues for the given scope:"                                                                                         <>=""
+   --sort                                  "Return issues sorted in asc or desc order. Default is desc"                                                                 <>=""
+   --search                                "Search group issues against their title and description"                                                                    <>=""
+   --state                                 "Return all issues or just those that are opened or closed"                                                                  <>=""
+   --updated_after                         "Return issues updated on or after the given time."                                                                          <>:datetime=""
+   --updated_before                        "Return issues updated on or before the given time."                                                                         <>:datetime=""
+   --weight                                "Return issues with the specified weight."                                                                                   <>:Number=""
+   --with_labels_details                   "If true, the response returns more details for each label in labels field: :name, :color, :description, :description_html,:text_color.Default is false."
+
+    --json|-j                              "output json data"
+'
+ param:run
+
+    local ___gcode_error_msg="get issues list fail"
+    ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Id=.id iid=.iid project_id=.project_id title=.title state=.state web_url=.web_url -- $@' \
+        ___x_cmd_gcode_get_multi "/groups/$id/issues" sort order_by search state author_username milestone_id
+}
+
+_____x_cmd_groups_ui_utils()(
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gcode_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Info)
+            data="name=.name dir=.path visibility=.visibility url=.web_url"
+            msg="get groups info success"
+            error_msg="Couldn't find any groups info data."
+            ;;
+        Creating)
+            data="name=.name dir=.path url=.web_url visibility=.visibility"
+            msg="$1 subgroup $name Successfully"
+            error_msg="$1 subgroup failure: $name."
+            ;;
+        Update)
+            data="name=.name dir=.path url=.web_url visibility=.visibility"
+            msg="$1 groups $name Successfully"
+            error_msg="$1 groups failure: $name."
+            ;;
+    esac
+    x jo env . Id=.id error=. $data
+    if [ -n "$Id" ]; then
+        ___x_cmd_ui_tf true "$msg" "Id: $Id" ${name+"Name: $name"} ${dir+"Path: $dir"} ${url+"Url: $url"} ${visibility+"Visibility: $visibility"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)

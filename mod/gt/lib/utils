@@ -1,0 +1,250 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+# Section: Help
+_____x_cmd_gt___token_setting_help(){
+    printf "\n%s %s \n%s\n" \
+        "$(___x_cmd_ui yellow 'Run command to add|repleace token:')" \
+        "$(___x_cmd_ui bold cyan "\`x gt token <token>\`")"   \
+        "$(___x_cmd_ui 'https://gitee.com/profile/personal_access_tokens')"
+}
+# EndSection
+
+# Section: HTTP header & body & request
+
+___x_cmd_gt_resp_header(){
+    cat "$___X_CMD_ROOT_TMP/gt/.____x_cmd_gt_curl_header"
+}
+
+___x_cmd_gt_resp_code(){
+    ___x_cmd_gt_resp_header | \
+        awk '{
+            if ($1 ~ "HTTP/(1.*|2)$" && $3 != "Connection" && $4 != "established") {
+                print $2;
+                exit(0)
+            }
+        }'
+}
+
+___x_cmd_gt_resp_body(){
+    [ -z "$gt_resp_body" ] || {
+        printf "%s\n" "$gt_resp_body" | x jo
+    }
+}
+
+# NOTE: To gitee v8 api. the url prefix not save status
+# shellcheck disable=SC2046
+___x_cmd_gt_curl(){
+    local op="$1"
+    local _curl_url="\"$2\""
+    local _content_type='"Content-Type:application/json;charset=UTF-8"'
+    local _authorization
+    _authorization="\"Authorization:token $(___x_cmd_gt_token)\""
+    local gt_header="$___X_CMD_ROOT_TMP/gt/.____x_cmd_gt_curl_header"
+    shift 2
+    ___x_cmd_gt_curl___record_log "$@"
+    case "$op" in
+        get)
+            if [ -z "$NO_CACHE" ]; then
+                x ccmd 10s --           eval x curl -D "$gt_header" -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))") "$_curl_url"
+                ___x_cmd_gt_curl_error  eval x curl -D "$gt_header" -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))") "$_curl_url"
+            else
+                eval x curl -D "$gt_header" -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))") "$_curl_url"
+            fi
+            ;;
+        post)   eval x curl -D "$gt_header" -X POST   -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"    ;;
+        put)    eval x curl -D "$gt_header" -X PUT    -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"    ;;
+        patch)  eval x curl -D "$gt_header" -X PATCH  -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"    ;;
+        delete) eval x curl -D "$gt_header" -X DELETE -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"    ;;
+    esac
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_curl___use_query_data(){
+    [ $# -gt 0 ] || return
+    local name
+    printf "%s " "-G"
+    for name in "$@";
+    do
+        if [ "$name" = "p" ];then  [ -z "$p" ] || printf "%s " "path==$p";
+        else                                      printf "%s " "$name==" ;
+        fi
+    done
+}
+
+# shellcheck disable=SC2046
+___x_cmd_gt_curl___record_log(){
+    [ -z "$op" ] || {
+        case "$op" in
+            get) gt:debug "x curl -D $gt_header -X GET -s -H $_content_type -H $_authorization $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))") $_curl_url" ;;
+            *)   gt:debug "x curl -D $gt_header -X $op"
+                 gt:debug "-s -H $_content_type -H $_authorization $(x curl gencode "$@") $_curl_url" ;;
+        esac
+    }
+}
+
+___x_cmd_gt_curl_error(){
+    local _http_resp_code
+    _http_resp_code="$(___x_cmd_gt_resp_code)"
+    if [ -n "$_http_resp_code" ] && [ "$_http_resp_code" -ge 200 ] && [ "$_http_resp_code" -le 303 ]; then
+        return 0
+    else
+        [ $# -eq 0 ] || {
+            gt:debug "---! Cache Clear !---"
+            x ccmd invalidate "$@" 1>/dev/null 2>&1
+        }
+        return 1
+    fi
+}
+
+___x_cmd_gt_curl_handler_no_content(){
+    x jo env . gt_resp_body=.
+
+    [ -z "$gt_resp_body" ] || {
+        gt:debug "gt_resp_body: $gt_resp_body"
+        return 1
+    }
+    ___x_cmd_gt_curl_error
+}
+
+# EndSection
+
+# Section: Resolve multiple page
+
+___gt_ui_mutual(){
+    local _tmp="$1"; shift 1;
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
+        ENFORCE_JSON=1 "$@"
+    else
+        # run ui table
+        eval "$_tmp"
+    fi
+
+    local ___gt_exit_code="$?"
+    [ "$___gt_exit_code" -eq 0 ] || { ___x_cmd_ui_tf false "${___gt_error_msg:-"Couldn't find any data"}" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"; ___x_cmd_gt_resp_body; }
+    return "$___gt_exit_code"
+}
+
+
+___x_cmd_gt_get_multi() {
+    # gt:info "Getting data..."
+    if [ -n "$page" ] || [ -n "$per_page" ]; then
+        ___x_cmd_gt_curl get "$@" page per_page
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    local page=1
+    local per_page=100
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_get_multi___json_prt "$@"
+    else
+        ___x_cmd_gt_get_multi___ui_table "$@"
+    fi
+    ___x_cmd_gt_curl_error
+}
+
+___x_cmd_gt_get_multi___ui_table(){
+    ___x_cmd_gt_curl get "$@" page per_page
+    printf "\n"
+    local next_url
+    _____x_cmd_gt_next_url
+    [ -n "$next_url" ] || return
+
+    while [ -n "$next_url" ]; do
+        ___x_cmd_gt_curl get "$@" page per_page
+        printf "\n"
+        _____x_cmd_gt_next_url
+    done
+}
+
+___x_cmd_gt_get_multi___json_prt(){
+    local tmp
+    tmp=$(mktemp)
+    ___x_cmd_gt_curl get "$@" page per_page >> "$tmp"
+    printf "\n" >> "$tmp"
+
+    local next_url
+    _____x_cmd_gt_next_url
+    if [ -z "$next_url" ] && [ -n "$tmp" ];then
+        cat "$tmp"
+        rm "$tmp"
+        return
+    fi
+
+    while [ -n "$next_url" ]; do
+        ___x_cmd_gt_curl get "$@" page per_page >> "$tmp"
+        printf "\n" >> "$tmp"
+        _____x_cmd_gt_next_url
+    done
+    < "$tmp" x jo q0 \*.\* . | awk 'BEGIN{ print "["}
+        END{ print "]"}
+        {
+            if ($0 == "") next
+            if ((NR != 1) && ( aaa == 0 )) print ","
+            if (($0 == "{") || ( $0 == "[")) aaa++
+            if (($0 == "}") || ( $0 == "]")) aaa--
+            print $0
+        }'
+    rm "$tmp"
+}
+
+_____x_cmd_gt_next_url(){
+    next_url="$(___x_cmd_gt_resp_header "Link")"
+    next_url="${next_url#*"rel='prev', <"}"
+    local tmp_url="${next_url%%">; rel='next'"*}"
+    local tmp_page="$page"
+    if [ "$next_url" != "$tmp_url" ];then
+        page="${next_url#*'&page='}"
+        page="${page%%'&'*}"
+        # prevent cache latest page data case loop
+        [ "$page" != "$tmp_page" ] || {
+            next_url=""
+            page=""
+        }
+        # TODO: !!!!! [gitee ERROR] !!!! gt next page response header `link` is error. need resolve byself
+        # next_url="${tmp_url#*'.com/api'*}"
+        # next_url="$(printf "%s" "$next_url" | sed s/updated_at/updated/g | sed s/created_at/created/g)"
+    else
+        next_url=""
+        page=""
+    fi
+}
+
+# EndSection
+
+# Section: Default param util
+
+alias ___x_cmd_gt_param_init_owner_repo='
+    local owner_repo=""
+    ___x_cmd_gt_param_normalize_repo  || return
+'
+
+# shellcheck disable=SC2154,SC2034
+___x_cmd_gt_param_normalize_repo(){
+    local op="$repo"
+    [ -z "$op" ] && op="$1"
+    case "$op" in
+    */*)
+        owner_repo="$(printf "%s" "$op")"
+        ;;
+    "")
+        owner_repo="$(_____x_cmd_git_repo)"
+        ;;
+    *)
+        ___x_cmd_gt_current_owner 1>/dev/null
+        if [ -z "$___X_CMD_GITEE_DEFAULT_OWNER" ]; then
+            gt:error "No owner provided. Default owner not set."
+            gt:warn "Check your current token setting.$(_____x_cmd_gt___token_setting_help)"
+            return 1
+        fi
+        owner_repo="$(printf "%s" "$___X_CMD_GITEE_DEFAULT_OWNER/$op")"
+        ;;
+    esac
+}
+
+___x_cmd_gt_default(){
+    param_default "$@" 2>/dev/null || return 1
+}
+
+# EndSection

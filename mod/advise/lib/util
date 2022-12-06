@@ -1,0 +1,192 @@
+# shellcheck shell=bash
+___advise_completer() {
+    # Interesting ... Passing
+    ___ADVISE_RUN_CMD_FOLDER= ___advise_run ""
+}
+
+___advise_update(){
+    local func="${1:?Provide function name}"
+    local tmp_filepath=${TMPDIR%/}/.x-cmd/advise_auto_json/$func
+
+    if [ -f "$tmp_filepath" ] && [ -z "$(find "$tmp_filepath" -mtime -1)" ]; then
+        rm -rf "$tmp_filepath"
+        ___advise_main "$func"
+    fi
+}
+
+___advise_main(){
+    local func="${1:?Provide function name}"
+    local filepath="${2}"
+    local alias_name="${3}"
+    local advise_json_dir="$___X_CMD_ADVISE_TMPDIR"
+    local tmp_filepath
+    tmp_filepath=${advise_json_dir}/$func
+
+    x mkdirp "$advise_json_dir"
+
+    if [ "-" = "$filepath" ]; then
+        filepath=$tmp_filepath
+        cat >"$filepath"
+    elif [ ! -f "$filepath" ]; then
+        # ___advise_update "$func"
+        filepath=$tmp_filepath
+        if [ ! -f "$filepath" ]; then
+            local content
+            advise:debug "Start generating advise for $func"
+            content="$(___X_CMD_META_MODE=1 X_CMD_ADVISE_FUNC_NAME=$func "$func" _x_cmd_advise_json)"
+            if [ ! $? -eq 0 ]; then
+                advise:error "___advise_main: X_CMD_ADVISE_FUNC_NAME=$func $func _x_cmd_advise_json: Failed to generate advise json"
+                return 1
+            fi
+            printf "%s" "$content" >"$filepath"
+            advise:debug "Finished generating advise json for $func"
+        fi
+    else
+        cp "$filepath" "$tmp_filepath"
+        filepath="$tmp_filepath"
+    fi
+
+    local comp_word
+    if [ -z "$alias_name" ]; then
+        comp_word="$func"
+    else
+        eval "
+            ___advise_completer_$alias_name(){
+                ___ADVISE_RUN_CMD_FOLDER= ___advise_run $func
+            }"
+        comp_word="$alias_name"
+        alias_name="_$alias_name"
+    fi
+
+    if [ -z "$ZSH_VERSION" ];then
+        if [[ ! "$BASH_VERSION" =~ (^3.*|^4.[0-3]) ]]; then
+            complete -o nosort -F "___advise_completer$alias_name" "$comp_word"
+        else
+            complete -F "___advise_completer$alias_name" "$comp_word"
+        fi
+    else
+        compdef "___advise_completer$alias_name" "$comp_word"
+    fi
+}
+
+___advise_get_result_from_awk(){
+    local filepath="${1:?Provide filepath}"
+
+    local IFS=$'\002'
+    local s="${COMP_WORDS[*]}"
+    s="${s#*"$IFS"}"
+
+    # Handle the case that the last word has "@" or ":" in bash.
+    COMP_LINE="${COMP_WORDS[*]}"
+    local cur_1="${COMP_WORDS[COMP_CWORD-1]}"
+    case "$cur_1" in
+        *@|*:)
+            if [ "${COMP_LINE% }" != "${COMP_LINE}" ]; then
+                s="${s%$cur_1$IFS$cur}"
+                s="${s}${cur_1}$cur"
+            fi
+            ;;
+        *)
+    esac
+    ___x_cmd_advise__get_result_form_awk "$s"
+}
+
+___x_cmd_advise__get_result_form_awk(){
+    {
+        printf "%s\n" "$*"
+        cat "$filepath"
+    } | command awk \
+        -v ZSHVERSION="$ZSH_VERSION" \
+        -v ADVISE_NO_COLOR="$NO_COLOR" \
+        -v ___X_CMD_ROOT_MOD="$___X_CMD_ROOT_MOD" \
+        -v WHICHNET="$___X_CMD_WHICHNET" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/default.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/fs.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jop.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/util.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise.obj.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise.complete.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise.parse_argument.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise.main.awk"
+}
+
+___advise_run_filepath_(){
+    case "$1" in
+        /*) ___ADVISE_RUN_FILEPATH_="$1" ;;
+        -)  ___ADVISE_RUN_FILEPATH_=/dev/stdin ;;
+        *)  ___ADVISE_RUN_FILEPATH_="$___ADVISE_RUN_CMD_FOLDER/$1"
+            [ ! -f "$___ADVISE_RUN_FILEPATH_" ] || return 0
+            ___ADVISE_RUN_FILEPATH_="$___ADVISE_RUN_CMD_FOLDER/$1/advise.json"
+            [ ! -f "$___ADVISE_RUN_FILEPATH_" ] || return 0
+            ___ADVISE_RUN_FILEPATH_="$___ADVISE_RUN_CMD_FOLDER/$1/advise.t.json"
+            [ ! -f "$___ADVISE_RUN_FILEPATH_" ] || return 0
+            ___ADVISE_RUN_FILEPATH_="$(___x_cmd_advise_man_which x-cmd "$1")"
+            ;;
+    esac
+    [ ! -f "$___ADVISE_RUN_FILEPATH_" ] || return 0
+    return 1
+}
+
+if [ -n "$BASH_VERSION" ]; then
+__ltrim_bash_completions(){
+    local cur="$1"; shift
+    local prefix_word; local i; while [ "$#" -ge 1 ]; do
+        i=${#COMPREPLY[*]}
+        ((i == 0)) && return 0
+        if [[ $cur == *$1* && $COMP_WORDBREAKS == *$1* ]]; then
+            prefix_word=${cur%"${cur##*"$1"}"}
+            COMPREPLY=("${COMPREPLY[@]}")
+            while ((i-- > 0)); do
+                COMPREPLY[i]=${COMPREPLY[i]#"$prefix_word"}
+            done
+        fi
+        shift
+    done
+}
+fi
+
+___x_cmd_advise_init(){
+    case "$1" in
+        -h|--help)      ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" "init|new" ;;
+        *)              ___advise_main "$@"
+    esac
+}
+___x_cmd_advise_ls(){
+    case "$1" in
+        -h|--help)      ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" ls ;;
+        *)              [ ! -d "$___X_CMD_ADVISE_TMPDIR" ] || ls "$___X_CMD_ADVISE_TMPDIR"
+    esac
+}
+
+___x_cmd_advise_rm(){
+    case "$1" in
+        -h|--help)      ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" rm ;;
+        "")             x rmrf "$___X_CMD_ADVISE_TMPDIR" ;;
+        *)              local filepath="$___X_CMD_ADVISE_TMPDIR/$1"
+                        [ -f "$filepath" ] || return 1
+                        x rmrf "$filepath"
+    esac
+}
+
+___x_cmd_advise_which(){
+    case "$1" in
+        -h|--help)      ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" which ;;
+        "")             printf "%s" "$___X_CMD_ADVISE_TMPDIR" ;;
+        *)              local filepath="$___X_CMD_ADVISE_TMPDIR/$1"
+                        [ -f "$filepath" ] || return 1
+                        printf "%s" "$filepath"
+    esac
+}
+
+___x_cmd_advise_cat(){
+    case "$1" in
+        -h|--help)      ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" cat ;;
+        *)              local filepath="$___X_CMD_ADVISE_TMPDIR/$1"
+                        [ -f "$filepath" ] || return 1
+                        < "$filepath" x jo
+    esac
+}

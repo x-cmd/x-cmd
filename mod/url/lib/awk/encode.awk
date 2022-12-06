@@ -1,0 +1,4 @@
+{
+    print urlencode( $0 )
+}
+

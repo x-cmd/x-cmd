@@ -1,0 +1,106 @@
+# Author:       Li Junhao           l@x-cmd.com
+# shellcheck    shell=dash          # xrc
+
+# license:      GPLv3
+
+___x_cmd_is(){
+    local op="$1"; shift
+    case "$op" in
+        int|float|positive|negative|eq|within)
+            ___x_cmd_is_"$op" "$@"
+            ;;
+        unset)
+            ___x_cmd_isunset "$@" ;;
+    esac
+}
+
+___x_cmd_is_unset(){
+    local e; for e in "$@"; do
+        eval '[ -z "${'"$e"'+1}" ]' || return 1
+        # eval '[ -z "${'"${1:?Provide name}"'}" ] && [ -z "${'"${1}"'+1}" ] ' || return 1
+    done
+}
+
+# Deprecated
+___x_cmd_isunset(){
+    ___x_cmd_is_unset "$@"
+}
+
+___x_cmd_is_int(){  ___x_cmd_is_int___noredirect "$@";  } 2>/dev/null
+___x_cmd_is_int___noredirect(){
+    local e; for e in "$@"; do
+        [ "$e" -eq "$e" ] || return 1        # ___x_cmd_is_str_regex "$1" "^[ \t]*[+-]?[0-9]+[ \t]*$"
+    done
+}
+
+___x_cmd_is_positive(){ ___x_cmd_is_positive___redirect "$@"; } 2>/dev/null
+___x_cmd_is_positive___redirect(){
+    local int; for int in "$@"; do
+        [ "$int" -ge 0 ] || return 1        # ___x_cmd_is_str_regex "$1" "^[ \t]*[+-]?[0-9]+[ \t]*$"
+    done
+}
+
+___x_cmd_is_float(){
+    local e; for e in "$@"; do
+        ___x_cmd_is___float_one_noredirect "$e" || return 1
+    done
+} 2>/dev/null
+
+___x_cmd_is___float_one_noredirect(){   # "^[ \t]*[+-]?[0-9]+(.[0-9]+)?[ \t]*$"
+    case "${1:?Provide number}" in
+        .*e*)       local float=${1#.}; ___x_cmd_is_int___noredirect "${float%e*}" "${float#*e}" || return    ;;
+        .*E*)       local float=${1#.}; ___x_cmd_is_int___noredirect "${float%E*}" "${float#*E}" || return    ;;
+
+        *.*E*)      local a=${1%%.*};       local   c="${1##*E}"
+                    ___x_cmd_is_int___noredirect "$a" "$c" || return 1
+                    local b="${1#"${a}."}";            b="${b%E"$c"}"
+                    [ "$b" -ge 0 ] || return 1 ;;
+
+        *.*e*)      local a=${1%%.*};       local   c="${1##*e}"
+                    ___x_cmd_is_int___noredirect "$a" "$c" || return 1
+                    local b="${1#"${a}."}";            b="${b%e"$c"}"
+                    [ "$b" -ge 0 ] || return 1 ;;
+
+        .*)         ___x_cmd_is_int___noredirect "${1#.}" || return 1 ;;
+        *.*)        ___x_cmd_is_int___noredirect "${1%.*}" "${1#*.}" || return 1 ;;
+        *)          return 1
+    esac
+}
+
+___x_cmd_is_eq(){
+    local real="$1"; shift
+    local e; for e in "$@"; do
+        [ "$real" = "$e" ] || return 1
+    done
+    return 0
+}
+
+___x_cmd_is_within(){
+    local value="$1"; shift
+    local e; for e in "$@"; do
+        [ "$value" != "$e" ] || return 0
+    done
+    return 1
+}
+
+
+___X_CMD_IS_STR_REGEX_SEP="$___X_CMD_UNSEENCHAR_001"
+___x_cmd_is_str_regex(){
+    # Only dash does not support pattern="${pattern//\\/\\\\}"
+    command awk -v FS="${___X_CMD_IS_STR_REGEX_SEP}" '{
+        if (match($1, $2))  exit 0
+        else                exit 1
+    }' <<A
+${1}${___X_CMD_IS_STR_REGEX_SEP}${2:?___x_cmd_is_str_regex(): Provide pattern}
+A
+}
+
+___x_cmd_is_within_regex(){
+    local value="$1"; shift
+    local e; for e in "$@"; do
+        ! ___x_cmd_is_str_regex "$value" "^($e)$" || return 0   # if [[ "$value" =~ ^($c)$ ]]; then
+    done
+    return 1
+}
+
+xrc setmain ___x_cmd_is

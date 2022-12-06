@@ -1,0 +1,106 @@
+# shellcheck shell=sh disable=SC3043
+
+# https://cargo.budshome.com/reference/source-replacement.html#:~:text=目前国内%20cargo,镜像源有：中国科学技术大学源、上海交通大学源、清华大学源，以及%20rustcc%20社区源%E3%80%82
+
+___x_cmd_proxy_cargo(){
+    param:dsl <<A
+subcommands:
+    url               "Provide url of mirror candidates"
+    get               "Get current mirror"
+    replace|set       "Set the download mirror"
+    rollback          "Rollback the download mirror"
+A
+    param:run
+    
+    if ! command -v cargo >/dev/null; then
+        proxy_log error "command not found: cargo, you should install cargo in your system."
+        return 1
+    elif [ -n "$PARAM_SUBCMD" ]; then
+        "___x_cmd_proxy_cargo_${PARAM_SUBCMD}" "$@"
+    else
+        proxy_log info "Current cargo mirror: "
+        ___x_cmd_proxy_cargo get
+        ___x_cmd_proxy_cargo _param_help_doc  >&2
+    fi
+}
+
+___x_cmd_proxy_cargo_url(){
+    param:dsl <<A
+option:
+    #1    "Mirror name"       <mirror-name>=tuna    = tuna sjtu
+A
+    param:run
+    
+    case "$1" in
+        tuna)       printf "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git" ;;
+        # FIXME: ustc is not working
+        # ustc)       printf "https://mirrors.ustc.edu.cn/crates.io-index"                  ;;
+        sjtu)       printf "https://mirrors.sjtug.sjtu.edu.cn/git/crates.io-index/"       ;;
+    esac
+}
+
+___x_cmd_proxy_cargo_get(){
+    param:void
+    cargo config -Z unstable-options get | grep registry
+}
+
+___x_cmd_proxy_cargo_replace() {
+    param:dsl <<A
+option:
+    #1    "Mirror name"       <mirror-name>=tuna    = tuna sjtu
+A
+    param:run
+
+    local src_path
+    src_path="$HOME/.cargo/config"
+    if [ ! -f "$src_path" ]; then
+        printf "" > "$src_path"
+    fi
+    ___proxy_backup "$src_path" cargo
+
+    local url
+    local src
+    src="${1}"
+
+    if url="$(___x_cmd_proxy_cargo_url "$src")"; then
+        proxy_log info "Setting proxy_apt mirror :
+    $url"
+        printf %s "[source.crates-io]
+replace-with = '$src'
+[source.$src]
+registry = \"$url\"
+" > "$src_path"
+    else
+        proxy_log error "Failed to get url of mirror: $src"
+    fi
+}
+
+___x_cmd_proxy_cargo_rollback() {
+    param:dsl <<A
+advise:
+    #1          x proxy cargo rollback ls
+option:
+    #1          "use the selected file to rollback"
+subcommand:
+    ls          "list all file you can rollback"
+A
+    param:run
+
+    if [ -n "$PARAM_SUBCMD" ]; then
+        ___x_cmd_proxy_cargo_rollback_"${PARAM_SUBCMD}" "$@"
+        return
+    else
+        ___proxy_rollback "$HOME/.cargo/config" cargo "$1"
+    fi    
+}
+
+___x_cmd_proxy_cargo_rollback_ls() {
+    param:void
+    ___proxy_rollback_ls cargo
+}
+
+___x_cmd_proxy_cargo_tutorial(){
+    param:void
+    cat <<A
+A
+}

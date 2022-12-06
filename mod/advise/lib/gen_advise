@@ -1,0 +1,89 @@
+# shellcheck shell=sh disable=SC3043,2120,2181,1091,2016,2034
+# ___X_CMD_ADVISE_GEN_ADVISE_INDEX_FIELDS='useparam
+
+___X_CMD_ADVISE_ERREXIT="${___X_CMD_UNSEENCHAR_001}${___X_CMD_UNSEENCHAR_002}${___X_CMD_UNSEENCHAR_003}"
+___x_cmd_advise_gen_advise__index_fields(){
+    printf "%s\n" "useparam,name,synopsis,desc,tldr,other,setup,group,tip"
+}
+
+___x_cmd_advise_gen_advise__useparam()(
+    local mod_name="${1:?Provide mod name}"
+    local mod_path="${2:?Provide mod path}"
+    xrc:mod "$mod_name/latest" || return 1
+    local main_func; main_func="$___X_CMD_XRC_SET_MAIN"
+    if [ -z "$main_func" ]; then
+        main_func="___x_cmd_$mod_name"
+        command -v "$main_func" >/dev/null || main_func="$mod_name"
+    fi
+    command -v "$main_func" >/dev/null || {
+        advise:error "Not found set main function of $mod_name"
+        return 1
+    }
+
+    advise:debug "useparam: X_CMD_ADVISE_FUNC_NAME=$main_func $main_func _x_cmd_advise_json"
+    X_CMD_ADVISE_FUNC_NAME="$main_func" "$main_func" _x_cmd_advise_json
+)
+
+___x_cmd_advise_gen_advise__exec()(
+    local mod_path="${1:?Provide mod path}"; shift
+    x cd "$mod_path" || return 1
+    local cmd; printf "%s\n" "$*" | x jo env .\* cmd=. -- '
+    advise:warn "Executing: $cmd"
+    ___x_cmd_evex "$cmd" 2>/dev/null 1>&2 || {
+        advise:error "Fail to exec: $cmd"
+        printf "%s\n" "$___X_CMD_ADVISE_ERREXIT"
+        exit 1
+    }
+'
+)
+
+___x_cmd_advise_gen_advise(){
+    local mod_name="${1:?Provide mod name}"
+    local mod_path="${2:?Provide mod path}"
+    local index_yml="$mod_path/adv/index.yml"
+
+    # if [ -f "$mod_path/advise.jso" ]; then
+    #     advise:warn "Skip generate $mod_name/res/advise.jso because $mod_name/advise.jso already exists"
+    #     return 0
+    # fi
+
+    if [ ! -f "$index_yml" ]; then
+        advise:error "Not found $mod_name/adv/index.yml"
+        return 1
+    fi
+
+    local resource;     resource="$mod_path/res";       x mkdirp "$resource"
+    < "$index_yml" x y2j | {
+        local content;      content="$(cat)"
+        printf "%s\n" "$content"
+
+        local useparam;     local setup
+        printf "%s\n" "$content" | { x jo env . "useparam=.<useparam>" "setup=.<setup>"
+            [ -z "$setup" ] || ___x_cmd_advise_gen_advise__exec "$mod_path" "$setup" || return 1
+            [ ! -f "$mod_path/advise.jso" ] || { cat "$mod_path/advise.jso"; printf "\n"; }
+
+            if [ "$useparam" = "true" ]; then
+                ___x_cmd_advise_gen_advise__useparam "$mod_name" "$mod_path"
+                [ "$?" = 0 ] || printf "%s\n" "$___X_CMD_ADVISE_ERREXIT"
+            else printf "%s\n" "{}"    ; fi
+        }
+    } | command awk \
+        -v X_CMD_ADVISE_ERREXIT="$___X_CMD_ADVISE_ERREXIT" \
+        -v INDEX_FIELDS="$( ___x_cmd_advise_gen_advise__index_fields )" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/default.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/build_merge.awk" > "$resource/advise.jso"
+    local exit_code="$?"
+
+    [ ! -f "$mod_path/advise.jso" ] || x rmrf "$mod_path/advise.jso"
+    if [ "$exit_code" -eq 0 ]; then
+        advise:info "Success generate $mod_name res/advise.jso"
+        return 0
+    else
+        x rmrf "$resource"
+        advise:error "Fail to generate $mod_name res/advise.jso"
+        return 1
+    fi
+}

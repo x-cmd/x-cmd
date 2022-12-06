@@ -1,0 +1,166 @@
+# shellcheck shell=bash disable=SC2207,SC2034,SC1090
+# Section : adviser helper function: ls lsd seq get_result
+
+___x_cmd_advise__ls(){ local IFS=$'\n'; candidate_exec_arr=( $(ls "$@") ); }
+
+___x_cmd_advise__dir(){
+    if [ -n "$ZSH_VERSION" ]; then
+        _path_files -/
+    elif command -v _filedir >/dev/null 2>&1; then
+        _filedir -d
+    else
+        local localdir="${1:-${cur:-""}}"
+        ___x_cmd_advise_set_nospace
+        COMPREPLY=( $( compgen -S "/" -d "$localdir" 2>/dev/null) )
+    fi
+}
+
+# TODO: same as _files
+___x_cmd_advise__file(){
+    if [ -n "$ZSH_VERSION" ]; then
+        _files
+    elif command -v _filedir >/dev/null 2>&1; then
+        _filedir
+    else
+        local localdir="${1:-${cur:-""}}"
+        ___x_cmd_advise_set_nospace
+        COMPREPLY=( $(compgen -f "$localdir" 2>/dev/null) )
+    fi
+}
+
+___x_cmd_advise_set_nospace(){
+    if [ -n "$ZSH_VERSION" ]; then
+        # TODO: ZSH complete no add space
+        zstyle ':completion:*' add-space false
+        # zstyle ':completion:*' insert-tab false
+    elif command -v compopt >/dev/null 2>&1; then
+        compopt -o nospace
+    fi
+}
+# 1/10
+___x_cmd_advise__seq(){
+    local cur="${cur:-""}"
+    candidate_exec_arr=( $(awk -v range="$1" -v cur="$cur" '
+function inside(num, start, end, step){
+    if ( (num < start) || (num > end) ) return 0
+    if ( ( num - start ) % step == 0 ) return 1
+    return 0
+}
+
+BEGIN{
+
+    arr_len = split(range, arr, /\//)
+    start = arr[1]
+    end = arr[2]
+    step = arr[3]
+    if (step == "") step = 1
+
+    num = (end - start + 1) / step
+    if (num < 16) {
+        for (i=start; i<=end; i=i+step) print i
+        exit(0)
+    }
+
+    if (cur !~ /[0-9]+/) {
+        exit(0)
+    }
+
+    if (inside(cur, start, end, step) == 1) print cur
+
+    cur = cur * 10
+    for (i=0; i<=9; ++i) {
+        newnum = cur + i
+        if (inside(newnum, start, end, step) == 1) print newnum
+    }
+}
+' <<A
+A
+    ))
+
+}
+
+___x_cmd_advise__shift_comp_words(){
+    if [ "$offset" -gt 0 ]; then
+        local tmp=("${COMP_WORDS[@]:$offset}")
+        COMP_WORDS=("${tmp[@]}")
+        COMP_LINE="${tmp[*]}"
+        COMP_CWORD="${#tmp[@]}"
+        [ -n "$ZSH_VERSION" ] || COMP_CWORD=$((COMP_CWORD-1))
+    fi
+
+    module="${COMP_WORDS[0]}"
+    [ -z "$ZSH_VERSION" ] || module="${COMP_WORDS[1]}"
+}
+
+___x_cmd_advise__comp_from_x(){
+    local offset="${1:-$offset}"
+    local module; local IFS; local filepath
+    ___x_cmd_advise__shift_comp_words
+
+    local which_one_result
+    which_one_result="$(xrc which "$module")"
+    [ -n "$which_one_result" ] || return 1
+
+    local main_func
+    main_func="$(___x_cmd_ldict_get ___X_CMD_XRC_SET_MAIN_DICT "$which_one_result")"
+
+    # Generate the advise json file.
+    if [ -z "$main_func" ]; then
+        ___x_cmd_xrc_source_file_main "$which_one_result"
+        main_func="$(___x_cmd_ldict_get ___X_CMD_XRC_SET_MAIN_DICT "$which_one_result")"
+    fi
+
+    ___advise_main "$main_func" "$___X_CMD_ROOT_MOD/$module/res/advise.jso" "$module" 2>/dev/null
+    filepath="$___X_CMD_ADVISE_TMPDIR/$main_func"
+    [ -f "$filepath" ] || return 1
+
+    candidate_exec=
+    eval "$(___advise_get_result_from_awk "$filepath")" 2>/dev/null
+    eval "$candidate_exec" 2>/dev/null
+}
+
+___x_cmd_advise__comp_from_xcmd(){
+    local offset="${1:-$offset}"
+    local module; local IFS; local filepath
+    ___x_cmd_advise__shift_comp_words
+
+    ___x_cmd_advise_man_load x-cmd "$module"
+    filepath="$(___x_cmd_advise_man_which x-cmd "$module")"
+    [ -f "$filepath" ] || return 1
+
+    candidate_exec=
+    eval "$(___advise_get_result_from_awk "$filepath")" 2>/dev/null
+    eval "$candidate_exec" 2>/dev/null
+}
+
+___x_cmd_advise__comp_from_origin(){
+    local offset="${1:-$offset}"
+    local module; local IFS; local filepath
+    ___x_cmd_advise__shift_comp_words
+
+    # TODO: must have map from command to function name and script path
+    if [ -n "$ZSH_VERSION" ]; then
+        words=( "${COMP_WORDS[@]}" )
+        CURRENT="$COMP_CWORD"
+        filepath="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/zsh-completions/src/_$module"
+        [ ! -f "$filepath" ] || . "$filepath" 2>/dev/null
+    else
+        filepath="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/bash-completions/share/bash-completion/completions/_$module"
+        [ -f "$filepath" ] || filepath="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/bash-completions/share/bash-completion/completions/$module"
+        [ -f "$filepath" ] || return 1
+        . "$filepath" 2>/dev/null
+        command -v "_$module" >/dev/null || return 1
+        eval "_$module"
+    fi
+}
+
+___x_cmd_advise__comp_from_xcmd_or_origin(){
+    local offset="${1:-$offset}"
+    local module
+    ___x_cmd_advise__shift_comp_words
+
+    ___x_cmd_advise__comp_from_xcmd 0 \
+        || ___x_cmd_advise__comp_from_origin 0
+}
+
+## EndSection

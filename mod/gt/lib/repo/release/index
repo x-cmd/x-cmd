@@ -1,0 +1,240 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gt_repo_release(){
+    param:subcmd ___x_cmd_gt_repo_release        \
+        "ls|l"              "List repo release"                     \
+        "create|c"          "Create repo release"                   \
+        "info|i"            "Show detailed information of repo"     \
+        "edit|ed"           "Update release information"            \
+        rm                  "Remove repo release"                   \
+        latest              "Show latest release"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_repo_release _param_help_doc
+    return 1
+}
+
+# Section: List
+
+# shellcheck disable=SC2086,SC2154
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoReleases
+___x_cmd_gt_repo_release_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --direction     "direction(asc,desc)"                                                <>:Direction="asc"
+    --json|-j       "output origin json data"
+'
+    param:run
+    ___x_cmd_gt_param_init_owner_repo
+
+    ___gt_ui_mutual '___ui_table_json Id=.id ReleaseName=.name TagName=.tag_name Message=.body \
+        IsPreRelease=.prerelease User=.author.login Time=.created_at -- $@' \
+        ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/releases" direction page per_page
+}
+
+# EndSection
+
+# Section: Create
+
+# shellcheck disable=SC2154,SC2181,SC2034
+# https://gitee.com/api/v5/swagger#/postV5ReposOwnerRepoReleases
+___x_cmd_gt_repo_release_create(){
+    param:scope  ___x_cmd_gt
+    param:dsl    '
+options:
+    --repo              "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --tag               "Please provide tag name"                                            <>
+    --body              "Release Description(support markdown)"                              <>
+    --target_commitish  "branch name or commit SHA"                                          <>
+    --name              "Release name(default is tag)"                                       <>=""
+    --prerelease        "Is pre-release version"
+    --json|-j           "output origin json data"
+'
+    param:run
+    ___x_cmd_gt_param_init_owner_repo
+    [ -n "$name" ] || name="$tag"
+    local gen_gt_json
+    gen_gt_json="$(param:option2json tag_name=tag -tag)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner_repo}/releases" "gen_gt_json" | ___x_cmd_gt_repo_release_create_status_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_repo_release_create_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . id=.id tag_name=.tag_name name=.name target_commitish=.target_commitish prerelease=.prerelease gt_resp_body=.
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true    "Release Successfully" "Id: $id" "Name: $name" "TagName: $tag_name" "TargetCommitish: $target_commitish" "Prerelease: $prerelease"
+        else
+            ___x_cmd_ui_tf false   "Release failure: $name" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+
+# EndSection
+
+# Assume pr and owner_repo are environments
+______x_cmd_gt_repo_release_init_owner_repo_and_release_main(){
+    local release_id="${release##*/}"
+    owner_repo="${release%"$release_id"}"
+    ___x_cmd_gt_param_normalize_repo "$owner_repo"
+    release="$release_id"
+}
+
+alias ______x_cmd_gt_repo_release_init_owner_repo_and_release='
+    [ -n $release ]     || local release
+    [ -n $owner_repo ]  || local owner_repo
+    ______x_cmd_gt_repo_release_init_owner_repo_and_release_main || return
+'
+
+# Section: Edit and Remove
+
+# shellcheck disable=SC2154,SC2181,SC2034
+# https://gitee.com/api/v5/swagger#/patchV5ReposOwnerRepoReleasesId
+___x_cmd_gt_repo_release_edit(){
+    param:scope  ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                  "Release ID"                                                         <>:NatureNumber
+    --repo|-r           "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --tag               "Please provide tag name"                                            <>
+    --name              "Release name"                                                       <>
+    --body              "Release Description(support markdown)"                              <>
+    --prerelease        "Is release version"
+    --json|-j           "output origin json data"
+'
+    param:run
+    local release="${1:?"Provide Release ID"}"
+    local gen_gt_json
+    gen_gt_json="$(param:option2json tag_name=tag -tag)"
+    gt:debug "$gen_gt_json"
+
+    ______x_cmd_gt_repo_release_init_owner_repo_and_release
+    ___x_cmd_gt_curl patch "https://gitee.com/api/v5/repos/${owner_repo}/releases/${release}" "gen_gt_json" | ___x_cmd_gt_repo_release_edit_status_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_repo_release_edit_status_handler() {
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . id=.id tag_name=.tag_name name=.name target_commitish=.target_commitish prerelease=.prerelease gt_resp_body=.
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true    "Update release successfully" \
+                "Id: $id" "Name: $name" "TagName: $tag_name" "TargetCommitish: $target_commitish" "Prerelease: $prerelease"
+        else
+            ___x_cmd_ui_tf false   "Update release failure: $name by $owner_repo $release" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+
+# https://gitee.com/api/v5/swagger#/deleteV5ReposOwnerRepoReleasesId
+# shellcheck disable=SC2034
+___x_cmd_gt_repo_release_rm(){
+    param:scope  ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                  "Release ID"                                                         <>:NatureNumber
+    --repo|-r           "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+'
+    param:run
+
+    local release="${1:?"Provide Release ID"}"
+    ______x_cmd_gt_repo_release_init_owner_repo_and_release
+    local gt_resp_body
+    if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/repos/${owner_repo}/releases/$release" | ___x_cmd_gt_curl_handler_no_content; then
+        ___x_cmd_ui_tf true  "Deleting release ${owner_repo}: ${release} successfully"
+    else
+        ___x_cmd_ui_tf false "Deleting release failure: ${owner_repo}: ${release}." "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+        ___x_cmd_gt_resp_body
+        return 1
+    fi
+}
+
+# EndSection
+
+# Section: Info
+
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoReleasesId
+___x_cmd_gt_repo_release_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                  "Release ID"                                                         <>:NatureNumber
+    --repo|-r           "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --json|-j           "output origin json data"
+'
+    param:run
+    local release="${1:?"Provide Release ID"}"
+    ______x_cmd_gt_repo_release_init_owner_repo_and_release
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/releases/${release}" | ___x_cmd_gt_repo_release_info_status_handler
+}
+
+# shellcheck disable=SC2086,SC2154
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoReleasesTagsTag
+___x_cmd_gt_repo_get_release_by_tag(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                 "tag name"                                                           <>
+    --repo|-r          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --json|-j          "output origin json data"
+'
+    param:run
+    local _tag_name="${1:?"Provide tag name"}"
+    ___x_cmd_gt_param_init_owner_repo
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/releases/tags/${_tag_name}" | ___x_cmd_gt_repo_release_info_status_handler
+}
+
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoReleasesLatest
+# shellcheck disable=SC2034
+___x_cmd_gt_repo_release_latest(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    #1              "Provide ownerPath/RepoPath.(default owner: current user)" <>:RepoPath
+    --json|-j       "output origin json data"
+'
+    param:run
+    local repo="${1:?"Please provide ownerPath/RepoPath"}"
+    ___x_cmd_gt_param_init_owner_repo
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/releases/latest" | ___x_cmd_gt_repo_release_info_status_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_repo_release_info_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . id=.id tag_name=.tag_name name=.name target_commitish=.target_commitish prerelease=.prerelease gt_resp_body=.
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true    "Success" "Id: $id" "Name: $name" "TagName: $tag_name" "TargetCommitish: $target_commitish" "Prerelease: $prerelease"
+        else
+            ___x_cmd_ui_tf false   "Couldn't find any Release: $owner_repo" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+
+# EndSection

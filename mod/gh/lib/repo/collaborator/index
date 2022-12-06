@@ -1,0 +1,154 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+# Should be like this.
+# gh repo collaborator add el:admin
+# gh repo collaborator remove user-a
+# gh repo collaborator add user-b
+
+# gh repo collaborator +el:admin -user-a +user-b
+___x_cmd_gh_repo_collaborator() {
+    param:subcmd ___x_cmd_gh_repo_collaborator    \
+        "ls|l"         "list collaborator"                \
+        add            "add collaborator"                 \
+        "edit|ed"      "edit collaborator permission"     \
+        rm             "Remove collaborator"
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_gh_repo_collaborator _param_help_doc
+    return 1
+}
+# Section: List
+___x_cmd_gh_repo_collaborator_ls() {
+    param:scope ___x_cmd_github
+    param:dsl '
+type:
+    Affiliation =   outside direct all
+options:
+    --affiliation   "Filter collaborators returned by their affiliation."               <>:Affiliation="all"
+    --per_page      "Results per page"                                                  <>=30
+    --page          "Page number of the results to fetch."                              <>=1
+    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+
+    --json|-j   "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+
+    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Id=.id Name=.login Url=.html_url Role=.role_name -- $@' \
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/collaborators" affiliation per_page page
+}
+# EndSection
+
+# Section: Add & Rm
+___x_cmd_gh_repo_collaborator_add() {
+    param:scope ___x_cmd_github
+    param:dsl '
+options:
+    --repo          "Provide owner_name/repo_name list separated by commas."    <>:MultipleRepoName
+    --permission    "The permission to grant the collaborator."                 <>="push"     = pull triage push maintain admin
+    --name          "Username list separated by commas"                         <>:Username_multiple
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    local tmpRepo="$repo"
+    local username="$name"
+    local source_username="$name"
+    # TODO:N to N && 1 TO N & N to 1
+    while true; do
+        repo="${tmpRepo%%,*}"
+        tmpRepo="${tmpRepo#*,}"
+        ___x_cmd_gh_param_init_owner_repo
+        while true; do
+            name="${username%%,*}"
+            username="${username#*,}"
+            ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${name##*/}" -- permission | (
+                _____x_cmd_gh_collaborator_ui_utils Add
+            )
+
+            [ "$name" = "$username" ] && {
+                username="$source_username"
+                break
+            }
+        done
+        [ "$repo" = "$tmpRepo" ] && return 0
+    done
+}
+
+___x_cmd_gh_repo_collaborator_edit() {
+    param:scope ___x_cmd_github
+    param:dsl '
+options:
+    --repo          "Provide owner_name/repo_name list separated by commas."    <>:MultipleRepoName
+    --permission    "The permission to grant the collaborator."                 <>="push"     = pull triage push maintain admin
+    --name          "Username"                                                  <>:Username_multiple
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${name##*/}" -- permission | (
+        _____x_cmd_gh_collaborator_ui_utils Edit
+    )
+}
+
+___x_cmd_gh_repo_collaborator_rm() {
+    param:scope ___x_cmd_github
+    param:dsl '
+options:
+    --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    #1          "Username list"
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    local username
+    for username in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
+        # TODO:http handle，delete repo return data is null.Status: 204 No Content
+        ___x_cmd_gh_curl delete "/repos/$owner_repo/collaborators/${username##*/}"| (
+                x jo env . error=.
+                if ___x_cmd_gh_http_error; then
+                    ___x_cmd_ui_tf  true "successfully deleted $username in $owner_repo"
+                else
+                    ___x_cmd_ui_tf false "delete user failure: $username." "ErrorMsg:$error"
+                    return 1
+                fi
+            )
+    done
+}
+# EndSection
+
+# Section: collaborator ui utils
+_____x_cmd_gh_collaborator_ui_utils(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Add|Edit)
+            data="repo=.repository.full_name permissions=.permissions"
+            msg="$1 repo user success"
+            error_msg="Failed to $1 repo user"
+            ;;
+    esac
+    x jo env . id=.id error=. $data
+    if [ -n "$id" ]; then
+        ___x_cmd_ui_tf true "$msg"  ${repo+"Repo: $repo"}  ${permissions+"Permissions: $permissions"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+}
+# EndSection

@@ -1,0 +1,131 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+# define lazy loader
+# ___x_cmd_definelazyloader   ___x_cmd_gt_enterprise_member        gt/lib/enterprise/member
+
+___x_cmd_gt_enterprise(){
+    param:scope     ___x_cmd_gt
+    param:subcmd ___x_cmd_gt_enterprise                     \
+        "ls|l"          "List all enterprise"               \
+        "info|i"        "Show enterprise information"       \
+        issue           "List all issues by enterprise"     \
+        repo            "enterprise repo   management"      \
+        member          "enterprise member management"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_enterprise _param_help_doc
+    return 1
+}
+
+# Section: list & info
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5UserEnterprises
+___x_cmd_gt_enterprise_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --page       "page"                                                 <>=""
+    --per_page   "per_page"                                             <>=""
+    --admin      "list only authorized users managed enterprise"
+    --json|-j    "output origin json data"
+'
+    param:run
+
+    ___gt_ui_mutual '___ui_table_json Id=.id Name=.name Path=.path -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/user/enterprises" admin
+}
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5EnterprisesEnterprise
+___x_cmd_gt_enterprise_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+
+options:
+    #1             "Please provide enterprise path"    <>
+    --json|-j      "output origin json data"
+'
+    param:run
+
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/enterprises/${1:?"Please provide enterprise path"}" | ___x_cmd_gt_enterprise_info_status_handler "$1"
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_enterprise_info_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        return
+    fi
+    (
+        x jo env . id=.id name=.name url=.url gt_resp_body=.
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true   "Success" "id: $id" "name: $name" "url: $url"
+        else
+            ___x_cmd_ui_tf false  "Couldn't find any enterprise info data by $1" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+# EndSection
+
+___x_cmd_gt_enterprise_repo(){
+    param:subcmd ___x_cmd_gt_enterprise_repo                \
+        "ls|l"      "List enterprise repo"                  \
+        "create|c"  "Create enterprise repo"                \
+        app         "Interactive UI show enterprise repo"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_enterprise_repo _param_help_doc
+    return 1
+}
+
+# Section: Repo List
+# https://gitee.com/api/v5/swagger#/getV5EnterprisesEnterpriseRepos
+___x_cmd_gt_enterprise_repo_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    Genre = all public internal private
+options:
+    #1              "Please provide enterprise path"    <>
+    --type          "repo type"                         <>:Genre="all"
+    --page          "page"                              <>="1"
+    --per_page      "per_page"                          <>="30"
+    --direct        "only get direct repo"
+    --json|-j       "output origin json data"
+'
+    param:run
+    local ___gt_error_msg="Couldn't find any data by: ${1:?"Please provide enterprise path"}"
+    [ -n "$direct" ] || direct=false
+    ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json RepoPath=.full_name IsPrivate=.private Url=.html_url -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/enterprises/$1/repos" type direct
+}
+# EndSection
+
+# Section: Repo App
+# https://gitee.com/api/v5/swagger#/getV5EnterprisesEnterpriseRepos
+___x_cmd_gt_enterprise_repo_app(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    Genre = all public internal private
+options:
+    #1              "Please provide enterprise path"    <>
+    --repo_type     "type"                              <>:Genre="all"
+    --page          "page"                              <>=""
+    --per_page      "per_page"                          <>=""
+    --direct        "only get direct repo"
+'
+    param:run
+
+    local ___gt_error_msg="Couldn't find any data by: ${1:?Provide enterprise}"
+    [ -n "$direct" ] || direct=false
+    ___gt_ui_mutual '___ui_table_json Id=.id Name=.name public=.public OwnerName=.owner.name DefaultBranch=.default_branch \
+        OpenIssuesCount=.open_issues_count license=.license Url=.html_url -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/enterprises/$1/repos" repo_type direct page per_page
+}
+# EndSection

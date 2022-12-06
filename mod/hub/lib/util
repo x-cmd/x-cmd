@@ -1,0 +1,110 @@
+# shellcheck shell=sh disable=SC3043
+
+___X_CMD_HUB_SERVICE_URL="https://hub.x-cmd.com"
+
+___x_cmd_hub___util_user_id(){
+    local res
+    if ! res="$(___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id"
+        return 1
+    fi
+
+    printf "%s" "$res" | (  x jo env . id=.id ; printf "%s\n" "$id")
+}
+
+___x_cmd_hub___util_handle_resp(){
+    local isSuccess="$1"; local resp="$2"; local msg="$3"; shift 3
+    local resp_msg; resp_msg="$(printf "%s" "$resp" | {
+        x jo env . resp_msg=.msg ; printf "%s\n" "$resp_msg" ;
+    })"
+
+    [ -z "$resp_msg" ] || {
+        ___x_cmd_ui_tf "$isSuccess" "$msg" "resp: $resp_msg" >&2
+        return
+    }
+
+    if [ -n "$resp" ] ; then  ___x_cmd_ui_tf "$isSuccess" "$msg" "resp: $resp" "$@" >&2
+    else                      ___x_cmd_ui_tf "$isSuccess" "$msg"               "$@" >&2  ;fi
+}
+
+___x_cmd_hub___util_subcmd_invalid(){
+    local subcmd="${1}"
+    local param="${2}"
+    if [ -z "$param" ]; then ___x_cmd_ui_tf false "Subcommand required. See 'x hub $subcmd --help'" >&2
+    else                     ___x_cmd_ui_tf false "'$param' is not a subcommand. See 'x hub $subcmd --help'" >&2 ; fi
+    return 1
+}
+
+___x_cmd_hub___util_curl() {
+    local method="${1:?Provide method}"
+    local url_path="${2:?Provide url_path}"; shift 2
+
+    [ -n "$NO_AUTH" ] || {
+        local token; token="$(___x_cmd_hub_account_token)" || return 1
+        ___x_cmd_http header put Authorization "$token"
+    }
+
+    case "$method" in
+        get)              ___x_cmd_http get "$___X_CMD_HUB_SERVICE_URL$url_path" "$@"              ;;
+        post|patch|put)   ___x_cmd_http "$method" json "$___X_CMD_HUB_SERVICE_URL$url_path" "$@"   ;;
+        delete)
+            ___x_cmd_http qs mput "$@"
+            ___x_cmd_http delete "$___X_CMD_HUB_SERVICE_URL$url_path"
+        ;;
+        *)      hub:error "Unknown method: $method" ;;
+    # TODO: Maybe has other way to close the http module log
+    esac 2>/dev/null || {
+        printf "%s\n" "$(___x_cmd_http resp body)"
+        return 1
+    }
+}
+
+___x_cmd_hub___util_send_file() {
+    local localfp="${1:?Provide local file}"
+    local respath="${2:?Provide respath}"
+
+    local token; token="$(___x_cmd_hub_account_token)" || return 1
+    local cmd; cmd="curl -sS -X PUT -F 'file=@$localfp' '$___X_CMD_HUB_SERVICE_URL/api/v0/file?token=${token}&res=${respath}'"
+    # TODO: when http return error code, curl will not return error code
+    eval "$cmd" || {  hub:debug "Exec cmd: $cmd" ; return 1 ;}
+}
+
+# use unit suffixes. Byte, Kilobyte, Megabyte, Gigabyte, Terabyte and Petabyte in order to reduce the number of digits to four or fewer using base 2 for sizes
+___x_cmd_hub___util_unit_suffixes(){
+    local base="${1:?Provide base}"
+    local unit="B"
+    base=$((base*100))
+    if [ "$base" -ge 102400 ] ; then
+        base=$((base/1024))
+        unit="KB"
+    fi
+
+    if [ "$base" -ge 102400 ] ; then
+        base=$((base/1024))
+        unit="MB"
+    fi
+
+    if [ "$base" -ge 102400 ] ; then
+        base=$((base/1024))
+        unit="GB"
+    fi
+
+    if [ "$base" -ge 102400 ] ; then
+        base=$((base/1024))
+        unit="TB"
+    fi
+
+    if [ "$base" -ge 102400 ] ; then
+        base=$((base/1024))
+        unit="PB"
+    fi
+
+    printf "%s %s" "$((base/100)).$((base%100))" "$unit"
+}
+
+___x_cmd_hub___util_percent(){
+    local base="${1:?Provide base}"
+    local total="${2:?Provide total}"
+    base="$((base*100*100/total))"
+    printf "%s" "$((base/100)).$((base%100)) %"
+}

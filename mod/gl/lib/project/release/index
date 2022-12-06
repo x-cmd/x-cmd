@@ -1,0 +1,228 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gl_project_release(){
+    param:subcmd ___x_cmd_gl_project_release                    \
+        "ls|l"              "list repo release"                 \
+        "create|c"          "create repo release"               \
+        rm                  "Remove repo release"               \
+        "edit|ed"           "update release information"        \
+        "info|i"            "Show detailed information of repo" \
+        link                "manage link"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_project_release _param_help_doc
+    return 1
+}
+
+
+# Section0: Release ls
+___x_cmd_gl_project_release_ls() {
+    param:scope     ___x_cmd_gl
+    param:dsl    '
+options:
+    --project                   "The ID or URL-encoded path of the project owned by the authenticated user"           <>
+    --sort                      "The direction of the order."                                                         <>=""
+    --order_by                  "The field to use as order."                                                          <>=""     = released_at created_at
+    --per_page                  "Results per page"                                                                    <>="30"
+    --page                      "Page number of the results to fetch."                                                <>="1"
+    --include_html_description  "If true, a response includes HTML rendered Markdown of the release description."
+    --json|-j                   "output json data"
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_project
+
+    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Name=.name TagName=.tag_name Commit=.commit.short_id Url=._links.self -- $@' \
+        ___x_cmd_gl_curl get "/projects/${owner_project}/releases" sort order_by page per_page
+}
+
+# Section : Release create && edit
+___x_cmd_gl_project_release_create() {
+    param:scope     ___x_cmd_gl
+    param:dsl    '
+options:
+    #1                          "The release name"                                                                <>=""
+    --project                   "The ID or URL-encoded path of the project owned by the authenticated user"       <>
+    --tag_name                  "The tag where the release is created from."                                      <>
+    --tag_message               "Message to use if creating a new annotated tag."                                 <>=""
+    --ref                       "It can be a commit SHA, another tag name, or a branch name."                     <>=""
+    --description               "The description of the release. You can use Markdown."                           <>=""
+    --milestones                "The title of each milestone the release is associated with. "                    <>:array=""
+    --assets_links_name         "The name of the link. Link names must be unique within the release. "            <>=""
+    --assets_links_url          "The URL of the link. Link URLs must be unique within the release."               <>=""
+    --assets_links_filepath     "Optional path for a Direct Asset link."                                          <>=""
+    --assets_links_link_type    "The type of the link"                                                            <>=""      = other runbook image package
+    --released_at               "The date when the release is/was ready. Defaults to the current time. "          <>:datetime=""
+    --json|-j                   "output json data"
+'
+    param:run
+    ___x_cmd_gl_param_init_owner_project
+
+    local name="$1"
+    local assets
+    local links
+    links=$(x jo "{ links:[{
+        ${assets_links_url+"url:\"$assets_links_url\""},
+        ${assets_links_name+"name:$assets_links_name"},
+        ${assets_links_filepath+"filepath:$assets_links_filepath"},
+        ${assets_links_link_type+"link_type:$assets_links_link_type"}
+    }]}")
+    [ "$links" != "$(x jo \{links:[{}]\})" ] || unset links
+    local milestones
+    milestones=$(x jo "[$milestones]")
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -project +name ${links+"assets=links"} )"
+
+    ___x_cmd_gl_curl post "/projects/${owner_project}/releases" "gen_gl_json" | _____x_cmd_gl_release_ui_utils Creating
+}
+
+
+___x_cmd_gl_project_release_edit() {
+    param:scope  ___x_cmd_gl
+    param:dsl    '
+options:
+    --tag_name         "The Git tag the release is associated with"                                      <>
+    --project          "The ID or URL-encoded path of the project owned by the authenticated user"       <>
+    --name             "The release name."                                                               <>=""
+    --description      "The description of the release. You can use Markdown."                           <>=""
+    --milestones       "The title of each milestone to associate with the release"                       <>=""
+    --released_at      "The date when the release is/was ready."                                         <>:datetime=""
+
+    --json|-j          "output json data"
+'
+    param:run
+    ___x_cmd_gl_param_init_owner_project
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -project -tag_name)"
+
+    ___x_cmd_gl_curl put "/projects/${owner_project}/releases/${tag_name}" "gen_gl_json" | _____x_cmd_gl_release_ui_utils Edit
+}
+
+# EndSection
+
+___x_cmd_gl_project_release_rm() {
+    param:scope  ___x_cmd_gl
+    param:dsl    '
+options:
+    #1              "The Git tag the release is associated with"                                        <>
+    --project       "The ID or URL-encoded path of the project owned by the authenticated user"         <>
+    --yes|-y        "Ignore remove prompt interception"
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_project
+
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete version  $(___x_cmd_ui bold red "$1") in the $owner_project ?" || return
+    ___x_cmd_gl_curl delete "/projects/${owner_project}/releases/$1"| (
+        x jo env . error=.
+        if ___x_cmd_gl_http_error; then
+            ___x_cmd_ui_tf  true "successfully remove project release"
+        else
+            ___x_cmd_ui_tf false "delete project release failure: $1." "ErrorMsg:$error"
+            return 1
+        fi
+    )
+}
+
+___x_cmd_gl_project_release_info() {
+    param:scope     ___x_cmd_gl
+    param:dsl    '
+options:
+    #1                           "The Git tag the release is associated with"                                        <>
+    --project                    "The ID or URL-encoded path of the project owned by the authenticated user"         <>
+    --include_html_description   "If true, a response includes HTML rendered Markdown of the release description."
+
+    --json|-j                    "output json data"
+'
+    param:run
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_curl get "/projects/${owner_project}/releases/$1" | _____x_cmd_gl_release_ui_utils Info
+}
+
+
+# Section : attachment
+
+___x_cmd_gl_project_release_link(){
+    param:subcmd ___x_cmd_gl_project_release_link    \
+        "create|c"          "create link"
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_gl_project_release_link _param_help_doc
+    return 1
+}
+
+# ___x_cmd_gl_project_release_link_ls() {
+#     param:scope     ___x_cmd_gl
+#     param:dsl    '
+# options:
+#     #1              "The Git tag the release is associated with"                                        <>
+#     --project       "The ID or URL-encoded path of the project owned by the authenticated user"         <>
+#     --json|-j       "output json data"
+# '
+#     param:run
+
+#     ___x_cmd_gl_param_init_owner_project
+#     ___x_cmd_gl_curl get "/projects/${owner_project}/releases/$1/assets/links"
+# }
+
+
+___x_cmd_gl_project_release_link_create() {
+    param:scope     ___x_cmd_gl
+    param:dsl    '
+options:
+    --tag_name      "The Git tag the release is associated with"                                        <>
+    --project       "The ID or URL-encoded path of the project owned by the authenticated user"         <>
+    --name          "The name of the link. Link names must be unique in the release."                   <>
+    --url           "The URL of the link."                                                              <>
+    --filepath      "Optional path for a Direct Asset link."                                            <>=""
+    --link_type     "The type of the link."                                                             <>="other"   = other runbook image package
+    --json|-j       "output json data"
+'
+    param:run
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -project -tag_name)"
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_curl post "/projects/${owner_project}/releases/$tag_name/assets/links" "gen_gl_json" | _____x_cmd_gl_release_ui_utils Link
+}
+
+# EndSection
+
+
+# Section: release utils
+_____x_cmd_gl_release_ui_utils()(
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gl_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Link)
+            msg="Creating release Link success."
+            error_msg="Creating release Link Fail."
+            ;;
+        Creating|Edit)
+            msg="$1 project release success."
+            error_msg="$1 project release Fail."
+            ;;
+        Info)
+            msg="Successfully get project release info."
+            error_msg="Get project release info failure."
+            ;;
+    esac
+    x jo env . Name=.name tag_name=.tag_name commit=.commit.short_id links=._links.self author=.author.username error=. $data
+    if [ -n "$Name" ]; then
+        ___x_cmd_ui_tf true "$msg" ${Name+"Name: $Name"} ${tag_name+"TagName: $tag_name"}  ${commit+"Commit: $commit"} ${author+"Author: $author"} ${links+"Url: $links"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)
+# EndSection

@@ -1,0 +1,76 @@
+# shellcheck    shell=sh            disable=SC3043      # xrc
+
+# Section: xbin
+
+___x_cmd_pkg_xbin(){
+    x:trace pkg/xbin
+    case "$1" in
+        init)       shift; ___x_cmd_pkg_xbin_init "$@" ;;
+        path)       shift; ___x_cmd_pkg_xbin_path "$@" ;;
+        *)          return 1 ;;
+    esac
+}
+
+___x_cmd_pkg_xbin_path(){
+    local pkg_name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "${pkg_name}")}"
+
+    pkg:debug "INSTALL_PATH: $___X_CMD_PKG_INSTALL_PATH/$pkg_name/$version"
+
+    ___x_cmd_pkg___all_info "$pkg_name" "$version" | awk \
+        -v INSTALL_PATH="$___X_CMD_PKG_INSTALL_PATH/$pkg_name/$version" \
+        -v BIN_MOD_NAME="${bin_mod_name:-$pkg_name}" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/default.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk" \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.xbin.awk"
+}
+
+___x_cmd_pkg_xbin_init(){
+    local bin_mod_name="${1:?Provide bin mod name}"
+
+    ___x_cmd_pkg___which_p7zip 86400 || return
+    if [ -z "$___X_CMD_PKG_BINMOD_MAP" ]; then
+        ___X_CMD_PKG_BINMOD_MAP="$(cat "$___X_CMD_PKG_RAWPATH/binmod.txt")"
+    fi
+
+    local pkg_name="${___X_CMD_PKG_BINMOD_MAP#*:"$bin_mod_name":}"
+    if [ "$pkg_name" = "${___X_CMD_PKG_BINMOD_MAP}" ]; then
+        pkg:error "Not found: ${bin_mod_name}"
+        return 1
+    fi
+
+    pkg_name="${pkg_name%%
+*}"
+
+    local version="${2:-$(___x_cmd_pkg_default_version "${pkg_name}")}"
+    local bin_path
+    local install_path="$___X_CMD_PKG_INSTALL_PATH/$pkg_name/$version"
+    bin_path="$(___x_cmd_pkg_xbin_path "$pkg_name" "$version")"
+    pkg:debug "xbin_init. bin_mod_name: $bin_mod_name package: $pkg_name $version binpath: $bin_path"
+
+    [ -f "$bin_path" ] || {
+        ! [ -d "$install_path" ] || x rmrf "$install_path"
+        ___x_cmd_pkg_install "$pkg_name" "$version"
+    }
+    [ -x "$bin_path" ] || {
+        pkg:error "$bin_path permission denied"
+        return 1
+    }
+
+    local bin_mod_func_name="${3:-___x_cmd_${bin_mod_name}}"
+    local bin_mod_path_name="${4}"
+    eval "
+        $bin_mod_func_name(){
+            $bin_path \"\$@\"
+        }
+        if [ -n \"\$bin_mod_path_name\" ]; then
+            $bin_mod_path_name=\"$bin_path\"
+        fi
+    "
+
+}
+
+### EndSection

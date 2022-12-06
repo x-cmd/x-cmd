@@ -1,0 +1,144 @@
+# Section : run by file: get_engine_by_file* and run_by_file*
+
+___x_cmd___xrc_run(){
+    local fp="${1:?filepath}"; shift
+
+    local main
+    if ! main="$(___x_cmd_ldict get ___X_CMD_XRC_SET_MAIN_DICT "$fp")"; then
+        ___x_cmd_xrc_source_file "$fp" # xrc
+        local code=$?
+        if ! main="$(___x_cmd_ldict get ___X_CMD_XRC_SET_MAIN_DICT "$fp")"; then
+            return "$code"
+        fi
+    fi
+
+    "$main" "$@"
+}
+
+___x_cmd___source_run(){
+    local ___x_cmd_x_source_run_filepath="${1:?filepath}";        shift
+    . "$___x_cmd_x_source_run_filepath" "$@"
+}
+
+___x_cmd___run_with_engine(){
+    local engine="${1:?Please provide engine}";
+    local filepath="${2:?Please provide filepath}";        shift 2
+    case "$engine" in
+        xrc)        ___x_cmd___xrc_run "$filepath" "$@" ;;
+        source)     ___x_cmd___source_run "$filepath" "$@" ;;
+        xsh)        ( ___x_cmd___source_run "$filepath" "$@"; ) ;;
+        7z)         ___x_cmd_main 7z x "$filepath" "$@"      ;;
+        txt)        cat "$filepath" ;;
+
+        fish)       x fish "$filepath" "$@" ;;
+        *)          ___x_cmd_main "$engine" "$filepath" "$@" ;;
+    esac
+}
+
+___x_cmd___get_engine_by_file_header_(){
+    local filepath="${1:?Please provide filepath}"; shift
+    case "$(head -n1 "$filepath")" in
+        *source*)       ___X_CMD_GET_ENGINE_RESULT=source          ;;
+        *xrc*)          ___X_CMD_GET_ENGINE_RESULT=xrc             ;;
+        *xsh*)          ___X_CMD_GET_ENGINE_RESULT=xsh             ;;
+        *python*)       ___X_CMD_GET_ENGINE_RESULT=python          ;;
+        *perl*)         ___X_CMD_GET_ENGINE_RESULT=perl            ;;
+        *ruby*)         ___X_CMD_GET_ENGINE_RESULT=ruby            ;;
+        *node*)         ___X_CMD_GET_ENGINE_RESULT=node            ;;
+        *ts*)           ___X_CMD_GET_ENGINE_RESULT=ts              ;;
+
+        *bash*)         ___X_CMD_GET_ENGINE_RESULT=bash            ;;
+        *zsh*)          ___X_CMD_GET_ENGINE_RESULT=zsh             ;;
+        *fish*)         ___X_CMD_GET_ENGINE_RESULT=fish            ;;
+        *ksh*)          ___X_CMD_GET_ENGINE_RESULT=ksh             ;;
+
+        *sh*)           ___X_CMD_GET_ENGINE_RESULT=sh              ;;
+        *)              return 127
+    esac
+}
+
+___x_cmd___get_engine_by_file_header(){
+    ___x_cmd___get_engine_by_file_header_ "$@" && printf "%s\n" "$___X_CMD_GET_ENGINE_RESULT"
+}
+
+___x_cmd_get_engine_by_file_ext_(){
+    local filepath="${1:?filepath}"; shift
+    local ext="${filepath##*.}"
+    case "$ext" in
+        "$filepath")    return 126                              ;;
+        py)             ___X_CMD_GET_ENGINE_RESULT=python       ;;
+        pl)             ___X_CMD_GET_ENGINE_RESULT=perl         ;;
+        rb)             ___X_CMD_GET_ENGINE_RESULT=ruby         ;;
+        js)             ___X_CMD_GET_ENGINE_RESULT=node         ;;
+        ts)             ___X_CMD_GET_ENGINE_RESULT=ts           ;;
+
+        7z)             ___X_CMD_GET_ENGINE_RESULT=7z           ;;
+
+        bash)           ___X_CMD_GET_ENGINE_RESULT=bash         ;;
+        zsh)            ___X_CMD_GET_ENGINE_RESULT=zsh          ;;
+        fish)           ___X_CMD_GET_ENGINE_RESULT=fish         ;;
+        ksh)            ___X_CMD_GET_ENGINE_RESULT=ksh          ;;
+        sh)             ___X_CMD_GET_ENGINE_RESULT=sh           ;;
+
+        txt)            ___X_CMD_GET_ENGINE_RESULT=txt          ;;
+        yml|yaml)       ___X_CMD_GET_ENGINE_RESULT=txt          ;;
+        json)           ___X_CMD_GET_ENGINE_RESULT=txt          ;;
+        jso)            ___X_CMD_GET_ENGINE_RESULT=jso          ;;
+
+        toml)           ___X_CMD_GET_ENGINE_RESULT=txt          ;;
+
+        *)              return 126                  ;;
+    esac
+}
+
+___x_cmd_get_engine_by_file_ext(){
+    local ___X_CMD_GET_ENGINE_RESULT
+    ___x_cmd_get_engine_by_file_ext_ "$@" && printf "%s\n" "$___X_CMD_GET_ENGINE_RESULT"
+}
+
+
+___x_cmd_get_engine_by_file_(){
+    local filepath="${1:?filepath}"
+    ___x_cmd_get_engine_by_file_ext_ "$filepath" || ___x_cmd___get_engine_by_file_header_ "$filepath"
+}
+
+___x_cmd_get_engine_by_file(){
+    local ___X_CMD_GET_ENGINE_RESULT
+    ___x_cmd_get_engine_by_file_ "$@" && printf "%s\n" "$___X_CMD_GET_ENGINE_RESULT"
+}
+
+___x_cmd_run_by_file(){
+    local filepath="${1:?filepath}"; shift
+
+    if [ -L "$filepath" ]; then
+        filepath="$(___x_cmd_readlink_recursive "$filepath")"
+        filepath="$(___x_cmd_abspath "$filepath")"
+    fi
+
+    if [ -x "$filepath" ]; then
+        # In bash and dash. The file mount into the docker container using [ -x <path> ]
+        #   does not correctly determine whether the file has execute permissions or not.
+        exec 3>&1
+        local err
+        if err="$("$filepath" "$@" 2>/dev/stdout 1>&3)" || [ "${err%Permission denied}" = "$err" ]; then
+            exec 3<&-
+            printf "%s\n" "$err" >&2
+            return
+        fi
+    fi
+
+    local ___X_CMD_GET_ENGINE_RESULT
+    if ___x_cmd_get_engine_by_file_ "$filepath"; then
+        ___x_cmd___run_with_engine "$___X_CMD_GET_ENGINE_RESULT" "$filepath" "$@"
+    else
+        # [ ! -f "$filepath" ] || cat "$filepath"
+        ___x_cmd___run_with_engine source "$filepath" "$@"
+    fi
+
+}
+
+## EndSection
+
+___x_cmd_7zd(){
+    ( xrc p7zip/v0   &&  p7zd "$@" )
+}

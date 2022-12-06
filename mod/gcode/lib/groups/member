@@ -1,0 +1,173 @@
+
+
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_gcode_groups_member(){
+    param:subcmd ___x_cmd_gcode_groups_member              \
+        ls              "List member"                   \
+        user            "Show groups member user info"  \
+        add             "Add member"                    \
+        update          "Update member"                 \
+        rm              "Remove member"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_groups_member _param_help_doc
+
+    return 1
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gcode_groups_member_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1              "The ID or URL-encoded path of the group."      <>
+    --query         "A query string to search for members"          <>=""
+    --user_ids      "Filter the results on the given user IDs"      <>:integer_array=""
+
+    --json|-j       "output json data"
+'
+    param:run
+
+     local ___gcode_error_msg="get groups list fail"
+    ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Id=.id Username=.username Web_url=.web_url State=.state -- $@' \
+        ___x_cmd_gcode_get_multi "/groups/$1/members" query user_ids
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gcode_groups_member_user(){
+    param:scope     ___x_cmd_gcode
+    param:dsl      '
+options:
+    #1              "The ID or URL-encoded path of the group."  <>
+    --user_id       "The user ID of the member"                 <>:UserName
+
+    --json|-j       "output json data"
+
+'
+    param:run
+
+    ___x_cmd_gcode_curl get "/groups/$1/members/$user_id" | _____x_cmd_groups_member_ui_utils User
+}
+
+# shellcheck disable=SC2181
+___x_cmd_gcode_groups_member_add(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --id                    "The ID or URL-encoded path of the group"                                   <>:address
+    --expires_at            "A date string in the format YEAR-MONTH-DAY"                                <>=""
+    --access_level          "A valid access level"                                                      <>:Number = 10 20 30 40 50 guest reporter developer maintainer owner
+    --invite_source         "The source of the invitation that starts the member creation process."     <>=""
+    --tasks_to_be_done      "Tasks the inviter wants the member to focus on."                           <>=""
+    --tasks_project_id      "The project ID in which to create the task issues."                        <>=""
+    #1                      "The user ID of the new member or multiple IDs separated by commas"         <>
+
+    --json|-j               "output json data"
+'
+    param:run
+
+    local user_id="${___X_CMD_TX}"
+
+    _____x_cmd_gcode_member_util
+
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -id +user_id)"
+
+    for name in "$@"; do
+        {
+            x tmpl "$gen_gcode_json" "$name" | ___x_cmd_gcode_curl post  "/groups/$id/members" "@-" | _____x_cmd_groups_member_ui_utils Add
+        }
+    done
+}
+
+___x_cmd_gcode_groups_member_update(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --id                    "The ID or URL-encoded path of the group"                                   <>:address
+    --expires_at            "A date string in the format YEAR-MONTH-DAY"                                <>=""
+    --access_level      "A valid access level"                                                          <>:Number = 10 20 30 40 50 guest reporter developer maintainer owner
+    --user_id               "The user ID of the new member or multiple IDs separated by commas"         <>
+
+    --json|-j               "output json data"
+'
+    param:run
+
+    _____x_cmd_gcode_member_util
+
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -id -user_id)"
+
+    ___x_cmd_gcode_curl put "/groups/$id/members/$user_id" "gen_gcode_json" | _____x_cmd_groups_member_ui_utils Update
+}
+
+
+# shellcheck disable=SC2181
+___x_cmd_gcode_groups_member_rm(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --id                    "The ID or URL-encoded path of the group"         <>
+    --skip_subresources     ""
+    --unassign_issuables    ""
+    #n                      "The user ID of the member"
+
+    --yes|-y                "Ignore remove prompt interception"
+'
+    param:run
+
+    if [ $# -eq 0 ];then
+        gcode_log error "At least one user's spatial address is needed"
+        return 1
+    fi
+
+    local username
+    for username in "$@"; do
+        {
+            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure member to remove groups: $(___x_cmd_ui bold red "$username") ?" || continue
+            ___x_cmd_gcode_curl delete "/groups/$id/members/$username" | (
+                x jo env . error=.
+                if ___x_cmd_gcode_http_error; then
+                    ___x_cmd_ui_tf  true "del member $username successfully."
+                else
+                    ___x_cmd_ui_tf false "del member $username failure."
+                    return 1
+                fi
+            )
+
+        }
+    done
+}
+
+_____x_cmd_groups_member_ui_utils()(
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gcode_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        User)
+            data="id=.id username=.username url=.web_url"
+            msg="get user info success"
+            error_msg="Couldn't find any data by $user_id in groups $id"
+            ;;
+        Add|Update)
+            data="id=.id username=.username url=.web_url access_level=.access_level"
+            msg="$1 user successfully"
+            error_msg="$1 user failure."
+            ;;
+    esac
+    x jo env . Id=.id error=. $data
+    if [ -n "$Id" ]; then
+        ___x_cmd_ui_tf true "$msg" "Id: $Id" ${username+"Username: $username"} ${url+"Url: $url"} ${access_level+"Access_level: $access_level"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)

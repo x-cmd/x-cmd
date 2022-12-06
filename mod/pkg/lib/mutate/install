@@ -1,0 +1,131 @@
+# shellcheck    shell=sh            disable=SC3043,SC1090       # xrc
+
+___x_cmd_pkg_install(){
+    x:trace pkg/install
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    ! [ -d "$___X_CMD_PKG_INSTALL_PATH/$name/$version" ] || return 0
+    local osarch="${3:-${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}}"
+    [ -n "$version" ] || return
+
+    ___x_cmd_pkg_download "$name" "$version" "$osarch" || {
+        pkg:error "Download $name $version $osarch failed"
+        return 1
+    }
+    local script_path
+    if script_path="$(___x_cmd_pkg___get_script_path "$name" "$version" "$osarch" install)"; then
+        local bin_path
+        bin_path="$(___x_cmd_pkg_xbin_path "$name" "$version")"
+        if [ -x "$bin_path" ]; then
+            return 0
+        fi
+
+        local file_suffix
+        ___x_cmd_pkg___attr "$name" "$version" "$osarch" file_suffix
+        local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$version.$file_suffix"
+        pkg:info "Running $script_path after download $name $version"
+        pkg:debug "name: $name version: $version osarch: $osarch file_suffix: $file_suffix ball: $ball bin_path: $bin_path"
+        . "$script_path" || {
+            pkg:error "Source $script_path failed" ; return 1
+        }
+        return 0
+    else
+        local sb_repo sb_app
+        ___x_cmd_pkg___static_build_attr "$name" "$version" "$osarch" || {
+            pkg:error "Download static build $name $version $osarch failed"
+            return 1
+        }
+        if [ -n "$sb_repo" ] && [ -n "$sb_app" ]; then
+            pkg:debug "static-build return 0"
+            return 0
+        fi
+
+        ___x_cmd_pkg_install___unzip "$name" "$version" "$osarch" || {
+            pkg:error "unzip $name $version $osarch failed"
+            return 1
+        }
+    fi
+}
+
+ ___x_cmd_pkg_uninstall(){
+    x:trace pkg/uninstall
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    [ -n "$version" ] || return
+
+    local install_path="$___X_CMD_PKG_INSTALL_PATH/$name/$version"
+    local file_suffix
+    ___x_cmd_pkg___attr "$name" "$version" "" file_suffix
+    local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$version.$file_suffix"
+
+    if [ -e "$ball" ]; then
+        pkg:info "Remove $ball"
+        x rmrf "$ball" || {
+            pkg:error "Remove $ball failed "; return 1
+        }
+    fi
+    if ! [ -d "$install_path" ];then
+        pkg:warn "This $name $version is no exist."
+    else
+        pkg:info "Uninstalling $name $version"
+        x rmrf "$install_path"
+    fi
+ }
+
+___x_cmd_pkg_reinstall(){
+    x:trace pkg/reinstall
+    local name="${1:?Provide pkg name}"
+    local version="${2:?Provide version}"
+    local osarch="${3:-${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}}"
+    [ -n "$version" ] || return
+
+    local file_suffix
+    ___x_cmd_pkg___attr "$@" "$osarch" file_suffix
+    local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$version.$file_suffix"
+    pkg:debug "ball: $ball"
+    if [ -f "$ball" ]; then
+        pkg:info "Delete $ball and reinstall $name $version"
+        x rmrf "$ball"
+    fi
+    ___x_cmd_pkg_install "$@" || return 1
+    # Delete the installation. Re unpack or running the installation script ?
+}
+
+
+# This is default
+___x_cmd_pkg_install___unzip(){
+    local name="${1:?Provide pkg name}"
+    local version="${2:?Provide version}"
+    local osarch="${3:-${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}}"
+
+    local bin_path
+    bin_path="$(___x_cmd_pkg_xbin_path "$name" "$version")"
+    [ ! -x "$bin_path" ] || return 0
+
+
+    local file_suffix unpack_way
+    ___x_cmd_pkg___attr "$name" "$version" "$osarch" "file_suffix,unpack_way"
+    local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$version.$file_suffix"
+    local tgt="$___X_CMD_PKG_INSTALL_PATH/$name/$version"
+
+    pkg:debug "bin_path: $bin_path unpack_way: $unpack_way"
+
+    if [ "$unpack_way" = "unpack_copy_to_target_dir" ]; then
+        local unpack_dir="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$version"
+        pkg:debug "Unpack: $ball to $unpack_dir"
+        x uz "$ball" "$unpack_dir" 1>/dev/null || {
+            pkg:error "Fail to unzip $ball" ; return 1
+        }
+        x rmrf "$tgt"
+        mkdir -p "$tgt"
+        pkg:debug "Moving $unpack_dir to $tgt"
+        mv -f "$unpack_dir"/*/* "$tgt"
+        x rmrf "$unpack_dir"
+    else
+        pkg:info "Unpack: $ball to $tgt"
+        x uz "$ball" "$tgt"  || {
+            pkg:error "Fail to unzip $ball"; return 1
+        }
+    fi
+    pkg:info "Finish unpack $name $version to $tgt"
+}

@@ -1,0 +1,171 @@
+# shellcheck shell=sh disable=SC3043,SC2120
+xrc ui/lib/getchar
+xrc awk
+
+___x_cmd_ui_region(){
+    local subcmd="$1";  [ "$#" -gt 0 ] && shift
+    case "$subcmd" in
+        autorefresh)                         ___x_cmd_ui_region_autorefresh "$@"                    ;;
+        keyboard)                            ___x_cmd_ui_region_update_with_keyboard "$@"           ;;
+        autorefresh_with_keyboard)           ___x_cmd_ui_region_autorefresh_with_keyboard "$@"      ;;
+        autorefresh_with_keyboard_vc)        ___x_cmd_ui_region_autorefresh_with_keyboard_vc "$@"   ;;
+        send_update)
+            ;;
+        send_env)
+            ;;
+    esac
+}
+
+# Section: region update
+___x_cmd_ui_region_update(){
+    # UI_CURSOR_SAVE = "\0337"
+    # UI_CURSOR_RESTORE = "\0338"
+
+    # restore cursor then clear lines ...
+    trap '
+    printf "\033[34h\033[?25h" >&2;
+    return 130
+    ' INT
+    ___x_cmd_ui_region_update_awk \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/default.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/str.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/ui/ui.awk" \
+        -f "$___X_CMD_ROOT_MOD/ui/lib/region.awk"
+}
+
+if [ "$(___x_cmd_awk impl)" = "mawk" ]; then
+___x_cmd_ui_region_update_awk(){
+    command mawk -W interactive "$@"
+}
+else
+___x_cmd_ui_region_update_awk(){
+    LC_ALL=en_US.UTF-8 command awk "$@"
+}
+fi
+# EndSection
+
+# Section: send
+___x_cmd_ui_region_send(){
+    ___x_cmd_ui_region_send_update "$@"
+}
+
+___X_CMD_UI_REGION_END_LINE="$(printf "\003\002\005")"
+
+___x_cmd_ui_region_send_env(){
+    while [ $# -gt 0 ]; do
+        ___x_cmd_ui_region_send_env_kv "$1" "$(eval printf \"\$"$1"\")"
+        shift
+    done
+}
+
+___x_cmd_ui_region_send_env_kv(){
+    printf "ENV %s\n" "$1"
+    printf "%s\n%s\n" "$2" "$___X_CMD_UI_REGION_END_LINE"
+    shift
+}
+
+___x_cmd_ui_region_send_update(){
+    printf "UPDATE %s %s\n" "${COLUMNS}" "${LINES}"
+    if [ "$#" -eq 0 ]; then
+        cat
+    else
+        printf "%s" "$*"
+    fi
+    printf "\n%s\n" "$___X_CMD_UI_REGION_END_LINE"
+}
+
+___x_cmd_ui_region_send_screeninfo(){
+    printf "SIZE %s %s\n" "${COLUMNS}" "${LINES}"
+}
+# TODO: sendenv
+
+# EndSection
+
+# Section: run
+___x_cmd_ui_region___run_clear(){
+    # This is useless
+    [ -z "$START" ] && return
+
+    if [ "${___X_CMD_UI_CLEAR_ONEXIT:-yes}" = yes ]; then
+        {
+            case $___X_CMD_SHELL in
+                zsh)
+                    printf "\0338"
+                    ;;
+                bash)
+                    printf "\0338"
+                    printf "\E[J"
+                    ;;
+                *)
+                    printf "\0338"
+                    local i
+                    for i in $(seq $LINES); do
+                        printf "%${COLUMNS}s\n" ""
+                    done
+                    # printf "\033[2J"
+                    ;;
+            esac
+            printf "\033[34h\033[?25h"
+        } >&2
+    fi
+    stty echo 2>/dev/null
+    START=
+}
+
+___x_cmd_ui_region___run_inner(){
+    stty -echo 2>/dev/null
+    trap ___x_cmd_ui_region___run_clear INT
+
+    local START=1
+    "$@" | ___x_cmd_ui_region_update
+
+    ___x_cmd_ui_region___run_clear
+}
+
+___x_cmd_ui_region_run(){
+    eval "$(___x_cmd_ui_region___run_inner "$@")"
+}
+# EndSection
+
+# Section: autorefresh_with_keyboard
+___x_cmd_ui_region___autorefresh_with_keyboard_mainloop(){
+    local fun="${1:?Provide handler}"; shift
+
+    {
+        ___x_cmd_pidofsubshell
+        (
+            local ticks=1
+            while true; do
+                ticks="$((ticks+1))"
+                ___x_cmd_ui_update_lines_columns
+                printf "R:%s:%s:%s\n" "$ticks" "$COLUMNS" "$LINES"
+                sleep "${___X_CMD_UI_REFRESH_INTERVAL:-0.1}"
+            done
+        ) &
+
+        if [ -n "$ZSH_VERSION" ]; then
+            trap '___x_cmd_ui_region___run_clear; exit 130' INT  # FOR zsh trap
+        else
+            trap ':; exit 130' INT   # FOR ___x_cmd_ui_getchar. Resolve bug in specific bash version. Refer issue:#I4Z4WH for more details
+        fi
+        while ___x_cmd_ui_getchar; do
+            printf "C:%s:%s\n" "${___X_CMD_UI_GETCHAR_TYPE}" "${___X_CMD_UI_GETCHAR_CHAR}" || break
+        done
+
+        kill -SIGINT "$PPID"            # Trap dd command in function ___x_cmd_ui_getchar for ash/dash. Issue:#I4Z4X1
+    } | {
+        local PID_OF_UPSUBSHELL
+        read -r PID_OF_UPSUBSHELL
+
+        "$fun" "$@"
+
+        kill -SIGPIPE "$PID_OF_UPSUBSHELL"
+    }
+}
+
+___x_cmd_ui_region_autorefresh_with_keyboard(){
+    ___x_cmd_ui_region_run ___x_cmd_ui_region___autorefresh_with_keyboard_mainloop "$@"
+    if [ -z "$BASH_VERSION" ] && [ -z "$ZSH_VERSION" ]; then stty -raw; fi       # For kill ___x_cmd_ui_getchar in alpine
+}
+# EndSection
+

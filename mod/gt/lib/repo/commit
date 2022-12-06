@@ -1,0 +1,121 @@
+# shellcheck shell=sh disable=SC2154,SC3043
+
+___x_cmd_gt_repo_commit(){
+    param:scope         ___x_cmd_gt
+    param:subcmd ___x_cmd_gt_repo_commit                               \
+        "ls|l"     "List repo all commit information"                  \
+        "info|i"   "Show repo detail commit information"               \
+        diff       "Show diff between commit information"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_repo_push _param_help_doc
+    return 1
+}
+
+# Section: List
+
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoCommits
+# TODO: since and until timer
+___x_cmd_gt_repo_commit_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --repo|-r      "Provide ownerPath/RepoPath.(default owner: current user)"   <>:RepoPath
+
+    #1             "base commit SHA or branch name"                             <>=""
+    -p|--path      "filter by repo file path"                                   <>=""
+    --author       "filter by user email or username"                           <>=""
+    --page         "page"                                                       <>="1"
+    --per_page     "per_page"                                                   <>="30"
+    --json|-j      "output origin json data"
+'
+    param:run
+    local sha="$1"
+    [ -n "$sha" ] || unset sha
+    ___x_cmd_gt_param_init_owner_repo
+    ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json Message=.commit.message SHA=.sha -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/repos/${owner_repo}/commits" sha p author
+}
+
+# EndSection
+
+# Section: Info
+
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoCommitsSha
+# shellcheck disable=SC2034
+___x_cmd_gt_repo_commit_info(){
+    param:scope     ___x_cmd_gt
+        param:dsl       '
+    options:
+         #1         "Provide commit SHA or branch name"                              <>
+         --repo|-r  "Provide ownerPath/RepoPath.(default owner: current user)"       <>:RepoPath
+    '
+    param:run
+    local sha="${1:?"Please provide commit SHA or branch name"}"
+    ___x_cmd_gt_param_init_owner_repo
+
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/commits/${sha}" | ___x_cmd_gt_repo_commit_info_status_handler
+}
+
+___x_cmd_gt_repo_commit_info_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        # TODO: file list
+        x jo env . _sha=.sha url=.html_url gt_resp_body=.
+        if [ -n "$_sha" ]; then
+            ___x_cmd_ui_tf true  "$owner_repo commit info:" "URL: $url"
+            return 0
+        else
+            ___x_cmd_ui_tf false "Get repo commit info failure: $owner_repo" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+
+# EndSection
+
+# Section: diff
+
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoCompareBase...Head
+# shellcheck disable=SC2034
+___x_cmd_gt_repo_commit_diff(){
+    param:scope     ___x_cmd_gt
+        param:dsl       '
+    options:
+        --repo|-r  "Provide ownerPath/RepoPath.(default owner: current user)"       <>:RepoPath
+        --base     "base   commit SHA or branch name"                               <>
+        --head     "target commit SHA or branch name"                               <>
+    '
+    param:run
+
+    ___x_cmd_gt_param_init_owner_repo
+
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/commits/${base}...${head}" | ___x_cmd_gt_repo_commit_diff_status_handler
+}
+
+___x_cmd_gt_repo_commit_diff_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        # TODO: file list
+        x jo env . _sha=.sha url=.html_url gt_resp_body=.
+        if [ -n "$_sha" ]; then
+            ___x_cmd_ui_tf true  "$owner_repo commit diff:" "URL: $url"
+            return 0
+        else
+            ___x_cmd_ui_tf false "Get repo commit info failure: $owner_repo" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+# EndSection

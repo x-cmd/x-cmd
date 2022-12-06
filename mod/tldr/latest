@@ -1,0 +1,298 @@
+# Author:       Li Junhao       l@x-cmd.com                 # xrc
+# shellcheck    shell=dash
+
+# Section: main
+
+xrc param/latest
+
+xrc ui/lib/gridselect
+
+x log init tldr
+
+#     param:dsl <<A
+# subcommands:
+#     version|--version|-v        "Show the current version of the client, and the version of this specification that it implements"
+#     platform|--platform|-p      "Specifies the platform to be used to perform the action (either listing or searching) as an argument. If this option is specified, the selected platform MUST be checked first instead of the current platform as described below."
+#     update|--update|-u          "Updates the offline cache of pages. MUST be implemented if cache is supported."
+#     ls|--list|-l                "Lists all the pages in the current platform to the standard output."
+#     lang|--lang|-L              "Specifies the preferred language for the page returned. Overrides other language detection mechanisms. See the language section for more information."
+#     cat                         "Concatenate tldr file to standard output"
+# A
+
+# Reference: https://github.com/tldr-pages/tldr/blob/main/CLIENT-SPECIFICATION.md
+___x_cmd_tldr(){
+    param:advise tldr
+    param:dsl <<A
+subcommands:
+    update          "Update"
+    ls              "List all possible commands"
+    lang            "Set Prefered language or show languange candidates"
+    cat             "Concatenate tldr file to standard output"
+options:
+    --version|-v    "Show the current version of the client, and the version of this specification that it implements"
+    --platform|-p   "Specifies the platform to be used to perform the action (either listing or searching) as an argument. If this option is specified, the selected platform MUST be checked first instead of the current platform as described below."
+    --update|-u     "Updates the offline cache of pages. MUST be implemented if cache is supported."
+    --list|-l       "Lists all the pages in the current platform to the standard output."
+    --lang|-L       "Specifies the preferred language for the page returned. Overrides other language detection mechanisms. See the language section for more information."
+A
+    param:run
+
+    if [ -z "${PARAM_SUBCMD}" ]; then
+        if [ -n "$list" ]; then
+            ___x_cmd_tldr_list
+            return
+        fi
+
+        # TODO: ...
+
+        case "$1" in
+            :*)                 ___x_cmd_tldr cat "${1#:}" ;;
+            ""|-h|--help)       ___x_cmd_tldr help;;
+            --)                 shift; ___x_cmd_tldr_cat "$@" ;;
+            *)                  ___x_cmd_tldr cat "$@" ;;
+        esac
+        return
+    fi
+    tldr:debug "___X_CMD_ROOT: $___X_CMD_ROOT; ___X_CMD_ROOT_MOD: $___X_CMD_ROOT_MOD"
+    "___x_cmd_tldr_$PARAM_SUBCMD" "$@"
+}
+
+# EndSection
+
+# Section: current and download
+
+___X_CMD_TLDR_TMP="$___X_CMD_ROOT/.tmp/tldr"
+
+___x_cmd_tldr_current_or_update(){
+    local version
+    version="$(___x_cmd___tldr_current)" && printf "%s\n" "$version" && return 0
+    if ! ___x_cmd_tldr_update; then
+        tldr:warn --return=1 "Fail to show version for tldr pages unexisted."
+        return 1
+    fi
+    ___x_cmd___tldr_current
+}
+
+___x_cmd___tldr_current(){
+    local index="$___X_CMD_TLDR_TMP/index.yml"
+    if [ ! -f "$index" ]; then
+        return 1
+    fi
+
+
+    awk '{
+        if ($2 !~ /v[0-9]+\.[0-9]+(\.[0-9])?/) { exit(1); }
+        print($2); exit(0)
+    }'<"$index" && return
+
+    tldr:error "Latest version in index.yml is NOT valid: $(awk '{print "$2"; }' <"$index")"
+    return 1
+}
+
+___x_cmd_tldr_update()(
+    param:void
+    if ! ___x_cmd___tldr_download index.yml index.yml -; then
+        tldr:warn "Fail to update index.yml."
+        return 1
+    fi
+
+    local version
+    version="$(___x_cmd___tldr_current)"
+
+    ___x_cmd___tldr_download_pages "$version" pages
+)
+
+___x_cmd___tldr_download_pages()(
+    local version="${1:?Provide version}"
+    local page_lang="${2:?pages}"
+    x mkdirp "$___X_CMD_TLDR_TMP/$version/$page_lang"
+
+    if ! ___x_cmd___tldr_download "$version/$page_lang.tgz" "$version/$page_lang/$page_lang.tgz" "0"; then
+        tldr:warn "Fail to update $page_lang."
+        return 1
+    fi
+    if cd "$___X_CMD_TLDR_TMP/$version/$page_lang" && tar xvf "$page_lang.tgz" 2>/dev/null 1>&2; then
+        tldr:info "Version already UPDATED to $version."
+    fi
+)
+
+___x_cmd___tldr_download(){
+    local src="${1:?Provide source file}"
+    local dst="${2:-$1}"
+    local expiration="${3:-"1"}"
+    ___x_cmd_httpget_gitx x-cmd tldr main "dist/$src" "$___X_CMD_TLDR_TMP/$dst" "$expiration" 2>/dev/null
+}
+
+# EndSection
+
+# Section: lang and getfile
+______X_CMD_TLDR_LANG_PREFERED="${______X_CMD_TLDR_LANG_PREFERED:-en}"
+___x_cmd_tldr_lang(){
+    param:dsl <<A
+advise:
+    #1          candidate_exec_arr=( \\\$(___x_cmd_tldr_lang) )
+options:
+    #1          "use the selected file to rollback"
+A
+    param:run
+
+    if [ "$#" -eq 0 ]; then
+        printf "%s" "$______X_CMD_TLDR_LANG"
+        return
+    fi
+
+    local lang="${1:?Provide langauge}"
+    if [ "$lang" != en ]; then
+        local version
+        version="$(___x_cmd_tldr_current_or_update)" || return
+        ___x_cmd___tldr_download_pages "$version" "pages.$lang" || return
+    fi
+    ______X_CMD_TLDR_LANG_PREFERED="$lang"
+    tldr:info "Already setting prefered languange to $______X_CMD_TLDR_LANG_PREFERED"
+}
+
+___x_cmd___tldr_getfile(){
+    local cand="${1:?Provide command}"
+    local fp
+    if [ "$______X_CMD_TLDR_LANG_PREFERED" != en ]; then
+        fp="$___X_CMD_TLDR_TMP/$(___x_cmd___tldr_current)/pages.$______X_CMD_TLDR_LANG_PREFERED/$cand"
+        [ -f "$fp" ] && printf "%s" "$fp" && return
+        tldr:debug "Try using tldr page in en for regular file unexisted: $fp."
+    fi
+
+    fp="$___X_CMD_TLDR_TMP/$(___x_cmd___tldr_current)/$cand"
+    if [ -f "$fp" ]; then
+        printf "%s" "$___X_CMD_TLDR_TMP/$(___x_cmd___tldr_current)/$cand"
+        return 0
+    fi
+
+    if [ "$______X_CMD_TLDR_LANG_PREFERED" = en ]; then
+        tldr:info "tldr page unesited in en: $fp"
+    else
+        tldr:info "tldr page unesited after searching page in $______X_CMD_TLDR_LANG_PREFERED and en."
+    fi
+    return 1
+}
+
+
+______X_CMD_TLDR_LANG="
+en
+bs
+da
+de
+es
+fa
+fr
+hbs
+hi
+id
+it
+ja
+ko
+ml
+nl
+no
+pl
+pt_BR
+pt_PT
+ru
+sv
+ta
+th
+tr
+zh
+zh_TW
+"
+
+# EndSection
+
+# Section: locate document: lsname, ls, exact
+___x_cmd_tldr_lsname(){
+    ___x_cmd_tldr_ls | awk -v FS=/ '{ print substr($2, 1, length($2)-3); }' | sort | uniq
+}
+
+___x_cmd_tldr_ls()(
+    param:void
+    local version
+    version="$(___x_cmd_tldr_current_or_update)" || return
+
+    if cd "$___X_CMD_TLDR_TMP/$version/pages/"; then
+        local cmd="${1}"
+        case "$cmd" in
+            "")     ls */* ;;
+            */*)    ls */* | grep "$cmd" ;;
+            *)      ls */* | grep "\/$cmd" ;;
+        esac
+    fi
+)
+
+___x_cmd_tldr_exact()(
+    version="$(___x_cmd_tldr_current_or_update)" || return
+
+    if cd "$___X_CMD_TLDR_TMP/$version/"; then
+        local cmd="${1}"
+        case "$cmd" in
+            "")     ls */*/* ;;
+            */*)    ls */*/* | grep "$cmd" ;;
+            *)      ls */*/* | grep "\/$cmd.md" ;;
+        esac
+    fi
+)
+# EndSection
+
+# Section: cat
+___x_cmd_tldr_cat(){
+    param:dsl <<A
+advise:
+    #1          candidate_exec_arr=( \\\$(___x_cmd_tldr_lsname) )
+options:
+    #1          "use the selected file to rollback"
+A
+    param:run
+
+    local cand=
+    cand="$( ___x_cmd_tldr_exact "$@" )"
+    local number
+    number="$(printf "%s" "$cand" | awk 'END{ print NR; }')"
+
+    case $number in
+        0)  tldr:error "Not found.";
+            ___x_cmd_tldr_ls "$@" >&2   # TODO: ask whether to open app for tldr pages.
+            return 1 ;;
+        1)
+            if [ -t 1 ]; then
+                awk -v COLUMNS="$COLUMNS" -f "$___X_CMD_ROOT_MOD/awk/lib/u/wcwidth.awk" -f "$___X_CMD_ROOT_MOD/tldr/lib/tldr.awk"
+            else
+                cat
+            fi <"$(___x_cmd___tldr_getfile "$cand")"
+                ;;
+        *)
+            local tldr_file
+            local ___X_CMD_UI_GRIDSELECT_CURRENT_ITEM
+            local ___X_CMD_UI_GRIDSELECT_FINAL_COMMAND
+
+            ___x_cmd_ui_gridselect num ___x_cmd___tldr_cat_data
+
+            [ "$___X_CMD_UI_GRIDSELECT_FINAL_COMMAND" = "q" ] && return 0
+
+            if tldr_file="$(___x_cmd___tldr_getfile "$___X_CMD_UI_GRIDSELECT_CURRENT_ITEM")"; then
+                awk -v COLUMNS="$COLUMNS" -f "$___X_CMD_ROOT_MOD/awk/lib/u/wcwidth.awk" -f "$___X_CMD_ROOT_MOD/tldr/lib/tldr.awk" <"$tldr_file"
+            else
+                # We might adding a bug system to this kind of situation.
+                tldr:error "Select a candidate which doesn't exist in local disk due to bug or deletion on folder during the execution of this function: $___X_CMD_TLDR_TMP/$version/pages/."
+                # Bug self detect: "$( ___x_cmd_tldr_exact "$@" | grep "$___X_CMD_UI_GRIDSELECT_CURRENT_ITEM")"
+                return 1
+            fi
+            ;;
+    esac
+}
+
+___x_cmd___tldr_cat_data(){
+    printf "%s\n" "Found:
+$cand
+---
+---"
+}
+# EndSection
+
+xrc setmain ___x_cmd_tldr

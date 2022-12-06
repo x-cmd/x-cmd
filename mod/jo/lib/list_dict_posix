@@ -1,0 +1,115 @@
+# Start this at one time.
+
+# jo list '"true"' '"false"'
+# jo list /true/ /false/
+___x_cmd_jo_list(){
+    local IFS
+    IFS="$(printf "\001")"
+    printf "%s" "$*" | awk -v RS="$IFS" '
+function quote( a ){
+    gsub(/"/, "\\\"", a)
+    gsub(/\n/, "\\n", a)
+    gsub(/\r/, "\\r", a)
+    gsub(/\b/, "\\b", a)
+    gsub(/\t/, "\\t", a)
+    gsub(/\v/, "\\v", a)
+    return "\"" a "\""
+}
+
+{
+    res = $0
+    if (res ~ /^:/) {
+        res = quote(substr(res,2))
+    } else if (res !~ /(^\{.*}$)|(^\[.*]$)/) {
+        if (res !~ /^([-+]?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?)|(true)|(false)|(null)$/) {
+            res = quote(res)
+        }
+    }
+    gsub(",", "\n,\n", res)
+    s= (s == "") ? res : ( s "\n,\n" res )
+}
+END{
+    print "[\n" s "\n]"
+}
+'
+}
+
+___x_cmd_jo_dict(){
+    local ___arg
+
+    local IFS=
+    IFS="$(printf "\002")"
+
+    local ___RS
+    ___RS="$(printf "\001")"
+
+    {
+        printf "%s${___RS}" "$*"
+        for ___arg in "$@"; do
+            case "$___arg" in
+                *=*)          ;;
+                *:*)          ;;
+                *)
+                    printf "%s${___RS}" "$___arg"
+                    eval 'printf "%s${___RS}"' " \"\$$___arg\""
+                ;;
+            esac
+        done
+    } | awk -v RS="$___RS" '
+function quote( a ){
+    gsub(/"/, "\\\"", a)
+    gsub(/\n/, "\\n", a)
+    gsub(/\r/, "\\r", a)
+    gsub(/\b/, "\\b", a)
+    gsub(/\t/, "\\t", a)
+    gsub(/\v/, "\\v", a)
+    return "\"" a "\""
+}
+NR==1{
+    gsub(/\n/, "\003", $0)
+    argl = split($0, argv, "\002")
+}
+
+NR>1{
+
+    if (NR%2 == 0) {
+        arg = $0
+    } else {
+        env[ arg ] = $0
+    }
+}
+
+END {
+    printf "{\n"
+    for (i=1; i<=argl; ++i) {
+        if (i != 1) printf ",\n"
+        var = argv[ i ]
+        gsub("\003", "\n", $0)
+        if (var ~ /=/) {
+            idx = index(var, "=")
+            key = substr(var, 1, idx-1)
+            value = substr(var, idx+1)
+
+            if (value !~ /(^\{.*}$)|(^\[.*]$)/) {
+                if(value !~ /^([-+]?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?)|(true)|(false)|(null)$/) {
+                    value = quote(value)
+                }
+            }
+            printf( "%s\n:\n%s\n", quote(key), value )
+        } else if (var ~ /:/) {
+            idx = index(var, ":")
+            key = substr(var, 1, idx-1)
+            value = substr(var, idx+1)
+
+            printf( "%s\n:\n%s\n", quote(key), quote(value) )
+        } else {
+            value = env[var]
+            if (value ~ /^(true)|(false)|(null)$/) printf( "%s\n:\n%s\n", quote(var), value )
+            else printf( "%s\n:\n%s\n", quote(var), quote(value) )
+        }
+    }
+    printf "}\n"
+}
+'
+
+}

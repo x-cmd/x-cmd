@@ -1,0 +1,62 @@
+# shellcheck    shell=sh            disable=SC3043,SC1090      # xrc
+
+___x_cmd_pkg_deactivate(){
+    ___x_cmd_pkg_deactivate___min "$@"
+}
+
+___x_cmd_pkg_deactivate___min(){
+    local name="${1:?Provide pkg name}"
+    local version
+    local _line
+    while read -r _line; do
+        [ -n "$_line" ] || continue
+        if [ "$name" = "${_line%=*}" ]; then
+            version="${_line#*=}"
+        fi
+    done <<A
+$___X_CMD_PKG_ACTIVATE___LIST
+
+A
+
+    if [ -z "$version" ]; then
+        pkg:warn "$name had been deactivated"
+        # TODO: What should I return ?
+        return 0
+    fi
+
+    local osarch="${3:-${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}}"
+    local script_path
+    if script_path="$(___x_cmd_pkg___get_script_path "$name" "$version" "$osarch" deactivate)"; then
+        pkg:debug "Deactivate running $script_path for $name $version"
+        . "${script_path}" || {
+             pkg:error "Source $script_path failed" ; return 1
+        }
+    else
+        ___x_cmd_pkg_deactivate___min_default "$name" "$version" || {
+        pkg:error "Deactivate $name $version failed"
+        return 1
+    }
+    fi
+
+    local tmp="${___X_CMD_PKG_ACTIVATE___LIST#*
+"${name}"=*
+}"
+
+    if [ "$tmp" != "$___X_CMD_PKG_ACTIVATE___LIST" ]; then
+        ___X_CMD_PKG_ACTIVATE___LIST="${___X_CMD_PKG_ACTIVATE___LIST%%
+"${name}"=*
+}${tmp}"
+    fi
+}
+
+___x_cmd_pkg_deactivate___min_default(){
+    local pkg="${1:?Provide pkg name}"
+    local version="${2:?Provide version}"
+    local bin_path
+    bin_path="$(___x_cmd_pkg_xbin_path "$pkg" "$version")"
+    bin_path="${bin_path%/*}"
+    if ! x path rm "$bin_path" ; then
+        pkg:error "Remove bin path failed for $pkg $version"
+        return 1
+    fi
+}

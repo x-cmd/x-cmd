@@ -1,0 +1,110 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_gcode_project_branch(){
+    param:subcmd ___x_cmd_gcode_project_branch             \
+        "ls|l"              "list repo branch"          \
+        "info|i"            "get repo branch info"      \
+        default             "set default branch"        \
+        protection          "protection branch management"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_project_branch _param_help_doc
+    return 1
+}
+
+# Section:list & info
+___x_cmd_gcode_project_branch_ls(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --project       "The ID or URL-encoded path of the project owned by the authenticated user" <>
+    --search        "Return list of branches containing the search string"                      <>=""
+
+    --per_page      "Results per page"                                                  <>=30
+    --page          "Page number of the results to fetch."                              <>=1
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gcode_param_init_owner_project
+
+    ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json BranchName=.name Protected=.protected Default=.default LastCommit=.commit.short_id -- $@' \
+         ___x_cmd_gcode_get_multi "/projects/$owner_project/repository/branches" search
+}
+
+___x_cmd_gcode_project_branch_info(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1          "branch name"                                                               <>:Branch
+    --project   "The ID or URL-encoded path of the project owned by the authenticated user" <>
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gcode_param_init_owner_project
+    ___x_cmd_gcode_get_multi "/projects/${owner_project}/repository/branches/$1" | _____x_cmd_gcode_branch_ui_utils Info
+}
+
+# EndSection
+
+# TODO: test
+# Section: default
+___x_cmd_gcode_project_branch_default(){
+    param:dsl       '
+options:
+    #1          "branch name"                                   <>
+    --project   "The ID or URL-encoded path of the project."    <>:RepoName
+
+    --json|-j   "output json data"
+
+'
+    param:run
+
+    local default_branch="$1"
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json +default_branch)"
+
+    ___x_cmd_gcode_param_init_owner_project
+    ___x_cmd_gcode_curl put "/projects/$owner_project" gen_gcode_json | _____x_cmd_gcode_branch_ui_utils Default
+}
+# EndSection
+
+# Section: branch utils
+_____x_cmd_gcode_branch_ui_utils()(
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gcode_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Info)
+            data="Protected=.protected sha=.commit.short_id merged=.merged url=.web_url"
+            msg="get repo $project branch info success"
+            error_msg="get repo $project branch info fail"
+            ;;
+        Rename)
+            msg="branch renamed from $branch to $new_name successfully"
+            error_msg="${owner_project} branch rename from $branch to $new_name failed"
+            ;;
+        Default)
+            msg="Successfully set repo default branch"
+            error_msg="Failed to set repo default branch"
+            ;;
+    esac
+    x jo env . name=.name error=. $data
+    if [ -n "$name" ]; then
+        ___x_cmd_ui_tf true "$msg"  ${name+"Name: $name"}       ${Protected+"Protected: $Protected"} ${merged+"Merged: $merged"} \
+                                    ${sha+"LastCommit: $sha"}    ${url+"Url: $url"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)
+# EndSection

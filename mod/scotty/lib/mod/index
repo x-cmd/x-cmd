@@ -1,0 +1,204 @@
+# shellcheck shell=sh disable=SC3043,2120
+
+xrc:mod:lib scotty   mod/other mod/env
+
+___x_cmd_scotty_mod(){
+    param:subcmd ___x_cmd_scotty_mod                        \
+        wc          "wc"                                    \
+        build       "advise_t_json"                         \
+        build0       "advise_t_json"                        \
+        tgz         "package"                               \
+        test        "test"                                  \
+        install     "cp file to home folder"                \
+        lsfile      "ls file to p"                          \
+        push        "push all"                              \
+        lsfile0     "ls file to p"
+
+    x:trace scotty/mod
+    param:subcmd:try
+
+    # TODO: print help
+    # param:run
+    case "$1" in
+        -h|--help)              shift; ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/scotty/res/advise.jso" mod ;;
+        _x_cmd_advise_json)     eval "$(___X_CMD_PARAM_AWK_PATH="$___X_CMD_ROOT_MOD/param/lib/awk/advise.awk" ___x_cmd_param_exec_dsl "$@")" ;;
+        *)                      return 1
+    esac
+}
+
+___x_cmd_scotty_mod_name_(){
+    ___X_CMD_SCOTTY_MOD_NAME_="$(x git meta name)"
+    ___X_CMD_SCOTTY_MOD_NAME_="${___X_CMD_SCOTTY_MOD_NAME_%.git}"
+    ___X_CMD_SCOTTY_MOD_NAME_="${___X_CMD_SCOTTY_MOD_NAME_##*/}"
+}
+
+___x_cmd_scotty_mod_name(){
+    param:void
+
+    local ___X_CMD_SCOTTY_MOD_NAME_
+    ___x_cmd_scotty_mod_name_ || return 1
+    printf "%s\n" "$___X_CMD_SCOTTY_MOD_NAME_"
+}
+
+___x_cmd_scotty_mod_push(){
+    param:void
+    git push "git@gitee.com:x-bash/$(___x_cmd_scotty_mod_name)" "$(x git meta branch)"
+    git push "git@github.com:x-bash/$(___x_cmd_scotty_mod_name)" "$(x git meta branch)"
+}
+
+# Section: lsfile install
+___x_cmd_scotty_mod_lsfile0()(
+    param:void
+    IFS="
+"
+
+    cd "$(x wsroot)" || exit
+
+    local i
+    command find . -type f  -regex './.*\.jso'          \
+                    -or     -regex './latest'           \
+                    -or     -regex './lib/.*'           \
+                    -or     -regex './v.*/.*'           \
+                    -or     -regex './_v.*/.*'          \
+                    -or     -regex './third-party/.*' | \
+    while read -r i; do
+        [ "$i" = "${i#*_test*}" ] || continue
+        # [ "$i" != "${i%.test}" ] && continue
+        [ ! -f "$i" ] || printf "%s\n" "$i"
+    done
+)
+
+___x_cmd_scotty_mod_lsfile()(
+    param:void
+    x:trace scotty/mod/lsfile
+    if [ -f "$(x wsroot)/.x-cmd/lsfile" ]; then
+        # TODO: using engine to directly run the local file
+        X_DISABLE_WORKSPACE_EXECUTION_CONFIRMATION=1 x ws lsfile
+    else
+        ___x_cmd_scotty_mod_lsfile0
+    fi
+)
+# EndSection
+
+# Section: install
+___x_cmd_scotty_mod_install_tmp(){
+    local src="$2"
+    local dst="$1/$src"
+    scotty:debug "$(printf "Moving:   %-30s\t%s\n" "$src" "$dst")"
+    mkdir -p "$(dirname "$dst")"
+    cp "$src" "$dst"
+}
+
+___x_cmd_scotty_mod_code(){
+    ___X_CMD_YANFA_MOD_CODE_LINE=0
+    ___X_CMD_YANFA_MOD_CODE_CHAR=0
+    ___X_CMD_YANFA_MOD_CODE_BYTE=0
+    eval "$(xargs wc 2>/dev/null | tail -n1 | command awk '{
+        print "___X_CMD_YANFA_MOD_CODE_LINE=" $1
+        print "___X_CMD_YANFA_MOD_CODE_CHAR=" $2
+        print "___X_CMD_YANFA_MOD_CODE_BYTE=" $3
+    }')"
+}
+
+___x_cmd_scotty_mod_install()(
+    param:void
+    x:trace scotty/mod/install
+    local current_folder
+    # current_folder="$HOME/.x-cmd/$(basename "$(x wsroot)")"
+    current_folder="$___X_CMD_ROOT_MOD/$(basename "$(x wsroot)")"
+    ___x_cmd_scotty_mod_build
+    [ ! -d "$current_folder" ] || (
+        rm -rf "$current_folder" && mkdir -p "$current_folder"
+    )
+
+    if [ -f "$(x wsroot)/.x-cmd/install" ]; then
+        scotty:info "Running in workspace: install"
+        # TODO: using engine to directly run the local file
+        x ws install "$@"
+    else
+        scotty:info "Running module scotty subcmd: install to $current_folder"
+        ___x_cmd_scotty_mod_lsfile | {
+            awk=0
+            sh=0
+            txt=0
+            json=0
+            jso=0
+            total=0
+
+            sh_list=""; awk_list="";
+            while read -r line; do
+                res="$res\t$line"
+                total=$(( total + 1 ))
+                case "$line" in
+                    *.txt)      txt=$((     txt  +1      )) ;;
+                    *.awk)      awk=$((     awk  +1      ))
+                                awk_list="$awk_list $line"
+                                ;;
+                    *.json)     json=$((    json +1      )) ;;
+                    *.jso)      jso=$((    jso +1      )) ;;
+                    *)          sh=$((      sh   +1      ))
+                                sh_list="$sh_list $line"
+                                ;;
+                esac
+                ___x_cmd_scotty_mod_install_tmp "$current_folder" "$line"
+            done
+
+            ___x_cmd_scotty_mod_code <<A
+$sh_list
+A
+            sh_line="$___X_CMD_YANFA_MOD_CODE_LINE"
+            ___x_cmd_scotty_mod_code <<A
+$awk_list
+A
+            awk_line="$___X_CMD_YANFA_MOD_CODE_LINE"
+            scotty:info "Installed $total files: sh=$sh awk=$awk json=$json jso=$jso txt=$txt"
+            scotty:info "Lines: total=$total  sh=${sh_line} awk=${awk_line}"
+        }
+
+        # buggy code
+        # ___x_cmd_scotty_mod_lsfile | ___x_cmd_args 1 ___x_cmd_scotty_mod_install_tmp "$current_folder"
+    fi
+)
+
+# EndSection
+
+# Section: pkg
+___x_cmd_scotty_mod_tgz(){
+    param:void
+    local WSROOT;   WSROOT="$(x wsroot)"
+
+    local scope;    scope="$(___x_cmd_scotty_mod_name)";  scope="${scope#*/}"
+
+    x mkdirp "$WSROOT/dist"
+
+    ___x_cmd_scotty_mod_lsfile | sort | uniq | x z "$scope.tgz" 2>/dev/null &&
+        mv "$scope.tgz" "$WSROOT/dist/$scope.tgz" &&
+        ls -alh "$WSROOT/dist/$scope.tgz"
+}
+# EndSection
+
+# Section: common: wc/test
+___x_cmd_scotty_mod_wc(){
+    param:void
+    x:trace scotty/mod/wc
+    ___x_cmd_scotty_mod_lsfile "$@" | xargs wc | sort -n -r | less
+}
+# EndSection
+
+# Section: build
+
+# In the future. We should use docker to build.
+
+___x_cmd_scotty_mod_build(){
+    param:void
+    ___x_cmd_scotty_mod_env_build "$@"
+}
+
+___x_cmd_scotty_mod_build0()(
+    param:void
+    x cd "$(x wsroot)" || return 1
+    ___x_cmd_advise_gen_advise "$(___x_cmd_scotty_mod_name)" "$(x wsroot)"
+)
+# EndSection
+
+___x_cmd_scotty_mod_test(){  param:void ; }

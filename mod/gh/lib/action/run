@@ -1,0 +1,136 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_gh_action_run() {
+    param:subcmd  ___x_cmd_gh_action_run                    \
+        "ls|l"      "lists the workflows in a repository."  \
+        view        "View the summary of a workflow"        \
+        log         "log"                                   \
+        download    "download"
+    param:subcmd:try
+    param:run
+    ___x_cmd_gh_action_run _param_help_doc
+    return 1
+}
+
+___x_cmd_gh_action_run_ls() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+type:
+    run_status = Success Failure
+options:
+    --repo              "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+
+    --branch            "Returns workflow runs associated with a branch."                       <>=""
+    --actor             "returns someone workflow runs."                                        <>:Username=""
+    --event             "Returns workflow run triggered by the event you specify."              <>=""
+    --sta|--status      "Returns workflow runs with the check run status."                      <>=""
+    --created           "Returns workflow runs created within the given date-time range."       <>=""
+    --check_suite_id    "Returns workflow runs with the check_suite_id that you specify."       <>=""
+    --exclude_pull_requests
+
+    --page              "Page number of the results to fetch."                                  <>="1"
+    --per_page          "Results per page (max 100)"                                            <>="30"
+    --json|-j           "output json data"
+A
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+
+    local ___run_ls_tmp="___x_cmd_gh_curl get /repos/$owner_repo/actions/runs actor branch event sta created check_suite_id exclude_pull_requests"
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
+        ENFORCE_JSON=1 $___run_ls_tmp
+    else
+        ___X_CMD_UI_STATIC=1 ___ui_table_json Id=.id Name=.name Conclusion=.conclusion Event=.event Branch=.head_branch Created=.created_at -- \
+            "$___run_ls_tmp | x jo q0 .workflow_runs"
+    fi
+}
+
+___x_cmd_gh_action_run_view() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+type:
+    Filters = latest all
+options:
+    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --run_id    "Provide run_id"                                                        <>:Number
+    --filter    "Filters jobs by their completed_at timestamp"                          <>:Filters="latest"
+
+    --page      "Page number of the results to fetch."                                  <>:Numbers="1"
+    --per_page  "Results per page (max 100)"                                            <>:Per_page="30"
+    --json|-j   "output json data"
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+
+    local ___run_view_tmp="___x_cmd_gh_curl get /repos/${owner_repo}/actions/runs/${run_id}/jobs filter per_page page"
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ENFORCE_JSON=1 $___run_view_tmp
+    else
+        $___run_view_tmp | (
+            printf "%s\n" "JOBS"
+            # TODO:___x_cmd_ui_tf
+            x jo env .jobs.\* .id .name .conclusion -- '___x_cmd_ui_tf true $conclusion $name "(ID $id)"'
+        )
+    fi
+}
+
+___x_cmd_gh_action_run_log() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+type:
+    Filters = latest all
+options:
+    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --run_id    "Provide run_id"                                                        <>:RunID
+    --logall    ""
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    if ___x_cmd_gh_curl download "/repos/${owner_repo}/actions/runs/${run_id}/logs" "$___X_CMD_ROOT/.actions/$run_id/$run_id-log.zip"; then
+    x uz "$___X_CMD_ROOT/.actions/$run_id/$run_id-log.zip" "$___X_CMD_ROOT/.actions/$run_id"
+        cat "$___X_CMD_ROOT"/.actions/"$run_id"/*.txt | awk '{
+          date=substr($0, 3, 8)
+          time=substr($0, 12, 8)
+          idx=index($0, " ")
+          gsub("-", "/", date)
+          print "\033[90m" date "/" time "\033[0m" substr($0, idx)
+      }' | less -r
+        rm -rf "$___X_CMD_ROOT/.actions/$run_id"
+    fi
+}
+
+___x_cmd_gh_action_run_download() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+
+    --per_page  "Results per page (max 100)"                                        <>:Per_page="30"
+    --page      "Page number of the results to fetch."                              <>:Numbers="1"
+    --json|-j   "output json data"
+A
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    local ___run_download_tmp=" ___x_cmd_gh_curl get /repos/$owner_repo/actions/artifacts per_page page"
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ENFORCE_JSON=1 $___run_download_tmp
+    else
+        ___ui_table_json Id=.id Name=.name Bytes=.size_in_bytes -- "$___run_download_tmp | x jo q0 .artifacts"
+        if [ "$___X_CMD_UI_TABLE_FINAL_COMMAND" = "ENTER" ];then
+            ___x_cmd_ui_yesno "Make sure you need to download $___X_CMD_UI_TABLE_CUR_LINE ?" || return
+            ___x_cmd_gh_curl download "/repos/${owner_repo}/actions/artifacts/${___X_CMD_UI_TABLE_CUR_LINE%%*}/zip" "./${___X_CMD_UI_TABLE_CUR_LINE%%*}.zip"
+        elif [ "$___X_CMD_UI_TABLE_FINAL_COMMAND" = "d" ];then
+            ___x_cmd_ui_yesno "Sure you need to delete $___X_CMD_UI_TABLE_CUR_LINE?" || return
+            ___x_cmd_gh_curl delete "/repos/${owner_repo}/actions/artifacts/${___X_CMD_UI_TABLE_CUR_LINE%%*}"| (
+                x jo env . error=.
+                if ___x_cmd_gh_http_error; then
+                    ___x_cmd_ui_tf  true "delete artifacts $___X_CMD_UI_TABLE_CUR_LINE success"
+                else
+                    ___x_cmd_ui_tf false "delete artifacts $___X_CMD_UI_TABLE_CUR_LINE fail" "ErrorMsg:$error"
+                    return 1
+                fi
+            )
+        fi
+    fi
+}

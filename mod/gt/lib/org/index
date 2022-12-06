@@ -1,0 +1,219 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+# define lazy loader
+# ___x_cmd_definelazyloader   ___x_cmd_gt_org_member           gt/lib/org/member
+
+___x_cmd_gt_org(){
+    param:scope     ___x_cmd_gt
+    param:subcmd ___x_cmd_gt_org                            \
+        "ls|l"                  "List all org"              \
+        "info|i"                "Show org information"      \
+        "create|c"              "Create org"                \
+        issue                   "List all issues"           \
+        quit                    "Quit org"                  \
+        repo                    "org repo       management" \
+        membership              "org membership management" \
+        apply                   "manage org by declare configure"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_org _param_help_doc
+    return 1
+}
+
+# Section: List & Info
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5UserOrgs
+___x_cmd_gt_org_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --page          "page"                                          <>=""
+    --per_page      "per_page"                                      <>=""
+    --admin         "list only authorized users managed org"
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    ___gt_ui_mutual '___ui_table_json Id=.id Name=.name FollowCount=.follow_count Url=.repos_url -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/user/orgs" admin
+}
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5OrgsOrg
+___x_cmd_gt_org_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1            "Provide organization path"     <>=""
+    --json|-j     "output origin json data"
+'
+    param:run
+
+    ___x_cmd_gt_curl get "https://gitee.com/api/v5/orgs/${1:?"Please provide organization path"}" | ___x_cmd_gt_org_info_status_handler
+}
+
+# shellcheck disable=SC2120,SC2154
+___x_cmd_gt_org_info_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        return
+    fi
+    (
+        x jo env . id=.id name=.name public=.public follow_count=.follow_count owner=.owner.name gt_resp_body=.
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true    "Success" "id: $id" "name: $name" "public: $public" "follow_count: $follow_count" "owner: $owner"
+        else
+            ___x_cmd_ui_tf false   "Couldn't find any organization info data by $org" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: Create
+# It is very rare TODO: batch?
+# shellcheck disable=SC2181
+# https://gitee.com/api/v5/swagger#/postV5UsersOrganization
+___x_cmd_gt_org_create(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1              "organization name"                 <>
+    --org           "organization path"                 <>=""
+    --description   "description"                       <>=""
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    org=${org:-$1}
+    local gen_gt_json
+    local name
+    name="$1"
+    gen_gt_json="$(param:option2json +name)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl post "https://gitee.com/api/v5/users/organization" "gen_gt_json" | ___x_cmd_gt_org_create_status_handler
+}
+
+# shellcheck disable=SC2120,SC2154
+___x_cmd_gt_org_create_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . id=.id gt_resp_body=.
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true   "Creating Organization Successfully"
+        else
+            ___x_cmd_ui_tf false  "Creating organization failure by $org." "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+
+}
+# EndSection
+
+___x_cmd_gt_org_repo(){
+    param:subcmd ___x_cmd_gt_org_repo           \
+        "ls|l"          "List org repo"                            \
+        "create|c"      "Create org repo"                          \
+        app             "Interactive UI show organization repo"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_org_repo _param_help_doc
+    return 1
+}
+
+# Section: Repo List
+# TODO: resolve `--limt` option cal offset list
+# https://gitee.com/api/v5/swagger#/getV5OrgsOrgRepos
+___x_cmd_gt_org_repo_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1              "Please provide organization"       <>
+    --type          "type"                              <>:RepoAllAccess="all"
+    --page          "page"                              <>="1"
+    --per_page      "per_page"                          <>="30"
+    --json|-j       "output origin json data"
+'
+    param:run
+    local ___gt_error_msg="Couldn't find any data by: ${1:?"Please provide organization path"}"
+
+    ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json RepoPath=.full_name IsPrivate=.private Url=.html_url -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/orgs/$1/repos" type
+
+}
+# EndSection
+
+# Section: Repo App
+# https://gitee.com/api/v5/swagger#/getV5OrgsOrgRepos
+___x_cmd_gt_org_repo_app(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1              "Please provide organization"       <>:Address
+    --type          "type"                              <>:RepoAllAccess="all"
+    --page          "page"                              <>=""
+    --per_page      "per_page"                          <>=""
+'
+    param:run
+    local org="$1"
+
+    local ___gt_error_msg="Couldn't find any data by: ${1}"
+    ___gt_ui_mutual '___ui_table_json Name=.name public=.public OwnerName=.owner.name DefaultBranch=.default_branch \
+        OpenIssuesCount=.open_issues_count license=.license Url=.html_url -- $@' \
+        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/orgs/$1/repos" type
+
+    ___x_cmd_gt_org_repo_app_status_handler "$@"
+}
+
+___x_cmd_gt_org_repo_app_status_handler(){
+    if [ ! -t 1 ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    local _sep
+    _sep=$(printf "\003")
+    case "$___X_CMD_UI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_UI_TABLE_CUR_ROW_HEADER: $___X_CMD_UI_TABLE_CUR_ITEM"          ;;
+            "c")            ___x_cmd_gt_org_repo_add --org "$org"                                                   ;;
+            "u")            ___x_cmd_gt_repo_edit --access "" "${org}/${___X_CMD_UI_TABLE_CUR_LINE%%"$_sep"*}"      ;;
+            "d")            ___x_cmd_gt_repo_rm     "${org}/${___X_CMD_UI_TABLE_CUR_LINE%%"$_sep"*}"                ;;
+            "r")            NO_CACHE=1 ___x_cmd_gt_org_repo_ls "$@"                                                 ;;
+            *)              return  ;;
+    esac
+}
+# EndSection
+
+# Section: quit
+# shellcheck disable=SC2181,SC2034
+# https://gitee.com/api/v5/swagger#/deleteV5UserMembershipsOrgsOrg
+___x_cmd_gt_org_quit(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1      "orgs"
+'
+    param:run
+
+    local org
+    local gt_resp_body
+    for org in "$@"; do
+        if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/user/memberships/orgs/${org##*/}" | ___x_cmd_gt_curl_handler_no_content; then
+            ___x_cmd_ui_tf true  "Quit $org organization successfully."
+        else
+            ___x_cmd_ui_tf false "Quit $org organization failure" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    done
+}
+# EndSection

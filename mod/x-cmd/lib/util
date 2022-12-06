@@ -1,0 +1,346 @@
+
+
+___x_cmd_abspath_(){
+    local target_path="${1:?Please provide path}"
+    case "$target_path" in
+        /)          ___X_CMD_ABSPATH_=/ ;;
+        *)
+                    target_path="${target_path%/}"
+                    local basename="${target_path##*/}"
+                    if [ "$basename" = "$target_path" ]; then
+                        ___X_CMD_ABSPATH_="$PWD/$target_path"
+                    else
+                        command cd "${target_path%/*}" || return
+                        ___X_CMD_ABSPATH_="$PWD/$basename"
+                        command cd "$OLDPWD" || return
+                    fi
+    esac
+}
+
+___x_cmd_abspath(){
+    local ___X_CMD_ABSPATH_
+    ___x_cmd_abspath_ "$@" && printf "%s\n" "$___X_CMD_ABSPATH_"
+    # local target_path="${1:-Please provide path}"
+    # # $(dirname "$filepath")/
+    # if [ "${target_path#/}" = "${target_path}" ]; then
+    #     printf "%s" "$(cd "$(dirname "$target_path")" && pwd)/$(basename "$target_path")"
+    # else
+    #     printf "%s" "$target_path"
+    # fi
+}
+
+___x_cmd_which_panic(){
+    local ___X_CMD_WHICH_ONE_RESULT
+    if ! ___x_cmd_which_one "$p"; then
+        printf "%s\n" "Fail to find path for $p" >&2
+        return 1
+    else
+        printf "%s\n" "$___X_CMD_WHICH_ONE_RESULT"
+    fi
+}
+
+___x_cmd_which(){
+    local p
+    for p in "$@"; do
+        ___x_cmd_which_panic || return 1
+    done
+}
+
+___x_cmd_shell_exec(){
+    local shell="${1:?Provide shell}"
+    shift
+    if [ -x "/bin/$shell" ]; then
+        # "/bin/$shell" $X_CMD_SRC_PATH/boot && ___x_cmd_source "$@"
+        "/bin/$shell" "$@"
+    elif [ -x "/usr/bin/$shell" ]; then
+        # "/usr/bin/$shell" $X_CMD_SRC_PATH/boot && ___x_cmd_source "$@"
+        "/usr/bin/$shell" "$@"
+    else
+        command "$shell" "$@"
+    fi
+}
+
+
+___x_cmd_wreadl(){
+    case "$1" in
+        \"*\")      local e; while read -r e; do    eval printf '"%s\n"' "$1" ; done ;;
+        *)          local e; while read -r e; do    "$@" ;                      done
+    esac
+}
+
+___x_cmd_reval(){
+    local ___X_CMD_REVAL_CODE
+    while read -r ___X_CMD_REVAL_CODE; do
+        eval "$___X_CMD_REVAL_CODE"      # Notice: If read encountering EOF, return 1
+        [ $# -eq 0 ] || "$@"
+    done
+}
+
+
+# f(){ seq "${1:-1000}" | while read -r aaa; do  :; done   }; time f; 1ms = 100 read
+___x_cmd_readl(){
+    local code="read -r ${1:?At least provide one argument}"; shift
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --)
+                shift
+                break ;;
+            *)
+                code="$code && read -r $1"
+                shift ;;
+        esac
+    done
+
+    if [ "$#" -eq 0 ]; then
+        eval "$code"
+    else
+        while eval "$code"; do
+            ___x_cmd_eval "$@"
+        done
+    fi
+}
+
+
+# testcase: . util; ___x_cmd_writeml "$t" cde  | { ___x_cmd_readml c d; echo "|$c|"; echo "$d"; }
+
+___X_CMD_MULTIPLELINE_SEP="${___X_CMD_UNSEENCHAR_003}${___X_CMD_UNSEENCHAR_002}${___X_CMD_UNSEENCHAR_005}"
+___x_cmd_readml___readone(){
+    local res
+    local line
+    while :; do
+        read -r line || return $?
+        if [ "$line" = "$___X_CMD_MULTIPLELINE_SEP" ]; then
+            eval "$1=\"\$res\""
+            return 0
+        fi
+
+        if [ -z "$res" ]; then  res="$line"
+        else                    res="$res
+$line"
+        fi
+    done
+}
+
+___x_cmd_readml(){
+    local code="___x_cmd_readml___readone ${1:?At least provide one argument}"; shift
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --)
+                shift
+                break ;;
+            *)
+                code="$code && ___x_cmd_readml___readone $1"
+                shift ;;
+        esac
+    done
+
+    if [ "$#" -eq 0 ]; then
+        eval "$code"
+    else
+        while eval "$code"; do
+            ___x_cmd_eval "$@"
+        done
+    fi
+}
+
+___x_cmd_writeml(){
+    if [ "$#" -eq 0 ]; then
+        cat
+        printf "\n%s\n" "$___X_CMD_MULTIPLELINE_SEP"
+    else
+        while [ $# -gt 0 ]; do
+            printf "%s\n%s\n" "$1" "$___X_CMD_MULTIPLELINE_SEP"
+            shift
+        done
+    fi
+}
+
+___x_cmd_validenvname(){
+    local IFS=_
+    eval "___x_cmd_validenvname$*___= 2>/dev/null" || return 1
+}
+
+___x_cmd___convert2second_(){
+    _1=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            *s)                             _1=$(( _1 + ${1%s} )) ;;
+            *m)                             _1=$(( _1 + ${1%m} * 60 )) ;;
+            *h)                             _1=$(( _1 + ${1%h} * 3600 )) ;;
+            *d)                             _1=$(( _1 + ${1%d} * 86400 )) ;;
+            1*|2*|3*|4*|5*|6*|7*|8*|9*)     _1=$(( _1 + ${1} )) ;;
+            *)
+                printf "%s\n" "Expecting arg with optional suffix of (s)econds, (m)inutes, (h)ours, or (d)ays\n" >&2
+                return 1
+        esac
+        shift
+    done
+}
+
+___x_cmd_sleep(){
+    local _1
+    if ___x_cmd___convert2second_ "$@"; then
+        x:debug "Sleep in seconds: $_1"
+        command sleep "$_1"
+    fi
+}
+
+___x_cmd_shudo(){
+    local ___CODE="
+. $___X_CMD_ROOT/X;
+"
+    local IFS=" "
+    sudo "${SHELL}" -c "$___CODE
+$*"
+}
+
+
+# Section : help and advise.json
+___x_cmd_x_cmd_help(){
+#     printf "x     x-bash core function.
+#     Uasge:  x <subcommand> [<subcommand>...]
+#     Please visit our homepage for more information: https://x-cmd.com
+# " >&2;
+
+    xrc advise/lib/gen_help
+    ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/x-cmd/res/advise.jso" "$@" >&2;
+}
+# EndSection
+
+# Section : varset
+
+___x_cmd_varset(){
+    local _______variable_name="${1}"
+    if [ "$#" -eq 1 ]; then
+        eval printf "%s" "\"\$$_______variable_name\""
+        return
+    fi
+
+    local result
+    shift 1
+
+    local ___X_CMD_EVAL_CON_SEPERATOR
+    ___X_CMD_EVAL_CON_SEPERATOR="$(printf "\001")"
+
+    result="$("$@"; printf "${___X_CMD_EVAL_CON_SEPERATOR}")"
+    result="${result%${___X_CMD_EVAL_CON_SEPERATOR}}"
+    eval "$_______variable_name=\"\$result\""
+}
+
+___x_cmd_varset_without_end(){
+    local _______variable_name="${1}"
+    if [ "$#" -eq 1 ]; then
+        eval printf "%s" "\"\$$_______variable_name\""
+        return
+    fi
+
+    local result
+    shift 1
+    result="$("$@")"
+    eval "$_______variable_name=\"\$result\""
+}
+
+# EndSection
+
+
+# Section: until
+# x until 3/12 [ -e "file" ]
+
+___x_cmd_until_is_int(){
+    if [ "$#" -gt 0 ] && { [ "$1" -gt 0 ] || [ "$1" -le 0 ]; }; then
+        return 0
+    fi 2>/dev/null
+    return 1
+}
+
+___x_cmd_until(){
+    local ___x_cmd_until___local_interval=1
+    local ___x_cmd_until___local_timeout=1000000
+    if ___x_cmd_until_is_int "$@" 2>/dev/null; then
+        ___x_cmd_until___local_interval="$1"
+        shift
+    else
+        case "$1" in
+            */*)
+                local ___x_cmd_until___local_a="${1%%/*}"
+                local ___x_cmd_until___local_b="${1#*/}"
+                if ___x_cmd_until_is_int "$___x_cmd_until___local_a" && ___x_cmd_until_is_int "$___x_cmd_until___local_b"; then
+                    ___x_cmd_until___local_interval="$___x_cmd_until___local_a"
+                    ___x_cmd_until___local_timeout="$___x_cmd_until___local_b"
+                fi
+                shift
+        esac
+    fi
+
+    local ___x_cmd_until___local_time="$(( ___x_cmd_until___local_timeout / ___x_cmd_until___local_interval ))"
+    local ___x_cmd_until___local_rest="$(( ___x_cmd_until___local_timeout - ___x_cmd_until___local_time * ___x_cmd_until___local_interval ))"
+    local ___x_cmd_until___local_i=1
+    while [ "$___x_cmd_until___local_i" -le "$___x_cmd_until___local_time" ]
+    do
+        ___x_cmd_until___local_i=$((___x_cmd_until___local_i+1))
+        sleep "$___x_cmd_until___local_interval" || return
+        ! "$@" || return 0
+    done
+    if [ "$___x_cmd_until___local_rest" -gt 0 ]; then
+        sleep "$___x_cmd_until___local_rest" || return
+        ! "$@" || return 0
+    fi
+    return 1
+}
+# EndSection
+
+
+___x_cmd_yml2json(){
+    case "$#" in
+        0)  ___x_cmd_main yq -o json e -P ;;
+        1)  ___x_cmd_main yq -o json e -P <"$1" ;;
+        2)  ___x_cmd_main yq -o json e -P <"$1" >"$2" ;;
+        *)  x:error "Accept at most two arguments."; return 1 ;;
+        # *)  ___x_cmd_main yq -o json e -P <"$1" >"$2" ;;
+    esac
+
+}
+
+___x_cmd_y2j(){
+    ___x_cmd_yml2json "$@"
+}
+
+___x_cmd_json2yml(){
+    case "$#" in
+        0)  ___x_cmd_main yq e -P ;;
+        1)  ___x_cmd_main yq e -P <"$1" ;;
+        2)  ___x_cmd_main yq e -P <"$1" >"$2" ;;
+        *)  x:error "Accept at most two arguments."; return 1 ;;
+        # *)  ___x_cmd_main yq -o json e -P <"$1" >"$2" ;;
+    esac
+}
+
+___x_cmd_j2y(){
+    ___x_cmd_json2yml "$@"
+}
+
+
+___x_cmd_a(){
+    alias "$@"
+    # set complete
+}
+
+
+___x_cmd_mcd(){
+    local folder="${1:?Provide folder path}"
+    if [ ! -d "$folder" ]; then
+        if [ -e "$folder" ]; then
+            x:log "File existed but not a folder: $folder"
+            return 1
+        elif ! command mkdir -p "$folder"; then
+            x:log "Fail to create folder: $folder"
+            return 1
+        fi
+    fi
+
+    if ! ___x_cmd_inner_cd "$folder"; then
+        x:log "Fail to enter into folder: $folder"
+        return 1
+    fi
+}
+
