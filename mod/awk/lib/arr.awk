@@ -3,7 +3,7 @@ BEGIN {
 }
 
 function arr_len(arr, kp,   l){
-    return ( "" == (l = arr[ kp L ]) ) ? 0 : l
+    return int(arr[ kp L ] + 0)
 }
 
 function arr_seq( arr, s, delta, e,        i, c ){
@@ -51,12 +51,22 @@ function arr_join(arr,              _sep, _start, l,              _i, _result) {
     return _result
 }
 
+function arr_cut(arr, str, sep,       l){
+    l = split(str, arr, sep)
+    return arr[ L ] = l
+}
+
 function arr_clone( src, dst,   l, i ){
     l = src[ L ]
-    dst[ L ] = l
     for (i=1; i<=l; ++i)  dst[i] = src[i]
-    return l
+    return dst[ L ] = l
 }
+
+# function arr_clone( src, dst, kp,       l, i ){
+#     dst[ L ] = l = src[ kp L ]
+#     for (i=1; i<=l; ++i)  dst[i] = src[ ( (kp != "") ? kp SUBSEP : kp ) i]
+#     return l
+# }
 
 function arr_shift( arr, offset,        l, i ){
     l = arr[ L ] - offset
@@ -109,5 +119,4 @@ function arr_uniq( arr,         l, i, j ) {
     }
     arr[ L ] = j
 }
-
 

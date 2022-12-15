@@ -1,6 +1,5 @@
 BEGIN{
     IS_INDEX_JSON = true;
-    fields_l = split(INDEX_FIELDS, FIELDS, ",")
 }
 
 {
@@ -17,11 +16,7 @@ function parse_index_after_tokenize( obj, text,       _arr, _arrl, i, j, item, v
             if (item ~ /^"<[^<>]+>"$/) {
                 v = juq(item)
                 v = substr(v, 2, length(v)-2)
-                for (j=1; j<=fields_l; ++j) {
-                    if ((FIELDS[j] == "") || ( v ~ "^" FIELDS[j])) continue
-                    item = jqu( "#" v )
-                    break
-                }
+                item = jqu( "#" v )
             }
         }
         jiparse( obj, item )

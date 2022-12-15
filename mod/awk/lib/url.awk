@@ -1,6 +1,6 @@
 
 # Rely on ord
-function urlencode(str,     a, l, i, o, e, s){
+function urlencode(str,reserve,     a, l, i, o, e, s){
     l = split(str, a, "")
     s = ""
     for (i=1; i<=l; i++) {
@@ -13,9 +13,8 @@ function urlencode(str,     a, l, i, o, e, s){
 
         #  (o ~ /[A-Za-z0-9_.!~*',-]/) {
         if ( (o<=90)&&(o>=65) || (o<=122)&&(o>=97) || (o<=57)&&(o>=48) \
-            || (o==95) || (o==46) || (o==33) || (o==126) || (o==42) || (o==39) || (o==44) || (o==45) )
+            || ((reserve!="true") && ((o==95) || (o==46) || (o==33) || (o==126) || (o==42) || (o==39) || (o==44) || (o==45))))
                                 s = s "" e
-        else if ( o == 32 )     s = s "+"
         else                    s = s "%" sprintf("%X", o)
     }
     return  s

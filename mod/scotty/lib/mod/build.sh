@@ -4,15 +4,18 @@
 
 build_demo(){
     local p=adv/demo
+    [ -d "$p" ] || return
     x mkdirp ".demo"
     local i; for i in "${p}"/*.yml; do
         name="${i##*/}"
         name="${name%.yml}"
-        x script apply "$i" ".demo/${name}.speg"
+        x:info "x script apply $i .demo/${name}.speg"
+        # x script apply "$i" ".demo/${name}.speg"
     done
 }
 
 xrc advise
+xrc script
 for mod in "$@"; do
     (
         x:info "Module for $mod"
@@ -32,7 +35,7 @@ for mod in "$@"; do
             # exit 1
         fi
 
-        # build_demo
+        build_demo
     )
     [ "$?" = 0 ] || exit 1
 done

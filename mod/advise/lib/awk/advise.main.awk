@@ -8,5 +8,6 @@
 
 END{
     if (parse_args_to_env( parsed_argarr, obj, SUBSEP "\"1\"", genv_table, lenv_table )) printf( "offset=%s\n", OFFSET)
+    # if (CODE == "") CODE="candidate_exec=\"___x_cmd_advise__file\";"
     printf( "%s", CODE)
 }

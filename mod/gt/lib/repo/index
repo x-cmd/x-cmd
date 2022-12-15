@@ -97,7 +97,7 @@ ___x_cmd_gt_org_repo_create(){
     param:dsl       '
 option:
     #1                      "repo names"                        <>:RepoName
-    --org                   "organization space path"           <>:OrgSpaceName
+    --org                   "organization space path"           <>:OrgSpaceName=""
 
     -p|--path               "repo path"                         <>=""
     --access                "repo access"                       <>:RepoAccess=private
@@ -113,10 +113,21 @@ option:
 '
     param:run
 
+    local name
+    [ -n "$org" ] || {
+        for name in "$@"; do
+            case "$name" in
+                */*)    ;;
+                *)      gt:error "Please provide --org or add origanization prefix before reponame "
+                        return 1
+            esac
+        done
+    }
+
     local private=true
     [ "$access" = "public" ] && private=false
 
-    local name="${___X_CMD_TX}"
+    name="${___X_CMD_TX}"
     local gen_gt_json
     gen_gt_json="$(
         param:option2json +name +private "${p:+"path=p"}" -access -p \
@@ -125,8 +136,10 @@ option:
     gt:debug "$gen_gt_json"
 
     for name in "$@"; do
-        x tmpl "$gen_gt_json" "${name##%/}" | \
-            ___x_cmd_gt_curl post "https://gitee.com/api/v5/orgs/$org/repos" "@-" | ___x_cmd_gt_repo_create_status_handler
+        local this_org="${name%%/*}"
+        [ "$this_org" != "$name" ] || this_org="$org"
+        x tmpl "$gen_gt_json" "${name##*/}" | \
+            ___x_cmd_gt_curl post "https://gitee.com/api/v5/orgs/${this_org}/repos" "@-" | ___x_cmd_gt_repo_create_status_handler
     done
 }
 
@@ -139,8 +152,8 @@ type:
     Access  =   private public innerSource
 option:
     #1                      "repo names"                        <>:RepoName
-    --enterprise|-e         "enterprise space address"          <>:EnterpriseSpaceName
 
+    --enterprise|-e         "enterprise space address"          <>:EnterpriseSpaceName=""
     -p|--path               "repo path"                         <>=""
     --access                "private,public,innerSource"        <>:Access=private
     --description           "description"                       <>=""
@@ -158,12 +171,23 @@ option:
 '
     param:run
 
+    local name
+    [ -n "$enterprise" ] || {
+        for name in "$@"; do
+            case "$name" in
+                */*)    ;;
+                *)      gt:error "Please provide --enterprise or add enterprise prefix before reponame "
+                        return 1
+            esac
+        done
+    }
+
     case "$access" in
         private)        private=0 ;;
         public)         private=1 ;;
         innerSource)    private=2 ;;
     esac
-    local name="${___X_CMD_TX}"
+    name="${___X_CMD_TX}"
     local outsourced="${outsourced:-false}"
     local gen_gt_json
     gen_gt_json="$(
@@ -173,8 +197,10 @@ option:
     gt:debug "$gen_gt_json"
 
     for name in "$@"; do
-        x tmpl "$gen_gt_json" "${name##%/}" | \
-            ___x_cmd_gt_curl post "https://gitee.com/api/v5/enterprises/${enterprise##*/}/repos" "@-" | ___x_cmd_gt_repo_create_status_handler
+        local this_ent="${name%%/*}"
+        [ "$this_ent" != "$name" ] || this_ent="$enterprise"
+        x tmpl "$gen_gt_json" "${name##*/}" | \
+            ___x_cmd_gt_curl post "https://gitee.com/api/v5/enterprises/${this_ent}/repos" "@-" | ___x_cmd_gt_repo_create_status_handler
     done
     return 0
 }
@@ -204,8 +230,8 @@ options:
 
     --direct        "Enterprise: only get direct repo"
 
-    --page          "page"                                          <>=""
-    --per_page      "per_page"                                      <>=""
+    --page          "page"                                          <>="1"
+    --per_page      "per_page"                                      <>="20"
     --json|-j       "output origin json data"
 '
     param:run
@@ -424,7 +450,7 @@ options:
         if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/repos/$owner_repo" | ___x_cmd_gt_curl_handler_no_content; then
             ___x_cmd_ui_tf true  "Remove repo $owner_repo successfully"
         else
-            ___x_cmd_ui_tf false "Remove repo failure: $i. Probably because it desn't exists." "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_ui_tf false "Remove repo failure: $i. Probably because it doesn't exists." "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
             ___x_cmd_gt_resp_body
             return 1
         fi
