@@ -1,5 +1,5 @@
 # shellcheck shell=sh
-# shellcheck disable=SC2039,3043
+# shellcheck disable=SC2039,3043,SC2154
 
 ___x_cmd_gt_repo(){
     param:scope         ___x_cmd_gt
@@ -29,9 +29,48 @@ ___x_cmd_gt_repo(){
 }
 
 # Section: Create
+___x_cmd_gt_repo_create(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+option:
+    #1                      "repo names"                                      <>:RepoPath
+
+    -p|--path               "repo path"                                       <>=""
+    --description           "description"                                     <>=""
+    --homepage              "homepage"                                        <>=""
+    --gitignore_template    "git ignore template"                             <>:Ignore=""
+    --license_template      "use license template"                            <>:License=""
+    --no_issue              "Ban repo issue"
+    --no_wiki               "Ban repo wiki"
+    --no_comment            "Ban repo comment"
+    --auto_init             "Auto init repo"
+    --json|-j               "Output origin json data"
+'
+    param:run
+    [ -z "$json" ] || local ENFORCE_JSON=1
+
+    local name
+    for name in "$@"; do
+        local _cmd_opt="${p:+"--p '$p'"}  ${homepage:+"--homepage '$homepage'"}     ${description:+"--description '$description'"} \
+            ${gitignore_template:+"--gitignore_template '$gitignore_template'"}     ${license_template:+"--license_template '$license_template'"} \
+            ${no_issue:+"--no_issue"}  ${no_wiki:+"--no_wiki"} ${no_comment:+"--no_comment"} ${auto_init:+"--auto_init"}    '$name'"
+        gt:debug "cmd_opt: ${_cmd_opt}"
+
+        local owner_type=user
+        [ "${name%%/*}" = "$name" ] || {
+            if ! owner_type="$(___x_cmd_gt_owner_type_query "${name%%/*}")"; then
+                gt:error "No found any onwer type. Please check owner exist: ${name%%/*}"
+                return 1
+            fi
+        }
+
+        eval  "___x_cmd_gt_${owner_type}_repo_create" "$_cmd_opt"
+    done
+}
+
 # shellcheck disable=SC2154
 # https://gitee.com/api/v5/swagger#/postV5UserRepos
-___x_cmd_gt_repo_create(){
+___x_cmd_gt_user_repo_create(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 option:
@@ -71,34 +110,15 @@ option:
     done
 }
 
-# shellcheck disable=SC2154
-___x_cmd_gt_repo_create_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . full_name=.full_name url=.html_url gt_resp_body=.
-        if [ -n "$full_name" ]; then
-            ___x_cmd_ui_tf true  "Creating repo $name successfully" "path: $full_name" "url: $url"
-        else
-            ___x_cmd_ui_tf false "Creating repo failure: $name" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
-            ___x_cmd_gt_resp_body
-            return 1
-        fi
-    )
-}
-
 # shellcheck disable=SC2154,SC2034
 # https://gitee.com/api/v5/swagger#/postV5OrgsOrgRepos
 ___x_cmd_gt_org_repo_create(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 option:
-    #1                      "repo names"                        <>:RepoName
-    --org                   "organization space path"           <>:OrgSpaceName=""
+    #1                      "repo names"                        <>:RepoPath
 
+    --org                   "organization space path"           <>:OrgSpaceName=""
     -p|--path               "repo path"                         <>=""
     --access                "repo access"                       <>:RepoAccess=private
     --description           "description"                       <>=""
@@ -118,7 +138,7 @@ option:
         for name in "$@"; do
             case "$name" in
                 */*)    ;;
-                *)      gt:error "Please provide --org or add origanization prefix before reponame "
+                *)      gt:error "Please provide --org or add origanization prefix before reponame"
                         return 1
             esac
         done
@@ -151,7 +171,7 @@ ___x_cmd_gt_enterprise_repo_create(){
 type:
     Access  =   private public innerSource
 option:
-    #1                      "repo names"                        <>:RepoName
+    #1                      "repo names"                        <>:RepoPath
 
     --enterprise|-e         "enterprise space address"          <>:EnterpriseSpaceName=""
     -p|--path               "repo path"                         <>=""
@@ -164,6 +184,7 @@ option:
     --no_wiki               "Ban repo wiki"
     --no_comment            "Ban repo comment"
     --auto_init             "auto init repo"
+
     --outsourced            "repo outsourced"
     --project_creator       "Provide project_creator"           <>=""
     --members               "Provide members(name or email)"    <>=""
@@ -176,7 +197,7 @@ option:
         for name in "$@"; do
             case "$name" in
                 */*)    ;;
-                *)      gt:error "Please provide --enterprise or add enterprise prefix before reponame "
+                *)      gt:error "Please provide --enterprise or add enterprise prefix before reponame"
                         return 1
             esac
         done
@@ -205,56 +226,54 @@ option:
     return 0
 }
 
+# shellcheck disable=SC2154
+___x_cmd_gt_repo_create_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_curl_error
+        return
+    fi
+    (
+        x jo env . full_name=.full_name url=.html_url gt_resp_body=.
+        if [ -n "$full_name" ]; then
+            ___x_cmd_ui_tf true  "Creating repo $name successfully" "path: $full_name" "url: $url"
+        else
+            ___x_cmd_ui_tf false "Creating repo failure: $name" "HttpCode: $(___x_cmd_gt_resp_code)" "ErrorMsg:"
+            ___x_cmd_gt_resp_body
+            return 1
+        fi
+    )
+}
+
 # EndSection
 
 # Section: App
 # shellcheck disable=SC2154,SC2145
 ___x_cmd_gt_repo_app(){
     if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-        TARGET_COMMAND="x gt repo app" _____x_cmd_gt___repo_list_help "$@"
+        TARGET_COMMAND="x gt repo ls" _____x_cmd_gt___repo_list_help "$@"
         return 0
     fi
 
     param:scope     ___x_cmd_gt
     param:dsl       '
-type:
-    VisibilityType = all public private internal
-    Group = owner collaborator organization_member enterprise_member admin
-    Sort = created updated pushed full_name
-    Direction = desc asc
 options:
-    --type          "visibility"                                    <>:VisibilityType="all"
-    --affiliation   "User: affiliation"                             <>:Group="owner"
-    --sort          "User: sort"                                    <>:Sort="updated"
-    --direction     "User: direction"                               <>:Direction="desc"
-
-    --direct        "Enterprise: only get direct repo"
-
     --page          "page"                                          <>="1"
     --per_page      "per_page"                                      <>="20"
     --json|-j       "output origin json data"
 '
     param:run
+    [ -z "$json" ] || local ENFORCE_JSON=1
 
-    local owner_type
-    if [ $# -eq 0 ];then
-        owner_type=user
-    else
-        local owner="$1"
-        owner_type="$(___x_cmd_gt_owner_type_query "$owner")"
-        [ -n "$owner_type" ] || {
-            gt:error "Not found $1 owner_type"
+    local owner_type=user
+    [ $# -eq 0 ] || {
+        if ! owner_type="$(___x_cmd_gt_owner_type_query "$1")"; then
+            gt:error "No found any onwer type. Please check owner exist: $1"
             return 1
-        }
-    fi
-   case "${owner_type}" in
-        user)                         ___x_cmd_gt_user_repo_app       --type "$type" --affiliation "$affiliation" --sort "$sort" --direction "$direction" --page "$page" --per_page "$per_page"   "$@" ;;
-        org)                          ___x_cmd_gt_org_repo_app        --type "$type" --page "$page" --per_page "$per_page" "$@" ;;
-        enterprise)
-            if [ -n "$direct" ]; then ___x_cmd_gt_enterprise_repo_app --type "$type" --page "$page" --per_page "$per_page" --direct "$@" ;
-            else                      ___x_cmd_gt_enterprise_repo_app --type "$type" --page "$page" --per_page "$per_page" "$@" ;
-            fi ;;
-   esac
+        fi
+    }
+
+    "___x_cmd_gt_${owner_type}_repo_app" --page "$page" --per_page "$per_page" "$@"
 }
 # EndSection
 
@@ -268,44 +287,23 @@ ___x_cmd_gt_repo_ls(){
 
     param:scope     ___x_cmd_gt
     param:dsl       '
-type:
-    VisibilityType = all public private internal
-    Group = owner collaborator organization_member enterprise_member admin
-    Sort = created updated pushed full_name
-    Direction = desc asc
 options:
-    --type          "visibility"                                    <>:VisibilityType="all"
-    --affiliation   "User: affiliation"                             <>:Group="owner"
-    --sort          "User: sort"                                    <>:Sort="updated"
-    --direction     "User: direction"                               <>:Direction="desc"
-
-    --direct        "Enterprise: only get direct repo"
-
     --page          "page"                                          <>="1"
     --per_page      "per_page"                                      <>="30"
     --json|-j       "output origin json data"
 '
     param:run
+    [ -z "$json" ] || local ENFORCE_JSON=1
 
-    local owner_type
-    if [ $# -eq 0 ];then
-        owner_type=user
-    else
-        local owner="$1"
-        owner_type="$(___x_cmd_gt_owner_type_query "$owner")"
-        [ -n "$owner_type" ] || {
-            gt:error "Not found $1 owner_type"
+    local owner_type=user
+    [ $# -eq 0 ] || {
+        if ! owner_type="$(___x_cmd_gt_owner_type_query "$1")"; then
+            gt:error "No found any onwer type. Please check owner exist: $1"
             return 1
-        }
-    fi
-   case "${owner_type}" in
-        user)                         ___x_cmd_gt_user_repo_ls       --type "$type" --affiliation "$affiliation" --sort "$sort" --direction "$direction" --page "$page" --per_page "$per_page"   "$@" ;;
-        org)                          ___x_cmd_gt_org_repo_ls        --type "$type" --page "$page" --per_page "$per_page" "$@" ;;
-        enterprise)
-            if [ -n "$direct" ]; then ___x_cmd_gt_enterprise_repo_ls --type "$type" --page "$page" --per_page "$per_page" --direct "$@" ;
-            else                      ___x_cmd_gt_enterprise_repo_ls --type "$type" --page "$page" --per_page "$per_page" "$@" ;
-            fi ;;
-   esac
+        fi
+    }
+
+    "___x_cmd_gt_${owner_type}_repo_ls" --page "$page" --per_page "$per_page" "$@"
 }
 
 _____x_cmd_gt___repo_list_help(){

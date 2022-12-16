@@ -2,7 +2,7 @@
 # Section: init table
 function pkg_init_table( jobj, table, table_kp,
     pkg_name, version, osarch,
-    _rule_kp, _rule_l, i, k, _kpat, _os_arch, _final_version ){
+    _os_arch, _final_version ){
 
     # Predefined env variables
     pkg_add_table( "sb_branch", "main", table, table_kp )
@@ -17,7 +17,7 @@ function pkg_init_table( jobj, table, table_kp,
 
     pkg_copy_table( jobj, jqu(pkg_name) SUBSEP jqu("meta"), table, table_kp )
 
-    pkg_modify_table_by_meta_rule( table, pkg_name, table_kp)
+    pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name)
 
     _final_version = table_version( table, pkg_name)
     if ( _final_version != "" ) {
@@ -29,7 +29,7 @@ function pkg_init_table( jobj, table, table_kp,
     pkg_add_table( "arch", _os_arch[2], table, table_kp )
 }
 
-function pkg_modify_table_by_meta_rule( table, pkg_name, table_kp,          _version_osarch, _rule_kp, _rule_l, i ,k, _kpat){
+function pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name,         _version_osarch, _rule_kp, _rule_l, i ,k, _kpat){
     _version_osarch = table_version_osarch( table, pkg_name ) # May define version or osarch (as default) in the meta file
     _rule_kp = pkg_kp( pkg_name, "meta", "rule" )
     _rule_l = jobj[ _rule_kp L ]
@@ -44,23 +44,17 @@ function pkg_modify_table_by_meta_rule( table, pkg_name, table_kp,          _ver
     }
 }
 
-function pkg_get_version_or_head_version( jobj, table, pkg_name,            _final_version, l ){
+function pkg_get_version_or_head_version( jobj, table, pkg_name,            _final_version ){
     _final_version = table_version( table, pkg_name )
     if (_final_version ~ /^".*"$/) _final_version = juq(_final_version)
-    if ( _final_version != "" ){
-        return _final_version
-    } else {
-        l = jobj[ jqu(pkg_name), jqu("version") L ]
-        if (l <= 0 ) {
-            return ""
-        } else {
-            return juq(jobj[ jqu( pkg_name ), jqu("version"), 1 ])
-        }
-    }
+    if ( _final_version != "" ) return _final_version
+    else if ( jobj[ jqu(pkg_name), jqu("version") L ] <= 0 ) return
+    else return juq(jobj[ jqu( pkg_name ), jqu("version"), 1 ])
 }
 
 function pkg_add_table( k, v, table, table_kp,  l ){
     k = jqu(k)
+    table[ table_kp ] = "{"
     if ( table[ table_kp, k ] == "" ) {
         table[ table_kp L ] = ( l = table[ table_kp L ] + 1 )
         table[ table_kp, l ] = k
@@ -70,8 +64,9 @@ function pkg_add_table( k, v, table, table_kp,  l ){
 # EndSection
 
 # Section: copy
-function pkg_copy_table(src_obj, src_kp, table, table_kp){
-    table[ table_kp ] = src_obj[ src_kp ]
+function pkg_copy_table(src_obj, src_kp, table, table_kp,       k){
+    if ((k = src_obj[ src_kp ]) == "") return
+    table[ table_kp ] = k
     if (src_obj[ src_kp ] == "{") return pkg_copy_table___dict(src_obj, src_kp, table, table_kp)
     if (src_obj[ src_kp ] == "[") return pkg_copy_table___list(src_obj, src_kp, table, table_kp)
 }
@@ -144,17 +139,12 @@ function pkg_eval_str( str, table, pkg_name,            _attempt, t, p, _newstr 
 
 # Section: parsing
 
-function parse_pkg_jqparse( str, jobj, kp,       arrl, arr ){
-    arrl = split(str, arr, "\t")
-    return jqparse_dict( jobj, kp,   arrl, arr, 1 )
+function parse_pkg_meta_json(o, pkg_name, text) {
+    return jqparse_dict0( text, o, jqu(pkg_name) SUBSEP jqu("meta") )
 }
 
-function parse_pkg_meta_json(jobj, pkg_name, meta_json) {
-    return parse_pkg_jqparse( meta_json,     jobj, jqu(pkg_name) SUBSEP jqu("meta") )
-}
-
-function parse_pkg_version_json(jobj, pkg_name, version_json) {
-    return parse_pkg_jqparse( version_json,  jobj, jqu(pkg_name) SUBSEP jqu("version") )
+function parse_pkg_version_json(o, pkg_name, text) {
+    return jqparse_dict0( text, o, jqu(pkg_name) SUBSEP jqu("version") )
 }
 
 function pkg_kp(a1, a2, a3, a4, a5, a6, a7, a8, a9,

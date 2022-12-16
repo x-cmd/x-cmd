@@ -53,8 +53,8 @@ ___x_cmd_gh_org_repo_create() {
 type:
     Access  =   private public internal
 option:
-    --org                       "organization create repo"                                             <>   =  /[-A-Za-z0-9_/]+/
-    #n                          "repo names"
+    #1                          "repo names"                                                           <>
+    --org                       "organization create repo"                                             <>=""
 
     --description               "A short description of the repository."                               <>:Org_Description=""
     --homepage                  "A URL with more information about the repository."                    <>:URL=""
@@ -76,11 +76,22 @@ option:
     --delete_branch_on_merge    "Either to allow automatically deleting head branches when pull requests are merged,Default:false"
 A
     param:run
+
     local private=true
     [ "$access" = "public" ] && private=false
 
-    local name="${___X_CMD_TX}"
+    local name
+    [ -n "$org" ] || {
+        for name in "$@"; do
+            case "$name" in
+                */*)    ;;
+                *)      gt:error "Please provide --org or add origanization prefix before reponame "
+                        return 1
+            esac
+        done
+    }
 
+    name="${___X_CMD_TX}"
     local gen_gh_json
     gen_gh_json="$(param:option2json +name +private -access -org \
         has_issues=^no_issues                   allow_merge_commit=^no_merge_commit     has_projects=^no_projects \
@@ -88,9 +99,12 @@ A
     # TODO:owner may be personal
     local tmp
     for tmp in "$@"; do
-            gh_log debug "___x_cmd_gh_repo_create_data:$(x tmpl "$gen_gh_json"  "${tmp##%/}")"
+            local this_org="${name%%/*}"
+            [ "$this_org" != "$name" ] || this_org="$org"
+
+            gh:debug "___x_cmd_gh_repo_create_data:$(x tmpl "$gen_gh_json"  "${tmp##%/}")"
             x tmpl "$gen_gh_json"  "${tmp##%/}" | \
-            ___x_cmd_gh_curl post "/orgs/$org/repos" "@-" | (
+            ___x_cmd_gh_curl post "/orgs/$this_org/repos" "@-" | (
                 _____x_cmd_gh_org_repo_ui_utils Creating
             )
     done
