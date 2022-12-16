@@ -1,3 +1,6 @@
+X-CMD use and mofify the code of "wcwidth.awk"(https://github.com/ericpruitt/wcwidth.awk).
+Thank you, Eric Pruitt.
+------
 Copyright (c) Eric Pruitt
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
