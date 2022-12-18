@@ -1,62 +1,74 @@
-# shellcheck shell=sh
+# shellcheck shell=sh disable=SC3043,SC2164,SC3000-SC4000
 
-___x_cmd_env_lsenv_app_processer_datarequest()(
-    if ! [ -d "$___X_CMD_PKG_RAWPATH" ]; then x pkg update; fi
-    cd "$___X_CMD_PKG_RAWPATH" || exit 1
-    local file
-    if [ "$#" -lt 2 ]; then
-        ls "$@" | while read -r file; do
-            [ -f "$file" ] || printf "%s\n" "$file"
-        done
-        return 0
+xrc ui/lib/region
+xrc ui/lib/varctl
+
+___x_cmd_ui_lsenv(){
+    local tgzfilepath="$___X_CMD_ENV_PATH/info.tgz"
+    if ! ___x_cmd_httpget_gitx x-cmd env main "dist/info.tgz" "$tgzfilepath" 86400; then # 1-day
+        env:error "Unaviable info.tgz. Unable to fetch info.tgz."
+        return 1
     fi
+    x uz "$tgzfilepath" "$___X_CMD_ENV_PATH" 2>/dev/null
 
-    local filepath="$___X_CMD_PKG_RAWPATH/$1/$2/index.json"
-    [ -f "$filepath" ] || return 0
-    < "$filepath" 2>/dev/null x ja -v ARGS="$*" '
-END{
-    l = split(ARGS, arr, " ")
-    _kp = SUBSEP "\"1\""
-    for (i=3; i<=l; ++i) _kp = _kp SUBSEP jqu(arr[i])
-    l = O[ _kp L ]
-    for (i=1; i<=l; ++i){
-        key = O[ _kp, "\"" i "\"" ]
-        info = O[ _kp, key, "\"<info>\"" ]
-        print juq(key) " " info
+    local ___X_CMD_UI_LSENV_FINAL_COMMAND
+    local ___X_CMD_UI_LSENV_CURRENT_VERSION
+    ___x_cmd_ui_region_autorefresh_with_keyboard ___x_cmd_ui_lsenv_mainloop_awk
+    if ! [ "$___X_CMD_UI_LSENV_FINAL_COMMAND" = "ENTER" ] \
+        || [ -z "$___X_CMD_UI_LSENV_CURRENT_CANDIDATE" ] \
+        || [ -z "$___X_CMD_UI_LSENV_CURRENT_VERSION" ] ; then
+        return 1
+    fi
+    candidate="$___X_CMD_UI_LSENV_CURRENT_CANDIDATE"
+    version="$___X_CMD_UI_LSENV_CURRENT_VERSION"
+}
+
+___x_cmd_ui_lsenv_mainloop_awk_(){
+    command awk "$@" \
+        -v CANDIDATE="$CANDIDATE" \
+        -v TH_THEME_COLOR="\\033[${___X_CMD_THEME_COLOR_CODE}m" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/default.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/str.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/u/wcwidth.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/ui/ui.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/ui/theme.awk" \
+        -f "$___X_CMD_ROOT_MOD/ui/lib/share.awk" \
+        -f "$___X_CMD_ROOT_MOD/env/lib/app/lsenv.awk"
+        # -f "./lib/app/lsenv.awk"
+}
+
+___x_cmd_ui_lsenv_mainloop_awk(){
+    if [ "$(___x_cmd_awk impl)" = "mawk" ]; then
+        ___x_cmd_ui_lsenv_mainloop_awk_ -W interactive "$@"
+    else
+        ___x_cmd_ui_lsenv_mainloop_awk_ "$@"
+    fi
+}
+
+___x_cmd_ui_get_env_ls(){
+    local kp="${1:-"."}"
+    local code
+    code="$(xrc cat awk/lib/default.awk awk/lib/j/json.awk awk/lib/j/jiter.awk )"
+    cat | awk -v keypath="$kp" "$code"'
+{
+    jiter_print_eqarr_after_tokenize($0, keypath, "\n", "\n")
+}
+' | awk "$code"'
+function print_env_ls(item){
+    if ($0 == "") return
+    if ( PRINT_ENV_LS == 0 ) {
+        if (item !~ /^[\[\{:,]$/) {
+            if (item !~ /^[\]\}]$/) print substr(item, 2, length(item)-2)
+            return
+        }
+        PRINT_ENV_LS = 1
     }
+    jiter_skip( item )
+    if (JITER_SKIP_LEVEL > 0) return
+    PRINT_ENV_LS = 0
+}
+NR>1{
+    print_env_ls($0)
 }
 '
-)
-
-___x_cmd_env_lsenv_app_processer(){
-    local args
-    local content
-    case "$1" in
-        data:request:*)
-            args="${1#*data:request:}"
-            content="$( eval "___x_cmd_env_lsenv_app_processer_datarequest $args" )" || {
-                printf "errexit:lsenv error exit:%s" "$args"
-                return
-            }
-            printf "data:item:%s\n" "$args"
-            printf "%s\n" "$content"
-            ;;
-    esac
 }
-
-___x_cmd_env_lsenv_app(){
-    local ___X_CMD_ENV_CUR_LANGUAGE
-    local ___X_CMD_ENV_CUR_VERSION
-    ___x_cmd_tui_app_processer(){ ___x_cmd_env_lsenv_app_processer "$@"; }
-    x tui app \
-        -v ___X_CMD_ROOT_MOD="$___X_CMD_ROOT_MOD"           \
-        -f "$___X_CMD_ROOT_MOD/tui/lib/comp/lineedit.awk"   \
-        -f "$___X_CMD_ROOT_MOD/tui/lib/comp/gsel.awk"       \
-        -f "$___X_CMD_ROOT_MOD/tui/lib/comp/lsel.awk"       \
-        -f "$___X_CMD_ROOT_MOD/tui/lib/comp/textbox.awk"    \
-        -f "$___X_CMD_ROOT_MOD/tui/lib/comp/statusline.awk" \
-        -f "$___X_CMD_ROOT_MOD/tui/lib/comp/navi.awk"       \
-        -f "$___X_CMD_ROOT_MOD/env/lib/app/lsenv.awk"
-}
-
-# ___x_cmd_env_lsenv_app

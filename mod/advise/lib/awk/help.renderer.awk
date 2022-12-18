@@ -117,7 +117,7 @@ function generate_flag_help_unit( kp, arr, arr_kp,        i, v, l, _str, _max_le
         v = arr[ ( (arr_kp != "") ? arr_kp SUBSEP : arr_kp ) i ]
         _str = _str HELP_INDENT_STR sprintf("%s" DESC_INDENT_STR "%s\n",
             UI_THEME        str_pad_right(_text_arr[ i ], _max_len),
-            UI_DESC         str_cut_line( juq( aobj_get_description(obj, kp SUBSEP v) ), _max_len + HELP_INDENT_LEN + DESC_INDENT_LEN ) UI_END)
+            UI_DESC         str_cut_line( aobj_get_description(obj, kp SUBSEP v), _max_len + HELP_INDENT_LEN + DESC_INDENT_LEN ) UI_END)
     }
     return _str
 }
@@ -141,7 +141,7 @@ function generate_option_help_unit( kp, arr, arr_kp,         i, v, l, _str, _max
     l = arr_len(arr, arr_kp)
     for ( i=1; i<=l; ++i ) {
         v = arr[ ( (arr_kp != "") ? arr_kp SUBSEP : arr_kp ) i ]
-        _option_after = juq( aobj_get_description(obj, kp SUBSEP v) ) UI_END generate_optarg_rule_string(kp, v, "OPTIONS")
+        _option_after = aobj_get_description(obj, kp SUBSEP v) UI_END generate_optarg_rule_string(kp, v, "OPTIONS")
 
         _str = _str HELP_INDENT_STR sprintf( "%s" DESC_INDENT_STR "%s\n",
             UI_THEME        str_pad_right(_text_arr[ i ], _max_len),
@@ -170,7 +170,7 @@ function generate_rest_argument_help( kp,         i, v, l, _str, _max_len, _text
     l = arr_len(RESTOPT)
     for ( i=1; i<=l; ++i ) {
         v = RESTOPT[ i ]
-        _option_after = juq( aobj_get_description(obj, kp SUBSEP v) ) UI_END generate_optarg_rule_string(kp, v, "ARGS")
+        _option_after = aobj_get_description(obj, kp SUBSEP v) UI_END generate_optarg_rule_string(kp, v, "ARGS")
 
         _str = _str HELP_INDENT_STR sprintf( "%s" DESC_INDENT_STR "%s\n",
             UI_THEME        str_pad_right(_text_arr[ i ], _max_len),
@@ -179,14 +179,15 @@ function generate_rest_argument_help( kp,         i, v, l, _str, _max_len, _text
     return _str "\n"
 }
 
-function generate_subcmd_help_unit( kp, arr, arr_kp,        i, v, l, _str, _max_len, _option_after) {
+function generate_subcmd_help_unit( kp, arr, arr_kp,        i, v, l, d, _str, _max_len, _option_after) {
     arr_clone_of_kp( arr, _text_arr, arr_kp )
     _max_len = generate_help_for_namedoot_cal_maxlen_desc( kp, _text_arr )
 
     l = arr_len(arr, arr_kp)
     for (i=1; i<=l; ++i) {
         v = arr[ ( (arr_kp != "") ? arr_kp SUBSEP : arr_kp ) i ]
-        _option_after = juq( aobj_get_description(obj, kp SUBSEP v) ) UI_END
+        if ((d = aobj_get_description(obj, kp SUBSEP v)) == "") continue
+        _option_after = d UI_END
 
         _str = _str HELP_INDENT_STR sprintf("%s"  DESC_INDENT_STR "%s\n",
             UI_THEME        str_pad_right(_text_arr[ i ], _max_len),
@@ -211,7 +212,10 @@ function generate_name_help( obj, kp,       n, d, _str){
     if (aobj_is_null( obj, kp)) return
     _str = generate_title("NAME:") "\n"
     n = obj[ kp ]
-    if ( n == "{" ) { n = obj[ kp, 1 ]; d = obj[ kp, n ]; }
+    if ( n == "{" ) {
+        n = obj[ kp, 1 ]
+        if ((d = obj[ kp, n ]) == "null") d = get_value_with_local_language(obj, kp, WHICHNET)
+    }
     _str = _str HELP_INDENT_STR  UI_THEME juq(n) UI_END ((d != "") ? " - " juq(d) : "" ) "\n"
     return _str "\n"
 }
@@ -220,7 +224,7 @@ function generate_desc_help(obj, kp,        _str, d){
     if (aobj_is_null( obj, kp)) return
     _str =generate_title("DESCRIPTON:") "\n"
     d = obj[ kp ]
-    if ( d == "{" ) d = obj[ kp, jqu( WHICHNET )]
+    if ( d == "{" ) d = get_value_with_local_language(obj, kp, WHICHNET)
     _str = _str HELP_INDENT_STR str_cut_line(juq(d), HELP_INDENT_LEN) "\n"
     return _str "\n"
 }
@@ -232,7 +236,7 @@ function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {
     for (i=1; i<=l; ++i){
         k = obj[ kp, jqu(i), 1]
         v = obj[ kp, jqu(i), k]
-        if (v == "null") v = obj[ kp, jqu(i), jqu(WHICHNET)]
+        if (v == "null") v = get_value_with_local_language(obj, kp SUBSEP jqu(i), WHICHNET)
         _str = _str HELP_INDENT_STR UI_THEME str_cut_line(juq(k) " " UI_END juq(v), HELP_INDENT_LEN) "\n"
     }
     return _str "\n"
@@ -243,9 +247,8 @@ function generate_tldr_help(obj, kp,            l, i, k, v, _str){
     _str = generate_title("EXAMPLES:") "\n"
     l = obj[ kp L ]
     for (i=1; i<=l; ++i){
-        k = obj[ kp, jqu(i), 1]
-        v = obj[ kp, jqu(i), k]
-        if (v == "null") v = obj[ kp, jqu(i), jqu(WHICHNET)]
+        k = obj[ kp, jqu(i), "\"cmd\"" ]
+        v = get_value_with_local_language(obj, kp SUBSEP jqu(i), WHICHNET)
         if ((v != "") && (v != "null")) _str = _str HELP_INDENT_STR UI_THEME str_cut_line(juq(v), HELP_INDENT_LEN) "\n"
         _str = _str str_rep(" ", HELP_INDENT_LEN * 2) UI_END  str_cut_line(juq(k), HELP_INDENT_LEN * 2) "\n"
     }
@@ -264,16 +267,24 @@ function generate_other_help(obj, kp,       l, i, k, v, _str){
     return _str
 }
 
-function generate_tip_help_unit( arr, color, title,            l, i, _str){
-    l = arr[L]
-    for (i=1; i<=l; ++i) _str = _str HELP_INDENT_STR UI_TITLE color title "\n" UI_END HELP_INDENT_STR HELP_INDENT_STR  str_cut_line(juq( arr[i] ), HELP_INDENT_LEN * 2) UI_END "\n"
+function generate_tip_help_unit( arr, kp, color, title,            l, i, _str, v){
+    l = arr[ kp L ]
+    for (i=1; i<=l; ++i) {
+        if ( (v = arr[ kp, "\""i"\"" ]) == "{" ) v = get_value_with_local_language(arr, kp SUBSEP "\""i"\"", WHICHNET)
+        _str = _str HELP_INDENT_STR UI_TITLE color title "\n" UI_END HELP_INDENT_STR HELP_INDENT_STR  str_cut_line(juq( v ), HELP_INDENT_LEN * 2) UI_END "\n"
+    }
     return _str
 }
-function generate_tip_help(         _str){
-    _str = _str generate_tip_help_unit(TIP_INFO, UI_TIP_INFO, "TIP:")
-    _str = _str generate_tip_help_unit(TIP_NOTE, UI_TIP_NOTE, "NOTE:")
-    _str = _str generate_tip_help_unit(TIP_WARN, UI_TIP_WARN, "WARNING:")
-    _str = _str generate_tip_help_unit(TIP_DANGER, UI_TIP_DANGER, "DANGER:")
+function generate_tip_help(arr,         _str, i, l, kp, color, title){
+    l = arr[ L ]
+    for (i=1; i<=l; ++i) {
+        kp = arr[i]
+        if ( kp == "#tip" )               { color = UI_TIP_INFO  ; title = "TIP:"; }
+        else if ( kp == "#tip:note" )     { color = UI_TIP_NOTE  ; title = "NOTE:"; }
+        else if ( kp == "#tip:warn" )     { color = UI_TIP_WARN  ; title = "WARNING:"; }
+        else if ( kp == "#tip:danger" )   { color = UI_TIP_DANGER; title = "DANGER:"; }
+        _str = _str generate_tip_help_unit(arr, kp, color, title)
+    }
     return _str
 }
 
@@ -298,10 +309,8 @@ function print_helpdoc( obj, kp,          i, j, l, v, _str, s, k ){
         else if ( s == "#other")        IS_OTHER = true
         else if ( s ~ "^#tip" ) {
             HAS_TIP = true
-            if ( s == "#tip" )               TIP_INFO[ L ]   = jlist_value2arr(obj, kp SUBSEP v, "", TIP_INFO)
-            else if ( s == "#tip:note" )     TIP_NOTE[ L ]   = jlist_value2arr(obj, kp SUBSEP v, "", TIP_NOTE)
-            else if ( s == "#tip:warn" )     TIP_WARN[ L ]   = jlist_value2arr(obj, kp SUBSEP v, "", TIP_WARN)
-            else if ( s == "#tip:danger" )   TIP_DANGER[ L ] = jlist_value2arr(obj, kp SUBSEP v, "", TIP_DANGER)
+            arr_push(TIP, s)
+            cp_cover(TIP, s, obj, kp SUBSEP v)
         }
         else if ( match(s, "^#subcmd:") ) {
             HAS_SUBCMD_GROUP = true
@@ -332,7 +341,7 @@ function print_helpdoc( obj, kp,          i, j, l, v, _str, s, k ){
     if ( IS_NAME == true )                                  printf("%s", generate_name_help( obj, kp SUBSEP "\"#name\""))
     if ( IS_SYNOPSIS == true )                              printf("%s", generate_synopsis_help( obj, kp SUBSEP "\"#synopsis\""))
     if ( IS_DESCRIPTION == true )                           printf("%s", generate_desc_help( obj, kp SUBSEP "\"#desc\""))
-    if ( HAS_TIP == true )                                  printf("%s", generate_tip_help())
+    if ( HAS_TIP == true )                                  printf("%s", generate_tip_help(TIP))
     if (0 != arr_len(OPTION))                               printf("%s", generate_option_help( kp, HAS_OPTION_GROUP ))
     if (0 != arr_len(FLAG))                                 printf("%s", generate_flag_help( kp, HAS_FLAG_GROUP ))
     if (0 != arr_len(RESTOPT))                              printf("%s", generate_rest_argument_help( kp ))

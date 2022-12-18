@@ -1,4 +1,11 @@
-BEGIN{  if (WHICHNET == "_") WHICHNET = "en";    }
+BEGIN{  if (WHICHNET == "_") WHICHNET = "en";  WHICHNET = jqu(WHICHNET);  }
+function get_value_with_local_language(o, kp, language,     v){
+    v = o[ kp, language ]
+    if (v == "") v = o[ kp, "\"en\"" ]
+    else if (v == "") v = o[ kp, "\"_\"" ]
+    return v
+}
+
 # Except getting option argument count
 function aobj_cal_rest_argc_maxmin( obj, obj_prefix,       i, j, k, l, _min, _max, _arr, _arrl ){
     _min = 0
@@ -7,7 +14,8 @@ function aobj_cal_rest_argc_maxmin( obj, obj_prefix,       i, j, k, l, _min, _ma
     for (i=1; i<=l; ++i) {
         k = juq(obj[ obj_prefix, i ])
 
-        if (k ~ "^#n") {
+        # #n or #n|...
+        if (k ~ "^#n(([|].+))?$") {
             _max = 10000 # Big Number
             continue
         }
@@ -122,12 +130,20 @@ function aobj_get_special_value( obj, obj_prefix, v ){
     return obj[ obj_prefix SUBSEP "\"#" v "\""]
 }
 
-function aobj_get_description( obj, obj_prefix,         _desc, _kp ){
-    _kp = aobj_get_special_value_id( obj_prefix, "desc" )
-    _desc = aobj_get(obj, _kp)
-    if ( _desc == "{" ) _desc = aobj_get(obj, _kp SUBSEP jqu( WHICHNET ))
-    return _desc
+function aobj_get_description( obj, obj_prefix,         d, _kp, _kp_name, _n ){
+    _kp_name = aobj_get_special_value_id( obj_prefix, "name" )
+    _n = obj[ _kp_name ]
+    if ( _n == "{" ) d = obj[ _kp_name, obj[ _kp_name, 1 ] ]
+    if ( d =="null" ) d = get_value_with_local_language(obj, _kp_name, WHICHNET)
+    if ( d == "" ) {
+        _kp = aobj_get_special_value_id( obj_prefix, "desc" )
+        d = aobj_get(obj, _kp)
+        if ( d == "{" ) d = get_value_with_local_language(obj, _kp, WHICHNET)
+    }
+    if ((d == "\"\"") || (d == "null") || (d == "")) return ""
+    return juq(d)
 }
+
 
 function aobj_get_cand_value( obj, _cand_kp,       v){
     v = aobj_get(obj, _cand_kp)

@@ -24,7 +24,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candida
             for (j=1; j<=_cand_l; ++j) {
                 _cand_kp = _cand_key SUBSEP "\""j"\""
                 v = aobj_get_cand_value( obj, _cand_kp)
-                _desc = ( ZSHVERSION != "" ) ? juq( aobj_get_description(obj, _cand_kp SUBSEP v) ) : ""
+                _desc = ( ZSHVERSION != "" ) ? aobj_get_description(obj, _cand_kp SUBSEP v) : ""
                 if( v !~ "^\"" curval ) continue
                 if (v ~ "^\"") v = juq(v)
                 if ( _desc != "" ) _candidate_code = _candidate_code shqu1( str_escape_colon(v) ":" _desc) "\n"
@@ -33,7 +33,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candida
         }
         if ( _option_id ~ "^\"#") continue
 
-        _desc = ( ZSHVERSION != "" ) ? juq( aobj_get_description(obj, kp SUBSEP _option_id) ) : ""
+        _desc = ( ZSHVERSION != "" ) ? aobj_get_description(obj, kp SUBSEP _option_id) : ""
         _arr_valuel = split( juq( _option_id ), _arr_value, "|" )
         for ( j=1; j<=_arr_valuel; ++j) {
             v =_arr_value[j]
