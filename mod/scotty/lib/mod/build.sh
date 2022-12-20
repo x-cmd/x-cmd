@@ -20,7 +20,10 @@ for mod in "$@"; do
     (
         x:info "Module for $mod"
         x:debug "Getting into $___X_CMD_ROOT_MOD/$mod"
-        x cd "$___X_CMD_ROOT_MOD/$mod" || exit 1
+        x cd "$___X_CMD_ROOT_MOD/$mod" || {
+            x:error "Fail to cd: $___X_CMD_ROOT_MOD/$mod"
+            exit 1
+        }
         x:info "Starting scotty build."
         x scotty mod build0
         [ "$?" = 0 ] || {
@@ -35,7 +38,11 @@ for mod in "$@"; do
             # exit 1
         fi
 
+        x:info "Finish scotty build."
+
         build_demo
+
+        x:info "Finish scotty build_demo."
     )
     [ "$?" = 0 ] || exit 1
 done
