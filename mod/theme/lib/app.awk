@@ -132,7 +132,6 @@ function model_generate(){
 BEGIN{
     THEME_ARR_L = 0
     PREVIEW_ARR_L = 0
-    THEME_TAR_PATH = "~/.x-cmd/.tmp/theme/theme.tgz"
 }
 
 

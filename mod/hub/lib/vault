@@ -1,0 +1,81 @@
+# shellcheck shell=sh disable=SC3043
+
+___x_cmd_hub_vault(){
+    param:subcmd ___x_cmd_hub_vault                  \
+        decrypt             "Decrypt vault encrypted file" \
+        edit                "Edit vault encrypted file"    \
+        encrypt             "Encrypt file"              #\
+        #gen                "Generate a vault token"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_hub___util_subcmd_invalid "vault" "$@"
+}
+
+___x_cmd_hub_vault_decrypt(){
+    param:dsl '
+advise:
+    #1     ___
+option:
+    #1     "File path you want to decrypt"    <file_name>
+'
+
+    param:run
+
+    ___x_cmd_hub___util_subcmd_invalid "" "$@"
+}
+
+___x_cmd_hub_vault_edit(){
+    param:dsl '
+option:
+    #1                  "File path you want to edit"    <file_name>
+    --ask-passphrase    "Ask passphrase"
+'
+
+    param:run
+
+    ___x_cmd_hub___util_subcmd_invalid "" "$@"
+}
+
+___x_cmd_hub_vault_encrypt(){
+    param:dsl '
+option:
+    #1       "File path you want to encrypt"    <file_name>
+    --pass   "Password to encrypt file"         <password>=""
+'
+    param:run
+
+    if [ -z "$pass" ] ; then
+        printf "Password (will be hidden):"
+        stty -echo ; read -r pass ; stty echo
+        printf "\n"
+    fi
+
+
+    # TODO: have some bug here to use x openssl
+    # encrypt file use openssl
+    local file_path="$1"
+    openssl enc -des-cbc -salt -pbkdf2 -in "$file_path" -out tmp -pbkdf2 -pass pass:"$pass"
+
+    mv tmp "$file_path"
+
+    ___x_cmd_hub___util_subcmd_invalid "" "$@"
+}
+
+___x_cmd_hub_vault_gen(){
+    local json #TODO: fix this to unnecessary to set json to empty
+    param:dsl<<A
+option:
+    --json|-j    "Output json format"
+A
+    param:run
+
+    local res
+    if ! res="$(___x_cmd_hub___util_curl get /api/v0/vault/token)" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get vault token"
+        return 1
+    fi
+
+    [ -z "$json" ] || { printf "%s\n" "$res" ; return 0 ; }
+    printf "%s\n" "$res" | ( x jo env . token=.token.auth.client_token ; printf "%s\n" "$token" ; )
+}

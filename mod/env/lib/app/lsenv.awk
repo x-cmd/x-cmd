@@ -1,232 +1,144 @@
-
-# Section: view
-BEGIN {
-    ctrl_help_item_put("ARROW UP/DOWN/LEFT/ROW", "to move focus")
-    ctrl_help_item_put("ENTER", "for enter")
+function user_request_ls_data( rootkp ){
+    if (! lock_acquire( o, LSENV_KP ) ) panic("lock bug")
+    gsub( ROOTKP_SEP, " ", rootkp)
+    tapp_request( "data:request:" rootkp)
 }
 
-function view_calcuate_geoinfo(){
-    if ( VIEW_BODY_ROW_SIZE >= MAX_DATA_ROW_NUM ) return
-    if ( ctrl_help_toggle_state() == true )         VIEW_BODY_ROW_SIZE = max_row_size - 9 - 1
-    else                                            VIEW_BODY_ROW_SIZE = max_row_size - 8 - 1
+# Section: user model
+
+function tapp_init(){
+    LSENV_KP = "ls_kp"
+    comp_navi_init(o, LSENV_KP)
+    comp_statusline_init( o, LS_STATUSLINE_KP = TABLE_KP SUBSEP "statusline" )
+    comp_statusline_data_put( o, LS_STATUSLINE_KP, "q", "Quit", "Press 'q' to quit table" )
+    comp_statusline_data_put( o, LS_STATUSLINE_KP, "/", "Search", "Press '/' to search items" )
+    comp_statusline_data_put( o, LS_STATUSLINE_KP, "Tab", "Open help", "Close help" )
 }
 
-function view(      _component_help, _component_body){
-    view_calcuate_geoinfo()
+# EndSection
 
-    _component_help         = view_help()
-    _component_body         = view_body()
+# Section: user ctrl
 
-    send_update( _component_help "\n" _component_body  )
+function tapp_canvas_rowsize_recalulate( rows ){
+    if (rows < 7) return false
+    return rows - 1    # Assure the screen size
 }
 
-function view_help(){
-    return sprintf("%s", th_help_text( ctrl_help_get() ) )
+function tapp_handle_clocktick( idx, trigger, row, col ){
+    user_view()
+
+    if (! lock_unlocked( o, LSENV_KP )) return
+    if ( comp_navi_unava_has_set( o, LSENV_KP ) ) user_request_ls_data( comp_navi_unava_get( o, LSENV_KP ) )
 }
 
-function view_body_info_for_dir(view_grid, _selected_keypath,         i, l, _selected_index_of_this_column, _content){
-    l = data[ _selected_keypath L]
-    _selected_index_of_this_column = ctrl_win_val( treectrl, _selected_keypath )
-    _max_len = data[ _selected_keypath A "MAX_LEN" ] + 2
-    for (i=1; i<=l; ++i) {
-        _content = str_pad_right( data[ _selected_keypath L i ], _max_len)
-        if ( _selected_index_of_this_column == i ) _content = th(TH_LSENV_ITEM_UNFOCUSED_SELECT, _content)
-        else _content = th(TH_CATSEL_ITEM_UNFOCUSED_UNSELECT, _content)
-        view_grid[ i S 0 ] = _content
+function tapp_handle_wchar( value, name, type,           kp, d ){
+    if (name == U8WC_NAME_END_OF_TEXT)                                  exit(0)
+    else if (name == U8WC_NAME_END_OF_TRANSIMISSION)                    exit(0)
+
+    if (comp_statusline_isfullscreen(o, LS_STATUSLINE_KP)){
+        comp_statusline_handle( o, LS_STATUSLINE_KP, value, name, type )
+        if (! comp_statusline_isfullscreen(o, LS_STATUSLINE_KP)) comp_navi_change_set_all( o, LSENV_KP )
+    } else {
+        if (value == "q")                                               exit(0)
+        else if (value == "/")                                          return comp_navi_sel_sw_toggle( o, LSENV_KP )
+        else if (name == U8WC_NAME_CARRIAGE_RETURN)                     exit_with_elegant("ENTER")
+        else if (comp_navi_handle( o, LSENV_KP, value, name, type ))    return
+        else if (comp_statusline_handle(o, LS_STATUSLINE_KP, value, name, type ))  return
     }
-    return _max_len
 }
 
-function view_body_info_for_file(view_grid, _selected_keypath, _info, _max_len ) {
-    _info = data[ _selected_keypath A "INFO" ]
-    view_grid[ 1 S 0 ] = _info
-    _max_len = wcswidth(_info)
-    return _max_len
-}
-
-
-function view_body_cal_beginning_col( info_view_maxlen,     _col_end, _col_size, i, _kp, _len ){
-    _col_size = max_col_size - info_view_maxlen - 2
-    _col_end = stack_length( treectrl )
-    for ( i=_col_end; i>=1; --i ) {
-        _kp = treectrl[ i ]
-        _len = data[ _kp A "MAX_LEN" ] + 2
-        if (_col_size < _len)   return i+1
-        _col_size -= _len
+function tapp_handle_response(fp,       _content, _rootkp, l, i, arr){
+    _content = cat(fp)
+    if( match( _content, "^errexit:")) panic(substr(_content, RSTART+RLENGTH))
+    else if ( match( _content, "^data:item:" ) ){
+        lock_release( o, LSENV_KP )
+        l = split(_content, arr, "\n")
+        _rootkp = arr[1];   gsub( "^data:item:", "", _rootkp )
+        gsub( " ", ROOTKP_SEP, _rootkp )
+        user_data_add( o, LSENV_KP, _rootkp, arr[2] )
+        for (i=3; i<=l; ++i) user_data_add( o, LSENV_KP, _rootkp, arr[i] )
     }
-    return 1
 }
 
-function view_body_info( view_grid,             _selected, _selected_keypath ){
-    _selected = data[ cur_keypath L ctrl_win_val( treectrl, cur_keypath ) ]
-    _selected_keypath = cur_keypath S _selected
-    if ( data[ _selected_keypath L ] > 0 ) return view_body_info_for_dir(  view_grid, _selected_keypath )
-    return                                        view_body_info_for_file( view_grid, _selected_keypath )
-}
-
-function view_body_show(view_grid, info_view_maxlen, _col_len,                _return, i, _selected, _selected_keypath, _view_info_grid ){
-
-    _return = ui_str_rep(" ", _col_len + 4) "┌" ui_str_rep("─", info_view_maxlen) "┐"
-    for (i=1; i<=VIEW_BODY_ROW_SIZE; ++i) {
-        _selected = data[ cur_keypath L ctrl_win_val( treectrl, cur_keypath ) ]
-        _selected_keypath = cur_keypath S _selected
-        if ( data[ _selected_keypath L ] < 1 )                     _view_info_grid = th(TH_LSENV_INFO, str_pad_right(view_grid[ i S 0 ], info_view_maxlen))
-        else                                                       _view_info_grid = str_pad_right(view_grid[ i S 0 ], info_view_maxlen)
-        _return = _return UI_END "\n" "  " view_grid[ i ] "  " "│" _view_info_grid "│"
+function user_data_add( o, kp, rootkp, str,         preview, _, v ) {
+    split( str, _, " ")
+    v = _[1]
+    if (v != "" ) preview = "{"
+    if (_[2] != "") {
+        preview = ""
+        o[ kp, rootkp ROOTKP_SEP v, "version" ] = v
+        o[ kp, rootkp ROOTKP_SEP v, "info" ] = _[2]
     }
-    _return = _return UI_END "\n" ui_str_rep(" ", _col_len + 4) "└" ui_str_rep("─", info_view_maxlen) "┘"
-    return _return
+    comp_navi_data_add_kv( o, kp, rootkp, v, preview, v )
 }
 
-function view_body( view_grid,                  _info_view_maxlen, _col_start, _col_len, _col_size, j, i, _kp, _offset_for_this_column, _selected_index_of_this_column, _max_col_len, _i_for_this_column, _tmp, _content ){
-    _info_view_maxlen = view_body_info( view_grid )
-    _col_start = view_body_cal_beginning_col( _info_view_maxlen )
-    _col_size  = stack_length( treectrl )
+function tapp_handle_exit( exit_code,       s, v, _ ){
+    if (exit_is_with_cmd()){
+        s = comp_navi_get_cur_rootkp(o, LSENV_KP)
+        v = o[ LSENV_KP, s, "version" ]
+        if (v == "") return
+        split( s, _, ROOTKP_SEP )
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_CANDIDATE", _[3] ) )
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_VERSION", v ) )
+    }
+}
 
-    for (j=_col_start; j<=_col_size; ++j) {
-        _kp = treectrl[ j ]
-        _offset_for_this_column = ctrl_win_begin( treectrl, _kp )
-        _selected_index_of_this_column = ctrl_win_val( treectrl, _kp )
-        _max_col_len = data[ _kp A "MAX_LEN" ] + 2
-        _col_len = _col_len + _max_col_len
+# EndSection
 
-        for (i=1; i<=VIEW_BODY_ROW_SIZE; ++i) {
-            _i_for_this_column = _offset_for_this_column + i - 1
-            if (_i_for_this_column > data[ _kp L]) {
-                view_grid[ i ] = view_grid[ i ] ui_str_rep(" ", _max_col_len)
-                continue
-            }
+# Section: user view
 
-            _tmp = data[ _kp L _i_for_this_column ]
-            _content = str_pad_right( _tmp, _max_col_len)
-            if (_kp == cur_keypath) {
-                STYLE_LSENV_SELECTED      =   TH_LSENV_ITEM_FOCUSED_SELECT
-                STYLE_LSENV_UNSELECTED    =   TH_LSENV_ITEM_FOCUSED_UNSELECT
-            } else {
-                STYLE_LSENV_SELECTED      =   TH_LSENV_ITEM_UNFOCUSED_SELECT
-                STYLE_LSENV_UNSELECTED    =   TH_LSENV_ITEM_UNFOCUSED_UNSELECT
-            }
-            if ( is_expandable( _kp S _tmp ) == true )                      _content = th(TH_LSENV_DIRECTORY,    _content)
-            if ( _selected_index_of_this_column == _i_for_this_column )     _content = th(STYLE_LSENV_SELECTED,    _content)
-            else                                                            _content = th(STYLE_LSENV_UNSELECTED,  _content)
-            view_grid[ i ] = view_grid[ i ] _content
+function user_view(      x1, x2 ,y1, y2 ){
+    x1 = y1 = 1
+    x2 = tapp_canvas_rowsize_get()
+    y2 = tapp_canvas_colsize_get()
+    if (ROWS_COLS_HAS_CHANGED) comp_navi_change_set_all( o, LSENV_KP )
+    user_paint( x1, x2, y1, y2 )
+}
+
+function user_paint_status( o, kp, x1, x2, y1, y2,      s, l, i, _ ) {
+    if ( ! change_is(o, kp, "navi.footer") ) return
+    change_unset(o, kp, "navi.footer")
+    s = comp_navi_get_cur_rootkp(o, kp)
+    l = split( s, _, ROOTKP_SEP)
+    s = th( TH_THEME_MINOR_COLOR, "CANDIDATE: " ) _[3]
+    comp_textbox_put( o, kp SUBSEP "navi.footer" , s )
+    return comp_textbox_paint( o, kp SUBSEP "navi.footer", x1, x2, y1, y2)
+}
+
+function user_paint_version_info( o, kp, rootkp, x1, x2, y1, y2,        s, _version ){
+    if ( ! change_is(o, kp, "navi.preview") ) return
+    change_unset(o, kp, "navi.preview")
+
+    _version = o[ kp, rootkp, "version" ]
+    if (_version == "") return
+    _info = o[ kp, rootkp, "info" ]
+    s = th( TH_THEME_MINOR_COLOR, "version: " ) _version # \
+        # "\n" th( TH_THEME_MINOR_COLOR, "info: " ) info
+    comp_textbox_put(o, CUSTOM_FILEINFO_KP, s)
+    return comp_textbox_paint(o, CUSTOM_FILEINFO_KP, x1, x2, y1, y2)
+}
+
+function user_paint( x1, x2, y1, y2,       _res ){
+    if (! comp_statusline_isfullscreen(o, LS_STATUSLINE_KP)) {
+        _res = comp_navi_paint( o, LSENV_KP, x1, x2-2, y1, y2)
+
+        if ( comp_navi_paint_preview_ischange( o, LSENV_KP ) ){
+            _res = _res user_paint_version_info( o, LSENV_KP, \
+                o[ LSENV_KP, "PREVIEW", "KP" ], \
+                o[ LSENV_KP, "PREVIEW", "X1" ], \
+                o[ LSENV_KP, "PREVIEW", "X2" ], \
+                o[ LSENV_KP, "PREVIEW", "Y1" ], \
+                o[ LSENV_KP, "PREVIEW", "Y2" ] )
         }
-    }
 
-    return view_body_show( view_grid, _info_view_maxlen, _col_len )
-}
 
-# EndSection
-
-# Section: ctrl
-function get_view_body_row_size() {
-    VIEW_BODY_ROW_SIZE = max_row_size - 10
-    if ( VIEW_BODY_ROW_SIZE > MAX_DATA_ROW_NUM )     VIEW_BODY_ROW_SIZE = MAX_DATA_ROW_NUM
-    if ( VIEW_BODY_ROW_SIZE < 5)     VIEW_BODY_ROW_SIZE = 5
-    return VIEW_BODY_ROW_SIZE
-}
-
-function ctrl(char_type, char_value,        _selected, _selected_keypath ){
-    exit_if_detected( char_value, ",q,ENTER," )
-
-    if (char_value == "h")                               return ctrl_help_toggle()
-    if (char_value == "UP")                              return ctrl_win_rdec( treectrl, cur_keypath )
-    if (char_value == "DN")                              return ctrl_win_rinc( treectrl, cur_keypath )
-
-    if ((char_value == "LEFT") && (stack_length( treectrl ) != 1)) {
-        stack_pop( treectrl )
-        cur_keypath = stack_top( treectrl )
-        return
-    }
-
-    if (char_value == "RIGHT") {
-        _selected = data[ cur_keypath L ctrl_win_val( treectrl, cur_keypath ) ]
-        _selected_keypath = cur_keypath S _selected
-        if ( data[ _selected_keypath L ] < 1 ) return
-        cur_keypath = _selected_keypath
-        stack_push( treectrl, cur_keypath )
-        return
+        _res = _res user_paint_status( o, LSENV_KP, x2-1, x2-1, y1, y2 )
+        _res = _res comp_statusline_paint( o, LS_STATUSLINE_KP, x2, x2, y1, y2 )
+        paint_screen( _res )
+    }else {
+        comp_statusline_set_fullscreen( o, LS_STATUSLINE_KP, x1, x2, y1, y2 )
+        paint_screen( comp_statusline_paint(o, LS_STATUSLINE_KP) )
     }
 }
 
-# EndSection
-
-# Section: cmd source
-NR==1{
-    try_update_width_height( $0 )
-
-    cur_keypath = "."
-    ( CANDIDATE != "" ) && cur_keypath = cur_keypath S CANDIDATE
-    get_data( cur_keypath )
-    stack_push( treectrl, cur_keypath )
-    prepare_selected_item_data()
-    view()
-}
-
-NR>1{
-    if ( try_update_width_height( $0 ) )    next
-    # TODO: if it is update, recalculate the view.
-
-    _cmd=$0
-    gsub(/^C:/, "", _cmd)
-    idx = index(_cmd, ":")
-    ctrl(substr(_cmd, 1, idx-1), substr(_cmd, idx+1))
-    prepare_selected_item_data()
-    view()
-}
-# EndSection
-
-# Section: Functions differ in apps
-
-function is_expandable( curkp ){
-    return ( data[ curkp L ] > 0 ) ? true : false
-    # return ( data[ curkp A "TYPE" ] == "directory" ) ? true : false
-}
-
-function prepare_selected_item_data(        _selected, _selected_keypath ){
-    _selected = data[ cur_keypath L ctrl_win_val(treectrl, cur_keypath) ]
-    _selected_keypath = cur_keypath S _selected
-    # if ( is_expandable( _selected_keypath ) == false ) return
-    get_data( _selected_keypath )
-}
-
-function get_data( curkp,            cmd_format, _curkp_arrl, _curkp_arr, _line, curkp_to_json, _len, _max_len, i ){
-    if (data[ curkp L ] != "")  return
-    cmd_format = ". ~/.x-cmd/xrc/latest; xrc env/lib/main ; ___x_cmd_env_candidate_all"
-    # cmd_format = "cd ~/.x-cmd/env/lib/app/candidate/sdk; ls; cd - >/dev/null"
-    if (curkp != ".") {
-        _curkp_arrl  = split( curkp, _curkp_arr, S)
-        cmd_format = "cat ~/.x-cmd/.env/info/%s.json  2>/dev/null"
-
-        cmd_format = sprintf(cmd_format, _curkp_arr[2], _curkp_arr[2])
-        cmd_format = ". ~/.x-cmd/xrc/latest; xrc env/lib/app/lsenv;" cmd_format "| ___x_cmd_ui_get_env_ls %s"
-        curkp_to_json = substr(curkp, index(curkp, _curkp_arr[2]) + length(_curkp_arr[2]))
-        gsub(S, ".", curkp_to_json)
-        cmd_format = sprintf(cmd_format, curkp_to_json)
-    }
-
-    for (i=1; cmd_format | getline _line; i++) {
-        data[ curkp L i ] = _line
-        data[ curkp S _line A "INFO" ] = "It is " _line " information"
-
-        _len = wcswidth(_line)
-        if ( _max_len < _len) _max_len = _len
-    }
-    data[ curkp A "MAX_LEN" ]    = _max_len
-    i-=1
-    data[ curkp L ] = i
-    if ( MAX_DATA_ROW_NUM < i ) MAX_DATA_ROW_NUM = i
-    ctrl_win_init( treectrl, curkp, 1, data[ curkp L ], get_view_body_row_size() )
-    return
-}
-
-END {
-    if ( exit_is_with_cmd() == true ) {
-        _selected = data[ cur_keypath L ctrl_win_val( treectrl, cur_keypath ) ]
-        split(  cur_keypath, cur_arr, S)
-        send_env( "___X_CMD_UI_LSENV_FINAL_COMMAND",    exit_get_cmd() )
-        send_env( "___X_CMD_UI_LSENV_CURRENT_CANDIDATE",  cur_arr[2] )
-        send_env( "___X_CMD_UI_LSENV_CURRENT_VERSION",  _selected )
-    }
-}
 # EndSection

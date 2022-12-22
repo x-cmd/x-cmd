@@ -1,0 +1,127 @@
+# shellcheck        shell=dash
+
+# TODO: rewrite this module using the awk lib.
+
+___x_cmd_rand___main(){
+    local op="$1"
+    case "$op" in
+        uuid|string|alpha|alphanum|lowercase|uppercase|int|float|decimal|digit)
+            shift; ___x_cmd_rand_"$op" "$@" ;;
+        *)
+            printf "%s\n" "Print help" ;;
+    esac
+}
+
+
+# Refer https://serverfault.com/questions/103359/how-to-create-a-uuid-in-bash
+# Refer https://github.com/Bash-it/bash-it/blob/master/aliases/available/uuidgen.aliases.bash
+___x_cmd_rand_uuid(){
+    if command -v uuid 1>/dev/null; then # Linux
+        uuid "$@"
+    elif command -v uuidgen 1>/dev/null; then # macOS/BSD
+        uuidgen "$@"
+    elif [ -f /proc/sys/kernel/random/uuid ]; then # Linux like alpine, debian. For dash
+        cat /proc/sys/kernel/random/uuid
+    else
+        # It is for ash, mostly in busybox. Dash doesnot have $RANDOM. But Dash in debian, one of the linux distribution.
+        local N=0 B T
+        while [ "$N" -le 16 ]; do
+            B=$(( "$RANDOM" % 255 ))
+
+            if (( N == 6 )); then
+                printf '4%x' $(( B%15 ))
+            elif (( N == 8 )); then
+                local C='89ab'
+                printf '%c%x' ${C:$(( $RANDOM%${#C} )):1} $(( B%15 ))
+            else
+                printf '%02x' $B
+            fi
+
+            for T in 3 5 7 9; do
+                (( T == N )) && printf '-' && break
+            done
+            N=$((N + 1))
+        done
+
+        echo
+    fi
+}
+
+# Refer https://gist.github.com/earthgecko/3089509
+# TODO: just using the awk.
+___x_cmd_rand_string(){
+    local LENGTH=${1:-32}
+    local CHARSET=${2:-'a-zA-Z0-9'}
+    # LC_CTYPE setting according to https://wxnacy.com/2018/03/07/tr-Illegal-byte-sequence/
+    LC_CTYPE=C tr -c -d "$CHARSET" < /dev/random | fold -w "$LENGTH" | head -n 1
+}
+
+___x_cmd_rand_alphanum(){ ___x_cmd_rand_string "$@"; }
+___x_cmd_rand_alpha(){ ___x_cmd_rand_string "${1:-32}" 'a-zA-Z'; }
+___x_cmd_rand_lowercase(){ ___x_cmd_rand_string "${1:-32}" 'a-z'; }
+___x_cmd_rand_uppercase(){ ___x_cmd_rand_string "${1:-32}" 'A-Z'; }
+
+# TODO: just using the awk.
+___x_cmd_rand_ip_address(){
+    echo "$(___x_cmd_rand_int 0 255).$(___x_cmd_rand_int 0 255).$(___x_cmd_rand_int 0 255).$(___x_cmd_rand_int 0 255)"
+}
+
+___x_cmd_rand_email_address(){
+    :
+}
+
+___x_cmd_rand_valid_user_name(){
+    :
+}
+
+
+if [ -n "$RANDOM" ]; then
+    # ash, bash, zsh
+    # TODO: padding zero in the beginning
+    ___x_cmd_rand_int(){
+        local ST=${1:?start number} EN=${2:?end number} SIZE=${3:-0}
+        printf "%0${SIZE}d" $(( ( RANDOM % (EN-ST) )  + ST ))
+    }
+
+    ___x_cmd_rand_decimal(){
+        printf "%.${1:-3}f" "$(printf '0x0.%04xp1' $RANDOM)"
+    }
+
+    # TODO: make it right.
+    ___x_cmd_rand_digit(){
+        printf "%0${1:-3}s" "$RANDOM"
+    }
+else
+    # Refer https://unix.stackexchange.com/questions/140750/generate-random-numbers-in-specific-range
+    ___x_cmd_rand_int(){
+        local ST=${1:?start number}
+        local EN=${2:?end number}
+
+        local SIZE=${3:-0}
+
+        printf "%0${SIZE}d" $(( ( $(od -An -N2 -i /dev/random) % (EN-ST) )  + ST ))
+    }
+
+    ___x_cmd_rand_decimal(){
+        printf "%.${1:-3}f" "0x0.$(od -N 8 -An -tx1 /dev/urandom | tr -d ' ')"
+    }
+
+    # TODO: make it right.
+    ___x_cmd_rand_digit(){
+        printf "%.${1:-6}s" "$(od -N 3 -An -i /dev/urandom | tr -d ' ')"
+    }
+fi
+
+# TODO: make it right.
+___x_cmd_rand_float(){
+    local int floating 
+    int="$(___x_cmd_rand_int "${1:?start number}" "${2:?end number}")"
+    floating="$(___x_cmd_rand_digit "${3:-3}")"
+    if [ "$floating" -eq 0 ]; then
+        printf "%d" "$int"
+    else
+        printf "%s" "$int.$floating"
+    fi
+}
+
+xrc setmain ___x_cmd_rand

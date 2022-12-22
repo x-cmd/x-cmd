@@ -17,6 +17,10 @@ function jref_clear(obj, key){
     obj[ key, "\"$ref\"" ] = ""
 }
 
+function jref_rm(obj, kp){
+    jdict_rm(obj, kp, "\"$ref\"")
+}
+
 function jref_replace_with_empty_dict( obj, key, ref ){
     obj[ key ] = "{"
     obj[ key L ] = 0
