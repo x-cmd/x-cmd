@@ -288,11 +288,12 @@ function generate_tip_help(arr,         _str, i, l, kp, color, title){
     return _str
 }
 
-function help_get_ref(obj, kp,        r, filepath){
+function help_get_ref(obj, kp,        r, filepath, _){
     if ( (r = jref_get(obj, kp) ) != false ) {
-        jref_replace_with_empty_dict(obj, kp)
         filepath = ___X_CMD_ROOT_MOD "/" juq(r)
-        jqparse_dict0( cat( filepath ), obj, kp )
+        jqparse_dict0( cat( filepath ), _, kp )
+        jref_rm(obj, kp)
+        cp_cover(obj, kp, _, kp)
     }
 }
 

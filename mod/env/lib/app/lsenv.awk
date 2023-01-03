@@ -1,50 +1,24 @@
-function user_request_ls_data( rootkp ){
-    if (! lock_acquire( o, LSENV_KP ) ) panic("lock bug")
-    gsub( ROOTKP_SEP, " ", rootkp)
-    tapp_request( "data:request:" rootkp)
+function user_request_data( rootkp ){
+    navi_request_data(o, LSENV_KP, rootkp, " ")
 }
 
 # Section: user model
-
 function tapp_init(){
     LSENV_KP = "ls_kp"
-    comp_navi_init(o, LSENV_KP)
-    comp_statusline_init( o, LS_STATUSLINE_KP = TABLE_KP SUBSEP "statusline" )
-    comp_statusline_data_put( o, LS_STATUSLINE_KP, "q", "Quit", "Press 'q' to quit table" )
-    comp_statusline_data_put( o, LS_STATUSLINE_KP, "/", "Search", "Press '/' to search items" )
-    comp_statusline_data_put( o, LS_STATUSLINE_KP, "Tab", "Open help", "Close help" )
+    navi_init(o, LSENV_KP)
+    navi_statusline_init( o, LSENV_KP )
 }
 
 # EndSection
 
 # Section: user ctrl
-
-function tapp_canvas_rowsize_recalulate( rows ){
-    if (rows < 7) return false
-    return rows - 1    # Assure the screen size
-}
-
+# use user_paint and user_request_data
 function tapp_handle_clocktick( idx, trigger, row, col ){
-    user_view()
-
-    if (! lock_unlocked( o, LSENV_KP )) return
-    if ( comp_navi_unava_has_set( o, LSENV_KP ) ) user_request_ls_data( comp_navi_unava_get( o, LSENV_KP ) )
+    navi_handle_clocktick( o, LSENV_KP, idx, trigger, row, col )
 }
 
 function tapp_handle_wchar( value, name, type,           kp, d ){
-    if (name == U8WC_NAME_END_OF_TEXT)                                  exit(0)
-    else if (name == U8WC_NAME_END_OF_TRANSIMISSION)                    exit(0)
-
-    if (comp_statusline_isfullscreen(o, LS_STATUSLINE_KP)){
-        comp_statusline_handle( o, LS_STATUSLINE_KP, value, name, type )
-        if (! comp_statusline_isfullscreen(o, LS_STATUSLINE_KP)) comp_navi_change_set_all( o, LSENV_KP )
-    } else {
-        if (value == "q")                                               exit(0)
-        else if (value == "/")                                          return comp_navi_sel_sw_toggle( o, LSENV_KP )
-        else if (name == U8WC_NAME_CARRIAGE_RETURN)                     exit_with_elegant("ENTER")
-        else if (comp_navi_handle( o, LSENV_KP, value, name, type ))    return
-        else if (comp_statusline_handle(o, LS_STATUSLINE_KP, value, name, type ))  return
-    }
+    return navi_handle_wchar( o, LSENV_KP, value, name, type )
 }
 
 function tapp_handle_response(fp,       _content, _rootkp, l, i, arr){
@@ -56,18 +30,20 @@ function tapp_handle_response(fp,       _content, _rootkp, l, i, arr){
         _rootkp = arr[1];   gsub( "^data:item:", "", _rootkp )
         gsub( " ", ROOTKP_SEP, _rootkp )
         user_data_add( o, LSENV_KP, _rootkp, arr[2] )
-        for (i=3; i<=l; ++i) user_data_add( o, LSENV_KP, _rootkp, arr[i] )
+        for (i=3; i<=l; ++i) {
+            user_data_add( o, LSENV_KP, _rootkp, arr[i] )
+        }
     }
 }
 
-function user_data_add( o, kp, rootkp, str,         preview, _, v ) {
+function user_data_add( o, kp, rootkp, str,         preview, _, v) {
     split( str, _, " ")
     v = _[1]
     if (v != "" ) preview = "{"
     if (_[2] != "") {
+        jqparse_dict0(_[2], o, kp SUBSEP rootkp SUBSEP v SUBSEP "info")
+        jdict_put(o, kp SUBSEP rootkp SUBSEP v SUBSEP "info", "\"version\"", v )
         preview = ""
-        o[ kp, rootkp ROOTKP_SEP v, "version" ] = v
-        o[ kp, rootkp ROOTKP_SEP v, "info" ] = _[2]
     }
     comp_navi_data_add_kv( o, kp, rootkp, v, preview, v )
 }
@@ -78,6 +54,7 @@ function tapp_handle_exit( exit_code,       s, v, _ ){
         v = o[ LSENV_KP, s, "version" ]
         if (v == "") return
         split( s, _, ROOTKP_SEP )
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_FINAL_COMMAND", FINALCMD ) )
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_CANDIDATE", _[3] ) )
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_VERSION", v ) )
     }
@@ -86,15 +63,6 @@ function tapp_handle_exit( exit_code,       s, v, _ ){
 # EndSection
 
 # Section: user view
-
-function user_view(      x1, x2 ,y1, y2 ){
-    x1 = y1 = 1
-    x2 = tapp_canvas_rowsize_get()
-    y2 = tapp_canvas_colsize_get()
-    if (ROWS_COLS_HAS_CHANGED) comp_navi_change_set_all( o, LSENV_KP )
-    user_paint( x1, x2, y1, y2 )
-}
-
 function user_paint_status( o, kp, x1, x2, y1, y2,      s, l, i, _ ) {
     if ( ! change_is(o, kp, "navi.footer") ) return
     change_unset(o, kp, "navi.footer")
@@ -105,40 +73,24 @@ function user_paint_status( o, kp, x1, x2, y1, y2,      s, l, i, _ ) {
     return comp_textbox_paint( o, kp SUBSEP "navi.footer", x1, x2, y1, y2)
 }
 
-function user_paint_version_info( o, kp, rootkp, x1, x2, y1, y2,        s, _version ){
+function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        _kp, key, value, l, i, v ){
     if ( ! change_is(o, kp, "navi.preview") ) return
     change_unset(o, kp, "navi.preview")
-
-    _version = o[ kp, rootkp, "version" ]
-    if (_version == "") return
-    _info = o[ kp, rootkp, "info" ]
-    s = th( TH_THEME_MINOR_COLOR, "version: " ) _version # \
-        # "\n" th( TH_THEME_MINOR_COLOR, "info: " ) info
-    comp_textbox_put(o, CUSTOM_FILEINFO_KP, s)
-    return comp_textbox_paint(o, CUSTOM_FILEINFO_KP, x1, x2, y1, y2)
+    _kp = kp S rootkp S "info"
+    if ((l = o[ _kp L]) == 0) return
+    for(i=1; i<=l; i++) {
+        key = o[ _kp, i ]
+        value = o[ _kp, key ]
+        if (value ~ "^\"") value = juq(value)
+        v = v th(TH_THEME_MINOR_COLOR, juq(key)) ": " value "\n"
+    }
+    comp_textbox_put(o, "CUSTOM_FILEINFO_KP", v)
+    return comp_textbox_paint(o, "CUSTOM_FILEINFO_KP", x1, x2, y1, y2)
 }
 
-function user_paint( x1, x2, y1, y2,       _res ){
-    if (! comp_statusline_isfullscreen(o, LS_STATUSLINE_KP)) {
-        _res = comp_navi_paint( o, LSENV_KP, x1, x2-2, y1, y2)
-
-        if ( comp_navi_paint_preview_ischange( o, LSENV_KP ) ){
-            _res = _res user_paint_version_info( o, LSENV_KP, \
-                o[ LSENV_KP, "PREVIEW", "KP" ], \
-                o[ LSENV_KP, "PREVIEW", "X1" ], \
-                o[ LSENV_KP, "PREVIEW", "X2" ], \
-                o[ LSENV_KP, "PREVIEW", "Y1" ], \
-                o[ LSENV_KP, "PREVIEW", "Y2" ] )
-        }
-
-
-        _res = _res user_paint_status( o, LSENV_KP, x2-1, x2-1, y1, y2 )
-        _res = _res comp_statusline_paint( o, LS_STATUSLINE_KP, x2, x2, y1, y2 )
-        paint_screen( _res )
-    }else {
-        comp_statusline_set_fullscreen( o, LS_STATUSLINE_KP, x1, x2, y1, y2 )
-        paint_screen( comp_statusline_paint(o, LS_STATUSLINE_KP) )
-    }
+# use user_paint_custom_component and user_paint_status
+function user_paint( x1, x2, y1, y2 ){
+    navi_paint( o, LSENV_KP, x1, x2, y1, y2 )
 }
 
 # EndSection

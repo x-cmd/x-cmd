@@ -2,15 +2,14 @@
 # shellcheck shell=bash
 
 # get the candidate value
-function advise_get_ref(obj, kp,        r, _filepath, _content){
+function advise_get_ref(obj, kp,        r, _filepath, _content, _){
     if ( (r = jref_get(obj, kp) ) == false ) return true
-
-    jref_replace_with_empty_dict(obj, kp)
     _filepath = ___X_CMD_ROOT_MOD "/" juq(r)
     _content = cat( _filepath )
     if ( cat_is_filenotfound() ) return advise_panic( "No such advise jso file: " _filepath )
-    jqparse_dict0( _content, obj, kp )
-    jref_clear(obj, kp)
+    jqparse_dict0( _content, _, kp )
+    jref_rm(obj, kp)
+    cp_cover(obj, kp, _, kp)
     return true
 }
 

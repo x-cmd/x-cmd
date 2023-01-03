@@ -7,15 +7,11 @@ function prepare_argarr( argstr,        l ){
     args[L] = l
 }
 
-{
-    if (NR == 1) { prepare_argarr( $0 ); next; }
-    if ($0 != "") jiparse_after_tokenize(obj, $0)
-}
-
-function locate_obj_prefix( args,       i, j, l, argl, optarg_id, obj_prefix ){
+function locate_obj_prefix( obj, args,       i, j, l, argl, optarg_id, obj_prefix ){
     obj_prefix = SUBSEP "\"1\""   # Json Parser
     argl = args[L]
     for (i=1; i<=argl; ++i){
+        help_get_ref(obj, obj_prefix )
         l = aobj_len( obj, obj_prefix )
         for (j=1; j<=l; ++j) {
             optarg_id = aobj_get( obj, obj_prefix SUBSEP j)
@@ -29,8 +25,11 @@ function locate_obj_prefix( args,       i, j, l, argl, optarg_id, obj_prefix ){
     return obj_prefix
 }
 
-END{
-    obj_prefix = locate_obj_prefix( args )
+# EndSection
 
-    print_helpdoc( obj, obj_prefix ) > "/dev/stderr";
+(NR == 1) { prepare_argarr( $0 ); }
+{ if ($0 != "") jiparse_after_tokenize(obj, $0); }
+END{
+    obj_prefix = locate_obj_prefix( obj, args )
+    print_helpdoc( obj, obj_prefix )
 }
