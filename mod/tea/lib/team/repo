@@ -1,0 +1,161 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_tea_team_repo(){
+    param:subcmd ___x_cmd_tea_team_repo                                                     \
+        ls              "Lists a team's repositories visible to the authenticated user."    \
+        info            "List a particular repo of team"                                    \
+        add             "Add repository to team"                                            \
+        edit            "Update the team's permissions to the repository"                   \
+        rm              "rm org team repo"
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_tea_team_repo _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://try.gitea.io/api/swagger#/repository/repoListTeams
+___x_cmd_tea_team_repo_ls() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       '
+options:
+    --team      "The slug of the team id."                  <>
+    --org       "The organization name."                    <>:Address=""
+    --per_page  "Results per page"                          <>:Number=30
+    --page      "Page number of the results to fetch."      <>:Number=1
+    --json|-j   "Output json data"
+'
+    param:run
+    local ___tea_error_msg="get org team repo list fail"
+
+    ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Name=.name RepoPath=.full_name Private=.private Description=.description -- $@' \
+        ___x_cmd_tea_get_multi "/teams/$team/repos" per_page page
+}
+# EndSection
+
+
+# Section: team repo info
+# https://try.gitea.io/api/swagger#/repository/repoListTeams
+___x_cmd_tea_team_repo_info() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       '
+options:
+    #1          "name of the repo to list"          <>:RepoName
+    --org       "The organization name."            <>:Address
+    --team      "The slug of the team id."          <>
+    --json|-j   "output json data"
+'
+    param:run
+
+    local repo="$1"
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_curl get "/teams/$team/repos/$org/$1" | _____x_cmd_team_repo_ui_utils Info
+}
+# EndSection
+
+# Section: team repo add
+#TODO: APIEmpty is an empty response
+# https://try.gitea.io/api/swagger#/repository/repoAddTeam
+___x_cmd_tea_team_repo_add() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1              "name of the repo to add"                   <>:RepoName
+    --org           "The organization name"                     <>:Address
+    --team          "The slug of the team id."                  <>
+
+    --json|-j       "output json data"
+A
+ param:run
+
+    local repo="$1"
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -org -team)"
+
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_curl put "/teams/$team/repos/$org/$1" "gen_tea_json" | _____x_cmd_team_repo_ui_utils Creating
+}
+# EndSection
+
+
+#TODO: not found this API
+___x_cmd_tea_team_repo_edit() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1              "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --org           "The organization name"                                             <>:Address
+    --team          "The slug of the team name."                                        <>
+    --permission    "The permission to grant the team on this repo"                     <>="push"
+
+    --json|-j       "output json data"
+A
+ param:run
+
+    local repo="$1"
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -org -team)"
+
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_curl put  "/orgs/${org##*/}/teams/$team/repos/${owner_repo}" "gen_tea_json" | _____x_cmd_team_repo_ui_utils Update
+}
+
+# https://try.gitea.io/api/swagger#/repository/repoDeleteTeam
+___x_cmd_tea_team_repo_rm() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1              "name of the repo to remove"                         <>:RepoName
+    --org           "The organization name"                              <>:Address
+    --team          "The slug of the team id."                           <>
+
+    --yes|-y        "Ignore remove prompt interception"
+A
+    param:run
+
+    local reponame="$1"
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $team to remove repo: $(___x_cmd_ui bold red "$reponame") ?" || return
+    ___x_cmd_tea_curl delete "/teams/$team/repos/$org/$reponame" | (
+        x jo env . error=.
+        if ___x_cmd_tea_http_error; then
+            ___x_cmd_ui_tf  true "del repo $reponame  success"
+        else
+            ___x_cmd_ui_tf false "del repo failure: $reponame." "ErrorMsg:$error"
+            return 1
+        fi
+    )
+}
+
+
+# Section: org team utils
+_____x_cmd_team_repo_ui_utils()(
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_tea_http_error
+        return
+    fi
+
+    local msg
+    local error_msg
+    case "$1" in
+        Info)
+            data="full_name=.full_name visibility=.visibility"
+            msg="get repo $name info success"
+            error_msg="Fail. Couldn't find any repo: ${name}"
+            ;;
+        Creating|Update)
+            msg="$1 repo $name  success"
+            error_msg="$1 repo failure: $name."
+            ;;
+    esac
+    x jo env . id=.id url=.html_url error=. $data
+    if [ -n "$id" ]; then
+        ___x_cmd_ui_tf true "$msg" "repo_id: $id" ${full_name+"name: $full_name"}  ${url+"url: $url"} ${owner+"repo_owner: $owner"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)
+# EndSection

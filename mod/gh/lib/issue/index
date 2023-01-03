@@ -17,6 +17,8 @@ ___x_cmd_gh_issue() {
 }
 
 # Section: Create
+# https://docs.github.com/en/rest/issues/issues#create-an-issue
+# shellcheck disable=SC2154
 ___x_cmd_gh_issue_create(){
     param:scope     ___x_cmd_github
     param:dsl       '
@@ -25,7 +27,7 @@ options:
     --title     "The title of the issue."                                               <>:string
 
     --body      "The contents of the issue."                                            <>:string=""
-    --assignees "User responsible for this issue.(separated by commas)"                                      <>:array=""
+    --assignees "User responsible for this issue.(separated by commas)"                 <>:array=""
     --milestone "milestone number"                                                      <>:number="null"
     --labels    "Labels to associate with this issue.(separated by commas)"             <>:array=""
 
@@ -36,12 +38,14 @@ options:
     labels=$(x jo "[$labels]")
     local gen_gh_json
     gen_gh_json="$(param:option2json -json)"
+    gh:debug "$gen_gh_json"
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl post "/repos/$owner_repo/issues" gen_gh_json | _____x_cmd_gh_issue_ui_utils Creating
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/issues" gen_gh_json | _____x_cmd_gh_issue_ui_utils Creating
 }
 # EndSection
 
 # Section: List
+# https://docs.github.com/en/rest/issues/issues#list-repository-issues
 ___x_cmd_gh_issue_ls(){
     param:scope     ___x_cmd_github
     param:dsl       '
@@ -59,7 +63,6 @@ options:
 
     --per_page      "Results per page"                                                      <>="30"
     --page          "Page number of the results to fetch."                                  <>="1"
-
     --json|-j       "output json data"
 '
     param:run
@@ -71,6 +74,8 @@ options:
 # EndSection
 
 # Section: Edit
+# https://docs.github.com/en/rest/issues/issues#update-an-issue
+# shellcheck disable=SC2034
 ___x_cmd_gh_issue_edit() {
     param:scope ___x_cmd_github
     param:dsl '
@@ -94,6 +99,7 @@ options:
     tmp=$(x jo "[$labels]")
     local gen_gh_json
     gen_gh_json="$(param:option2json -json -labels -assignees ${labels+"labels=tmp"} ${assignees+"assignees=tmp_assignees"})"
+    gh:debug "$gen_gh_json"
     ___x_cmd_gh_param_init_owner_repo
 
     ___x_cmd_gh_curl patch "/repos/${owner_repo}/issues/${1}" gen_gh_json | _____x_cmd_gh_issue_ui_utils Edit
@@ -101,6 +107,7 @@ options:
 # EndSection
 
 # Section: Reopen
+# https://docs.github.com/en/rest/issues/issues#update-an-issue
 ___x_cmd_gh_issue_reopen(){
     param:scope     ___x_cmd_github
     param:dsl       '
@@ -119,6 +126,7 @@ options:
 # EndSection
 
 # Section: Close
+# https://docs.github.com/en/rest/issues/issues#update-an-issue
 ___x_cmd_gh_issue_close(){
      param:scope     ___x_cmd_github
     param:dsl       '
@@ -138,29 +146,82 @@ options:
 # EndSection
 
 # Section: issue utils
-_____x_cmd_gh_issue_ui_utils()(
+# shellcheck disable=SC2154
+_____x_cmd_gh_issue_ui_utils(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gh_http_error
         return
     fi
+    (
+        case "$1" in
+            Creating|Edit)  _data="title=.title url=.html_url state=.state"  ;;
+            Reopen|Close)   ;;
+        esac
+        eval x jo env . id=.number gh_resp_err=.message "$_data"
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true "$1 issue  success." "number: $id" ${title+"title: $title"}  ${url+"url: $url"} ${state+"state: $state"}
+        else
+            ___x_cmd_ui_tf false "$1 issue failure."
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
 
-    local data
-    local msg="$1 issue  success."
-    local error_msg="$1 issue failure."
-    case "$1" in
-        Creating|Edit)
-            data="title=.title url=.html_url state=.state"
-            ;;
-        Reopen|Close)
-            ;;
-    esac
-    x jo env . id=.number error=. $data
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "$msg" "number: $id" ${title+"title: $title"}  ${url+"url: $url"} ${state+"state: $state"}
-    else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
-        return 1
-    fi
-)
+# Section: User ISSUE
+# https://docs.github.com/en/rest/issues/issues#list-issues-assigned-to-the-authenticated-user
+___x_cmd_gh_user_issue(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+type:
+    Screen = all assigned created mentioned subscribed repos
+    State = open closed all
+    Sort = created updated comments
+    Direction = desc asc
+options:
+    --filter        "filter(assigned,created,all)"                 <>:Screen="assigned"
+    --state         "state(open,progerssing,closed,rejected)"      <>:State="open"
+    --sort          "sort"                                         <>:Sort="created"
+    --labels        "labels"                                       <>=""
+    --direction     "direction(asc、desc)"                         <>:Direction="desc"
+    --since         "updated date"                                 <>:ISOTime=""
+    --page          "page"                                         <>:Numbers="1"
+    --per_page      "per_page"                                     <>:Numbers="30"
+    --json|-j       "output origin json data"
+'
+    param:run
+    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json issue=.number repo=.repository.full_name title=.title state=.state -- $@' \
+        ___x_cmd_gh_get_multi "/user/issues" filter state sort labels direction since
+}
+# EndSection
+
+# Section: Org Issue
+# https://docs.github.com/en/rest/issues/issues#list-organization-issues-assigned-to-the-authenticated-user
+# shellcheck disable=SC2154
+___x_cmd_gh_org_issue(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+type:
+    Screen = all assigned created mentioned subscribed repos
+    State = open closed all
+    Sort = created updated comments
+    Direction = desc asc
+options:
+    --org           "organization name"                            <>:Address
+    --filter        "filter(assigned,created,all)"                 <>:Screen="assigned"
+    --state         "state(open,progerssing,closed,rejected)"      <>:State="open"
+    --labels        "labels"                                       <>=""
+    --sort          "sort"                                         <>:Sort="created"
+    --direction     "direction(asc、desc)"                         <>:Direction="desc"
+    --since         "updated date"                                 <>:ISOTime=""
+    --page          "page"                                         <>:Numbers="1"
+    --per_page      "per_page"                                     <>:Numbers="30"
+    --json|-j       "output origin json data"
+'
+    param:run
+    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json issue=.number repo=.repository.full_name title=.title state=.state -- $@' \
+        ___x_cmd_gh_get_multi "/orgs/${org##*/}/issues" filter state sort labels direction since
+}
 # EndSection

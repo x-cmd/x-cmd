@@ -1,39 +1,41 @@
 # shellcheck shell=sh
 # shellcheck disable=SC2039,3043
 
-___x_cmd_gh_packages(){
+___x_cmd_gh_package(){
     param:scope     ___x_cmd_github
-    param:subcmd ___x_cmd_gh_packages                               \
+    param:subcmd ___x_cmd_gh_package                               \
         "ls|l"  "Lists all packages in a user's namespace for which the requesting user has access."    \
+        "info|i"  "get user packages info"                            \
         "rm"    "remove user packages"                              \
-        "info"  "get user packages info"                            \
         "tag"   "packages tag manage"
     param:subcmd:try
     param:run
 
-    ___x_cmd_gh_packages _param_help_doc
+    ___x_cmd_gh_package _param_help_doc
     return 1
 }
 
 
-# Section: List Packages
-___x_cmd_gh_packages_ls() {
+# Section: List
+# https://docs.github.com/en/rest/packages#list-packages-for-a-user
+# https://docs.github.com/en/rest/packages#list-packages-for-an-organization
+___x_cmd_gh_package_ls() {
     param:scope     ___x_cmd_github
     param:dsl       '
+type:
+    Access  =   private public internal ""
 options:
     --owner         "Specify an organization or user."          <>=""
     --package_type  "The type of supported package."            <> = container npm maven rubygems docker nuget
-    --visibility    "The selected visibility of the packages."  <>=""
-
+    --visibility    "The selected visibility of the packages."  <>:Access=""
     --per_page      "Results per page"                          <>="30"
     --page          "Page number of the results to fetch."      <>="1"
-
     --json|-j   "output json data"
 '
     param:run
 
     local owner_type
-    owner_type=___x_cmd_gh_owner_type_query "$owner"
+    owner_type="$(___x_cmd_gh_owner_type_query "$owner")"
     [ -n "$owner" ] || owner="$(___x_cmd_gh_current_owner)"
     ___x_cmd_gh_get_multi "/${owner_type}s/${owner}/packages" visibility
 
@@ -41,7 +43,10 @@ options:
 # EndSection
 
 # Section: Info
-___x_cmd_gh_packages_info() {
+# https://docs.github.com/en/rest/packages#get-a-package-for-an-organization
+# https://docs.github.com/en/rest/packages#get-a-package-for-a-user
+# shellcheck disable=SC2154
+___x_cmd_gh_package_info() {
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
@@ -52,14 +57,17 @@ options:
     param:run
 
     local owner_type
-    owner_type=___x_cmd_gh_owner_type_query "$owner"
+    owner_type="$(___x_cmd_gh_owner_type_query "$owner")"
     [ -n "$owner" ] || owner="$(___x_cmd_gh_current_owner)"
     ___x_cmd_gh_curl get "/${owner_type}s/${owner}/packages/${package_type}/$1"
 }
 # EndSection
 
 # Section: rm
-___x_cmd_gh_packages_rm() {
+# https://docs.github.com/en/rest/packages#delete-a-package-for-a-user
+# https://docs.github.com/en/rest/packages#delete-a-package-for-an-organization
+# shellcheck disable=2154
+___x_cmd_gh_package_rm() {
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
@@ -70,16 +78,17 @@ options:
 '
     param:run
     local owner_type
-    owner_type=___x_cmd_gh_owner_type_query "$owner"
+    owner_type="$(___x_cmd_gh_owner_type_query "$owner")"
     [ -n "$owner" ] || owner="$(___x_cmd_gh_current_owner)"
 
     [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete this packages: $(___x_cmd_ui bold red "$package_name") ?" || return
     ___x_cmd_gh_curl delete "/${owner_type}s/${owner}/packages/${package_type}/$1" | (
-            x jo env . error=.
+            x jo env . gh_resp_err=.message
             if ___x_cmd_gh_http_error; then
                 ___x_cmd_ui_tf  true "deleted packages $1 success"
             else
-                ___x_cmd_ui_tf false "Deleting packages failure: $1." "ErrorMsg:$error"
+                ___x_cmd_ui_tf false "Deleting packages failure: $1."
+                ___x_cmd_gh____handle_resp
                 return 1
             fi
         )

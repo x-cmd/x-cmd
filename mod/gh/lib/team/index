@@ -2,22 +2,69 @@
 # shellcheck disable=SC2039,3043
 ___x_cmd_gh_team(){
     param:subcmd ___x_cmd_gh_team               \
-        ls              "list user or org team" \
-        info            "Get team info by name" \
-        create          "To create a team"      \
-        edit            "To edit a team"        \
-        repo            "manage org team repo"  \
-        rm              "To delete a team"      \
-        child           "Lists the child teams of the team specified."
+        app             "Interactive UI show team of user"              \
+        "ls|l"          "list user or org team"                         \
+        "info|i"        "Get team info by name"                         \
+        "create|c"      "To create a team"                              \
+        "edit|ed"       "To edit a team"                                \
+        rm              "To delete a team"                              \
+        child           "Lists the child teams of the team specified."  \
+        repo            "manage org team repo"
     param:subcmd:try
     param:run
-
 
     ___x_cmd_gh_team _param_help_doc
     return 1
 }
 
+# Section: team app
+___x_cmd_gh_team_app(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --org           "org space address(Get all teams of the current user by default)"   <>:Address=""
+    --per_page      "Results per page"                                                  <>:Number=30
+    --page          "Page number of the results to fetch."                              <>:Number=1
+'
+    param:run
+    local url="/user/teams"
+    if [ -n "$org" ]; then
+        url="/orgs/${org##*/}/teams"
+    fi
+
+    ___x_cmd_gh_param_init_owner_repo
+    local ___gh_error_msg="get team list fail"
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_get_multi "$url" per_page page'
+    ___x_cmd_gh_tui_app "team.app.awk"
+
+    ___x_cmd_gh_team_app_status_handler
+}
+
+___x_cmd_gh_team_app_status_handler(){
+    local team_name
+    team_name="${___X_CMD_TUI_TABLE_CUR_LINE##*Name: }"
+    team_name=${team_name%%
+Html_url: *}
+    local organization
+    organization="${___X_CMD_TUI_TABLE_CUR_LINE##*Organization: }"
+    organization=${organization%%
+Name: *}
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "c")            ___x_cmd_gh_team_create                            ;;
+            "u")            ___x_cmd_gh_team_edit              --org "$organization"   "$team_name"                  ;;
+            "d")            ___x_cmd_gh_team_rm                --org "$organization"   "$team_name"                  ;;
+            "f")            ___x_cmd_gh_team_child             --org "$organization"   "$team_name"                  ;;
+            *)              return   ;;
+    esac
+}
+# EndSection
+
 # Section: List
+# https://docs.github.com/en/rest/teams/teams#list-teams
 ___x_cmd_gh_team_ls() {
     param:scope     ___x_cmd_github
     param:dsl       '
@@ -29,16 +76,15 @@ options:
 '
     param:run
     local url="/user/teams"
-    if [ -n "$org" ]; then
-        url="/orgs/${org##*/}/teams"
-    fi
+    [ -z "$org" ] || url="/orgs/${org##*/}/teams"
 
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Id=.id Name=.name Url=.html_url -- $@' \
+    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Id=.id Organization=.organization.login Name=.name Url=.html_url -- $@' \
         ___x_cmd_gh_get_multi "$url" per_page page
 }
 # EndSection
 
-# Section: info & add & rm
+# Section: Info
+# https://docs.github.com/en/rest/teams/teams#get-a-team-by-name
 ___x_cmd_gh_team_info() {
     param:scope     ___x_cmd_github
     param:dsl      <<A
@@ -51,7 +97,10 @@ A
     param:run
     ___x_cmd_gh_curl get "/orgs/${org##*/}/teams/${1}" | _____x_cmd_team_ui_utils Info
 }
+# EndSection
 
+# Section: Create
+# https://docs.github.com/en/rest/teams/teams#create-a-team
 ___x_cmd_gh_team_create() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -70,9 +119,13 @@ A
     local name="$1"
     local gen_gh_json
     gen_gh_json="$(param:option2json -org +name)"
+    gh:debug "$gen_gh_json"
     ___x_cmd_gh_curl post  "/orgs/${org##*/}/teams" "gen_gh_json" | _____x_cmd_team_ui_utils Creating
 }
+# EndSection
 
+# Section: Edit
+# https://docs.github.com/en/rest/teams/teams#update-a-team
 ___x_cmd_gh_team_edit() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -90,10 +143,15 @@ A
 
     local gen_gh_json
     gen_gh_json="$(param:option2json -org)"
+    gh:debug "$gen_gh_json"
 
     ___x_cmd_gh_curl patch  "/orgs/${org##*/}/teams/${1}" "gen_gh_json" | _____x_cmd_team_ui_utils Update
 }
+# EndSection
 
+# Section: Remove
+# https://docs.github.com/en/rest/teams/teams#delete-a-team
+# shellcheck disable=2154
 ___x_cmd_gh_team_rm() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -110,11 +168,12 @@ A
         {
             [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove team: $(___x_cmd_ui bold red "$teamname") ?" || continue
             ___x_cmd_gh_curl delete "/orgs/${org##*/}/teams/${teamname}" | (
-                x jo env . error=.
+                x jo env . gh_resp_err=.message
                 if ___x_cmd_gh_http_error; then
                     ___x_cmd_ui_tf  true "del team $teamname to organizations  success"
                 else
-                    ___x_cmd_ui_tf false "del team $teamname to organizations fail" "ErrorMsg:$error"
+                    ___x_cmd_ui_tf false "del team $teamname to organizations fail"
+                    ___x_cmd_gh____handle_resp
                     return 1
                 fi
             )
@@ -122,7 +181,10 @@ A
         }
     done
 }
+# EndSection
 
+# Section: Child
+# https://docs.github.com/en/rest/teams/teams#list-child-teams
 ___x_cmd_gh_team_child() {
     param:scope     ___x_cmd_github
     param:dsl       '
@@ -140,35 +202,35 @@ options:
     ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Id=.id Name=.name parent=.parent.name Description=.description -- $@' \
         ___x_cmd_gh_get_multi "/orgs/${org##*/}/teams/${1}/teams" per_page page
 }
-    
+# EndSection
+
 # Section: org team utils
-_____x_cmd_team_ui_utils()(
+_____x_cmd_team_ui_utils(){
     if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gh_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Info)
-            msg="get team $teamname info  success"
-            error_msg="get team $teamname info fail."
-            ;;
-        Creating|Update)
-            data="owner=.organization.login"
-            msg="$1 org team $name success"
-            error_msg="$1 org team failure: $name."
-            ;;
-    esac
-    x jo env . id=.id url=.url name=.name error=. $data
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "$msg" ${id+"Id: $id"} ${name+"Name: $name"} ${owner+"Owner: $owner"} ${url+"Url: $url"}
-    else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
-        return 1
-    fi
-)
+    (
+        case "$1" in
+            Info)
+                _msg="get team $teamname info  success"
+                _error_msg="get team $teamname info fail."
+                ;;
+            Creating|Update)
+                _data="owner=.organization.login"
+                _msg="$1 org team $name success"
+                _error_msg="$1 org team failure: $name."
+                ;;
+        esac
+        eval x jo env . id=.id url=.url name=.name gh_resp_err=.message "$_data"
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true "$_msg" ${id+"Id: $id"} ${name+"Name: $name"} ${owner+"Owner: $owner"} ${url+"Url: $url"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
 # EndSection

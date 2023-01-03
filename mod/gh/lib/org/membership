@@ -6,7 +6,8 @@ ___x_cmd_gh_org_membership(){
         "info|i"            "get org membership user info"  \
         add                 "add org membership"            \
         "edit|ed"           "update org membership"         \
-        rm                  "Remove membership"
+        rm                  "Remove membership"             \
+        app                 "Interactive UI show org of user"
     param:subcmd:try
     param:run
 
@@ -15,7 +16,52 @@ ___x_cmd_gh_org_membership(){
     return 1
 }
 
+# Section: membership app
+___x_cmd_gh_org_membership_app(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --org           "org space address"                         <>:Address
+    --filter        "Filter members returned in the list."      <>:OrgMemberFilter="all"
+    --role          "Filter members returned by their role."    <>:OrgMemberRole="all"
+
+    --per_page      "Results per page"                          <>:Number=30
+    --page          "Page number of the results to fetch."      <>:Number=1
+    --json|-j       "output json data"
+'
+    param:run
+
+    local ___gh_error_msg="get membership list fail"
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_get_multi "/orgs/${org##*/}/members" role filter per_page page'
+    ___x_cmd_gh_tui_app "org.membership.app.awk"
+
+    ___x_cmd_gh_org_membership_app_status_handler
+
+}
+___x_cmd_gh_org_membership_app_status_handler(){
+    if [ ! -t 1 ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_http_error
+        return
+    fi
+    local repo_name
+    user_name="${___X_CMD_TUI_TABLE_CUR_LINE##*UserName: }"
+    user_name=${user_name%%
+Url:*}
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "c")            ___x_cmd_gh_org_membership_add    --org "${org}"                     ;;
+            "u")            ___x_cmd_gh_org_membership_edit   --org "${org##*/}"    "$user_name"     ;;
+            "d")            ___x_cmd_gh_org_membership_rm     --org "${org##*/}"    "$user_name"     ;;
+            *)              return   ;;
+    esac
+}
+# EndSection
+
 # Section: List
+# https://docs.github.com/en/rest/orgs/members#list-organization-members
 ___x_cmd_gh_org_membership_ls() {
     param:scope     ___x_cmd_github
     param:dsl       '
@@ -35,7 +81,8 @@ options:
 }
 # EndSection
 
-# Section: info & add & rm
+# Section: Info
+# https://docs.github.com/en/rest/orgs/members#get-organization-membership-for-a-user
 ___x_cmd_gh_org_membership_info() {
     param:scope     ___x_cmd_github
     param:dsl      <<A
@@ -47,9 +94,12 @@ options:
 A
     param:run
 
-    ___x_cmd_gh_curl get "/orgs/${org##*/}/memberships/${1##*/}" | (_____x_cmd_gh_org_membership_ui_utils Info)
+    ___x_cmd_gh_curl get "/orgs/${org##*/}/memberships/${1##*/}" | _____x_cmd_gh_org_membership_ui_utils Info
 }
+# EndSection
 
+# Section: Add
+# https://docs.github.com/en/rest/orgs/members#set-organization-membership-for-a-user
 ___x_cmd_gh_org_membership_add() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -58,7 +108,7 @@ type:
 options:
     --org           "org space address"                                 <>:Address
     --role          "The role to give the user in the organization"     <>:role="member"
-    #n              "username"
+    #1              "username"                                          <>
 
     --json|-j   "output json data"
 A
@@ -70,11 +120,14 @@ A
 
     for username in "$@"; do
         {
-            ___x_cmd_gh_curl put  "/orgs/${org##*/}/memberships/${username##*/}" -- role | (_____x_cmd_gh_org_membership_ui_utils Add)
+            ___x_cmd_gh_curl put  "/orgs/${org##*/}/memberships/${username##*/}" -- role | _____x_cmd_gh_org_membership_ui_utils Add
         }
     done
 }
+# EndSection
 
+# Section: Edit
+# https://docs.github.com/en/rest/orgs/members#set-organization-membership-for-a-user
 ___x_cmd_gh_org_membership_edit() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -88,9 +141,13 @@ options:
 A
     param:run
     local username="$1"
-    ___x_cmd_gh_curl put  "/orgs/${org##*/}/memberships/${username##*/}" -- role | (_____x_cmd_gh_org_membership_ui_utils Edit)
+    ___x_cmd_gh_curl put  "/orgs/${org##*/}/memberships/${username##*/}" -- role | _____x_cmd_gh_org_membership_ui_utils Edit
 }
+# EndSection
 
+# Section: Remove
+# https://docs.github.com/en/rest/orgs/members#remove-organization-membership-for-a-user
+# shellcheck disable=SC2154
 ___x_cmd_gh_org_membership_rm() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -106,11 +163,12 @@ A
         {
             [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
             ___x_cmd_gh_curl delete "/orgs/${org##*/}/members/${username##*/}" | (
-                x jo env . error=.
+                x jo env . gh_resp_err=.message
                 if ___x_cmd_gh_http_error; then
                     ___x_cmd_ui_tf  true "del $username to organizations  success"
                 else
-                    ___x_cmd_ui_tf false "del $username to organizations fail" "ErrorMsg:$error"
+                    ___x_cmd_ui_tf false "del $username to organizations fail"
+                    ___x_cmd_gh____handle_resp
                     return 1
                 fi
             )
@@ -127,27 +185,26 @@ _____x_cmd_gh_org_membership_ui_utils(){
         ___x_cmd_gh_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
+    (
+        case "$1" in
         Info)
-            data="role=.role url=.organization_url name=.user.login"
-            msg="get membership in organizations info  success"
-            error_msg="get membership in organizations info fail."
+            _data="role=.role url=.organization_url name=.user.login"
+            _msg="Get membership in organizations info success"
+            _error_msg="get membership in organizations info fail."
             ;;
         Add|Edit)
-            msg="$1 $username to organizations  success"
-            error_msg="$1 $username to organizations fail."
+            _msg="$1 $username to organizations success"
+            _error_msg="$1 $username to organizations fail."
             ;;
-    esac
-    x jo env . state=.state error=. $data
-    if [ -n "$state" ]; then
-        ___x_cmd_ui_tf true "$msg" ${name+"Name: $name"}  ${role+"Role: $role"} ${state+"State: $state"} ${url+"Url: $url"}
-    else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
-        return 1
-    fi
+        esac
+        eval x jo env . state=.state gh_resp_err=.message "$_data"
+        if [ -n "$state" ]; then
+            ___x_cmd_ui_tf true "$_msg" ${name+"Name: $name"}  ${role+"Role: $role"} ${state+"State: $state"} ${url+"Url: $url"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection

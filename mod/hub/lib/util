@@ -30,8 +30,8 @@ ___x_cmd_hub___util_handle_resp(){
 ___x_cmd_hub___util_subcmd_invalid(){
     local subcmd="${1}"
     local param="${2}"
-    if [ -z "$param" ]; then ___x_cmd_ui_tf false "Subcommand required. See 'x hub $subcmd --help'" >&2
-    else                     ___x_cmd_ui_tf false "'$param' is not a subcommand. See 'x hub $subcmd --help'" >&2 ; fi
+    if [ -z "$param" ]; then ___x_cmd_ui_tf false "Subcommand required. See 'x hub $subcmd --help|-h'" >&2
+    else                     ___x_cmd_ui_tf false "'$param' is not a subcommand. See 'x hub $subcmd --help|-h'" >&2 ; fi
     return 1
 }
 
@@ -40,7 +40,7 @@ ___x_cmd_hub___util_curl() {
     local url_path="${2:?Provide url_path}"; shift 2
 
     [ -n "$NO_AUTH" ] || {
-        local token; token="$(___x_cmd_hub_account_token)" || return 1
+        local token; token="$(___x_cmd_hub___util_get_token)" || return 1
         ___x_cmd_http header put Authorization "$token"
     }
 
@@ -63,7 +63,7 @@ ___x_cmd_hub___util_send_file() {
     local localfp="${1:?Provide local file}"
     local respath="${2:?Provide respath}"
 
-    local token; token="$(___x_cmd_hub_account_token)" || return 1
+    local token; token="$(___x_cmd_hub___util_get_token)" || return 1
     local cmd; cmd="curl -sS -X PUT -F 'file=@$localfp' '$___X_CMD_HUB_SERVICE_URL/api/v0/file?token=${token}&res=${respath}'"
     # TODO: when http return error code, curl will not return error code
     eval "$cmd" || {  hub:debug "Exec cmd: $cmd" ; return 1 ;}
@@ -108,3 +108,37 @@ ___x_cmd_hub___util_percent(){
     base="$((base*100*100/total))"
     printf "%s" "$((base/100)).$((base%100)) %"
 }
+
+# Section: token_generate
+
+___x_cmd_hub___util_get_token(){
+    local token ; token="$(cat "$___X_CMD_HUB_CACHE/token")"
+    [ -n "$token" ] || {
+        ___x_cmd_ui_tf false "Token is empty, please login first" >&2
+        return 1
+    }
+    printf "%s\n" "$token"
+}
+
+___x_cmd_hub___util_save_token(){
+    printf "%s\n" "${1}" > "$___X_CMD_HUB_CACHE/token"
+}
+
+___x_cmd_hub___util_save_token_with_ui(){
+    local token="${1}"
+    local res
+    if res="$(___x_cmd_hub_get_userinfo_by_token "${token}")" ; then
+        ___x_cmd_hub___util_save_token "${token}"
+        printf "%s" "${res}"
+        ___x_cmd_hub___util_handle_resp true "$res" "Save token to ${___X_CMD_HUB_CACHE}/.token"
+    else
+        ___x_cmd_ui_tf false "Failed" >&2
+        return 1
+    fi
+}
+
+___x_cmd_hub___util_token_generate(){
+    printf "%s%s" "$(date +%s)" "$(x rand uuid)" | x md5
+}
+
+# EndSection

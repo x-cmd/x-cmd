@@ -1,5 +1,5 @@
 # shellcheck shell=sh
-# shellcheck disable=SC2039,3043
+# shellcheck disable=SC2039,3043,SC2154
 ___x_cmd_gh_repo_hook(){
     param:subcmd ___x_cmd_gh_repo_hook          \
         "ls|l"              "list repo webhook"     \
@@ -15,6 +15,7 @@ ___x_cmd_gh_repo_hook(){
 }
 
 # Section: List
+# https://docs.github.com/en/rest/webhooks/repos#list-repository-webhooks
 ___x_cmd_gh_repo_hook_ls() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -31,7 +32,8 @@ A
 }
 # EndSection
 
-# Section: info & rm
+# Section: Info
+# https://docs.github.com/en/rest/webhooks/repos#get-a-repository-webhook
 ___x_cmd_gh_repo_hook_info() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -42,9 +44,99 @@ options:
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl get "/repos/${owner_repo}/hooks/$1" | (_____x_cmd_gh_hook_ui_utils Info)
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/hooks/$1" | _____x_cmd_gh_hook_ui_utils Info
 }
+# EndSection
 
+# Section: Create
+# https://docs.github.com/en/rest/webhooks/repos?apiVersion=2022-11-28#create-a-repository-webhook
+___x_cmd_gh_repo_hook_create() {
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+type:
+    ContentType = json form ""
+options:
+    --repo          "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --url           "The URL to which the payloads will be delivered."                      <>
+    --events        "events the hook is triggered for.(array usage,interval)"               <>="push"
+    --name          "webhook name"                                                          <>=""
+    --content_type  "The media type used to serialize the payloads. "                       <>:ContentType=""
+    --secret        "the secret will be used as the key to generate the HMAC hex digest"    <>=""
+    --token         "set token"                                                             <>=""
+    --digest        "digest"                                                                <>=""
+    --insecure_ssl  "Determines whether the SSL certificate of the host for url will be verified when delivering payloads." <>=""
+    --active        "Determines if notifications are sent when the webhook is triggered."
+
+    --json|-j   "output json data"
+A
+    param:run
+
+    local config
+    config=$(x jo "{
+        url:\"$url\",
+        ${content_type+"content_type:$content_type"},
+        ${secret+"secret:$secret"},
+        ${insecure_ssl+"insecure_ssl:$insecure_ssl"},
+        ${token+"token:$token"},
+        ${digest+"digest:$digest"}
+    }")
+    events=$(x jo "[$events]")
+
+    local gen_gh_json
+    gen_gh_json="$(param:option2json -url -repo +config )"
+    gh:debug "$gen_gh_json"
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/hooks" "gen_gh_json" | _____x_cmd_gh_hook_ui_utils Creating
+}
+# EndSection
+
+# Section: Edit
+# https://docs.github.com/en/rest/webhooks/repos#update-a-repository-webhook
+___x_cmd_gh_repo_hook_edit() {
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+type:
+    ContentType = json form ""
+options:
+    #1              "The unique identifier of the hook."                                    <>:Number
+    --repo          "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --url           "The URL to which the payloads will be delivered."                      <>=""
+
+    --events        "Determines what events the hook is triggered for."                     <>="push"
+    --name          "webhook name"                                                          <>=""
+    --content_type  "The media type used to serialize the payloads. "                       <>:ContentType=""
+    --secret        "the secret will be used as the key to generate the HMAC hex digest"    <>=""
+    --token         "set token"                                                             <>=""
+    --digest        "digest"                                                                <>=""
+    --active        "Determines if notifications are sent when the webhook is triggered."
+    --insecure_ssl  "Determines whether the SSL certificate of the host for url will be verified when delivering payloads." <>=""
+
+    --json|-j   "output json data"
+A
+    param:run
+    local config
+    config=$(x jo "{
+        url:\"$url\",
+        ${content_type+"content_type:$content_type"},
+        ${secret+"secret:$secret"},
+        ${insecure_ssl+"insecure_ssl:$insecure_ssl"},
+        ${token+"token:$token"},
+        ${digest+"digest:$digest"}
+    }")
+    events=$(x jo "[$events]")
+
+    local gen_gh_json
+    gen_gh_json="$(param:option2json -url -repo +config)"
+    gh:debug "$gen_gh_json"
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl patch "/repos/${owner_repo}/hooks/$1" "gen_gh_json" | _____x_cmd_gh_hook_ui_utils Edit
+}
+# EndSection
+
+# Section: Remove
+# https://docs.github.com/en/rest/webhooks/repos#delete-a-repository-webhook
 ___x_cmd_gh_repo_hook_rm() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -57,101 +149,16 @@ A
     ___x_cmd_gh_param_init_owner_repo
     [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove the hook $1 in the $owner_repo ?" || return
     ___x_cmd_gh_curl delete "/repos/${owner_repo}/hooks/$1" | (
-        x jo env . error=.
+        x jo env . error=. gh_resp_err=.message
         if ___x_cmd_gh_http_error; then
             ___x_cmd_ui_tf  true "successfully remove repo hook"
         else
-            ___x_cmd_ui_tf false "delete repo hook failure: $1." "ErrorMsg:$error"
+            ___x_cmd_ui_tf false "delete repo hook failure: $1."
+            ___x_cmd_gh____handle_resp
             return 1
         fi
     )
 }
-# EndSection
-
-# https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads events type
-# Section: add & update
-___x_cmd_gh_repo_hook_create() {
-    param:scope     ___x_cmd_github
-    param:dsl       <<A
-type:
-    role = admin member
-options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
-    --url           "The URL to which the payloads will be delivered."                      <>
-
-    --events        "events the hook is triggered for.(array usage,interval)"               <>="push"
-    --name          "webhook name"                                                          <>=""
-
-    --content_type  "The media type used to serialize the payloads. "                       <>=""
-    --secret        "the secret will be used as the key to generate the HMAC hex digest"    <>=""
-    --token         "set token"                                                             <>=""
-    --digest        "digest"                                                                <>=""
-    --active        "Determines if notifications are sent when the webhook is triggered."
-    --insecure_ssl  "Determines whether the SSL certificate of the host for url will be verified when delivering payloads." <>=""
-
-    --json|-j   "output json data"
-A
-    param:run
-
-    local config
-    config=$(x jo "{
-        url:\"$url\",
-        ${content_type+"content_type:$content_type"},
-        ${secret+"secret:$secret"},
-        ${insecure_ssl+"insecure_ssl:$insecure_ssl"},
-        ${token+"token:$token"},
-        ${digest+"digest:$digest"}
-    }")
-    events=$(x jo "[$events]")
-
-    local gen_gh_json
-    gen_gh_json="$(param:option2json -url -repo +config )"
-
-    ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl post "/repos/${owner_repo}/hooks" "gen_gh_json" | (_____x_cmd_gh_hook_ui_utils Creating)
-}
-
-# TODO:config url
-___x_cmd_gh_repo_hook_edit() {
-    param:scope     ___x_cmd_github
-    param:dsl       <<A
-type:
-    role = admin member
-options:
-    #1              "The unique identifier of the hook."                                    <>:Number
-    --repo          "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
-    --url           "The URL to which the payloads will be delivered."                      <>=""
-
-    --events        "Determines what events the hook is triggered for."                     <>="push"
-    --name          "webhook name"                                                          <>=""
-    --content_type  "The media type used to serialize the payloads. "
-    --secret        "the secret will be used as the key to generate the HMAC hex digest"    <>=""
-    --token         "set token"                                                             <>=""
-    --digest        "digest"                                                                <>=""
-    --active        "Determines if notifications are sent when the webhook is triggered."
-    --insecure_ssl  "Determines whether the SSL certificate of the host for url will be verified when delivering payloads." <>=""
-
-    --json|-j   "output json data"
-A
-    param:run
-    local config
-    config=$(x jo "{
-        url:\"$url\",
-        ${content_type+"content_type:$content_type"},
-        ${secret+"secret:$secret"},
-        ${insecure_ssl+"insecure_ssl:$insecure_ssl"},
-        ${token+"token:$token"},
-        ${digest+"digest:$digest"}
-    }")
-    events=$(x jo "[$events]")
-
-    local gen_gh_json
-    gen_gh_json="$(param:option2json -url -repo +config )"
-
-    ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl patch "/repos/${owner_repo}/hooks/$1" "gen_gh_json" | (_____x_cmd_gh_hook_ui_utils Edit)
-}
-
 # EndSection
 
 # Section: hook utils
@@ -161,27 +168,26 @@ _____x_cmd_gh_hook_ui_utils(){
         ___x_cmd_gh_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Info)
-            data="name=.name active=.active type=.type  url=.config.url"
-            msg="get webhook info success."
-            error_msg="get webhook info fail."
-            ;;
-        Creating|Edit)
-            msg="$1 repo webhook success."
-            error_msg="$1 repo webhook fail."
-            ;;
-    esac
-    x jo env . Id=.id error=. $data
-    if [ -n "$Id" ]; then
-        ___x_cmd_ui_tf true "$msg" "Id: $Id" ${name+"Name: $name"}  ${active+"Active: $active"} ${type+"Type: $type"} ${url+"Url: $url"}
-    else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
-        return 1
-    fi
+    (
+        case "$1" in
+            Info)
+                _data="name=.name active=.active type=.type  url=.config.url"
+                _msg="get webhook info success."
+                _error_msg="get webhook info fail."
+                ;;
+            Creating|Edit)
+                _msg="$1 repo webhook success."
+                _error_msg="$1 repo webhook fail."
+                ;;
+        esac
+        eval x jo env . Id=.id gh_resp_err=.message "$_data"
+        if [ -n "$Id" ]; then
+            ___x_cmd_ui_tf true "$_msg" "Id: $Id" ${name+"Name: $name"}  ${active+"Active: $active"} ${type+"Type: $type"} ${url+"Url: $url"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection

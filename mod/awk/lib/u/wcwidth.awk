@@ -43,7 +43,7 @@ function wcscolumns(_str,    _length, _max, _min, _offset, _rl, _rs, _total,
         # terminal screens from getting munged.
         _length = length(_str)
         _total -= _length
-        gsub(/[가-힣一-鿕！-｠ぁ-ゖ\\343\\202\\231-ヿ]+/, "", _str)
+        gsub(/[가-힣一-鿕！-｠ぁ-ゖ\343\202\231-ヿ]+/, "", _str)
         _total += (_length - length(_str)) * 2
 
         _offset = 1
@@ -186,7 +186,7 @@ function wcstruncate(_str, _columns,    _result, _rl, _rs, _wchar, _width)
 {
     _columns = 0 + _columns
     # Use "substr" for strings composed of 1-column characters.
-    if (_str !~ /[^\\040-\\176]/ || (WCWIDTH_MULTIBYTE_SAFE &&
+    if (_str !~ /[^\040-\176]/ || (WCWIDTH_MULTIBYTE_SAFE &&
       _str !~ /[^ -~ -¬®-˿Ͱ-ͷͺ-Ϳ΄-ΊΌΎ-ΡΣ-҂Ҋ-ԯԱ-Ֆՙ-՟ա-և։֊־׀׃׆א-תװ-״]/)) {
         return length(_str) > _columns ? substr(_str, 1, _columns) : _str
     }
@@ -317,7 +317,7 @@ function _wcwidth_initialize_library(    _entry, _nul)
 
     split("X", WCWIDTH_CACHE)
 
-    WCWIDTH_INTERVAL_EXPRESSIONS_SUPPORTED = "XXXX" ~ /^X{0,4}$/
+    WCWIDTH_INTERVAL_EXPRESSIONS_SUPPORTED = ("XXXX" ~ /^X{0,4}$/)
     WCWIDTH_MULTIBYTE_SAFE = (length("宽") == 1)
 
     if (!WCWIDTH_MULTIBYTE_SAFE) {

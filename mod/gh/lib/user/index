@@ -12,17 +12,18 @@ ___x_cmd_gh_user(){
     param:run
         # key         "key management"    \
 
-    gh:warn "Subcmd Not Found."
     ___x_cmd_gh_user _param_help_doc
     return 1
 }
 
+# Section: Info
+# https://docs.github.com/en/rest/users/users#get-a-user
+# https://docs.github.com/en/rest/users/users#get-the-authenticated-user
 ___x_cmd_gh_user_info() {
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
     #1              "Username, if not set, show the user information of current owner, or owner of this token"     <>=""
-
     --json|-j       "output json data"
 '
     param:run
@@ -34,110 +35,39 @@ options:
     else
         url="/users/$owner"
     fi
-    ___x_cmd_gh_curl get "$url" | (
-        ___x_cmd_gh_user_info_json_status_handler
-    )
+    ___x_cmd_gh_curl get "$url" | ___x_cmd_gh_user_info_json_status_handler
 }
 
+# shellcheck disable=SC2154
 ___x_cmd_gh_user_info_json_status_handler(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         return
     fi
-
-    x jo env . id=.id url=.html_url name=.login error=.
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "get $owner user info success" "Id: $id" "Name: $name" "Url: $url"
-    else
-        ___x_cmd_ui_tf false "get $owner user info fail" "ErrorMsg:$error"
-        return 1
-    fi
+    (
+        x jo env . id=.id url=.html_url name=.login gh_resp_err=.message
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true "get $owner user info success" "Id: $id" "Name: $name" "Url: $url"
+        else
+            ___x_cmd_ui_tf false "get $owner user info fail"
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
 }
+# EndSection
 
-___x_cmd_gh_user_repo(){
-    param:scope     ___x_cmd_github
-    param:subcmd ___x_cmd_gh_user_repo      \
-        "ls|l"  "List all repos"            \
-        app     "Interactive UI show repo of user"
-    param:subcmd:try
-    param:run
-    ___x_cmd_gh_user_repo_ls _param_help_doc
-}
-
-___x_cmd_gh_user_repo_app() {
-    param:scope     ___x_cmd_github
-    param:dsl       '
-options:
-    --visibility    "visibility"                                <>:Authority="all"
-    --affiliation   "affiliation"                               <>:UserGroup="owner"
-    --sort          "sort"                                      <>:UserSort="created"
-    --direction     "direction"                                 <>:Direction="desc"
-    --per_page      "Results per page"                          <>=""
-    --page          "Page number of the results to fetch."      <>=""
-'
-    param:run
-
-    local url
-    if [ $# -gt 0 ]; then
-        url="/users/$1/repos"
-    else
-        url="/user/repos"
-    fi
-
-    ___gh_ui_mutual '___ui_table_json Name=.name RepoPath=.full_name Visibility=.visibility Url=.html_url -- $@' \
-        ___x_cmd_gh_get_multi "$url" visibility affiliation sort direction
-}
-
-___x_cmd_gh_user_repo_ls() {
-    param:scope     ___x_cmd_github
-    param:dsl       '
-options:
-    --type          "visibility"                                <>:Authority="all"
-    --affiliation   "affiliation"                               <>:UserGroup="owner"
-    --sort          "sort"                                      <>:UserSort="updated"
-    --direction     "direction"                                 <>:Direction="desc"
-    --per_page      "Results per page"                          <>:Per_page=""
-    --page          "Page number of the results to fetch."      <>:Numbers=""
-'
-    param:run
-
-    local url
-    if [ $# -gt 0 ]; then
-        url="/users/$1/repos"
-    else
-        url="/user/repos"
-    fi
-    local visibility="$type"
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json RepoPath=.full_name Visibility=.visibility Url=.html_url -- $@' \
-        ___x_cmd_gh_get_multi "$url" visibility affiliation sort direction
-}
-
+# Section: Email
+# https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user
 ___x_cmd_gh_user_email(){
-    param:void
-    ___gh_ui_mutual '___ui_table_json email=.email verified=.verified  -- $@' ___x_cmd_gh_get_multi "/user/emails"
-}
-
-___x_cmd_gh_user_issue(){
     param:scope     ___x_cmd_github
     param:dsl       '
-type:
-    screen = all assigned created mentioned
-    sort = open progerssing closed rejected
-    direction = desc asc
 options:
-    --filter        "filter(assigned,created,all)"                 <>:screen="assigned"
-    --state         "state(open,progerssing,closed,rejected)"      <>:sort="open"
-    --labels        "labels"                                       <>=""
-    --direction     "direction(asc、desc)"                         <>:direction="desc"
-    --since         "since"                                        <>=""
-    --page          "page"                                         <>:Per_page="1"
-    --per_page      "per_page"                                     <>:Numbers="30"
-    --schedule      "schedule"                                     <>=""
-    --deadline      "deadline"                                     <>:ISOTime=""
-    --created_at    "create date"                                  <>:ISOTime=""
-    --finished_at   "finish date"                                  <>:ISOTime=""
+    --page          "page"                        <>="1"
+    --per_page      "per_page"                    <>="30"
+    --json|-j       "output origin json data"
 '
     param:run
-    ___x_cmd_gh_get_multi "/user/issues" filter state labels direction since \
-        schedule deadline created_at finished_at
+    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json email=.email verified=.verified  -- $@' ___x_cmd_gh_get_multi "/user/emails"
 }
+# EndSection

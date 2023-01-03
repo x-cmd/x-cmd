@@ -1,0 +1,179 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_tea_team(){
+    param:subcmd ___x_cmd_tea_team                  \
+        ls              "list user or org team"     \
+        info            "Get team info by id"       \
+        create          "To create a team"          \
+        edit            "To edit a team"            \
+        repo            "manage org team repo"      \
+        rm              "To delete a team"          \
+        child           "Lists the child teams of the team specified."
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_tea_team _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://try.gitea.io/api/swagger#/organization/orgListTeams
+___x_cmd_tea_team_ls() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       '
+options:
+    --org           "org space address(Get all teams of the current user by default)"   <>:Address=""
+    --per_page      "Results per page"                                                  <>:Number=30
+    --page          "Page number of the results to fetch."                              <>:Number=1
+    --json|-j       "output json data"
+'
+    param:run
+    local url="/user/teams"
+    if [ -n "$org" ]; then
+        url="/orgs/${org##*/}/teams"
+    fi
+
+    ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Id=.id Name=.name Url=.html_url -- $@' \
+        ___x_cmd_tea_get_multi "$url" per_page page
+}
+# EndSection
+
+# Section: info & add & rm
+# https://try.gitea.io/api/swagger#/organization/orgGetTeam
+___x_cmd_tea_team_info() {
+    param:scope     ___x_cmd_gitea
+    param:dsl      <<A
+options:
+    #1                  "team id"                 <>
+
+    --json|-j           "output json data"
+A
+    param:run
+    ___x_cmd_tea_curl get "/teams/${1}" | _____x_cmd_team_ui_utils Info
+}
+
+# https://try.gitea.io/api/swagger#/organization/orgCreateTeam
+___x_cmd_tea_team_create() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1                             "team name"                  <>
+    --org                          "org space address"          <>:Address
+    --units                        "list:repo.code repo.issues repo.ext_issues repo.wiki repo.pulls repo.releases repo.projects repo.ext_wiki"  <>:Array=""
+    --units_map                    "units map"                                                                                                  <>=""
+    --description                  "A short description of the team"                                                                            <>:Org_Description=""
+    --permission                   "team permission"                                                                                            <>=""    = read write admin
+    --can_create_org_repo          ""                                                                                                           <>:bool=""
+    --includes_all_repositories    ""                                                                                                           <>:bool=""
+    --json|-j                      "output json data"
+A
+    param:run
+    local name="$1"
+    units=$(x jo "[$units]")
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -org +name)"
+    ___x_cmd_tea_curl post  "/orgs/${org##*/}/teams" "gen_tea_json" | _____x_cmd_team_ui_utils Creating
+}
+
+# https://try.gitea.io/api/swagger#/organization/orgCreateTeam
+___x_cmd_tea_team_edit() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1                             "team id"                    <>
+    --name                         "team name"                  <>
+    --units                        "list:repo.code repo.issues repo.ext_issues repo.wiki repo.pulls repo.releases repo.projects repo.ext_wiki"  <>:Array=""
+    --units_map                    "units map"                                                                                                  <>=""
+    --description                  "A short description of the team"                                                                            <>:Org_Description=""
+    --permission                   "team permission"                                                                                            <>=""    = read write admin
+    --can_create_org_repo          ""                                                                                                           <>:bool=""
+    --includes_all_repositories    ""                                                                                                           <>:bool=""
+    --json|-j                      "output json data"
+A
+    param:run
+    units=$(x jo "[$units]")
+    local gen_tea_json
+    gen_tea_json="$(param:option2json )"
+
+    ___x_cmd_tea_curl patch "/teams/${1}" "gen_tea_json" | _____x_cmd_team_ui_utils Update
+}
+
+# https://try.gitea.io/api/swagger#/organization/orgDeleteTeam
+___x_cmd_tea_team_rm() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1          "The slug of the team id."           <>
+    --yes|-y    "Ignore remove prompt interception"
+A
+    param:run
+
+    local teamid
+    for teamid in "$@"; do
+        {
+            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove team: $(___x_cmd_ui bold red "$teamid") ?" || continue
+            ___x_cmd_tea_curl delete "/teams/${1}" | (
+                x jo env . error=.
+                if ___x_cmd_tea_http_error; then
+                    ___x_cmd_ui_tf  true "del team $teamid to organizations  success"
+                else
+                    ___x_cmd_ui_tf false "del team $teamid to organizations fail" "ErrorMsg:$error"
+                    return 1
+                fi
+            )
+
+        }
+    done
+}
+
+#TODO: not found this API
+___x_cmd_tea_team_child() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       '
+options:
+    #1              "The slug of the team name."            <>
+    --org           "The organization name."                <>:Address
+
+    --per_page      "Results per page"                      <>:Number=30
+    --page          "Page number of the results to fetch."  <>:Number=1
+    --json|-j       "output json data"
+'
+    param:run
+    local ___tea_error_msg="get org child team repo list fail"
+
+    ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Id=.id Name=.name parent=.parent.name Description=.description -- $@' \
+        ___x_cmd_tea_get_multi "/orgs/${org##*/}/teams/${1}/teams" per_page page
+}
+
+# Section: org team utils
+_____x_cmd_team_ui_utils()(
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_tea_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Info)
+            msg="get team info  success"
+            error_msg="get team info fail."
+            ;;
+        Creating|Update)
+            data="owner=.organization.login"
+            msg="$1 org team $name success"
+            error_msg="$1 org team failure: $name."
+            ;;
+    esac
+    x jo env . id=.id url=.url name=.name error=. $data
+    if [ -n "$id" ]; then
+        ___x_cmd_ui_tf true "$msg" ${id+"Id: $id"} ${name+"Name: $name"} ${owner+"Owner: $owner"} ${url+"Url: $url"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)
+# EndSection

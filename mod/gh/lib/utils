@@ -2,71 +2,147 @@
 # shellcheck disable=SC2039,3043
 # shellcheck disable=SC2046
 
+# x curl -L -D  /Users/qbb/.x-cmd.root/tmp/h/qbbdeMBP/r/DEFAULT/gh/.____x_cmd_gh_curl_header   -X GET -H  "Accept:application/vnd.github.v3+json"  -H  "Authorization:token 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"   "https://api.github.com/repos/x-cmd/theme/actions/runs/3787465408/logs"
+
+# Section: Help
+_____x_cmd_gh_help__token_setting(){
+    printf "\n%s %s \n%s\n" \
+        "$(___x_cmd_ui yellow 'Run command to add|repleace token:')" \
+        "$(___x_cmd_ui bold cyan "\`x gh token <token>\`")"   \
+        "$(___x_cmd_ui 'https://github.com/settings/tokens')"
+}
+
+_____x_cmd_gh_help(){
+    command -v ___x_cmd_advise_gen_help >/dev/null || xrc:mod advise/lib/gen_help
+    ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/gh/res/advise.jso" "$@"
+}
+
+# EndSection
+
 # Section: HTTP header & body & request
 ___x_cmd_gh_resp_header() {
     cat "$___X_CMD_GH_TMP/.____x_cmd_gh_curl_header"
 }
 
-______x_cmd_gh_resp_header_code(){
+___x_cmd_gh_resp_code(){
     ___x_cmd_gh_resp_header  | awk '$1 ~/HTTP\/2$/ {print ($2+0);exit(0)}'
 }
 
 ___x_cmd_gh_curl(){
     local op="$1"
-    local url="\"https://api.github.com$2\""
+    local _curl_url="\"https://api.github.com$2\""
+    local _accept="\"Accept:application/vnd.github.v3+json\""
+    local _authorization
+    _authorization="\"Authorization:token $(___x_cmd_gh_token)\""
     local gh_header="$___X_CMD_GH_TMP/.____x_cmd_gh_curl_header"
-    local Accept="\"Accept:application/vnd.github.v3+json\""
-    local Authorization
-    Authorization="\"Authorization:token $(___x_cmd_gh_token)\""
     shift 2
     local req
     case "$op" in
         get)
-            gh:debug           "eval x curl -D  $gh_header   -X GET -s -H  $Accept  -H  $Authorization  $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))")  $url"
-            x ccmd 3m --            eval x curl -D "$gh_header"  -X GET -s -H "$Accept" -H "$Authorization" $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))") "$url"
-            ___x_cmd_gh_http_error  eval x curl -D "$gh_header"  -X GET -s -H "$Accept" -H "$Authorization" $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))") "$url"
+            gh:debug  "x curl -D  $gh_header   -X GET -s -H  $_accept  -H  $_authorization  $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))")  $_curl_url"
+            if [ -z "$NO_CACHE" ]; then
+                x ccmd 10s --            eval x curl -D "$gh_header"  -X GET -s -H "$_accept" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gh_curl___use_query_data "$@"))") "$_curl_url"
+                ___x_cmd_gh_http_error   eval x curl -D "$gh_header"  -X GET -s -H "$_accept" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gh_curl___use_query_data "$@"))") "$_curl_url"
+            else
+                eval x curl -D "$gh_header"  -X GET -s -H "$_accept" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gh_curl___use_query_data "$@"))") "$_curl_url"
+            fi
             return
             ;;
-        post)
-            req="POST";;
-        put)
-            req="PUT";;
-        patch)
-            req="PATCH";;
-        delete)
-            req="DELETE";;
         download)
-            mkdir -p "${1%/*}"
-            gh:debug "x curl -L -D  $gh_header   -X GET -H  $Accept  -H  $Authorization    -o  $1   $url"
-                eval  x curl -L -D "$gh_header"  -X GET -H "$Accept" -H "$Authorization"   -o "$1" "$url"
-                if ! ___x_cmd_gh_http_error; then
-                    local error
-                    error="$(cat "$1")"
-                    ___x_cmd_ui_tf false "Download fail:$error"
-                    return 1
-                fi
+            local __out="${1?:"Please provide output dir"}"
+            x mkdirp "${__out%/*}"
+            gh:debug "x curl -L -D  $gh_header   -X GET -H  $_accept  -H  $_authorization    -o  $__out   $_curl_url"
+            eval      x curl -L -D "$gh_header"  -X GET -H "$_accept" -H "$_authorization"   -o "$__out" "$_curl_url"
+            if ! ___x_cmd_gh_http_error; then
+                local gh_resp_err
+                gh_resp_err="$(command cat "$__out" 2>/dev/null | x jo .message)"
+                ___x_cmd_ui_tf false "Download Failure"
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
             return
             ;;
+        post)           req="POST"      ;;
+        put)            req="PUT"       ;;
+        patch)          req="PATCH"     ;;
+        delete)         req="DELETE"    ;;
     esac
-    gh:debug "eval x curl -D $gh_header -X $req    -s -H $Accept -H $Authorization $(x curl gencode "$@") $url"
+    gh:debug "x curl -D  $gh_header  -X  $req   -s -H  $_accept  -H $_authorization    $(x curl gencode "$@")   $_curl_url"
+    eval      x curl -D "$gh_header" -X "$req"  -s -H "$_accept" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"
+}
 
-    eval x curl -D "$gh_header" -X "$req"    -s -H "$Accept" -H "$Authorization" "$(x curl gencode "$@")" "$url"
+# shellcheck disable=SC2154
+___x_cmd_gh_curl___use_query_data(){
+    [ $# -gt 0 ] || return
+    local name
+    printf "%s " "-G"
+    for name in "$@";
+    do
+        if [ "$name" = "p" ];then  [ -z "$p" ] || printf "%s " "path==$p";
+        else                                      printf "%s " "$name==" ;
+        fi
+    done
 }
 
 ___x_cmd_gh_http_error(){
     local http_resp_code
-    http_resp_code=$(______x_cmd_gh_resp_header_code)
+    http_resp_code=$(___x_cmd_gh_resp_code)
     if [ -n "$http_resp_code" ] && [ "$http_resp_code" -ge 200 ] && [ "$http_resp_code" -le 303 ]; then
         return 0
     else
-        [ $# -eq 0 ] || x ccmd invalidate "$@" >/dev/null
-        gh:error "HTTP Code Is $http_resp_code"
+        [ $# -eq 0 ] || {
+            gh:debug "---! Cache Clear !---"
+            x ccmd invalidate "$@" 1>/dev/null 2>&1
+        }
+        gh:error "HTTP Code is $http_resp_code"
         return 1
     fi
 }
+
+___x_cmd_gh____handle_resp(){
+    if  [ -n "$gh_resp_body" ]; then
+        printf "%s\n" "$gh_resp_body" | x jo
+    elif [ -n "$gh_resp_err" ]; then
+        printf "  \033[31m-\033[0m \033[1mErrorMsg: \033[31m%s\033[0m\n" "$gh_resp_err"
+    fi
+}
+
+___x_cmd_resp___handle_table_pipe_data(){
+    if ___x_cmd_gh_http_error;then
+        printf "%s" "$(cat)"
+    fi
+    return
+}
+
+___x_cmd_gh____handle_no_content(){
+    x jo env . gh_resp=. gh_resp_err=.message
+
+    [ -z "$gh_resp" ] || {
+        gh:debug "gh_resp_body: $gh_resp"
+        ___x_cmd_gh____handle_resp
+        return 1
+    }
+    ___x_cmd_gh_http_error
+}
 # EndSection
 
-# Section: pagination
+# Section: Resolve pagination
+___gh_ui_mutual() {
+    local tmp="$1"
+    shift 1
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
+        ENFORCE_JSON=1 "$@"
+    else
+        # run ui table
+        eval "$tmp"
+    fi
+    local ___gh_exit_code="$?"
+    [ "$___gh_exit_code" -eq 0 ] || {
+        ___x_cmd_ui_tf false "${___gh_error_msg:-"Couldn't find any data"}" ;
+        return "$___gh_exit_code"
+    }
+}
+
 ___x_cmd_gh_get_multi() {
     if [ -n "$page" ] || [ -n "$per_page" ]; then
         ___x_cmd_gh_curl get "$@" page per_page
@@ -106,7 +182,7 @@ ___x_cmd_gh_get_multi___json_prt(){
     _____x_cmd_gh_next_url
     if [ -z "$next_url" ]; then
         cat "$tmp"
-        rm "$tmp"
+        x rmrf "$tmp"
         return
     fi
 
@@ -124,7 +200,7 @@ ___x_cmd_gh_get_multi___json_prt(){
             if (($0 == "}") || ( $0 == "]")) aaa--
             print $0
         }'
-    rm "$tmp"
+    x rmrf "$tmp"
 }
 
 _____x_cmd_gh_next_url() {
@@ -140,12 +216,13 @@ _____x_cmd_gh_next_url() {
 
 # EndSection
 
-# Section 3: Parameter Utilities
+# Section: Default param util
 alias ___x_cmd_gh_param_init_owner_repo='
-    local owner_repo
+    local owner_repo=""
     ___x_cmd_gh_param_normalize_repo  || return
 '
 
+# shellcheck disable=SC2154,SC2034
 ___x_cmd_gh_param_normalize_repo() {
     local op="$repo"
     [ -z "$op" ] && op="$1"
@@ -159,7 +236,8 @@ ___x_cmd_gh_param_normalize_repo() {
     *)
         ___x_cmd_gh_current_owner 1>/dev/null 2>&1
         if [ -z "$___X_CMD_GITHUB_DEFAULT_OWNER" ]; then
-            printf "No owner provided. Default owner not set.\n" >&2
+            gh:error "No owner provided. Default owner not set."
+            gh:warn "Check your current token setting.$(_____x_cmd_gh_help__token_setting)"
             return 1
         fi
         owner_repo="$(printf "%s" "$___X_CMD_GITHUB_DEFAULT_OWNER/$op")"
@@ -179,22 +257,13 @@ _____x_cmd_git_repo() {
     repo="${repo%.*}"
     printf "%s" "$repo"
 }
+
 _____x_cmd_git_branch() {
     git symbolic-ref -q --short HEAD 2>/dev/null
 }
+# EndSection
 
-___gh_ui_mutual() {
-    local tmp="$1"
-    shift 1
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
-        ENFORCE_JSON=1 "$@"
-    else
-        # run ui table
-        eval "$tmp"
-    fi
-    return
-}
-
+# Section: Advise
 _____x_cmd_gh_advise() {
     _____x_cmd_gh_advise_parse "$@" | x jo .\* .login | x ja '{printf("%s ", $0)}'
 }

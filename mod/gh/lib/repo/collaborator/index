@@ -12,7 +12,8 @@ ___x_cmd_gh_repo_collaborator() {
         "ls|l"         "list collaborator"                \
         "edit|ed"      "edit collaborator permission"     \
         add            "add collaborator"                 \
-        rm             "Remove collaborator"
+        rm             "Remove collaborator"              \
+        app            "Interactive UI show repo of user"
     param:subcmd:try
     param:run
 
@@ -20,10 +21,11 @@ ___x_cmd_gh_repo_collaborator() {
     ___x_cmd_gh_repo_collaborator _param_help_doc
     return 1
 }
-# Section: List
-___x_cmd_gh_repo_collaborator_ls() {
-    param:scope ___x_cmd_github
-    param:dsl '
+
+# Section: membership app
+___x_cmd_gh_repo_collaborator_app(){
+    param:scope     ___x_cmd_gh
+    param:dsl       '
 type:
     Affiliation =   outside direct all
 options:
@@ -36,13 +38,55 @@ options:
 '
     param:run
     ___x_cmd_gh_param_init_owner_repo
+    local ___gh_error_msg="get collaborator list fail"
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_get_multi "/repos/${owner_repo}/collaborators" affiliation per_page page'
+    ___x_cmd_gh_tui_app "repo.collaborator.app.awk"
+
+    ___x_cmd_gh_repo_collaborator_app_status_handler
+}
+
+___x_cmd_gh_repo_collaborator_app_status_handler(){
+    local user_name
+    user_name="${___X_CMD_TUI_TABLE_CUR_LINE##*Name: }"
+    user_name=${user_name%%
+Url:*}
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "c")            ___x_cmd_gh_repo_collaborator_add    --repo "${repo}"                     ;;
+            "u")            ___x_cmd_gh_repo_collaborator_edit   --repo "${repo}"    "$user_name"     ;;
+            "d")            ___x_cmd_gh_repo_collaborator_rm     --repo "${repo}"    "$user_name"     ;;
+            *)              return   ;;
+    esac
+}
+# EndSection
+
+# Section: List
+# https://docs.github.com/en/rest/collaborators/collaborators#list-repository-collaborators
+___x_cmd_gh_repo_collaborator_ls() {
+    param:scope ___x_cmd_github
+    param:dsl '
+type:
+    Affiliation =   outside direct all
+options:
+    --affiliation   "Filter collaborators returned by their affiliation."               <>:Affiliation="all"
+    --per_page      "Results per page"                                                  <>=30
+    --page          "Page number of the results to fetch."                              <>=1
+    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --json|-j   "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
 
     ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Name=.login Role=.role_name Url=.html_url Id=.id -- $@' \
         ___x_cmd_gh_get_multi "/repos/${owner_repo}/collaborators" affiliation per_page page
 }
 # EndSection
 
-# Section: Add & Rm
+# Section: Add
+# https://docs.github.com/en/rest/collaborators/collaborators#add-a-repository-collaborator
 ___x_cmd_gh_repo_collaborator_add() {
     param:scope ___x_cmd_github
     param:dsl '
@@ -64,14 +108,15 @@ options:
         _tmp_repo="${_tmp_repo#*,}"
         ___x_cmd_gh_param_init_owner_repo
         for name in "$@"; do
-            ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${name##*/}" -- permission | (
-                _____x_cmd_gh_collaborator_ui_utils Add
-            )
+            ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${name##*/}" -- permission | _____x_cmd_gh_collaborator_ui_utils Add
         done
         [ "$repo" != "$_tmp_repo" ] || return 0
     done
 }
+# EndSection
 
+# Section: Edit
+# https://docs.github.com/en/rest/collaborators/collaborators#add-a-repository-collaborator
 ___x_cmd_gh_repo_collaborator_edit() {
     param:scope ___x_cmd_github
     param:dsl '
@@ -85,11 +130,12 @@ options:
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${1##*/}" -- permission | (
-        _____x_cmd_gh_collaborator_ui_utils Edit
-    )
+    ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${1##*/}" -- permission | _____x_cmd_gh_collaborator_ui_utils Edit
 }
+# EndSection
 
+# Section: Remove
+# https://docs.github.com/en/rest/collaborators/collaborators#remove-a-repository-collaborator
 ___x_cmd_gh_repo_collaborator_rm() {
     param:scope ___x_cmd_github
     param:dsl '
@@ -106,11 +152,12 @@ options:
         [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
         # TODO:http handle，delete repo return data is null.Status: 204 No Content
         ___x_cmd_gh_curl delete "/repos/$owner_repo/collaborators/${username##*/}"| (
-                x jo env . error=.
+                x jo env . gh_resp_err=.message
                 if ___x_cmd_gh_http_error; then
                     ___x_cmd_ui_tf  true "successfully deleted $username in $owner_repo"
                 else
-                    ___x_cmd_ui_tf false "delete user failure: $username." "ErrorMsg:$error"
+                    ___x_cmd_ui_tf false "delete user failure: $username."
+                    ___x_cmd_gh____handle_resp
                     return 1
                 fi
             )
@@ -125,23 +172,22 @@ _____x_cmd_gh_collaborator_ui_utils(){
         ___x_cmd_gh_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Add|Edit)
-            data="repo=.repository.full_name permissions=.permissions"
-            msg="$1 repo user success"
-            error_msg="Failed to $1 repo user"
-            ;;
-    esac
-    x jo env . id=.id error=. $data
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "$msg"  ${repo+"Repo: $repo"}  ${permissions+"Permissions: $permissions"}
-    else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
-        return 1
-    fi
+    (
+        case "$1" in
+            Add|Edit)
+                _data="repo=.repository.full_name permissions=.permissions"
+                _msg="$1 repo user success"
+                _error_msg="Failed to $1 repo user"
+                ;;
+        esac
+        eval x jo env . id=.id gh_resp_err=.message "$_data"
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true "$_msg"  ${repo+"Repo: $repo"}  ${permissions+"Permissions: $permissions"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection

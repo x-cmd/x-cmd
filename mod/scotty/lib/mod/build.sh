@@ -4,7 +4,7 @@
 
 build_demo(){
     local p=adv/demo
-    [ -d "$p" ] || return
+    [ -d "$p" ] || return 0
     x mkdirp ".demo"
     local i; for i in "${p}"/*.yml; do
         name="${i##*/}"

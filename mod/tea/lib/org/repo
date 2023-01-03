@@ -1,0 +1,116 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_tea_org_repo(){
+    param:subcmd ___x_cmd_tea_org_repo   \
+        "ls|l"              "list repo"         \
+        "create|c"          "org repo create"   \
+        app                 "Interactive UI show organization repo"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_tea_org_repo _param_help_doc
+    return 1
+}
+
+___x_cmd_tea_org_repo_app() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1         "org space address"  <>:Address
+    --type      "type"              <>="all"    = all private public
+    --page      "page"              <>=""
+    --per_page  "per_page"          <>=""
+    --json|-j   "output json data"
+A
+    param:run
+    local ___tea_error_msg="Please provide owner and owner_type"
+    ___tea_ui_mutual '___ui_table_json  Name=.name RepoPath=.full_name Visibility=.visibility Description=.description -- $@' \
+        ___x_cmd_tea_get_multi  "/orgs/$1/repos" type
+}
+
+# Section: org repo ls
+# https://try.gitea.io/api/swagger#/organization/orgListRepos
+___x_cmd_tea_org_repo_ls() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1          "org space address"                         <>:Address
+    --per_page  "Results per page"                          <>:Number=30
+    --page      "Page number of the results to fetch."      <>:Number=1
+    --json|-j   "output json data"
+A
+    param:run
+    local ___tea_error_msg="Please provide owner and owner_type"
+    ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Name=.name RepoPath=.full_name Visibility=.visibility Description=.description -- $@' \
+        ___x_cmd_tea_get_multi  "/orgs/$1/repos"
+}
+# EndSection
+
+# Section: org repo create
+# https://try.gitea.io/api/swagger#/organization/createOrgRepo
+___x_cmd_tea_org_repo_create() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       '
+type:
+    access  =   private public
+option:
+    --org                "organization create repo"                                                         <>   =  /[-A-Za-z0-9_/]+/
+    #n                   "repo names"
+    --access             "private,public"                                                                   <>:access=private
+    --readme             "Readme of the repository to create"                                               <>=""
+    --license            "License to use"                                                                   <>=""
+    --description        "Description of the repository to create"                                          <>=""
+    --gitignores         "Gitignores to use"                                                                <>=""
+    --issue_labels       "Label-Set to use"                                                                 <>=""
+    --trust_model        "TrustModel of the repository"                                                     <>=""      = default collaborator committer collaboratorcommitter
+    --default_branch     "DefaultBranch of the repository (used when initializes and in template)"          <>=""
+    --template           "Whether the repository is template"
+    --auto_init          "Whether the repository should be auto-initialized"
+    --json|-j            "output json data"
+'
+    param:run
+
+    local private=true
+    [ "$access" = "public" ] && private=false
+
+    local name="${___X_CMD_TX}"
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -access +private +name )"
+
+    for name in "$@"; do
+        tea_log debug "___x_cmd_tea_repo_create_data:$(x tmpl "$gen_tea_json"  "${name##%/}")"
+        x tmpl "$gen_tea_json"  "${name##%/}" | \
+        ___x_cmd_tea_curl post "/orgs/$org/repos" "@-" | (
+            _____x_cmd_tea_repo_ui_utils Creating
+        )
+    done
+}
+# EndSection
+
+# Section: org repo utils
+_____x_cmd_tea_org_repo_ui_utils(){
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_tea_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Creating)
+            data="url=.html_url repo_owner=.owner.login"
+            msg="Creating repo $tmp success"
+            error_msg="Creating repo failure: $tmp."
+            ;;
+    esac
+    x jo env . id=.id error=. $data
+    if [ -n "$id" ]; then
+        ___x_cmd_ui_tf true "$msg" ${id+"repo_id: $id"}  ${repo_owner+"repo_owner: $repo_owner"} ${url+"url: $url"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+}
+# EndSection

@@ -1,0 +1,84 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+# https://try.gitea.io/api/swagger#/organization
+___x_cmd_tea_org(){
+    param:scope     ___x_cmd_gitea
+    param:subcmd    ___x_cmd_tea_org                        \
+        "info|i"        "Show information"                  \
+        "ls|l"          "get organizations list"            \
+        repo            "List all repos"                    \
+        membership      "membership management"
+        # apply           "manage org by declare configure"   \
+        # app             "Install github app list"
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_tea_org _param_help_doc
+    return 1
+}
+
+# Section: List & Info
+# https://try.gitea.io/api/swagger#/organization/orgGetAll
+___x_cmd_tea_org_ls() {
+    param:dsl       '
+options:
+    --user      "provide username.(Default:current username)"    <>=""
+    --json|-j   "output json data"
+'
+    param:run
+    local url
+    if [ -n "$user" ]; then
+        tea_log info "Get the organizations exposed by the user: ${user}"
+        url="/users/${user}/orgs"
+    else
+        tea_log info "Get current user's organization"
+        url="/user/orgs"
+    fi
+    ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Id=.id Name=.username Visibility=.visibility -- $@' ___x_cmd_tea_get_multi $url
+}
+
+# https://try.gitea.io/api/swagger#/organization/orgGet
+___x_cmd_tea_org_info() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1    "org space address"    <>  = /[-A-Za-z0-9_]+/
+    --json|-j   "output json data"
+A
+    param:run
+
+    ___x_cmd_tea_curl get "/orgs/$1" | (
+        if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+            cat
+            ___x_cmd_tea_http_error
+            return
+        fi
+
+        x jo env . id=.id visibility=.visibility name=.login errormsg=.
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true "get $org organizations info success" "Id: $id" "Name: $name" "Visibility: $visibility"
+        else
+            ___x_cmd_ui_tf false "get $org organizations info fail" "ErrorMsg:$errormsg"
+            return 1
+        fi
+    )
+}
+
+# EndSection
+
+# Section: Install github app list
+___x_cmd_tea_org_app(){
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    --org           "org space address"    <>  = /[-A-Za-z0-9_]+/
+    --per_page      "Results per page"                          <>=30
+    --page          "Page number of the results to fetch."      <>=1
+A
+    param:run
+
+    ___tea_ui_mutual '___ui_table_json Id=.id Name=.login -- $@' \
+        ___x_cmd_tea_get_multi "/orgs/$org/installations" per_page page
+}
+# EndSection

@@ -1,0 +1,183 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_tea_repo_hook(){
+    param:subcmd ___x_cmd_tea_repo_hook             \
+        "ls|l"              "list repo webhook"     \
+        "info|i"            "get webhook info"      \
+        "create|c"          "create webhook"        \
+        "edit|ed"           "update webhook"        \
+        rm                  "Remove webhook"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_tea_repo_hook _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://try.gitea.io/api/swagger#/repository/repoListHooks
+___x_cmd_tea_repo_hook_ls() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --per_page  "Results per page"                                                      <>:Number=30
+    --page      "Page number of the results to fetch."                                  <>:Number=1
+    --json|-j   "output json data"
+A
+    param:run
+    ___x_cmd_tea_param_init_owner_repo
+    ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Id=.id active=.active type=.type  url=.config.url  -- $@' \
+        ___x_cmd_tea_get_multi "/repos/${owner_repo}/hooks" per_page page
+}
+# EndSection
+
+# Section: info & rm
+# https://try.gitea.io/api/swagger#/repository/repoGetHook
+___x_cmd_tea_repo_hook_info() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    #1          "The unique identifier of the hook."                                    <>:Number
+    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --json|-j   "output json data"
+A
+    param:run
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_curl get "/repos/${owner_repo}/hooks/$1" | _____x_cmd_tea_hook_ui_utils Info
+}
+
+# https://try.gitea.io/api/swagger#/repository/repoDeleteHook
+___x_cmd_tea_repo_hook_rm() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    #1          "The unique identifier of the hook."                                    <>:Number
+    --yes|-y    "Ignore remove prompt interception"
+A
+    param:run
+    ___x_cmd_tea_param_init_owner_repo
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove the hook $1 in the $owner_repo ?" || return
+    ___x_cmd_tea_curl delete "/repos/${owner_repo}/hooks/$1" | (
+        x jo env . error=.
+        if ___x_cmd_tea_http_error; then
+            ___x_cmd_ui_tf  true "successfully remove repo hook"
+        else
+            ___x_cmd_ui_tf false "delete repo hook failure: $1." "ErrorMsg:$error"
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: add & update
+# TODO: What parameters does config have
+# https://try.gitea.io/api/swagger#/repository/repoCreateHook
+___x_cmd_tea_repo_hook_create() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    --repo              "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --url               "The URL to which the payloads will be delivered."                      <>
+    --content_type      "The media type used to serialize the payloads. "                       <>
+    --type              "type"                                                                  <>    = dingtalk discord gitea gogs msteams slack telegram feishu wechatwork packagist
+    --events            "events the hook is triggered for.(array usage,interval)"               <>="push"
+    --active            "Determines if notifications are sent when the webhook is triggered."   <>:bool="false"
+    --branch_filter     "branch filter"                                                        <>=""
+
+    --token             "set token"                                                             <>=""
+    --digest            "digest"                                                                <>=""
+    --insecure_ssl      "Determines whether the SSL certificate of the host for url will be verified when delivering payloads." <>=""
+    --json|-j           "output json data"
+A
+    param:run
+
+    local config
+    config=$(x jo "{
+        url:\"$url\",
+        ${content_type+"content_type:$content_type"},
+        ${secret+"secret:$secret"},
+        ${insecure_ssl+"insecure_ssl:$insecure_ssl"},
+        ${token+"token:$token"},
+        ${digest+"digest:$digest"}
+    }")
+    events=$(x jo "[$events]")
+
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -url -repo +config )"
+
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_curl post "/repos/${owner_repo}/hooks" "gen_tea_json" | _____x_cmd_tea_hook_ui_utils Creating
+}
+
+# https://try.gitea.io/api/swagger#/repository/repoEditHook
+___x_cmd_tea_repo_hook_edit() {
+    param:scope     ___x_cmd_gitea
+    param:dsl       <<A
+options:
+    --repo                  "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --url                   "The URL to which the payloads will be delivered."                      <>=""
+    --content_type          "The media type used to serialize the payloads. "                       <>=""
+    --events                "events the hook is triggered for.(array usage,interval)"               <>=""
+    --active                "Determines if notifications are sent when the webhook is triggered."   <>:bool=""
+    --branch_filter         "branch filter"                                                         <>=""
+    --authorization_header  ""                                                                      <>=""
+    --token                 "set token"                                                             <>=""
+    --digest                "digest"                                                                <>=""
+    --insecure_ssl          "Determines whether the SSL certificate of the host for url will be verified when delivering payloads." <>=""
+
+    --json|-j   "output json data"
+A
+    param:run
+    local config
+    config=$(x jo "{
+        url:\"$url\",
+        ${content_type+"content_type:$content_type"},
+        ${secret+"secret:$secret"},
+        ${insecure_ssl+"insecure_ssl:$insecure_ssl"},
+        ${token+"token:$token"},
+        ${digest+"digest:$digest"}
+    }")
+    events=$(x jo "[$events]")
+
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -url -repo +config )"
+
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_curl patch "/repos/${owner_repo}/hooks/$1" "gen_tea_json" | (_____x_cmd_tea_hook_ui_utils Edit)
+}
+
+# EndSection
+
+# Section: hook utils
+_____x_cmd_tea_hook_ui_utils()(
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_tea_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Info)
+            data="active=.active type=.type  url=.config.url"
+            msg="get webhook info success."
+            error_msg="get webhook info fail."
+            ;;
+        Creating|Edit)
+            msg="$1 repo webhook success."
+            error_msg="$1 repo webhook fail."
+            ;;
+    esac
+    x jo env . Id=.id error=. $data
+    if [ -n "$Id" ]; then
+        ___x_cmd_ui_tf true "$msg" "Id: $Id" ${active+"Active: $active"} ${type+"Type: $type"} ${url+"Url: $url"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)
+# EndSection

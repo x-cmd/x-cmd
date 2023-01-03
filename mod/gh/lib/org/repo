@@ -1,5 +1,5 @@
 # shellcheck shell=sh
-# shellcheck disable=SC2039,3043
+# shellcheck disable=SC2039,3043,2154
 ___x_cmd_gh_org_repo(){
     param:subcmd ___x_cmd_gh_org_repo   \
         "ls|l"              "list repo"         \
@@ -12,22 +12,41 @@ ___x_cmd_gh_org_repo(){
     return 1
 }
 
+# Section: App
+# https://docs.github.com/en/rest/repos/repos#list-organization-repositories
 ___x_cmd_gh_org_repo_app() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    #1         "org space address"  <>:Address
-    --type      "type"              <>="all"    = all private public
-    --page      "page"              <>=""
-    --per_page  "per_page"          <>=""
-    --json|-j   "output json data"
+    #1          "org space address"                         <>:Address
+    --type      "type"                                      <>="all"
+    --sort      "sort"                                      <>:UserSort="updated"
+    --direction "direction"                                 <>:Direction="desc"
+
+    --per_page  "Results per page"                          <>:Number="30"
+    --page      "Page number of the results to fetch."      <>:Number="1"
 A
     param:run
-    local ___gh_error_msg="Please provide owner and owner_type"
-    ___gh_ui_mutual '___ui_table_json  Name=.name RepoPath=.full_name Visibility=.visibility Description=.description -- $@' \
-        ___x_cmd_gh_get_multi  "/orgs/$1/repos" type
-}
+    # local ___gh_error_msg="Please provide owner and owner_type"
+    # ___gh_ui_mutual '___ui_table_json  Name=.name RepoPath=.full_name Visibility=.visibility Description=.description -- $@' \
+    #     ___x_cmd_gh_get_multi  "/orgs/$1/repos" type
 
+    local ___gh_error_msg="Couldn't find any data by: ${1}"
+    local Address="$1"
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_get_multi  "/orgs/$Address/repos" type sort direction'
+    ___x_cmd_gh_tui_app "org.repo.app.awk"
+
+    if [ "$___X_CMD_TUI_TABLE_FINAL_COMMAND" = "c" ]; then
+        ___x_cmd_gh_org_repo_create --org "$Address"
+    fi
+}
+# EndSection
+
+# Section: List
+# https://docs.github.com/en/rest/repos/repos#list-organization-repositories
 ___x_cmd_gh_org_repo_ls() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -46,7 +65,11 @@ A
     ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Name=.name RepoPath=.full_name Visibility=.visibility Description=.description -- $@' \
         ___x_cmd_gh_get_multi  "/orgs/$1/repos" type sort direction
 }
+# EndSection
 
+# Section: Create
+# https://docs.github.com/en/rest/repos/repos#create-an-organization-repository
+# shellcheck disable=SC2034
 ___x_cmd_gh_org_repo_create() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -56,36 +79,41 @@ option:
     #1                          "repo names"                                                           <>
     --org                       "organization create repo"                                             <>=""
 
+    --access                    "Can be public or private."                                            <>:Access=private
     --description               "A short description of the repository."                               <>:Org_Description=""
     --homepage                  "A URL with more information about the repository."                    <>:URL=""
     --team_id                   "the id of the team that will be granted access to this repository"    <>=""
     --gitignore_template        "Desired language or platform"                                         <>:Ignore=""
     --license_template          "The license keyword of the open source license for this repository."  <>:License=""
-    --access                    "Can be public or private."                                            <>:Access=private
 
-    --json|-j                   "output json data"
+    --no_wiki                   "Whether to disable wiki"
     --no_issues                 "Whether to disable issue"
     --no_projects               "Whether to disable has_projects"
-    --no_wiki                   "Whether to disable wiki"
-    --auto_init                 "Disable auto init README"
-    --is_template               "make this repo available as a template,Default:false"
     --no_squash_merge           "Whether to allow squash merges for pull requests."
     --no_merge_commit           "Whether to allow merge commits for pull requests."
     --no_rebase_merge           "Whether to allow rebase merges for pull requests."
+    --auto_init                 "Disable auto init README"
+    --is_template               "make this repo available as a template,Default:false"
     --allow_auto_merge          "Whether to allow Auto-merge to be used on pull requests,Default:false"
     --delete_branch_on_merge    "Either to allow automatically deleting head branches when pull requests are merged,Default:false"
+    --json|-j                   "output json data"
 A
     param:run
 
-    local private=true
-    [ "$access" = "public" ] && private=false
+    local private
+    local visibility
+    case "$access" in
+        private)        private=true            ;;
+        public)         private=false           ;;
+        internal)       visibility=internal     ;;
+    esac
 
     local name
     [ -n "$org" ] || {
         for name in "$@"; do
             case "$name" in
                 */*)    ;;
-                *)      gt:error "Please provide --org or add origanization prefix before reponame "
+                *)      gh:error "Please provide --org or add origanization prefix before reponame "
                         return 1
             esac
         done
@@ -93,22 +121,19 @@ A
 
     name="${___X_CMD_TX}"
     local gen_gh_json
-    gen_gh_json="$(param:option2json +name +private -access -org \
-        has_issues=^no_issues                   allow_merge_commit=^no_merge_commit     has_projects=^no_projects \
+    gen_gh_json="$(param:option2json +name "${private:+"+private"}" "${visibility:+"+visibility"}" -access -org     \
+        has_issues=^no_issues                   allow_merge_commit=^no_merge_commit     has_projects=^no_projects   \
         allow_rebase_merge=^no_rebase_merge     allow_squash_merge=^no_squash_merge     has_wiki=^no_wiki)"
-    # TODO:owner may be personal
-    local tmp
-    for tmp in "$@"; do
-            local this_org="${name%%/*}"
-            [ "$this_org" != "$name" ] || this_org="$org"
+    gh:debug "$gen_gh_json"
 
-            gh:debug "___x_cmd_gh_repo_create_data:$(x tmpl "$gen_gh_json"  "${tmp##%/}")"
-            x tmpl "$gen_gh_json"  "${tmp##%/}" | \
-            ___x_cmd_gh_curl post "/orgs/$this_org/repos" "@-" | (
-                _____x_cmd_gh_org_repo_ui_utils Creating
-            )
+    for name in "$@"; do
+        local this_org="${name%%/*}"
+        [ "$this_org" != "$name" ] || this_org="$org"
+        x tmpl "$gen_gh_json"  "${name##*/}" | \
+        ___x_cmd_gh_curl post "/orgs/$this_org/repos" "@-" | _____x_cmd_gh_org_repo_ui_utils Creating
     done
 }
+# EndSection
 
 # Section: org repo utils
 _____x_cmd_gh_org_repo_ui_utils(){
@@ -117,23 +142,22 @@ _____x_cmd_gh_org_repo_ui_utils(){
         ___x_cmd_gh_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Creating)
-            data="url=.html_url repo_owner=.owner.login"
-            msg="Creating repo $tmp success"
-            error_msg="Creating repo failure: $tmp."
-            ;;
-    esac
-    x jo env . id=.id error=. $data
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "$msg" ${id+"repo_id: $id"}  ${repo_owner+"repo_owner: $repo_owner"} ${url+"url: $url"}
-    else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
-        return 1
-    fi
+    (
+        case "$1" in
+            Creating)
+                _data="url=.html_url repo_owner=.owner.login"
+                _msg="Creating repo $name success"
+                _error_msg="Creating $name repo failure"
+                ;;
+        esac
+        eval x jo env . id=.id gh_resp_err=.message "$_data"
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true "$_msg" ${id+"repo_id: $id"}  ${repo_owner+"repo_owner: $repo_owner"} ${url+"url: $url"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection

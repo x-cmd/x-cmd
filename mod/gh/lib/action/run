@@ -2,10 +2,10 @@
 # shellcheck disable=SC2039,3043
 ___x_cmd_gh_action_run() {
     param:subcmd  ___x_cmd_gh_action_run                    \
+        "app"       "Interactive UI show repo by owner"     \
         "ls|l"      "lists the workflows in a repository."  \
-        view        "View the summary of a workflow"        \
-        log         "log"                                   \
-        download    "download"
+        "view|v"    "View the summary of a workflow"        \
+        log         "log"
     param:subcmd:try
     param:run
     ___x_cmd_gh_action_run _param_help_doc
@@ -14,6 +14,7 @@ ___x_cmd_gh_action_run() {
 
 # Section: List
 # https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-repository
+# shellcheck disable=SC2154
 ___x_cmd_gh_action_run_ls() {
     param:scope ___x_cmd_github
     param:dsl <<A
@@ -28,53 +29,108 @@ options:
     --sta|--status      "Returns workflow runs with the check run status."                      <>=""
     --created           "Returns workflow runs created within the given date-time range."       <>=""
     --check_suite_id    "Returns workflow runs with the check_suite_id that you specify."       <>=""
-    --exclude_pull_requests
+    --exclude_pull_requests  "Not pull requests are omitted from the response "
 
     --page              "Page number of the results to fetch."                                  <>="1"
     --per_page          "Results per page (max 100)"                                            <>="30"
     --json|-j           "output json data"
 A
     param:run
+    ___x_cmd_gh_param_init_owner_repo
+    local NO_CACHE=1
+    local ___run_ls_tmp="___x_cmd_gh_curl get /repos/$owner_repo/actions/runs actor branch event sta created check_suite_id exclude_pull_requests"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
+        eval "$___run_ls_tmp"
+    else
+        ___X_CMD_UI_STATIC=1 ___ui_table_json Run_ID=.id Name=.name Conclusion=.conclusion Event=.event Branch=.head_branch Created=.created_at -- \
+            "$___run_ls_tmp | x jo q0 .workflow_runs | ___x_cmd_resp___handle_table_pipe_data"
+    fi
+}
+# EndSection
+
+# Section: app
+___x_cmd_gh_action_run_app(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+type:
+    run_status = Success Failure
+options:
+    --repo              "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+
+    --branch            "Returns workflow runs associated with a branch."                       <>=""
+    --actor             "returns someone workflow runs."                                        <>:Username=""
+    --event             "Returns workflow run triggered by the event you specify."              <>=""
+    --sta|--status      "Returns workflow runs with the check run status."                      <>=""
+    --created           "Returns workflow runs created within the given date-time range."       <>=""
+    --check_suite_id    "Returns workflow runs with the check_suite_id that you specify."       <>=""
+    --exclude_pull_requests  "Not pull requests are omitted from the response "
+
+    --page              "Page number of the results to fetch."                                  <>="1"
+    --per_page          "Results per page (max 100)"                                            <>="30"
+A
+    param:run
 
     ___x_cmd_gh_param_init_owner_repo
 
-    local ___run_ls_tmp="___x_cmd_gh_curl get /repos/$owner_repo/actions/runs actor branch event sta created check_suite_id exclude_pull_requests"
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
-        ENFORCE_JSON=1 $___run_ls_tmp
-    else
-        ___X_CMD_UI_STATIC=1 ___ui_table_json Id=.id Name=.name Conclusion=.conclusion Event=.event Branch=.head_branch Created=.created_at -- \
-            "$___run_ls_tmp | x jo q0 .workflow_runs"
-    fi
+    local ___gh_error_msg="get githubaction info list fail"
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_curl get /repos/$owner_repo/actions/runs actor branch event sta created check_suite_id exclude_pull_requests'
+    ___x_cmd_gh_tui_app "action.run.app.awk"
+
+    ___x_cmd_gh_action_run_app_status_handler
+}
+
+___x_cmd_gh_action_run_app_status_handler(){
+    local workflow_id
+    workflow_id="${___X_CMD_TUI_TABLE_CUR_LINE##*Id: }"
+    workflow_id=${workflow_id%%
+Name:*}
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "i")            ___x_cmd_gh_action_run_log              --repo "${owner_repo}"   $workflow_id             ;;
+            *)              return
+    esac
 }
 # EndSection
 
 # Section: View
 # https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run
+# shellcheck disable=SC2034
 ___x_cmd_gh_action_run_view() {
     param:scope ___x_cmd_github
     param:dsl <<A
 type:
     Filters = latest all
 options:
+    #1          "Provide run_id"                                                        <>:Number
     --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
-    --run_id    "Provide run_id"                                                        <>:Number
-    --filter    "Filters jobs by their completed_at timestamp"                          <>:Filters="latest"
 
+    --filter    "Filters jobs by their completed_at timestamp"                          <>:Filters="latest"
     --page      "Page number of the results to fetch."                                  <>:Numbers="1"
     --per_page  "Results per page (max 100)"                                            <>:Per_page="30"
     --json|-j   "output json data"
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
+    local NO_CACHE=1
+    local ___run_view_tmp="___x_cmd_gh_curl get /repos/${owner_repo}/actions/runs/${1}/jobs filter per_page page"
 
-    local ___run_view_tmp="___x_cmd_gh_curl get /repos/${owner_repo}/actions/runs/${run_id}/jobs filter per_page page"
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        ENFORCE_JSON=1 $___run_view_tmp
+        eval "$___run_view_tmp"
     else
-        eval "$( $___run_view_tmp | x ja -f "$___X_CMD_ROOT_MOD/gh/lib/awk/gh_job_ui.awk")"
+        local code; if code="$(eval "$___run_view_tmp" | x ja -f "$___X_CMD_ROOT_MOD/gh/lib/awk/gh_job_ui.awk")"; then
+            eval "$code"
+        else
+            ___x_cmd_gh_http_error
+            gh:error "Not found any data"
+            return 1
+        fi
     fi
 }
-
+# x gh action run v --repo x-cmd/theme 3787465408
 # EndSection
 
 # Section: Log
@@ -85,63 +141,35 @@ ___x_cmd_gh_action_run_log() {
 type:
     Filters = latest all
 options:
+    #1          "Provide run_id"                                                        <>:Number
     --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
-    --run_id    "Provide run_id"                                                        <>:RunID
-    --logall    ""
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
-    if ___x_cmd_gh_curl download "/repos/${owner_repo}/actions/runs/${run_id}/logs" "$___X_CMD_ROOT/.actions/$run_id/$run_id-log.zip"; then
-    x uz "$___X_CMD_ROOT/.actions/$run_id/$run_id-log.zip" "$___X_CMD_ROOT/.actions/$run_id"
-        cat "$___X_CMD_ROOT"/.actions/"$run_id"/*.txt | awk '{
-          date=substr($0, 3, 8)
-          time=substr($0, 12, 8)
-          idx=index($0, " ")
-          gsub("-", "/", date)
-          print "\033[90m" date "/" time "\033[0m" substr($0, idx)
-      }' | less -r
-        rm -rf "$___X_CMD_ROOT/.actions/$run_id"
-    fi
-}
+    # local gh_output_dir="${output:-"${___X_CMD_GH_CACHE}/log/action/${owner_repo}"}"
+    local gh_output_dir="${___X_CMD_GH_CACHE}/log/action/${owner_repo}"
+    local gh_output="${gh_output_dir}/${1##*/}"
 
-# EndSection
+    x mkdirp "$gh_output"
+    if [ ! -f "${gh_output_dir}/${1##*/}-log.zip" ]; then
+        if ! ___x_cmd_gh_curl download "/repos/${owner_repo}/actions/runs/${1##*/}/logs" \
+            "${gh_output_dir}/${1##*/}-log.zip"; then
 
-# TODO: remove
-# Section: Download
-___x_cmd_gh_action_run_download() {
-    param:scope ___x_cmd_github
-    param:dsl <<A
-options:
-    --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-
-    --per_page  "Results per page (max 100)"                                        <>:Per_page="30"
-    --page      "Page number of the results to fetch."                              <>:Numbers="1"
-    --json|-j   "output json data"
-A
-    param:run
-
-    ___x_cmd_gh_param_init_owner_repo
-    local ___run_download_tmp=" ___x_cmd_gh_curl get /repos/$owner_repo/actions/artifacts per_page page"
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        ENFORCE_JSON=1 $___run_download_tmp
-    else
-        ___ui_table_json Id=.id Name=.name Bytes=.size_in_bytes -- "$___run_download_tmp | x jo q0 .artifacts"
-        if [ "$___X_CMD_UI_TABLE_FINAL_COMMAND" = "ENTER" ];then
-            ___x_cmd_ui_yesno "Make sure you need to download $___X_CMD_UI_TABLE_CUR_LINE ?" || return
-            ___x_cmd_gh_curl download "/repos/${owner_repo}/actions/artifacts/${___X_CMD_UI_TABLE_CUR_LINE%%*}/zip" "./${___X_CMD_UI_TABLE_CUR_LINE%%*}.zip"
-        elif [ "$___X_CMD_UI_TABLE_FINAL_COMMAND" = "d" ];then
-            ___x_cmd_ui_yesno "Sure you need to delete $___X_CMD_UI_TABLE_CUR_LINE?" || return
-            ___x_cmd_gh_curl delete "/repos/${owner_repo}/actions/artifacts/${___X_CMD_UI_TABLE_CUR_LINE%%*}"| (
-                x jo env . error=.
-                if ___x_cmd_gh_http_error; then
-                    ___x_cmd_ui_tf  true "delete artifacts $___X_CMD_UI_TABLE_CUR_LINE success"
-                else
-                    ___x_cmd_ui_tf false "delete artifacts $___X_CMD_UI_TABLE_CUR_LINE fail" "ErrorMsg:$error"
-                    return 1
-                fi
-            )
+            [ "$(___x_cmd_gh_resp_code)" != 404 ] || gh:warn "Possible the action state is still unfinished. please wait action finish to retry or check the run_id exist $1. \`x action run ls\`"
+            x rmrf "$gh_output" "${gh_output_dir}/${1##*/}-log.zip"
+            return 1
         fi
     fi
+
+    x uz "${gh_output_dir}/${1##*/}-log.zip" "$gh_output" 1>/dev/null 2>&1
+    command cat "$gh_output"/*.txt | command awk '{
+            date=substr($0, 3, 8)
+            time=substr($0, 12, 8)
+            idx=index($0, " ")
+            gsub("-", "/", date)
+            print "\033[90m" date "/" time "\033[0m" substr($0, idx)
+        }' | eval "${___X_CMD_GH_EDITOR:-"command less -r"}"
+    x rmrf "$gh_output"
 }
 
 # EndSection

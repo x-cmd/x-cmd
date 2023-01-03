@@ -1,0 +1,174 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+# https://try.gitea.io/api/swagger#/issue
+___x_cmd_tea_issue() {
+    param:subcmd ___x_cmd_tea_issue                 \
+        "ls|l"          "List repo issue"           \
+        "create|c"      "create an issue"           \
+        "edit|ed"       "update an issue"           \
+        close           "Close issue"               \
+        reopen          "Reopen issue"
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_tea_issue _param_help_doc
+    return 1
+}
+
+# Section: Create
+# https://try.gitea.io/api/swagger#/issue/issueCreateIssue
+___x_cmd_tea_issue_create(){
+    param:scope     ___x_cmd_gitea
+    param:dsl       '
+options:
+    --repo         "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --title        "The title of the issue."                                               <>:string
+    --ref          "ref"                                                                   <>=""
+    --body         "The contents of the issue."                                            <>:string=""
+    --labels       "Labels to associate with this issue.(separated by commas)"             <>:array=""
+    --closed       "Whether to close this issue"                                           <>:bool=""
+    --due_date     "due date"                                                              <>:date=""
+    --assignees    "User responsible for this issue.(separated by commas)"                 <>:array=""
+    --milestone    "milestone number"                                                      <>:number=""
+
+    --json|-j   "output json data"
+'
+    param:run
+    local tmp_assignees
+    tmp_assignees=$(x jo "[$assignees]")
+    local tmp
+    tmp=$(x jo "[$labels]")
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -repo -assignees -labels ${assignees+"assignees=tmp_assignees"} ${labels+"labels=tmp"})"
+    printf "%s" "$gen_tea_json"
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_curl post "/repos/$owner_repo/issues" "gen_tea_json" | _____x_cmd_tea_issue_ui_utils Creating
+}
+# EndSection
+
+# Section: List
+# https://try.gitea.io/api/swagger#/issue/issueListIssues
+___x_cmd_tea_issue_ls(){
+    param:scope     ___x_cmd_gitea
+    param:dsl       '
+options:
+    --repo             "Provide owner name and repo name.(default:the current user repo)"                           <>:RepoName
+    --q                "search string"                                                                              <>=""
+    --state            "Indicates the state of the issues to return."                                               <>="all"      = open closed all
+    --labels           "Labels to associate with this issue.(separated by commas)"                                  <>=""
+    --type             "filter by type (issues / pulls) if set."                                                    <>=""         = issues pulls
+    --since            "Only show items updated after the given time. This is a timestamp in RFC 3339 format"       <>=""
+    --before           "Only show items updated before the given time. This is a timestamp in RFC 3339 format"      <>=""
+    --created_by       "Only show items which were created by the the given user"                                   <>=""
+    --assigned_by      "Only show items for which the given user is assigned"                                       <>=""
+    --milestones       "comma separated list of milestone names or ids"                                             <>=""
+    --mentioned_by     "Only show items in which the given user was mentioned"                                      <>=""
+    --per_page         "Results per page"                                                                           <>="30"
+    --page             "Page number of the results to fetch."                                                       <>="1"
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_tea_param_init_owner_repo
+    ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Number=.number Title=.title State=.state Url=.html_url -- $@' \
+        ___x_cmd_tea_get_multi "/repos/${owner_repo}/issues" state milestones labels
+}
+# EndSection
+
+# Section: Edit
+# https://try.gitea.io/api/swagger#/issue/issueEditIssue
+___x_cmd_tea_issue_edit() {
+    param:scope ___x_cmd_gitea
+    param:dsl '
+options:
+    #1                  "The number that identifies the issue."                                  <>:number
+    --repo              "Provide owner name and repo name.(default:the current user repo)"       <>:RepoName
+    --title             "The title of the issue."                                                <>:string
+    --ref               "ref"                                                                    <>=""
+    --body              "The contents of the issue."                                             <>=""
+    --state             "whether issue is open or closed Available values : closed, open, all"   <>=""
+    --assignees         "User responsible for this issue.(separated by commas)"                  <>:array=""
+    --milestone         "milestone number"                                                       <>:number=""
+    --due_date          "due date"                                                               <>:date=""
+    --unset_due_date    "unset due date"                                                         <>:bool=""
+    --json|-j           "output json data"
+'
+    param:run
+    local tmp_assignees
+    tmp_assignees=$(x jo "[$assignees]")
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -repo -assignees ${assignees+"assignees=tmp_assignees"})"
+    ___x_cmd_tea_param_init_owner_repo
+
+    ___x_cmd_tea_curl patch "/repos/${owner_repo}/issues/${1}" "gen_tea_json" | _____x_cmd_tea_issue_ui_utils Edit
+}
+# EndSection
+
+# Section: Reopen
+# https://try.gitea.io/api/swagger#/issue/issueEditIssue
+___x_cmd_tea_issue_reopen(){
+    param:scope     ___x_cmd_gitea
+    param:dsl       '
+options:
+    #1          "The number that identifies the issue."                                 <>:number
+    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --json|-j   "output json data"
+'
+    param:run
+
+    local state=open
+
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_curl patch "/repos/${owner_repo}/issues/${1}" -- state | _____x_cmd_tea_issue_ui_utils Reopen
+}
+# EndSection
+
+# Section: Close
+# https://try.gitea.io/api/swagger#/issue/issueDelete
+___x_cmd_tea_issue_close(){
+     param:scope     ___x_cmd_gitea
+    param:dsl       '
+options:
+    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    #1          "The number that identifies the issue."                                 <>:number
+
+    --json|-j   "output json data"
+'
+    param:run
+
+    local state=closed
+
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_curl patch "/repos/${owner_repo}/issues/${1}" -- state | _____x_cmd_tea_issue_ui_utils Close
+}
+# EndSection
+
+# Section: issue utils
+_____x_cmd_tea_issue_ui_utils()(
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_tea_http_error
+        return
+    fi
+
+    local data
+    local msg="$1 issue  success."
+    local error_msg="$1 issue failure."
+    case "$1" in
+        Creating|Edit)
+            data="title=.title url=.html_url state=.state"
+            ;;
+        Reopen|Close)
+            ;;
+    esac
+    x jo env . id=.number error=. $data
+    if [ -n "$id" ]; then
+        ___x_cmd_ui_tf true "$msg" "number: $id" ${title+"title: $title"}  ${url+"url: $url"} ${state+"state: $state"}
+    else
+        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        return 1
+    fi
+)
+# EndSection
