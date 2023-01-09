@@ -15,11 +15,13 @@ eval "$(wget -O- https://get.x-cmd.com)"
 
 ## 已发布工具列表
 
-theme           oh-my-zsh/oh-my-bash
-env             asdf/nvm/sdkman/pyenv/rbenv/...
-tldr            tldr客户端工具
-gh              gh -- github client
-gt              gt -- gitee client
+| 项目 | 类似项目 |
+| --- | --- |
+| theme   | oh-my-zsh/oh-my-bash |
+| env     | asdf/nvm/sdkman/pyenv/rbenv/... |
+| tldr    | tldr客户端工具 |
+| gh      | gh -- github client |
+| gt      | gt -- gitee client |
 
 
 ## 介绍
