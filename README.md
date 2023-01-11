@@ -14,17 +14,16 @@ eval "$(curl https://get.x-cmd.com)"
 eval "$(wget -O- https://get.x-cmd.com)"
 ```
 
-
 ## 已发布工具列表
 
-| 模块  | 功能｜ 类似项目 |
-| ---   | --- | --- ｜
-| theme ｜设置shell的主题  | oh-my-zsh/oh-my-bash |
-| env   ｜   | asdf/nvm/sdkman/pyenv/rbenv/... |
-| tldr  ｜   | tldr客户端工具 |
-| gh    ｜   | gh -- github client |
-| gt    ｜   | gt -- gitee client |
-
+| 模块 | 功能  ｜ 类似项目 |
+| --- | --- | --- ｜
+| theme ｜ 设置shell的主题  | oh-my-zsh/oh-my-bash |
+| env ｜ 安装脚本运行/开发环境  | asdf/nvm/sdkman/pyenv/rbenv/... |
+| tldr ｜ 可浏览命令的使用案例  | tldr客户端工具 |
+| gh/gt/gl/tea ｜ github交互客户端  | 官方的go版gh |
+| gl | gitlab交互客户端 | 官方的glab |
+| proxy | 快速配置apt,pip,npm等下载源 | 未知 |
 
 ## 介绍
 
