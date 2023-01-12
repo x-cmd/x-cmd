@@ -26,7 +26,7 @@ eval "$(wget -O- https://get.x-cmd.com)"
 | tldr | 可浏览命令的使用案例  | tldr客户端工具 |
 | proxy | 快速配置apt,pip,npm等下载源 | 未知 |
 | z/uz | 根据后缀实现多种格式的压缩和解压  | 未知 |
-| pick | 交互式选择 | python版的pick |
+| pick | 交互式选择 | [percol](https://github.com/mooz/percol) 与 [pick](https://github.com/wong2/pick) |
 | gh | github交互客户端  | 官方的go版gh |
 | gt | gitee交互客户端 | ? |
 | ws | 项目脚本管理 | ? |
