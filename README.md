@@ -34,12 +34,13 @@ eval "$(wget -O- https://get.x-cmd.com)"
 |模块| 封装目标 | 功能| 
 | -- | -- | -- |
 | ssl | openssl | 安全密码学工具 |
+| 7z | 7zip | 加解压工具 |
 | ff | ffmpeg | 音视频工具工具 |
-| nmap | nmap | 安全扫描工具 |
 | pandoc | pandoc | 文档格式转换工具 |
+| nmap | nmap | 安全扫描工具 |
 | fd | fd | find的高效替代 |
 | grep | ag | grep的高效替代 |
-| exa | exa | ls的增强替代 |
+| smartmontool | smartmontool | 硬盘监控工具 |
 | bat | bat | cat的rust实现 |
 
 ## 介绍
