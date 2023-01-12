@@ -31,7 +31,7 @@ eval "$(wget -O- https://get.x-cmd.com)"
 
 ## 封装模块列表
 
-|模块| 封装目标 | 功能| 
+| 模块 | 封装目标 | 功能 |
 | -- | -- | -- |
 | ssl/openssl | openssl | 安全密码学工具 |
 | p7zip | 7zip | 加解压工具 |
