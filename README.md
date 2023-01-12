@@ -21,13 +21,13 @@ eval "$(wget -O- https://get.x-cmd.com)"
 | theme | 设置shell的主题  | oh-my-zsh/oh-my-bash |
 | tldr | 可浏览命令的使用案例  | tldr客户端工具 |
 | proxy | 快速配置apt,pip,npm等下载源 | 未知 |
-| env | 安装脚本运行/开发环境  | asdf/nvm/sdkman/pyenv/rbenv/... |
-| hub | 脚本发布服务 | ? |
 | z/uz | 根据后缀实现多种格式的压缩和解压  | 未知 |
-| ws | 项目脚本管理 | ? |
 | pick | 交互式选择 | python版的pick |
 | gh | github交互客户端  | 官方的go版gh |
 | gt | gitee交互客户端 | ? |
+| ws | 项目脚本管理 | ? |
+| env | 安装脚本运行/开发环境  | asdf/nvm/sdkman/pyenv/rbenv/... |
+| hub | 脚本发布服务 | ? |
 
 ## 封装模块列表
 
