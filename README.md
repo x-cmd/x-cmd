@@ -42,8 +42,7 @@ eval "$(wget -O- https://get.x-cmd.com)"
 | grep | ag | grep的高效替代 |
 | smartmontools | smartmontools | 硬盘监控工具 |
 | bat | bat | cat的rust实现 |
-| jq | jq | json处理 |
-| yq | yq | yml处理 |
+| jq/yq | jq/yq | json/yml处理 |
 
 
 ## 介绍
