@@ -38,7 +38,8 @@ eval "$(wget -O- https://get.x-cmd.com)"
 | nmap | nmap | 安全扫描工具 |
 | pandoc | pandoc | 文档格式转换工具 |
 | fd | fd | find的高效替代 |
-| grep | ？ | grep的高效替代 |
+| grep | ag | grep的高效替代 |
+| exa | exa | ls的增强替代 |
 | bat | bat | cat的rust实现 |
 
 ## 介绍
