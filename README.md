@@ -22,11 +22,11 @@ eval "$(wget -O- https://get.x-cmd.com)"
 
 | 模块 | 功能 | 类似项目 |
 | --- | --- | --- |
-| theme | 设置shell的主题  | oh-my-zsh/oh-my-bash |
+| theme | 设置shell的主题  | oh-my-zsh oh-my-bash |
 | tldr | 可浏览命令的使用案例  | tldr客户端工具 |
 | proxy | 快速配置apt,pip,npm等下载源 | 未知 |
 | z/uz | 根据后缀实现多种格式的压缩和解压  | 未知 |
-| pick | 交互式选择 | [percol](https://github.com/mooz/percol) 与 [pick](https://github.com/wong2/pick) |
+| pick | 交互式选择 | [percol](https://github.com/mooz/percol) |
 | gh | github交互客户端  | 官方的go版gh |
 | gt | gitee交互客户端 | ? |
 | ws | 项目脚本管理 | ? |
