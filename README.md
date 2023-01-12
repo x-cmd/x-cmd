@@ -24,8 +24,8 @@ eval "$(wget -O- https://get.x-cmd.com)"
 | env | 安装脚本运行/开发环境  | asdf/nvm/sdkman/pyenv/rbenv/... |
 | hub | 脚本发布服务 | ? |
 | z/uz | 根据后缀实现多种格式的压缩和解压  | 未知 |
+| ws | 项目脚本管理 | ? |
 | pick | 交互式选择 | python版的pick |
-| cowsay | ascii艺术 | perl版cowsay |
 | gh | github交互客户端  | 官方的go版gh |
 | gl | gitlab交互客户端 | 官方的glab |
 
