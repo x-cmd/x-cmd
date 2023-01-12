@@ -14,16 +14,28 @@ eval "$(curl https://get.x-cmd.com)"
 eval "$(wget -O- https://get.x-cmd.com)"
 ```
 
-## 已发布工具列表
+## shell模块列表
 
-| 模块 | 功能  ｜ 类似项目 |
-| --- | --- | --- ｜
-| theme ｜ 设置shell的主题  | oh-my-zsh/oh-my-bash |
-| env ｜ 安装脚本运行/开发环境  | asdf/nvm/sdkman/pyenv/rbenv/... |
-| tldr ｜ 可浏览命令的使用案例  | tldr客户端工具 |
-| gh/gt/gl/tea ｜ github交互客户端  | 官方的go版gh |
+| 模块 | 功能 | 类似项目 |
+| --- | --- | --- |
+| env | 安装脚本运行/开发环境  | asdf/nvm/sdkman/pyenv/rbenv/... |
+| z/uz | 根据后缀实现多种格式的压缩和解压  | 未知 |
+| theme | 设置shell的主题  | oh-my-zsh/oh-my-bash |
+| tldr | 可浏览命令的使用案例  | tldr客户端工具 |
+| gh/gt/gl/tea | github交互客户端  | 官方的go版gh |
 | gl | gitlab交互客户端 | 官方的glab |
 | proxy | 快速配置apt,pip,npm等下载源 | 未知 |
+
+## 封装模块列表
+
+|模块| 封装目标 | 功能| 
+| -- | -- | -- |
+| ssl | openssl | 流行的安全密钥工具 |
+| ffmpeg | 功能强大的音视频工具工具 |
+| nmap | nmap | 安全扫描工具 |
+| fd | fd | find的高效替代 |
+| grep | ？ | grep的高效替代 |
+| bat | bat | cat的rust实现 |
 
 ## 介绍
 
