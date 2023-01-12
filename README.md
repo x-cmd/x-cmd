@@ -6,9 +6,13 @@
 
 ## Install
 
+使用curl安装:
+
 ```bash
 eval "$(curl https://get.x-cmd.com)"
 ```
+
+使用wget安装:
 
 ```bash
 eval "$(wget -O- https://get.x-cmd.com)"
