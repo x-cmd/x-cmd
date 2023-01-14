@@ -6,24 +6,48 @@
 
 ## Install
 
+使用curl安装:
+
 ```bash
 eval "$(curl https://get.x-cmd.com)"
 ```
+
+使用wget安装:
 
 ```bash
 eval "$(wget -O- https://get.x-cmd.com)"
 ```
 
-## 已发布工具列表
+## 应用模块列表
 
-| 模块 | 功能  ｜ 类似项目 |
-| --- | --- | --- ｜
-| theme ｜ 设置shell的主题  | oh-my-zsh/oh-my-bash |
-| env ｜ 安装脚本运行/开发环境  | asdf/nvm/sdkman/pyenv/rbenv/... |
-| tldr ｜ 可浏览命令的使用案例  | tldr客户端工具 |
-| gh/gt/gl/tea ｜ github交互客户端  | 官方的go版gh |
-| gl | gitlab交互客户端 | 官方的glab |
+| 模块 | 功能 | 类似项目 |
+| --- | --- | --- |
+| theme | 设置shell的主题  | oh-my-zsh oh-my-bash |
+| tldr | 可浏览命令的使用案例  | tldr客户端工具 |
 | proxy | 快速配置apt,pip,npm等下载源 | 未知 |
+| z/uz | 根据后缀实现多种格式的压缩和解压  | 未知 |
+| pick | 交互式选择 | [percol](https://github.com/mooz/percol) |
+| gh | github交互客户端  | 官方的go版gh |
+| gt | gitee交互客户端 | ? |
+| ws | 项目脚本管理 | ? |
+| env | 安装脚本运行/开发环境  | asdf/nvm/sdkman/pyenv/rbenv/... |
+| hub | 脚本发布服务 | ? |
+
+## 封装模块列表
+
+| 模块 | 封装目标 | 功能 |
+| -- | -- | -- |
+| ssl/openssl | openssl | 安全密码学工具 |
+| p7zip | 7zip | 加解压工具 |
+| ff | ffmpeg | 音视频工具工具 |
+| pandoc | pandoc | 文档格式转换工具 |
+| nmap | nmap | 安全扫描工具 |
+| fd | fd | find的高效替代 |
+| grep | ag | grep的高效替代 |
+| smartmontools | smartmontools | 硬盘监控工具 |
+| bat | bat | cat的rust实现 |
+| jq/yq | jq/yq | json/yml处理 |
+
 
 ## 介绍
 
