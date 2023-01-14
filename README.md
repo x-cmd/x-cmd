@@ -12,10 +12,16 @@
 eval "$(curl https://get.x-cmd.com)"
 ```
 
-使用wget安装:
+使用wget安装(例如: alpine容器有wget而无curl):
 
 ```bash
 eval "$(wget -O- https://get.x-cmd.com)"
+```
+
+容器注入法安装(例如: debian/ubuntu容器无wget和curl的情况): (待实现)
+
+```bash
+x setup <container-name>
 ```
 
 ## 应用模块列表
