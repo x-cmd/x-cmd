@@ -4,22 +4,21 @@
 
 现在仍处于内测阶段: v0.1.0 版本
 
-## Demo
+## 先睹为快
 
 [theme](.x-cmd/demogif/theme.demo.gif)
 [tldr](.x-cmd/demogif/tldr.demo.gif)
 [gitee](.x-cmd/demogif/gitee.demo.gif)
 
+## 安装
 
-## Install
-
-Install using [curl](https://curl.se/):
+使用[curl](https://curl.se/)安装:
 
 ```bash
 eval "$(curl https://get.x-cmd.com)"
 ```
 
-Install using [wget](https://www.gnu.org/software/wget/)(For example: in the alpine base container image there is only wget ready.):
+使用[wget](https://www.gnu.org/software/wget/)安装(例如: alpine容器有wget而无curl):
 
 ```bash
 eval "$(wget -O- https://get.x-cmd.com)"
