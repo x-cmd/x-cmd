@@ -2,13 +2,13 @@
 
 在云上 施展 弹指神通 ～
 
-现在仍处于内测阶段: v0.1.0 版本
+现在仍处于内测阶段: v0.1.0 版本 
 
 ## Demo
 
 [theme](.x-cmd/demogif/theme.demo.gif)
 [tldr](.x-cmd/demogif/tldr.demo.gif)
-[gitee](.x-cmd/demogif/gitee.demo.gif)
+[gitee](.x-cmd/demogif/gitee.demo.gif) 
 
 
 ## Install
