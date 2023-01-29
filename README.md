@@ -6,9 +6,9 @@
 
 ## Demo
 
-[theme](.x-cmd/demogif/theme.demo.gif)
-[tldr](.x-cmd/demogif/tldr.demo.gif)
-[gitee](.x-cmd/demogif/gitee.demo.gif) 
+![theme](https://media.giphy.com/media/EVzSurO3a7xfwc7avg/giphy.gif) 
+![tldr](https://media.giphy.com/media/9Eu9lppe5o10cS1mMm/giphy.gif)
+![zuz](https://media.giphy.com/media/vuhvzn6PByu1gTMscv/giphy.gif) 
 
 
 ## Install
