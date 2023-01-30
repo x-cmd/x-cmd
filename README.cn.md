@@ -1,5 +1,7 @@
 # [X-CMD](https://x-cmd.com/zh)
 
+[官网](https://x-cmd.com/zh)
+
 在云上 施展 弹指神通 ～
 
 现在仍处于内测阶段: v0.1.0 版本
