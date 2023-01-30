@@ -1,10 +1,10 @@
 # [X-CMD](https://x-cmd.com/zh)
 
+Let's forge your Excalibur in Cloud.
+
 [official website](https://x-cmd.com)
 
-在云上 施展 弹指神通 ～～
-
-现在仍处于内测阶段: v0.1.0 版本 
+Now x-cmd still in alpha version for insdier only. We will be ready in the next three months. If you like x-cmd, please give us a star. Your support is our biggest motivation.
 
 ## Demo
 
