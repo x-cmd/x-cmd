@@ -71,3 +71,5 @@ x setup <container-name>
 3. 增强posix shell的用户体验：主题，路径快速跳转，后面会加入更好的shell智能补全和提示功能
 4. 提供一系列的交互式cli工具（[github](https://github.com/), [gitee](https://gitee.com/)，更多的工具模块将在最近半年发布）
 5. 极轻极快: 包括全功能模块安装包体积不超过500KB，首启后shell的加载时间一般不超过100ms
+
+<meta name="msvalidate.01" content="FE23C0CC2EF6FA5E2BFA9197900A9A66" />
