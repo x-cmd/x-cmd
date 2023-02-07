@@ -9,9 +9,9 @@
 
 ## 先睹为快
 
-![theme](https://media.giphy.com/media/EVzSurO3a7xfwc7avg/giphy.gif) 
-![tldr](https://media.giphy.com/media/9Eu9lppe5o10cS1mMm/giphy.gif)
-![zuz](https://media.giphy.com/media/vuhvzn6PByu1gTMscv/giphy.gif) 
+![theme](https://foruda.gitee.com/images/1675080921940191578/1b9b2e8e_10482566.gif "theme2.gif")
+![tldr](https://user-images.githubusercontent.com/100188748/217139202-ec34cdf7-4469-4c44-bdb0-7ca4778bd893.gif)
+![zuz](https://foruda.gitee.com/images/1675080994895194745/bced3d95_10482566.gif "zuz2.gif")
 
 ## 安装
 
