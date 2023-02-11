@@ -1,17 +1,41 @@
-# [X-CMD](https://x-cmd.com/zh)
+<p align="center">
+    <a target="_blank" href="https://x-cmd.com/">
+        <img src="https://foruda.gitee.com/images/1676141778442772704/6846937e_9641432.png" alt="x-cmd-logo" width="150" data-width="150" data-height="150">
+    </a>
+</p>
 
-在云上 施展 弹指神通 ～
+<a target="_blank" href="https://x-cmd.com/"><h1 align="center">X-CMD</h1></a>
 
-[官网](https://x-cmd.com/zh)
+<p align="center">在云上 施展 弹指神通 ～</p>
 
-现在仍处于内测阶段（v0.1.0 版本）。如果你觉得x-cmd不错，请给我们一个star~ 你的支持是我们不断改进的动力 ~
+<p align="center">
+  <a target="_blank" href="https://x-cmd.com/">
+    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/badge/alpha v0.1.0-107fbc.svg">
+  </a>
+</p>
+
+<p align="center">
+  <a target="_blank" href="https://x-cmd.com/">官网</a>
+  &nbsp; | &nbsp;
+  <a href="#安装">安装</a>
+</p>
+
+现在仍处于内测阶段（v0.1.0 版本）。如果你觉得x-cmd不错，请给我们一个 star ⭐~ 你的支持是我们不断改进的动力 ~
 
 
 ## 先睹为快
 
-![theme](https://foruda.gitee.com/images/1675080921940191578/1b9b2e8e_10482566.gif "theme2.gif")
-![tldr](https://user-images.githubusercontent.com/100188748/217139202-ec34cdf7-4469-4c44-bdb0-7ca4778bd893.gif)
-![zuz](https://foruda.gitee.com/images/1675080994895194745/bced3d95_10482566.gif "zuz2.gif")
+[x theme](https://www.x-cmd.com/basic/theme) -  更改使用命令行主题
+
+![x theme demo gif](https://foruda.gitee.com/images/1676142431150289792/d1c936ba_9641432.gif "theme.gif")
+
+[x zuz](https://www.x-cmd.com/basic/zuz) - 压缩或解压文件
+
+![x zuz demo gif](https://foruda.gitee.com/images/1676142444494253456/e28beb06_9641432.gif "zuz.gif")
+
+[x tldr](https://www.x-cmd.com/basic/tldr) - 命令行的快捷备忘录
+
+![x tldr demo gif](https://foruda.gitee.com/images/1676142452819542463/2799d158_9641432.gif "tldr.gif")
 
 ## 安装
 

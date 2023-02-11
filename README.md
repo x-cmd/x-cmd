@@ -1,17 +1,44 @@
-# [X-CMD](https://x-cmd.com/zh)
+<p align="center">
+    <a target="_blank" href="https://x-cmd.com/">
+        <img src="https://user-images.githubusercontent.com/40693636/218274071-92a26d84-0550-4b90-a0ba-7d54118c56e1.png" alt="x-cmd-logo" width="150" data-width="150" data-height="150">
+    </a>
+</p>
 
-Let's forge your Excalibur in Cloud.
+<a target="_blank" href="https://x-cmd.com/"><h1 align="center">X-CMD</h1></a>
 
-[official website](https://x-cmd.com)
+<p align="center">Let's forge your Excalibur in Cloud.</p>
 
-Now x-cmd still in alpha version for insdier only. We will be ready in the next three months. If you like x-cmd, please give us a star. Your support is our biggest motivation.
+<p align="center">
+  <a target="_blank" href="https://x-cmd.com/">
+    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/badge/alpha v0.1.0-107fbc.svg">
+  </a>
+</p>
+
+<p align="center">
+  <a target="_blank" href="https://x-cmd.com/">Official Website</a>
+  &nbsp; | &nbsp;
+  <a href="#install">Installation</a>
+  <br>
+  <a target="_blank" href="https://x-cmd.com/zh/">简体中文文档</a>
+</p>
+
+Now x-cmd still in alpha version for insdier only. We will be ready in the next three months. If you like x-cmd, please give us a star ⭐. Your support is our biggest motivation.
+
+<br>
 
 ## Demo
 
-![theme](https://foruda.gitee.com/images/1675080921940191578/1b9b2e8e_10482566.gif "theme2.gif")
-![tldr](https://user-images.githubusercontent.com/100188748/217139202-ec34cdf7-4469-4c44-bdb0-7ca4778bd893.gif)
-![zuz](https://foruda.gitee.com/images/1675080994895194745/bced3d95_10482566.gif "zuz2.gif")
+[x theme](https://www.x-cmd.com/basic/theme) - Use command line prompt theme
 
+![x theme demo gif](https://user-images.githubusercontent.com/40693636/218275249-f600e2a5-32e1-4247-9ec3-f6fc6705ded9.gif)
+
+[x zuz](https://www.x-cmd.com/basic/zuz) - Compress or Decompress file
+
+![x zuz demo gif](https://user-images.githubusercontent.com/40693636/218275404-64affeb0-5e77-4b3b-b46e-cb46642d8da9.gif)
+
+[x tldr](https://www.x-cmd.com/basic/tldr) - Collaborative cheatsheets for console commands
+
+![x tldr demo gif](https://user-images.githubusercontent.com/40693636/218275753-8528af6f-fbde-4563-8ec2-cf911a7660e0.gif)
 
 ## Install
 
