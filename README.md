@@ -17,7 +17,7 @@
 <p align="center">
   <a target="_blank" href="https://x-cmd.com/">Official Website</a>
   &nbsp; | &nbsp;
-  <a href="#install">Installation</a>
+  <a href="#install">Installation Guide</a>
   <br>
   <a target="_blank" href="https://x-cmd.com/zh/">简体中文文档</a>
 </p>
