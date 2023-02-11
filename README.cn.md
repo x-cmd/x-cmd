@@ -1,12 +1,10 @@
 <p align="center">
     <a target="_blank" href="https://x-cmd.com/zh/">
-        <img src="https://foruda.gitee.com/images/1676141778442772704/6846937e_9641432.png" alt="x-cmd-logo" width="150" data-width="150" data-height="150">
+        <img src="https://foruda.gitee.com/images/1676141778442772704/6846937e_9641432.png" alt="x-cmd-logo" width="140" hight="140">
     </a>
 </p>
 
-<p align="center">
-  <h1><a target="_blank" href="https://x-cmd.com/zh/">X-CMD</a></h1>
-</p>
+<h1 align="center"><a target="_blank" href="https://x-cmd.com/zh/">X-CMD</a></h1>
 
 <p align="center">在云上 施展 弹指神通 ～</p>
 

@@ -1,12 +1,10 @@
 <p align="center">
     <a target="_blank" href="https://x-cmd.com/">
-        <img src="https://user-images.githubusercontent.com/40693636/218274071-92a26d84-0550-4b90-a0ba-7d54118c56e1.png" alt="x-cmd-logo" width="150" data-width="150" data-height="150">
+        <img src="https://user-images.githubusercontent.com/40693636/218274071-92a26d84-0550-4b90-a0ba-7d54118c56e1.png" alt="x-cmd-logo" width="140" hight="140">
     </a>
 </p>
 
-<p align="center">
-  <h1><a target="_blank" href="https://x-cmd.com/">X-CMD</a></h1>
-</p>
+<h1 align="center"><a target="_blank" href="https://x-cmd.com/">X-CMD</a></h1>
 
 <p align="center">Let's forge your Excalibur in Cloud.</p>
 
