@@ -4,7 +4,9 @@
     </a>
 </p>
 
-<h1 align="center"><a target="_blank" href="https://x-cmd.com/zh/">X-CMD</a></h1>
+<p align="center">
+  <h1><a target="_blank" href="https://x-cmd.com/zh/">X-CMD</a></h1>
+</p>
 
 <p align="center">在云上 施展 弹指神通 ～</p>
 

@@ -4,7 +4,9 @@
     </a>
 </p>
 
-<a target="_blank" href="https://x-cmd.com/"><h1 align="center">X-CMD</h1></a>
+<p align="center">
+  <h1><a target="_blank" href="https://x-cmd.com/">X-CMD</a></h1>
+</p>
 
 <p align="center">Let's forge your Excalibur in Cloud.</p>
 
