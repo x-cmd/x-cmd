@@ -30,7 +30,7 @@ Now x-cmd still in alpha version for insdier only. We will be ready in the next 
 
 [x theme](https://www.x-cmd.com/basic/theme) - Use command line prompt theme
 
-![x theme demo gif](https://user-images.githubusercontent.com/40693636/218275249-f600e2a5-32e1-4247-9ec3-f6fc6705ded9.gif)
+![x theme demo gif](https://user-images.githubusercontent.com/40693636/220616378-06eb5edc-5baa-45e2-9486-7f32a5496400.gif)
 
 [x zuz](https://www.x-cmd.com/basic/zuz) - Compress or Decompress file
 
