@@ -27,7 +27,7 @@
 
 [x theme](https://www.x-cmd.com/basic/theme) -  更改使用命令行主题
 
-![x theme demo gif](https://foruda.gitee.com/images/1676142431150289792/d1c936ba_9641432.gif "theme.gif")
+![x theme demo gif](https://foruda.gitee.com/images/1677067960083339501/19e2472d_9641432.gif "theme.gif")
 
 [x zuz](https://www.x-cmd.com/basic/zuz) - 压缩或解压文件
 
