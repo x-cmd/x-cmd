@@ -15,17 +15,16 @@ ___x_cmd_gh_repo_branch(){
     return 1
 }
 
-# Section: branch app
+# Section: App
 ___x_cmd_gh_repo_branch_app(){
     param:scope     ___x_cmd_gh
     param:dsl       '
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --protected     "returns only protected branches."
 
     --per_page      "Results per page"                                                  <>=30
     --page          "Page number of the results to fetch."                              <>=1
-    --json|-j       "output json data"
 '
     param:run
 
@@ -65,7 +64,7 @@ ___x_cmd_gh_repo_branch_ls(){
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --per_page      "Results per page"                                                  <>=30
     --page          "Page number of the results to fetch."                              <>=1
     --protected     "returns only protected branches."
@@ -88,13 +87,13 @@ ___x_cmd_gh_repo_branch_info(){
     param:dsl       '
 options:
     #1              "branch name"                                                       <>:Branch
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --json|-j       "output json data"
 '
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_get_multi "/repos/${owner_repo}/branches/$1" | _____x_cmd_gh_branch_ui_utils Info
+    ___x_cmd_gh_get_multi "/repos/${owner_repo}/branches/$1" | ___x_cmd_gh_branch____ui_handler Info
 }
 
 # EndSection
@@ -106,14 +105,14 @@ ___x_cmd_gh_repo_branch_rename(){
     param:dsl       '
 options:
     #1              "branch name"                                                       <>:Branch
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --new_name      "branch new name"                                                   <>
     --json|-j       "output json data"
 '
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl post "/repos/${owner_repo}/branches/$1/rename" -- new_name | _____x_cmd_gh_branch_ui_utils Rename
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/branches/$1/rename" -- new_name | ___x_cmd_gh_branch____ui_handler Rename
 }
 # EndSection
 
@@ -121,15 +120,15 @@ options:
 ___x_cmd_gh_repo_branch_default(){
     param:dsl       '
 options:
-    --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
     #1          "branch name"                                                       <>
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --json|-j   "output json data"
 
 '
     param:run
 
     # TODO:source data
-    ___x_cmd_gh_repo_edit -j --default_branch "$1" "$repo" | _____x_cmd_gh_branch_ui_utils Default
+    ___x_cmd_gh_repo_edit -j --default_branch "$1" "$repo" | ___x_cmd_gh_branch____ui_handler Default
 }
 # EndSection
 
@@ -152,7 +151,7 @@ ___x_cmd_gh_repo_branch_protection_ls(){
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
 
     --per_page      "Results per page"                                                  <>=30
     --page          "Page number of the results to fetch."                              <>=1
@@ -168,8 +167,8 @@ options:
 ___x_cmd_gh_repo_branch_protection_info(){
     param:dsl       '
 options:
-    #1          "branch name"       <>
-    --repo      "repo name"         <>:RepoName
+    #1          "branch name"                                                 <>
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"    <>:RepoName
     --json|-j   "output json data"
 '
     param:run
@@ -183,14 +182,15 @@ options:
         fi
 
         x jo env . admins=.enforce_admins.enabled \
-        deletions=.allow_deletions.enabled linear=.required_linear_history.enabled \
-        pushes=.allow_force_pushes.enabled signatures=.required_signatures.enabled gh_resp_err=.message
+            deletions=.allow_deletions.enabled linear=.required_linear_history.enabled \
+            pushes=.allow_force_pushes.enabled signatures=.required_signatures.enabled \
+            gh_resp_msg=.message gh_resp_err=.errors
         if [ -n "$admins" ]; then
-            ___x_cmd_ui_tf true "protection branch $1 info" "enforce_admins:$admins" \
+            ___x_cmd_ui_tf true "protection branch $1 info:" "enforce_admins:$admins" \
                 "allow_deletions:$deletions" "required_linear_history:$linear" "allow_force_pushes:$pushes" \
                  "required_signatures:$signatures"
         else
-            ___x_cmd_ui_tf false "protection branch $1 info failed"
+            ___x_cmd_ui_tf false "protection branch $1 info fetch failure:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi
@@ -205,7 +205,7 @@ ___x_cmd_gh_repo_branch_protection_set(){
     param:dsl       '
 options:
     #1              "branch name"                                                               <>:Branch
-    --repo          "repo name"                                                                 <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"                  <>:RepoName
     --strict        "Require branches to be up to date before merging"                          <>:Boolean=""
     --admins        "enforce required status checks for repository administrators"              <>="null" = true false null
     --history       "Prevent merge commits from being pushed to matching branches."             <>:Boolean=""
@@ -236,11 +236,11 @@ options:
             return
         fi
 
-        x jo env . url=.url gh_resp_err=.message
+        x jo env . url=.url gh_resp_msg=.message gh_resp_err=.errors
         if [ -n "$url" ]; then
-            ___x_cmd_ui_tf true "set protection branch $1 success"
+            ___x_cmd_ui_tf  true "Set ${owner_repo} protection branch $1 successfully:"
         else
-            ___x_cmd_ui_tf false "set protection branch $1 failed."
+            ___x_cmd_ui_tf false "Set ${owner_repo} protection branch $1 failure:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi
@@ -254,17 +254,18 @@ ___x_cmd_gh_repo_branch_protection_unset(){
     param:dsl       '
 options:
     #1          "branch name"                                                       <>
-    --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
 '
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl delete "/repos/${owner_repo}/branches/${1}/protection"| (
-        x jo env . gh_resp_err=.message
+    ___x_cmd_gh_curl del "/repos/${owner_repo}/branches/${1}/protection"| (
+        [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+        x jo env . gh_resp_msg=.message gh_resp_err=.errors
         if ___x_cmd_gh_http_error; then
-            ___x_cmd_ui_tf  true "del ${1} branch protection success"
+            ___x_cmd_ui_tf  true "Unset ${1} branch protection successfully:"
         else
-            ___x_cmd_ui_tf false "del ${1} branch protection fail"
+            ___x_cmd_ui_tf false "Unset ${1} branch protection failure:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi
@@ -272,8 +273,8 @@ options:
 }
 # EndSection
 
-# Section: branch utils
-_____x_cmd_gh_branch_ui_utils(){
+# Section: branch UI
+___x_cmd_gh_branch____ui_handler(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gh_http_error
@@ -283,23 +284,23 @@ _____x_cmd_gh_branch_ui_utils(){
         case "$1" in
             Info)
                 _data="Protected=.protected sha=.commit.sha url=._links.html"
-                _msg="get repo ${owner_repo} branch info success"
-                _error_msg="get repo ${owner_repo} branch info fail"
+                _inf_msg="get repo ${owner_repo} branch info success"
+                _err_msg="get repo ${owner_repo} branch info fail"
                 ;;
             Rename)
-                _msg="branch renamed from $branch to $new_name successfully"
-                _error_msg="${owner_repo} branch rename from $branch to $new_name failed"
+                _inf_msg="branch renamed from $branch to $new_name successfully"
+                _err_msg="${owner_repo} branch rename from $branch to $new_name failed"
                 ;;
             Default)
-                _msg="Successfully set repo default branch"
-                _error_msg="Failed to set repo default branch"
+                _inf_msg="Successfully set repo default branch"
+                _err_msg="Failed to set repo default branch"
                 ;;
         esac
-        eval x jo env . name=.name gh_resp_err=.message "$_data"
+        eval x jo env . name=.name gh_resp_msg=.message gh_resp_err=.errors "$_data"
         if [ -n "$name" ]; then
-            ___x_cmd_ui_tf true "$_msg" ${name+"Name: $name"} ${Protected+"Protected: $Protected"}  ${sha+"LastCommit: $sha"} ${url+"Url: $url"}
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${name:+"Name: $name"} ${Protected:+"Protected: $Protected"}  ${sha:+"LastCommit: $sha"} ${url:+"Url: $url"}
         else
-            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi

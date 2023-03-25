@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2166,2012,2034,2207,1090
+# shellcheck shell=bash disable=SC2166,2012,2034,2207,1090,2076
 ___x_cmd_advise_man(){
     local op="$1"; [ "$#" -le 0 ] || shift
     case "$op" in
@@ -7,99 +7,139 @@ ___x_cmd_advise_man(){
         which)          ___x_cmd_advise_man_which "$@"      ;;
         load)           ___x_cmd_advise_man_load "$@"       ;;
         rm)             ___x_cmd_advise_man_rm "$@"         ;;
-        ""|-h|--help)   ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man ;;
+        ""|-h|--help)   ___x_cmd_advise_help man ;;
         *)              ___x_cmd_advise_man_load "$@"       ;;
     esac
 }
 
-___X_CMD_ADVISE_MAN_SRC_FOLDER="$___X_CMD_ROOT_TMP/advise/src"
-___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER="$___X_CMD_ROOT_TMP/advise/completions"
+___X_CMD_ADVISE_MAN_PKG="$___X_CMD_ROOT_SHARED/advise"
+
+___X_CMD_ADVISE_MAN_XCMD_FOLDER="$___X_CMD_ROOT_DATA/advise/xcmd"
+___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER="$___X_CMD_ROOT_DATA/advise/completions"
+___X_CMD_ADVISE_MAN_XCMD_PKG="$___X_CMD_ADVISE_MAN_PKG/all.tgz"
+___X_CMD_ADVISE_MAN_COMPLETIONS_PKG="$___X_CMD_ADVISE_MAN_PKG/$___X_CMD_CUR_SHELL-completions.7z"
+
+___x_cmd_is_suitable_advise_completion_env(){
+    ___x_cmd_is_suitable_advise_env || return 1
+    # bash >= 4.2
+    [ -z "$BASH_VERSION" ] || [ "${BASH_VERSINFO[0]}" -gt 4 ] || [ "${BASH_VERSINFO[0]}" -eq 4 -a "${BASH_VERSINFO[1]}" -ge 2 ] || return 1
+}
+
 if [[ "$BASH_VERSION" =~ (^5.*|^4.[2-3]) ]]; then  ___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER_CUR_SHELL="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/bash-completions/share/bash-completion/completions"
 elif [ -n "$ZSH_VERSION" ];then ___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER_CUR_SHELL="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/zsh-completions/src"
 fi
 
 ___x_cmd_advise_man_xcmd_exists(){
-    [ -d "$___X_CMD_ADVISE_MAN_SRC_FOLDER" ]
+    [ -d "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" ]
 }
 ___x_cmd_advise_man_completion_exists(){
     [ -d "$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/$___X_CMD_CUR_SHELL-completions" ]
 }
+___x_cmd_advise_man_pkg_whether_not_update(){
+    # local _expiration=60 # Dev
+    local _expiration=259200 # 3-Day
+    local _fileage=
+    [ -f "$1" ] || return 1
+    _fileage="$( x fileage "$1" )"
+    # advise:warn --filepath "$1" --fileage "$_fileage" --expiration "$_expiration"
+    [ "$_fileage" -lt "$_expiration" ]
+}
 
+# Section: advise man install
 ___x_cmd_advise_man_completion_update(){
-    # bash >= 4.2
-    [ -z "$BASH_VERSION" ] || [ "${BASH_VERSINFO[0]}" -gt 4 ] || [ "${BASH_VERSINFO[0]}" -eq 4 -a "${BASH_VERSINFO[1]}" -ge 2 ] || return 1
-    local CACHE_COMPLETIONS="$___X_CMD_ROOT_TMP/advise/$___X_CMD_CUR_SHELL-completions.7z"
-    local folder="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/$___X_CMD_CUR_SHELL-completions"
-    ___x_cmd_httpget_gitx static-build "$___X_CMD_CUR_SHELL"-completions main "$___X_CMD_CUR_SHELL-completions.7z" "$CACHE_COMPLETIONS" || {
-        advise:error "Fail to update $___X_CMD_CUR_SHELL-completions.7z from static-build/${___X_CMD_CUR_SHELL}-completions."
+    ___x_cmd_is_suitable_advise_completion_env || return 1
+    x rmrf "$___X_CMD_ADVISE_MAN_COMPLETIONS_PKG"
+    ___x_cmd_advise_man_completion_unzip
+}
+
+___x_cmd_advise_man_completion_download(){
+    ___x_cmd_is_suitable_advise_completion_env || return 1
+    advise:info "Download $___X_CMD_CUR_SHELL-completions.7z from static-build/${___X_CMD_CUR_SHELL}-completions"
+    ___x_cmd_httpget_gitx static-build "$___X_CMD_CUR_SHELL"-completions main "$___X_CMD_CUR_SHELL-completions.7z" "$___X_CMD_ADVISE_MAN_COMPLETIONS_PKG" || {
+        advise:error "Fail to download $___X_CMD_CUR_SHELL-completions.7z from static-build/${___X_CMD_CUR_SHELL}-completions"
         return 1
     }
+}
 
-    { x rmrf "$folder";   x mkdirp "$folder"; } 1>/dev/null 2>&1
-    ! x uz "$CACHE_COMPLETIONS" "$folder" || advise:info "Decompress: advise/$___X_CMD_CUR_SHELL-completions.7z to $folder"
-    x rmrf "$CACHE_COMPLETIONS"
+___x_cmd_advise_man_completion_unzip(){
+    ___x_cmd_is_suitable_advise_completion_env || return 1
+    [ -f "$___X_CMD_ADVISE_MAN_COMPLETIONS_PKG" ] || ___x_cmd_advise_man_completion_download || return 1
+    local folder="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/$___X_CMD_CUR_SHELL-completions"
+    x rmrf "$folder"; x mkdirp "$folder"
+    ! x uz "$___X_CMD_ADVISE_MAN_COMPLETIONS_PKG" "$folder" || advise:debug "Decompress advise/$___X_CMD_CUR_SHELL-completions.7z to $folder"
 }
 
 ___x_cmd_advise_man_xcmd_update(){
-    local CACHE="$___X_CMD_ROOT_TMP/advise/all.tgz"
-    ___x_cmd_httpget_gitx x-cmd advise main "dist/all.tgz" "$CACHE" - || {
-        advise:error "Fail to update from x-cmd/advise."
+    x rmrf "$___X_CMD_ADVISE_MAN_XCMD_PKG"
+    ___x_cmd_advise_man_xcmd_unzip
+}
+
+___x_cmd_advise_man_xcmd_download(){
+    advise:info "Download all.tgz from x-cmd/advise"
+    ___x_cmd_httpget_gitx x-cmd advise main "dist/all.tgz" "$___X_CMD_ADVISE_MAN_XCMD_PKG" - || {
+        advise:error "Fail to download all.tgz from x-cmd/advise"
         return 1
     }
-
-    { x rmrf "$___X_CMD_ADVISE_MAN_SRC_FOLDER";   x mkdirp "$___X_CMD_ADVISE_MAN_SRC_FOLDER"; } 1>/dev/null 2>&1
-    ! x uz "$CACHE" "$___X_CMD_ADVISE_MAN_SRC_FOLDER" || advise:info "Decompress: advise/all.tgz to $___X_CMD_ADVISE_MAN_SRC_FOLDER"
-    x rmrf "$CACHE"
 }
+
+___x_cmd_advise_man_xcmd_unzip(){
+    [ -f "$___X_CMD_ADVISE_MAN_XCMD_PKG" ] || ___x_cmd_advise_man_xcmd_download || return 1
+    x rmrf "$___X_CMD_ADVISE_MAN_XCMD_FOLDER";   x mkdirp "$___X_CMD_ADVISE_MAN_XCMD_FOLDER"
+    ! x uz "$___X_CMD_ADVISE_MAN_XCMD_PKG" "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" || advise:debug "Decompress advise/all.tgz to $___X_CMD_ADVISE_MAN_XCMD_FOLDER"
+}
+
+# EndSection
 
 ___x_cmd_advise_man_update(){
     case "$1" in
         x-cmd)          ___x_cmd_advise_man_xcmd_update ;;
         completion)     ___x_cmd_advise_man_completion_update ;;
+        x.advise.jso)   ___x_cmd_advise_man_gen_x_advise_force ;;
         all)            ___x_cmd_advise_man_xcmd_update
-                        ___x_cmd_advise_man_completion_update ;;
-        *)              ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man update
+                        ___x_cmd_advise_man_completion_update
+                        ___x_cmd_advise_man_gen_x_advise_force ;;
+        *)              ___x_cmd_advise_help man update
     esac
 }
 
 ___x_cmd_advise_man_ls(){
-    ___x_cmd_advise_man_xcmd_exists || ___x_cmd_advise_man_xcmd_update || return
+    ___x_cmd_advise_man_xcmd_exists || ___x_cmd_advise_man_xcmd_unzip || return
     case "$1" in
-        x-cmd)              local line; ls "$___X_CMD_ADVISE_MAN_SRC_FOLDER" | while read -r line; do
+        x-cmd)              local line; ls "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" | while read -r line; do
                                 [ "$line" = "LICENSE" ] || printf "%s\n" "$line"
                             done ;;
-        npx)                ls "$___X_CMD_ADVISE_MAN_SRC_FOLDER/npx/_" ;;
-        pipx)               ls "$___X_CMD_ADVISE_MAN_SRC_FOLDER/pipx/_" ;;
-        docker)             ls "$___X_CMD_ADVISE_MAN_SRC_FOLDER/docker/_" ;;
-        completion)         if ___x_cmd_advise_man_completion_exists || ___x_cmd_advise_man_completion_update; then
+        npx)                ls "$___X_CMD_ADVISE_MAN_XCMD_FOLDER/npx/_" ;;
+        pipx)               ls "$___X_CMD_ADVISE_MAN_XCMD_FOLDER/pipx/_" ;;
+        docker)             ls "$___X_CMD_ADVISE_MAN_XCMD_FOLDER/docker/_" ;;
+        completion)         if ___x_cmd_advise_man_completion_exists || ___x_cmd_advise_man_completion_unzip; then
                                 ls "$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER_CUR_SHELL"
                             fi ;;
-        -h|--help)          ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man ls ;;
+        -h|--help)          ___x_cmd_advise_help man ls ;;
         *)                  ___x_cmd_advise_man_ls x-cmd ;;
     esac
 }
 
 ___x_cmd_advise_man_xcmd_which(){
     if [[ "$1" =~ "-h|--help" ]]; then
-        ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man which x-cmd
+        ___x_cmd_advise_help man which x-cmd
         return 0
-    elif ___x_cmd_advise_man_xcmd_exists || ___x_cmd_advise_man_xcmd_update; then
-        local file; local IFS=" "; for file in "$1/advise.t.json" "npx/_/$1/advise.t.json" "pipx/_/$1/advise.t.json"; do
-            file="$___X_CMD_ADVISE_MAN_SRC_FOLDER/$file"
+    elif ___x_cmd_advise_man_xcmd_exists || ___x_cmd_advise_man_xcmd_unzip; then
+        local file; local IFS=" "; for file in "$1/advise.t.jso" "npx/_/$1/advise.t.jso" "pipx/_/$1/advise.t.jso"; do
+            file="$___X_CMD_ADVISE_MAN_XCMD_FOLDER/$file"
             [ -f "$file" ] || continue
             printf "%s\n" "$file"
             return 0
         done
     fi
-    printf "%s\n" "$___X_CMD_ADVISE_MAN_SRC_FOLDER"
+    printf "%s\n" "$___X_CMD_ADVISE_MAN_XCMD_FOLDER"
     return 1
 }
 
 ___x_cmd_advise_man_completion_which(){
     if [[ "$1" =~ "-h|--help" ]]; then
-        ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man which completion
+        ___x_cmd_advise_help man which completion
         return 0
-    elif ___x_cmd_advise_man_completion_exists || ___x_cmd_advise_man_completion_update; then
+    elif ___x_cmd_advise_man_completion_exists || ___x_cmd_advise_man_completion_unzip; then
         local file="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER_CUR_SHELL/$1"
         if [ -f "$file" ]; then printf "%s\n" "$file"
         else
@@ -113,7 +153,7 @@ ___x_cmd_advise_man_which(){
     case "$1" in
         x-cmd)          shift; ___x_cmd_advise_man_xcmd_which "$@" ;;
         completion)     shift; ___x_cmd_advise_man_completion_which "$@" ;;
-        *)              ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man which
+        *)              ___x_cmd_advise_help man which
     esac
 }
 
@@ -125,6 +165,7 @@ ___x_cmd_advise_man_xcmd_load_one(){
 }
 
 ___x_cmd_advise_man_xcmd_load_all(){
+    advise:debug "Load x-cmd/advise from $___X_CMD_ADVISE_MAN_XCMD_FOLDER"
     eval "$(___x_cmd_advise_man_ls x-cmd | command awk '
         {                           code = code " " $1;                                         }
         (NR % 50 == 0){             print "___x_cmd_advise_man_xcmd_load_one" code;      code = ""   }
@@ -133,55 +174,78 @@ ___x_cmd_advise_man_xcmd_load_all(){
 }
 
 ___x_cmd_advise_man_xcmd_load(){
-    if [[ "$1" =~ "-h|--help" ]]; then   ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man load x-cmd
-    elif [ "$#" -ge 1 ]; then            ___x_cmd_advise_man_xcmd_load_one "$@"
+    if [[ "$1" =~ "-h|--help" ]]; then
+        ___x_cmd_advise_help man load x-cmd
+        return 1
+    fi
+
+    ___x_cmd_advise_man_pkg_whether_not_update "$___X_CMD_ADVISE_MAN_XCMD_PKG" || ___x_cmd_advise_man_xcmd_update
+    if [ "$#" -ge 1 ]; then ___x_cmd_advise_man_xcmd_load_one "$@"
     else ___x_cmd_advise_man_xcmd_load_all
     fi
 }
 
 ___x_cmd_advise_man_completion_load(){
-    if ___x_cmd_advise_man_completion_exists || ___x_cmd_advise_man_completion_update; then
+    ___x_cmd_advise_man_pkg_whether_not_update "$___X_CMD_ADVISE_MAN_COMPLETIONS_PKG" || ___x_cmd_advise_man_completion_update
+    if ___x_cmd_advise_man_completion_exists || ___x_cmd_advise_man_completion_unzip; then
         local filename="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/$___X_CMD_CUR_SHELL-completions/completions.sh"
         if [ -f "$filename" ]; then
-            advise:debug "source $___X_CMD_CUR_SHELL completions from $filename"
+            advise:debug "Load $___X_CMD_CUR_SHELL completions from $filename"
             .  "$filename"
         fi
     fi
+}
+
+___x_cmd_advise_man_x_load(){
+    advise:debug "Load x advise of $___X_CMD_ADVISE_MAN_CACHE_X_ADVISE_JSO"
+    ___x_cmd_advise_man_gen_x_advise
+    ___x_cmd_advise init x "$___X_CMD_ADVISE_MAN_CACHE_X_ADVISE_JSO"
 }
 
 ___x_cmd_advise_man_load(){
     case "$1" in
         x-cmd)          shift; ___x_cmd_advise_man_xcmd_load "$@" ;;
         completion)     ___x_cmd_advise_man_completion_load ;;
-        all)            ___x_cmd_advise_man_xcmd_load
-                        ___x_cmd_advise_man_completion_load ;;
-        *)              ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man load ;;
+        all)            ___x_cmd_advise_man_completion_load
+                        ___x_cmd_advise_man_xcmd_load
+                        ___x_cmd_advise_man_x_load ;;
+        *)              ___x_cmd_advise_help man load ;;
     esac
 }
 
 ___x_cmd_advise_man_rm(){
+    local filepath=
     case "$1" in
-        x-cmd)      if [[ "$2" =~ "-h|--help" ]]; then
-                        ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man rm x-cmd
-                    elif ___x_cmd_advise_man_xcmd_exists; then
-                        advise:warn "Remove $___X_CMD_ADVISE_MAN_SRC_FOLDER/$2"
-                        rm -rf "$___X_CMD_ADVISE_MAN_SRC_FOLDER/$2"
-                    fi ;;
-        completion) if [[ "$2" =~ "-h|--help" ]]; then
-                        ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man rm completion
-                    elif ___x_cmd_advise_man_completion_exists; then
-                        advise:warn "$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/$___X_CMD_CUR_SHELL-completions"
-                        rm -rf "$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/$___X_CMD_CUR_SHELL-completions"
-                    fi ;;
-        *)          ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/advise/res/advise.jso" man rm ;;
+        x-cmd)
+            if [[ "$2" =~ "-h|--help" ]]; then
+                ___x_cmd_advise_help man rm x-cmd
+            elif ___x_cmd_advise_man_xcmd_exists; then
+                filepath="$___X_CMD_ADVISE_MAN_XCMD_FOLDER/$2"
+                [ -d "$filepath" ] || return
+                advise:warn "Remove $filepath"
+                x rmrf "$filepath"
+            fi ;;
+        completion)
+            if [[ "$2" =~ "-h|--help" ]]; then
+                ___x_cmd_advise_help man rm completion
+            elif ___x_cmd_advise_man_completion_exists; then
+                filepath="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/$___X_CMD_CUR_SHELL-completions/src/$2"
+                [ -f "$filepath" ] || return
+                advise:warn "Remove $filepath"
+                x rmrf "$filepath"
+            fi ;;
+        *)  ___x_cmd_advise_help man rm ;;
     esac
 }
 
 ___x_cmd_advise_man_xcmd_completer() {
     # Interesting ... Passing
-    ___ADVISE_RUN_CMD_FOLDER="$___X_CMD_ADVISE_MAN_SRC_FOLDER" ___advise_run ""
+    ___X_CMD_ADVISE_RUN_CMD_FOLDER="$___X_CMD_ADVISE_MAN_XCMD_FOLDER" ___x_cmd_advise_run ""
 }
 
 ## Section man advise
-___x_cmd_advise_man__list(){ local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"; candidate_exec_arr=( $(___x_cmd_advise_man_ls $1 ) ); }
+___x_cmd_advise_man__list(){
+    local IFS="$___X_CMD_ADVISE_IFS_INIT"
+    candidate_exec_arr=( $(___x_cmd_advise_man_ls "$1" ) )
+}
 ## EndSection

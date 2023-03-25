@@ -23,14 +23,16 @@ ___x_cmd_gt_repo_pr_tester_add(){
 options:
     #1                 "pr number"                                                          <>:NatureNumber
     --testers          "testers username list. separated by commas(,)"                      <>:UserName
-    --repo             "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r          "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --json|-j          "output origin json data"
 '
     param:run
-    local pr="${1:?"Please provide PR number"}"
+    [ -n "$1" ] || M='accepts 1 arg(PR number), received empty' arg:ret:64
+    local pr="$1"
     ___parse_pr_init_owner_repo_and_pr
 
-    ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner_repo}/pulls/$pr/testers" -- testers | ___x_cmd_gt_repo_pr_tester_status_handler
+    ___x_cmd_gt_curl post "/repos/${owner_repo}/pulls/$pr/testers" -- testers | \
+        ___x_cmd_gt_repo_pr_tester____ui_handler Add
 }
 
 # EndSection
@@ -43,36 +45,18 @@ ___x_cmd_gt_repo_pr_tester_rm(){
 options:
     #1                  "pr number"                                                          <>:NatureNumber
     --testers           "testers username list. separated by commas(,)"                      <>:UserName
-    --repo              "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r           "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --json|-j           "output origin json data"
 '
     param:run
-    local pr="${1:?"Please provide PR number"}"
+    [ -n "$1" ] || M='accepts 1 arg(PR number), received empty' arg:ret:64
+    local pr="$1"
     ___parse_pr_init_owner_repo_and_pr
 
-    ___x_cmd_gt_curl delete "https://gitee.com/api/v5/repos/${owner_repo}/pulls/$pr/testers" "$testers" | ___x_cmd_gt_repo_pr_tester_status_handler
+    ___x_cmd_gt_curl del "/repos/${owner_repo}/pulls/$pr/testers" "testers" | \
+        ___x_cmd_gt_repo_pr_tester____ui_handler Remove
 }
 
-# EndSection
-
-# Section: tester status handler
-___x_cmd_gt_repo_pr_tester_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . number=.number url=.html_url gt_resp_body=.
-        if [ -n "$number" ]; then
-            ___x_cmd_ui_tf true  "Resolve $testers to $owner_repo successfully" "PR Number: $number" "Url: $url"
-        else
-            ___x_cmd_ui_tf false "Resolve $testers to $owner_repo repo $number failure"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
-}
 # EndSection
 
 # Section: Reset
@@ -82,34 +66,18 @@ ___x_cmd_gt_repo_pr_tester_reset(){
     param:dsl       '
 options:
     #1                 "pr number"                                                           <>:NatureNumber
-    --repo             "Provide ownerPath/RepoPath.(default owner: current user)"            <>:RepoPath
+    --repo|-r          "<ownerPath>/<RepoPath> (default ownerPath: current user)"            <>:RepoPath
     --reset_all        "reset all tester"
     --json|-j          "output origin json data"
 '
     param:run
-    local pr="${1:?"Please provide PR number"}"
+    [ -n "$1" ] || M='accepts 1 arg(PR number), received empty' arg:ret:64
+    local pr="$1"
     reset_all=${reset_all:-false}
     ___parse_pr_init_owner_repo_and_pr
 
-    ___x_cmd_gt_curl patch "https://gitee.com/api/v5/repos/${owner_repo}/pulls/$pr/testers" -- reset_all | ___x_cmd_gt_repo_pr_tester_reset_status_handler
-}
-
-___x_cmd_gt_repo_pr_tester_reset_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . number=.number gt_resp_body=.
-        if [ -n "$number" ]; then
-            ___x_cmd_ui_tf true  "Reset $number to $owner_repo tester successfully"
-        else
-            ___x_cmd_ui_tf false "Reset $number to $owner_repo tester failure"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+    ___x_cmd_gt_curl patch "/repos/${owner_repo}/pulls/$pr/testers" -- reset_all | \
+        ___x_cmd_gt_repo_pr_tester____ui_handler Reset
 }
 # EndSection
 
@@ -121,20 +89,56 @@ ___x_cmd_gt_repo_pr_tester_test(){
     param:dsl       '
 options:
     #1                "pr number"                                                           <>:NatureNumber
-    --repo            "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r         "<ownerPath>/<RepoPath> (default ownerPath: current user)"            <>:RepoPath
     --force           "force"
     --json|-j         "output origin json data"
 '
     param:run
-    local pr="${1:?"Please provide PR number"}"
+    [ -n "$1" ] || M='accepts 1 arg(PR number), received empty' arg:ret:64
+    local pr="$1"
     force=${force:-false}
     ___parse_pr_init_owner_repo_and_pr
+    ___x_cmd_gt_curl post "/repos/${owner_repo}/pulls/$pr/test" -- force | (
+            [ -z "$___X_CMD_GT_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "Resolve $pr test pass to $owner_repo successfully:"
+            else
+                ___x_cmd_ui_tf false "Resolve $pr test pass to $owner_repo failure:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
 
-    if ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner_repo}/pulls/$pr/test" -- force | ___x_cmd_gt____handle_no_content; then
-        ___x_cmd_ui_tf true  "Resolve $pr test pass to $owner_repo successfully"
-    else
-        ___x_cmd_ui_tf false "Resolve $pr test pass to $owner_repo failure"  "ErrorMsg:"
-        return 1
+# Section: pr tester UI
+___x_cmd_gt_repo_pr_tester____ui_handler(){
+     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
     fi
+    (
+        case "$1" in
+            Add|Remove)
+                _data="url=.html_url"
+                _inf_msg="$1 $assignees as $owner_repo $number PR tester successfully"
+                _err_msg="$1 $assignees as $owner_repo $number PR tester failure"
+            ;;
+            Reset)
+                _inf_msg="Reset $number to $owner_repo tester successfully"
+                _err_msg="Reset $number to $owner_repo tester failure"
+            ;;
+        esac
+        eval x jo env . _number=.number gt_resp_err=.message gt_resp_err=.error "$_data"
+        if [ -n "$_number" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${url:+"URL: $url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection

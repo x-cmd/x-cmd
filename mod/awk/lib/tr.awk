@@ -3,7 +3,7 @@
 # RFC4648
 function get_base32( s ){
     if ( (l = BASE32[ L ]) != 0 ) {
-        return BASE32
+        return 0
     }
 
     s = "ABCDEFGHIJHKLMNOPQRSTUVWXYZ234567"
@@ -12,7 +12,7 @@ function get_base32( s ){
 
 function get_base32hex( s ){
     if ( (l = BASE32[ L ]) != 0 ) {
-        return BASE32
+        return 0
     }
 
     s = "0123456789ABCDEFGHIJKLMNOPQRSTUV"

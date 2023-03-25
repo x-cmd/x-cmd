@@ -187,11 +187,11 @@ function jiter_for_current_key( item, stack,  _res ) {
         if ( JITER_LAST_KP != "" ) {
             _res = JITER_LAST_KP
             JITER_LAST_KP = ""
-            return _res
+            return JITER_CURKEY = _res
         }
         JITER_CURLEN = JITER_CURLEN + 1
         if ( JITER_STATE != T_DICT ) {
-            return "\"" JITER_CURLEN "\""
+            return JITER_CURKEY = "\"" JITER_CURLEN "\""
         }
         JITER_LAST_KP = item
     } else if (item ~ /^[\[\{]$/) { # }
@@ -208,12 +208,12 @@ function jiter_for_current_key( item, stack,  _res ) {
         JITER_CURLEN = 0
 
         stack[ ++JITER_LEVEL ] = item
-        return _res
+        return JITER_CURKEY = _res
     } else {
         JITER_STATE = stack[ --JITER_LEVEL ]
         JITER_CURLEN = stack[ JITER_LEVEL T_LEN ]
     }
-    return ""
+    return JITER_CURKEY = ""
 }
 
 # EndSection
@@ -384,5 +384,76 @@ function jiparse( obj, item ){
     }
     return JITER_LEVEL
 }
+
+# EndSection
+
+# Section: jiparse2leaf
+function jiparse2leaf_after_tokenize( obj, text,       _arr, _arrl, i){
+    _arrl = json_split2tokenarr( _arr, text )
+    for (i=1; i<=_arrl; ++i) {
+        jiparse2leaf_iter( obj, _arr[i] )
+    }
+}
+
+function jiparse2leaf_init( initkp ){
+    JITER_DEFAULT_KEYPATH = initkp
+}
+
+function jiparse2leaf_iter( obj, item ){
+    if (item ~ /^[,:]?$/) return
+    if (item ~ /^[tfn"0-9+-]/)   #"        # (item !~ /^[\{\}\[\]]$/)
+    {
+        if ( JITER_LAST_KP != "" ) {
+            obj[ JITER_FA_KEYPATH SUBSEP JITER_LAST_KP ] = item
+            JITER_LAST_KP = ""
+        } else {
+            JITER_CURLEN = JITER_CURLEN + 1
+            if (JITER_STATE != "{") {
+                obj[ JITER_FA_KEYPATH SUBSEP "\"" JITER_CURLEN "\"" ] = item
+            } else {
+                JITER_LAST_KP = item
+                obj[ JITER_FA_KEYPATH SUBSEP JITER_CURLEN ] = item
+            }
+        }
+    } else if (item ~ /^[\[\{]$/) {
+        if ( JITER_DEFAULT_KEYPATH != "" ) {
+            JITER_CURLEN = JITER_CURLEN + 1
+            JITER_FA_KEYPATH = JITER_DEFAULT_KEYPATH
+            obj[ JITER_FA_KEYPATH L ] = JITER_CURLEN
+            JITER_DEFAULT_KEYPATH = ""
+        } else if ( JITER_STATE != "{" ) {
+            JITER_CURLEN = JITER_CURLEN + 1
+            obj[ JITER_FA_KEYPATH L ] = JITER_CURLEN
+            JITER_FA_KEYPATH = JITER_FA_KEYPATH SUBSEP "\"" JITER_CURLEN "\""
+        } else {
+            obj[ JITER_FA_KEYPATH L ] = JITER_CURLEN
+            JITER_FA_KEYPATH = JITER_FA_KEYPATH SUBSEP JITER_LAST_KP
+            JITER_LAST_KP = ""
+        }
+        JITER_STATE = item
+        JITER_CURLEN = 0
+
+        obj[ JITER_FA_KEYPATH ] = item
+        obj[ ++JITER_LEVEL ] = JITER_FA_KEYPATH
+    } else {
+        obj[ JITER_FA_KEYPATH L ] = JITER_CURLEN
+
+        JITER_FA_KEYPATH = obj[ --JITER_LEVEL ]
+        JITER_STATE = obj[ JITER_FA_KEYPATH ]
+        JITER_CURLEN = obj[ JITER_FA_KEYPATH L ]
+    }
+    return JITER_LEVEL
+}
+
+function jiparse2leaf_fromfile( obj, kp, filepath,     c, r ){
+    CAT_FILENOTFOUND = false
+    JITER_CURLEN = 0
+    jiparse2leaf_init( kp )
+    while ((c=(getline <filepath))==1) jiparse2leaf_after_tokenize(obj, $0)
+    if (c == -1)    CAT_FILENOTFOUND = true
+    close( filepath )
+    JITER_CURLEN = 0
+}
+
 # EndSection
 

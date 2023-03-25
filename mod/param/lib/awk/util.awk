@@ -44,7 +44,8 @@ function panic_error(msg){
 }
 
 function panic_param_define_error( msg ){
-    print FG_LIGHT_RED "param define error: " UI_END msg "\nFor more information try to read the demo in " FG_BLUE "https://gitee.com/x-bash/param/blob/main/.x-cmd/testcases/v0_test" UI_END > "/dev/stderr"
+    print FG_LIGHT_RED "param define error: " UI_END msg "\nFor more information try " FG_BLUE "--help" UI_END > "/dev/stderr"
+    # "For more information try to read the demo in " FG_BLUE "https://gitee.com/x-bash/param/blob/main/.x-cmd/testcases/v0_test"
     print "return 1 2>/dev/null || exit 1 2>/dev/null"
     exit_now(1);
 }
@@ -104,10 +105,11 @@ function get_option_synopsis_str(option_id,        l, i, _str, _argument_type){
     return _str
 }
 
-function get_option_string(option_id,           _option_string){
+function get_option_string(option_id,           _option_string, _option_synopsis){
     _option_string = get_option_key_by_id( option_id )
     gsub("\\|", ",", _option_string)
-    return _option_string get_option_synopsis_str(option_id)
+    _option_synopsis = ( (_option_synopsis = get_option_synopsis_str(option_id)) != "" ) ? " " _option_synopsis : ""
+    return _option_string _option_synopsis
 }
 
 function is_interactive(){

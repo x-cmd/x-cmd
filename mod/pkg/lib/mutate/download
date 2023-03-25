@@ -23,20 +23,28 @@ ___x_cmd_pkg_download(){
     fi
 
     local url_list
-    url_list="$(___x_cmd_pkg___list "$name" "$version" "$osarch" "url.${___X_CMD_WHICHNET:-_}" )"
+    url_list="$(___x_cmd_pkg___list "$name" "$version" "$osarch" "url.${___X_CMD_WEBSRC_REGION:-internet}" )"
     if [ -z "$url_list" ]; then
-        pkg:error "Not found url."
+        pkg:error "Not found url"
         return 1
     fi
 
     local file_suffix md5 sha1 sha256 sha512
     ___x_cmd_pkg___attr "$name" "$version" "$osarch" "md5,sha1,sha256,sha512,file_suffix"
     local url
-    local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$version.$file_suffix"
+
+    ___x_cmd_pkg___attr "$name" "$version" "$osarch" "unpack_way"
+    if [ "$unpack_way" = "non_unpack" ]; then
+        local os="${osarch%/*}";  local arch="${osarch#*/}"
+        local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$name.$os.$arch"
+    else
+        local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$version.$file_suffix"
+    fi
+
     mkdir -p "$___X_CMD_PKG_DOWNLOAD_PATH/$name" || {
             pkg:error "Create $___X_CMD_PKG_DOWNLOAD_PATH/$name failed" ; return 1
         }
-    pkg:debug "Download $name $version url_list: $url_list ball: $ball"
+    pkg:debug "{ Download name: $name, version: $version, url_list: $url_list, ball: $ball }"
 
 
     if [ -f "$ball" ]; then
@@ -50,7 +58,7 @@ ___x_cmd_pkg_download(){
         # ___x_cmd_httpget "$url" "$ball" || {
         pkg:info "Download $name $version from $url to $ball"
         # TODO: x curl
-        if ! curl --progress-bar --location --retry-max-time 10 --retry 0 "$url" --output "$ball" 2>/dev/null; then
+        if ! curl --progress-bar --location --retry-max-time 10 --retry 0 "$url" --output "$ball" ; then
             pkg:warn "Fail to download from $url"
             x rmrf $ball
             return 1
@@ -75,7 +83,7 @@ ___x_cmd_pkg_download_file___from_static_build_and_deflate(){
     local app="${2:-${repo}}"
     local version="${3:?Provide version}"
 
-    pkg:debug "Download static-build. repo: $repo app: $app"
+    pkg:debug "{ Download static-build repo: $repo, app: $app }"
 
     local target="$___X_CMD_PKG_INSTALL_PATH/$app/$version"
     x mkdirp "$target" || return 1
@@ -89,7 +97,7 @@ ___x_cmd_pkg_download_file___from_static_build_and_deflate(){
 
     # Rely
     if [ ! -f "$target/$exe" ]; then
-        pkg:info "Downloading: $repo/$app/$version/$exe.7z to $target"
+        pkg:info "Downloading - '$repo/$app/$version/$exe.7z to $target'"
         if ! ___x_cmd_httpget_gitx static-build "${repo}" main "$app/$version/$exe.7z" "$target/$exe.7z"; then
             pkg:warn "Download failure: $repo/main $app/$version/$exe.7z. Perhaps platform unsupported."
             x rmrf "$target"
@@ -104,7 +112,6 @@ ___x_cmd_pkg_download_file___from_static_build_and_deflate(){
                 size=${size% *}
                 size=$(printf "%s" $size)   # Notice: Intentionary let it unquoted.
 
-                xrc p7zip
                 if [ "$size" -gt 20 ]; then
                     p7zd x "$exe.7z" 1>/dev/null 2>/dev/null
                 else
@@ -116,14 +123,14 @@ ___x_cmd_pkg_download_file___from_static_build_and_deflate(){
                     for i in $(seq "$size"); do
                         # suffix="$(printf "%03s" "$i")" # Not work in gnu bash
                         suffix="$(printf "%3s" "$i" | tr " " 0)"
-                        pkg:info "Downloading: $repo/$app/$version/$exe.7z.$suffix to $target"
+                        pkg:info "Downloading - '$repo/$app/$version/$exe.7z.$suffix to $target'"
                         if ! ___x_cmd_httpget_gitx static-build "${repo}" main "$app/$version/$exe.7z.$suffix" "$target/$exe.7z.$suffix"; then
                             pkg:warn "Download failure in $exe.7z.$suffix" >&2
                             return 1
                         fi
                     done
 
-                    pkg:info "Using p7zd to decompress: $target/$exe.7z.001"
+                    pkg:info "Using p7zd to decompress - '$target/$exe.7z.001'"
                     cat "$target/$exe".7z.0* > "$exe.7z"
                     p7zd x "$exe.7z" 1>/dev/null 2>/dev/null || {
                         pkg:error "p7zd unzip $exe.7z failed"
@@ -133,7 +140,7 @@ ___x_cmd_pkg_download_file___from_static_build_and_deflate(){
                 if chmod +x "$exe"; then
                     pkg:info "Finish file decompress and chmod."
                 else
-                    pkg:error "chmod: Operation not permitted "
+                    pkg:error "chmod - Operation not permitted "
                 fi
             }
         )

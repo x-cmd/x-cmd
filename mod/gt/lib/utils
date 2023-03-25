@@ -6,7 +6,7 @@ _____x_cmd_gt_help__token_setting(){
     printf "\n%s %s \n%s\n" \
         "$(___x_cmd_ui yellow 'Run command to add|repleace token:')" \
         "$(___x_cmd_ui bold cyan "\`x gt token <token>\`")"   \
-        "$(___x_cmd_ui 'https://gitee.com/profile/personal_access_tokens')"
+        "$(___x_cmd_ui 'https://gitee.com/profile/personal_access_tokens')" >&2
 }
 
 _____x_cmd_gt_help(){
@@ -42,37 +42,39 @@ ___x_cmd_gt_resp_code(){
         }'
 }
 
-# NOTE: To gitee v8 api. the url prefix not save status
 # shellcheck disable=SC2046
 ___x_cmd_gt_curl(){
     local op="$1"
-    local _curl_url="\"$2\""
-    local _content_type='"Content-Type:application/json;charset=UTF-8"'
-    local _authorization
-    _authorization="\"Authorization:token $(___x_cmd_gt_token)\""
-    local gt_header="$___X_CMD_GT_TMP/.____x_cmd_gt_curl_header"
+    local _api_url="$2"
     shift 2
-    ___x_cmd_gt_curl___record_log "$@"
+    local ___X_CMD_API_GT_HEADER="-s -H \"Content-Type:application/json;charset=UTF-8\" -D \"$___X_CMD_GT_TMP/.____x_cmd_gt_curl_header\""
+
+    local _curl_host_tmp=""
+    local ___X_CMD_API_GT_TOKEN=""
+    ___x_cmd_gt_config___var  ___X_CMD_API_GT_TOKEN=token _curl_host_tmp=host 2>/dev/null
+    local ___X_CMD_API_GT_HOST="${___X_CMD_API_GT_HOST:-"$_curl_host_tmp"}"
+
+    local ___X_CMD_GT_SHOW_HTTP_CODE=1
     case "$op" in
         get)
-            if [ -z "$NO_CACHE" ]; then
-                x ccmd 10s --           eval x curl -D "$gt_header" -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))") "$_curl_url"
-                ___x_cmd_gt_curl_error  eval x curl -D "$gt_header" -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))") "$_curl_url"
+            if [ -n "$NO_CACHE" ]; then
+                ___x_cmd_api_gt get "$_api_url" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))")
             else
-                eval x curl -D "$gt_header" -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))") "$_curl_url"
+                x ccmd 10s --        eval "___X_CMD_API_GT_HOST=$___X_CMD_API_GT_HOST ___X_CMD_API_GT_TOKEN=$___X_CMD_API_GT_TOKEN ___x_cmd_api_gt get $_api_url $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))")"
             fi
+            ___x_cmd_gt_http_error   eval "___X_CMD_API_GT_HOST=$___X_CMD_API_GT_HOST ___X_CMD_API_GT_TOKEN=$___X_CMD_API_GT_TOKEN ___x_cmd_api_gt get $_api_url $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))")"
             ;;
-        post)   eval x curl -D "$gt_header" -X POST   -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"    ;;
-        put)    eval x curl -D "$gt_header" -X PUT    -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"    ;;
-        patch)  eval x curl -D "$gt_header" -X PATCH  -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"    ;;
-        delete) eval x curl -D "$gt_header" -X DELETE -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"    ;;
+        post|put|patch|del)
+            ___x_cmd_api_gt "$op" "$_api_url" "$(x curl gencode "$@")"
+            ___x_cmd_gt_http_error
+        ;;
     esac
 }
 
 # shellcheck disable=SC2154
 ___x_cmd_gt_curl___use_query_data(){
     [ $# -gt 0 ] || return
-    local name
+    local name=""
     printf "%s " "-G"
     for name in "$@";
     do
@@ -82,47 +84,36 @@ ___x_cmd_gt_curl___use_query_data(){
     done
 }
 
-# shellcheck disable=SC2046
-___x_cmd_gt_curl___record_log(){
-    [ -z "$op" ] || {
-        case "$op" in
-            get) gt:debug "x curl -D $gt_header -X GET -s -H $_content_type -H $_authorization $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gt_curl___use_query_data "$@"))") $_curl_url" ;;
-            *)   gt:debug "x curl -D $gt_header -X $op"
-                 gt:debug "-s -H $_content_type -H $_authorization $(x curl gencode "$@") $_curl_url" ;;
-        esac
-    }
-}
-
-___x_cmd_gt_curl_error(){
-    local _http_resp_code
+___x_cmd_gt_http_error(){
+    local _http_resp_code=""
     _http_resp_code="$(___x_cmd_gt_resp_code)"
     if [ -n "$_http_resp_code" ] && [ "$_http_resp_code" -ge 200 ] && [ "$_http_resp_code" -le 303 ]; then
         return 0
     else
         [ $# -eq 0 ] || {
-            gt:debug "---! Cache Clear !---"
+            gt:debug "Cache Clear"
             x ccmd invalidate "$@" 1>/dev/null 2>&1
         }
-        gt:error "HTTP Code is $_http_resp_code"
+        [ -z "$___X_CMD_GT_SHOW_HTTP_CODE" ] || {
+            gt:error "HTTP Code is $_http_resp_code"
+            if command -v unset 1>/dev/null; then
+                unset ___X_CMD_GT_SHOW_HTTP_CODE
+            fi
+        }
         return 1
     fi
 }
 
-___x_cmd_gt____handle_resp(){
-    [ -z "$gt_resp_body" ] || {
-        printf "%s\n" "$gt_resp_body" | x jo
-    }
+___x_cmd_gt____printf_error(){
+    if ! ___x_cmd_is_interative_tty || [ ! -t 2 ] || [ -n "$NO_COLOR" ]; then
+        printf "  - ErrorMsg: %s\n" "$1" >&2
+    else
+        printf "  \033[31m-\033[0m \033[1mErrorMsg: \033[31m%s\033[0m\n" "$1" >&2
+    fi
 }
-
-___x_cmd_gt____handle_no_content(){
-    local gt_resp_body=""
-    x jo env . gt_resp_body=.
-
-    [ -z "$gt_resp_body" ] || {
-        gt:debug "gt_resp_body: $gt_resp_body"
-        return 1
-    }
-    ___x_cmd_gt_curl_error
+___x_cmd_gt____handle_resp(){
+    [ -z "$gt_resp_body" ] || printf "%s" "$gt_resp_body"
+    [ -z "$gt_resp_err" ]  || ___x_cmd_gt____printf_error "$gt_resp_err"
 }
 
 # EndSection
@@ -141,7 +132,7 @@ ___gt_ui_mutual(){
 
     local ___gt_exit_code="$?"
     [ "$___gt_exit_code" -eq 0 ] || {
-        ___x_cmd_ui_tf false "${___gt_error_msg:-"Couldn't find any data"}" ;
+        ___x_cmd_ui_tf false "${___gt_error_msg:-"Couldn't find any data"}:" >&2
         return "$___gt_exit_code"
     }
 }
@@ -160,13 +151,13 @@ ___x_cmd_gt_get_multi() {
     else
         ___x_cmd_gt_get_multi___ui_table "$@"
     fi
-    ___x_cmd_gt_curl_error
+    ___x_cmd_gt_http_error
 }
 
 ___x_cmd_gt_get_multi___ui_table(){
     ___x_cmd_gt_curl get "$@" page per_page
     printf "\n"
-    local next_url
+    local next_url=""
     _____x_cmd_gt_next_url
     [ -n "$next_url" ] || return
 
@@ -178,12 +169,12 @@ ___x_cmd_gt_get_multi___ui_table(){
 }
 
 ___x_cmd_gt_get_multi___json_prt(){
-    local tmp
+    local tmp=""
     tmp=$(mktemp)
     ___x_cmd_gt_curl get "$@" page per_page >> "$tmp"
     printf "\n" >> "$tmp"
 
-    local next_url
+    local next_url=""
     _____x_cmd_gt_next_url
     if [ -z "$next_url" ] && [ -n "$tmp" ];then
         cat "$tmp"
@@ -245,25 +236,37 @@ ___x_cmd_gt_param_normalize_repo(){
     [ -z "$op" ] && op="$1"
     case "$op" in
     */*)
-        owner_repo="$(printf "%s" "$op")"
+        owner_repo="$op"
         ;;
     "")
-        owner_repo="$(_____x_cmd_git_repo)"
+        if [ -n "$___X_CMD_GT_CURRENT_repo" ]; then
+            if [ "${___X_CMD_GT_CURRENT_repo##*/}" != "${___X_CMD_GT_CURRENT_repo}" ];then
+                owner_repo="$___X_CMD_GT_CURRENT_repo"
+            elif [ -n "$___X_CMD_GT_CURRENT_owner" ]; then
+                owner_repo="${___X_CMD_GT_CURRENT_owner}/${___X_CMD_GT_CURRENT_repo}"
+            else
+                if ! owner_repo="$(___x_cmd_gt_config_get owner)/${___X_CMD_GT_CURRENT_repo}"; then
+                    gt:error "No owner provided. Default owner not set."
+                    gt:warn -h "$(x str ml wrap "$(_____x_cmd_gt_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
+                    return 1
+                fi
+            fi
+        else
+            owner_repo="$(_____x_cmd_git_repo)"
+        fi
         ;;
     *)
-        ___x_cmd_gt_current_owner 1>/dev/null
-        if [ -z "$___X_CMD_GITEE_DEFAULT_OWNER" ]; then
-            gt:error "No owner provided. Default owner not set."
-            gt:warn "Check your current token setting.$(_____x_cmd_gt_help__token_setting)"
-            return 1
+        if [ -z "$___X_CMD_GT_CURRENT_owner" ]; then
+            local ___X_CMD_GT_CURRENT_owner
+            if ! ___X_CMD_GT_CURRENT_owner="$(___x_cmd_gt_config_get owner)"; then
+                gt:error "No owner provided. Default owner not set."
+                gt:warn -h "$(x str ml wrap "$(_____x_cmd_gt_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
+                return 1
+            fi
         fi
-        owner_repo="$(printf "%s" "$___X_CMD_GITEE_DEFAULT_OWNER/$op")"
+        owner_repo="${___X_CMD_GT_CURRENT_owner}/${op}"
         ;;
     esac
-}
-
-___x_cmd_gt_default(){
-    param_default "$@" 2>/dev/null || return 1
 }
 
 # EndSection

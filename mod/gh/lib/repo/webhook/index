@@ -20,7 +20,7 @@ ___x_cmd_gh_repo_hook_ls() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --per_page  "Results per page"                                                  <>:Number=30
     --page      "Page number of the results to fetch."                              <>:Number=1
     --json|-j   "output json data"
@@ -39,24 +39,24 @@ ___x_cmd_gh_repo_hook_info() {
     param:dsl       <<A
 options:
     #1          "The unique identifier of the hook."                                    <>:Number
-    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoName
     --json|-j   "output json data"
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl get "/repos/${owner_repo}/hooks/$1" | _____x_cmd_gh_hook_ui_utils Info
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/hooks/$1" | ___x_cmd_gh_hook____ui_handler Info
 }
 # EndSection
 
 # Section: Create
-# https://docs.github.com/en/rest/webhooks/repos?apiVersion=2022-11-28#create-a-repository-webhook
+# https://docs.github.com/en/rest/webhooks/repos#create-a-repository-webhook
 ___x_cmd_gh_repo_hook_create() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
 type:
     ContentType = json form ""
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoName
     --url           "The URL to which the payloads will be delivered."                      <>
     --events        "events the hook is triggered for.(array usage,interval)"               <>="push"
     --name          "webhook name"                                                          <>=""
@@ -71,7 +71,7 @@ options:
 A
     param:run
 
-    local config
+    local config=""
     config=$(x jo "{
         url:\"$url\",
         ${content_type+"content_type:$content_type"},
@@ -82,12 +82,12 @@ A
     }")
     events=$(x jo "[$events]")
 
-    local gen_gh_json
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -url -repo +config )"
     gh:debug "$gen_gh_json"
 
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl post "/repos/${owner_repo}/hooks" "gen_gh_json" | _____x_cmd_gh_hook_ui_utils Creating
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/hooks" "gen_gh_json" | ___x_cmd_gh_hook____ui_handler Creating
 }
 # EndSection
 
@@ -100,7 +100,7 @@ type:
     ContentType = json form ""
 options:
     #1              "The unique identifier of the hook."                                    <>:Number
-    --repo          "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoName
     --url           "The URL to which the payloads will be delivered."                      <>=""
 
     --events        "Determines what events the hook is triggered for."                     <>="push"
@@ -115,7 +115,7 @@ options:
     --json|-j   "output json data"
 A
     param:run
-    local config
+    local config=""
     config=$(x jo "{
         url:\"$url\",
         ${content_type+"content_type:$content_type"},
@@ -126,12 +126,12 @@ A
     }")
     events=$(x jo "[$events]")
 
-    local gen_gh_json
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -url -repo +config)"
     gh:debug "$gen_gh_json"
 
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl patch "/repos/${owner_repo}/hooks/$1" "gen_gh_json" | _____x_cmd_gh_hook_ui_utils Edit
+    ___x_cmd_gh_curl patch "/repos/${owner_repo}/hooks/$1" "gen_gh_json" | ___x_cmd_gh_hook____ui_handler Edit
 }
 # EndSection
 
@@ -141,28 +141,29 @@ ___x_cmd_gh_repo_hook_rm() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
     #1          "The unique identifier of the hook."                                    <>:Number
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoName
     --yes|-y    "Ignore remove prompt interception"
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
-    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove the hook $1 in the $owner_repo ?" || return
-    ___x_cmd_gh_curl delete "/repos/${owner_repo}/hooks/$1" | (
-        x jo env . error=. gh_resp_err=.message
-        if ___x_cmd_gh_http_error; then
-            ___x_cmd_ui_tf  true "successfully remove repo hook"
-        else
-            ___x_cmd_ui_tf false "delete repo hook failure: $1."
-            ___x_cmd_gh____handle_resp
-            return 1
-        fi
-    )
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove the hook $(___x_cmd_ui bold red "$1") in the $owner_repo ?" || return
+    ___x_cmd_gh_curl del "/repos/${owner_repo}/hooks/$1" | (
+            [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "Remove ${owner_repo} repo hook $1 successfully:"
+            else
+                ___x_cmd_ui_tf false "Remove ${owner_repo} repo $1 hook failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
 }
 # EndSection
 
-# Section: hook utils
-_____x_cmd_gh_hook_ui_utils(){
+# Section: hook UI
+___x_cmd_gh_hook____ui_handler(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gh_http_error
@@ -172,19 +173,19 @@ _____x_cmd_gh_hook_ui_utils(){
         case "$1" in
             Info)
                 _data="name=.name active=.active type=.type  url=.config.url"
-                _msg="get webhook info success."
-                _error_msg="get webhook info fail."
+                _inf_msg="Get webhook info successfully"
+                _err_msg="Get webhook info failure"
                 ;;
             Creating|Edit)
-                _msg="$1 repo webhook success."
-                _error_msg="$1 repo webhook fail."
+                _inf_msg="$1 repo webhook successfully"
+                _err_msg="$1 repo webhook failure"
                 ;;
         esac
-        eval x jo env . Id=.id gh_resp_err=.message "$_data"
-        if [ -n "$Id" ]; then
-            ___x_cmd_ui_tf true "$_msg" "Id: $Id" ${name+"Name: $name"}  ${active+"Active: $active"} ${type+"Type: $type"} ${url+"Url: $url"}
+        eval x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" "ID: $Id" ${name:+"Name: $name"}  ${active:+"Active: $active"} ${type:+"Type: $type"} ${url:+"Url: $url"}
         else
-            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi

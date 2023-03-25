@@ -11,7 +11,7 @@ function gt_repo_collaborator_admin_add( o, username,          kp ){
 
 function gt_repo_collaborator_admin_rm( o, username,            kp ) {
     kp = SUBSEP Q2_1 SUBSEP Q2_COLLABORATOR SUBSEP Q2_ADMIN
-    return jlist_rm( o, kp, username)
+    return jlist_rm_value( o, kp, username)
 }
 
 function gt_repo_collaborator_push_get( o, arr,        kp ){
@@ -26,7 +26,7 @@ function gt_repo_collaborator_push_add( o, username,            kp ){
 
 function gt_repo_collaborator_push_rm( o, username,            kp ) {
     kp = SUBSEP Q2_1 SUBSEP Q2_COLLABORATOR SUBSEP Q2_PUSH
-    return jlist_rm( o, kp, username)
+    return jlist_rm_value( o, kp, username)
 }
 
 function gt_repo_collaborator_pull_get( o, arr,        kp ){
@@ -41,7 +41,7 @@ function gt_repo_collaborator_pull_add( o, username,         kp ){
 
 function gt_repo_collaborator_pull_rm( o, username,            kp) {
     kp = SUBSEP Q2_1 SUBSEP Q2_COLLABORATOR SUBSEP Q2_PULL
-    return jlist_rm( o, kp, username)
+    return jlist_rm_value( o, kp, username)
 }
 
 function gt_repo_get_collaborator_list( o, arr){

@@ -1,0 +1,207 @@
+# shellcheck shell=sh disable=SC2039,3043,2154
+___x_cmd_gl_project_release_attachment(){
+    param:subcmd ___x_cmd_gl_project_release_attachment                  \
+        "ls|l"              "List project release attachment links"             \
+        "info|i"            "Show detailed information of release attachment"   \
+        "create|c"          "Create project release link"                       \
+        "edit|ed"           "Edit project release attachment link information"  \
+        rm                  "Remove project release attachment link"            \
+        upload              "Upload file as asset and create release asset link"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_project_release_attachment _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.gitlab.com/ee/api/releases/links.html#get-links
+___x_cmd_gl_project_release_attachment_ls(){
+    param:scope     ___x_cmd_gl
+    param:dsl    '
+options:
+    --tag_name      "The Git tag the release is associated with"                         <>
+    --project       "URL-encoded path of the project or project ID"                      <>
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_project
+    [ -z "$id" ] || owner_project="$id"
+    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Link_ID=.id Name=.name Link_Type=.link_type Url=.url -- $@' \
+        ___x_cmd_gl_curl get "/projects/${owner_project}/releases/${tag_name}/assets/links"
+}
+# EndSection
+
+# Section: Info
+# https://docs.gitlab.com/ee/api/releases/links.html#get-a-link
+___x_cmd_gl_project_release_attachment_info(){
+    param:scope     ___x_cmd_gl
+    param:dsl    '
+options:
+    #1             "The ID of the link"                                                               <>
+    --tag_name     "The Git tag the release is associated with"                                       <>
+    --project      "URL-encoded path of the project owned by the authenticated user"                  <>
+    --json|-j      "output json data"
+'
+    param:run
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_curl get "/projects/${owner_project}/releases/${tag_name}/assets/links/$1" | ______x_cmd_gl_project_release_attachment_ui_utils Info
+}
+# EndSection
+
+# Section: Create
+# https://docs.gitlab.com/ee/api/releases/links.html#create-a-link
+___x_cmd_gl_project_release_attachment_create(){
+    param:scope     ___x_cmd_gl
+    param:dsl    '
+options:
+    --tag_name      "The Git tag the release is associated with"                                        <>
+    --project       "URL-encoded path of the project owned by the authenticated user"                   <>
+    --name          "The name of the link. Link names must be unique in the release."                   <>
+    --url           "The URL of the link."                                                              <>
+
+    --filepath      "Optional path for a direct asset link."                                            <>=""
+    --link_type     "The type of the link."                                                             <>="other"   = other runbook image package
+    --json|-j       "output json data"
+'
+    param:run
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -project -tag_name)"
+    gl:debug "$gen_gl_json"
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_curl post "/projects/${owner_project}/releases/$tag_name/assets/links" "gen_gl_json" | \
+        ______x_cmd_gl_project_release_attachment_ui_utils Creating
+}
+# EndSection
+
+# Section: Edit
+# https://docs.gitlab.com/ee/api/releases/links.html#update-a-link
+___x_cmd_gl_project_release_attachment_edit(){
+    param:scope     ___x_cmd_gl
+    param:dsl    '
+options:
+    #1              "The ID of the link"                                                                <>
+    --tag_name      "The Git tag the release is associated with"                                        <>
+    --project       "URL-encoded path of the project owned by the authenticated user"                   <>
+
+    --name          "The name of the link. Link names must be unique in the release."                   <>=""
+    --url           "The URL of the link."                                                              <>=""
+    --link_type     "The type of the link."                                                             <>=""  =  "" other runbook image package
+    --json|-j       "output json data"
+'
+    param:run
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -project -tag_name)"
+    gl:debug "$gen_gl_json"
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_curl put "/projects/${owner_project}/releases/$tag_name/assets/links/$1" "gen_gl_json" | \
+        ______x_cmd_gl_project_release_attachment_ui_utils Edit
+}
+# EndSection
+
+# Section: Remove
+# https://docs.gitlab.com/ee/api/releases/links.html#delete-a-link
+___x_cmd_gl_project_release_attachment_rm(){
+    param:scope  ___x_cmd_gl
+    param:dsl    '
+options:
+    #1              "The ID of the link"                                                                <>
+    --project       "URL-encoded path of the project owned by the authenticated user"                   <>
+    --tag_name      "The Git tag the release is associated with"                                        <>
+    --yes|-y        "Ignore remove prompt interception"
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_project
+    local _link_id
+    for _link_id in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove link $(___x_cmd_ui bold red "${_link_id}") on the $project $tag_name ?" || return
+        ___x_cmd_gl_curl delete "/projects/${owner_project}/releases/${tag_name}/assets/links/${_link_id}" | (
+            x jo env . gl_resp_err=.error gl_resp_err=.message
+            if ___x_cmd_gl_http_error; then
+                ___x_cmd_ui_tf  true "Remove project release link ${_link_id} successfully"
+            else
+                ___x_cmd_ui_tf false "delete project release link failure: $project $tag_name ${_link_id}"
+                ___x_cmd_gl____handle_resp
+                return 1
+            fi
+        )
+    done
+
+}
+# EndSection
+
+# Section: Upload
+# https://docs.gitlab.com/ee/api/projects.html#upload-a-file
+# https://docs.gitlab.com/ee/api/releases/links.html#create-a-link
+___x_cmd_gl_project_release_attachment_upload(){
+    param:scope  ___x_cmd_gl
+    param:dsl    '
+options:
+    #1              "Target upload attachment file path"                                                <>
+    --project       "URL-encoded path of the project owned by the authenticated user"                   <>
+    --tag_name      "The Git tag the release is associated with"                                        <>
+    --name          "The name of the link. (default: filename)"                                         <>=""
+    --filepath      "Optional path for a direct asset link. (default: /filename)"                       <>=""
+    --link_type     "The type of the link."                                                             <>="other"   = other runbook image package
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_project
+    local _file_path="${1?:"Please provide target upload attachment file path"}"
+    [ "$_file_path" != '-' ] || _file_path="$(command cat)"
+
+    gl:info "Upload file $_file_path ..."
+    ___x_cmd_gl_curl upload "/projects/${owner_project}/uploads" "$_file_path" | (
+        x jo env . gl_resp_err=.error gl_resp_err=.message full_path=.full_path
+        if [ -n "$full_path" ]; then
+            local _target_url="${___X_CMD_GL_DOMAIN:-"https://gitlab.com"}${full_path}"
+            [ -n "$name" ] || name="${_target_url##*/}"
+            [ -n "$filepath" ] || filepath="/${_target_url##*/}"
+            gl:info "Create release attachment link ..."
+            if ___x_cmd_gl_project_release_attachment_create --project "${project}" --tag_name "$tag_name" --name "$name" \
+                --url "$_target_url" --filepath "$filepath" --link_type "$link_type" --json 1>/dev/null; then
+                ___x_cmd_ui_tf true  "Upload project attachment successfully"
+            else
+                ___x_cmd_ui_tf false "Upload project attachment failure: $project $tag_name $_file_path $_target_url"
+            fi
+        else
+            ___x_cmd_ui_tf false "Upload project attachment failure: $project $tag_name $_file_path"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: release asset UI utils
+______x_cmd_gl_project_release_attachment_ui_utils(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gl_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Creating|Edit)
+                _msg="$1 project release link successfully"
+                _error_msg="$1 project release link failure"
+                ;;
+            Info)
+                _msg="Successfully get project release link info"
+                _error_msg="Get project release link info failure"
+                ;;
+        esac
+        _data="name=.name external=.external url=.url link_type=.link_type"
+        eval x jo env . _id=.id gl_resp_err=.error gl_resp_err=.message "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf true "$_msg" ${_id:+"Link_ID: $_id"} ${external:+"External: $external"} ${link_type:+"Link_Type: $link_type"} ${url:+"URL: $url"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

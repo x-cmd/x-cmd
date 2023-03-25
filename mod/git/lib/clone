@@ -1,0 +1,93 @@
+
+___X_CMD_GIT_CLONE_HOST="${___X_CMD_GIT_CLONE_HOST:-"github.com"}"
+
+___x_cmd_git_clone(){
+    ___x_cmd_git_clone___main "$@"
+    local code=$?
+    if [ "$code" = 0 ]; then
+        local clonefolder; eval clonefolder="\$$#"
+        [ -d "$clonefolder" ] || {
+            clonefolder="${clonefolder##*/}"
+            clonefolder="${clonefolder%.git}"
+            [ -d "$clonefolder" ]
+        } && (
+            cd "$clonefolder"
+            x gitconfig apply
+        )
+    fi
+
+    return "$code"
+}
+
+command -v ___x_cmd_git_clone___defaultowner 1>/dev/null || {
+    ___x_cmd_git_clone___defaultowner(){
+        local owner
+        xrc gh
+        if ! owner=$(___x_cmd_gh current owner); then
+            x log :gh warn      "There is no default owner found."
+            x log :gh error     "Please specify an owner for repo: ${1}"
+            return 1
+        fi
+        printf "%s\n" "$owner"
+    }
+}
+
+___x_cmd_git_clone___main(){
+    local ___X_CMD_GIT_CLONE_OPTS='';
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --*=*)
+                x cmdstr ___X_CMD_GIT_CLONE_OPTS "$1"
+                shift
+                ;;
+            -o|-b|-u|--reference|--separate-git-dir|--depth|--jobs)
+                x cmdstr ___X_CMD_GIT_CLONE_OPTS "$1" "$2"
+                shift 2
+                ;;
+            --)
+                x cmdstr ___X_CMD_GIT_CLONE_OPTS "$1"
+                shift
+                break
+                ;;
+            -*)
+                x cmdstr ___X_CMD_GIT_CLONE_OPTS "$1"
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    local repo="$1"
+    local directory="$2"
+
+    local url; case "$repo" in
+        :http/*)
+            repo="${repo#:http/}"
+            url=https://$___X_CMD_GIT_CLONE_HOST/
+            ;;
+        :git/*)
+            repo="${repo#:git/}"
+            url=git@$___X_CMD_GIT_CLONE_HOST:
+            ;;
+        *)
+            url=git@$___X_CMD_GIT_CLONE_HOST:
+            ;;
+    esac
+
+    case "$repo" in
+        https://*.com/*|git@*.com:*)      ;;
+        */*)
+            repo="${url}${repo}" ;;
+        *)
+            local owner; owner="$(___x_cmd_git_clone___defaultowner "$repo")" || return 1
+            repo="${url}${owner}/${repo}"
+            ;;
+    esac
+
+    set -- "$repo" ${directory:+"$directory"}
+    eval set -- ___x_cmd___git_origin clone $___X_CMD_GIT_CLONE_OPTS "\"\$@\""
+    git:debug "$@"
+    "$@"
+}

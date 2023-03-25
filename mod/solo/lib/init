@@ -1,0 +1,92 @@
+# shellcheck shell=dash
+
+___x_cmd_solo___init(){
+    local fp="$1"
+
+    local solo_workpath="${___X_CMD_ROOT_DATA}/solo/link$fp"
+    x mkdirp "${solo_workpath%/*}"
+
+    if [ -e "$solo_workpath" ]; then
+        if [ "$solo_workpath" -ot "$fp" ]; then
+            command rm -f "$solo_workpath"  # It is a soft link
+        else
+            return 0
+        fi
+    fi
+
+    local sha512; sha512="$(x sha512 "$fp")"
+    local sha512_path="${___X_CMD_ROOT_DATA}/solo/sha512/$sha512"
+    if [ ! -d "$sha512_path" ]; then
+        x mkdirp "$sha512_path"
+        command cp "$fp" "$sha512_path/solomain"
+        ___x_cmd_solo___init_parse "$sha512_path/solomain" || {
+            x:error "Fail to init solo script ==> $fp"
+            x rmrf "$sha512_path"
+            return 1
+        }
+    fi
+
+    command ln -s "$sha512_path/solomain" "$solo_workpath"
+}
+
+___x_cmd_solo___init_parse()(
+    ___x_cmd_inner_cd "${1%/*}"
+    ___x_cmd_solo___init_parse___main "${1}" <"$1"
+)
+
+___x_cmd_solo___init_parse___main(){
+    local IFS="
+"
+
+    local engine; engine=""
+    local line; local i=0;
+    while read -r line; do
+        i=$((i+1)); [ "$i" -lt 10 ] || break
+        case "$line" in
+            *x-cmd/solo\ engine:*)
+                engine=${line##*:*" "}
+                engine=${engine%%" "*}
+                case "${engine}" in
+                    python|node|ts-node|java|kotlin|groovy|r|julia|ruby|perl)
+                        ;;
+                    *)
+                        x:error "Engine not found ==> $engine"
+                        return 1
+                esac
+                ___x_cmd_solo___init_engine_init "$engine"
+            ;;
+
+            *)  continue
+        esac
+    done
+    # If there is not engine declaration, the file will run directly.
+    return 0
+}
+
+___x_cmd_solo___init_engine_init(){
+    local line
+    while read -r line; do
+        case "$line" in
+            x-cmd/solo\ cmd*:)
+                line="${line#*:}"
+                eval "$line"
+            ;;
+
+            x-cmd/solo\ npm*:)
+                # Add type is module
+                npm install --save "${line#*:}"     # Using x npm instead?
+            ;;
+
+            *x-cmd/solo\ pip:*)
+                solo:debug "pip install ${line#*:}"
+                pip install "${line#*:}"            # Using x pip instead?
+            ;;
+
+            x-cmd/solo\ bun*:)
+                bun install "${line#*:}"            # Using x pip instead?
+            ;;
+
+            *)  continue
+        esac
+    done
+}

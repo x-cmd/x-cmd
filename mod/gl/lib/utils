@@ -2,56 +2,107 @@
 # shellcheck disable=SC2039,3043
 # shellcheck disable=SC2046
 
+# Section: Help
+_____x_cmd_gl_help__token_setting(){
+    printf "\n%s %s \n%s\n" \
+        "$(___x_cmd_ui yellow 'Run command to add|repleace token:')" \
+        "$(___x_cmd_ui bold cyan "\`x gl token <token>\`")"   \
+        "$(___x_cmd_ui 'https://gitlab.com/-/profile/personal_access_tokens')"
+}
+
+_____x_cmd_gl_help(){
+    command -v ___x_cmd_advise_gen_help >/dev/null || xrc:mod advise/lib/gen_help
+    ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/gl/res/advise.jso" "$@"
+}
+
+# EndSection
+
 # Section: HTTP header & body & request
 ___x_cmd_gl_resp_header(){
    cat "$___X_CMD_GL_TMP/.____x_cmd_gl_curl_header"
 }
 
-# TODO:HTTP CODE
-______x_cmd_gl_resp_header_code(){
+___x_cmd_gl_resp_code(){
     ___x_cmd_gl_resp_header  | awk '$1 ~/HTTP\/2$/ {print ($2+0);exit(0)}'
 }
 
 ___x_cmd_gl_curl(){
     local op="$1"
-    local url="\"https://gitlab.com/api/v4$2\""
+    local _curl_url="\"${___X_CMD_GL_DOMAIN:-"https://gitlab.com"}/api/v4${2}\""
+    local _content_type="\"Content-Type: application/json\""
+    local _authorization
+    _authorization="\"PRIVATE-TOKEN: $(___x_cmd_gl_token)\""
     local gl_header="$___X_CMD_GL_TMP/.____x_cmd_gl_curl_header"
-    local Type="\"Content-Type: application/json\""
-    local Authorization
-    Authorization="\"PRIVATE-TOKEN: $(___x_cmd_gl_token)\""
+    local ___X_CMD_GL_SHOW_HTTP_CODE=1
     shift 2
     local req
     case "$op" in
         get)
-            gl_log debug           "eval x curl -D  $gl_header   -X GET -s -H  $Type  -H  $Authorization  $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))")  $url"
-            x ccmd 3m --            eval x curl -D "$gl_header"  -X GET -s -H "$Type" -H "$Authorization" $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))") "$url"
-            ___x_cmd_gl_http_error  eval x curl -D "$gl_header"  -X GET -s -H "$Type" -H "$Authorization" $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))") "$url"
+            gl:debug   "x curl -D  $gl_header   -X GET -s -H  $_content_type  -H  $_authorization  $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gl_curl___use_query_data "$@"))")  $_curl_url"
+            if [ -n "$NO_CACHE" ]; then
+                eval    x curl -D "$gl_header"  -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gl_curl___use_query_data "$@"))") "$_curl_url"
+            else
+                x ccmd 10s --      eval x curl -D "$gl_header"  -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gl_curl___use_query_data "$@"))") "$_curl_url"
+            fi
+            ___x_cmd_gl_http_error eval x curl -D "$gl_header"  -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gl_curl___use_query_data "$@"))") "$_curl_url"
             return
             ;;
-        post)
-            req="POST";;
-        put)
-            req="PUT";;
-        patch)
-            req="PATCH";;
-        delete)
-            req="DELETE";;
+        upload)
+            local __file_path="${1?:"Please provide upload filepath"}"; shift;
+            [ -f "$__file_path" ] || {
+                gl:error "Upload Failure: Not found target file. Please check file exist: $__file_path"
+                return 1
+            }
+            gl:debug "x curl -L -D  $gl_header   -X  ${___X_CMD_GL_UPLOAD_REQ_METHOD:-"POST"}  -H  $_authorization  --form  file=@${__file_path}    $(x curl gencode "$@")   $_curl_url"
+            eval      x curl -L -D "$gl_header"  -X "${___X_CMD_GL_UPLOAD_REQ_METHOD:-"POST"}" -H "$_authorization" --form  file=@"${__file_path}" "$(x curl gencode "$@")" "$_curl_url"
+            ___x_cmd_gl_http_error; return
+        ;;
+        post)           req="POST"      ;;
+        put)            req="PUT"       ;;
+        patch)          req="PATCH"     ;;
+        delete)         req="DELETE"    ;;
     esac
-    gl_log debug "eval x curl -D $gl_header -X $req    -s -H $Type -H $Authorization $(x curl gencode "$@") $url"
-
-    eval x curl -D "$gl_header" -X "$req"    -s -H "$Type" -H "$Authorization" "$(x curl gencode "$@")" "$url"
+    gl:debug "x curl -D  $gl_header  -X  $req  -s -H  $_content_type  -H  $_authorization   $(x curl gencode "$@")   $_curl_url"
+    eval      x curl -D "$gl_header" -X "$req" -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"
+    ___x_cmd_gl_http_error
 }
 
 ___x_cmd_gl_http_error(){
     local http_resp_code
-    http_resp_code=$(______x_cmd_gl_resp_header_code)
+    http_resp_code=$(___x_cmd_gl_resp_code)
     if [ -n "$http_resp_code" ] && [ "$http_resp_code" -ge 200 ] && [ "$http_resp_code" -le 303 ]; then
         return 0
     else
-        [ $# -eq 0 ] || x ccmd invalidate "$@" >/dev/null
-        gl_log error "HTTP Code Is $http_resp_code"
+        [ $# -eq 0 ] || {
+            gl:debug "---! Cache Clear !---"
+            x ccmd invalidate "$@" 1>/dev/null 2>&1
+        }
+        [ -z "$___X_CMD_GL_SHOW_HTTP_CODE" ] || {
+            gl:error "HTTP Code is $http_resp_code"
+            if command -v unset 1>/dev/null; then
+                unset ___X_CMD_GL_SHOW_HTTP_CODE
+            fi
+        }
         return 1
     fi
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gl_curl___use_query_data(){
+    [ $# -gt 0 ] || return
+    local name
+    printf "%s " "-G"
+    for name in "$@";
+    do
+        if [ "$name" = "p" ];then  [ -z "$p" ] || printf "%s " "path==$p";
+        else                                      printf "%s " "$name==" ;
+        fi
+    done
+}
+
+___x_cmd_gl____handle_resp(){
+    [ -z "$gl_resp_body" ] || printf "%s" "$gl_resp_body"
+    [ -z "$gl_resp_err" ]  || printf "  \033[31m-\033[0m \033[1mErrorMsg: \033[31m%s\033[0m\n" "$gl_resp_err" >&2
 }
 # EndSection
 
@@ -131,10 +182,11 @@ _____x_cmd_gl_next_url(){
 
 # Section: Parameter Utilities
 alias ___x_cmd_gl_param_init_owner_project='
-    local owner_project
+    local owner_project=""
     ___x_cmd_gl_param_normalize_repo  || return
 '
 
+# shellcheck disable=SC2154,SC2034
 ___x_cmd_gl_param_normalize_repo(){
     local op="$project"
 
@@ -151,7 +203,9 @@ ___x_cmd_gl_param_normalize_repo(){
         [ -z "$owner_project" ] || return
         ___x_cmd_gl_current_owner 1>/dev/null
         if [ -z "$___X_CMD_GL_DEFAULT_OWNER" ]; then
-            printf "No owner provided. Default owner not set.\n" >&2
+            gl:error "No owner provided. Default owner not set."
+            gl:warn "Check your current token setting.$(_____x_cmd_gl_help__token_setting)"
+            return 1
         fi
         owner_project="$(printf "%s" "$___X_CMD_GL_DEFAULT_OWNER/$op")"
         ;;

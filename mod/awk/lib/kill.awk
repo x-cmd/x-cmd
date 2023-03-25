@@ -21,12 +21,12 @@ function ___kill_init(){
     # Find out which system is, using the
 }
 
-function kill( name, pid,   cmd ){
+function kill( name, pid,   _cmd ){
     ___kill_init()
 
-    if (name ~ /[0-9]+/)    cmd = "kill -" name
-    else                    cmd = "kill -" signal[name]
-    cmd = cmd " " pid
-    cmd | getline
-    close(cmd)
+    if (name ~ /[0-9]+/)    _cmd = "kill -" name
+    else                    _cmd = "kill -" signal[name]
+    _cmd = _cmd " " pid
+    _cmd | getline
+    close(_cmd)
 }

@@ -1,23 +1,37 @@
 # shellcheck shell=sh
 # shellcheck disable=SC2039,3043
 
+xrc:mod:lib gh \
+    repo/util \
+    repo/apply/index \
+    repo/collaborator/index \
+    repo/collaborator/invitation \
+    repo/branch/index \
+    repo/webhook/index \
+    repo/pr/index \
+    repo/release/index \
+    repo/release/attachment
+
 ___x_cmd_gh_repo(){
     param:scope     ___x_cmd_github
     param:subcmd ___x_cmd_gh_repo                               \
         app             "Interactive UI show repo by owner"     \
-        "ls|l"          "list repo of owner"                    \
-        "info|i"        "Show detailed information of repo"     \
-        "create|c"      "create repo"                           \
-        "edit|ed"       "update repo"                           \
+        "ls|l"          "List repo by owner"                    \
+        "info|i"        "Show repo detailed information"        \
+        "create|c"      "Create repo"                           \
+        "edit|ed"       "Edit repo information"                 \
+        rename          "Rename repo"                           \
+        "cl|clone"      "clone repo from github"                \
+        fork            "fork repo from github"                 \
         rm              "Remove repo"                           \
         apply           "manage repo by declare configure"      \
+        tag             "list repo tags"                        \
+        team            "List repository teams"                 \
         collaborator    "manage collaborator"                   \
-        branch          "manage branch"                         \
         pr              "manage pr"                             \
         hook            "repo webhook manage"                   \
-        release         "repo release manage"                   \
-        team            "List repository teams"                 \
-        tag             "list repo tags"
+        branch          "manage branch"                         \
+        release         "repo release manage"
     param:subcmd:try
     param:run
 
@@ -42,7 +56,7 @@ options:
     local owner_type=user
     [ -z "$1" ] || {
         if ! owner_type="$(___x_cmd_gh_owner_type_query "$1")"; then
-            gh:error "No found any onwer type. Please check owner exist: $1"
+            gh:error "No found any onwer type. Please check owner exist $1"
             return 1
         fi
     }
@@ -69,13 +83,13 @@ options:
 
     local owner_type=user
     [ -z "$1" ] || {
-        if ! owner_type="$(___x_cmd_gh_owner_type_query "$1")"; then
-            gh:error "No found any onwer type. Please check owner exist: $1"
+        if ! owner_type="$(___x_cmd_gh_owner_type_query "${1%%/*}")"; then
+            gh:error "No found any onwer type. Please check owner exist $1"
             return 1
         fi
     }
     eval "___x_cmd_gh_${owner_type}_repo_ls"  --sort "$sort" --direction "$direction" --type "$type"  \
-        --per_page "$per_page" --page "$page" "$1"
+        --per_page "$per_page" --page "$page" "${1%%/*}"
 }
 # EndSection
 
@@ -90,11 +104,10 @@ options:
     #1    "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
 '
     param:run
-
-    local repo="${1:?repo name must be specified}"
+    local repo="$1"
     ___x_cmd_gh_param_init_owner_repo
 
-    ___x_cmd_gh_curl get "/repos/${owner_repo}" | _____x_cmd_gh_repo_ui_utils Info
+    ___x_cmd_gh_curl get "/repos/${owner_repo}" | ___x_cmd_gh_repo____ui_handler Info
 }
 
 # EndSection
@@ -131,7 +144,7 @@ option:
 '
     param:run
     [ -z "$json" ] || local ENFORCE_JSON=1
-    local name
+    local name=""
     for name in "$@"; do
         local _cmd_opt="--access ${access}      ${description:+"--homepage '$description'"}     ${homepage:+"--homepage '$homepage'"} \
             ${team_id:+"--team_id '$team_id'"}  ${gitignore_template:+"--gitignore_template '$gitignore_template'"}     ${license_template:+"--license_template '$license_template'"} \
@@ -141,19 +154,19 @@ option:
         local owner_type=user
         [ "${name%%/*}" = "$name" ] || {
             if ! owner_type="$(___x_cmd_gh_owner_type_query "${name%%/*}")"; then
-                gt:error "No found any onwer type. Please check owner exist: ${name%%/*}"
+                gh:error "No found any onwer type. Please check owner exist ${name%%/*}"
                 return 1
             fi
         }
 
-        eval  "___x_cmd_gt_${owner_type}_repo_create" "$_cmd_opt" "$name"
+        eval  "___x_cmd_gh_${owner_type}_repo_create" "$_cmd_opt" "$name"
     done
 }
 # EndSection
 
 # Section: Edit
 # https://docs.github.com/en/rest/repos/repos#update-a-repository
-# shellcheck disable=SC2034
+# shellcheck disable=SC2034,2154
 ___x_cmd_gh_repo_edit() {
   param:scope     ___x_cmd_github
     param:dsl       '
@@ -169,11 +182,9 @@ option:
 
     --homepage                  "homepage"                                                              <>=""
     --description               "description"                                                           <>=""
-
     --advanced_security         "enable or disable GitHub Advanced Security for this repository."       <>:Status=""
     --scanning                  "enable or disable secret scanning for this repository"                 <>:Status=""
     --scanning_push_protection  "enable or disable secret scanning push protection for this repository" <>:Status=""
-
     --no_issues                 "Whether to disable issue"
     --no_projects               "Whether to disable has_projects"
     --no_wiki                   "Whether to disable wiki"
@@ -185,14 +196,19 @@ option:
     --allow_forking             "allow private forks."
     --archived                  "Mark this repository as archived and read-only."
     --is_template               "can be used to generate new repositories"
-
+    --yes|-y                    "Ignore access private prompt interception"
     --json|-j                   "output json data"
 '
     param:run
-    local private
-    local visibility
+    local repo="$1"
+    ___x_cmd_gh_param_init_owner_repo
+
+    local private=""
+    local visibility=""
     case "$access" in
-        private)        private=true            ;;
+        private)        private=true
+            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to edit $1 repository access to $(___x_cmd_ui bold red "$access") ?${___X_CMD_UNSEENCHAR_NEWLINE}  - Will only authorized users will have access${___X_CMD_UNSEENCHAR_NEWLINE}  - Will loss of all stars and watchers${___X_CMD_UNSEENCHAR_NEWLINE}" || return 1
+            ;;
         public)         private=false           ;;
         internal)       visibility=internal     ;;
     esac
@@ -201,7 +217,7 @@ option:
     [ -n "$advanced_security" ] || unset advanced_security
     [ -n "$scanning_push_protection" ] || unset scanning_push_protection
     xrc jo
-    local security
+    local security=""
     security="$(___x_cmd_jo "{
             security_and_analysis:{
                 secret_scanning:{
@@ -217,18 +233,37 @@ option:
         }"
     )"
 
-    local repo="${1:?repo name must be specified}"
-    local gen_gh_json
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -repo -access +security "${private:+"+private"}" "${visibility:+"+visibility"}" \
         has_issues=^no_issues                   has_wiki=^no_wiki                       has_projects=^no_projects \
         allow_rebase_merge=^no_rebase_merge     allow_squash_merge=^no_squash_merge     allow_merge_commit=^no_merge_commit)"
     gh:debug "$gen_gh_json"
 
-    ___x_cmd_gh_param_init_owner_repo
-    printf "%s" "${gen_gh_json}"  | ___x_cmd_gh_curl patch "/repos/${owner_repo}" "@-" | _____x_cmd_gh_repo_ui_utils Edit
+    printf "%s" "${gen_gh_json}"  | ___x_cmd_gh_curl patch "/repos/${owner_repo}" "@-" | ___x_cmd_gh_repo____ui_handler Edit
 }
 
 
+# EndSection
+
+# Section: Rename
+# shellcheck disable=SC2154
+___x_cmd_gh_repo_rename() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "Repo Rename"                                                   <>
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"      <>:RepoName
+    --json|-j       "output origin json data"
+    --yes|-y        "Ignore rename prompt interception"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    local name="${1##*/}"
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to rename repository $(___x_cmd_ui bold red "$owner_repo => ${owner_repo%/*}/${name}") ?" || return 1
+
+    gh:debug "repo rename $name"
+    ___x_cmd_gh_curl patch "/repos/${owner_repo}" -- name | ___x_cmd_gh_repo____ui_handler Edit
+}
 # EndSection
 
 # Section: Remove
@@ -237,21 +272,23 @@ ___x_cmd_gh_repo_rm() {
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    #1          "Provide repo list.(separated by spaces)"    <>
+    #1          "<ownerPath>/<RepoPath> (default ownerPath: current user)"    <>
     --yes|-y    "Ignore remove prompt interception"
 '
     param:run
-    local owner_repo
-    local i
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (ownerPath/RepoPath), received empty' arg:ret:64
+    local owner_repo=""
+    local i=""
     for i in "$@"; do
         ___x_cmd_gh_param_normalize_repo "$i"
         [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete repo : $(___x_cmd_ui bold red "$owner_repo") ?" || continue
-        ___x_cmd_gh_curl delete "/repos/$owner_repo" | (
-                x jo env . gh_resp_err=.message
+        ___x_cmd_gh_curl del "/repos/$owner_repo" | (
+                [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+                x jo env . gh_resp_msg=.message gh_resp_err=.errors
                 if ___x_cmd_gh_http_error; then
-                    ___x_cmd_ui_tf  true "deleted repo $owner_repo success"
+                    ___x_cmd_ui_tf  true "Deleting repo $owner_repo successfully:"
                 else
-                    ___x_cmd_ui_tf false "Deleting repo failure: $owner_repo."
+                    ___x_cmd_ui_tf false "Deleting repo $owner_repo failure:" >&2
                     ___x_cmd_gh____handle_resp
                     return 1
                 fi
@@ -266,9 +303,9 @@ ___x_cmd_gh_repo_tag(){
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)" <>:RepoName="$(_____x_cmd_git_repo)"
-    --per_page      "Results per page"                          <>="30"
-    --page          "Page number of the results to fetch."      <>="1"
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"      <>:RepoName="$(_____x_cmd_git_repo)"
+    --per_page      "Results per page"                                              <>="30"
+    --page          "Page number of the results to fetch."                          <>="1"
     --json|-j       "output json data"
 A
     param:run
@@ -286,7 +323,7 @@ ___x_cmd_gh_repo_team(){
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName="$(_____x_cmd_git_repo)"
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName="$(_____x_cmd_git_repo)"
     --per_page      "Results per page"                                                  <>="30"
     --page          "Page number of the results to fetch."                              <>="1"
     --json|-j       "output json data"
@@ -299,8 +336,8 @@ A
 }
 # EndSection
 
-# Section: repo utils
-_____x_cmd_gh_repo_ui_utils(){
+# Section: repo UI
+___x_cmd_gh_repo____ui_handler(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gh_http_error
@@ -310,20 +347,20 @@ _____x_cmd_gh_repo_ui_utils(){
         case "$1" in
             Info)
                 _data="full_name=.full_name visibility=.visibility"
-                _msg="repo $owner_repo info:"
-                _error_msg="Fail. Couldn't find any repo: ${owner_repo}"
+                _inf_msg="$owner_repo repo info"
+                _err_msg="Fail. Couldn't find any repo $owner_repo"
                 ;;
             Creating|Edit)
                 _data="owner=.owner.login"
-                _msg="$1 repo $name success"
-                _error_msg="$1 repo failure: $name."
+                _inf_msg="$1 repo ${owner_repo:-$name} successfully"
+                _err_msg="$1 ${owner_repo:-$name} repo failure"
                 ;;
         esac
-        eval x jo env . id=.id url=.html_url gh_resp_err=.message "$_data"
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true "$_msg" "repo_id: $id" ${full_name+"name: $full_name"}  ${url+"url: $url"} ${owner+"repo_owner: $owner"} ${visibility+"visibility":"$visibility"}
+        eval x jo env . _id=.id url=.html_url gh_resp_msg=.message gh_resp_err=.errors "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${full_name:+"Name: $full_name"}  ${url:+"URL: $url"} ${owner:+"Repo_Owner: $owner"} ${visibility:+"Visibility: $visibility"}
         else
-            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi

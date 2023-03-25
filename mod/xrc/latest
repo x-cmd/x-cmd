@@ -5,6 +5,28 @@
 
 # Section 0: Prepare source 0
 
+alias help:show:ret64='
+    x help --show
+    unset X_help_cmd
+    return 64 || exit 64
+'
+
+alias help:show:ret='
+    x help --show
+    unset X_help_cmd
+    return 1 || exit 1
+'
+
+___x_cmd_help_check_ret(){
+    if [ -n "$X_arg_help" ]; then
+        x help --show
+        return 1
+    fi
+}
+
+# shellcheck disable=SC2154
+alias help:check:ret='[ -z "$X_arg_help" ] || help:show:ret'
+
 ___x_cmd_mkdirp(){
     if [ "$#" -eq 0 ]; then
         local srcdir; while read -r srcdir; do
@@ -65,7 +87,7 @@ ___x_cmd_touch(){
     . "${___X_CMD_ROOT}/v/${___X_CMD_VERSION}/mod/xrc/lib/root"
 
     ___x_cmd_mkdirp "$___X_CMD_ROOT_TMP" || return 1 || exit 1
-    PATH="$___X_CMD_ROOT/.bin:$___X_CMD_ROOT_MOD/x-cmd/lib/bin:$PATH"
+    PATH="$___X_CMD_ROOT_DATA/pkg/bin:$___X_CMD_ROOT_MOD/x-cmd/lib/bin:$PATH"
 
     export ___X_CMD_VERSION     # Version inside the commit-id
     export ___X_CMD_ROOT
@@ -170,7 +192,7 @@ ___X_CMD_CUR_SHELL="${___X_CMD_SHELL:-sh}"      # TODO: will remove
 
 # EndSection
 
-# Section 2: xrc: util,mirror,ldict
+# Section 2: xrc: util,ldict
 xrc:mod log/latest
 ___x_cmd_log init x
 
@@ -186,7 +208,7 @@ alias panic:return='eval "___x_cmd_panic___loginner && return"'
 alias panic:exit='eval "___x_cmd_panic___loginner && exit"'
 
 ___x_cmd_panic___loginner(){ x log ":${N:-x}" "${L:-error}" "$M"; }
-xrc:mod:lib xrc    util mirror ldict/posix inner/index
+xrc:mod:lib xrc    first util ldict/posix inner/index shgen
 # EndSection
 
 # Section 3: main entrance helper: xrc_set_main, which_one, which_one_with_naming
@@ -251,7 +273,11 @@ ___x_cmd_which_one(){
             ;;
         *@*/*)
             xrc hub/latest
-            ___X_CMD_WHICH_ONE_RESULT="$(___x_cmd_hub_file_which "$RESOURCE_NAME")"     # Will set ___X_CMD_WHICH_ONE_RESOURCE_TYPE=1 if from unknow source
+            ___X_CMD_WHICH_ONE_RESOURCE_TYPE=hub
+            local x_
+            ___x_cmd_hub_file_which_ "$RESOURCE_NAME"
+            ___X_CMD_WHICH_ONE_RESULT="$x_"
+            # Will set ___X_CMD_WHICH_ONE_RESOURCE_TYPE=1 if from unknow source
             ;;
         ./*|../*)
             x:debug "Resource recognized as local file with relative path: $RESOURCE_NAME"
@@ -329,9 +355,6 @@ ___x_cmd_xrc_import(){
     ___X_CMD_XRC_SOURCE_FILE_MAIN_USING_IMPORT=1 ___x_cmd_xrc_source_file "$@"
 }
 
-___X_CMD_XRC_MODULE_IMPORTED="
-"
-
 ___x_cmd_xrc_source_file(){
     local ___X_CMD_WHICH_ONE_NAMING
     local ___X_CMD_WHICH_ONE_RESULT
@@ -388,24 +411,21 @@ ___x_cmd_xrc_source_file_main_define_by_setmain(){
 ___x_cmd_xrc_source_file_main_(){
     ___X_CMD_WHICH_ONE_RESULT="${1:?Provide exact file}"
 
-    if [ -z "$___X_CMD_XRC_RELOAD" ]; then
-        if [ "${___X_CMD_XRC_MODULE_IMPORTED#*
-"$___X_CMD_WHICH_ONE_RESULT"
-*}" != "${___X_CMD_XRC_MODULE_IMPORTED}" ]; then
-            ___x_cmd_ldict_get_ ___X_CMD_XRC_SET_MAIN_DICT "${___X_CMD_WHICH_ONE_RESULT}"
-            ___X_CMD_XRC_SOURCE_FILE_MAIN_="$___X_CMD_LDICT_GET_"
-            return    # exited already. skip
-        fi
-    fi
+    # Add the transformation here: if the value of ___X_CMD_WHICH_ONE_RESULT is started by $___X_CMD_ROOT_MOD, using % to replace it.
+    local x_dict_key="${___X_CMD_WHICH_ONE_RESULT#"${___X_CMD_ROOT_MOD}"}"
+    [ "${x_dict_key}" = "$___X_CMD_WHICH_ONE_RESULT" ] || x_dict_key="%${x_dict_key}"
 
-    ___X_CMD_XRC_MODULE_IMPORTED="
-${___X_CMD_WHICH_ONE_RESULT}${___X_CMD_XRC_MODULE_IMPORTED}"
+    if [ -z "$___X_CMD_XRC_RELOAD" ]; then
+        ___x_cmd_ldict_get_ ___X_CMD_XRC_SET_MAIN_DICT "${x_dict_key}"
+        ___X_CMD_XRC_SOURCE_FILE_MAIN_="$___X_CMD_LDICT_GET_"
+        [ -z "$___X_CMD_XRC_SOURCE_FILE_MAIN_" ] || return 0
+    fi
 
     local ___X_CMD_XRC_SET_MAIN
     ___x_cmd_source "$___X_CMD_WHICH_ONE_RESULT"
 
     if [ -n "$___X_CMD_XRC_SET_MAIN" ]; then
-        ___x_cmd_ldict_put ___X_CMD_XRC_SET_MAIN_DICT "${___X_CMD_WHICH_ONE_RESULT}" "${___X_CMD_XRC_SET_MAIN}"
+        ___x_cmd_ldict_put ___X_CMD_XRC_SET_MAIN_DICT "${x_dict_key}" "${___X_CMD_XRC_SET_MAIN}"
         ___X_CMD_XRC_SOURCE_FILE_MAIN_="$___X_CMD_XRC_SET_MAIN"
     fi
 }
@@ -440,6 +460,7 @@ ___x_cmd_xrc_reset(){
 
 # shellcheck disable=SC1091
 xrc(){
+    local IFS=" $___X_CMD_UNSEENCHAR_NEWLINE"
     [ $# -eq 0 ] && set -- "help"
     local subcmd="$1";  shift
     case "$subcmd" in
@@ -462,35 +483,26 @@ xrc(){
             ;;
         ""|help|-h|--help)      ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/xrc/res/advise.jso" "$@">&2 ;;
         root)                   printf "%s" "$___X_CMD_ROOT" ;;
-        mirror)                 ___x_cmd_mirror "$@"; printf "%s\n" "$___X_CMD_MIRROR_LIST" ;;
         update)                 xrc:mod xrc/lib/setup/update && ___x_cmd_xrc_update "$@" ;;
         upgrade)                xrc:mod xrc/lib/setup/upgrade && ___x_cmd_xrc_upgrade "$@" ;;
         ls)                     ls "$___X_CMD_ROOT_MOD" ;;                      # If tar.gz, using tar ls. If folder, ls $folder
         setmain)                ___x_cmd_xrc_set_main "$@" ;;
         reload)                 xrc:mod xrc/lib/reload && ___x_cmd_reload "$@" ;;
-        version)                ___x_cmd_xrc_version ;;
         reset)                  ___x_cmd_xrc_reset ;;
-        _x_cmd_advise_json)     xrc cat xrc/lib/xrc.json ;;
         *)                      ___x_cmd_xrc_source_file "$subcmd" "$@";    return
     esac
 }
 # EndSection
 
-# Section 6: other initialization: advise, lazy loading: x, ldict, awk
-# x(){    unset -f x; xrc reload x-cmd/latest && x "$@";    }
+# Section 6: initialization: x, xws, +, websrc, advise
 
 # This is dangerous
 xrc httpget
 xrc:mod x-cmd/latest
-
-if ___x_cmd_is_suitable_advise_env; then
-    x:debug "Using module advise for completion."
-    command -v ___x_cmd_advise >/dev/null || xrc advise/latest
-    ___x_cmd_advise init xrc "$___X_CMD_ROOT_MOD/xrc/res/advise.jso"
-fi
+xrc:mod args/latest     # TODO: args is not necessary
 
 alias xws="x ws"
-alias xdev="x dev"
+alias s="x ws"
 
 if [ -n "$ZSH_VERSION" ]; then
     alias -- +=___x_cmd_xrc_import
@@ -498,13 +510,22 @@ else
     alias "+=___x_cmd_xrc_import"
 fi
 
+xrc websrc; ___x_cmd_websrc load
+
+if ___x_cmd_is_suitable_advise_env; then
+    x:debug "Using module advise for completion."
+    command -v ___x_cmd_advise >/dev/null || xrc advise/latest
+    ___x_cmd_advise init xrc "$___X_CMD_ROOT_MOD/xrc/res/advise.jso"
+fi
+
 # EndSection
 
 [ -z "$BASH_VERSION" ] || export BASH_SILENCE_DEPRECATION_WARNING=1
 
 # putting the boot code into the xrc
-! ___x_cmd_is_interative_tty || {
+if ___x_cmd_is_interative_tty; then
     xrc env/latest
-    [ ! -f "$___X_CMD_ROOT/.boot/mod" ]   || . "$___X_CMD_ROOT/.boot/mod"
-    [ ! -f "$___X_CMD_ROOT/.boot/rc" ]    || . "$___X_CMD_ROOT/.boot/rc"
-}
+    xrc:mod boot/latest
+    ___x_cmd_boot_rc  load
+    ___x_cmd_boot_mod load
+fi

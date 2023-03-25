@@ -11,6 +11,12 @@ function skip_var( data,  n ){
     if ( n == "HISTCMD")                        return 1
     if ( n == "SECONDS")                        return 1
 
+    if ( n == "BASH_COMMAND")                   return 1
+    if ( n == "PROMPT_COMMAND")                 return 1
+
+    # if ( n ~ "^__vsc")                          return 1
+    if ( n ~ "^__vsc")                          return 1
+
 
     # vscode env
     if ( n == "main")                           return 1
@@ -33,7 +39,7 @@ BEGIN {
     if (STATE == 1) {
         data = data "\n" $0
     } else {
-        data = $0 
+        data = $0
         if ( data ~ /^zzzzzzzzzzzzzzzzzzzzzzzzzzzz=/)   exit 0
         if (data ~ /^[A-Za-z0-9_]+=$/) {
             STATE = 0
@@ -47,13 +53,13 @@ BEGIN {
             next
         }
     }
-    
+
     if (data ~ /^[A-Za-z0-9_]+='[^'\\]*(((\\\\)|(\\'))*[^']*)*'$/) {
         STATE = 0
         gsub("\n", "\001\002\003", data)
         output( data )
-    } 
-    
+    }
+
     if(data ~ /(^[-'0-9@_\\].*)|(^ZSH_.*)|(^zsh_.*)|(^BASH_.*)|(^DASH_.*)|(ASH_.*)|(^KASH_.*) /){
             STATE = 0
             next

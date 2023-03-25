@@ -48,7 +48,7 @@ function replace_main(o, kp, obj,       key, k, v, l, i, value){
         # arr push
         if( ! jlist_has(o, kp, value)) jlist_put(o, kp, value)
     }
-    jlist_rm(o, kp, key)
+    jlist_rm_value(o, kp, key)
 }
 function replace_list(o, kp, obj,          l, i){
     l = o[ kp L ]

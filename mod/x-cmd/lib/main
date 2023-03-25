@@ -1,0 +1,95 @@
+# shellcheck    shell=dash
+
+xrc:mod cama/latest     # Preload module
+xrc:mod:lib     x-cmd           meta concurrent cond util engine/index hashsum while_read ymljson while_read vareq
+xrc alias
+
+___x_cmd_main_otherwise(){
+    local subcmd="$1";  shift
+
+    local ___x_cmd_main_otherwise_code
+
+    ___x_cmd_alias_exec ___x_cmd "$subcmd" "$@"
+    ___x_cmd_main_otherwise_code=$?
+    if [ -n "$___X_CMD_ALIAS_EXEC_EXIST" ]; then
+        return $?
+    fi
+
+    if command -v "___x_cmd_$subcmd" 2>/dev/null 1>&2; then
+        "___x_cmd_$subcmd" "$@"
+        return
+    fi
+
+    local ___X_CMD_WHICH_ONE_RESULT
+    local ___X_CMD_WHICH_ONE_RESOURCE_TYPE
+    if ___X_CMD_NO_LOCAL=1 ___x_cmd_which_one "$subcmd" 2>/dev/null; then
+        x:debug "Executing Resource: [type=$___X_CMD_WHICH_ONE_RESOURCE_TYPE] [file=$___X_CMD_WHICH_ONE_RESULT]"
+        case "$___X_CMD_WHICH_ONE_RESOURCE_TYPE" in
+            # workspace)      ___x_cmd_exe_workspace  "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+            local)          ___x_cmd_engine_run                 "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+            hub|http)       ___x_cmd_engine_run                 "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+            # FIXME
+            official)       ___x_cmd_engine_run_main    xrc     "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+        esac
+        ___x_cmd_main_otherwise_code=$?
+        x:debug "Resource Executed: [type=$___X_CMD_WHICH_ONE_RESOURCE_TYPE] [file=$___X_CMD_WHICH_ONE_RESULT] [code=$___x_cmd_main_otherwise_code]"
+        return "$___x_cmd_main_otherwise_code"
+    else
+        # TODO: If we fail to introduct from xbin. Please provide the interface, ask user for what he/she wants and whether set the alias for that module globally.
+        ___x_cmd_main_otherwise_code=$?
+        if x pkg xbin init "$subcmd"; then
+            # Introduce binmod
+            "___x_cmd_${subcmd}" "$@"
+        else
+            x:error "___x_cmd_main_otherwise(): ___x_cmd_which_one fail [code: ${___x_cmd_main_otherwise_code}]"
+            return 1
+        fi
+    fi
+}
+
+___x_cmd_alias_init ___x_cmd
+___x_cmd_main(){        # x:trace x     # TODO: will effect x log
+
+    local subcmd="$1"
+    case "$subcmd" in
+        log)                                    shift;  ___x_cmd_log "$@" ;;        # For efficiency
+
+        "="*)                                   shift;  ___x_cmd_defaultassignvar "${subcmd#=}" "$@" ;;
+
+        *:=)                                    shift;  ___x_cmd_varset "${subcmd%:=}" "$@" ;;
+        *=)                                     shift;  ___x_cmd_varset_without_end "${subcmd%=}" "$@" ;;
+        *=if)                                   ___x_cmd_eqifelse "$@" ;;
+        *=case)                                 ___x_cmd_eqcase "$@" ;;
+        *=join*)                                ___x_cmd___varjoin "$@" ;;
+
+        readl|rl)                               shift;  ___x_cmd_readl "$@"     ;;
+        readeval|reval)                         shift;  ___x_cmd_reval "$@"     ;;
+
+        js|node)                                shift;  xrc node ; ___x_cmd_node "$@"      ;;
+        js=*|node=*)                            shift;  xrc node ; ___X_CMD_PKG_XBIN_DEFAULT_node="${subcmd#*=}" ___x_cmd_node "$@"      ;;
+        npm)                                    shift;  xrc node ; ___x_cmd_npm "$@"       ;;
+
+        python|py)                              shift;  xrc python ; ___x_cmd_python "$@"    ;;
+        python=*|py=*)                          shift;  xrc python ; ___X_CMD_PKG_XBIN_DEFAULT_python="${subcmd#*=}" ___x_cmd_python "$@"    ;;
+        pip|pip3)                               shift;  xrc python ; ___x_cmd_pip3 "$@"      ;;
+
+        sh|bash|zsh|ksh|dash|ash)               shift;  ___x_cmd_shell_exec "$subcmd" "$@" ;;
+        run)                                    shift;  ___x_cmd_engine_run "$@"       ;;
+
+        login)                                  shift;  xrc hub/latest && ___x_cmd_hub login "$@" ;;
+        token)                                  shift;  xrc hub/latest && ___x_cmd_hub token "$@" ;;
+
+        z|uz)                                           ( xrc zuz && ___x_cmd_zuz "$@" ) ;;   # zl)  ( xrc zuz && ___x_cmd_zuz_ls "$@"        ) ;;       # Using ls to replace
+        wsroot)                                 shift;  ___x_cmd_wsroot "$@" ;;
+
+        update|upgrade|clear|reinstall)         shift;  xrc update "$@" ;;
+        "")                                             x helpapp "$@" ;;
+        help|--help|-h)                         shift;  x helpapp "$@" ;;
+
+        *.wx)                                           x wx run "$@" ;;
+        *.speg)                                         x script play "$(x which "$@")" ;;
+
+        :*)                                     shift;  x xdk "${subcmd#:}" "$@" ;;
+        *)                                              ___x_cmd_main_otherwise "$@" ;;
+    esac
+}

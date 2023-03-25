@@ -263,16 +263,35 @@ function jlist_has(obj, keypath, value,          l, i) {
     return false
 }
 
-function jlist_rm(obj, keypath, value,  l, i, v) {
+function jlist_rm_idx(obj, keypath, i,       l){
+    if( i > ( l = obj[ keypath L ] ) ) return false
+    for (obj[ keypath L ]=--l; i<=l; ++i) {
+        jclear(obj, keypath SUBSEP "\""i"\"")
+        jcp_cover(obj, keypath SUBSEP "\""i"\"", obj, keypath SUBSEP "\"" i+1 "\"" )
+    }
+    return true
+}
+
+# Notice: No GC ...
+function jlist_rm_value(obj, keypath, value,        l, i, v) {
     l = obj[ keypath L ]
     for (i=1; i<=l; ++i) {
         v = obj[ keypath SUBSEP "\""i "\"" ]
         if (value == v) {
-           for (obj[ keypath L ]=--l; i<=l; ++i) obj[ keypath SUBSEP "\""i "\"" ] = obj[ keypath SUBSEP "\"" i+1 "\"" ]
+           for (obj[ keypath L ]=--l; i<=l; ++i) {
+                jclear(obj, keypath SUBSEP "\""i"\"")
+                jcp_cover(obj, keypath SUBSEP "\""i"\"", obj, keypath SUBSEP "\"" i+1 "\"" )
+           }
            return true
         }
     }
     return false
+}
+
+function jlist_rm(obj, keypath,     l, i, _kp, arr) {
+    l = split(keypath, arr, SUBSEP)
+    for(i=2; i<=l-1; ++i ) _kp = _kp SUBSEP arr[i]
+    return jlist_rm_idx(obj, _kp, juq(arr[ l ]))
 }
 
 # function jlist_len(obj, keypath){
@@ -365,7 +384,7 @@ function jdict_rm(obj, keypath, key,  k, i, l){
     for (i=1; i<=l; ++i) {
         k = obj[ keypath, i ]
         if ( key == k ) {
-            delete obj[ keyapth, k ] # obj[ keyapth, k ] = ""
+            delete obj[ keypath, k ] # obj[ keypath, k ] = ""
             for (obj[ keypath L ]=--l; i<=l; ++i) obj[ keypath, i ] = obj[ keypath, i+1 ]
             return true
         }
@@ -572,3 +591,100 @@ function jgrep_to_arr(obj, keypath, reg, key,      _t){
     return ""
 }
 # EndSection
+
+# Section: jcp
+function jcp_merge(o, obj,       l, i, kp){
+    l = obj[L]
+    for (i=1; i<=l; ++i){
+        kp = SUBSEP jqu(i)
+        jcp(o, kp, obj, kp)
+    }
+    if (o[L] < l) o[L] = l
+}
+
+function jcp(o, kp1, obj, kp2){
+    if ( o[ kp1 ] == "" ) {
+        o[ kp1 ] = obj[ kp2 ]
+        if ( o[ kp1] == "[" ) return jcp_list(o, kp1, obj, kp2)
+    }
+    if ( o[ kp1 ] == "{" ) return jcp_dict(o, kp1, obj, kp2)
+}
+
+function jcp_dict(o, kp1, obj, kp2,          l, i, k, _l){
+    l = obj[ kp2 L ]
+    for (i=1; i<=l; ++i) {
+        k = obj[ kp2, i ]
+        if ( o[ kp1, k ] == "") {
+            o[ kp1 L ] = ( _l = o[ kp1 L ] + 1 )
+            o[ kp1, _l ] = k
+        }
+        jcp(o, kp1 SUBSEP k, obj, kp2 SUBSEP k)
+    }
+}
+
+function jcp_list(o, kp1, obj, kp2,          l, i) {
+    o[ kp1 L ] = l = obj[ kp2 L ]
+    for (i=1; i<=l; ++i) jcp(o, kp1 SUBSEP "\"" i "\"", obj, kp2 SUBSEP "\"" i "\"")
+}
+
+function jcp_cover_merge(o, obj,       l, i, kp){
+    l = obj[L]
+    for (i=1; i<=l; ++i){
+        kp = SUBSEP jqu(i)
+        jcp_cover(o, kp, obj, kp)
+    }
+    if (o[L] < l) o[L] = l
+}
+
+function jcp_cover(o, kp1, obj, kp2){
+    o[ kp1 ] = obj[ kp2 ]
+    if ( o[ kp1] == "[" )  return jcp_list_cover(o, kp1, obj, kp2)
+    if ( o[ kp1 ] == "{" ) return jcp_dict_cover(o, kp1, obj, kp2)
+}
+
+function jcp_dict_cover(o, kp1, obj, kp2,          l, i, k, _l){
+    l = obj[ kp2 L ]
+    for (i=1; i<=l; ++i) {
+        k = obj[ kp2, i ]
+        if ( o[ kp1, k ] == "") {
+            o[ kp1 L ] = ( _l = o[ kp1 L ] + 1 )
+            o[ kp1, _l ] = k
+        }
+        jcp_cover(o, kp1 SUBSEP k, obj, kp2 SUBSEP k)
+    }
+}
+
+function jcp_list_cover(o, kp1, obj, kp2,          l1, l2, i) {
+    l1 = o[ kp1 L ]
+    l2 = obj[ kp2 L ]
+    for (i=1; i<=l2; ++i) jcp_cover(o, kp1 SUBSEP "\"" int(i+l1) "\"", obj, kp2 SUBSEP "\"" i "\"")
+    o[ kp1 L ] = int(l1 + l2)
+}
+# EndSection
+
+# Section: jclear
+function jclear(o, kp,      v){
+    v = o[ kp ]
+    if (v == "{")   return jdict_clear( o, kp )
+    if (v == "[")   return jlist_clear( o, kp )
+    delete o[ kp ]
+}
+
+function jlist_clear( o, kp,     i, l ){
+    l = o[ kp L ]
+    for (i=1; i<=l; ++i) delete o[ kp, "\""i"\"" ]
+    o[ kp L ] = 0
+}
+
+function jdict_clear( o, kp,     i, l, k ){
+    l = o[ kp L ]
+    for (i=1; i<=l; ++i) {
+        k = o[ kp, i ]
+        delete o[ kp, i ]
+        delete o[ kp, k ]
+    }
+    o[ kp L ] = 0
+}
+
+# EndSection
+

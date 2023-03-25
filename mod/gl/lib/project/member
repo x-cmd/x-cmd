@@ -3,13 +3,12 @@
 
 # gl project member +el:admin -user-a +user-b
 # shellcheck disable=SC2154,SC2086
-# https://docs.gitlab.com/ee/api/members.html
 ___x_cmd_gl_project_member(){
     param:subcmd ___x_cmd_gl_project_member             \
-        ls              "List project member"           \
-        info            "Show project member user info" \
+        "ls|l"          "List project member"           \
+        "info|i"        "Show project member user info" \
         add             "Add project member"            \
-        edit            "Update project member"         \
+        "edit|ed"       "Update project member"         \
         rm              "Remove member"
     param:subcmd:try
     param:run
@@ -19,15 +18,15 @@ ___x_cmd_gl_project_member(){
     return 1
 }
 
-# Section: list
+# Section: List
 # https://docs.gitlab.com/ee/api/members.html#list-all-members-of-a-group-or-project
 ___x_cmd_gl_project_member_ls(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
     --project           "The URL-encoded path of the project."          <>
-    --query             "Search for specific users."                    <>=""
-    --skip_users        "Filter out users with the specified ID."       <>:integer_array=""
+    --query             "A query string to search for members."         <>=""
+    --skip_users        "Filter skipped users out of the results."      <>:integer_array=""
     --show_seat_info    "Show seat information for users"
 
     --page              "page"                                          <>:Per_page="1"
@@ -43,7 +42,7 @@ options:
 }
 # EndSection
 
-# Section: info
+# Section: Info
 # https://docs.gitlab.com/ee/api/members.html#get-a-member-of-a-group-or-project
 ___x_cmd_gl_project_member_info(){
     param:scope     ___x_cmd_gl
@@ -51,7 +50,6 @@ ___x_cmd_gl_project_member_info(){
 options:
     #1              "The user ID of the member"                     <>:mumber
     --project       "The URL-encoded path of the project."         <>
-
     --json|-j       "output json data"
 '
     param:run
@@ -61,7 +59,7 @@ options:
 }
 # EndSection
 
-# Section: add
+# Section: Add
 # https://docs.gitlab.com/ee/api/members.html#add-a-member-to-a-group-or-project
 ___x_cmd_gl_project_member_add(){
     param:scope     ___x_cmd_gl
@@ -85,17 +83,17 @@ options:
 
     local gen_gl_json
     gen_gl_json="$(param:option2json -project +user_id)"
+    gl:debug "$gen_gl_json"
 
     for user_id in "$@"; do
-        gl_log debug "___x_cmd_gl_repo_add_data:$(x tmpl "$gen_gl_json"  "${user_id}")"
+        gl:debug "___x_cmd_gl_repo_add_data:$(x tmpl "$gen_gl_json"  "${user_id}")"
         x tmpl "$gen_gl_json"  "${user_id}" | \
         ___x_cmd_gl_curl post "/projects/$owner_project/members" "@-" | _____x_cmd_gl_project_member_ui_utils Creating
     done
 }
 # EndSection
 
-# Section: update
-# TODO: test!!
+# Section: Edit
 # https://docs.gitlab.com/ee/api/members.html#edit-a-member-of-a-group-or-project
 ___x_cmd_gl_project_member_edit(){
     param:scope     ___x_cmd_gl
@@ -113,12 +111,14 @@ options:
 
     local gen_gl_json
     gen_gl_json="$(param:option2json -project)"
+    gl:debug "$gen_gl_json"
     ___x_cmd_gl_param_init_owner_project
-    ___x_cmd_gl_curl put "/projects/$owner_project/members/$1" gen_gl_json | _____x_cmd_gl_project_member_ui_utils Update
+
+    ___x_cmd_gl_curl put put "/projects/${owner_project}/members/${1}" "gen_gl_json" | _____x_cmd_gl_project_member_ui_utils Update
 }
 # EndSection
 
-# Section: member remove
+# Section: Remove
 # https://docs.gitlab.com/ee/api/members.html#remove-a-member-from-a-group-or-project
 ___x_cmd_gl_project_member_rm(){
     param:scope     ___x_cmd_gl
@@ -126,8 +126,8 @@ ___x_cmd_gl_project_member_rm(){
 options:
     #1                      "The user ID of the member"                     <>
     --project               "The URL-encoded path of the project."          <>:address
-    --skip_subresources     ""
-    --unassign_issuables    ""
+    --skip_subresources     "Whether the deletion of direct memberships of the removed member in subgroups and projects should be skipped." <>:bool="false"
+    --unassign_issuables    "Whether the removed member should be unassigned from any issues or merge requests inside a given group or project." <>:bool="false"
     --yes|-y                "Ignore remove prompt interception"
 '
     param:run
@@ -137,11 +137,12 @@ options:
     for username in "$@"; do
         [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete member : $(___x_cmd_ui bold red "$username") ?" || continue
         ___x_cmd_gl_curl delete "/projects/$owner_project/members/$username" | (
-            x jo env . error=.
+            x jo env . gl_resp_err=.error gl_resp_err=.message
             if  ___x_cmd_gl_http_error; then
                 ___x_cmd_ui_tf true "Remove $username successfully."
             else
                 ___x_cmd_ui_tf false "Remove $username failure"
+                ___x_cmd_gl____handle_resp
                 return 1
             fi
         )
@@ -150,40 +151,39 @@ options:
 # EndSection
 
 # Section: project member utils
-_____x_cmd_gl_project_member_ui_utils()(
+_____x_cmd_gl_project_member_ui_utils(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gl_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Info)
-            data="username=.username name=.name url=.web_url state=.state access_level=.access_level"
-            msg="Get project member information successfully."
-            error_msg="Failed to get project member information."
-            ;;
-        Update)
-            data="username=.username name=.name url=.web_url state=.state access_level=.access_level"
-            msg="Update project member information successfully."
-            error_msg="Failed to update project member information."
-            ;;
-        Creating)
-            data="username=.username name=.name url=.web_url state=.state access_level=.access_level"
-            msg="Add user to $project project successfully."
-            error_msg="Failed to add user to $project project."
-            ;;
-    esac
-    x jo env . id=.id  error=. $data
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "$msg" "User_id: $id" ${name+"Name: $name"} ${username+"Username: $username"} \
-            ${state+"State: $state"} ${access_level+"Access_level: $access_level"} ${url+"Url: $url"}
-    else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
-        return 1
-    fi
-)
+    (
+        case "$1" in
+            Info)
+                _data="username=.username name=.name url=.web_url state=.state access_level=.access_level"
+                _msg="Get project member information successfully."
+                _error_msg="Failed to get project member information."
+                ;;
+            Update)
+                _data="username=.username name=.name url=.web_url state=.state access_level=.access_level"
+                _msg="Update project member information successfully."
+                _error_msg="Failed to update project member information."
+                ;;
+            Creating)
+                _data="username=.username name=.name url=.web_url state=.state access_level=.access_level"
+                _msg="Add user to $project project successfully."
+                _error_msg="Failed to add user to $project project."
+                ;;
+        esac
+        eval x jo env . _id=.id  gl_resp_err=.error gl_resp_err=.message "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf true "$_msg" "User_ID: $_id" ${name:+"Name: $name"} ${username:+"Username: $username"} \
+                ${state:+"State: $state"} ${access_level:+"Access_level: $access_level"} ${url:+"Url: $url"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
 # EndSection

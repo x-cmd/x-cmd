@@ -16,7 +16,7 @@ ___x_cmd_gh_org_membership(){
     return 1
 }
 
-# Section: membership app
+# Section: App
 ___x_cmd_gh_org_membership_app(){
     param:scope     ___x_cmd_github
     param:dsl       '
@@ -27,7 +27,6 @@ options:
 
     --per_page      "Results per page"                          <>:Number=30
     --page          "Page number of the results to fetch."      <>:Number=1
-    --json|-j       "output json data"
 '
     param:run
 
@@ -94,7 +93,7 @@ options:
 A
     param:run
 
-    ___x_cmd_gh_curl get "/orgs/${org##*/}/memberships/${1##*/}" | _____x_cmd_gh_org_membership_ui_utils Info
+    ___x_cmd_gh_curl get "/orgs/${org##*/}/memberships/${1##*/}" | ___x_cmd_gh_org_membership____ui_handler Info
 }
 # EndSection
 
@@ -114,13 +113,13 @@ options:
 A
     param:run
     if [ $# -eq 0 ];then
-        gh:error "provide at least one username"
+        gh:error -h 'x gh org membership add -h' "accepts at least 1 arg(s) username"
         return 1
     fi
-
+    local username=""
     for username in "$@"; do
         {
-            ___x_cmd_gh_curl put  "/orgs/${org##*/}/memberships/${username##*/}" -- role | _____x_cmd_gh_org_membership_ui_utils Add
+            ___x_cmd_gh_curl put  "/orgs/${org##*/}/memberships/${username##*/}" -- role | ___x_cmd_gh_org_membership____ui_handler Add
         }
     done
 }
@@ -141,7 +140,7 @@ options:
 A
     param:run
     local username="$1"
-    ___x_cmd_gh_curl put  "/orgs/${org##*/}/memberships/${username##*/}" -- role | _____x_cmd_gh_org_membership_ui_utils Edit
+    ___x_cmd_gh_curl put  "/orgs/${org##*/}/memberships/${username##*/}" -- role | ___x_cmd_gh_org_membership____ui_handler Edit
 }
 # EndSection
 
@@ -158,28 +157,29 @@ options:
 A
     param:run
 
-    local username
+    local username=""
     for username in "$@"; do
         {
             [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
-            ___x_cmd_gh_curl delete "/orgs/${org##*/}/members/${username##*/}" | (
-                x jo env . gh_resp_err=.message
-                if ___x_cmd_gh_http_error; then
-                    ___x_cmd_ui_tf  true "del $username to organizations  success"
-                else
-                    ___x_cmd_ui_tf false "del $username to organizations fail"
-                    ___x_cmd_gh____handle_resp
-                    return 1
-                fi
-            )
+            ___x_cmd_gh_curl del "/orgs/${org##*/}/members/${username##*/}" | (
+                    [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+                    x jo env . gh_resp_msg=.message gh_resp_err=.errors
+                    if ___x_cmd_gh_http_error; then
+                        ___x_cmd_ui_tf  true "Remove $username to organizations successfully:"
+                    else
+                        ___x_cmd_ui_tf false "Remove $username to organizations failure:" >&2
+                        ___x_cmd_gh____handle_resp
+                        return 1
+                    fi
+                )
 
         }
     done
 }
 # EndSection
 
-# Section: org membership utils
-_____x_cmd_gh_org_membership_ui_utils(){
+# Section: org membership UI
+___x_cmd_gh_org_membership____ui_handler(){
     if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gh_http_error
@@ -189,19 +189,19 @@ _____x_cmd_gh_org_membership_ui_utils(){
         case "$1" in
         Info)
             _data="role=.role url=.organization_url name=.user.login"
-            _msg="Get membership in organizations info success"
-            _error_msg="get membership in organizations info fail."
+            _inf_msg="Membership in organizations info:"
+            _err_msg="Get membership in organizations info failure:"
             ;;
         Add|Edit)
-            _msg="$1 $username to organizations success"
-            _error_msg="$1 $username to organizations fail."
+            _inf_msg="$1 $username to organizations successfully:"
+            _err_msg="$1 $username to organizations failure:"
             ;;
         esac
-        eval x jo env . state=.state gh_resp_err=.message "$_data"
+        eval x jo env . state=.state gh_resp_msg=.message gh_resp_err=.errors "$_data"
         if [ -n "$state" ]; then
-            ___x_cmd_ui_tf true "$_msg" ${name+"Name: $name"}  ${role+"Role: $role"} ${state+"State: $state"} ${url+"Url: $url"}
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${name:+"Name: $name"}  ${role:+"Role: $role"} ${state:+"State: $state"} ${url:+"Url: $url"}
         else
-            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi

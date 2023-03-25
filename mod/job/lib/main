@@ -1,84 +1,40 @@
+# Author:       Li Junhao           l@x-cmd.com     # xrc
+# shellcheck    shell=sh            disable=SC3043
 
-# TODO: Different Operation
-___x_cmd_job_active(){
-    # jobs -pr | wc -l | tr -d ' '
-    jobs | awk '($3=="Running")||($2=="Running"){ wc++; } END{ print (wc=="")? 0 : wc; }'
-}
+# : <<'DOCTEST'
+# > x job put 3 sleep 3s; x job put 3 sleep 3s; x job put 3 sleep 3s; x job active
+# 3
+# > x job put 2 sleep 3s; x job put 2 sleep 3s; x job put 2 sleep 3s; [ "$(x job active)" -le 2 ] && echo yes
+# yes
+# DOCTEST
 
-___x_cmd_job___wrapper_startlog(){
-    local IFS=" "
-    job:debug "Start: $*"
-}
+x log init job
 
-___x_cmd_job___wrapper_log(){
-    ___x_cmd_job___wrapper_startlog "$@"
-    (
-        ( "$@"; ) 1>/dev/null 2>/dev/null
-        code=$?
-        if [ "$code" = 0 ]; then        job:info "Success: $*"
-        else                            job:error "Fail: [code=$code] $*"
-        fi
-    ) &
-}
+xrc:mod:lib     job             design2022s1 pool log failfast/main
 
-___x_cmd_job___wrapper_report(){
-    local IFS=" "; printf "%s\n" "start: $*"
-    (
-        ( "$@"; ) 1>/dev/null 2>/dev/null
-        code=$?
-        printf "%s\n" "exit: $code $*"
-    ) &
-}
-
-___x_cmd_job_offer(){
-    local ___X_CMD_JOB_WRAPPER="${___X_CMD_JOB_WRAPPER:-"log"}"
-
-    if [ "$1" = -o ]; then
-        ___X_CMD_JOB_WRAPPER="$2";  shift 2
-    fi
-
-    case "$___X_CMD_JOB_WRAPPER" in
-        report|log)     ;;
-        *)              x:error "Argument -o and ___X_CMD_JOB_WRAPPER can only accept 'report' or 'log', but get $___X_CMD_JOB_WRAPPER"
-                        return 1
-    esac
-
-    local MAX="${1:?Provide the max number of jobs could hold}"; shift
-    local ___X_CMD_JOB_OFFER_SIZE
-    ___X_CMD_JOB_OFFER_SIZE="$(___x_cmd_job_active)"
-    if [ "$___X_CMD_JOB_OFFER_SIZE" -ge "${MAX}" ]; then
-        job:debug "ActiveSize=$___X_CMD_JOB_OFFER_SIZE. Waiting: $*"
+# TODO: Resumable job design: when fail, provide a way to resume the job interactively.
+___x_cmd_job___main(){
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_job help
         return 1
     fi
 
-    job:debug "ActiveSize=$___X_CMD_JOB_OFFER_SIZE. Running: $*"
+    local op="${1}"; shift
+    case "$op" in
+        run)                    ___x_cmd_job_run "$@" ;;        # This is the future.
 
-    case "$___X_CMD_JOB_WRAPPER" in
-        log)        ___x_cmd_job___wrapper_log      "$@" ;;
-        report)     ___x_cmd_job___wrapper_report   "$@" ;;
+        failfast)               ___x_cmd_job_failfast "$@" ;;   # This is the future.
+        log)                    ___x_cmd_job_log "$@" ;;        # TODO: x logvis
+
+        active)                 ___x_cmd_job_active "$@" ;;
+        offer)                  ___x_cmd_job_offer "$@" ;;
+        put)                    ___x_cmd_job_put "$@" ;;
+        report)                 ___x_cmd_job_report "$@" ;;
+        wait)                   ___x_cmd_job_wait_until_finished "$@" ;;
+
+        pool)                   ___x_cmd_job_pool "$@" ;;       # Deprecated design
+
+        -h|--help|help)         x advise gen_help "$___X_CMD_ROOT_MOD/job/res/advise.jso" ;;
     esac
 }
 
-# Will block
-___x_cmd_job_put(){
-    until ___x_cmd_job_offer "$@"; do
-        sleep "${interval:-1}"
-    done
-}
-
-___x_cmd_job_wait_until_finished(){
-    while [ "$(___x_cmd_job_active)" -ne "${1:-0}" ]; do
-        sleep "${interval:-1}"
-    done
-}
-
-___x_cmd_job_report(){
-    command awk \
-        -v ___X_CMD_LOG_C_DEBUG="$___X_CMD_LOG_C_DEBUG" \
-        -v ___X_CMD_LOG_C_INFO="$___X_CMD_LOG_C_INFO" \
-        -v ___X_CMD_LOG_C_WARN="$___X_CMD_LOG_C_WARN" \
-        -v ___X_CMD_LOG_C_ERROR="$___X_CMD_LOG_C_ERROR" \
-        -v "LOG_LEVEL=$___X_CMD_LOG__job"          \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/log.awk"     \
-        -f "$___X_CMD_ROOT_MOD/job/lib/report.awk"
-}

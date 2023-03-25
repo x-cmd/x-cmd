@@ -7,7 +7,7 @@ function handle( varname, param,    t ){
 {
     argl = str_split($0, arg, "\001")
 
-    code = data = ""
+    # code = data = ""
     for (i=1; i<=argl; ++i) {
         if ( arg[i] == "--" ) {
             for (j=i+1; j<=argl; ++j) data = data " " shqu1(arg[j])

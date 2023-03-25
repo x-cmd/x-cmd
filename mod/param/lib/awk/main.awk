@@ -2,7 +2,7 @@
 function exec_help(idx,         _str, i){
     for (i=idx+1; i<=arg_arr[ L ]; ++i) _str = _str " " arg_arr[i]
     print "___x_cmd_param_int _x_cmd_help " _str ";"
-    if (exit_code == "")    exit_code = 0
+    if (exit_code == "")    exit_code = 1
     print "return " exit_code
     exit_now(1) # TODO: should I return 0?
 }

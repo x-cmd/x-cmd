@@ -19,12 +19,13 @@ ___x_cmd_gt_repo_push_info(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 options:
-    --repo         "Provide ownerPath/RepoPath.(default owner: current user)"   <>:RepoPath
+    --repo|-r      "<ownerPath>/<RepoPath> (default ownerPath: current user)"   <>:RepoPath
     --json|-j      "output origin json data"
 '
     param:run
     ___x_cmd_gt_param_init_owner_repo
-    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/push_config" | ___x_cmd_gt_repo_push_status_handler
+    ___x_cmd_gt_curl get "/repos/${owner_repo}/push_config" | \
+        ___x_cmd_gt_repo_push____ui_handler Info
 }
 
 # EndSection
@@ -37,7 +38,7 @@ ___x_cmd_gt_repo_push_set(){
     param:scope     ___x_cmd_gt
         param:dsl       '
     options:
-        --repo                          "Provide ownerPath/RepoPath.(default owner: current user)"       <>:RepoPath
+        --repo|-r                       "<ownerPath>/<RepoPath> (default ownerPath: current user)"       <>:RepoPath
 
         --author_email_suffix           "Setting push email suffix"                                      <>=""
         --commit_message_regex          "Setting commit message regex"                                   <>=""
@@ -53,41 +54,52 @@ ___x_cmd_gt_repo_push_set(){
 
     ___x_cmd_gt_param_init_owner_repo
     [ "$max_file_size" -ne 0 ] || max_file_size=""
-    local gen_gt_json
+    local gen_gt_json=""
     gen_gt_json="$(param:option2json                                    restrict_push_own_commit=^^restrict_push_own_commit \
         restrict_author_email_suffix=^^restrict_author_email_suffix     restrict_commit_message=^^restrict_commit_message \
         restrict_file_size=^^restrict_file_size                         except_manager=^^except_manager)"
     gt:debug "$gen_gt_json"
 
-    ___x_cmd_gt_curl put "https://gitee.com/api/v5/repos/$owner_repo/push_config" "gen_gt_json" | ___x_cmd_gt_repo_push_status_handler
+    ___x_cmd_gt_curl put "/repos/$owner_repo/push_config" "gen_gt_json" | \
+        ___x_cmd_gt_repo_push____ui_handler Setting
 }
 
 # EndSection
 
-# Section: status handle
+# Section: push UI
 
-___x_cmd_gt_repo_push_status_handler(){
+___x_cmd_gt_repo_push____ui_handler(){
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         cat
-        ___x_cmd_gt_curl_error
+        ___x_cmd_gt_http_error
         return
     fi
     (
-        x jo env . author_email_suffix=.author_email_suffix commit_message_regex=.commit_message_regex \
+        case "$1" in
+            Setting)
+                _inf_msg="$1 $owner_repo rule configure successfully"
+                _err_msg="$1 $owner_repo rule configure failure"
+            ;;
+            Info)
+                _inf_msg="$owner_repo push rule configure"
+                _err_msg="No find any configure data by $owner_repo"
+            ;;
+        esac
+        eval x jo env . author_email_suffix=.author_email_suffix commit_message_regex=.commit_message_regex \
             except_manager=.except_manager max_file_size=.max_file_size restrict_author_email_suffix=.restrict_author_email_suffix \
-            restrict_commit_message=.restrict_commit_message restrict_file_size=.restrict_file_size restrict_push_own_commit=.restrict_push_own_commit gt_resp_body=.
+            restrict_commit_message=.restrict_commit_message restrict_file_size=.restrict_file_size restrict_push_own_commit=.restrict_push_own_commit  \
+            gt_resp_err=.message gt_resp_err=.error
 
         if [ -n "$restrict_push_own_commit" ]; then
-            ___x_cmd_ui_tf true  "$owner_repo push rule:" "Author Email Suffix: $author_email_suffix" "Commit Message Regex: $commit_message_regex" \
-                "Except Manager: $except_manager" "Max File Size: $max_file_size" "Restrict Author Email Suffix: $restrict_author_email_suffix" \
-                "Restrict Commit Message: $restrict_commit_message" "Restrict File Size: $restrict_file_size" "Restrict Push Own Commit: $restrict_push_own_commit"
-            return 0
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${author_email_suffix:+"Author Email Suffix: $author_email_suffix"} ${commit_message_regex:+"Commit Message Regex: $commit_message_regex"} \
+                ${except_manager:+"Except Manager: $except_manager"} ${max_file_size:+"Max File Size: $max_file_size"} ${restrict_author_email_suffix:+"Restrict Author Email Suffix: $restrict_author_email_suffix"} \
+                ${restrict_commit_message:+"Restrict Commit Message: $restrict_commit_message"} ${restrict_file_size:+"Restrict File Size: $restrict_file_size"} \
+                ${restrict_push_own_commit:+"Restrict Push Own Commit: $restrict_push_own_commit"}
         else
-            ___x_cmd_ui_tf false "Resolve repo push rule failure: $owner_repo"  "ErrorMsg:"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gt____handle_resp
             return 1
         fi
     )
 }
-
 # EndSection

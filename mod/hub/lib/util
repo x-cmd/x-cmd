@@ -1,11 +1,9 @@
 # shellcheck shell=sh disable=SC3043
 
-___X_CMD_HUB_SERVICE_URL="https://hub.x-cmd.com"
-
 ___x_cmd_hub___util_user_id(){
     local res
     if ! res="$(NO_AUTH=1 ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id"
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id for $1"
         return 1
     fi
 
@@ -35,6 +33,39 @@ ___x_cmd_hub___util_subcmd_invalid(){
     return 1
 }
 
+# Section: encrypt
+
+# from aaa.sh to aaa.sh.enc
+___x_cmd_hub___util_encrypt(){
+    local pass
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --pass|-p) pass="$2"; shift 2 ;;
+            *) break ;;
+        esac
+    done
+
+    x openssl env -aes-256-cbc -salt -pbkdf2 -in "$1" -out "${1}.enc" -pass pass:"$pass"
+}
+
+# from aaa.sh.enc to aaa.sh
+___x_cmd_hub___util_decrypt(){
+    local pass
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --pass|-p) pass="$2"; shift 2 ;;
+            *) break ;;
+        esac
+    done
+
+    x openssl enc -d -aes-256-cbc -pbkdf2 -in "$1" -out "${1%.*}"  -pass pass:"$pass"
+}
+
+# EndSection
+
+# Section: curl
+
+___X_CMD_HUB_SERVICE_URL="https://hub.x-cmd.com"
 ___x_cmd_hub___util_curl() {
     local method="${1:?Provide method}"
     local url_path="${2:?Provide url_path}"; shift 2
@@ -44,6 +75,7 @@ ___x_cmd_hub___util_curl() {
         ___x_cmd_http header put Authorization "$token"
     }
 
+    hub:debug "Command " "$url_path" "$@"
     case "$method" in
         get)              ___x_cmd_http get "$___X_CMD_HUB_SERVICE_URL$url_path" "$@"              ;;
         post|patch|put)   ___x_cmd_http "$method" json "$___X_CMD_HUB_SERVICE_URL$url_path" "$@"   ;;
@@ -68,6 +100,20 @@ ___x_cmd_hub___util_send_file() {
     # TODO: when http return error code, curl will not return error code
     eval "$cmd" || {  hub:debug "Exec cmd: $cmd" ; return 1 ;}
 }
+
+___x_cmd_hub___util_send_archive() {
+    local localfp="${1:?Provide local file}"
+    local respath="${2:?Provide respath}"
+
+    local token; token="$(___x_cmd_hub___util_get_token)" || return 1
+    local cmd; cmd="curl -sS -X PUT -F 'file=@$localfp' '$___X_CMD_HUB_SERVICE_URL/api/v0/file/archive?token=${token}&res=${respath}'"
+    # TODO: when http return error code, curl will not return error code
+    eval "$cmd" || {  hub:debug "Exec cmd: $cmd" ; return 1 ;}
+}
+
+#EndSection
+
+# Section: math ___x_cmd_hub___util_unit_suffixes, ___x_cmd_hub___util_percent
 
 # use unit suffixes. Byte, Kilobyte, Megabyte, Gigabyte, Terabyte and Petabyte in order to reduce the number of digits to four or fewer using base 2 for sizes
 ___x_cmd_hub___util_unit_suffixes(){
@@ -109,19 +155,24 @@ ___x_cmd_hub___util_percent(){
     printf "%s" "$((base/100)).$((base%100)) %"
 }
 
+#EndSection
+
 # Section: token_generate
 
 ___x_cmd_hub___util_get_token(){
-    local token ; token="$(cat "$___X_CMD_HUB_CACHE/token")"
-    [ -n "$token" ] || {
+    local token
+    if ! [ -f "$___X_CMD_HUB_CFG/token" ] || {
+        token="$(cat "$___X_CMD_HUB_CFG/token")"
+        [ -z "$token" ]
+    } ;then
         ___x_cmd_ui_tf false "Token is empty, please login first" >&2
         return 1
-    }
+    fi
     printf "%s\n" "$token"
 }
 
 ___x_cmd_hub___util_save_token(){
-    printf "%s\n" "${1}" > "$___X_CMD_HUB_CACHE/token"
+    printf "%s\n" "${1}" > "$___X_CMD_HUB_CFG/token"
 }
 
 ___x_cmd_hub___util_save_token_with_ui(){
@@ -130,7 +181,7 @@ ___x_cmd_hub___util_save_token_with_ui(){
     if res="$(___x_cmd_hub_get_userinfo_by_token "${token}")" ; then
         ___x_cmd_hub___util_save_token "${token}"
         printf "%s" "${res}"
-        ___x_cmd_hub___util_handle_resp true "$res" "Save token to ${___X_CMD_HUB_CACHE}/.token"
+        ___x_cmd_hub___util_handle_resp true "$res" "Save token to ${___X_CMD_HUB_CFG}/token:"
     else
         ___x_cmd_ui_tf false "Failed" >&2
         return 1

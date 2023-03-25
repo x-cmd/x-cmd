@@ -221,7 +221,10 @@ function check_required_option_ready(       i, j, _option_argc, _option_id, _opt
         }
 
         if ( 0 == ( _option_argc = option_argc_get( _option_id ) ) )    continue        # This is a flag
-        if ( true == _option_m )        _option_name = _option_name "_" 1
+        if ( true == _option_m ) {
+            code_append_assignment( _option_name "_n", 1 )
+            _option_name = _option_name "_" 1
+        }
 
         for ( j=1; j<=_option_argc; ++j ) {
             if ( (j==1) && (_option_argc == 1) ) {           # if argc == 1
@@ -249,8 +252,7 @@ function check_required_option_ready(       i, j, _option_argc, _option_id, _opt
                 continue
             }
 
-            if ( _value == "" )     code_append_assignment( _option_name "_n", 0 )   # TODO: should be 0. Handle later.
-            else                    code_append_assignment( _varname, _value )
+            code_append_assignment( _varname, _value )
         }
     }
 }

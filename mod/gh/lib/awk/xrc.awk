@@ -40,3 +40,5 @@ function get_obj_of_yxrc(o, file,        obj, v, kp, dir_path, _filepath, _conte
 }
 
 {   get_obj_of_yxrc(_, $0); print jstr0(_);   }
+
+

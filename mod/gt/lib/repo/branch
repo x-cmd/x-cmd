@@ -21,7 +21,7 @@ ___x_cmd_gt_repo_branch_ls(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 options:
-    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --per_page      "results per page"                                                   <>=""
     --page          "page number of the results to fetch."                               <>=""
     --json|-j       "output origin json data"
@@ -29,9 +29,9 @@ options:
     param:run
     ___x_cmd_gt_param_init_owner_repo
 
-    local ___gt_error_msg="Couldn't find any data by: ${owner_repo}"
+    local ___gt_error_msg="Couldn't find any data by ${owner_repo}"
     ___X_CMD_UI_STATIC=1  ___gt_ui_mutual '___ui_table_json BranchName=.name Protected=.protected -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/repos/${owner_repo}/branches" per_page page
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/branches" per_page page
 }
 
 # shellcheck disable=SC2154
@@ -41,33 +41,16 @@ ___x_cmd_gt_repo_branch_info(){
     param:dsl       '
 options:
     #1           "branch name"                                                        <>
-    --repo       "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r    "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --json|-j    "output origin json data"
 '
     param:run
-    local branch="${1:?"Provide branch name"}"
+    [ -n "$1" ] || M='accepts 1 arg(branch name), received empty' arg:ret:64
+    local branch="$1"
     ___x_cmd_gt_param_init_owner_repo
 
-    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/branches/${branch}" | ___x_cmd_gt_repo_branch_info_status_handler
-}
-
-# shellcheck disable=SC2154
-___x_cmd_gt_repo_branch_info_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . branch_name=.name is_protected=.protected _links=._links.html gt_resp_body=.
-        if [ -n "$branch_name" ]; then
-            ___x_cmd_ui_tf true  "Success" "branch_name: $branch_name" "is_protected: $is_protected" "url: $_links"
-        else
-            ___x_cmd_ui_tf false "Fail. Couldn't find any data: ${owner_repo} ${branch}"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+    ___x_cmd_gt_curl get "/repos/${owner_repo}/branches/${branch}" | \
+        ___x_cmd_gt_repo_branch____ui_handler Info
 }
 # EndSection
 
@@ -79,33 +62,15 @@ ___x_cmd_gt_repo_branch_create(){
     param:dsl       '
 options:
     #1                   "Target branch name(default origin branch name: master)"             <>
-    --repo               "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r            "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --refs               "Origin branch name"                                                 <>="master"
     --json|-j            "output origin json data"
 '
     param:run
     ___x_cmd_gt_param_init_owner_repo
-    local branch_name="${1:?"Provide target branch name"}"
-    ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner_repo}/branches" -- refs branch_name | ___x_cmd_gt_repo_branch_create_status_handler
-}
-
-# shellcheck disable=SC2154
-___x_cmd_gt_repo_branch_create_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . name=.name
-        if [ -n "$name" ]; then
-            ___x_cmd_ui_tf true  "Creating repo ${owner_repo} branch $name base $refs successfully"
-        else
-            ___x_cmd_ui_tf false "Creating repo ${owner_repo} branch $branch_name base $refs failure"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+    [ -n "$1" ] || M='accepts 1 arg(branch name), received empty' arg:ret:64
+    local branch_name="$1"
+    ___x_cmd_gt_curl post "/repos/${owner_repo}/branches" -- refs branch_name | ___x_cmd_gt_repo_branch____ui_handler Create
 }
 
 # shellcheck disable=SC2154
@@ -113,12 +78,45 @@ ___x_cmd_gt_repo_branch_default(){
     param:dsl       '
 options:
     #1          "branch name"                                                      <>
-    --repo      "Provide ownerPath/RepoPath.(default owner: current user)"         <>:RepoPath
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"         <>:RepoPath
     --json|-j   "output origin json data"
 '
     param:run
-    local branch="${1:?"branch name"}"
+    [ -n "$1" ] || M='accepts 1 arg(branch name), received empty' arg:ret:64
+    local branch="$1"
     ___x_cmd_gt_repo_edit --default_branch "$branch" "$repo"
+}
+# EndSection
+
+# Section: repo branch UI
+___x_cmd_gt_repo_branch____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Create)
+                _data="name=.name"
+                _inf_msg="Creating repo ${owner_repo} branch $name base $refs successfully"
+                _err_msg="Creating repo ${owner_repo} branch $branch_name base $refs failure"
+            ;;
+            Info)
+                _data="branch_name=.name is_protected=.protected _links=._links.html"
+                _inf_msg="$owner_repo $branch information"
+                _err_msg="No find any $owner_repo branch data by $branch"
+            ;;
+        esac
+        eval x jo env . _url=.url gt_resp_err=.message gt_resp_err=.error "$_data"
+        if [ -n "$branch_name" ] || [ -n "$name" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${branch_name:+"Branch Name: $branch_name"} ${is_protected:+"Is Protected: $is_protected"} ${_links:+"URL: $_links"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection
 
@@ -142,32 +140,15 @@ ___x_cmd_gt_repo_branch_protection_set(){
     param:dsl       '
 options:
     #1           "target branch name"                                                 <>
-    --repo       "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r    "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --json|-j    "output origin json data"
 '
     param:run
-    local branch="${1:?"provide target branch name"}"
+    [ -n "$1" ] || M='accepts 1 arg(branch name), received empty' arg:ret:64
+    local branch="$1"
     ___x_cmd_gt_param_init_owner_repo
-    ___x_cmd_gt_curl put "https://gitee.com/api/v5/repos/${owner_repo}/branches/${branch}/protection" | ___x_cmd_gt_repo_branch_protection_set_status_handler
-}
-
-___x_cmd_gt_repo_branch_protection_set_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . name=.name gt_resp_body=.
-        if [ -n "$name" ]; then
-            ___x_cmd_ui_tf true  "Setting ${owner_repo} $branch branch protection successfully"
-
-        else
-            ___x_cmd_ui_tf false "Setting ${owner_repo} $branch branch protection fail"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+    ___x_cmd_gt_curl put "/repos/${owner_repo}/branches/${branch}/protection" | \
+        ___x_cmd_gt_repo_branch_protection____ui_handler Setting
 }
 
 # https://gitee.com/api/v5/swagger#/putV5ReposOwnerRepoBranchesWildcardSetting
@@ -179,36 +160,19 @@ options:
     --pusher            "allow push name list(admin|none|username split ;)"                  <>
     --merger            "allow merge name list(admin|none|username split ;)"                 <>
     --new_wildcard      "update new wildcard (default not modify)"                           <>=""
-    --repo              "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r           "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --json|-j           "output origin json data"
 '
     param:run
-    local wildcard="${1:?"provide branch name or wildcard"}"
+    [ -n "$1" ] || M='accepts 1 arg(branch name or wildcard), received empty' arg:ret:64
+    local wildcard="$1"
     ___x_cmd_gt_param_init_owner_repo
     local gen_gt_json
     gen_gt_json="$(param:option2json -repo -json)"
     gt:debug "$gen_gt_json"
 
-    ___x_cmd_gt_curl put "https://gitee.com/api/v5/repos/${owner_repo}/branches/${wildcard}/setting" "gen_gt_json" | ___x_cmd_gt_repo_branch_protection_edit_status_handler
-}
-
-# shellcheck disable=SC2154
-___x_cmd_gt_repo_branch_protection_edit_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . id=.id wildcard=.wildcard  pushers=.pushers mergers=.mergers  gt_resp_body=.
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true  "Setting ${owner_repo} $wildcard branch protection strategy successfully" "pushers: $pushers" "mergers: $mergers"
-        else
-            ___x_cmd_ui_tf false "Setting ${owner_repo} $wildcard branch protection strategy fail"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+    ___x_cmd_gt_curl put "/repos/${owner_repo}/branches/${wildcard}/setting" "gen_gt_json" | \
+        ___x_cmd_gt_repo_branch_protection____ui_handler Modify
 }
 
 # https://gitee.com/api/v5/swagger#/deleteV5ReposOwnerRepoBranchesBranchProtection
@@ -218,19 +182,54 @@ ___x_cmd_gt_repo_branch_protection_unset(){
     param:dsl       '
 options:
     #1           "target branch name or wildcard"                                     <>
-    --repo       "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r    "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
 '
     param:run
-    local wildcard="${1:?"provide target branch name or wildcard"}"
-    local gt_resp_body
+    [ -n "$1" ] || M='accepts 1 arg(branch name or wildcard), received empty' arg:ret:64
+    local wildcard="$1"
     ___x_cmd_gt_param_init_owner_repo
+    ___x_cmd_gt_curl del "/repos/${owner_repo}/branches/${wildcard}/setting" |  (
+            [ -z "$___X_CMD_GT_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "Unset protection branch strategy $wildcard successfully:"
+            else
+                ___x_cmd_ui_tf false "Unset protection branch failure $owner_repo $wildcard:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
 
-    if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/repos/${owner_repo}/branches/${wildcard}/setting" | ___x_cmd_gt____handle_no_content; then
-        ___x_cmd_ui_tf true  "Unset protection branch strategy: $wildcard successfully"
-    else
-        ___x_cmd_ui_tf false "Unset protection branch failure: $owner_repo $wildcard"  "ErrorMsg:"
-        ___x_cmd_gt____handle_resp
-        return 1
+# Section: repo branch protection UI
+___x_cmd_gt_repo_branch_protection____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
     fi
+    (
+        case "$1" in
+            Setting)
+                _data="_name=.name"
+                _inf_msg="$1 ${owner_repo} $branch branch protection successfully"
+                _err_msg="$1 ${owner_repo} $branch branch protection failure"
+            ;;
+            Modify)
+                _data="_id=.id pushers=.pushers mergers=.mergers"
+                _inf_msg="$1 branch protection strategy successfully"
+                _err_msg="$1 branch protection strategy failure"
+            ;;
+        esac
+        eval x jo env . _url=.url gt_resp_err=.message gt_resp_err=.error "$_data"
+        if [ -n "$_name" ] || [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${pushers:+"Pushers: $pushers"} ${mergers:+"Mergers: $mergers"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection

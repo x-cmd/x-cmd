@@ -1,4 +1,4 @@
-BEGIN{  if (WHICHNET == "_") WHICHNET = "en";  WHICHNET = jqu(WHICHNET);  }
+BEGIN{  if (WEBSRC_REGION != "cn") WEBSRC_REGION = "en";  WEBSRC_REGION = jqu(WEBSRC_REGION);  }
 function get_value_with_local_language(o, kp, language,     v){
     v = o[ kp, language ]
     if (v == "") v = o[ kp, "\"en\"" ]
@@ -42,7 +42,7 @@ function aobj_option_all_set( lenv_table, obj, obj_prefix,  i, l, k ){
     for (i=1; i<=l; ++i) {
         k = obj[ obj_prefix, i ]
         if (k ~ "^\"[^-]") continue
-        if ( aobj_istrue(obj, obj_prefix SUBSEP k SUBSEP "\"#subcmd\"" ) ) continue
+        if ( aobj_is_subcmd(obj, obj_prefix SUBSEP k) ) continue
 
         if ( aobj_is_required(obj, obj_prefix SUBSEP k) ) {
             if ( lenv_table[ k ] == "" )  return false
@@ -54,7 +54,7 @@ function aobj_option_all_set( lenv_table, obj, obj_prefix,  i, l, k ){
 function aobj_get_subcmdid_by_name( obj, obj_prefix, name, _res ){
     _res = aobj_get_id_by_name( obj, obj_prefix, name )
     if ( juq(_res) ~ /^[^-]/) return _res
-    if ( aobj_istrue(obj, obj_prefix SUBSEP _res SUBSEP "#subcmd" ) ) return _res
+    if ( aobj_is_subcmd(obj, obj_prefix SUBSEP _res) ) return _res
     return
 }
 
@@ -134,14 +134,13 @@ function aobj_get_description( obj, obj_prefix,         d, _kp, _kp_name, _n ){
     _kp_name = aobj_get_special_value_id( obj_prefix, "name" )
     _n = obj[ _kp_name ]
     if ( _n == "{" ) d = obj[ _kp_name, obj[ _kp_name, 1 ] ]
-    if ( d =="null" ) d = get_value_with_local_language(obj, _kp_name, WHICHNET)
+    if ( d =="null" ) d = get_value_with_local_language(obj, _kp_name, WEBSRC_REGION)
     if ( d == "" ) {
         _kp = aobj_get_special_value_id( obj_prefix, "desc" )
         d = aobj_get(obj, _kp)
-        if ( d == "{" ) d = get_value_with_local_language(obj, _kp, WHICHNET)
+        if ( d == "{" ) d = get_value_with_local_language(obj, _kp, WEBSRC_REGION)
     }
-    if ((d == "\"\"") || (d == "null") || (d == "")) return ""
-    return juq(d)
+    if ( ! aobj_str_is_null(d) ) return aobj_uq(d)
 }
 
 
@@ -155,6 +154,15 @@ function aobj_get_default( obj, obj_prefix ){
     return aobj_get_special_value(obj, obj_prefix, "default")
 }
 
-function aobj_is_null(obj, kp){
-    return ((obj[ kp ] == "\"\"") || ( obj[ kp ] == "null"))
+function aobj_str_is_null( s ){
+    return (( s == "") || ( s == "null") || ( s == "\"\""))
 }
+
+function aobj_is_null(obj, kp){
+    return aobj_str_is_null( obj[kp] )
+}
+
+function aobj_uq(v) {
+    return ( (v ~ "^\"") ? juq(v) : v )
+}
+

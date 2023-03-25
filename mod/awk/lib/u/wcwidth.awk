@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 function wcscolumns(_str,    _length, _max, _min, _offset, _rl, _rs, _total,
-  _wchar, _width) {
+  _wchar, _width, _regex) {
 
     _total = 0
 
@@ -60,7 +60,7 @@ function wcscolumns(_str,    _length, _max, _min, _offset, _rl, _rs, _total,
         if (!WCWIDTH_MULTIBYTE_SAFE) {
             # Optimization for ASCII text.
             _total += length(_str)
-            sub("^[\\040-\\176]+", "", _str)
+            sub("^[\040-\176]+", "", _str)
 
             if (_str == "") {
                 break
@@ -72,7 +72,11 @@ function wcscolumns(_str,    _length, _max, _min, _offset, _rl, _rs, _total,
             # mentioned above. Experimenting showed that performance in MAWK
             # eventually begins drop off rapidly for the French corpus as the
             # regex complexity increases.
-            if (match(_str, "^([\\303-\\313][\\200-\\277][ -~]*)+")) {
+
+            if (___X_CMD_AWK_WCWDITH_WITH_C) _regex = "^([\303-\313][\200-\277][ -~]*)+"
+            else _regex = "^([\\303-\\313][\\200-\\277][ -~]*)+"
+
+            if (match(_str, _regex)) {
                 _wchar = substr(_str, RSTART, RLENGTH)
                 _total += gsub(/[^ -~]/, "", _wchar) / 2 + length(_wchar)
 
@@ -138,7 +142,7 @@ function wcscolumns(_str,    _length, _max, _min, _offset, _rl, _rs, _total,
             break
         } else {
             # Ignore non-printable ASCII characters.
-            _total += length(_wchar) == 1 ? _wchar > "\\177" : 1
+            _total += length(_wchar) == 1 ? _wchar > "\177" : 1
         }
     }
 
@@ -205,7 +209,7 @@ function wcstruncate(_str, _columns,    _result, _rl, _rs, _wchar, _width)
     _result = ""
 
     while (_columns > 0 && _str) {
-        if (_str ~ "^[\\040-\\176]") {
+        if (_str ~ "^[\040-\176]") {
             _wchar = substr(_str, 1, 1)
             _str = substr(_str, 2)
             _width = 1
@@ -291,6 +295,7 @@ function wcwidth(_wchar,    _result, _rl, _rs)
 #                                     ---
 
 BEGIN {
+    ___X_CMD_AWK_WCWDITH_WITH_C = ENVIRON[ "___X_CMD_AWK_WCWDITH_WITH_C" ]
     # Silence "defined but never called directly" warnings generated when using
     # GAWK's linter.
     if (0) {
@@ -341,8 +346,6 @@ function _wcwidth_initialize_library(    _entry, _nul)
             "." \
         ")"
 
-        WCWIDTH_UTF8_ANCHORED_RUNE_REGEX = "^" WCWIDTH_UTF8_RUNE_REGEX
-
         WCWIDTH_WIDE_CJK_RUNES_REGEX = "^((" \
             "\\343(\\201[\\201-\\277]|\\202[\\200-\\226])|" \
             "\\343(\\202[\\231-\\277]|\\203[\\200-\\277])|" \
@@ -354,6 +357,35 @@ function _wcwidth_initialize_library(    _entry, _nul)
             "\\357(\\274[\\201-\\277]|\\275[\\200-\\240])" \
             ")[ -~]*" \
         ")+"
+
+        if (___X_CMD_AWK_WCWDITH_WITH_C){
+            WCWIDTH_UTF8_RUNE_REGEX = "(" \
+                "[\001-\177]|" \
+                "[\302-\336\337][\200-\277]|" \
+                "\340[\240-\277][\200-\277]|" \
+                "[\341-\354\356\357][\200-\277][\200-\277]|" \
+                "\355[\200-\237][\200-\277]|" \
+                "\360[\220-\277][\200-\277][\200-\277]|" \
+                "[\361-\363][\200-\277][\200-\277][\200-\277]|" \
+                "\364[\200-\217][\200-\277][\200-\277]|" \
+                "." \
+            ")"
+
+            WCWIDTH_WIDE_CJK_RUNES_REGEX = "^((" \
+                "\343(\201[\201-\277]|\202[\200-\226])|" \
+                "\343(\202[\231-\277]|\203[\200-\277])|" \
+                "\344([\270-\277][\200-\277])|" \
+                "[\345-\350]([\200-\277][\200-\277])|" \
+                "\351([\200-\276][\200-\277]|\277[\200-\225])|" \
+                "[\352-\354][\260-\277][\200-\277]|" \
+                "\355([\200-\235][\200-\277]|\236[\200-\243])|" \
+                "\357(\274[\201-\277]|\275[\200-\240])" \
+                ")[ -~]*" \
+            ")+"
+        }
+
+
+        WCWIDTH_UTF8_ANCHORED_RUNE_REGEX = "^" WCWIDTH_UTF8_RUNE_REGEX
     }
 
     # Kludges to support AWK implementations allow NUL bytes inside of strings.

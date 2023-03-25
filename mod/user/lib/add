@@ -1,0 +1,89 @@
+
+___x_cmd_user_add(){
+    local x_; x os name_
+    if [ "$x_" != linux ]; then
+        x:error "'user add' can only work in linux system. Current os is $_."
+    fi
+
+    local user_home
+    local user_uid
+    local user_gid
+    local user_shell=${SHELL:-/bin/bash}
+    while [ $# -gt 0 ]; do
+    	case $1 in
+    		--home) 	[ -z "$2" ] || { user_home="$2"; shift 2; } ;;
+    		--uid) 	    [ -z "$2" ] || { user_uid="$2"; shift 2; } ;;
+    		--gid) 	    [ -z "$2" ] || { user_gid="$2"; shift 2; } ;;
+            --shell) 	[ -z "$2" ] || { user_shell="$2"; shift 2; } ;;
+    		*)			break ;;	# Default case: If no more options then break out of the loop.
+    	esac
+    done
+
+    while [ "$#" -gt 0 ]; do
+        local user_name="$1"
+        ___x_cmd_user_add___add "$1" || return
+        shift
+    done
+}
+
+
+___x_cmd_user_add___add(){
+    if command -v useradd >/dev/null 2>&1; then
+        ___x_cmd_user_add___useradd "$@"
+    elif command -v adduser >/dev/null 2>&1; then
+        ___x_cmd_user_add___useradd "$@"
+    else
+        ___x_cmd_user_add___self "$@"
+    fi
+}
+
+___x_cmd_user_add___useradd(){
+	! useradd \
+			--home-dir "${user_home}" \
+			--no-create-home \
+			--shell "${user_shell}" \
+			--uid "${user_uid}" \
+			--gid "${user_gid}" \
+			"${user_name}" || return 0
+
+		printf "%s\n" "Warning: there was a problem setting up the user"
+		printf "%s\n" "Warning: trying manual addition"
+		___x_cmd_user_add___self_passwd_shadow
+}
+
+
+___x_cmd_user_add___adduser(){
+	if ! command addgroup "${user_name}"; then
+		printf "Warning: there was a problem setting up the group\n"
+		printf "Warning: trying manual addition\n"
+		printf "%s:x:%s:" "${user_name}" "${user_gid}" >> /etc/group
+	fi
+
+	if ! command adduser \
+			--home "${user_home}" \
+			--no-create-home \
+			--disabled-password \
+			--shell "${user_shell}" \
+			--uid "${user_uid}" \
+			--ingroup "${user_name}" \
+			"${user_name}"; then
+
+		printf "%s\n" "Warning: there was a problem setting up the user"
+		printf "%s\n" "Warning: trying manual addition"
+		___x_cmd_user_add___self_passwd_shadow
+	fi
+}
+
+___x_cmd_user_add___self(){
+    : Creating user by our own script
+    x:error "Unimplemented function."
+    return 1
+
+    # ___x_cmd_user_add___self_passwd_shadow
+}
+
+___x_cmd_user_add___self_passwd_shadow(){
+    >>/etc/passwd printf "%s:x:%s:%s:%s:%s:%s" \
+	    "${user_name}" "${user_uid}" "${user_gid}" "${user_name}" "${user_home}" "${user_shell}"
+	>>/etc/shadow printf "%s::1::::::" "${user_name}"
+}

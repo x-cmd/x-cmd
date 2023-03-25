@@ -2,80 +2,123 @@
 # shellcheck disable=SC2039,3043
 # shellcheck disable=SC2046
 
+# Section: Help
+_____x_cmd_tea_help__token_setting(){
+    printf "\n%s %s \n%s\n" \
+        "$(___x_cmd_ui yellow 'Run command to add|repleace token:')" \
+        "$(___x_cmd_ui bold cyan "\`x tea token <token>\`")"   \
+        "$(___x_cmd_ui "${___X_CMD_TEA_DOMAIN:-"https://gitea.com"}/user/settings/applications")"
+}
+
+_____x_cmd_tea_help(){
+    command -v ___x_cmd_advise_gen_help >/dev/null || xrc:mod advise/lib/gen_help
+    ___x_cmd_advise_gen_help "$___X_CMD_ROOT_MOD/tea/res/advise.jso" "$@"
+}
+# EndSection
+
 # Section: HTTP header & body & request
 ___x_cmd_tea_resp_header() {
     cat "$___X_CMD_TEA_TMP/.____x_cmd_tea_curl_header"
 }
 
-______x_cmd_tea_resp_header_code(){
+___x_cmd_tea_resp_code(){
     ___x_cmd_tea_resp_header  | awk '$1 ~/HTTP\/2$/ {print ($2+0);exit(0)}'
 }
 
 # https://gitea.com/api/v1/user
 # https://codeberg.org/api/v1/user
-# Token: https://gitea.com/user/settings/applications
 ___x_cmd_tea_curl(){
     local op="$1"
-    local url="\"${___X_CMD_TEA_REF:-"https://gitea.com"}/api/v1$2\""
-    local tea_header="$___X_CMD_ROOT_TMP/tea/.____x_cmd_tea_curl_header"
-    local Accept="\"Accept:application/json\""
-    local Content="\"Content-Type:application/json\""
-    local Authorization
-    Authorization="\"Authorization:token $(___x_cmd_tea_token)\""
+    local _curl_url="\"${___X_CMD_TEA_DOMAIN:-"https://gitea.com"}/api/v1$2\""
+    local _accept="\"Accept:application/json\""
+    local _content="\"Content-Type:application/json\""
+    local _authorization
+    _authorization="\"Authorization:token $(___x_cmd_tea_token)\""
+    local tea_header="$___X_CMD_TEA_TMP/.____x_cmd_tea_curl_header"
+    local ___X_CMD_TEA_SHOW_HTTP_CODE=1
     shift 2
     local req
     case "$op" in
         get)
-            tea_log debug           "eval x curl -D  $tea_header   -X GET -s -H  $Accept  -H  $Authorization  $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))")  $url"
-            x ccmd 3m --             eval x curl -D "$tea_header"  -X GET -s -H "$Accept" -H "$Authorization" $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))") "$url"
-            ___x_cmd_tea_http_error  eval x curl -D "$tea_header"  -X GET -s -H "$Accept" -H "$Authorization" $(eval "printf '%s ' $(x curl gencode -G $([ $# -eq 0 ] || printf "%s== " "$@"))") "$url"
+            tea:debug "x curl -D  $tea_header   -X GET -s -H  $_accept  -H $_content   -H  $_authorization  $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))")  $_curl_url"
+            if [ -n "$NO_CACHE" ]; then
+                eval   x curl -D "$tea_header"  -X GET -s -H "$_accept" -H "$_content" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))") "$_curl_url"
+            else
+                x ccmd 10s --        eval x curl -D "$tea_header"  -X GET -s -H "$_accept" -H "$_content" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))") "$_curl_url"
+            fi
+            ___x_cmd_tea_http_error  eval x curl -D "$tea_header"  -X GET -s -H "$_accept" -H "$_content" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))") "$_curl_url"
             return
             ;;
-        post)
-            req="POST";;
-        put)
-            req="PUT";;
-        patch)
-            req="PATCH";;
-        delete)
-            req="DELETE";;
-        download)
-            mkdir -p "${1%/*}"
-            tea_log debug "x curl -L -D  $tea_header   -X GET -H  $Accept  -H  $Authorization    -o  $1   $url"
-                    eval  x curl -L -D "$tea_header"  -X GET -H "$Accept" -H "$Authorization"   -o "$1" "$url"
-            ___x_cmd_tea_http_error
-            return
-            ;;
+        post)           req="POST"      ;;
+        put)            req="PUT"       ;;
+        patch)          req="PATCH"     ;;
+        delete)         req="DELETE"    ;;
     esac
-    tea_log debug "eval x curl -D $tea_header -X $req    -s  -H $Accept -H $Content -H $Authorization $(x curl gencode "$@") $url"
+    tea:debug "x curl -D  $tea_header  -X  $req  -s -H  $_accept  -H  $_content  -H  $_authorization   $(x curl gencode "$@")   $_curl_url"
+    eval       x curl -D "$tea_header" -X "$req" -s -H "$_accept" -H "$_content" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"
+    ___x_cmd_tea_http_error
+}
 
-    eval x curl -D "$tea_header" -X "$req"  -s -H "$Accept" -H "$Content"  -H "$Authorization" "$(x curl gencode "$@")" "$url"
-
-
+___x_cmd_tea_curl___use_query_data(){
+    [ $# -gt 0 ] || return
+    local name
+    printf "%s " "-G"
+    for name in "$@";
+    do
+        if [ "$name" = "p" ];then  [ -z "$p" ] || printf "%s " "path==$p";
+        else                                      printf "%s " "$name==" ;
+        fi
+    done
 }
 
 ___x_cmd_tea_http_error(){
     local http_resp_code
-    http_resp_code=$(______x_cmd_tea_resp_header_code)
+    http_resp_code=$(___x_cmd_tea_resp_code)
     if [ -n "$http_resp_code" ] && [ "$http_resp_code" -ge 200 ] && [ "$http_resp_code" -le 303 ]; then
         return 0
     else
-        [ $# -eq 0 ] || x ccmd invalidate "$@" >/dev/null
-        tea_log error "HTTP Code Is $http_resp_code"
+        [ $# -eq 0 ] || {
+            tea:debug "---! Cache Clear !---"
+            x ccmd invalidate "$@" 1>/dev/null 2>&1
+        }
+        [ -z "$___X_CMD_TEA_SHOW_HTTP_CODE" ] || {
+            tea:error "HTTP Code is $http_resp_code"
+            if command -v unset 1>/dev/null; then
+                unset ___X_CMD_TEA_SHOW_HTTP_CODE
+            fi
+        }
         return 1
     fi
 }
+
+___x_cmd_tea____handle_resp(){
+    [ -z "$tea_resp_body" ] || printf "%s" "$tea_resp_body"
+    [ -z "$tea_resp_err" ]  || printf "  \033[31m-\033[0m \033[1mErrorMsg: \033[31m%s\033[0m\n" "$tea_resp_err" >&2
+}
+
+___x_cmd_tea____handle_no_content(){
+    local tea_resp_body
+    local tea_resp_err
+    x jo env . tea_resp_body=. tea_resp_err=.message
+
+    [ -z "$gh_resp_body" ] || {
+        tea:debug "tea_resp_body: $tea_resp_body"
+        ___x_cmd_tea____handle_resp
+        return 1
+    }
+    ___x_cmd_gh_http_error
+}
 # EndSection
 
-# Section: pagination
+# Section: Resolve pagination
 ___x_cmd_tea_get_multi() {
-    if [ -n "$page" ] || [ -n "$per_page" ]; then
-        ___x_cmd_tea_curl get "$@" page per_page
+    if [ -n "$page" ] || [ -n "$limit" ]; then
+        ___x_cmd_tea_curl get "$@" page limit
         return
     fi
 
     local page=1
-    local per_page=100
+    local limit=100
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_tea_get_multi___json_prt "$@"
     else
@@ -84,7 +127,7 @@ ___x_cmd_tea_get_multi() {
 
 }
 ___x_cmd_tea_get_multi___ui_table(){
-    ___x_cmd_tea_curl get "$@" page per_page
+    ___x_cmd_tea_curl get "$@" page limit
     printf "\n"
     local next_url
     _____x_cmd_tea_next_url
@@ -100,7 +143,7 @@ ___x_cmd_tea_get_multi___ui_table(){
 ___x_cmd_tea_get_multi___json_prt(){
     local tmp
     tmp=$(mktemp)
-    ___x_cmd_tea_curl get "$@" page per_page > "$tmp"
+    ___x_cmd_tea_curl get "$@" page limit > "$tmp"
     printf "\n" >> "$tmp"
 
     local next_url
@@ -161,7 +204,8 @@ ___x_cmd_tea_param_normalize_repo() {
     *)
         ___x_cmd_tea_current_owner 1>/dev/null 2>&1
         if [ -z "$___X_CMD_TEA_DEFAULT_OWNER" ]; then
-            printf "No owner provided. Default owner not set.\n" >&2
+            tea:error "No owner provided. Default owner not set."
+            tea:warn "Check your current token setting.$(_____x_cmd_tea_help__token_setting)"
             return 1
         fi
         owner_repo="$(printf "%s" "$___X_CMD_TEA_DEFAULT_OWNER/$op")"
@@ -194,7 +238,11 @@ ___tea_ui_mutual() {
         # run ui table
         eval "$tmp"
     fi
-    return
+    local ___tea_exit_code="$?"
+    [ "$___tea_exit_code" -eq 0 ] || {
+        ___x_cmd_ui_tf false "${___tea_error_msg:-"Couldn't find any data"}" ;
+        return "$___tea_exit_code"
+    }
 }
 
 _____x_cmd_tea_advise() {
@@ -208,4 +256,3 @@ _____x_cmd_tea_advise_parse() {
     esac
 }
 # EndSection
-

@@ -1,0 +1,344 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gl_group(){
+    param:scope     ___x_cmd_gl
+    param:subcmd ___x_cmd_gl_group         \
+        "ls|l"                  "List all groups"            \
+        "info|i"                "Show group information"     \
+        "create|c"              "Create group"               \
+        "edit|ed"               "Update group"               \
+        rm                      "Remove group"               \
+        issue                   "List group issue"           \
+        pr                      "List groups pr"             \
+        member                  "group member management"    \
+        project                 "group project management"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_group _param_help_doc
+
+    return 1
+}
+
+# Section: List
+# https://docs.gitlab.com/ee/api/groups.html#list-groups
+___x_cmd_gl_group_ls(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+type:
+    order_by = name path id  similarity
+    sort = asc desc
+options:
+    --sort                      "Order groups in asc or desc order."                                <>="asc"
+    --search                    "Return the list of authorized groups matching the search criteria" <>=""
+    --order_by                  "Order groups by name, path, id, or similarity"                     <>=""
+    --skip_groups               "Skip the group IDs passed"                                         <>=""
+    --min_access_level          "Limit to groups where current user has at least this role"         <>:Number=""
+    --owned                     "Limit to groups explicitly owned by the current user"
+    --statistics                "Include group statistics (administrators only)"
+    --all_available             "Show all the groups you have access to"
+    --top_level_only            "Limit to top level groups, excluding all subgroups"
+    --with_custom_attributes    "Include custom attributes in response (administrators only)"
+
+    --per_page                  "Results per page (max 100)"                                        <>="30"
+    --page                      "Page number of the results to fetch."                              <>="1"
+    --json|-j                   "output json data"
+'
+    param:run
+    local ___gl_error_msg="get groups list fail"
+    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id Name=.name Path=.path Visibility=.visibility Url=.web_url -- $@' \
+        ___x_cmd_gl_get_multi "/groups" sort search order_by per_page page skip_groups search min_access_level
+}
+# EndSection
+
+# Section: Info
+# https://docs.gitlab.com/ee/api/group_boards.html#list-all-group-issue-boards-in-a-group
+___x_cmd_gl_group_info(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                          "The ID or URL-encoded path of the group"                                   <>
+    --with_projects             "Include details from projects that belong to the specified group"
+    --with_custom_attributes    "Include custom attributes in response"
+
+    --json|-j                   "output json data"
+'
+    param:run
+
+    ___x_cmd_gl_curl get "/groups/$1" | _____x_cmd_groups_ui_utils Info
+}
+# EndSection
+
+# Section: Create
+# shellcheck disable=SC2181,SC2034
+# TODO:On gitlab SaaS, you must use the gitlab UI to create groups without a parent group. You cannot use the API to do this.???
+# https://docs.gitlab.com/ee/api/groups.html#new-group
+___x_cmd_gl_group_create(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                          "The name of the group."                   <>
+    -p|--path                   "The path of the group."                   <>=""
+    --description               "The group description."                   <>=""
+    --visibility                "The group visibility."                    <>="" = "" private internal public
+    --subgroup_creation_level   "Allowed to create subgroups."             <>="" = "" maintainer owner
+    --json|-j                   "Output json data"
+'
+    param:run
+    local name="${1:?"Please provide group name"}"
+    local gl_path="$name"
+    [ -z "$p" ] || gl_path="$p"
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -p +name path=gl_path)"
+    gl:debug "$gen_gl_json"
+
+    ___x_cmd_gl_curl post "/groups" "gen_gl_json" | _____x_cmd_groups_ui_utils Creating
+}
+# EndSection
+
+# Section: Edit
+# https://docs.gitlab.com/ee/api/groups.html#update-group
+___x_cmd_gl_group_edit(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                          "The ID of the group."                          <>
+    -p|--path                   "The path of the group."                        <>=""
+    --name                      "The name of the group"                         <>=""
+    --description               "The description of the group."                 <>=""
+    --visibility                "The visibility level of the group."            <>="" = "" private internal public
+    --subgroup_creation_level   "Allowed to create subgroups."                  <>="" = "" maintainer owner
+
+    --json|-j                   "output json data"
+'
+    param:run
+
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -p ${p+"group_path:$p"})"
+    gl:debug "$gen_gl_json"
+
+    ___x_cmd_gl_curl put "/groups/$1" "gen_gl_json" | _____x_cmd_groups_ui_utils Edit
+}
+# EndSection
+
+# Section: Remove
+# https://docs.gitlab.com/ee/api/groups.html#remove-group
+# shellcheck disable=2154
+___x_cmd_gl_group_rm(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                       "The ID or URL-encoded path of the group"                              <>
+    --full_path              "Full path of subgroup to use with permanently_remove."                <>=""
+    --permanently_remove     "Immediately deletes a subgroup if it is marked for deletion."
+    --yes|-y                 "Ignore remove prompt interception"
+'
+    param:run
+
+    if [ $# -eq 0 ];then
+        gl:error "Please provide groups ID"
+        return 1
+    fi
+
+    local id
+    for id in "$@"; do
+        {
+            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure groups to remove: $(___x_cmd_ui bold red "$id") ?" || continue
+            ___x_cmd_gl_curl delete "/groups/$id" | (
+                x jo env . gl_resp_err=.error gl_resp_err=.message
+                if ___x_cmd_gl_http_error; then
+                    ___x_cmd_ui_tf  true "Remove groups $id successfully."
+                else
+                    ___x_cmd_ui_tf false "Remove groups $id failure."
+                    ___x_cmd_gl____handle_resp
+                    return 1
+                fi
+            )
+
+        }
+    done
+}
+# EndSection
+
+___x_cmd_gl_subgroup(){
+    param:scope     ___x_cmd_gl
+    param:subcmd ___x_cmd_gl_subgroup   \
+        ls      "List all subgroups"    \
+        create  "Create subgroups"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_subgroup _param_help_doc
+
+    return 1
+}
+
+# Section: List
+# https://docs.gitlab.com/ee/api/groups.html#list-a-groups-subgroups
+___x_cmd_gl_subgroup_ls(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+type:
+    order_by = name path id  similarity
+    sort = asc desc
+options:
+    #1                          "The ID or URL-encoded path of the group of the immediate parent group" <>
+    --sort                      "Order groups in asc or desc order."                                    <>=""
+    --search                    "Return the list of authorized groups matching the search criteria"     <>=""
+    --order_by                  "Order groups by name, path, or id"                                     <>=""
+    --skip_groups               "Skip the group IDs passed"                                             <>=""
+    --min_access_level          "Limit to groups where current user has at least this role"             <>:Number=""
+    --owned                     "Limit to groups explicitly owned by the current user"
+    --statistics                "Include group statistics (administrators only)"
+    --all_available             "Show all the groups you have access to"
+    --with_custom_attributes    "Include custom attributes in response (administrators only)"
+
+    --json|-j                   "output json data"
+'
+    param:run
+
+    local ___gl_error_msg="get subgroup list fail"
+    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id Name=.name Path=.path Visibility=.visibility Url=.web_url -- $@' \
+        ___x_cmd_gl_get_multi "/groups/$1/subgroups" sort search order_by skip_groups min_access_level
+}
+# EndSection
+
+# Section: Create
+# https://docs.gitlab.com/ee/api/groups.html#new-subgroup
+___x_cmd_gl_subgroup_create(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --parent_id         "The parent group ID for creating nested subgroup."    <>
+    --subgroup_path     "The path of the subgroup."                            <>=""
+    --subgroup_name     "The name of the subgroup."                            <>
+
+    --json|-j           "output json data"
+'
+    param:run
+    local group_path="$subgroup_path"
+    [ -n "$group_path" ] || group_path="$name"
+    gen_gl_json="$(param:option2json -subgroup_path path=group_path)"
+    gl:debug "$gen_gl_json"
+
+    ___x_cmd_gl_curl post "/groups" "gen_gl_json"| _____x_cmd_groups_ui_utils Creating
+}
+# EndSection
+
+___x_cmd_gl_group_project(){
+    param:subcmd ___x_cmd_gl_group_project    \
+        ls          "list repo"
+        # NOTE: project create --namespace_id <group_id>
+        # create      "groups repo create"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_group_project _param_help_doc
+
+    return 1
+}
+
+# Section: List
+# https://docs.gitlab.com/ee/api/groups.html
+___x_cmd_gl_group_project_ls(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "The ID or group path"          <>:Address
+    --page          "page"                          <>:NatureNumber=1
+    --per_page      "per_page"                      <>:NatureNumber=20
+    --visibility    "Limit by visibility"           <>=""
+    --archived      "Limit by archived status"
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    local ___gl_error_msg="get repo list fail"
+    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id Name=.name Path=.path Visibility=.visibility Url=.web_url -- $@' \
+        ___x_cmd_gl_get_multi "/groups/$1/projects" page per_page visibility archived
+}
+# EndSection
+
+# Section: Group Issue List
+# https://docs.gitlab.com/ee/api/group_boards.html#list-all-group-issue-boards-in-a-group
+___x_cmd_gl_group_issue(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+   --id                                    "The global ID or URL-encoded path of the group owned by the authenticated user"                                             <>
+   --assignee_id                           "Return issues assigned to the given user id."                                                                               <>:Number=""
+   --assignee_username                     "Return issues assigned to the given username."                                                                              <>:array=""
+   --author_id                             "Return issues created by the given user id."                                                                                <>:Number=""
+   --author_username                       "Return issues created by the given username."                                                                               <>=""
+   --confidential                          "Filter confidential or public issues."
+   --created_after                         "Return issues created on or after the given time."                                                                          <>:datetime=""
+   --created_before                        "Return issues created on or before the given time."                                                                         <>:datetime=""
+   --due_date                              "Return issues that have no due date,are overdue,or whose due date is this week,this month,or between two weeks ago and next month"     <>=""
+   --epic_id                               "Return issues associated with the given epic ID."                                                                           <>:Number=""
+   --iids                                  "Return only the issues having the given iid"                                                                                <>:array=""
+   --issue_type                            "Filter to a given type of issue."                                                                                           <>=""
+   --iteration_id                          "Return issues assigned to the given iteration ID."                                                                          <>:Number=""
+   --iteration_title                       "Return issues assigned to the iteration with the given title."                                                              <>=""
+   --labels                                "Comma-separated list of label names, issues must have all labels to be returned. "                                          <>=""
+   --milestone                             "The milestone title. "                                                                                                      <>=""
+   --my_reaction_emoji                     "Return issues reacted by the authenticated user by the given emoji. "                                                       <>=""
+   --non_archived                          "Return issues only from non-archived projects."
+   --not                                   "Return issues that do not match the parameters supplied. "                                                                  <>:hash=""
+   --order_by                              "Return issues ordered by fields.Default is created_at."                                                                     <>=""
+   --scope                                 "Return issues for the given scope."                                                                                         <>=""
+   --sort                                  "Return issues sorted in asc or desc order. Default is desc"                                                                 <>=""
+   --search                                "Search group issues against their title and description"                                                                    <>=""
+   --state                                 "Return all issues or just those that are opened or closed"                                                                  <>=""
+   --updated_after                         "Return issues updated on or after the given time."                                                                          <>:datetime=""
+   --updated_before                        "Return issues updated on or before the given time."                                                                         <>:datetime=""
+   --weight                                "Return issues with the specified weight."                                                                                   <>:Number=""
+   --with_labels_details                   "If true, the response returns more details for each label in labels field: :name, :color, :description, :description_html,:text_color.Default is false."
+
+    --json|-j                              "output json data"
+'
+ param:run
+
+    local ___gl_error_msg="get issues list fail"
+    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id iid=.iid project_id=.project_id title=.title state=.state web_url=.web_url -- $@' \
+        ___x_cmd_gl_get_multi "/groups/$id/issues" sort order_by search state author_username
+}
+# EndSection
+
+# Section: UI util
+_____x_cmd_groups_ui_utils(){
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gl_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Info)
+                _data="name=.name dir=.path visibility=.visibility url=.web_url"
+                _msg="get groups info success"
+                _error_msg="Couldn't find any groups info data."
+                ;;
+            Creating)
+                _data="name=.name dir=.path url=.web_url visibility=.visibility"
+                _msg="$1 subgroup $name Successfully"
+                _error_msg="$1 subgroup failure: $name."
+                ;;
+            Edit)
+                _data="name=.name dir=.path url=.web_url visibility=.visibility"
+                _msg="$1 groups $name Successfully"
+                _error_msg="$1 groups failure: $name."
+                ;;
+        esac
+        eval x jo env . Id=.id gl_resp_err=.error gl_resp_err=.message "$_data"
+        if [ -n "$Id" ]; then
+            ___x_cmd_ui_tf true "$_msg" "Id: $Id" ${name+"Name: $name"} ${dir+"Path: $dir"} ${url+"Url: $url"} ${visibility+"Visibility: $visibility"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

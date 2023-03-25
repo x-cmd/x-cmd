@@ -1,0 +1,65 @@
+# shellcheck shell=sh
+# shellcheck disable=SC3043
+___x_cmd_ali_ecs_sign(){
+    local url_tmp
+    local ali_param_gen
+    ali_param_gen=$( local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"; printf "%s\n" "$*")
+
+    local public_param="${ali_param_gen%%"__X_Separate"*}"
+    local customize_param="${ali_param_gen##*"__X_Separate
+"}"
+
+    api:debug "customize_param:${public_param}${customize_param}"
+
+    eval "$( printf "%s\n%s" "${public_param}" "${customize_param}" | sort | {
+        command awk -v FS="="  \
+                    -v method="$method"   \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/ord.awk" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/url.awk" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"  \
+                    -f "$___X_CMD_ROOT_MOD/ali/lib/awk/sign.awk"
+    })"
+    signature="$(printf "%s" "$url_tmp" | {
+        x openssl dgst -sha1 -hmac "${AccessKey}&" -binary
+    } | {
+        x openssl base64
+    })"
+
+    eval "$( (  local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
+                printf "%s\n%s\n%s" "${public_param}" "--X--" "${customize_param}") | {
+            command awk -v FS="="  \
+                    -v method="$method" -v signature="$signature"  \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/ord.awk" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/url.awk" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"  \
+                    -f "$___X_CMD_ROOT_MOD/ali/lib/awk/url_gen.awk"
+    })"
+}
+
+___x_cmd_ali_ecs_url_gen(){
+    local method="${1}&%2F&"
+    shift
+    api:debug "data:$*"
+    local SignatureNonce
+    SignatureNonce="$(x openssl rand -hex 20)"
+    #TODO: version and endpoint needs dynamic processing
+    local Format="${format:-"json"}"
+    local SignatureMethod="${signature_method:-"HMAC-SHA1"}"
+    local SignatureVersion="${signature_version:-"1.0"}"
+    local Timestamp
+    Timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local AccessKey="${secret_key:-"$(x ali config get secret_key)"}"
+    local AccessId="${secret_id:-"$(x ali config get secret_id )"}"
+
+    if [ -z "${AccessKey}" ] || [ -z "${AccessId}" ];then
+        api:error 'Configuration failed, use "x aliyun config" to configure it'
+        return 1
+    fi
+
+    local signature
+    ___x_cmd_ali_ecs_sign   "Format=${Format}" "Version=${version}"     "AccessKeyId=${AccessId}"                       \
+                            "SignatureMethod=${SignatureMethod}"        "Timestamp=${Timestamp}"  "Action=${action}"    \
+                            "SignatureNonce=${SignatureNonce}"  "SignatureVersion=${SignatureVersion}" "__X_Separate" "$@"
+
+    url="${host}?${url}&Signature=${signature}"
+}

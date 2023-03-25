@@ -24,9 +24,9 @@ function shuq1( s ){
     return substr(s, 2, length(s) - 2)
 }
 
-function shexec( cmd,  _line, _ret, i ){
+function shexec( c,  _line, _ret, i ){
     i = 0
-    while ((cmd | getline _line) > 0)   _ret = ("" == _ret) ? _line : (_ret "\n" _line)
+    while ((c | getline _line) > 0)   _ret = ("" == _ret) ? _line : (_ret "\n" _line)
     return _ret
 }
 
@@ -84,8 +84,8 @@ function sh_pipe( a, b ){               return sprintf("%s | %s ", a, b);   }
 # EndSection
 
 # Section: call
-function sh_call( cmd, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, t ){
-    t = cmd
+function sh_call( c, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, t ){
+    t = c
     if (arg1 == "") return t;   t = t " " arg1
     if (arg2 == "") return t;   t = t " " arg2
     if (arg3 == "") return t;   t = t " " arg3
@@ -111,8 +111,8 @@ function sh_x( arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
     return sh_call("x", arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10 )
 }
 
-function sh_hascmd( cmd ){
-    return sprintf("command -v %s 2>/dev/null", cmd)
+function sh_hascmd( c ){
+    return sprintf("command -v %s 2>/dev/null", c)
 }
 # EndSection
 

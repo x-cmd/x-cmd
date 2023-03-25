@@ -1,5 +1,5 @@
 function user_request_data( rootkp ){
-    navi_request_data(o, LSENV_KP, rootkp, " ")
+    navi_request_data(o, LSENV_KP, rootkp, "", " ")
 }
 
 # Section: user model
@@ -28,7 +28,6 @@ function tapp_handle_response(fp,       _content, _rootkp, l, i, arr){
         lock_release( o, LSENV_KP )
         l = split(_content, arr, "\n")
         _rootkp = arr[1];   gsub( "^data:item:", "", _rootkp )
-        gsub( " ", ROOTKP_SEP, _rootkp )
         user_data_add( o, LSENV_KP, _rootkp, arr[2] )
         for (i=3; i<=l; ++i) {
             user_data_add( o, LSENV_KP, _rootkp, arr[i] )
@@ -51,12 +50,11 @@ function user_data_add( o, kp, rootkp, str,         preview, _, v) {
 function tapp_handle_exit( exit_code,       s, v, _ ){
     if (exit_is_with_cmd()){
         s = comp_navi_get_cur_rootkp(o, LSENV_KP)
-        v = o[ LSENV_KP, s, "version" ]
+        v = o[ LSENV_KP, s, "info", "\"version\"" ]
         if (v == "") return
         split( s, _, ROOTKP_SEP )
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_FINAL_COMMAND", FINALCMD ) )
-        tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_CANDIDATE", _[3] ) )
-        tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_VERSION", v ) )
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_APP_CANDIDATE", _[3] "=" v ) )
     }
 }
 

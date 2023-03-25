@@ -1,0 +1,164 @@
+# shellcheck shell=sh disable=SC3043
+# Reference: https://cloud.tencent.com/developer/article/1773630
+
+___x_cmd_proxy_go(){
+    param:subcmd ___x_cmd_proxy_go \
+        get                  "Get current proxy" \
+        auto                 "Set the goproxy and gosumdb to recommended mirror" \
+        unset                "Set the download mirror" \
+        gosumdb              "Operations for gosumdb" \
+        set                  "Set the download mirror" \
+        service              "Provide mirror service in docker or native binary" \
+        tutorial             "Tutorial for setting goproxy "
+
+    param:subcmd:try
+    param:run
+
+    if ! command -v go >/dev/null; then
+        proxy:error "command not found. go, you should install go in your system."
+        return 1
+    else
+        ___x_cmd_proxy___util_current_mirror "go"
+    fi
+}
+
+___x_cmd_proxy_go_get()(
+    param:void
+    local GOPROXY
+    eval "$(go env | grep -i GOPROXY)"
+    printf "%s" "$GOPROXY"
+)
+
+___x_cmd_proxy_go_url(){
+    param:dsl <<A
+option:
+    #1    "Mirror name"       <mirror-name>=qiniu    = ali goproxy qiniu official
+A
+    param:run
+
+    case "$1" in
+        ali)             printf https://mirrors.aliyun.com/goproxy/             ;;
+        goproxy)         printf https://goproxy.io/zh/                          ;;
+        qiniu)           printf https://goproxy.cn                              ;;
+        official)        printf https://proxy.golang.org                        ;;
+    esac
+}
+
+# Using web to judge instead of dig command
+# net is-in-china
+___x_cmd_proxy_go_auto(){
+    param:void
+    # if dig sh.x-cmd.com 2>/dev/null | grep gitee 2>/dev/null 1>dev/null; then
+    #     ___x_cmd_proxy_go set ali
+    #     ___x_cmd_proxy_go sum set qiniu
+    # else
+    #     : Why
+    # fi
+
+    ___x_cmd_proxy_go set ali
+    ___x_cmd_proxy_go gosumdb set qiniu
+}
+
+___x_cmd_proxy_go_set(){
+    param:dsl <<A
+option:
+    #1    "Mirror name"       <mirror-name>=qiniu    = ali goproxy qiniu official
+A
+    param:run
+
+    local url
+    if ! url="$(___x_cmd_proxy_go_url "$1")"; then
+        proxy:error "Unrecognized source name"
+        return 1
+    fi
+
+    local code
+    if [ "$(go version | awk '{ a=substr($3, 3); if(a<1.13) print 1; else print 0 }')" = 1 ]; then
+        code="
+    export GOPROXY=$url
+    export GO111MODULE=on
+"
+    else
+        code="
+    go env -w GO111MODULE=on
+    go env -w GOPROXY="${url},direct"
+"
+    fi
+
+    eval "$code"
+    proxy:info -m "Seting the GORPOXY and GO111MODULE env.
+url: $(___x_cmd_proxy_go_get)"
+}
+
+___x_cmd_proxy_go_gosumdb(){
+    param:dsl <<A
+subcommands:
+    set                    "Set the download mirror"
+    unset                  "Unset the download mirror"
+A
+    param:run
+
+    "___x_cmd_proxy_go_gosumdb_${PARAM_SUBCMD}" "$@"
+}
+
+___x_cmd_proxy_go_gosumdb_set(){
+    param:void
+    case "${1:-qiniu}" in
+        qiniu|io|goproxoy.io)   ______x_cmd_proxy_go_set    https://goproxy.cn ;;
+        *)                      export GOSUMDB=gosum.io+ce6e7565+AY5qEHUk/qmHc5btzW45JVoENfazw8LielDsaI+lEbq6 ;;
+    esac
+}
+
+___x_cmd_proxy_go_gosumdb_unset(){
+    param:void
+    export GOSUMDB=
+}
+
+___x_cmd_proxy_go_unset(){
+    param:void
+    local code
+
+    # TODO: To be optimized.
+    if [ "$(go version | awk '{ a=substr($3, 3); if(a<1.13) print 1; else print 0 }')" = 1 ]; then
+        code="export GOPROXY="
+    else
+        code="go env -u GOPROXY"
+    fi
+
+    eval "$code"
+    proxy:info -m "unset the GORPOXY and GO111MODULE env.
+url: $(___x_cmd_proxy_go_get)"
+}
+
+# help doc: https://goproxy.io/zh/docs/enterprise.html
+___x_cmd_proxy_go_service(){
+    param:void
+    if docker ps >/dev/null 2>&1; then
+        docker run -d -p80:8081 goproxy/goproxy "$@"
+    elif :; then
+        : Build directly.
+    else
+        # Just download the exe file.
+        ./bin/goproxy -listen=0.0.0.0:80 -cacheDir=/tmp/test -proxy https://goproxy.io -exclude "git.corp.example.com,rsc.io/private"
+    fi
+}
+
+___x_cmd_proxy_go_tutorial(){
+    param:void
+    cat <<A
+Windows Powershell:
+
+Format: 
+    \$env:GOPROXY = <url>
+
+Example:
+    \$env:GOPROXY = "https://goproxy.cn"
+
+Windows:
+    1. 右键 我的电脑 -> 属性 -> 高级系统设置 -> 环境变量
+    2. 在 “[你的用户名]的用户变量” 中点击 ”新建“ 按钮
+    3. 在 “变量名” 输入框并新增 “GOPROXY”
+    4. 在对应的 “变量值” 输入框中新增 “https://goproxy.io,direct”
+    5. 最后点击 “确定” 按钮保存设置    
+A
+}

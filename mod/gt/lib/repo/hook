@@ -23,7 +23,7 @@ ___x_cmd_gt_repo_hook_ls(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 options:
-    --repo              "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r           "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --page              "page"                                                               <>=""
     --per_page          "per_page"                                                           <>=""
     --json|-j           "output origin json data"
@@ -33,14 +33,14 @@ options:
 
     ___X_CMD_UI_STATIC=1  ___gt_ui_mutual '___ui_table_json Id=.id Url=.url ResultCode=.result_code PushEvents=.push_events TagPushEvent=.tag_push_events \
         IssuesEvent=.issues_events NoteEvent=.note_events MergeRequestEvent=.merge_requests_events -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/repos/${owner_repo}/hooks"
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/hooks"
 
     ___x_cmd_gt_repo_hook_ls_status_handler "$@"
 }
 
 ___x_cmd_gt_repo_hook_ls_status_handler(){
     if [ ! -t 1 ] || [ -n "$ENFORCE_JSON" ]; then
-        ___x_cmd_gt_curl_error
+        ___x_cmd_gt_http_error
         return
     fi
     local _sep
@@ -65,14 +65,16 @@ ___x_cmd_gt_repo_hook_info(){
     param:dsl       '
 options:
     #1                "webhooks id"                                                        <>:NatureNumber
-    --repo            "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r         "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --json|-j         "output origin json data"
 '
     param:run
-    local id="${1:?"Please provide webhooks id"}"
+    [ -n "$1" ] || M='accepts 1 arg(webhooks id), received empty' arg:ret:64
+    local id="$1"
     ___x_cmd_gt_param_init_owner_repo
 
-    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/hooks/${id}" | ___x_cmd_gt_repo_hook_result_status_handler
+    ___x_cmd_gt_curl get "/repos/${owner_repo}/hooks/${id}" | \
+        ___x_cmd_gt_repo_hook____ui_handler Info "$id"
 }
 
 # EndSection
@@ -86,7 +88,7 @@ ___x_cmd_gt_repo_hook_create(){
 type:
     HookEncryptionType =  password signkey ""
 options:
-    --repo                      "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r                   "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --url                       "webhooks remote url"                                                <>:Address
 
     --encryption_type           "encryption type"                                                    <>:HookEncryptionType=""
@@ -111,7 +113,8 @@ options:
     gt:debug "$gen_gt_json"
 
     ___x_cmd_gt_param_init_owner_repo
-    ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner_repo}/hooks" "gen_gt_json" | ___x_cmd_gt_repo_hook_result_status_handler
+    ___x_cmd_gt_curl post "/repos/${owner_repo}/hooks" "gen_gt_json" | \
+        ___x_cmd_gt_repo_hook____ui_handler Creating
 }
 
 # EndSection
@@ -125,7 +128,7 @@ type:
     HookEncryptionType =  password signkey ""
 options:
     #1                          "webhooks id"                                                        <>:NatureNumber
-    --repo                      "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r                   "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --url                       "webhooks remote url"                                                <>:Address
 
     --encryption_type           "encryption type"                                                    <>:HookEncryptionType=""
@@ -138,7 +141,8 @@ options:
     --json|-j                   "output origin json data"
 '
     param:run
-    local id="${1:?"Please provide webhooks id"}"
+    [ -n "$1" ] || M='accepts 1 arg(webhooks id), received empty' arg:ret:64
+    local id="$1"
     case "$encryption_type" in
         password)          encryption_type=0                    ;;
         signkey)           encryption_type=1                    ;;
@@ -151,31 +155,8 @@ options:
     gt:debug "$gen_gt_json"
 
     ___x_cmd_gt_param_init_owner_repo
-    ___x_cmd_gt_curl patch "https://gitee.com/api/v5/repos/${owner_repo}/hooks/${id}" "gen_gt_json" | ___x_cmd_gt_repo_hook_result_status_handler
-}
-
-# EndSection
-
-# Section: status handle
-
-___x_cmd_gt_repo_hook_result_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . id=.id url=.url result_code=.result_code password=.password created_at=.created_at push_events=.push_events \
-            tag_push_events=.tag_push_events issues_events=.issues_events note_events=.note_events merge_requests_events=.merge_requests_events gt_resp_body=.
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true  "Resolve successfully" "Id: $id" "Url: $url" "ResultCode: $result_code" "Password: $password" "Created At: $created_at" "Push Events: $push_events" \
-            "Tag Push Events: $tag_push_events" "Issues Events: $issues_events" "Note Events: $note_events" "Merge Requests Events $merge_requests_events"
-        else
-            ___x_cmd_ui_tf false "Resolve $owner_repo repo failure: $id"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+    ___x_cmd_gt_curl patch "/repos/${owner_repo}/hooks/${id}" "gen_gt_json" | \
+        ___x_cmd_gt_repo_hook____ui_handler Modify
 }
 
 # EndSection
@@ -187,22 +168,25 @@ ___x_cmd_gt_repo_hook_rm(){
     param:dsl       '
 options:
     #1                "webhooks id"                                                        <>:NatureNumber
-    --repo            "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r         "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --yes|-y          "Ignore remove prompt interception"
 '
     param:run
-    local id="${1:?"Please provide webhooks id"}"
+    [ -n "$1" ] || M='accepts 1 arg(webhooks id), received empty' arg:ret:64
     ___x_cmd_gt_param_init_owner_repo
 
-    local gt_resp_body
     [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to $owner_repo remove hook: $(___x_cmd_ui bold red "$id") ?" || return 1
-    if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/repos/${owner_repo}/hooks/${id}" | ___x_cmd_gt____handle_no_content; then
-        ___x_cmd_ui_tf true  "Remove $id hook to repo $owner_repo successfully"
-    else
-        ___x_cmd_ui_tf false "Remove $id hook failure: $owner_repo"  "ErrorMsg:"
-        ___x_cmd_gt____handle_resp
-        return 1
-    fi
+    ___x_cmd_gt_curl del "/repos/${owner_repo}/hooks/${id}" | (
+            [ -z "$___X_CMD_GT_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "Remove $id hook to repo $owner_repo successfully:"
+            else
+                ___x_cmd_ui_tf false "Remove $id hook to repo $owner_repo failure:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
 }
 
 # EndSection
@@ -215,20 +199,57 @@ ___x_cmd_gt_repo_hook_test(){
     param:dsl       '
 options:
     #1                "webhooks id"                                                        <>:NatureNumber
-    --repo            "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r         "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
 '
     param:run
-    local id="${1:?"Please provide webhooks id"}"
+    [ -n "$1" ] || M='accepts 1 arg(webhooks id), received empty' arg:ret:64
+    local id="$1"
     ___x_cmd_gt_param_init_owner_repo
 
-    local gt_resp_body
-    if ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner_repo}/hooks/${id}/tests" | ___x_cmd_gt____handle_no_content; then
-        ___x_cmd_ui_tf true  "Test $id hook on repo $owner_repo successfully. Please check remote url is received"
-    else
-        ___x_cmd_ui_tf false "Test $id hook failure: $owner_repo"  "ErrorMsg:"
-        ___x_cmd_gt____handle_resp
-        return 1
-    fi
+    ___x_cmd_gt_curl post "/repos/${owner_repo}/hooks/${id}/tests" | (
+            [ -z "$___X_CMD_GT_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "Test $id hook on repo $owner_repo successfully. Please check remote url is received:"
+            else
+                ___x_cmd_ui_tf false "Test $$id hook to $owner_repo failure:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
 }
 
+# EndSection
+
+# Section: repo hook UI
+___x_cmd_gt_repo_hook____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        _data="url=.url result_code=.result_code password=.password created_at=.created_at push_events=.push_events tag_push_events=.tag_push_events issues_events=.issues_events note_events=.note_events merge_requests_events=.merge_requests_events"
+        case "$1" in
+            Creating|Modify)
+                _inf_msg="$1 webhooks on $owner_repo successfully"
+                _err_msg="$1 webhooks on $owner_repo failure"
+            ;;
+            Info)
+                _inf_msg="$owner_repo $2 webhooks information"
+                _err_msg="No find any repo webhooks data by $owner_repo $2"
+            ;;
+        esac
+        eval x jo env . _id=.id gt_resp_err=.message gt_resp_err=.error "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${_id:+"ID: $_id"} ${result_code:+"result_code: $result_code"} ${password:+"Password: $password"} ${created_at:+"Created At: $created_at"} \
+                ${push_events:+"Push Events: $push_events"} ${tag_push_events:+"Tag Push Events: $tag_push_events"} ${issues_events:+"Issues Events: $issues_events"} \
+                ${note_events:+"Note Events: $note_events"} ${merge_requests_events:+"Merge Requests Events: $merge_requests_events"} ${url:+"URL: $url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+}
 # EndSection

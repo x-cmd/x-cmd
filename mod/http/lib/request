@@ -54,30 +54,27 @@ ___x_cmd_http_request() {
     local header_filepath data_filepath
     header_filepath="$(___x_cmd_http_resp header_filepath)"
     data_filepath="$(___x_cmd_http_resp body_filepath)"
+    status_filepath="$(___x_cmd_http_resp status_filepath)"
 
     if [ "$X" = GET ] || [ "$X" = DELETE ] || [ "$X" = HEAD ]; then
         http:debug "http request data:$(______x_cmd_http_qs_dump curl)"
         http:debug curl -D "$header_filepath" -X "$X" "$(______x_cmd_http_qs_dump curl)" "$(___x_cmd_http_header_dump curl)" "$paths"
-        eval "curl -D $header_filepath -X $X $(______x_cmd_http_qs_dump curl) $(___x_cmd_http_header_dump curl) \"$paths\" 1>$data_filepath" 2>/dev/null #2>(http:debug)
+        eval "curl -D $header_filepath -X $X $(______x_cmd_http_qs_dump curl) -o $data_filepath -w \"%{http_code}\" $(___x_cmd_http_header_dump curl) \"$paths\" 1>$status_filepath" 2>/dev/null #2>(http:debug)
     else
-        http:debug curl -D "$header_filepath" -X "$X" "$(___x_cmd_http_header_dump curl)" -d "@$tmp" "$paths" "1 > $data_filepath 2>/dev/null"
-        eval "curl -D $header_filepath -X $X $(___x_cmd_http_header_dump curl) -d @$tmp \"$paths\" 1> $data_filepath 2>/dev/null" #2>(http:debug)
+        http:debug curl -D "$header_filepath" -X "$X" "$(___x_cmd_http_header_dump curl)"  -o "$data_filepath" -w "%{http_code}" -d "@$tmp" "$paths" "1 > $status_filepath 2>/dev/null"
+        eval "curl -D $header_filepath -X $X $(___x_cmd_http_header_dump curl) -o $data_filepath -w \"%{http_code}\" -d @$tmp \"$paths\" 1> $status_filepath 2>/dev/null" #2>(http:debug)
     fi
     [ "$tmp" != "-" ] && rm "$tmp"
 
     http:debug "Response Header is: $(cat "$header_filepath")"
 
-    local a b c
-    # shellcheck disable=SC2034
-    read -r a b c <<A
-    "$(cat "$header_filepath")"
-A
-    if [ -n "$b" ] && [ "$b" -ge 200 ] && [ "$b" -le 299 ]; then
+    local status_code; status_code="$(cat "$status_filepath")"
+    if [ -n "$status_code" ] && [ "$status_code" -ge 200 ] && [ "$status_code" -le 299 ]; then
         cat "$data_filepath"
         return 0
     fi
 
-    http:error "HttpCode is $b, Code is 1"
+    http:error "HttpCode is $status_code, Code is 1"
     return 1
 }
 

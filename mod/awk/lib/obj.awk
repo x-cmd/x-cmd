@@ -12,6 +12,18 @@ function l_len( o, kp ){
     return o[ kp L ]
 }
 
+function l_add(o, kp, v){
+
+}
+
+function l_diff(o, kp, o2, kp2, a, d, m){
+
+}
+
+function gt_repo_member_add(a){
+
+}
+
 function d_put(o, kp, k, v) {
     o[ kp, k ] = v
 }

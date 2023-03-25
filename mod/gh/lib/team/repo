@@ -3,7 +3,7 @@
 ___x_cmd_gh_team_repo(){
     param:subcmd ___x_cmd_gh_team_repo                                                      \
         'ls|l'          "Lists a team's repositories visible to the authenticated user."    \
-        add             "Add repository to team"                                            \
+        add             "Add exist repository to team"                                      \
         'edit|ed'       "Update the team's permissions to the repository"                   \
         check           "Checks whether a team has permission for a repository."            \
         rm              "remove org team repo"
@@ -36,29 +36,28 @@ options:
 }
 # EndSection
 
-# Section: Create
+# Section: Add
 # shellcheck disable=SC2154
 # https://docs.github.com/en/rest/teams/teams#add-or-update-team-repository-permissions
 ___x_cmd_gh_team_repo_add() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    #1              "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    #1              "The organization repo name"                                        <>:RepoName
     --org           "The organization name"                                             <>:Address
     --team          "The slug of the team name."                                        <>
-    --permission    "The permission to grant the team on this repo"                     <>="push"
-
+    --permission|-p "The permission to grant the team on this repo"                     <>="push"     = pull triage push maintain admin
     --json|-j       "output json data"
 A
- param:run
-
-    local repo="$1"
-    local gen_gh_json
+    param:run
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -org -team)"
     gh:debug "$gen_gh_json"
-
-    ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl put  "/orgs/${org##*/}/teams/$team/repos/${owner_repo}" "gen_gh_json" | _____x_cmd_team_repo_ui_utils Creating
+    local repo=
+    for repo in "$@"; do
+        repo="${repo##*/}"
+        ___x_cmd_gh_curl put  "/orgs/${org##*/}/teams/$team/repos/${org}/${repo}" "gen_gh_json" | ___x_cmd_team_repo____ui_handler Add
+    done
 }
 # EndSection
 
@@ -68,22 +67,19 @@ ___x_cmd_gh_team_repo_edit() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    #1              "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    #1              "The organization repo name"                                        <>:RepoName
     --org           "The organization name"                                             <>:Address
     --team          "The slug of the team name."                                        <>
-    --permission    "The permission to grant the team on this repo"                     <>="push"
-
+    --permission|-p "The permission to grant the team on this repo"                     <>="push"     = pull triage push maintain admin
     --json|-j       "output json data"
 A
- param:run
-
-    local repo="$1"
-    local gen_gh_json
+    param:run
+    local repo="${1##*/}"
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -org -team)"
     gh:debug "$gen_gh_json"
 
-    ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl put  "/orgs/${org##*/}/teams/$team/repos/${owner_repo}" "gen_gh_json" | _____x_cmd_team_repo_ui_utils Update
+    ___x_cmd_gh_curl put  "/orgs/${org##*/}/teams/${team}/repos/${org}/${repo}" "gen_gh_json" | ___x_cmd_team_repo____ui_handler Update
 }
 # EndSection
 
@@ -93,15 +89,14 @@ ___x_cmd_gh_team_repo_check() {
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    #1          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-    --org       "The organization name."                                            <>:Address
-    --team      "The slug of the team name."                                        <>
+    #1              "The organization repo name"                                        <>:RepoName
+    --org           "The organization name"                                             <>:Address
+    --team      "The slug of the team name."                                            <>
 '
     param:run
 
-    local repo="$1"
-    ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl get "/orgs/${org##*/}/teams/${team}/repos/$owner_repo" | _____x_cmd_team_repo_ui_utils Check
+    local repo=
+    ___x_cmd_gh_curl get "/orgs/${org##*/}/teams/${team}/repos/${org}/${repo}" | ___x_cmd_team_repo____ui_handler Check
 }
 # EndSection
 
@@ -112,7 +107,7 @@ ___x_cmd_gh_team_repo_rm() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    #1              "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    #1              "The organization repo name"                                        <>:RepoName
     --org           "The organization name"                                             <>:Address
     --team          "The slug of the team name."                                        <>
 
@@ -120,26 +115,28 @@ options:
 A
     param:run
 
-    local reponame
-    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $team to remove repo: $(___x_cmd_ui bold red "$reponame") ?" || return
-    local repo="$1"
-    ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl delete "/orgs/${org##*/}/teams/${team}/repos/${owner_repo}" | (
-        x jo env . gh_resp_err=.message
-        if ___x_cmd_gh_http_error; then
-            ___x_cmd_ui_tf  true "del repo $reponame  success"
-        else
-            ___x_cmd_ui_tf false "del repo failure: $reponame."
-            ___x_cmd_gh____handle_resp
-            return 1
-        fi
-    )
+    local repo=
+    for repo in "$@"; do
+        repo="${repo##*/}"
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $(___x_cmd_ui bold red "$team") team remove the repo: $(___x_cmd_ui bold red "$repo") ?" || return
+        ___x_cmd_gh_curl del "/orgs/${org}/teams/${team}/repos/${org}/${repo}" | (
+                [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+                x jo env . gh_resp_msg=.message gh_resp_err=.errors
+                if ___x_cmd_gh_http_error; then
+                    ___x_cmd_ui_tf  true "Remove repo $repo from ${org}/${team} team successfully:"
+                else
+                    ___x_cmd_ui_tf false "Remove repo $repo from ${org}/${team} team failure:" >&2
+                    ___x_cmd_gh____handle_resp
+                    return 1
+                fi
+            )
+    done
 }
 # EndSection
 
-# Section: org team utils
+# Section: team repo UI
 # shellcheck disable=SC2154
-_____x_cmd_team_repo_ui_utils(){
+___x_cmd_team_repo____ui_handler(){
     if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         return
@@ -147,19 +144,19 @@ _____x_cmd_team_repo_ui_utils(){
     (
         case "$1" in
             Check)
-                _msg="has permission for repo $name"
-                _error_msg="no permission for repo $name."
+                _inf_msg="The team $team has permission for repo $org/$repo"
+                _err_msg="The team $team NO permission for repo $org/$repo"
                 ;;
-            Creating|Update)
-                _msg="$1 repo $name  success"
-                _error_msg="$1 repo failure: $name."
+            Add|Update)
+                _inf_msg="$1 $repo repo to ${org}/${team} team successfully"
+                _err_msg="$1 $repo repo to ${org}/${team} team failure"
                 ;;
         esac
-        x jo env . gh_resp_err=.message
+        x jo env . gh_resp_msg=.message gh_resp_err=.errors
         if ___x_cmd_gh_http_error 2>/dev/null; then
-            ___x_cmd_ui_tf true "$_msg"
+            ___x_cmd_ui_tf  true "${_inf_msg}:"
         else
-            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi

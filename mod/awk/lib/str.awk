@@ -204,3 +204,15 @@ function str_remove_style(text){
     return str_remove_esc( text )
 }
 
+function str_divide_( astr, _sep,     i ){
+    i = index( astr, _sep )
+    x_1 = substr( astr, 1, i-1 )
+    x_2 = substr( astr, i+1 )
+}
+
+function str_divide( astr, _sep, ret,    i ){
+    i = index( astr, _sep )
+    ret[1] = substr( astr, 1, i-1 )
+    ret[2] = substr( astr, i+1 )
+}
+

@@ -18,12 +18,12 @@ ___x_cmd_tea_repo_branch(){
 # Section:list & info
 # https://try.gitea.io/api/swagger#/repository/repoListBranches
 ___x_cmd_tea_repo_branch_ls(){
-    param:scope     ___x_cmd_gitea
+    param:scope     ___x_cmd_tea
     param:dsl       '
 options:
     --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-    --per_page      "Results per page"                                                  <>=30
-    --page          "Page number of the results to fetch."                              <>=1
+    --limit         "Results per page"                                                  <>:Numbers="30"
+    --page          "Page number of the results to fetch."                              <>:Numbers="1"
     --json|-j       "output json data"
 '
     param:run
@@ -32,12 +32,12 @@ options:
     local ___tea_error_msg="get repo ${owner_repo} branch list fail"
 
     ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json BranchName=.name Protected=.protected LastCommit=.commit.id -- $@' \
-         ___x_cmd_tea_get_multi "/repos/${owner_repo}/branches" per_page page
+         ___x_cmd_tea_get_multi "/repos/${owner_repo}/branches" limit page
 }
 
 # https://try.gitea.io/api/swagger#/repository/repoListBranches
 ___x_cmd_tea_repo_branch_info(){
-    param:scope     ___x_cmd_gitea
+    param:scope     ___x_cmd_tea
     param:dsl       '
 options:
     #1          "branch name"                                                       <>:Branch
@@ -55,7 +55,7 @@ options:
 # Section: create & default
 # https://try.gitea.io/api/swagger#/repository/repoCreateBranch
 ___x_cmd_tea_repo_branch_create(){
-    param:scope     ___x_cmd_gitea
+    param:scope     ___x_cmd_tea
     param:dsl       '
 options:
     --repo                "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
@@ -103,13 +103,12 @@ ___x_cmd_tea_repo_branch_protection(){
 # Section:protection
 # https://try.gitea.io/api/swagger#/repository/repoListBranchProtection
 ___x_cmd_tea_repo_branch_protection_ls(){
-    param:scope     ___x_cmd_gitea
+    param:scope     ___x_cmd_tea
     param:dsl       '
 options:
     --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-
-    --per_page      "Results per page"                                                  <>=30
-    --page          "Page number of the results to fetch."                              <>=1
+    --limit         "Results per page"                                                  <>:Numbers="30"
+    --page          "Page number of the results to fetch."                              <>:Numbers="1"
     --json|-j       "output json data"
 '
     param:run
@@ -139,12 +138,13 @@ options:
 
         x jo env . name=.branch_name  \
         enablePush=.enable_push pushWhitelist=.push_whitelist_usernames \
-        pushWhitelistTeams=.push_whitelist_teams error=.
+        pushWhitelistTeams=.push_whitelist_teams tea_resp_err=.message
         if [ -n "$name" ]; then
             ___x_cmd_ui_tf true "protection branch $1 info" "enablePush:$enablePush" \
                 "pushWhitelist:$pushWhitelist" "pushWhitelistTeams:$pushWhitelistTeams"
         else
-            ___x_cmd_ui_tf false "protection branch $1 info failed" "ErrorMsg:$error"
+            ___x_cmd_ui_tf false "protection branch $1 info failed"
+            ___x_cmd_tea____handle_resp
             return 1
         fi
     )
@@ -180,7 +180,7 @@ options:
     local gen_tea_json
     gen_tea_json="$(param:option2json -repo)"
 
-    tea_log debug "data:$gen_tea_json"
+    tea:debug "data:$gen_tea_json"
     ___x_cmd_tea_param_init_owner_repo
     ___x_cmd_tea_curl post "/repos/${owner_repo}/branch_protections" "gen_tea_json" | (
         if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
@@ -189,11 +189,12 @@ options:
             return
         fi
 
-        x jo env . name=.branch_name msg=.message
+        x jo env . name=.branch_name tea_resp_err=.message
         if [ -n "$name" ]; then
             ___x_cmd_ui_tf true "set protection branch $1 success"
         else
-            ___x_cmd_ui_tf false "set protection branch $1 failed." "ErrorMsg:$msg"
+            ___x_cmd_ui_tf false "set protection branch $1 failed."
+            ___x_cmd_tea____handle_resp
             return 1
         fi
     )
@@ -209,11 +210,12 @@ options:
 
     ___x_cmd_tea_param_init_owner_repo
     ___x_cmd_tea_curl delete "/repos/${owner_repo}/branch_protections/${1}"| (
-        x jo env . error=.
+        x jo env . tea_resp_err=.message
         if ___x_cmd_tea_http_error; then
             ___x_cmd_ui_tf  true "del ${1} branch protection success"
         else
-            ___x_cmd_ui_tf false "del ${1} branch protection fail" "ErrorMsg:$error"
+            ___x_cmd_ui_tf false "del ${1} branch protection fail"
+            ___x_cmd_tea____handle_resp
             return 1
         fi
     )
@@ -247,11 +249,12 @@ _____x_cmd_tea_branch_ui_utils()(
             error_msg="Failed to set repo default branch"
             ;;
     esac
-    x jo env . name=.name error=. $data
+    eval x jo env . name=.name tea_resp_err=.message "$data"
     if [ -n "$name" ]; then
         ___x_cmd_ui_tf true "$msg" ${name+"Name: $name"} ${Protected+"Protected: $Protected"}  ${sha+"LastCommit: $sha"} ${url+"Url: $url"}
     else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        ___x_cmd_ui_tf false "$error_msg"
+        ___x_cmd_tea____handle_resp
         return 1
     fi
 )

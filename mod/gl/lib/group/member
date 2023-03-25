@@ -1,0 +1,189 @@
+
+
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+# https://docs.gitlab.com/ee/api/members.html
+___x_cmd_gl_group_member(){
+    param:subcmd ___x_cmd_gl_group_member              \
+        "ls|l"              "List member"                   \
+        "info|i"            "Show groups member user info"  \
+        add                 "Add member"                    \
+        "edit|ed"           "Update member"                 \
+        rm                  "Remove member"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_group_member _param_help_doc
+    return 1
+}
+
+# Section: List
+# shellcheck disable=SC2154
+# https://docs.gitlab.com/ee/api/members.html#list-all-members-of-a-group-or-project
+___x_cmd_gl_group_member_ls(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --group         "The ID or URL-encoded path of the group."      <>
+    --query         "A query string to search for members"          <>=""
+    --user_ids      "Filter the results on the given user IDs"      <>:integer_array=""
+
+    --json|-j       "output json data"
+'
+    param:run
+
+     local ___gl_error_msg="get groups list fail"
+    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id Username=.username Web_url=.web_url State=.state -- $@' \
+        ___x_cmd_gl_get_multi "/groups/${group}/members" query user_ids
+}
+# EndSection
+
+# Section: Info
+# shellcheck disable=SC2154
+# https://docs.gitlab.com/ee/api/members.html#get-a-member-of-a-group-or-project
+___x_cmd_gl_group_member_info(){
+    param:scope     ___x_cmd_gl
+    param:dsl      '
+options:
+    #1                   "The user ID of the member"                        <>:UserName
+    --group              "The ID or URL-encoded path of the group."         <>
+    --json|-j            "output json data"
+
+'
+    param:run
+    ___x_cmd_gl_curl get "/groups/${group}/members/${1}" | _____x_cmd_gl_group_member_ui_utils User "$1"
+}
+# EndSection
+
+# Section: Add
+# shellcheck disable=SC2181
+# https://docs.gitlab.com/ee/api/members.html#add-a-member-to-a-group-or-project
+___x_cmd_gl_group_member_add(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                      "The user ID of the new member"                                             <>
+    --group                 "The ID or URL-encoded path of the group."                                  <>
+    --access_level          "A valid access level"                                                      <>:Number = 10 20 30 40 50 guest reporter developer maintainer owner
+    --expires_at            "A date string in the format YEAR-MONTH-DAY"                                <>=""
+    --invite_source         "The source of the invitation that starts the member creation process."     <>=""
+    --tasks_to_be_done      "Tasks the inviter wants the member to focus on."                           <>=""
+    --tasks_project_id      "The project ID in which to create the task issues."                        <>=""
+
+    --json|-j               "output json data"
+'
+    param:run
+
+
+    local user_id="${___X_CMD_TX}"
+    _____x_cmd_gl_member_util
+
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -group +user_id)"
+    gl:debug "$gen_gl_json"
+
+    for user_id in "$@"; do
+        {
+            x tmpl "$gen_gl_json" "$user_id" | ___x_cmd_gl_curl post  "/groups/${group}/members" "@-" | _____x_cmd_gl_group_member_ui_utils Add
+        }
+    done
+}
+# EndSection
+
+# Section: Edit
+# https://docs.gitlab.com/ee/api/members.html#edit-a-member-of-a-group-or-project
+___x_cmd_gl_group_member_edit(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                      "The user ID of the new member"                                             <>
+    --group                 "The ID or URL-encoded path of the group."                                  <>
+    --expires_at            "A date string in the format YEAR-MONTH-DAY"                                <>=""
+    --access_level          "A valid access level"                                                      <>:Number = 10 20 30 40 50 guest reporter developer maintainer owner
+
+    --json|-j               "output json data"
+'
+    param:run
+
+    _____x_cmd_gl_member_util
+
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -group -user_id)"
+    gl:debug "$gen_gl_json"
+
+    ___x_cmd_gl_curl put "/groups/${group}/members/$1" "gen_gl_json" | _____x_cmd_gl_group_member_ui_utils Update
+}
+# EndSection
+
+# Section: Remove
+# shellcheck disable=SC2181,SC2154
+# https://docs.gitlab.com/ee/api/members.html#remove-a-member-from-a-group-or-project
+___x_cmd_gl_group_member_rm(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                      "The user ID of the new member"              <>
+    --group                 "The ID or URL-encoded path of the group."   <>
+    --skip_subresources     "Whether the deletion of direct memberships of the removed member in subgroups and projects should be skipped."      <>:bool="false"
+    --unassign_issuables    "Whether the removed member should be unassigned from any issues or merge requests inside a given group or project." <>:bool="false"
+
+    --yes|-y                "Ignore remove prompt interception"
+'
+    param:run
+
+    if [ $# -eq 0 ];then
+        gl:error "At least one user's spatial address is needed"
+        return 1
+    fi
+
+    local username
+    for username in "$@"; do
+        {
+            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure remove member of groups: $(___x_cmd_ui bold red "$username") ?" || continue
+            ___x_cmd_gl_curl delete "/groups/${group}/members/${username}" | (
+                x jo env . gl_resp_err=.error gl_resp_err=.message
+                if ___x_cmd_gl_http_error; then
+                    ___x_cmd_ui_tf  true "Remove member $username successfully."
+                else
+                    ___x_cmd_ui_tf false "Remove member $username failure."
+                    ___x_cmd_gl____handle_resp
+                    return 1
+                fi
+            )
+
+        }
+    done
+}
+# EndSection
+
+# Section: UI Util
+_____x_cmd_gl_group_member_ui_utils(){
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gl_http_error
+        return
+    fi
+    (
+        case "$1" in
+            User)
+                _data="username=.username url=.web_url"
+                _msg="get user info success"
+                _error_msg="Couldn't find any data by $2 in groups $group"
+                ;;
+            Add|Update)
+                _data="username=.username url=.web_url access_level=.access_level"
+                _msg="$1 user successfully"
+                _error_msg="$1 user failure."
+                ;;
+        esac
+        eval x jo env . _id=.id gl_resp_err=.error gl_resp_err=.message "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf true "$_msg" "ID: $_id" ${username:+"Username: $username"} ${url:+"Url: $url"} ${access_level:+"Access_level: $access_level"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

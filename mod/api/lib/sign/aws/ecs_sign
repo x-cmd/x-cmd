@@ -1,0 +1,70 @@
+# shellcheck    shell=sh            disable=SC2039,SC1090,SC3043,SC2263,2154
+___x_cmd_aws_ecs_header(){
+    local secret_key="${secret_key:-"$(x aws key get access_key)"}"
+    local secret_id="${secret_id:-"$(x aws key get access_id)"}"
+    local algorithm='AWS4-HMAC-SHA256'
+    local signed_headers
+
+    local payload_hash
+    eval "$( (  local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
+                printf "%s\n" "Action=${action}" "Version=${version}" "$*") | sort | {
+        command awk -v FS="="  -v method="$method" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/ord.awk" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/url.awk" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"  \
+                    -f "$___X_CMD_ROOT_MOD/aws/lib/awk/sign.awk"
+    })"
+    payload_hash=$(printf "%s" "${param}" | x openssl sha256)
+    payload_hash="${payload_hash##*"(stdin)= "}"
+
+    eval "$( (  local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
+                printf "%s" "${canonical_headers}") | sort |
+             command awk -v FS=":"  \
+             -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"  \
+             -f "${___X_CMD_ROOT_MOD}/aws/lib/awk/header.awk"
+            )"
+
+
+    local canonical_request
+    canonical_request=$(printf "%s\n%s\n%s\n%s\n%s\n%s" $method $canonical_uri $request_parameters "$canonical_headers" $signed_headers "$payload_hash")
+    local credential_scope
+    credential_scope="$datestamp/$region/$service/aws4_request"
+    local canonical_request_sha256
+    canonical_request_sha256=$(printf "%s" "$canonical_request" | x openssl sha256)
+    canonical_request_sha256="${canonical_request_sha256##*"(stdin)= "}"
+
+    local string_to_sign
+    string_to_sign=$(printf "%s\n%s\n%s\n%s" $algorithm  $amzdate $credential_scope "$canonical_request_sha256")
+    api:debug "sign string:${string_to_sign}"
+
+    sign1="$(printf "%s" "$datestamp" | x openssl sha256 -hmac "AWS4$secret_key")"
+    sign2="$(printf "%s" "$region" | x openssl sha256 -hex -mac HMAC -macopt hexkey:"${sign1##*"(stdin)= "}")"
+    sign3="$(printf "%s" "$service" | x openssl sha256 -hex -mac HMAC -macopt hexkey:"${sign2##*"(stdin)= "}")"
+    sign4="$(printf "%s" "aws4_request" | x openssl sha256 -hex -mac HMAC -macopt hexkey:"${sign3##*"(stdin)= "}")"
+    local signature
+    signature="$(printf "%s"  "$string_to_sign" | x openssl sha256 -hex -mac HMAC -macopt hexkey:"${sign4##*"(stdin)= "}")"
+    signature="${signature##*"(stdin)= "}"
+
+    header="-H \"Authorization:${algorithm} Credential=${secret_id}/${credential_scope}, SignedHeaders=${signed_headers}, Signature=${signature}\""
+}
+
+___x_cmd_aws_ecs_url_gen(){
+    local method="${1}"
+    local canonical_uri="${2}"
+    shift 2
+    local service="${service:-"ec2"}"
+    local region="${region:-"us-east-1"}"
+    local host="${service}.${region}.amazonaws.com"
+    local version="2016-11-15"
+    local request_parameters
+    local amzdate
+    amzdate="$(date -u +%Y%m%dT%H%M%SZ)"
+    local datestamp="${amzdate%%T*}"
+    local canonical_headers="host:$host
+x-amz-date:$amzdate
+${aws_ec2_header}"
+    local header
+    ___x_cmd_aws_ecs_header "$@"
+    url="$(x curl gencode "${canonical_headers}") ${header} \"https://${host}${canonical_uri}${request_parameters:+"?${request_parameters}"}\""
+    api:debug "Url:${url}"
+}

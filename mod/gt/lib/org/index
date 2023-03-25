@@ -10,7 +10,6 @@ ___x_cmd_gt_org(){
         "ls|l"                  "List all org"              \
         "info|i"                "Show org information"      \
         "create|c"              "Create org"                \
-        quit                    "Quit org"                  \
         issue                   "org issues     management" \
         repo                    "org repo       management" \
         "membership|member"     "org membership management" \
@@ -37,7 +36,7 @@ options:
     param:run
 
     ___X_CMD_UI_STATIC=1  ___gt_ui_mutual '___ui_table_json Id=.id Name=.name FollowCount=.follow_count Url=.repos_url -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/user/orgs" admin
+        ___x_cmd_gt_get_multi "/user/orgs" admin
 }
 
 # shellcheck disable=SC2154
@@ -50,26 +49,10 @@ options:
     --json|-j     "output origin json data"
 '
     param:run
+    [ -n "$1" ] || M='accepts 1 arg(organization path), received empty' arg:ret:64
 
-    ___x_cmd_gt_curl get "https://gitee.com/api/v5/orgs/${1:?"Please provide organization path"}" | ___x_cmd_gt_org_info_status_handler
-}
-
-# shellcheck disable=SC2120,SC2154
-___x_cmd_gt_org_info_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        return
-    fi
-    (
-        x jo env . id=.id name=.name public=.public follow_count=.follow_count owner=.owner.name gt_resp_body=.
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true    "Success" "id: $id" "name: $name" "public: $public" "follow_count: $follow_count" "owner: $owner"
-        else
-            ___x_cmd_ui_tf false   "Couldn't find any organization info data by $org"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+    ___x_cmd_gt_curl get "/orgs/$1" | \
+        ___x_cmd_gt_org____ui_handler Info "$1"
 }
 # EndSection
 
@@ -88,34 +71,74 @@ options:
 '
     param:run
 
+    [ -n "$1" ] || M='accepts 1 arg(organization name), received empty' arg:ret:64
     org=${org:-$1}
-    local gen_gt_json
-    local name
-    name="$1"
+    local name="$1"
+    local gen_gt_json=""
     gen_gt_json="$(param:option2json +name)"
     gt:debug "$gen_gt_json"
 
-    ___x_cmd_gt_curl post "https://gitee.com/api/v5/users/organization" "gen_gt_json" | ___x_cmd_gt_org_create_status_handler
+    ___x_cmd_gt_curl post "/users/organization" "gen_gt_json" | \
+        ___x_cmd_gt_org____ui_handler Creating "$name"
 }
+# EndSection
 
-# shellcheck disable=SC2120,SC2154
-___x_cmd_gt_org_create_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . id=.id gt_resp_body=.
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true   "Creating Organization Successfully"
+# Section: Quit
+# shellcheck disable=SC2181,SC2034,2154
+# https://gitee.com/api/v5/swagger#/deleteV5UserMembershipsOrgsOrg
+___x_cmd_gt_org_quit(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1         "orgs"                                       <>
+    --yes|-y   "Ignore remove prompt interception"
+'
+    param:run
+    local _org="${1?:"Please provide organization path"}"
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure quit organization: $(___x_cmd_ui bold red "${_org##*/}") ?" || return
+    ___x_cmd_gt_curl del "/user/memberships/orgs/${_org##*/}" | (
+        [ -z "$___X_CMD_GT_IN_TEST_ENV" ] || { command cat; return; }
+        x jo env . gt_resp_err=.message gt_resp_err=.error
+        if ___x_cmd_gt_http_error; then
+            ___x_cmd_ui_tf  true "Quit $_org organization successfully:"
         else
-            ___x_cmd_ui_tf false  "Creating organization failure by $org."  "ErrorMsg:"
+            ___x_cmd_ui_tf false "Quit $_org organization failure:" >&2
             ___x_cmd_gt____handle_resp
             return 1
         fi
     )
+}
+# EndSection
 
+# Section: org UI
+___x_cmd_gt_org____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Creating)
+                _inf_msg="$1 $2 organization successfully"
+                _err_msg="$1 $2 organization successfully failure"
+            ;;
+            Info)
+                _data="name=.name public=.public follow_count=.follow_count owner=.owner.name"
+                _inf_msg="Organization information"
+                _err_msg="No find any organization data by $2"
+            ;;
+        esac
+        eval x jo env . _id=.id gt_resp_err=.message gt_resp_err=.error "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${name:+"Name: $name"} ${public:+"Public: $public"}\
+                ${follow_count:+"Follow: $follow_count"} ${owner:+"Owner: $owner"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection
 
@@ -145,10 +168,11 @@ options:
     --json|-j       "output origin json data"
 '
     param:run
-    local ___gt_error_msg="Couldn't find any data by: ${1:?"Please provide organization path"}"
+    [ -n "$1" ] || M='accepts 1 arg(organization path), received empty' arg:ret:64
+    local ___gt_error_msg="Couldn't find any data by $1"
 
     ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json RepoPath=.full_name IsPrivate=.private Url=.html_url -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/orgs/$1/repos" type
+        ___x_cmd_gt_get_multi "/orgs/$1/repos" type
 
 }
 # EndSection
@@ -165,12 +189,12 @@ options:
     --per_page      "per_page"                          <>="20"
 '
     param:run
-    local ___gt_error_msg="Couldn't find any data by: ${1}"
+    local ___gt_error_msg="Couldn't find any data by ${1}"
     local organization="$1"
     local ___X_CMD_TUI_TABLE_FINAL_COMMAND
     local ___X_CMD_TUI_TABLE_CUR_LINE
     local ___X_CMD_TUI_TABLE_CUR_ITEM
-    local ___X_CMD_GT_TUI_TABLE_REQUSET_DATA='___x_cmd_gt_get_multi___get_data "https://gitee.com/api/v5/orgs/$organization/repos" type'
+    local ___X_CMD_GT_TUI_TABLE_REQUSET_DATA='___x_cmd_gt_get_multi___get_data "/orgs/$organization/repos" type'
     ___x_cmd_gt_tui_app "org.repo.app.awk"
 
     local repo_name
@@ -184,7 +208,7 @@ public: *}"
 
 ___x_cmd_gt_org_repo_app_status_handler(){
     if [ ! -t 1 ] || [ -n "$ENFORCE_JSON" ]; then
-        ___x_cmd_gt_curl_error
+        ___x_cmd_gt_http_error
         return
     fi
     local _sep
@@ -197,30 +221,5 @@ ___x_cmd_gt_org_repo_app_status_handler(){
             "r")            NO_CACHE=1 ___x_cmd_gt_org_repo_ls "$@"                                                 ;;
             *)              return  ;;
     esac
-}
-# EndSection
-
-# Section: quit
-# shellcheck disable=SC2181,SC2034
-# https://gitee.com/api/v5/swagger#/deleteV5UserMembershipsOrgsOrg
-___x_cmd_gt_org_quit(){
-    param:scope     ___x_cmd_gt
-    param:dsl       '
-options:
-    #1      "orgs"
-'
-    param:run
-
-    local org
-    local gt_resp_body
-    for org in "$@"; do
-        if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/user/memberships/orgs/${org##*/}" | ___x_cmd_gt____handle_no_content; then
-            ___x_cmd_ui_tf true  "Quit $org organization successfully."
-        else
-            ___x_cmd_ui_tf false "Quit $org organization failure"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    done
 }
 # EndSection

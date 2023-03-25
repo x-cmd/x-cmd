@@ -27,7 +27,7 @@ ___x_cmd_gt_issue_ls(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 options:
-    #1              "owner path(enterprise|owner/repo) [optional: use current user]"                                  <>=""
+    #1              "owner path(enterprise|owner/repo) [optional: use current user]"     <>=""
     --direction     "direction"                                                          <>:Direction="desc"
     --state         "issue state"                                                        <>:IssueState="open"
     --labels        "labels"                                                             <>=""
@@ -89,11 +89,10 @@ ___x_cmd_gt_issue_create(){
     param:scope         ___x_cmd_gt
     param:dsl      '
 options:
-    --owner         "Provide owner name(enterprise,org,user path)"                      <>:UserName
+    --owner         "Provide owner name(enterprise,ownerPath/RepoPath)"                  <>
     --title         "title"                                                              <>
 
-    --repo          "assign repo: ownerPath/RepoPath"                                    <>=""
-    --body          "issue describe(support markdown)"                                   <>=""
+    --body          "issue describe(support md; stdin -)"                                <>=""
     --type          "issue type"                                                         <>=""
     --assignee      "assignee space address"                                             <>=""
     --collaborators "collaborators space address"                                        <>=""
@@ -105,11 +104,16 @@ options:
 '
     param:run
 
-    local gen_gt_json
-    gen_gt_json="$(param:option2json security_hole=^^security issue_type=type -security -type)"
+    local repo=""
+    case ${owner} in
+        */*) repo="${owner##*/}" ;;
+    esac
+    [ "$body" != '-' ] || body="$(command cat)"
+    local gen_gt_json=""
+    gen_gt_json="$(param:option2json ${repo:+"+repo"} security_hole=^^security issue_type=type -security -type -owner)"
     gt:debug "$gen_gt_json"
 
-    ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${1##*/}/issues" "gen_gt_json" | ___x_cmd_gt_issue_update_status_handler
+    ___x_cmd_gt_curl post "/repos/${owner%%/*}/issues" "gen_gt_json" | ___x_cmd_gt_issue____ui_handler Creating
 }
 # EndSection
 
@@ -124,12 +128,11 @@ type:
     State = open progressing closed
 options:
     #1              "issue number(Case sensitive.Not with #)"                            <>
-    --owner         "Provide owner name(enterprise,org,user path)"                       <>:UserName
+    --owner         "Provide owner name(enterprise path,ownerPath/RepoPath)"             <>
     --state         "issue state "                                                       <>:State
 
-    --repo          "assign repo: ownerPath/RepoPath"                                    <>:RepoPath=""
     --title         "title"                                                              <>=""
-    --body          "issue describe"                                                     <>=""
+    --body          "issue describe(support md; stdin -)"                                <>=""
     --assignee      "assignee space address"                                             <>=""
     --collaborators "collaborators space address"                                        <>=""
     --milestone     "milestone serial number"                                            <>=""
@@ -139,13 +142,19 @@ options:
     --json|-j       "output origin json data"
 '
     param:run
-    local number="${1:?Please provide issue number}"
+    [ -n "$1" ] || M='accepts 1 arg(issue number), received empty' arg:ret:64
+    local number="${1}"
     local security="${security:-false}"
-    local gen_gt_json
-    gen_gt_json="$(param:option2json security_hole=^^security -security)"
+    local repo=""
+    case ${owner} in
+        */*) repo="${owner##*/}" ;;
+    esac
+    [ "$body" != '-' ] || body="$(command cat)"
+    local gen_gt_json=""
+    gen_gt_json="$(param:option2json ${repo:+"+repo"} security_hole=^^security -security -owner)"
     gt:debug "$gen_gt_json"
 
-    ___x_cmd_gt_curl patch "https://gitee.com/api/v5/repos/${owner##*/}/issues/${number}" "gen_gt_json" | ___x_cmd_gt_issue_update_status_handler
+    ___x_cmd_gt_curl patch "/repos/${owner%%/*}/issues/${number}" "gen_gt_json" | ___x_cmd_gt_issue____ui_handler Modify
 }
 # EndSection
 
@@ -170,7 +179,7 @@ ___x_cmd_gt_repo_issue_ls(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 options:
-    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --direction     "direction"                                                          <>:Direction="desc"
     --sort          "sort"                                                               <>:Sort="created"
     --state         "issue state"                                                        <>:IssueState="open"
@@ -186,7 +195,7 @@ options:
     ___x_cmd_gt_param_init_owner_repo
 
     ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json IssueNumber=.number State=.issue_state Assigner=.assignee.name Title=.title -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/repos/${owner_repo}/issues" state labels milestone \
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/issues" state labels milestone \
             assignee creator program sort direction number
 }
 
@@ -195,14 +204,15 @@ ___x_cmd_gt_repo_issue_info(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 options:
-    #1              "issue number(Case sensitive.Not with #)"                            <>
-    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    #1              "issue number(Case sensitive.Not with #)"                               <>
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoPath
     --json|-j       "output origin json data"
 '
     param:run
-     local number="${1:? Please provide issue number}"
+    [ -n "$1" ] || M='accepts 1 arg(issue number), received empty' arg:ret:64
+    local number="$1"
     ___x_cmd_gt_param_init_owner_repo
-    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/issues/${number}" | ___x_cmd_gt_issue_info_status_handler
+    ___x_cmd_gt_curl get "/repos/${owner_repo}/issues/${number}" | ___x_cmd_gt_issue_info_status_handler
 }
 
 # EndSection
@@ -216,17 +226,18 @@ ___x_cmd_gt_repo_issue_log(){
     param:dsl       '
 options:
     #1              "issue number(Case sensitive.Not with #)"                            <>
-    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --sort          "sort(asc、desc)"                                                    <>="desc"
     --json|-j       "output origin json data"
 '
     param:run
-    local number="${1:?"Please provide issue number"}"
+    [ -n "$1" ] || M='accepts 1 arg(issue number), received empty' arg:ret:64
+    local number="${1}"
     ___x_cmd_gt_param_init_owner_repo
 
-    local ___gt_error_msg="Couldn't find any data by: $repo $number"
+    local ___gt_error_msg="Couldn't find any data by $repo $number"
     ___gt_ui_mutual '___ui_table_json Time=.created_at User=.user.login Type=.action_type Content=.content -- $@' \
-        ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo##*/}/issues/${number}/operate_logs" repo sort
+        ___x_cmd_gt_curl get "/repos/${owner_repo##*/}/issues/${number}/operate_logs" repo sort
 }
 
 # EndSection
@@ -266,9 +277,9 @@ options:
     --json|-j       "output origin json data"
 '
     param:run
-    local ___gt_error_msg="Couldn't find any data by: ${enterprise}"
+    local ___gt_error_msg="Couldn't find any data by ${enterprise}"
     ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json IssueNumber=.number State=.issue_state Assigner=.assignee.name AssignerMarkName=.assignee.remark Title=.title -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/enterprises/${enterprise##*/}/issues" state labels sort direction \
+        ___x_cmd_gt_get_multi "/enterprises/${enterprise##*/}/issues" state labels sort direction \
             milestone assignee creator program
 }
 
@@ -281,8 +292,9 @@ options:
     --json|-j       "output origin json data"
 '
     param:run
-    local number="${1:? Please provide issue number}"
-    ___x_cmd_gt_curl get "https://gitee.com/api/v5/enterprises/${enterprise}/issues/${number}" | ___x_cmd_gt_issue_info_status_handler
+    [ -n "$1" ] || M='accepts 1 arg(issue number), received empty' arg:ret:64
+    local number="${1}"
+    ___x_cmd_gt_curl get "/enterprises/${enterprise}/issues/${number}" | ___x_cmd_gt_issue_info_status_handler
 }
 
 # EndSection
@@ -310,7 +322,7 @@ options:
 
     ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json ID=.number State=.issue_state Assigner=.assignee.name \
         Repo=.repository.full_name Type=.issue_type Title=.title -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/user/issues" filter state direction labels \
+        ___x_cmd_gt_get_multi "/user/issues" filter state direction labels \
             since schedule deadline created_at finished_at
 }
 # EndSection
@@ -334,11 +346,66 @@ options:
     --json|-j       "output origin json data"
 '
     param:run
-    local ___gt_error_msg="Couldn't find any data by: ${org}"
+    local ___gt_error_msg="Couldn't find any data by ${org}"
     ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json IssueNumber=.number State=.issue_state Repository=.repository.full_name Title=.title  -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/orgs/${org##*/}/issues" filter state labels sort direction since page per_page
+        ___x_cmd_gt_get_multi "/orgs/${org##*/}/issues" filter state labels sort direction since
 }
 
+# EndSection
+
+# Section: issue UI
+___x_cmd_gt_issue____ui_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Creating|Modify)
+                _data="_id=.number title=.title html_url=.html_url"
+                _inf_msg="$1 repo issue successfully"
+                _err_msg="$1 repo issue failure"
+                ;;
+            comment)
+                _data="_id=.target.issue.number title=.target.issue.title body=.body"
+                _inf_msg="Successfully"
+                _err_msg="Update Comment failure"
+                ;;
+        esac
+        eval x jo env .  gt_resp_err=.message gt_resp_err=.error "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${title:+"Title: $title"} ${html_url:+"URL: $html_url"} ${body:+"Body: $body"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+
+}
+
+# shellcheck disable=SC2154,SC2059
+___x_cmd_gt_issue_info_status_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        x jo env . id=.number title=.title state=.state assignee=.assignee.name html_url=.html_url body=.body gt_resp_err=.message
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true  "Success:" "ID: $id" "URL: $html_url" "State: $state" "Assignee: $assignee" "Title: $title" "Body: |"
+            printf "'"
+            printf "\n%s\n" "$body" | x bat --paging=never --plain -lmd
+            printf "\n'"
+        else
+            ___x_cmd_ui_tf false "Getting issue info failure by $owner_repo $number:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+}
 # EndSection
 
 # Section: Issue Comment
@@ -363,7 +430,7 @@ ___x_cmd_gt_repo_issue_comment_ls(){
     param:dsl       '
 options:
     #1              "issue number(Case sensitive.Not with #)"                            <>
-    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --since         "since"                                                              <>=""
     --page          "page"                                                               <>=""
     --per_page      "per_page"                                                           <>=""
@@ -374,9 +441,9 @@ options:
     local number="$1"
     ___x_cmd_gt_param_init_owner_repo
 
-    local ___gt_error_msg="Couldn't find any data by: ${owner_repo}"
+    local ___gt_error_msg="Couldn't find any data by ${owner_repo}"
     ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json CommitId=.id IssueNumber=.target.issue.number Title=.target.issue.title User=.user.login -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/repos/${owner_repo}/issues/$number/comments" since order
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/issues/$number/comments" since order
 }
 
 # shellcheck disable=SC2086,SC2154
@@ -386,7 +453,7 @@ ___x_cmd_gt_repo_issue_comment_create(){
     param:dsl       '
 options:
     #1              "issue number(Case sensitive.Not with #)"                            <>
-    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --body          "The contents of the comment"                                        <>
     --json|-j       "output origin json data"
 '
@@ -396,7 +463,7 @@ options:
     gen_gt_json="$(param:option2json -repo -number)"
     gt:debug "$gen_gt_json"
 
-    ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner##*/}/${repo##*/}/issues/$number/comments" "gen_gt_json" | ___x_cmd_gt_issue_comment_update_status_handler
+    ___x_cmd_gt_curl post "/repos/${owner##*/}/${repo##*/}/issues/$number/comments" "gen_gt_json" | ___x_cmd_gt_issue____ui_handler comment
 }
 
 # https://gitee.com/api/v5/swagger#/patchV5ReposOwnerRepoIssuesCommentsId
@@ -405,7 +472,7 @@ ___x_cmd_gt_repo_issue_comment_edit(){
     param:dsl       '
 options:
     #1              "comments id"                                                        <>
-    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --body          "The contents of the comment"                                        <>
     --json|-j       "output origin json data"
 '
@@ -415,26 +482,7 @@ options:
     gen_gt_json="$(param:option2json -repo)"
     gt:debug "$gen_gt_json"
 
-    ___x_cmd_gt_curl patch "https://gitee.com/api/v5/repos/${owner##*/}/${repo##*/}/issues/comments/${_id}" "gen_gt_json" | ___x_cmd_gt_issue_comment_update_status_handler
-}
-
-# shellcheck disable=SC2154
-___x_cmd_gt_issue_comment_update_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . id=.target.issue.number title=.target.issue.title body=.body gt_resp_body=.
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true  "Success" "id: $id" "title: $title" "comment_body: $body"
-        else
-            ___x_cmd_ui_tf false "Update Comment failure" "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+    ___x_cmd_gt_curl patch "/repos/${owner##*/}/${repo##*/}/issues/comments/${_id}" "gen_gt_json" | ___x_cmd_gt_issue____ui_handler comment
 }
 
 # shellcheck disable=SC2181,SC2034
@@ -444,60 +492,22 @@ ___x_cmd_gt_repo_issue_comment_rm(){
     param:dsl       '
 options:
     #1              "comments id"                                                        <>
-    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
 '
     param:run
     local id="$1"
-    local gt_resp_body
     ___x_cmd_gt_param_init_owner_repo
-    if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/repos/${owner_repo}/issues/comments/${id}" | ___x_cmd_gt____handle_no_content; then
-        ___x_cmd_ui_tf true  "Deleted comment successfully"
-    else
-        ___x_cmd_ui_tf false "Deleting comment failure by ${owner_repo} $id." "ErrorMsg:"
-        ___x_cmd_gt____handle_resp
-        return 1
-    fi
+    ___x_cmd_gt_curl del "/repos/${owner_repo}/issues/comments/${id}" |  (
+            [ -z "$___X_CMD_GT_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "Deleted $id comment on $owner_repo successfully:"
+            else
+                ___x_cmd_ui_tf false "Deleted $id comment on $owner_repo failure:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
 }
 
-# EndSection
-
-# Section: Status Handle
-# shellcheck disable=SC2154
-___x_cmd_gt_issue_update_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . id=.number title=.title html_url=.html_url gt_resp_body=.
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true  "Success" "id: $id" "title: $title" "url: $html_url"
-        else
-            ___x_cmd_ui_tf false "Resolve issue failure"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
-}
-
-# shellcheck disable=SC2154,SC2059
-___x_cmd_gt_issue_info_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . id=.number title=.title state=.state assignee=.assignee.name html_url=.html_url body=.body gt_resp_body=.
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true  "Success" "id: $id" "URL: $html_url" "state: $state" "assignee: $assignee" "title: $title"
-            printf "\n${body}\n" | x bat --paging=never --plain -lmd
-        else
-            ___x_cmd_ui_tf false "Getting issue info failure by $owner_repo $number"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
-}
 # EndSection

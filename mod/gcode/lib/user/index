@@ -1,0 +1,77 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gcode_user(){
+    param:scope     ___x_cmd_gcode
+    param:subcmd ___x_cmd_gcode_user            \
+        info        "Show information"          \
+        email       "get current user email"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_user _param_help_doc
+    return 1
+}
+
+# Section: Info
+# shellcheck disable=SC2154
+# http://localhost:4000/13.7/ee/api/users.html#single-user
+# http://localhost:4000/13.7/ee/api/users.html#for-normal-users
+___x_cmd_gcode_user_info(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1              "user login path or user id(use --id flag)"            <>=""
+    --id            "Use user id"
+    --json|-j       "output json data"
+'
+    param:run
+
+    local url
+    if [ -z "$1" ]; then
+        url="/user"
+    elif [ -n "$id" ]; then
+        url="/users/$1"
+    else
+        # shellcheck disable=2034
+         local username="$1"
+        ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Id=.id Name=.username Url=.web_url State=.state -- $@' \
+        ___x_cmd_gcode_curl get "/users" username
+        return
+    fi
+
+    ___x_cmd_gcode_curl get "$url" | ___x_cmd_gcode_user_info_json_status_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gcode_user_info_json_status_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        return
+    fi
+    (
+        x jo env . _id=.id name=.username email=.email web_url=.web_url state=.state gcode_resp_err=.error gcode_resp_err=.message
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf true "get user info success" "ID: $_id" "Name: $name" "Email: $email" "State: $state" "Url: $web_url"
+        else
+            ___x_cmd_ui_tf false "get user info fail"
+            ___x_cmd_gcode____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: Email
+# http://localhost:4000/13.7/ee/api/users.html#list-emails
+___x_cmd_gcode_user_email(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --json|-j       "output json data"
+'
+    param:run
+    ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Id=.id Email=.email Confirmed_at=.confirmed_at -- $@' \
+        ___x_cmd_gcode_curl get "/user/emails"
+}
+# EndSection

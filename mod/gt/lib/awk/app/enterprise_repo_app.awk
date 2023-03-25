@@ -71,4 +71,4 @@ function user_statusline_normal_customize(o, kp){
     comp_statusline_data_put( o, kp, "r", "Refresh", "Press 'r' to refresh table data" )
     comp_statusline_data_put( o, kp, "d", "Delete",  "Press 'd' to remove table data" )
 }
-# E
+# EndSection

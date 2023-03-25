@@ -1,0 +1,75 @@
+# shellcheck shell=dash
+
+# Section: current and download
+
+___x_cmd_tldr_current_or_update(){
+    local version
+    version="$(___x_cmd_tldr_version)" && printf "%s\n" "$version" && return 0
+    if ! ___x_cmd_tldr_update; then
+        tldr:error "Fail to show version for tldr pages unexisted"
+        return 1
+    fi
+    ___x_cmd_tldr_version
+}
+
+___x_cmd_tldr_version___from_yml(){
+    arg:init tldr
+    [ -f "$1" ] || M="Please provide the tldr version index yml" arg:ret:64
+    < "$1" awk '
+($2 !~ /v[0-9]+\.[0-9]+(\.[0-9])?/) { exit(1); }
+{print($2); exit(0);}
+'
+}
+
+___x_cmd_tldr_version(){
+    local index="$___X_CMD_TLDR_TMP_DATA/index.yml"
+    [ -f "$index" ] || return 1
+
+    ! ___x_cmd_tldr_version___from_yml "$index" || return 0
+    tldr:error -m "Latest version in index.yml is NOT valid
+version: $(awk '{print $2; exit(1); }' <"$index")"
+    return 1
+}
+
+___x_cmd_tldr_update()(
+    if ! ___x_cmd___tldr_download index.yml "$___X_CMD_TLDR_TMP_DATA/index.yml" -; then
+        tldr:warn "Fail to update index.yml"
+        return 1
+    fi
+
+    local version
+    version="$(___x_cmd_tldr_version)"
+
+    ___x_cmd___tldr_download_pages "$version" pages
+)
+
+___x_cmd___tldr_download_pages()(
+    arg:init tldr
+    [ -n "$1" ] || M="Please provide the tldr version" arg:ret:64
+    [ -n "$2" ] || M="Please provide the tldr pages" arg:ret:64
+
+    local version="$1"
+    local page_lang="$2"
+    local data_path="$___X_CMD_TLDR_TMP_DATA/$version/$page_lang"
+    local tgz_path="$___X_CMD_TLDR_TMP_CACHE/$version/$page_lang.tgz"
+    x mkdirp "$data_path"
+
+    if ! ___x_cmd___tldr_download "$version/$page_lang.tgz" "$tgz_path" "0"; then
+        tldr:error "Fail to update $page_lang"
+        x rmrf "$data_path"
+        return 1
+    fi
+    if cd "$data_path" && tar xvf "$tgz_path" 2>/dev/null 1>&2; then
+        tldr:info "Version already UPDATED to $version"
+    fi
+)
+
+___x_cmd___tldr_download(){
+    arg:1:nonempty
+    local src="$1"
+    local dst="${2:-$1}"
+    local expiration="${3:-"1"}"
+    ___x_cmd_httpget_gitx x-cmd tldr main "dist/$src" "$dst" "$expiration"
+}
+
+## EndSection

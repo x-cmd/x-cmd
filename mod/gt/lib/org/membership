@@ -30,11 +30,11 @@ ___x_cmd_gt_org_membership_app(){
 '
     param:run
 
-    local ___gt_error_msg="Couldn't find any data by: ${1}"
+    local ___gt_error_msg="Couldn't find any data by ${1}"
     local ___X_CMD_TUI_TABLE_FINAL_COMMAND
     local ___X_CMD_TUI_TABLE_CUR_LINE
     local ___X_CMD_TUI_TABLE_CUR_ITEM
-    local ___X_CMD_GT_TUI_TABLE_REQUSET_DATA='___x_cmd_gt_get_multi "https://gitee.com/api/v5/orgs/${org##*/}/members" role'
+    local ___X_CMD_GT_TUI_TABLE_REQUSET_DATA='___x_cmd_gt_get_multi "/orgs/${org##*/}/members" role'
     ___x_cmd_gt_tui_app "org.membership.app.awk"
 
     ___x_cmd_gt_org_membership_app_status_handler
@@ -42,7 +42,7 @@ ___x_cmd_gt_org_membership_app(){
 }
 ___x_cmd_gt_org_membership_app_status_handler(){
     if [ ! -t 1 ] || [ -n "$ENFORCE_JSON" ]; then
-        ___x_cmd_gt_curl_error
+        ___x_cmd_gt_http_error
         return
     fi
     local user_name
@@ -70,21 +70,20 @@ ___x_cmd_gt_org_membership_ls(){
 options:
     --org           "org space address"              <>:Address
     --role          "role"                           <>:UserRole="all"
-    --page          "page"                           <>=""
-    --per_page      "per_page"                       <>=""
+    --page          "page"                           <>="1"
+    --per_page      "per_page"                       <>="30"
     --json|-j       "output origin json data"
 '
     param:run
 
-    local ___gt_error_msg="Couldn't find any data by: $org"
+    local ___gt_error_msg="Couldn't find any data by $org"
     ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json NameSpace=.login Name=.name Role=.member_role Url=.html_url -- $@' \
-        ___x_cmd_gt_get_multi "https://gitee.com/api/v5/orgs/${org##*/}/members" role
+        ___x_cmd_gt_get_multi "/orgs/${org##*/}/members" role
 }
 
 # EndSection
 
 # Section: Info
-
 # shellcheck disable=SC2154
 # https://gitee.com/api/v5/swagger#/getV5OrgsOrgMembershipsUsername
 ___x_cmd_gt_org_membership_info(){
@@ -97,28 +96,9 @@ options:
 '
     param:run
 
-    ___x_cmd_gt_curl get "https://gitee.com/api/v5/orgs/${org##*/}/memberships/${1##*/}" | ___x_cmd_gt_org_membership_info_status_handler
+    ___x_cmd_gt_curl get "/orgs/${org##*/}/memberships/${1##*/}" | \
+        ___x_cmd_gt_org_membership____ui_handler Info "$1"
 }
-
-# shellcheck disable=SC2154
-___x_cmd_gt_org_membership_info_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . organization=.organization.name name=.user.name name_space=.user.login role=.role html_url=.user.html_url gt_resp_body=.
-        if [ -n "$organization" ]; then
-            ___x_cmd_ui_tf true  "Success" "Organization: $organization" "Name: $name" "NameSpace: $name_space" "Role: $role" "UserUrl: $html_url"
-        else
-            ___x_cmd_ui_tf false "Couldn't find any data by $org $username"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
-}
-
 # EndSection
 
 # Section: Add
@@ -136,63 +116,12 @@ options:
 '
     param:run
 
-    local username
+    local username=""
     for username in "$@"; do
-        ___x_cmd_gt_curl put "https://gitee.com/api/v5/orgs/${org##*/}/memberships/${username##*/}" -- role | (
-            ___x_cmd_gt_org_membership_resolve_status_handle
-        )
+        ___x_cmd_gt_curl put "/orgs/${org##*/}/memberships/${username##*/}" -- role | \
+            ___x_cmd_gt_org_membership____ui_handler Add
     done
 }
-
-___x_cmd_gt_org_membership_resolve_status_handle(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        return
-    fi
-
-    x jo env . role=.role gt_resp_body=.
-    if [ -n "$role" ]; then
-        ___x_cmd_ui_tf true   "Resolve $username successfully" "Role: $role"
-    else
-        ___x_cmd_ui_tf false  "Creating organization failure by org: $org. user: $username"  "ErrorMsg:"
-        ___x_cmd_gt____handle_resp
-        return 1
-    fi
-}
-
-# EndSection
-
-# Section: Remove
-
-# shellcheck disable=SC2181,SC2154,SC2034
-# https://gitee.com/api/v5/swagger#/deleteV5OrgsOrgMembershipsUsername
-___x_cmd_gt_org_membership_rm(){
-    param:scope     ___x_cmd_gt
-    param:dsl       '
-options:
-    #1          "user login name"                       <>:UserName
-    --org       "org space address"                     <>:Address
-    --yes|-y    "Ignore remove prompt interception"
-'
-    param:run
-
-    local username
-    local _exit_code=0
-    local gt_resp_body
-    for username in "$@"; do
-        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
-        if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/orgs/${org##*/}/memberships/${username##*/}" | ___x_cmd_gt____handle_no_content; then
-            ___x_cmd_ui_tf true  "Remove $username to $org successfully"
-            _exit_code=0
-        else
-            _exit_code=$?
-            ___x_cmd_ui_tf false "Remove $org user failure: $username"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-        fi
-    done
-    return "$_exit_code"
-}
-
 # EndSection
 
 # Section: Edit
@@ -214,3 +143,70 @@ options:
 }
 
 # EndSection
+
+# Section: Remove
+# shellcheck disable=SC2181,SC2154,SC2034
+# https://gitee.com/api/v5/swagger#/deleteV5OrgsOrgMembershipsUsername
+___x_cmd_gt_org_membership_rm(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1          "user login name"                       <>:UserName
+    --org       "org space address"                     <>:Address
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+
+    local username=""
+    local _exit_code=0
+    for username in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
+        ___x_cmd_gt_curl del "/orgs/${org##*/}/memberships/${username##*/}" | (
+            [ -z "$___X_CMD_GT_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf  true "Remove $username on $org successfully:"
+            else
+                ___x_cmd_ui_tf false "Remove $username on $org failure:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
+    done
+    return "$_exit_code"
+}
+
+# EndSection
+
+# Section: org membership UI
+___x_cmd_gt_org_membership____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        _data="organization=.organization.name name=.user.name name_space=.user.login role=.role html_url=.user.html_url"
+        case "$1" in
+            Add)
+                _inf_msg="Resolve $username member on $org successfully"
+                _err_msg="Resolve $username member on $org failure"
+            ;;
+            Info)
+                _inf_msg="$org $2 member information"
+                _err_msg="No find any $org organization member data by $2"
+            ;;
+        esac
+        eval x jo env . _url=.url gt_resp_err=.message gt_resp_err=.error "$_data"
+        if [ -n "$_url" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${organization:+"Organization: $organization"} ${name:+"Name: $name"} \
+                ${name_space:+"NameSpace: $name_space"} ${role:+"Role: $role"} ${html_url:+"URL: $html_url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+

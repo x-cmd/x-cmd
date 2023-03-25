@@ -23,28 +23,27 @@ ___x_cmd_tea_repo_collaborator() {
 # Section: List
 # https://try.gitea.io/api/swagger#/repository/repoListCollaborators
 ___x_cmd_tea_repo_collaborator_ls() {
-    param:scope  ___x_cmd_gitea
+    param:scope  ___x_cmd_tea
     param:dsl '
 options:
     --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-    --per_page      "Results per page"                                                  <>=30
-    --page          "Page number of the results to fetch."                              <>=1
-
-    --json|-j   "output json data"
+    --limit         "Results per page"                                                  <>:Numbers="30"
+    --page          "Page number of the results to fetch."                              <>:Numbers="1"
+    --json|-j       "output json data"
 '
     param:run
     ___x_cmd_tea_param_init_owner_repo
 
     ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Id=.id Name=.login Url=.html_url Role=.role_name -- $@' \
-        ___x_cmd_tea_get_multi "/repos/${owner_repo}/collaborators" per_page page
+        ___x_cmd_tea_get_multi "/repos/${owner_repo}/collaborators" limit page
 }
 # EndSection
 
 # Section: Add & Rm
-#TODO:  204	APIEmpty is an empty response
+#TODO:  UI
 # https://try.gitea.io/api/swagger#/repository/repoAddCollaborator
 ___x_cmd_tea_repo_collaborator_add() {
-    param:scope  ___x_cmd_gitea
+    param:scope  ___x_cmd_tea
     param:dsl '
 options:
     --repo          "Provide owner_name/repo_name list separated by commas."    <>:MultipleRepoName
@@ -66,9 +65,11 @@ options:
         while true; do
             name="${username%%,*}"
             username="${username#*,}"
-            ___x_cmd_tea_curl put  "/repos/$owner_repo/collaborators/${name##*/}" -- permission |
-                _____x_cmd_tea_collaborator_ui_utils Add
-
+            if ___x_cmd_tea_curl put  "/repos/$owner_repo/collaborators/${name##*/}" -- permission | ___x_cmd_tea____handle_no_content; then
+                ___x_cmd_ui_tf true "Add success"
+            else
+                ___x_cmd_ui_tf false "Add failure"
+            fi
             [ "$name" = "$username" ] && {
                 username="$source_username"
                 break
@@ -79,7 +80,7 @@ options:
 }
 #TODO:  204	APIEmpty is an empty response
 ___x_cmd_tea_repo_collaborator_edit() {
-    param:scope  ___x_cmd_gitea
+    param:scope  ___x_cmd_tea
     param:dsl '
 options:
     --repo          "Provide owner_name/repo_name list separated by commas."    <>:MultipleRepoName
@@ -97,8 +98,9 @@ options:
 }
 
 # https://try.gitea.io/api/swagger#/repository/repoDeleteCollaborator
+# TODO: UI
 ___x_cmd_tea_repo_collaborator_rm() {
-    param:scope  ___x_cmd_gitea
+    param:scope  ___x_cmd_tea
     param:dsl '
 options:
     --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
@@ -111,16 +113,11 @@ options:
     local username
     for username in "$@"; do
         [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
-        # TODO:http handle，delete repo return data is null.Status: 204 No Content
-        ___x_cmd_tea_curl delete "/repos/$owner_repo/collaborators/${username##*/}"| (
-                x jo env . error=.
-                if ___x_cmd_tea_http_error; then
-                    ___x_cmd_ui_tf  true "successfully deleted $username in $owner_repo"
-                else
-                    ___x_cmd_ui_tf false "delete user failure: $username." "ErrorMsg:$error"
-                    return 1
-                fi
-            )
+        if ___x_cmd_tea_curl delete "/repos/$owner_repo/collaborators/${username##*/}" | ___x_cmd_tea____handle_no_content; then
+            ___x_cmd_ui_tf true "Remove success"
+        else
+            ___x_cmd_ui_tf false "Remove success"
+        fi
     done
 }
 # EndSection
@@ -143,11 +140,12 @@ _____x_cmd_tea_collaborator_ui_utils()(
             error_msg="Failed to $1 repo user"
             ;;
     esac
-    x jo env . id=.id error=. $data
+    eval x jo env . id=.id tea_resp_err=.message "$data"
     if [ -n "$id" ]; then
         ___x_cmd_ui_tf true "$msg"  ${repo+"Repo: $repo"}  ${permissions+"Permissions: $permissions"}
     else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
+        ___x_cmd_ui_tf false "$error_msg"
+        ___x_cmd_tea____handle_resp
         return 1
     fi
 )

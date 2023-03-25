@@ -42,7 +42,7 @@ function gt_repo_review_assignee_add( o, username,          kp ){
 
 function gt_repo_review_assignee_rm(o, username,            kp) {
     kp = SUBSEP Q2_1 SUBSEP Q2_REVIEWER SUBSEP Q2_ASSIGNEE
-    return jlist_rm(o, kp, username)
+    return jlist_rm_value(o, kp, username)
 }
 
 function gt_repo_review_tester_get( o, arr,       kp ){
@@ -57,7 +57,7 @@ function gt_repo_review_tester_add( o, username,          kp ){
 
 function gt_repo_review_tester_rm(o, username,          kp) {
     kp = SUBSEP Q2_1 SUBSEP Q2_REVIEWER SUBSEP Q2_TESTER
-    return jlist_rm(o, kp, username)
+    return jlist_rm_value(o, kp, username)
 }
 
 function gt_repo_review_get_str(arr,       str, i) {

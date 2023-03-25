@@ -14,7 +14,7 @@ function gl_project_member_add( o, username, access,          kp ){
 
 function gl_project_member_rm( o, username, access,          kp ){
     kp = SUBSEP Q2_1 SUBSEP Q2_MEMBER SUBSEP access
-    return jlist_rm( o, kp, username)
+    return jlist_rm_value( o, kp, username)
 }
 
 function gl_project_get_member_list( o, arr){

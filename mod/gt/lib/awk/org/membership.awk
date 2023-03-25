@@ -11,7 +11,7 @@ function gt_org_membership_admin_add( o, username,          kp ){
 
 function gt_org_membership_admin_rm( o, username,            kp ) {
     kp = SUBSEP Q2_1 SUBSEP Q2_MEMBERSHIP SUBSEP Q2_ADMIN
-    return jlist_rm( o, kp, username)
+    return jlist_rm_value( o, kp, username)
 }
 
 function gt_org_membership_member_get( o, arr,        kp ){
@@ -26,7 +26,7 @@ function gt_org_membership_member_add( o, username,            kp ){
 
 function gt_org_membership_member_rm( o, username,            kp ) {
     kp = SUBSEP Q2_1 SUBSEP Q2_MEMBERSHIP SUBSEP Q2_MEMBER
-    return jlist_rm( o, kp, username)
+    return jlist_rm_value( o, kp, username)
 }
 
 

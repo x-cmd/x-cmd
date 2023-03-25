@@ -55,6 +55,7 @@ function re_patgen___( regex,  _tmp, _tmp_arr ){
 }
 
 BEGIN{
+    RE_INTERVAL_EXPRESSIONS_SUPPORTED = ("XXXX" ~ /^X{0,4}$/)
     RE_OR = "|"
 
     RE_SPACE = "[ \t\v\n]+"
@@ -104,6 +105,8 @@ BEGIN{
     # RE_STR2_ORGINAL = "\"[^\"\\\\\001-\037]*((\\\\[^u\001-\037]|\\\\u[0-9a-fA-F]{4})[^\"\\\\\001-\037]*)*\""
 
     RE_QUOTE_CONTROL_OR_UNICODE = re( "\\\\[^u\001-\037]" RE_OR "\\\\u[0-9a-fA-F]{4}" )
+
+    if(! RE_INTERVAL_EXPRESSIONS_SUPPORTED ) RE_QUOTE_CONTROL_OR_UNICODE = re( "\\\\[^u\001-\037]" RE_OR "\\\\u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]" )
 
     RE_NOQUOTE1 = "[^'\\\\\001-\037]*"
     RE_STR1 = "'"  RE_NOQUOTE1 re( RE_QUOTE_CONTROL_OR_UNICODE RE_NOQUOTE1, "*")  "'"

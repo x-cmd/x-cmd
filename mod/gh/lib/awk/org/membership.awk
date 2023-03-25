@@ -11,7 +11,7 @@ function gh_org_membership_admin_add( o, username,          kp ){
 
 function gh_org_membership_admin_rm( o, username,            kp ) {
     kp = SUBSEP Q2_1 SUBSEP Q2_MEMBERSHIP SUBSEP Q2_ADMIN
-    return jlist_rm( o, kp, username)
+    return jlist_rm_value( o, kp, username)
 }
 
 function gh_org_membership_member_get( o, arr,        kp ){
@@ -26,7 +26,7 @@ function gh_org_membership_member_add( o, username,            kp ){
 
 function gh_org_membership_member_rm( o, username,            kp ) {
     kp = SUBSEP Q2_1 SUBSEP Q2_MEMBERSHIP SUBSEP Q2_MEMBER
-    return jlist_rm( o, kp, username)
+    return jlist_rm_value( o, kp, username)
 }
 
 
@@ -63,3 +63,4 @@ function gen_code_membership_edit(username, role){
 function gen_code_membership_rm(username){
     MEMBER_RM_STR = MEMBER_RM_STR     "\n" sh_x("gh", "org", "membership", "rm", "--org", LOCAL_ORG_NAME, "--yes", username)
 }
+

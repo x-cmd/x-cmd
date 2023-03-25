@@ -1,0 +1,125 @@
+# shellcheck shell=dash
+
+___X_CMD_GD_DATA="$___X_CMD_ROOT_DATA/gd"
+xrc:mod:lib gd  advise back choose domain find history help
+
+___x_cmd_gd___main(){
+    ___x_cmd_gd___main1 "$@"
+}
+
+# Section: main
+
+# jump to a folder contains: jc bin
+# jump to a child folder: jc lib
+# jump to a father folder: jo opening; gd .
+
+# gd backward
+# gd forward = find
+# gd - = history in environment
+# gd <filename> = unmatch to search history or rules
+# gd ,<pattern> = find
+
+# gd /u/l/
+
+___x_cmd_gd___main1(){
+    if [ "$#" -eq 0 ]; then
+        # TODO: Open the file explorer app.
+        ___x_cmd_inner_cd; return
+    fi
+
+    case "$1" in
+        "")             ___x_cmd_gd_origin;     return      ;;
+        -)              ___x_cmd_gd_origin -;   return      ;; # gd to most recent
+        -b)             shift; ___x_cmd_gd_back "$@"; return ;;
+        -f)             shift; ___x_cmd_gd_back "$@"; return ;;
+        -h|--help)      ___x_cmd_gd_help;       return      ;;
+    esac
+
+    ___x_cmd_gd___main_magic "$@"    # No such directory ... Then magic happens.
+}
+
+___x_cmd_gd___main_magic(){
+    local p="$1"
+    if [ -d "$p" ]; then
+        ___x_cmd_gd_origin "$p"; return
+    fi
+
+    case "$p" in
+        :|:*)               ___x_cmd_gd_domain "$@" ;;
+
+        # gd back
+        ...)                ___x_cmd_gd_origin ../.. ;;
+        ....)               ___x_cmd_gd_origin ../../../ ;;
+        ../*)               ___x_cmd_gd_back "${p#*/}" ;;
+        .../*)              ___x_cmd_gd_back "${p#*/}" ;;
+
+        # gd-forward        # Might cause some problem
+        ./*)                ___x_cmd_gd_forward "${p#./}" ;;
+
+        # gd: history
+        --list-history)     ___x_cmd_gd___list_history ;;
+        --clear-history)    ___x_cmd_gd___clear_history ;;
+        --)                 ___x_cmd_gd___first_history ;;
+        -*)                 ___x_cmd_gd___firstmatch_history "${1#-}" ;;
+
+        # gd with find
+
+        ,*)                 ___x_cmd_gd_find "${1#,}" ;;         # = is not support in zsh, that's why we use ,
+        /*)                 ___x_cmd_gd_choose "$(___x_cmd_gd_iter / "${p#/}")" ;;
+        */*)                ___x_cmd_gd_choose "$(___x_cmd_gd_iter . "${p}")"   ;;
+        *)                  ___x_cmd_gd_choose "$(___x_cmd_gd___head_history 200 | grep "${p#-}")" ;;
+    esac
+}
+
+___x_cmd_gd_forward(){
+    ___x_cmd_gd_choose "$(command find . -name "*${1}*" -type d 2>/dev/null)"
+}
+
+# Section: iter and other...
+___x_cmd_gd_iter()(
+    local root="$1"
+    local iter_path="$2"
+
+    ___x_cmd_inner_cd "$root" 2>/dev/null
+
+    local cur="${iter_path%%/*}"
+
+    if [ "$cur" = "$iter_path" ]; then
+        # this is final
+        if [ "${cur%*}" = "$cur" ]; then
+            cur="$cur*"
+        fi
+        eval "ls -d $cur/" 2>/dev/null | awk -v root="$root" '{ printf("%s%s\n", root, $0) }'
+    else
+        if [ "${cur%*}" = "$cur" ]; then
+            cur="$cur*"
+        fi
+
+        iter_path="${iter_path#*/}"
+        local elem
+        eval "ls -d $cur/" 2>/dev/null | while read -r elem; do
+            ___x_cmd_gd_iter "${root%/}/$elem" "$iter_path"
+        done
+    fi
+)
+
+# EndSection
+
+# Section: gd origin
+
+# 1. Explictly Inject to gd: x gd :inject
+# alias gd=___x_cmd_gd_origin
+___x_cmd_gd_origin(){
+    ___x_cmd_inner_cd "$@" || return
+
+    if [ "${-#*i}${___X_CMD_FS_DEBUG}" != "$-" ] && [ -t 1 ] ; then
+        [ -f "$___X_CMD_GD_DATA/history" ] || x touch "$___X_CMD_GD_DATA/history"
+        printf "%s\n" "$PWD" >>"$___X_CMD_GD_DATA/history"
+        ___X_CMD_CD_HISTORY="$PWD${___X_CMD_CD_HISTORY:+
+}${___X_CMD_CD_HISTORY}"
+    fi
+#     ___X_CMD_CD_HISTORY="$(pwd | tee -a "$___X_CMD_GD_DATA/history")${___X_CMD_CD_HISTORY:+
+# }${___X_CMD_CD_HISTORY}"
+}
+
+# EndSection

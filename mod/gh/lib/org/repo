@@ -19,7 +19,7 @@ ___x_cmd_gh_org_repo_app() {
     param:dsl       <<A
 options:
     #1          "org space address"                         <>:Address
-    --type      "type"                                      <>="all"
+    --type      "type"                                      <>="all" =  all private public forks sources member
     --sort      "sort"                                      <>:UserSort="updated"
     --direction "direction"                                 <>:Direction="desc"
 
@@ -31,7 +31,7 @@ A
     # ___gh_ui_mutual '___ui_table_json  Name=.name RepoPath=.full_name Visibility=.visibility Description=.description -- $@' \
     #     ___x_cmd_gh_get_multi  "/orgs/$1/repos" type
 
-    local ___gh_error_msg="Couldn't find any data by: ${1}"
+    local ___gh_error_msg="Couldn't find any data by  ${1}"
     local Address="$1"
     local ___X_CMD_TUI_TABLE_FINAL_COMMAND
     local ___X_CMD_TUI_TABLE_CUR_LINE
@@ -52,7 +52,7 @@ ___x_cmd_gh_org_repo_ls() {
     param:dsl       <<A
 options:
     #1          "org space address"                         <>:Address
-    --type      "type"                                      <>="all"    = all private public
+    --type      "type"                                      <>="all"    = all private public forks sources member
     --sort      "sort"                                      <>:UserSort="updated"
     --direction "direction"                                 <>:Direction="desc"
 
@@ -61,8 +61,10 @@ options:
     --json|-j   "output json data"
 A
     param:run
+    local _table_cols='___ui_table_json RepoPath=.full_name Visibility=.visibility Description=.description -- $@'
+    [ "$type" != "member" ] || _table_cols='___ui_table_json RepoPath=.full_name Visibility=.visibility Push=.permissions.push Maintain=.permissions.maintain -- $@'
     local ___gh_error_msg="Please provide owner and owner_type"
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Name=.name RepoPath=.full_name Visibility=.visibility Description=.description -- $@' \
+    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual "$_table_cols" \
         ___x_cmd_gh_get_multi  "/orgs/$1/repos" type sort direction
 }
 # EndSection
@@ -100,28 +102,28 @@ option:
 A
     param:run
 
-    local private
-    local visibility
+    local private=""
+    local visibility=""
     case "$access" in
         private)        private=true            ;;
         public)         private=false           ;;
         internal)       visibility=internal     ;;
     esac
 
-    local name
+    local name=""
     [ -n "$org" ] || {
         for name in "$@"; do
             case "$name" in
                 */*)    ;;
-                *)      gh:error "Please provide --org or add origanization prefix before reponame "
+                *)      gh:error "Please provide --org or add organization prefix before reponame "
                         return 1
             esac
         done
     }
 
     name="${___X_CMD_TX}"
-    local gen_gh_json
-    gen_gh_json="$(param:option2json +name "${private:+"+private"}" "${visibility:+"+visibility"}" -access -org     \
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json +name ${private:+"+private"} ${visibility:+"+visibility"} -access -org     \
         has_issues=^no_issues                   allow_merge_commit=^no_merge_commit     has_projects=^no_projects   \
         allow_rebase_merge=^no_rebase_merge     allow_squash_merge=^no_squash_merge     has_wiki=^no_wiki)"
     gh:debug "$gen_gh_json"
@@ -130,13 +132,13 @@ A
         local this_org="${name%%/*}"
         [ "$this_org" != "$name" ] || this_org="$org"
         x tmpl "$gen_gh_json"  "${name##*/}" | \
-        ___x_cmd_gh_curl post "/orgs/$this_org/repos" "@-" | _____x_cmd_gh_org_repo_ui_utils Creating
+        ___x_cmd_gh_curl post "/orgs/$this_org/repos" "@-" | ___x_cmd_gh_org_repo____ui_handler Creating
     done
 }
 # EndSection
 
-# Section: org repo utils
-_____x_cmd_gh_org_repo_ui_utils(){
+# Section: org repo UI
+___x_cmd_gh_org_repo____ui_handler(){
     if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gh_http_error
@@ -146,15 +148,15 @@ _____x_cmd_gh_org_repo_ui_utils(){
         case "$1" in
             Creating)
                 _data="url=.html_url repo_owner=.owner.login"
-                _msg="Creating repo $name success"
-                _error_msg="Creating $name repo failure"
+                _inf_msg="Creating repo $name success"
+                _err_msg="Creating $name repo failure"
                 ;;
         esac
-        eval x jo env . id=.id gh_resp_err=.message "$_data"
+        eval x jo env . id=.id gh_resp_msg=.message gh_resp_err=.errors "$_data"
         if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true "$_msg" ${id+"repo_id: $id"}  ${repo_owner+"repo_owner: $repo_owner"} ${url+"url: $url"}
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${id:+"repo_id: $id"}  ${repo_owner:+"repo_owner: $repo_owner"} ${url:+"url: $url"}
         else
-            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi

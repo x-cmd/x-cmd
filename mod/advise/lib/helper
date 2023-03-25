@@ -1,7 +1,7 @@
-# shellcheck shell=bash disable=SC2207,SC2034,SC1090
+# shellcheck shell=bash disable=SC2207,SC2034,SC1090,SC2120
 # Section : adviser helper function: ls lsd seq get_result
 
-___x_cmd_advise__ls(){ local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"; candidate_exec_arr=( $(ls "$@") ); }
+___x_cmd_advise__ls(){ local IFS="$___X_CMD_ADVISE_IFS_INIT"; candidate_exec_arr=( $(ls "$@") ); }
 
 ___x_cmd_advise__dir(){
     if [ -n "$ZSH_VERSION" ]; then
@@ -94,59 +94,51 @@ ___x_cmd_advise__shift_comp_words(){
 
 ___x_cmd_advise__comp_from_x(){
     local offset="${1:-$offset}"
-    local module; local filepath
-    ___x_cmd_advise__shift_comp_words
+    local module="$2"; local filepath
+    local COMP_WORDS=("${COMP_WORDS[@]}"); local COMP_LINE="$COMP_LINE"; local COMP_CWORD="$COMP_CWORD"
+    [ -n "$module" ] || ___x_cmd_advise__shift_comp_words
 
-    local which_one_result
-    which_one_result="$(xrc which "$module")"
-    [ -n "$which_one_result" ] || return 1
-
-    local main_func
-    main_func="$(___x_cmd_ldict_get ___X_CMD_XRC_SET_MAIN_DICT "$which_one_result")"
-
-    # Generate the advise json file.
-    if [ -z "$main_func" ]; then
-        ___x_cmd_xrc_source_file_main "$which_one_result"
-        main_func="$(___x_cmd_ldict_get ___X_CMD_XRC_SET_MAIN_DICT "$which_one_result")"
-    fi
-
-    ___advise_main "$main_func" "$___X_CMD_ROOT_MOD/$module/res/advise.jso" "$module" 2>/dev/null
-    filepath="$___X_CMD_ADVISE_TMPDIR/$main_func"
+    filepath="$___X_CMD_ROOT_MOD/$module/res/advise.jso"
     [ -f "$filepath" ] || return 1
 
     candidate_exec=
-    eval "$(___advise_get_result_from_awk "$filepath")" 2>/dev/null
+    eval "$(___x_cmd_advise_get_result_from_awk "$filepath")" 2>/dev/null
     eval "$candidate_exec" 2>/dev/null
 }
 
 ___x_cmd_advise__comp_from_xcmd(){
     local offset="${1:-$offset}"
-    local module; local filepath
-    ___x_cmd_advise__shift_comp_words
+    local module="$2"; local filepath
+    local COMP_WORDS=("${COMP_WORDS[@]}"); local COMP_LINE="$COMP_LINE"; local COMP_CWORD="$COMP_CWORD"
+    [ -n "$module" ] || ___x_cmd_advise__shift_comp_words
 
-    ___x_cmd_advise_man_load x-cmd "$module"
     filepath="$(___x_cmd_advise_man_which x-cmd "$module")"
     [ -f "$filepath" ] || return 1
+
+    ___x_cmd_advise___load_xcmd_util_file "$filepath"
+    ___x_cmd_advise_man_load x-cmd "$module"
     local _candidate_arr=("${candidate_arr[@]}")
     candidate_exec=
-    eval "$(___advise_get_result_from_awk "$filepath")" 2>/dev/null
+    eval "$(___x_cmd_advise_get_result_from_awk "$filepath")" 2>/dev/null
     eval "$candidate_exec" 2>/dev/null
     _candidate_arr+=("${candidate_arr[@]}")
-    local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
+    local IFS="$___X_CMD_ADVISE_IFS_INIT"
     candidate_arr=( $( printf "%s\n" "${_candidate_arr[@]}" | awk -v FS=":" '!a[$1]++' ))
 }
 
 ___x_cmd_advise__comp_from_origin(){
     local offset="${1:-$offset}"
-    local module; local filepath
-    ___x_cmd_advise__shift_comp_words
+    local module="$2"; local filepath
+    local COMP_WORDS=("${COMP_WORDS[@]}"); local COMP_LINE="$COMP_LINE"; local COMP_CWORD="$COMP_CWORD"
+    [ -n "$module" ] || ___x_cmd_advise__shift_comp_words
 
     # TODO: must have map from command to function name and script path
     if [ -n "$ZSH_VERSION" ]; then
-        words=( "${COMP_WORDS[@]}" )
-        CURRENT="$COMP_CWORD"
+        local words=( "${COMP_WORDS[@]}" )
+        local CURRENT="$COMP_CWORD"
         filepath="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/zsh-completions/src/_$module"
-        [ ! -f "$filepath" ] || . "$filepath" 2>/dev/null
+        [ -f "$filepath" ] || return 1
+        . "$filepath" 2>/dev/null
     else
         filepath="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/bash-completions/share/bash-completion/completions/_$module"
         [ -f "$filepath" ] || filepath="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/bash-completions/share/bash-completion/completions/$module"
@@ -159,11 +151,18 @@ ___x_cmd_advise__comp_from_origin(){
 
 ___x_cmd_advise__comp_from_xcmd_or_origin(){
     local offset="${1:-$offset}"
-    local module
-    ___x_cmd_advise__shift_comp_words
+    local module="$2"
+    local COMP_WORDS=("${COMP_WORDS[@]}"); local COMP_LINE="$COMP_LINE"; local COMP_CWORD="$COMP_CWORD"
+    [ -n "$module" ] || ___x_cmd_advise__shift_comp_words
 
-    ___x_cmd_advise__comp_from_xcmd 0 \
-        || ___x_cmd_advise__comp_from_origin 0
+    ___x_cmd_advise__comp_from_xcmd 0 "$module" \
+        || ___x_cmd_advise__comp_from_origin 0 "$module"
 }
 
 ## EndSection
+
+___x_cmd_advise___load_xcmd_util_file(){
+    local filepath="$1";    filepath="${filepath%/*}/advise.util"
+    [ -f "$filepath" ] || return
+    . "$filepath"
+}

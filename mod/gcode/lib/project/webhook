@@ -1,0 +1,172 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_gcode_project_webhook(){
+    param:subcmd ___x_cmd_gcode_project_webhook     \
+        "ls|l"              "list repo webhook"     \
+        "info|i"            "get webhook info"      \
+        "create|c"          "create webhook"        \
+        "edit|ed"           "update webhook"        \
+        rm                  "remove webhook"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_project_webhook _param_help_doc
+    return 1
+}
+
+# Section: List
+# http://localhost:4000/13.7/ee/api/projects.html#list-project-hooks
+___x_cmd_gcode_project_webhook_ls() {
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --project   "The ID or URL-encoded path of the project owned by the authenticated user"     <>
+    --json|-j   "output json data"
+'
+    param:run
+    ___x_cmd_gcode_param_init_owner_project
+    ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Id=.id push_events=.push_events url=.url  -- $@' \
+        ___x_cmd_gcode_curl get "/projects/${owner_project}/hooks"
+}
+# EndSection
+
+# Section: info & rm
+# http://localhost:4000/13.7/ee/api/projects.html#get-project-hook
+___x_cmd_gcode_project_webhook_info() {
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1          "The unique identifier of the webhook."                                             <>:Number
+    --project   "The ID or URL-encoded path of the project owned by the authenticated user"         <>
+
+    --json|-j   "output json data"
+'
+    param:run
+    ___x_cmd_gcode_param_init_owner_project
+    ___x_cmd_gcode_curl get "/projects/${owner_project}/hooks/$1" | _____x_cmd_gcode_webhook_ui_utils Info
+}
+
+# http://localhost:4000/13.7/ee/api/projects.html#delete-project-hook
+___x_cmd_gcode_project_webhook_rm() {
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1          "The unique identifier of the webhook."                                            <>:Number
+    --project   "The ID or URL-encoded path of the project owned by the authenticated user"        <>
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+    ___x_cmd_gcode_param_init_owner_project
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove the webhook $1 in the $owner_project ?" || return
+    ___x_cmd_gcode_curl delete "/projects/${owner_project}/hooks/$1" | (
+        x jo env . gcode_resp_err=.error gcode_resp_err=.message
+        if ___x_cmd_gcode_http_error; then
+            ___x_cmd_ui_tf  true "successfully remove project webhook"
+        else
+            ___x_cmd_ui_tf false "delete project webhook failure: $1."
+            ___x_cmd_gcode____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: add & update
+# http://localhost:4000/13.7/ee/api/projects.html#add-project-hook
+___x_cmd_gcode_project_webhook_create() {
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --project                      "The ID or URL-encoded path of the project owned by the authenticated user"      <>
+    --url                          "The URL to which the payloads will be delivered."                               <>
+    --token                        "Secret token to validate received payloads"                                     <>=""
+    --push_events_branch_filter    "Trigger webhook on push events for matching branches only."                     <>=""
+    --issues_events                "Trigger webhook on issues events."
+    --job_events                   "Trigger webhook on job events."
+    --note_events                  "Trigger webhook on note events."
+    --push_events                  "Trigger webhook on push events."
+    --pipeline_events              "Trigger webhook on pipeline events."
+    --tag_push_events              "Trigger webhook on tag push events."
+    --wiki_page_events             "Trigger webhook on wiki events."
+    --deployment_events            "Trigger webhook on deployment events."
+    --merge_requests_events        "Trigger webhook on merge requests events."
+    --enable_ssl_verification      "Do SSL verification when triggering the webhook."
+    --confidential_note_events     "Trigger webhook on confidential note events."
+    --confidential_issues_events   "Trigger webhook on confidential issues events. "
+
+    --json|-j   "output json data"
+'
+    param:run
+
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -project)"
+
+    ___x_cmd_gcode_param_init_owner_project
+    ___x_cmd_gcode_curl post "/projects/${owner_project}/hooks" "gen_gcode_json" | _____x_cmd_gcode_webhook_ui_utils Creating
+}
+
+# http://localhost:4000/13.7/ee/api/projects.html#edit-project-hook
+___x_cmd_gcode_project_webhook_edit() {
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                             "The unique identifier of the webhook."                                             <>:Number
+    --project                      "The ID or URL-encoded path of the project owned by the authenticated user"         <>
+    --url                          "The URL to which the payloads will be delivered."                                  <>
+    --token                        "Secret token to validate received payloads"                                        <>=""
+    --push_events_branch_filter    "Trigger webhook on push events for matching branches only."                        <>=""
+    --deployment_events            "Trigger webhook on deployment events."
+    --issues_events                "Trigger webhook on issues events."
+    --job_events                   "Trigger webhook on job events."
+    --note_events                  "Trigger webhook on note events."
+    --push_events                  "Trigger webhook on push events."
+    --pipeline_events              "Trigger webhook on pipeline events."
+    --releases_events              "Trigger webhook on release events."
+    --tag_push_events              "Trigger webhook on tag push events."
+    --wiki_events                  "Trigger webhook on wiki events."
+    --merge_requests_events        "Trigger webhook on merge requests events."
+    --enable_ssl_verification      "Do SSL verification when triggering the webhook."
+    --confidential_issues_events   "Trigger webhook on confidential issues events. "
+    --confidential_note_events     "Trigger webhook on confidential note events."
+
+    --json|-j   "output json data"
+'
+    param:run
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -project)"
+    ___x_cmd_gcode_param_init_owner_project
+    ___x_cmd_gcode_curl put "/projects/${owner_project}/hooks/$1" "gen_gcode_json" | _____x_cmd_gcode_webhook_ui_utils Edit
+}
+
+# EndSection
+
+# Section: webhook utils
+_____x_cmd_gcode_webhook_ui_utils(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gcode_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Info)
+                _msg="get webhook info success."
+                _error_msg="get webhook info fail."
+                ;;
+            Creating|Edit)
+                _msg="$1 project webhook success."
+                _error_msg="$1 project webhook fail."
+                ;;
+        esac
+        _data="url=.url push_events=.push_events"
+        eval x jo env . _id=.id gcode_resp_err=.error gcode_resp_err=.message "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf true "$_msg" "Id: $_id" ${push_events+"Push_events: $push_events"} ${url+"Url: $url"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gcode____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

@@ -17,7 +17,7 @@ ___x_cmd_gh_team(){
     return 1
 }
 
-# Section: team app
+# Section: App
 ___x_cmd_gh_team_app(){
     param:scope     ___x_cmd_github
     param:dsl       '
@@ -75,11 +75,19 @@ options:
     --json|-j       "output json data"
 '
     param:run
-    local url="/user/teams"
-    [ -z "$org" ] || url="/orgs/${org##*/}/teams"
 
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Id=.id Organization=.organization.login Name=.name Url=.html_url -- $@' \
-        ___x_cmd_gh_get_multi "$url" per_page page
+    local _url=
+    local _data=
+    if [ -z "$org" ]; then
+        _url="/user/teams"
+        _data='___ui_table_json Id=.id Name=.name Slug=.slug Organization=.organization.login Url=.html_url -- $@'
+    else
+        _url="/orgs/${org##*/}/teams"
+        _data='___ui_table_json Id=.id Name=.name Slug=.slug Description=.description Url=.html_url -- $@'
+    fi
+
+    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual "$_data" \
+        ___x_cmd_gh_get_multi "$_url"
 }
 # EndSection
 
@@ -91,16 +99,16 @@ ___x_cmd_gh_team_info() {
 options:
     #1                  "team name"                 <>
     --org               "org space address"         <>:Address
-
     --json|-j           "output json data"
 A
     param:run
-    ___x_cmd_gh_curl get "/orgs/${org##*/}/teams/${1}" | _____x_cmd_team_ui_utils Info
+    ___x_cmd_gh_curl get "/orgs/${org##*/}/teams/${1}" | ___x_cmd_team_____ui_handler Info "$1"
 }
 # EndSection
 
 # Section: Create
 # https://docs.github.com/en/rest/teams/teams#create-a-team
+# shellcheck disable=2120
 ___x_cmd_gh_team_create() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
@@ -108,19 +116,38 @@ options:
     #1                  "team name"                                                                 <>
     --org               "org space address"                                                         <>:Address
     --description       "A short description of the team"                                           <>:Org_Description=""
-    --maintainers       "List GitHub IDs for organization members who will become team maintainers" <>=""
-    --repo_names        "The full name of repositories to add the team to"                          <>=""
-    --privacy           "The level of privacy this team should have"                                <>=""
+    --maintainers       "List organization members username who will become team maintainers"       <>=""
+    --repo|-r           "The name of repositories to add the team to"                               <>=""
+    --privacy           "The level of privacy this team should have"                                <>="" = secret closed ""
     --parent_team_id    "The ID of a team to set as the parent team"                                <>:Number=""
 
     --json|-j           "output json data"
 A
     param:run
+
     local name="$1"
-    local gen_gh_json
-    gen_gh_json="$(param:option2json -org +name)"
+    [ -z "$maintainers" ] || maintainers="[${maintainers}]"
+    # map append org prefix
+    case "${repo}" in
+        "") ;;
+        *,*)
+            local _tmp=
+            while true; do
+                _tmp="${org}/${repo%%,*},${_tmp}"
+                repo="${repo#*,}"
+                if [ "${repo#*,}" = "$repo" ]; then
+                    repo="[${org}/${repo%%,*},${_tmp}]"
+                    break
+                fi
+            done
+            ;;
+        *)  repo="[${org}/${repo}]" ;;
+    esac
+
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -json -org -repo +name ${repo:+"repo_names=repo"})"
     gh:debug "$gen_gh_json"
-    ___x_cmd_gh_curl post  "/orgs/${org##*/}/teams" "gen_gh_json" | _____x_cmd_team_ui_utils Creating
+    ___x_cmd_gh_curl post  "/orgs/${org##*/}/teams" "gen_gh_json" | ___x_cmd_team_____ui_handler Creating
 }
 # EndSection
 
@@ -134,18 +161,18 @@ options:
     --org               "org space address"                             <>:Address
     --name              "Changed team name(Empty does not change)"      <>=""
     --description       "The description of the team."                  <>:Org_Description=""
-    --privacy           "The level of privacy this team should have"    <>="" = secret closed closed ""
+    --privacy           "The level of privacy this team should have"    <>="" = secret closed ""
     --parent_team_id    "The ID of a team to set as the parent team"    <>:Number=""
 
     --json|-j           "output json data"
 A
     param:run
 
-    local gen_gh_json
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -org)"
     gh:debug "$gen_gh_json"
 
-    ___x_cmd_gh_curl patch  "/orgs/${org##*/}/teams/${1}" "gen_gh_json" | _____x_cmd_team_ui_utils Update
+    ___x_cmd_gh_curl patch  "/orgs/${org##*/}/teams/${1}" "gen_gh_json" | ___x_cmd_team_____ui_handler Update
 }
 # EndSection
 
@@ -163,16 +190,17 @@ options:
 A
     param:run
 
-    local teamname
+    local teamname=""
     for teamname in "$@"; do
         {
             [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove team: $(___x_cmd_ui bold red "$teamname") ?" || continue
-            ___x_cmd_gh_curl delete "/orgs/${org##*/}/teams/${teamname}" | (
-                x jo env . gh_resp_err=.message
+            ___x_cmd_gh_curl del "/orgs/${org##*/}/teams/${teamname}" | (
+                [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+                x jo env . gh_resp_msg=.message gh_resp_err=.errors
                 if ___x_cmd_gh_http_error; then
-                    ___x_cmd_ui_tf  true "del team $teamname to organizations  success"
+                    ___x_cmd_ui_tf  true "Remove team $teamname to organizations successfully:"
                 else
-                    ___x_cmd_ui_tf false "del team $teamname to organizations fail"
+                    ___x_cmd_ui_tf false "Remove team $teamname to organizations failure:" >&2
                     ___x_cmd_gh____handle_resp
                     return 1
                 fi
@@ -204,8 +232,8 @@ options:
 }
 # EndSection
 
-# Section: org team utils
-_____x_cmd_team_ui_utils(){
+# Section: org team UI
+___x_cmd_team_____ui_handler(){
     if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gh_http_error
@@ -214,20 +242,20 @@ _____x_cmd_team_ui_utils(){
     (
         case "$1" in
             Info)
-                _msg="get team $teamname info  success"
-                _error_msg="get team $teamname info fail."
+                _inf_msg="Getting team $2 information successfully"
+                _err_msg="Getting team $2 information failure"
                 ;;
             Creating|Update)
-                _data="owner=.organization.login"
-                _msg="$1 org team $name success"
-                _error_msg="$1 org team failure: $name."
+                _data="owner=.organization.login slug=.slug"
+                _inf_msg="$1 org team $name successfully"
+                _err_msg="$1 org team $name failure"
                 ;;
         esac
-        eval x jo env . id=.id url=.url name=.name gh_resp_err=.message "$_data"
+        eval x jo env . id=.id url=.html_url name=.name gh_resp_msg=.message gh_resp_err=.errors "$_data"
         if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true "$_msg" ${id+"Id: $id"} ${name+"Name: $name"} ${owner+"Owner: $owner"} ${url+"Url: $url"}
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${id:+"ID: $id"} ${name:+"Name: $name"} ${slug:+"Slug: $slug"} ${owner:+"Org: $owner"} ${url:+"Url: $url"}
         else
-            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi

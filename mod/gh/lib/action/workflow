@@ -3,6 +3,7 @@
 
 ___x_cmd_gh_action_workflow() {
     param:subcmd  ___x_cmd_gh_action_workflow          \
+        "app"                    "Interactive UI show repo by owner"                     \
         "ls|l"                   "lists the workflow in a repository."                    \
         "view|v"                 "View the summary of a workflow"                         \
         "dispatch|run"           "Run a workflow by creating a workflow_dispatch event"   \
@@ -13,6 +14,7 @@ ___x_cmd_gh_action_workflow() {
     ___x_cmd_gh_action_workflow _param_help_doc
     return 1
 }
+___x_cmd_gh_action_wf(){ param:void; ___x_cmd_gh_action_workflow "$@"; }
 
 # Section: List
 # shellcheck disable=SC2154
@@ -21,7 +23,7 @@ ___x_cmd_gh_action_workflow_ls() {
     param:scope ___x_cmd_github
     param:dsl <<A
 options:
-    --repo      "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoName
 
     --per_page  "Results per page (max 100)"                                            <>:Per_page="30"
     --page      "Page number of the results to fetch."                                  <>:Numbers="1"
@@ -35,8 +37,49 @@ A
         eval "$___workflow_ls_tmp"
     else
         ___X_CMD_UI_STATIC=1 ___ui_table_json Workflow_ID=.id name=.name path=.path state=.state -- \
-            "$___workflow_ls_tmp | x jo q0 .workflows | ___x_cmd_resp___handle_table_pipe_data"
+            "$___workflow_ls_tmp | x jo q0 .workflows"
     fi
+}
+# EndSection
+
+# Section: App
+___x_cmd_gh_action_workflow_app() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    --repo|-r      "Provide owner name and repo name.(default:the current user repo)"   <>:RepoName
+
+    --per_page  "Results per page (max 100)"                                            <>:Per_page="30"
+    --page      "Page number of the results to fetch."                                  <>:Numbers="1"
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    local ___workflow_ls_tmp="___x_cmd_gh_curl get /repos/${owner_repo}/actions/workflows per_page page"
+
+    local ___gh_error_msg="get workflow list fail"
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_curl get /repos/${owner_repo}/actions/workflows per_page page'
+    local ___X_CMD_GH_TUI_ACTION_WORKFLOW_REQUSET_DATA='___x_cmd_gh_action_workflow_view --repo $owner_repo '
+    ___x_cmd_gh_tui_app "action.workflow.app.awk"
+
+    ___x_cmd_gh_action_workflow_app_status_handler
+}
+    ___x_cmd_gh_action_workflow_app_status_handler(){
+
+    local workflow_id
+    workflow_id="${___X_CMD_TUI_TABLE_CUR_LINE##*Id: }"
+    workflow_id=${workflow_id%%
+Name:*}
+
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "i")            ___x_cmd_gh_action_workflow_dispatch      --repo "${repo}"          "$workflow_id"             ;;
+            "d")            ___x_cmd_gh_action_workflow_disable       --repo "${repo}"          "$workflow_id"             ;;
+            "e")            ___x_cmd_gh_action_workflow_enable        --repo "${repo}"          "$workflow_id"             ;;
+            *)              return
+    esac
 }
 # EndSection
 
@@ -50,7 +93,7 @@ type:
     run_status = Success Failure
 options:
     #1                 "The ID of the workflow"                                             <>:Number
-    --repo              "Provide repo name.(default:the current user repo)"                 <>:RepoName
+    --repo|-r          "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoName
 
     --branch            "Returns workflow runs associated with a branch."                   <>=""
     --actor             "returns someone workflow runs."                                    <>:Username=""
@@ -74,7 +117,7 @@ A
         eval "$___workflow_view_tmp"
     else
         ___X_CMD_UI_STATIC=1 ___ui_table_json Runs_ID=.id commit=.head_commit.message name=.name conclusion=.conclusion branch=.head_branch -- \
-            "$___workflow_view_tmp | x jo q0 .workflow_runs | ___x_cmd_resp___handle_table_pipe_data"
+            "$___workflow_view_tmp | x jo q0 .workflow_runs"
     fi
 }
 
@@ -86,18 +129,19 @@ ___x_cmd_gh_action_workflow_disable() {
     param:scope ___x_cmd_github
     param:dsl <<A
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     #1              "The ID of the workflow"                                            <>:Number
 A
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
     ___x_cmd_gh_curl put  "/repos/${owner_repo}/actions/workflows/${1##*/}/disable" | (
-            x jo env . gh_resp_err=.message
+            [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "Disabled ${1##*/} successfully"
+                ___x_cmd_ui_tf  true "Disabled ${1##*/} successfully:"
             else
-                ___x_cmd_ui_tf  false "Disabled ${1##*/} failure"
+                ___x_cmd_ui_tf  false "Disabled ${1##*/} failure:" >&2
                 ___x_cmd_gh____handle_resp
                 return 1
             fi
@@ -111,18 +155,19 @@ ___x_cmd_gh_action_workflow_enable() {
     param:scope ___x_cmd_github
     param:dsl <<A
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-    #1              "The ID of the workflow"                                            <>:Number
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"      <>:RepoName
+    #1          "The ID of the workflow"                                        <>:Number
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
 
     ___x_cmd_gh_curl put  "/repos/${owner_repo}/actions/workflows/${1##*/}/enable" | (
-            x jo env . gh_resp_err=.message
+            [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "Enable ${1##*/} successfully"
+                ___x_cmd_ui_tf  true "Enable ${1##*/} successfully:"
             else
-                ___x_cmd_ui_tf false "Enable ${1##*/} failure"
+                ___x_cmd_ui_tf false "Enable ${1##*/} failure:" >&2
                 ___x_cmd_gh____handle_resp
                 return 1
             fi
@@ -137,23 +182,24 @@ ___x_cmd_gh_action_workflow_dispatch() {
     param:scope ___x_cmd_github
     param:dsl <<A
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"                  <>:RepoName
-    --ref           "The git reference for the workflow."                                               <>="main"
-    --inputs        "Input keys and values configured in the workflow file.(json)(stdin -)"             <>=""
-    #1              "The ID of the workflow"                                                            <>:Number
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"                <>:RepoName
+    --ref           "The git reference for the workflow."                                     <>="main"
+    --inputs        "Input keys and values configured in the workflow file.(json)(stdin -)"   <>=""
+    #1              "The ID of the workflow"                                                  <>:Number
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
-    local gen_gh_json
+    local gen_gh_json=""
     [ "$inputs" != '-' ] || inputs="$(command cat)"
     gen_gh_json="$(param:option2json -repo)"
     gh:debug "$gen_gh_json"
     ___x_cmd_gh_curl post "/repos/${owner_repo}/actions/workflows/${1##*/}/dispatches" gen_gh_json | (
-            x jo env . gh_resp_err=.message
+            [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "Created workflow_dispatch event for ${1##*/} at $ref"
+                ___x_cmd_ui_tf  true "Created workflow_dispatch event for ${1##*/} at ${ref}:"
             else
-                ___x_cmd_ui_tf false "Created workflow_dispatch event failure"
+                ___x_cmd_ui_tf false "Created workflow_dispatch event failure:" >&2
                 ___x_cmd_gh____handle_resp
                 return 1
             fi

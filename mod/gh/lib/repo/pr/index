@@ -24,7 +24,7 @@ ___x_cmd_gh_repo_pr_ls() {
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --base          "target branch. Format: [username:]<branch>"                        <>=""
     --state         "state"                                                             <>:PrState="open"
     --sort          "sort"                                                              <>:PrSort="created"
@@ -48,14 +48,14 @@ ___x_cmd_gh_repo_pr_info() {
     param:dsl       '
 options:
     #1              "pr number"     <>:Number
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"  <>:RepoName
 
     --json|-j   "output json data"
 '
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl get "/repos/${owner_repo}/pulls/$1" | _____x_cmd_gh_pr_ui_utils Info
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/pulls/$1" | ___x_cmd_gh_pr____ui_handler Info
 }
 # EndSection
 
@@ -67,7 +67,7 @@ ___x_cmd_gh_repo_pr_create() {
 type:
     bool = true false
 options:
-    --repo                  "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r               "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --title                 "pr title"                                                          <>
     --head                  "source branch. Format: [username:]<branch>"                        <>:name
     --base                  "target branch. Format: [username:]<branch>"                        <>:name
@@ -79,11 +79,11 @@ options:
 '
     param:run
     ___x_cmd_gh_param_init_owner_repo
-    local gen_gh_json
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -repo draft=^^draft)"
     gh:debug "$gen_gh_json"
 
-    ___x_cmd_gh_curl post "/repos/$owner_repo/pulls" "gen_gh_json" | _____x_cmd_gh_pr_ui_utils Creating
+    ___x_cmd_gh_curl post "/repos/$owner_repo/pulls" "gen_gh_json" | ___x_cmd_gh_pr____ui_handler Creating
 }
 # EndSection
 
@@ -97,7 +97,7 @@ type:
     state = closed open
 options:
     #1                      "pr number"                                                         <>:number
-    --repo                  "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r               "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --state                 "state"                                                             <>:state
     --base                  "target branch. Format: [username:]<branch>"                        <>:name=""
     --title                 "pr title"                                                          <>=""
@@ -108,11 +108,11 @@ options:
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    local gen_gh_json
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -repo)"
     gh:debug "$gen_gh_json"
 
-    ___x_cmd_gh_curl patch "/repos/${owner_repo}/pulls/$1" "gen_gh_json" | _____x_cmd_gh_pr_ui_utils Edit
+    ___x_cmd_gh_curl patch "/repos/${owner_repo}/pulls/$1" "gen_gh_json" | ___x_cmd_gh_pr____ui_handler Edit
 }
 # EndSection
 
@@ -125,8 +125,8 @@ ___x_cmd_gh_repo_pr_merge() {
 type:
     merge = squash merge rebase
 options:
-    #1                      "pr id"                                                             <>
-    --repo                  "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    #1                      "pr id"                                                             <>:Number
+    --repo|-r               "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --merge_method          "merge method(squash,merge)"                                        <>:merge="merge"
     --commit_title          "Title for the automatic commit message."                           <>=""
     --commit_message        "Extra detail to append to automatic commit message."               <>=""
@@ -134,20 +134,21 @@ options:
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    local gen_gh_json
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -repo)"
     gh:debug "$gen_gh_json"
 
     ___x_cmd_gh_curl put "/repos/${owner_repo}/pulls/$1/merge" "gen_gh_json" | (
-        x jo env . merged=.merged gh_resp_err=.message
-        if [ "$merged" = "true" ]; then
-            ___x_cmd_ui_tf true "Merge $1 to repo ${owner_repo} successfully"
-        else
-            ___x_cmd_ui_tf false "Merge $1 to repo ${owner_repo} failed"
-            ___x_cmd_gh____handle_resp
-            return 1
-        fi
-    )
+            [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . merged=.merged gh_resp_msg=.message gh_resp_err=.errors
+            if [ "$merged" = "true" ]; then
+                ___x_cmd_ui_tf  true "Pull Request $1 merge to repo ${owner_repo} successfully:"
+            else
+                ___x_cmd_ui_tf false "Pull Request $1 merge to repo ${owner_repo} failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
 }
 # EndSection
 
@@ -183,7 +184,7 @@ ___x_cmd_gh_repo_pr_comments_ls() {
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --pr        "pr number."                                                        <>
 '
     param:run
@@ -197,7 +198,7 @@ ___x_cmd_gh_repo_pr_comments_create(){
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     --number        "pr number"                                                         <>
     --body          "The text of the review comment."                                   <>
     --commit_id     "The SHA of the commit needing a comment"                           <>=""
@@ -211,7 +212,7 @@ options:
 '
     param:run
     ___x_cmd_gh_param_init_owner_repo
-    local gen_gh_json
+    local gen_gh_json=""
     gen_gh_json="$(param:option2json -repo)"
     gh:debug "$gen_gh_json"
     ___x_cmd_gh_curl post "/repos/${owner_repo}/pulls/$number/comments" "gen_gh_json"
@@ -221,23 +222,24 @@ ___x_cmd_gh_repo_pr_comments_rm(){
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
     #1          "The unique identifier of the comment."                             <>
     --yes|-y    "Ignore remove prompt interception"
 '
     param:run
     ___x_cmd_gh_param_init_owner_repo
     [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove user: $(___x_cmd_ui bold red "$username") ?" || return
-    ___x_cmd_gh_curl delete "/repos/${owner_repo}/pulls/comments/$1" | (
-        x jo env . gh_resp_err=.message
-        if ___x_cmd_gh_http_error; then
-            ___x_cmd_ui_tf  true "Delete repo pr comment successful"
-        else
-            ___x_cmd_ui_tf false "Failed to delete repo pr comment."
-            ___x_cmd_gh____handle_resp
-            return 1
-        fi
-    )
+    ___x_cmd_gh_curl del "/repos/${owner_repo}/pulls/comments/$1" | (
+            [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "Deleting repo pr comment successfully:"
+            else
+                ___x_cmd_ui_tf false "Deleting repo pr comment failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
 }
 
 ___x_cmd_gh_repo_pr_comments_edit(){
@@ -247,8 +249,8 @@ ___x_cmd_gh_repo_pr_comments_edit(){
 
 # EndSection
 
-# Section: pr utils
-_____x_cmd_gh_pr_ui_utils(){
+# Section: pr UI
+___x_cmd_gh_pr____ui_handler(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gh_http_error
@@ -258,25 +260,25 @@ _____x_cmd_gh_pr_ui_utils(){
         case "$1" in
             Info)
                 _data="url=.html_url state=.state title=.title body=.body"
-                _msg="Successfully obtained PR information"
-                _error_msg="Failed to get PR information"
+                _inf_msg="Successfully obtained PR information"
+                _err_msg="Failed to get PR information"
                 ;;
             Creating)
                 _data="url=.html_url state=.state title=.title body=.body"
-                _msg="Successfully obtained PR information"
-                _error_msg="Failed to get PR information"
+                _inf_msg="Successfully obtained PR information"
+                _err_msg="Failed to get PR information"
                 ;;
             Edit)
                 _data="url=.html_url state=.state title=.title body=.body"
-                _msg="Edit PR success"
-                _error_msg="Failed to Edit PR"
+                _inf_msg="Edit PR success"
+                _err_msg="Failed to Edit PR"
                 ;;
         esac
-        eval x jo env . id=.id gh_resp_err=.message "$_data"
+        eval x jo env . id=.id gh_resp_msg=.message gh_resp_err=.errors "$_data"
         if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true "$_msg" ${url+"Url: $url"}  ${state+"State:$state"} ${title+"Title:$title"} ${body+"Body:$body"}
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${url:+"Url: $url"} ${state:+"State: $state"} ${title:+"Title: $title"} ${body:+"Body: $body"}
         else
-            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp
             return 1
         fi

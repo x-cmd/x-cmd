@@ -1,0 +1,164 @@
+# shellcheck shell=dash
+
+# Common AWK
+# LC_ALL=C AWK
+
+xrc:mod:lib     cawk        init
+x log init cawk
+
+___X_CMD_ROOT_AWKLIB="$___X_CMD_ROOT_MOD/awk/lib"
+# x cawk -m str,j/json -f "a.awk" 'END{ ... }'
+# x cawk -m u/wcwidth 'BEGIN{ print wcswidth("中")}'
+# x cawk -m ord,url 'BEGIN{ print urlencode(",a中")}'
+
+___x_cmd_cawk___main(){
+    local IFS=" "
+    [ "$#" -gt 0 ] || {
+        cawk:error "No argument"
+        return 64
+    }
+
+    # Notice: local varaible name should be in uppercase form.
+    local ___X_CMD_CAWK_VAR_MODLIST=
+    local ___X_CMD_CAWK_VAR_ARGLIST=
+    local ___X_CMD_CAWK_VAR_CODE=
+    local ___X_CMD_CAWK_ENVAR_AWK_CODE=
+    local ___X_CMD_CAWK_ENV_CODE=
+    local x_
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                x help -m cawk >&2
+                return 1
+                ;;
+            -m)
+                [ -n "$2" ] || {
+                    cawk:error "Invalid argument after -m ==> $2"
+                    return 64
+                }
+                ___x_cmd_cawk___main_parse_modstr_ "$2"
+                ___X_CMD_CAWK_VAR_MODLIST="$x_"
+                shift 2
+                ;;
+            -f)
+                [ -n "$2" ] || {
+                    cawk:error "Invalid argument after -f ==> $2"
+                    return 64
+                }
+                ___X_CMD_CAWK_VAR_ARGLIST="$___X_CMD_CAWK_VAR_ARGLIST '$1' '$2'"
+                shift 2
+                ;;
+            -E)
+                [ -n "$2" ] || {
+                    cawk:error "Invalid argument after -E ==> $2"
+                    return 64
+                }
+                ___x_cmd_cawk___main_parse_envlist_ "$2"
+                ___X_CMD_CAWK_ENV_CODE="$x_"
+                shift 2
+                ;;
+
+            -v)
+                [ -n "$2" ] || {
+                    cawk:error "Invalid argument after -E ==> $2"
+                    return 64
+                }
+                case "$2" in
+                    *=*)
+                        local ___X_CMD_CAWK_VAR_NAME="${2%%=*}"
+                        local ___X_CMD_CAWK_VAR_ENVNAME=___X_CMD_CAWK_${___X_CMD_CAWK_VAR_NAME}
+                        eval "$___X_CMD_CAWK_VAR_ENVNAME=\"\${2#*=}\""
+                        ___X_CMD_CAWK_ENVAR_AWK_CODE="${___X_CMD_CAWK_ENVAR_AWK_CODE}
+${___X_CMD_CAWK_VAR_NAME} = ENVIRON[\"$___X_CMD_CAWK_VAR_ENVNAME\"];
+"
+                        ___X_CMD_CAWK_ENV_CODE="${___X_CMD_CAWK_ENV_CODE} $___X_CMD_CAWK_VAR_ENVNAME=\"\${$___X_CMD_CAWK_VAR_ENVNAME}\""
+                        shift 2
+                    ;;
+                    *)
+                        ___X_CMD_CAWK_ENVAR_AWK_CODE="${___X_CMD_CAWK_ENVAR_AWK_CODE}
+${2} = ENVIRON[\"$2\"];
+"
+                        ___X_CMD_CAWK_ENV_CODE="${___X_CMD_CAWK_ENV_CODE} $2=\"\${$2}\""
+                        shift 2
+                    ;;
+                esac
+                ;;
+            -*)
+                x:error "Option $1 is disabled."
+                return 64
+                ;;
+            *)
+                ___X_CMD_CAWK_VAR_CODE="${___X_CMD_CAWK_VAR_CODE}${1}${___X_CMD_UNSEENCHAR_NEWLINE}"
+                shift
+                ;;
+        esac
+    done
+
+    if [ -n "$___X_CMD_CAWK_ENVAR_AWK_CODE" ]; then
+        ___X_CMD_CAWK_VAR_CODE="BEGIN{
+${___X_CMD_CAWK_ENVAR_AWK_CODE}
+}
+$___X_CMD_CAWK_VAR_CODE"
+
+    fi
+
+    if [ -n "$___X_CMD_CAWK_VAR_CODE" ]; then
+        case "$___X_CMD_CAWK_IMPL" in
+            bsdawk|mawk)
+                local ___X_CMD_CAWK_TMPVAR; ___X_CMD_CAWK_TMPVAR="${___X_CMD_ROOT_TMP}/cawk.current___X_CMD_CAWK_VAR_CODE.$(x pidid vlid)"
+                printf "%s\n" "$___X_CMD_CAWK_VAR_CODE" >"$___X_CMD_CAWK_TMPVAR"
+                ___X_CMD_CAWK_VAR_CODE=
+                ___x_cmd_cawk___main_justrun_with_env -f "${___X_CMD_CAWK_TMPVAR}"
+                local exit=$?
+                x rmrf "${___X_CMD_CAWK_TMPVAR}"
+                return $exit
+                ;;
+            *)
+                ___X_CMD_CAWK_VAR_CODE="-e '$___X_CMD_CAWK_VAR_CODE'"
+                ;;
+        esac
+    fi
+
+    ___x_cmd_cawk___main_justrun_with_env
+}
+
+___x_cmd_cawk___main_parse_modstr_(){
+    x_=
+    local str=$1    # trim space
+    local elem="${str%%,*}"
+    x_="${x_} -f '${___X_CMD_ROOT_AWKLIB}/$elem.awk'"
+    while [ "$elem" != "$str" ]; do
+        str=${str#*,}
+        elem="${str%%,*}"
+        x_="${x_} -f '${___X_CMD_ROOT_AWKLIB}/$elem.awk'"
+    done
+}
+
+___x_cmd_cawk___main_parse_envlist_(){
+    x_=
+    local str=$1    # trim space
+    local elem="${str%%,*}"
+    x_="${x_} $elem=\"\${$elem}\""
+    while [ "$elem" != "$str" ]; do
+        str=${str#*,}
+        elem="${str%%,*}"
+        x_="${x_} $elem=\"\${$elem}\""
+    done
+}
+
+___x_cmd_cawk___main_justrun_with_env(){
+    eval "${___X_CMD_CAWK_ENV_CODE} ___x_cmd_cawk___main_justrun \"\$@\""
+}
+
+___x_cmd_cawk___main_justrun(){
+    # shellcheck disable=SC2086
+    eval set -- ___x_cmd_cawk___run                     \
+        -f "${___X_CMD_ROOT_AWKLIB}/default.awk"        \
+        "$___X_CMD_CAWK_VAR_MODLIST"                    \
+        "$___X_CMD_CAWK_VAR_ARGLIST"                    \
+        "$___X_CMD_CAWK_VAR_CODE"                       \
+        "$*"
+
+    LC_ALL=C ___X_CMD_CAWK_IMPL="${___X_CMD_CAWK_IMPL}" "$@"
+}

@@ -1,41 +1,50 @@
 # shellcheck shell=sh
-# shellcheck disable=SC2039,3043
+# shellcheck disable=SC2039,SC3043,SC2154
 
-# Synchronized token in the x-bash user profile.
-
-# shellcheck disable=SC2120
 ___x_cmd_gt_token(){
-    param:void
-    if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then _____x_cmd_gt_help token; return 0
-    fi
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1          "access token. empty output current token"     <>=""
+    --host      "config request host"                          <>="https://gitee.com/api/v5"
+    --profile   "config profile name. empty use default"       <>=""
+    --config    "config file path. empty use default"          <>=""
+    '
+    param:run
+    [ -z "$profile" ] || local ___X_CMD_GT_CURRENT_profile="$profile"
+    [ -z "$config"  ] || local ___X_CMD_GT_CURRENT_config="$config"
 
-    local O="${O:-___x_cmd_gt_GITEE_DEFAULT}"
-    if [ $# -eq 0 ]; then
-        ___x_cmd_gt_config_get "oauth_token"  || {
+    if [ -z "$1" ]; then
+        ___x_cmd_gt_config_get token 2>/dev/null || {
             gt:error "Can't find any token"
-            gt:warn "Please check your token.$(_____x_cmd_gt_help__token_setting)"
+            gt:warn -m "Please check your token.$(_____x_cmd_gt_help__token_setting)"
             return 1
         }
         return 0
     else
         [ $# -lt 2 ] || gt:warn "Multiple tokens cannot be set at the same time, Set only the first token"
-        local tmp_token
-        tmp_token="$(___x_cmd_gt_config_get "oauth_token")"
+        local tmp_token=
+        local tmp_host=
+        ___x_cmd_gt_config___var    tmp_token=token tmp_host=host 2>/dev/null
 
-        if [ "$1" = "$tmp_token" ];then
+        if [ "$1" = "$tmp_token" ]; then
             gt:info "Consistent with the original token"
-            return 0
+            ! ___x_cmd_gt_config_get owner 1>/dev/null 2>&1 || [ "$host" != "$tmp_host" ] || return 0
         fi
 
-        ___x_cmd_gt_config_set "oauth_token" "$1" 1>/dev/null
-        ___X_CMD_GITEE_DEFAULT_OWNER=
-        if ! NO_CACHE=1 ___x_cmd_gt_current_owner 1>/dev/null 2>&1; then
-            [ -z "$tmp_token" ] || ___x_cmd_gt_config_set "oauth_token" "$tmp_token" 1>/dev/null
-            gt:error "set default token $1 fail, Please check if it is a valid token.$(_____x_cmd_gt_help__token_setting)"
+        ___x_cmd_gt_config_set "$1" "" "$host"
+        local ___X_CMD_GT_CURRENT_owner=
+        x jo env . ___X_CMD_GT_CURRENT_owner=.login <<A
+            $(___x_cmd_gt_curl get "/user")
+A
+        if [ -z "$___X_CMD_GT_CURRENT_owner" ]; then
+            # reback
+            [ -z "$tmp_token" ] || ___x_cmd_gt_config_set "$tmp_token" "" "$tmp_host" 2>/dev/null
+            gt:error "Fail to update current owner with this token"
             return 1
         fi
-        ___x_cmd_gt_config_set "user" "$___X_CMD_GITEE_DEFAULT_OWNER" 1>/dev/null
-        ___x_cmd_ui_tf true "set default token successfully, The default user is $___X_CMD_GITEE_DEFAULT_OWNER"
+        ___x_cmd_gt_config_set "" "$___X_CMD_GT_CURRENT_owner" "$host"
+        ___x_cmd_ui_tf true "Setup token successfully, The owner is $___X_CMD_GT_CURRENT_owner:"
         return 0
     fi
 }

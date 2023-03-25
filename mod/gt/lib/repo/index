@@ -1,6 +1,9 @@
 # shellcheck shell=sh
 # shellcheck disable=SC2039,3043,SC2154
 
+xrc:mod:lib gt repo/util  repo/apply  repo/branch  repo/commit  repo/hook  repo/collaborator  repo/page  repo/push  repo/tag \
+    repo/pr/index  repo/pr/assign  repo/pr/tester  repo/release/index
+
 ___x_cmd_gt_repo(){
     param:scope         ___x_cmd_gt
     param:subcmd ___x_cmd_gt_repo       \
@@ -8,10 +11,12 @@ ___x_cmd_gt_repo(){
         "ls|l"          "List repo by owner"                            \
         "create|c"      "Create repo"                                   \
         "edit|ed"       "Edit repo configure"                           \
+        rename          "Rename repo"                                   \
         "info|i"        "Show detailed information by repo"             \
         rm              "Remove repo"                                   \
         clear           "Clear repo"                                    \
         apply           "manage repo by declare configure"              \
+        "cl|clone"      "clone repo from gitee"                         \
         commit          "repo commit management"                        \
         collaborator    "repo collaborator management"                  \
         branch          "repo branch management"                        \
@@ -20,7 +25,8 @@ ___x_cmd_gt_repo(){
         hook            "repo webhooks management"                      \
         tag             "repo tag management"                           \
         release         "repo release management"                       \
-        push            "repo push rule management"
+        push            "repo push rule management"                     \
+        page            "repo page management"
     param:subcmd:try
     param:run
 
@@ -33,7 +39,7 @@ ___x_cmd_gt_repo_create(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 option:
-    #1                      "Provide ownerPath/RepoPath.(default owner: current user)"      <>:RepoPath
+    #1                      "<ownerPath>/<RepoPath> (default ownerPath: current user)"      <>:RepoPath
 
     -p|--path               "repo path"                                                     <>=""
     --description           "description"                                                   <desc>=""
@@ -47,18 +53,19 @@ option:
     --json|-j               "Output origin json data"
 '
     param:run
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (<ownerPath>/<RepoPath>), received empty' arg:ret:64
 
-    local name
+    local name=""
     for name in "$@"; do
         local _cmd_opt="${p:+"--p '$p'"}  ${homepage:+"--homepage '$homepage'"}     ${description:+"--description '$description'"} \
             ${gitignore_template:+"--gitignore_template '$gitignore_template'"}     ${license_template:+"--license_template '$license_template'"} \
             ${no_issue:+"--no_issue"}  ${no_wiki:+"--no_wiki"} ${no_comment:+"--no_comment"} ${auto_init:+"--auto_init"}    '$name'"
-        gt:debug "cmd_opt: ${_cmd_opt}"
+        gt:debug "${_cmd_opt}"
 
         local owner_type=user
         [ "${name%%/*}" = "$name" ] || {
             if ! owner_type="$(___x_cmd_gt_owner_type_query "${name%%/*}")"; then
-                gt:error "No found any onwer type. Please check owner exist: ${name%%/*}"
+                gt:error "No found any onwer type. Please check owner exist ${name%%/*}"
                 return 1
             fi
         }
@@ -88,24 +95,26 @@ option:
     --json|-j               "output origin json data"
 '
     param:run
-    local private
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (repo name), received empty' arg:ret:64
+
+    local private=""
     case "$access" in
         public)     private=false   ;;
         private)    private=true    ;;
     esac
 
     local name="${___X_CMD_TX}"
-    local gen_gt_json
+    local gen_gt_json=""
     gen_gt_json="$(
-        param:option2json +name +private "${p:+"path=p"}" -access -p \
+        param:option2json +name +private "${p:+"path=p"}" -access -p -auto_init -json \
             has_issues=^no_issue        has_wiki=^no_wiki \
             can_comment=^no_comment     auto_init=^^auto_init)"
     gt:debug "$gen_gt_json"
 
     for name in "$@"; do
         x tmpl "$gen_gt_json" "${name##%/}" | \
-            ___x_cmd_gt_curl post "https://gitee.com/api/v5/user/repos" "@-" | \
-            ___x_cmd_gt_repo_create_status_handler
+            ___x_cmd_gt_curl post "/user/repos" "@-" | \
+            ___x_cmd_gt_repo____ui_handler Creating
     done
 }
 
@@ -131,8 +140,9 @@ option:
     --json|-j               "output origin json data"
 '
     param:run
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (<ownerPath>/<RepoPath>), received empty' arg:ret:64
 
-    local name
+    local name=""
     [ -n "$org" ] || {
         for name in "$@"; do
             case "$name" in
@@ -158,7 +168,7 @@ option:
         local this_org="${name%%/*}"
         [ "$this_org" != "$name" ] || this_org="$org"
         x tmpl "$gen_gt_json" "${name##*/}" | \
-            ___x_cmd_gt_curl post "https://gitee.com/api/v5/orgs/${this_org}/repos" "@-" | ___x_cmd_gt_repo_create_status_handler
+            ___x_cmd_gt_curl post "/orgs/${this_org}/repos" "@-" | ___x_cmd_gt_repo____ui_handler Creating
     done
 }
 
@@ -190,8 +200,9 @@ option:
     --json|-j               "output origin json data"
 '
     param:run
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (<ownerPath>/<RepoPath>), received empty' arg:ret:64
 
-    local name
+    local name=""
     [ -n "$enterprise" ] || {
         for name in "$@"; do
             case "$name" in
@@ -208,8 +219,7 @@ option:
         innerSource)    private=2 ;;
     esac
     name="${___X_CMD_TX}"
-    local outsourced="${outsourced:-false}"
-    local gen_gt_json
+    local gen_gt_json=""
     gen_gt_json="$(
         param:option2json +name +private "${p:+"path=p"}" -access -p \
         has_issues=^no_issue            has_wiki=^no_wiki              outsourced=^^outsourced \
@@ -220,30 +230,11 @@ option:
         local this_ent="${name%%/*}"
         [ "$this_ent" != "$name" ] || this_ent="$enterprise"
         x tmpl "$gen_gt_json" "${name##*/}" | \
-            ___x_cmd_gt_curl post "https://gitee.com/api/v5/enterprises/${this_ent}/repos" "@-" | ___x_cmd_gt_repo_create_status_handler
+            ___x_cmd_gt_curl post "/enterprises/${this_ent}/repos" "@-" | \
+                ___x_cmd_gt_repo____ui_handler Creating
     done
     return 0
 }
-
-# shellcheck disable=SC2154
-___x_cmd_gt_repo_create_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . full_name=.full_name url=.html_url gt_resp_body=.
-        if [ -n "$full_name" ]; then
-            ___x_cmd_ui_tf true  "Creating repo $name successfully" "path: $full_name" "url: $url"
-        else
-            ___x_cmd_ui_tf false "Creating repo failure: $name"  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
-}
-
 # EndSection
 
 # Section: App
@@ -261,7 +252,7 @@ options:
     local owner_type=user
     [ -z "$1" ] || {
         if ! owner_type="$(___x_cmd_gt_owner_type_query "$1")"; then
-            gt:error "No found any onwer type. Please check owner exist: $1"
+            gt:error "No found any onwer type. Please check owner exist $1"
             return 1
         fi
     }
@@ -286,7 +277,7 @@ options:
     local owner_type=user
     [ -z "$1" ] || {
         if ! owner_type="$(___x_cmd_gt_owner_type_query "$1")"; then
-            gt:error "No found any onwer type. Please check owner exist: $1"
+            gt:error "No found any onwer type. Please check owner exist $1"
             return 1
         fi
     }
@@ -305,7 +296,7 @@ ___x_cmd_gt_repo_edit(){
 type:
     Access  =   private public ""
 options:
-    #1                      "Provide ownerPath/RepoPath.(default owner: current user)"              <>:RepoPath
+    #1                      "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoPath
     --name                  "rename repo(default:the repo path)"                                    <>=""
 
     --access                "private,public"                                                        <>:Access=""
@@ -313,6 +304,7 @@ options:
     --description           "repo description"                                                      <>=""
     --homepage              "homepage"                                                              <>=""
     --default_branch        "repo default branch"                                                   <>=""
+    --default_merge_method  "repo default merge pr way"                                             <>="" = merge squash rebase ""
     --no_issue              "Ban repo issue"
     --no_wiki               "Ban repo wiki"
     --no_comment            "Ban repo comment"
@@ -321,18 +313,21 @@ options:
     --no_lightweight_pr     "Ban repo lightweight pr"
     --no_security_hole      "Ban repo issue public access"
     --json|-j               "output origin json data"
+    --yes|-y                "Ignore access private prompt interception"
 '
     param:run
-    local repo="${1:?"Please provide ownerPath/RepoPath"}"
-    local private
+    local repo="$1"
+    local private=""
     case "$access" in
         public)     private=false ;;
-        private)    private=true  ;;
+        private)    private=true
+            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to edit repository access to $(___x_cmd_ui bold red "$access") ?${___X_CMD_UNSEENCHAR_NEWLINE}  - Will only authorized users will have access${___X_CMD_UNSEENCHAR_NEWLINE}  - Loss of all stars and watchers${___X_CMD_UNSEENCHAR_NEWLINE}" || return 1
+        ;;
     esac
-    [ -z "$name" ] && local name="${repo##*/}"
-    local gen_gt_json
+    [ -n "$name" ] || name="${repo##*/}"
+    local gen_gt_json=""
     gen_gt_json="$(
-        param:option2json +repo ${access:+"+private"} "${p:+"path=p"}" -access -p \
+        param:option2json +repo ${access:+"+private"} "${p:+"path=p"}" -access -p -yes \
             has_issues=^no_issue                        has_wiki=^no_wiki \
             can_comment=^no_comment                     security_hole_enabled=^no_security_hole \
             pull_requests_enabled=^no_pull_requests     lightweight_pr_enabled=^no_lightweight_pr  \
@@ -340,25 +335,32 @@ options:
     gt:debug "$gen_gt_json"
 
     ___x_cmd_gt_param_init_owner_repo
-    ___x_cmd_gt_curl patch "https://gitee.com/api/v5/repos/${owner_repo}" "gen_gt_json" | ___x_cmd_gt_repo_edit_status_handler
+    ___x_cmd_gt_curl patch "/repos/${owner_repo}" "gen_gt_json" | \
+        ___x_cmd_gt_repo____ui_handler Modify
 }
+# EndSection
 
-___x_cmd_gt_repo_edit_status_handler(){
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . url=.html_url gt_resp_body=.
-        if [ -n "$url" ]; then
-            ___x_cmd_ui_tf true     "Update $name successfully" "url: $url"
-        else
-            ___x_cmd_ui_tf false    "Update failure: $name." "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+# Section: Rename
+___x_cmd_gt_repo_rename(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1              "Repo Rename"                                                   <>
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"      <>:RepoPath
+    --json|-j       "output origin json data"
+    --yes|-y        "Ignore rename prompt interception"
+'
+    param:run
+    ___x_cmd_gt_param_init_owner_repo
+    local name="${1##*/}"
+    local p="$name"
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to rename repository $(___x_cmd_ui bold red "$owner_repo => ${owner_repo%/*}/${name}") ?" || return 1
+
+    local gen_gt_json=
+    gen_gt_json="$(param:option2json -repo -json -yes +name path=p)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl patch "/repos/${owner_repo}" "gen_gt_json" | ___x_cmd_gt_repo____ui_handler Modify
 }
 # EndSection
 
@@ -369,33 +371,14 @@ ___x_cmd_gt_repo_info(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 options:
-    #1              "Provide ownerPath/RepoPath.(default owner: current user)"      <>:RepoPath
+    #1              "<ownerPath>/<RepoPath> (default ownerPath: current user)"      <>:RepoPath
     --json|-j       "output origin json data"
 '
     param:run
-    local repo="${1:?"Please provide ownerPath/RepoPath"}"
+    local repo="$1"
     ___x_cmd_gt_param_init_owner_repo
 
-    ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}" | ___x_cmd_gt_repo_info_status_handler
-}
-
-# shellcheck disable=SC2154
-___x_cmd_gt_repo_info_status_handler() {
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        ___x_cmd_gt_curl_error
-        return
-    fi
-    (
-        x jo env . full_name=.full_name name=.name html_url=.html_url gt_resp_body=.
-        if [ -n "$full_name" ]; then
-            ___x_cmd_ui_tf true    "Success" "path: $full_name" "name: $name" "url: $html_url"
-        else
-            ___x_cmd_ui_tf false   "Couldn't find any repo: $owner_repo" "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
-    )
+    ___x_cmd_gt_curl get "/repos/${owner_repo}" | ___x_cmd_gt_repo____ui_handler Info
 }
 # EndSection
 
@@ -410,20 +393,23 @@ options:
     --yes|-y    "Ignore remove prompt interception"
 '
     param:run
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (ownerPath/RepoPath), received empty' arg:ret:64
 
-    local owner_repo
-    local gt_resp_body
-    local i
+    local owner_repo=""
+    local i=""
     for i in "$@"; do
         ___x_cmd_gt_param_normalize_repo "$i"
         [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to remove repo: $(___x_cmd_ui bold red "$owner_repo") ?" || continue
-        if ___x_cmd_gt_curl delete "https://gitee.com/api/v5/repos/$owner_repo" | ___x_cmd_gt____handle_no_content; then
-            ___x_cmd_ui_tf true  "Remove repo $owner_repo successfully"
-        else
-            ___x_cmd_ui_tf false "Remove repo failure: $i. Probably because it doesn't exists."  "ErrorMsg:"
-            ___x_cmd_gt____handle_resp
-            return 1
-        fi
+        ___x_cmd_gt_curl del "/repos/$owner_repo" | (
+                [ -z "$___X_CMD_GT_IN_TEST_ENV" ] || { command cat; return; }
+                x jo env . gt_resp_err=.message gt_resp_err=.error
+                if ___x_cmd_gt_http_error; then
+                    ___x_cmd_ui_tf true  "Remove repo $owner_repo successfully:"
+                else
+                    ___x_cmd_ui_tf false "Remove repo $owner_repo failure:" >&2
+                    ___x_cmd_gt____handle_resp
+                fi
+            )
     done
 }
 
@@ -433,20 +419,56 @@ ___x_cmd_gt_repo_clear(){
     param:scope     ___x_cmd_gt
     param:dsl       '
 options:
-    #1          "Provide ownerPath/RepoPath.(default owner: current user)"   <>:RepoPath
+    #1          "<ownerPath>/<RepoPath> (default ownerPath: current user)"   <>:RepoPath
     --yes|-y    "Ignore remove prompt interception"
 '
     param:run
-    local repo="${1:?"Please provide ownerPath/RepoPath"}"
-    local gt_resp_body
+    [ -n "$1" ] || M='accepts 1 arg(ownerPath/RepoPath), received empty' arg:ret:64
+    local repo="$1"
     ___x_cmd_gt_param_init_owner_repo
     [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to remove repo: $(___x_cmd_ui bold red "$owner_repo") ?" || return 1
-    if ___x_cmd_gt_curl put "https://gitee.com/api/v5/repos/${owner_repo}/clear" | ___x_cmd_gt____handle_no_content; then
-        ___x_cmd_ui_tf true   "Clearing repo ${owner_repo} successfully"
-    else
-        ___x_cmd_ui_tf false  "Clearing repo failure: ${owner_repo}"  "ErrorMsg:"
-        ___x_cmd_gt____handle_resp
-        return 1
+    ___x_cmd_gt_curl put "/repos/${owner_repo}/clear" | (
+            [ -z "$___X_CMD_GT_IN_TEST_ENV" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "Clearing repo $owner_repo successfully:"
+            else
+                ___x_cmd_ui_tf false "Clearing repo $owner_repo failure:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
+
+# Section: repo UI
+___x_cmd_gt_repo____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
     fi
+    (
+        case "$1" in
+            Creating|Modify)
+                _data="full_name=.full_name"
+                _inf_msg="$1 $name successfully"
+                _err_msg="$1 $name failure"
+            ;;
+            Info)
+                _data="full_name=.full_name name=.name"
+                _inf_msg="$owner_repo information"
+                _err_msg="No find any information data by $owner_repo"
+            ;;
+        esac
+        eval x jo env . _url=.html_url gt_resp_err=.message gt_resp_err=.error "$_data"
+        if [ -n "$_url" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${full_name:+"Path: $full_name"} ${name:+"Name: $name"} ${_url:+"URL: $_url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection

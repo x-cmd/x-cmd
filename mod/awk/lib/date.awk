@@ -1,7 +1,9 @@
 # linux: date -d '2022-11-09 12:31:27+00:00' +%s
 
-function date_to_timestamp_linux( date,   t ){
-    "date -d '" date "' +%s 2>/dev/null" | getline t
+function date_to_timestamp_linux( date,   t, _cmd){
+    _cmd = "date  +%s -d '" date "'" " 2>/dev/null"
+    _cmd | getline t
+    # close(cmd)
     return t
 }
 

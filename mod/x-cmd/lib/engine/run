@@ -1,0 +1,114 @@
+# shellcheck shell=dash
+
+# ___x_cmd_run_by_file
+___x_cmd_engine_run(){
+    local filepath="${1:?filepath}"; shift
+    x:debug "exec: ___x_cmd_engine_run: $filepath"
+
+    if [ -L "$filepath" ]; then
+        filepath="$(___x_cmd_readlink_recursive "$filepath")"
+        filepath="$(___x_cmd_abspath "$filepath")"
+    fi
+
+    if [ -x "$filepath" ]; then
+        # In bash and dash. The file mount into the docker container using [ -x <path> ]
+        #   does not correctly determine whether the file has execute permissions or not.
+        exec 3>&1
+        local err
+        if err="$("$filepath" "$@" 2>/dev/stdout 1>&3)" || [ "${err%Permission denied}" = "$err" ]; then
+            exec 3<&-
+            printf "%s\n" "$err" >&2
+            return
+        fi
+    fi
+
+    local x_
+    if ___x_cmd_engine_detect_ "$filepath"; then
+        x:debug "Detect file=$filepath to be run by $x_"
+        ___x_cmd_engine_run_main "$x_" "$filepath" "$@"
+    else
+        x:debug "Fail to detect file. File will be run with source: $filepath"
+        # [ ! -f "$filepath" ] || cat "$filepath"
+        ___x_cmd_engine_run_main source "$filepath" "$@"
+    fi
+}
+
+# ___x_cmd___run_with_engine
+___x_cmd_engine_run_main(){
+    local engine="${1:?Please provide engine}";
+    local filepath="${2:?Please provide filepath}";        shift 2
+    case "$engine" in
+        xrc)            ___x_cmd_engine___run_xrc       "$filepath" "$@"    ;;
+        source)         ___x_cmd_engine___run_source    "$filepath" "$@"    ;;
+        xsh)        (   ___x_cmd_engine___run_source    "$filepath" "$@"; ) ;;
+        7z)             ___x_cmd_main 7z x              "$filepath" "$@"    ;;
+        txt)            cat "$filepath" ;;
+
+        awk)        x awk "$filepath" ;;
+        gawk)       x gawk "$filepath" ;;
+
+        python)     x python "$filepath" ;;
+        julia)      x julia "$filepath" ;;
+        rl)         x rl "$filepath" ;;     # rlang
+
+        perl)       x perl "$filepath" ;;
+        ruby)       x ruby "$filepath" ;;
+
+        node)       x node "$filepath" ;;
+        ts)         x tsnode "$filepath" ;;
+        deno)       x deno "$filepath" ;;
+
+        java)       x java "$filepath" ;;
+        scala)      x scala "$filepath" ;;
+        kotlin)     x kotline "$filepath" ;;
+        groovy)     x groovy "$filepath" ;;
+        clojure)    x clojure "$filepath" ;;
+
+        lua)        x lua run "$filepath" ;;
+
+        go)         x go run "$filepath" ;;     # TODO: how to just run a go file.
+
+        fish)       x fish "$filepath" "$@" ;;
+
+        doc|docs|xls|xlsx|ppt|pptx|pdf)
+                    x open "$filepath" ;;
+
+        jxa)        x jxa run "$filepath" ;;
+        ps)         x pwsh run "$filepath" ;;
+
+        action)     x action apply "$filepath" ;;
+        script)     x script apply "$filepath" ;;
+        speg)       x speg play "$filepath" ;;
+
+        # TODO: download vlc to play.
+        mp3|mp4)
+                    x open "$filepath" ;;
+
+        *)          ___x_cmd_main "$engine" "$filepath" "$@" ;;
+    esac
+}
+
+
+# ___x_cmd___xrc_run
+___x_cmd_engine___run_xrc(){
+    local fp="${1:?filepath}"; shift
+    local key="${fp#"${___X_CMD_ROOT_MOD}"}"
+    [ "${key}" = "$fp" ] || key="%${key}"
+
+    local main
+    if ! main="$(___x_cmd_ldict get ___X_CMD_XRC_SET_MAIN_DICT "$key")"; then
+        ___x_cmd_xrc_source_file "$fp" # xrc
+        local code=$?
+        if ! main="$(___x_cmd_ldict get ___X_CMD_XRC_SET_MAIN_DICT "$key")"; then
+            return "$code"
+        fi
+    fi
+
+    "$main" "$@"
+}
+
+# ___x_cmd___source_run
+___x_cmd_engine___run_source(){
+    local ___x_cmd_x_source_run_filepath="${1:?filepath}";        shift
+    . "$___x_cmd_x_source_run_filepath" "$@"
+}

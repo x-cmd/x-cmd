@@ -1,4 +1,4 @@
-BEGIN{  SSS = "\n";  }
+BEGIN{  SSS = "\n";  ___X_CMD_PARAM_ADIVSE_NAME = ENVIRON[ "___X_CMD_PARAM_ADIVSE_NAME" ]; }
 function AJADD( s ){    ADVISE_JSON = ADVISE_JSON s SSS;    }
 function CDADD( s ){    CODE = CODE s "\n"; }
 
@@ -33,8 +33,11 @@ function generate_advise_json_value_candidates_by_rules( optarg_id, advise_map, 
     AJADD("}");
 }
 
-function generate_advise_json_subcmd(       i, subcmd_funcname, subcmd_invocation, _name_arr, _ret ){
-    for ( i=1; i<=subcmd_len(); ++i ) {
+function generate_advise_json_subcmd(       i, l, subcmd_funcname, subcmd_invocation, _name_arr, _ret ){
+    l = subcmd_len()
+    if ( l <= 0 ) return
+    AJADD("',"); AJADD( swrap("#subcmd_help_tip") ); AJADD(":"); AJADD("true"); AJADD("'");
+    for ( i=1; i<=l; ++i ) {
         split(subcmd_id( i ), _name_arr, "|") # get the subcmd name list
         if( subcmd_map[ _name_arr[ 1 ], SUBCMD_FUNCNAME ] != "" )   subcmd_funcname = subcmd_map[ _name_arr[ 1 ], SUBCMD_FUNCNAME ] "_" _name_arr[ 1 ]
         else                                                        subcmd_funcname = "${X_CMD_ADVISE_FUNC_NAME}_" _name_arr[ 1 ]
@@ -62,6 +65,11 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
     generate_advise_json_init_advise_map( advise_map )
 
     AJADD( "{" )
+    if (___X_CMD_PARAM_ADIVSE_NAME != "" ) {
+        AJADD( swrap("#name") ); AJADD( ":" ); AJADD( "{" );
+        AJADD( swrap( ___X_CMD_PARAM_ADIVSE_NAME ) ); AJADD( ":" ); AJADD( "null" );
+        AJADD( "}" ); AJADD(",");
+    }
 
     AJADD( swrap("#desc") ); AJADD( ":" ); AJADD( swrap( arg_arr[2] ) );
 
@@ -74,7 +82,9 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
         AJADD( swrap("#desc") ); AJADD(":"); AJADD( swrap( option_desc_get( _option_id ) ) )
 
         if ( _option_argc > 0 ) {
-            if ( (_synopsis_str = get_option_synopsis_str(_option_id)) != "")      AJADD(","); AJADD( swrap("#synopsis") ); AJADD(":"); AJADD( swrap( _synopsis_str ))
+            if ( (_synopsis_str = get_option_synopsis_str(_option_id)) != "") {
+                AJADD(","); AJADD( swrap("#synopsis") ); AJADD(":"); AJADD( swrap( _synopsis_str ))
+            }
         }
         for ( j=1; j<=_option_argc; ++j ) {
             AJADD(",")
@@ -84,7 +94,8 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
     }
 
     for (i=1; i <= flag_len() && _option_id = flag_get( i ); ++i) {
-        AJADD(","); AJADD( swrap(_option_id) ); AJADD(":");                     AJADD("{"); AJADD( swrap("#desc") ); AJADD(":"); AJADD( swrap(option_desc_get( _option_id )) ); AJADD("}")
+        AJADD(","); AJADD( swrap(get_option_key_by_id(_option_id)) ); AJADD(":");
+        AJADD("{"); AJADD( swrap("#desc") ); AJADD(":"); AJADD( swrap(option_desc_get( _option_id )) ); AJADD("}")
     }
 
     for (i=1; i <= restopt_len() && _option_id = restopt_get( i ); ++i) {
@@ -112,6 +123,7 @@ function generate_advise_json(){
     gsub("\"", "\\\"", CODE)
     CODE = sprintf("( set -o errexit; %s printf \\\"%%s\\\" \\\"\\$A\\\"; )", CODE  )
     CODE = "eval \"" CODE "\""
+    # debug(CODE)
     printf("%s", CODE)
 }
 

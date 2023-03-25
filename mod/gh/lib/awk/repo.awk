@@ -98,3 +98,4 @@ function is_field_null_or_false(obj, kp){
 function is_field_true_or_false(obj, kp){
     return ( (obj[ kp ] == "true") || (obj[ kp ] == "false") )
 }
+

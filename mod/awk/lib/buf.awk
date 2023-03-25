@@ -1,8 +1,9 @@
 # Section: buf_module
-function buf_init( text ){
+function buf_init( text,        l ){
     buf = ""
     buf_cur = 0
-    buf[ L ] = split(text, buf, "\n")
+    l = split(text, buf, "\n")
+    buf[ L ] = l
 }
 
 function buf_next(){

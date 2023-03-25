@@ -8,6 +8,7 @@ BEGIN {
     UI_FG_CYAN          = "\033[36m"
     UI_FG_WHITE         = "\033[37m"
     UI_FG_DARKGRAY      = "\033[90m"
+    UI_FG_DARKRED       = "\033[91m"
 
     UI_BG_BLACK         = "\033[40m"
     UI_BG_RED           = "\033[41m"
@@ -72,6 +73,15 @@ function ui_str_rep( str, time,   i, r ){
 
 function th( style, text ){
     return style text UI_END
+}
+
+function th_interval(style,         c){
+    style[ SUBSEP "sw" ] = c = 1 - style[ SUBSEP "sw" ]
+    return style[ c ]
+}
+
+function th_interval_init(style){
+    return style[ SUBSEP "sw" ] = 1
 }
 
 # BEGIN {

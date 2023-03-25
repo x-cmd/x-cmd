@@ -95,7 +95,7 @@ function juq1( str ){
 function jqu( str ){
     # if (str ~ /^".*"$/) return str
 
-    gsub( "\\\\", "\\\\", str )
+    gsub( "\\\\", "&\\", str )
     gsub( "\"", "\\\"", str )
     gsub( "\n", "\\n", str )
     gsub( "\t", "\\t", str )
@@ -103,5 +103,14 @@ function jqu( str ){
     gsub( "\b", "\\b", str )
     gsub( "\r", "\\r", str )
     return "\"" str "\""
+}
+
+# This is for refactor
+function alength_get( a, prefix ){
+    return a[ prefix L ]
+}
+
+function alength_put( a, prefix, l ){
+    return a[ prefix L ] = l
 }
 

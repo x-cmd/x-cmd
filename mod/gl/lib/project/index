@@ -1,35 +1,42 @@
 # shellcheck shell=sh
 # shellcheck disable=SC2039,3043
 # shellcheck disable=SC2154
-# https://docs.gitlab.com/ee/api/projects.html
+xrc:mod:lib gl \
+    project/util \
+    project/label \
+    project/member \
+    project/tag \
+    project/variable/index \
+    project/branch/index \
+    project/branch/protection \
+    project/release/index \
+    project/release/attachment \
+    project/apply/index \
+    project/pr/index
+
 ___x_cmd_gl_project(){
     param:scope         ___x_cmd_gl
     param:subcmd ___x_cmd_gl_project                            \
-        ls              "List project of owner"                 \
-        info            "Show detailed information of project"  \
-        edit            "Setup project configure"               \
-        create          "Create project"                        \
-        search          "Search project"                        \
+        "ls|l"          "List project of owner"                 \
+        "info|i"        "Show detailed information of project"  \
+        "create|c"      "Create project"                        \
+        "edit|ed"       "Setup project configure"               \
         rm              "Remove project"                        \
-        issue           "project issue list"                    \
-        pr              "project pr manage"                     \
-        tag             "project tag"                           \
-        label           "project label"                         \
-        hook            "project webhook manage"                \
-        release         "project release manage"                \
-        variable        "project variable manage"               \
-        apply           "manage repo by declare configure"      \
-        branch          "project branch manage"                 \
-        member          "project member manage"
+        issue           "List project issue"                    \
+        "cl|clone"      "Clone project from gitlab"            \
+        apply           "Manage project by declare configure"   \
+        tag             "project tag management"                \
+        branch          "project branch management"             \
+        member          "project member management"             \
+        release         "project release management"
     param:subcmd:try
     param:run
 
     ___x_cmd_gl_project _param_help_doc
-
     return 1
 }
 
-# Section: create
+# Section: Create
 # https://docs.gitlab.com/ee/api/projects.html#create-project
 ___x_cmd_gl_project_create(){
     param:scope     ___x_cmd_gl
@@ -37,13 +44,11 @@ ___x_cmd_gl_project_create(){
 option:
     #1                                                  "project names"                                                                     <>:RepoName
     -p|--path                                           "project path"                                                                      <>=""
-    --tag_list                                          "The list of tags for a project"                                                    <>="" = private internal public
-    --visibility                                        "See project visibility level."                                                     <>=""
-    --description                                       "Short project description."                                                        <>=""
-    --namespace_id                                      "Namespace for the new project"                                                     <>=""
+    --group_id                                          "Namespace id (group_id) for the new project"                                                     <>=""
+    --visibility                                        "See project visibility level."                                                     <>="private" = private internal public
     --default_branch                                    "The default branch name."                                                          <>=""
-
-    --json|-j                                           "output json data"
+    --tag_list                                          "The list of tags for a project"                                                    <>=""
+    --description                                       "Short project description."                                                        <>=""
 
     --topics                                            "The list of topics for a project"                                                  <>:Array=""
     --avatar                                            "Image file for avatar of the project."                                             <>=""
@@ -101,40 +106,25 @@ option:
     --printing_merge_request_link_enabled               "Show link to create/view merge request when pushing from the command line."
     --only_allow_merge_if_pipeline_succeeds             "Set whether merge requests can only be merged with successful pipelines."
     --only_allow_merge_if_all_discussions_are_resolved  "Set whether merge requests can only be merged when all the discussions are resolved."
+    --json|-j                                           "output json data"
 '
     param:run
 
     local name="${___X_CMD_TX}"
     local gen_gl_json
-    gen_gl_json="$(param:option2json +name -p ${p+"path=p"} +initialize_with_readme)"
+    gen_gl_json="$(param:option2json +name -p ${p+"path=p"} -group_id ${group_id+"namespace_id=group_id"})"
+    gl:debug "$gen_gl_json"
 
     for name in "$@"; do
-        gl_log debug "___x_cmd_gl_repo_add_data:$(x tmpl "$gen_gl_json"  "${name##%/}")"
+        gl:debug "___x_cmd_gl_repo_add_data:$(x tmpl "$gen_gl_json"  "${name##%/}")"
         x tmpl "$gen_gl_json"  "${name##%/}" | \
-        ___x_cmd_gl_curl post "/projects" "@-" | _____x_cmd_gl_project_ui_utils Creating
+            ___x_cmd_gl_curl post "/projects" "@-" | \
+            ___x_cmd_gl_project_ui_utils Creating
     done
-}
-
-# shellcheck disable=SC2154
-___x_cmd_gl_project_create_status_handler(){
-    if [ ! -t 1 ] || [ -n "$ENFORCE_JSON" ]; then
-        cat
-        return
-    fi
-
-    x jo env . project_id=.id url=.web_url project_owner=.owner.username
-    if [ -n "$project_id" ]; then
-        ___x_cmd_ui_tf true  "Creating project $name successfully" "project_id: $project_id" "project_owner: $project_owner" "url: $url"
-    else
-        ___x_cmd_ui_tf false "Creating project failure: $name"
-        return 1
-    fi
 }
 # EndSection
 
-# TODO: https://docs.gitlab.com/ee/api/projects.html#list-user-projects
-# ls user project
-# Section: list
+# Section: List
 # https://docs.gitlab.com/ee/api/projects.html#list-user-projects
 ___x_cmd_gl_project_ls(){
     param:scope     ___x_cmd_gl
@@ -146,48 +136,31 @@ options:
     --json|-j       "output json data"
 '
     param:run
-    ___x_cmd_gl_current_owner 1>/dev/null 2>&1
-    local owner="${1-$___X_CMD_GL_DEFAULT_OWNER}"
-    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id Name=.name Owner=.owner.username Visibility=.visibility Url=.web_url -- $@' \
-        ___x_cmd_gl_get_multi "/users/$owner/projects" page per_page visibility
+    if ___x_cmd_gl_current_owner 1>/dev/null; then
+        ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Project_Id=.id Owner_Porject=.path_with_namespace Visibility=.visibility Default_Branch=.default_branch Description=.description  -- $@' \
+            ___x_cmd_gl_get_multi "/users/$___X_CMD_GL_DEFAULT_OWNER/projects" visibility page per_page
+    else
+        return 1
+    fi
 }
 # EndSection
 
-# Section: search
-# https://docs.gitlab.com/ee/api/projects.html#get-single-project
-___x_cmd_gl_project_search(){
-    param:scope     ___x_cmd_gl
-    param:dsl       '
-options:
-    #1          "A string contained in the project name."                                       <>
-    --sort      "Return requests sorted"                                                        <>=""
-    --order_by  "Return requests ordered by id, name, created_at or last_activity_at fields."   <>=""
-
-    --json|-j         "output json data"
-'
-    param:run
-    local search="$1"
-    ___x_cmd_gl_param_init_owner_project
-    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id Path=.path_with_namespace Name=.name Web_url=.web_url -- $@' \
-    ___x_cmd_gl_get_multi "/projects" search order_by sort state
-}
-# EndSection
-
-# Section: edit
+# Section: Edit
 # https://docs.gitlab.com/ee/api/projects.html#edit-project
 ___x_cmd_gl_project_edit(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-    #1                  "The ID or URL-encoded path of the project."    <>:RepoName
-    --tag_list          "The list of tags for a project"                <>="" = private internal public
-    --visibility        "See project visibility level."                 <>=""
-    --description       "Short project description."                    <>=""
-    --default_branch    "The default branch name."                      <>=""
-    --name              "The name of the project"                       <>=""
-    -p|--path           "Custom repository name for the project."       <>=""
+    #1                  "URL-encoded path of the project or project id (use --id flag)"     <>:RepoName
+    --visibility        "See project visibility level."                                     <>="" = private internal public
+    --tag_list          "The list of tags for a project"                                    <>=""
+    --description       "Short project description."                                        <>=""
+    --default_branch    "The default branch name."                                          <>=""
+    --name              "The name of the project"                                           <>=""
+    -p|--path           "Custom repository name for the project."                           <>=""
 
     --json|-j           "output json data"
+    --id                "Using Porject id"
 
     --avatar                                        "Image file for avatar of the project."                                                                                                         <>:mixed=""
     --import_url                                    "URL the repository was imported from."                                                                                                         <>=""
@@ -199,7 +172,7 @@ options:
     --repository_storage                            "Which storage shard the repository is on. (administrators only)"                                                                               <>=""
     --ci_default_git_depth                          "Default number of revisions for shallow cloning."                                                                                              <>:Number=""
     --approvals_before_merge                        "How many approvers should approve merge request by default. "                                                                                  <>:Number=""
-    --merge_requests_template                       "Default description for merge requests. Description is parsed with gl Flavored Markdown."                                                      <>=""
+    --merge_requests_template                       "Default description for merge requests. Description is parsed with gl Flavored Markdown."                                                   <>=""
     --wiki_access_level                             "One of disabled, private, or enabled"                                                                                                          <>=""
     --pages_access_level                            "One of disabled, private, enabled, or public."                                                                                                 <>=""
     --issues_access_level                           "One of disabled, private, or enabled"                                                                                                          <>=""
@@ -220,7 +193,7 @@ options:
     --squash_commit_template                        "Template used to create squash commit message in merge requests"                                                                               <>=""
     --squash_option                                 "One of never, always, default_on, or default_off"                                                                                              <>=""
     --suggestion_commit_message                     "The commit message used to apply merge request suggestions."                                                                                   <>=""
-    --topics                                        "The list of topics for the project. This replaces any existing topics that are already added to the project. (Introduced in gl 14.0.)."        <>:array=""
+    --topics                                        "The list of topics for the project. This replaces any existing topics that are already added to the project. (Introduced in gitlab 14.0.)."    <>:array=""
     --wiki_enabled                                  "(Deprecated) Enable wiki for this project. Use instead. wiki_access_level"
     --mirror_trigger_builds                         "mirror_trigger_builds"
     --allow_merge_on_skipped_pipeline               "Set whether or not merge requests can be merged with skipped jobs."
@@ -254,53 +227,55 @@ options:
     ___x_cmd_gl_param_init_owner_project
     local gen_gl_json
     gen_gl_json="$(param:option2json)"
-    ___x_cmd_gl_curl put "/projects/$owner_project" "gen_gl_json" | _____x_cmd_gl_project_ui_utils Update
+    gl:debug "$gen_gl_json"
+    ___x_cmd_gl_curl put "/projects/$owner_project" "gen_gl_json" | ___x_cmd_gl_project_ui_utils Update
 }
 # EndSection
 
-# Section: info
+# Section: Info
 # https://docs.gitlab.com/ee/api/projects.html#get-single-project
 ___x_cmd_gl_project_info(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-    #1                          "The ID or URL-encoded path of the project."    <>
+    #1                          "URL-encoded path of the project or project id (use --id flag)"    <>
     --license                   "Include project license data."
     --statistics                "Include project statistics. Only available to Reporter or higher level role members."
     --with_custom_attributes    "Include custom attributes in response. (administrator only)"
-
+    --id                        "Using Porject id"
     --json|-j                   "output json data"
 '
     param:run
 
     local project="$1"
     ___x_cmd_gl_param_init_owner_project
-
-    ___x_cmd_gl_curl get "/projects/$owner_project"| _____x_cmd_gl_project_ui_utils Info
+    [ -z "$id" ] || owner_project="$project"
+    ___x_cmd_gl_curl get "/projects/$owner_project"| ___x_cmd_gl_project_ui_utils Info
 }
 # EndSection
 
-# Section: del
+# Section: Remove
 # https://docs.gitlab.com/ee/api/projects.html#delete-project
 ___x_cmd_gl_project_rm(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-    #1          "The ID or URL-encoded path of the project."   <>
-
+    #1          "URL-encoded path of the project or project id (use --id flag)"   <>
+    --id        "Using Porject id"
     --yes|-y    "Ignore remove prompt interception"
 '
- param:run
+    param:run
     local project
     for project in "$@"; do
-        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete project : $(___x_cmd_ui bold red "$project") ?" || continue
         ___x_cmd_gl_param_init_owner_project
-        ___x_cmd_gl_curl delete "/projects/$owner_project" | (
-                x jo env . error=.
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete project : $(___x_cmd_ui bold red "$project") ?" || continue
+        ___x_cmd_gl_curl delete "/projects/${owner_project}" | (
+                x jo env . gl_resp_err=.error gl_resp_err=.message
                 if ___x_cmd_gl_http_error; then
-                    ___x_cmd_ui_tf  true "Deleting repo $project successfully."
+                    ___x_cmd_ui_tf  true "Deleting porject ${project} successfully."
                 else
-                    ___x_cmd_ui_tf false "Deleting repo failure: $project. Probably because it desn't exists." "ErrorMsg:$error"
+                    ___x_cmd_ui_tf false "Deleting porject failure: ${project}. Probably because it desn't exists."
+                    ___x_cmd_gl____handle_resp
                     return 1
                 fi
             )
@@ -308,42 +283,61 @@ options:
 }
 # EndSection
 
+# Section: Search
+# https://docs.gitlab.com/ee/api/projects.html#get-single-project
+___x_cmd_gl_project_search(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1          "A string contained in the project name."                                       <>
+    --sort      "Return requests sorted"                                                        <>=""
+    --order_by  "Return requests ordered by id, name, created_at or last_activity_at fields."   <>=""
+
+    --json|-j         "output json data"
+'
+    param:run
+    local search="$1"
+    ___x_cmd_gl_param_init_owner_project
+    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id Path=.path_with_namespace Name=.name Web_url=.web_url -- $@' \
+    ___x_cmd_gl_get_multi "/projects" search order_by sort state
+}
+# EndSection
+
 # Section: project utils
-_____x_cmd_gl_project_ui_utils()(
+___x_cmd_gl_project_ui_utils(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gl_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Info)
-            data="name=.name default_branch=.default_branch url=.web_url"
-            msg="Get project information successfully."
-            error_msg="Failed to get project information."
-            ;;
-        Update)
-            data="url=.web_url name=.name default_branch=.default_branch project_owner=.owner.username visibility=.visibility"
-            msg="Update $project successfully."
-            error_msg="Update failure: $project."
-            ;;
-        Creating)
-            data="url=.web_url project_owner=.owner.username visibility=.visibility"
-            msg="Creating project $name successfully."
-            error_msg="Creating project failure: $name."
-            ;;
-    esac
-    x jo env . id=.id  error=. $data
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "$msg" "project_id: $id" ${project_owner+"project_owner: $project_owner"}  \
-            ${name+"name: $name"} ${default_branch+"default_branch: $default_branch"} ${url+"url: $url"} \
-            ${visibility+"visibility: $visibility"}
-    else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
-        return 1
-    fi
-)
+    (
+        case "$1" in
+            Info)
+                _data="name=.name default_branch=.default_branch url=.web_url"
+                _msg="Get project information successfully."
+                _error_msg="Failed to get project information."
+                ;;
+            Update)
+                _data="url=.web_url name=.name default_branch=.default_branch project_owner=.owner.username visibility=.visibility"
+                _msg="Update $project successfully."
+                _error_msg="Update failure: $project."
+                ;;
+            Creating)
+                _data="url=.web_url project_owner=.owner.username visibility=.visibility"
+                _msg="Creating project $name successfully."
+                _error_msg="Creating project failure: $name."
+                ;;
+        esac
+        eval x jo env . id=.id gl_resp_err=.error gl_resp_err=.message "$_data"
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true "$_msg" "project_id: $id" ${project_owner:+"project_owner: $project_owner"}  \
+                ${name:+"name: $name"} ${default_branch:+"default_branch: $default_branch"} ${url:+"url: $url"} \
+                ${visibility:+"visibility: $visibility"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
 # EndSection

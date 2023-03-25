@@ -3,12 +3,12 @@
 # https://docs.gitlab.com/ee/api/releases/
 ___x_cmd_gl_project_release(){
     param:subcmd ___x_cmd_gl_project_release                    \
-        "ls|l"              "list repo release"                 \
-        "create|c"          "create repo release"               \
-        rm                  "Remove repo release"               \
-        "edit|ed"           "update release information"        \
-        "info|i"            "Show detailed information of repo" \
-        link                "manage link"
+        "ls|l"              "List project release"                      \
+        "info|i"            "Show detailed information of project"      \
+        "create|c"          "Create project release"                    \
+        "edit|ed"           "Edit release information"                  \
+        rm                  "Remove the project release"                \
+        "attachment|asset"  "release attachment management"
     param:subcmd:try
     param:run
 
@@ -16,76 +16,82 @@ ___x_cmd_gl_project_release(){
     return 1
 }
 
-
-# Section0: Release ls
+# Section: List
 # https://docs.gitlab.com/ee/api/releases/#list-releases
 ___x_cmd_gl_project_release_ls() {
     param:scope     ___x_cmd_gl
     param:dsl    '
 options:
-    --project                   "The ID or URL-encoded path of the project owned by the authenticated user"           <>
-    --sort                      "The direction of the order."                                                         <>=""
-    --order_by                  "The field to use as order."                                                          <>=""     = released_at created_at
-    --per_page                  "Results per page"                                                                    <>="30"
-    --page                      "Page number of the results to fetch."                                                <>="1"
-    --include_html_description  "If true, a response includes HTML rendered Markdown of the release description."
+    --project                   "URL-encoded path of the project or project ID"           <>
     --json|-j                   "output json data"
 '
     param:run
 
     ___x_cmd_gl_param_init_owner_project
-
+    [ -z "$id" ] || owner_project="$id"
     ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Name=.name TagName=.tag_name Commit=.commit.short_id Url=._links.self -- $@' \
         ___x_cmd_gl_curl get "/projects/${owner_project}/releases" sort order_by page per_page
 }
+# EndSection
 
-# Section : Release create && edit
+# Section: Info
+# https://docs.gitlab.com/ee/api/releases/#get-a-release-by-a-tag-name
+___x_cmd_gl_project_release_info() {
+    param:scope     ___x_cmd_gl
+    param:dsl    '
+options:
+    #1                           "The Git tag the release is associated with"                                        <>
+    --project                    "The ID or URL-encoded path of the project owned by the authenticated user"         <>
+    --include_html_description   "If true, a response includes HTML rendered Markdown of the release description."
+    --json|-j                    "output json data"
+'
+    param:run
+    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_curl get "/projects/${owner_project}/releases/$1" | _____x_cmd_gl_release_ui_utils Info
+}
+# EndSection
+
+# Section: Create
 # https://docs.gitlab.com/ee/api/releases/#create-a-release
 ___x_cmd_gl_project_release_create() {
     param:scope     ___x_cmd_gl
     param:dsl    '
 options:
-    #1                          "The release name"                                                                <>=""
+    #1                          "The tag where the release is created from"                                       <>=""
     --project                   "The ID or URL-encoded path of the project owned by the authenticated user"       <>
-    --tag_name                  "The tag where the release is created from."                                      <>
-    --tag_message               "Message to use if creating a new annotated tag."                                 <>=""
     --ref                       "It can be a commit SHA, another tag name, or a branch name."                     <>=""
-    --description               "The description of the release. You can use Markdown."                           <>=""
+    --name                      "The release name"                                                                <>=""
+    --description               "The description of the release. Can use Markdown str."                           <>=""
     --milestones                "The title of each milestone the release is associated with. "                    <>:array=""
-    --assets_links_name         "The name of the link. Link names must be unique within the release. "            <>=""
-    --assets_links_url          "The URL of the link. Link URLs must be unique within the release."               <>=""
-    --assets_links_filepath     "Optional path for a Direct Asset link."                                          <>=""
-    --assets_links_link_type    "The type of the link"                                                            <>=""      = other runbook image package
+    --assets_links              "An assets.links json object of preset assets links.(stdin -)"                    <>=""
     --released_at               "The date when the release is/was ready. Defaults to the current time. "          <>:datetime=""
     --json|-j                   "output json data"
 '
     param:run
+    [ -n "${1}${ref}" ] || {
+        gl:error "accepts 1 arg(tag name) or --ref <ref_info>. Use --help show help information"
+        return 1
+    }
     ___x_cmd_gl_param_init_owner_project
-
-    local name="$1"
-    local assets
-    local links
-    links=$(x jo "{ links:[{
-        ${assets_links_url+"url:\"$assets_links_url\""},
-        ${assets_links_name+"name:$assets_links_name"},
-        ${assets_links_filepath+"filepath:$assets_links_filepath"},
-        ${assets_links_link_type+"link_type:$assets_links_link_type"}
-    }]}")
-    [ "$links" != "$(x jo \{links:[{}]\})" ] || unset links
+    local tag_name="${1?:"Please provide tag name like v1.0.0"}"
     local milestones
     milestones=$(x jo "[$milestones]")
-    local gen_gl_json
-    gen_gl_json="$(param:option2json -project +name ${links+"assets=links"} )"
 
+    [ "$assets_links" != '-' ] || assets_links="$(command cat)"
+    local gen_gl_json
+    gen_gl_json="$(param:option2json +tag_name -project -assets_links ${assets_links+"assets=assets_links"} )"
+    gl:debug "$gen_gl_json"
     ___x_cmd_gl_curl post "/projects/${owner_project}/releases" "gen_gl_json" | _____x_cmd_gl_release_ui_utils Creating
 }
+# EndSection
 
+# Section: Edit
 # https://docs.gitlab.com/ee/api/releases/#update-a-release
 ___x_cmd_gl_project_release_edit() {
     param:scope  ___x_cmd_gl
     param:dsl    '
 options:
-    --tag_name         "The Git tag the release is associated with"                                      <>
+    #1                 "The Git tag the release is associated with"                                      <>
     --project          "The ID or URL-encoded path of the project owned by the authenticated user"       <>
     --name             "The release name."                                                               <>=""
     --description      "The description of the release. You can use Markdown."                           <>=""
@@ -97,13 +103,16 @@ options:
     param:run
     ___x_cmd_gl_param_init_owner_project
     local gen_gl_json
-    gen_gl_json="$(param:option2json -project -tag_name)"
+    gen_gl_json="$(param:option2json -project)"
+    gl:debug "$gen_gl_json"
 
-    ___x_cmd_gl_curl put "/projects/${owner_project}/releases/${tag_name}" "gen_gl_json" | _____x_cmd_gl_release_ui_utils Edit
+    ___x_cmd_gl_curl put "/projects/${owner_project}/releases/${1}" "gen_gl_json" | _____x_cmd_gl_release_ui_utils Edit
 }
-
 # EndSection
+
+# Section: Remove
 # https://docs.gitlab.com/ee/api/releases/#delete-a-release
+# shellcheck disable=2154
 ___x_cmd_gl_project_release_rm() {
     param:scope  ___x_cmd_gl
     param:dsl    '
@@ -116,116 +125,48 @@ options:
 
     ___x_cmd_gl_param_init_owner_project
 
-    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete version  $(___x_cmd_ui bold red "$1") in the $owner_project ?" || return
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove release $(___x_cmd_ui bold red "$1") on the $project ?" || return
     ___x_cmd_gl_curl delete "/projects/${owner_project}/releases/$1"| (
-        x jo env . error=.
+        x jo env . gl_resp_err=.error gl_resp_err=.message
         if ___x_cmd_gl_http_error; then
             ___x_cmd_ui_tf  true "successfully remove project release"
         else
-            ___x_cmd_ui_tf false "delete project release failure: $1." "ErrorMsg:$error"
+            ___x_cmd_ui_tf false "delete project release failure: $project $1"
+            ___x_cmd_gl____handle_resp
             return 1
         fi
     )
 }
-
-# https://docs.gitlab.com/ee/api/releases/#list-releases
-___x_cmd_gl_project_release_info() {
-    param:scope     ___x_cmd_gl
-    param:dsl    '
-options:
-    #1                           "The Git tag the release is associated with"                                        <>
-    --project                    "The ID or URL-encoded path of the project owned by the authenticated user"         <>
-    --include_html_description   "If true, a response includes HTML rendered Markdown of the release description."
-
-    --json|-j                    "output json data"
-'
-    param:run
-    ___x_cmd_gl_param_init_owner_project
-    ___x_cmd_gl_curl get "/projects/${owner_project}/releases/$1" | _____x_cmd_gl_release_ui_utils Info
-}
-
-
-# Section : attachment
-# https://docs.gitlab.com/ee/api/releases/links.html
-___x_cmd_gl_project_release_link(){
-    param:subcmd ___x_cmd_gl_project_release_link    \
-        "create|c"          "create link"
-    param:subcmd:try
-    param:run
-
-
-    ___x_cmd_gl_project_release_link _param_help_doc
-    return 1
-}
-
-# ___x_cmd_gl_project_release_link_ls() {
-#     param:scope     ___x_cmd_gl
-#     param:dsl    '
-# options:
-#     #1              "The Git tag the release is associated with"                                        <>
-#     --project       "The ID or URL-encoded path of the project owned by the authenticated user"         <>
-#     --json|-j       "output json data"
-# '
-#     param:run
-
-#     ___x_cmd_gl_param_init_owner_project
-#     ___x_cmd_gl_curl get "/projects/${owner_project}/releases/$1/assets/links"
-# }
-
-# https://docs.gitlab.com/ee/api/releases/links.html#create-a-release-link
-___x_cmd_gl_project_release_link_create() {
-    param:scope     ___x_cmd_gl
-    param:dsl    '
-options:
-    --tag_name      "The Git tag the release is associated with"                                        <>
-    --project       "The ID or URL-encoded path of the project owned by the authenticated user"         <>
-    --name          "The name of the link. Link names must be unique in the release."                   <>
-    --url           "The URL of the link."                                                              <>
-    --filepath      "Optional path for a Direct Asset link."                                            <>=""
-    --link_type     "The type of the link."                                                             <>="other"   = other runbook image package
-    --json|-j       "output json data"
-'
-    param:run
-    local gen_gl_json
-    gen_gl_json="$(param:option2json -project -tag_name)"
-    ___x_cmd_gl_param_init_owner_project
-    ___x_cmd_gl_curl post "/projects/${owner_project}/releases/$tag_name/assets/links" "gen_gl_json" | _____x_cmd_gl_release_ui_utils Link
-}
-
 # EndSection
 
-
-# Section: release utils
-_____x_cmd_gl_release_ui_utils()(
+# Section: release UI utils
+_____x_cmd_gl_release_ui_utils(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gl_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Link)
-            msg="Creating release Link success."
-            error_msg="Creating release Link Fail."
-            ;;
-        Creating|Edit)
-            msg="$1 project release success."
-            error_msg="$1 project release Fail."
-            ;;
-        Info)
-            msg="Successfully get project release info."
-            error_msg="Get project release info failure."
-            ;;
-    esac
-    x jo env . Name=.name tag_name=.tag_name commit=.commit.short_id links=._links.self author=.author.username error=. $data
-    if [ -n "$Name" ]; then
-        ___x_cmd_ui_tf true "$msg" ${Name+"Name: $Name"} ${tag_name+"TagName: $tag_name"}  ${commit+"Commit: $commit"} ${author+"Author: $author"} ${links+"Url: $links"}
-    else
-        ___x_cmd_ui_tf false "$error_msg" "ErrorMsg:$error"
-        return 1
-    fi
-)
+    (
+        case "$1" in
+            Creating|Edit)
+                _msg="$1 project release successfully"
+                _error_msg="$1 project release failure"
+                ;;
+            Info)
+                _msg="Successfully get project release info"
+                _error_msg="Get project release info failure"
+                ;;
+        esac
+        _data="tag_name=.tag_name commit=.commit.short_id asset_count=.assets.count released_at=.released_at url=._links.self"
+        eval x jo env . _name=.name gl_resp_err=.error gl_resp_err=.message "$_data"
+        if [ -n "$_name" ]; then
+            ___x_cmd_ui_tf true "$_msg" ${_name:+"Name: $_name"} ${tag_name:+"Tag_Name: $tag_name"}  ${commit:+"Commit: $commit"} \
+                ${asset_count:+"Asset_Count: $asset_count"} ${released_at:+"Released_At: $released_at"} ${url:+"URL: $url"}
+        else
+            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
 # EndSection

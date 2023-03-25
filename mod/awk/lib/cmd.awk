@@ -11,7 +11,7 @@ function cmd_sleep( sec ){
 }
 
 function cmd_sh( work ){
-    return cmd("/bin/sh -c ", shqu(work) )
+    return cmd("/bin/sh -c " shqu(work) )
 }
 
 function cmd_ls( opt ){

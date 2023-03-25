@@ -18,14 +18,14 @@ ___x_cmd_gt_repo_tag_ls(){
     param:scope     ___x_cmd_gt
     param:dsl    '
 options:
-    --repo          "Provide ownerPath/RepoPath.(default owner: current user)"   <>:RepoPath
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"   <>:RepoPath
     --json|-j       "output origin json data"
 '
     param:run
     ___x_cmd_gt_param_init_owner_repo
 
     ___X_CMD_UI_STATIC=1  ___gt_ui_mutual '___ui_table_json TagName=.name Message=.message Commit=.commit.sha Time=.commit.date -- $@' \
-        ___x_cmd_gt_curl get "https://gitee.com/api/v5/repos/${owner_repo}/tags"
+        ___x_cmd_gt_curl get "/repos/${owner_repo}/tags"
 }
 
 
@@ -36,33 +36,42 @@ ___x_cmd_gt_repo_tag_create(){
     param:dsl    '
 options:
     #1              "tag name"                                                           <>
-    --repo       "Provide ownerPath/RepoPath.(default owner: current user)"           <>:RepoPath
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoPath
     --refs          "starting point branch name"                                         <>="master"
     --msg           "tag message"                                                        <>=""
     --json|-j       "output origin json data"
 '
     param:run
-    ___x_cmd_gt_param_init_owner_repo
-    local tag_name="${1:?"tag name"}"
-    local gen_gt_json
+    [ -n "$1" ] || M='accepts 1 arg(tag name), received empty' arg:ret:64
+    local tag_name="$1"
 
+    ___x_cmd_gt_param_init_owner_repo
+    local gen_gt_json=""
     gen_gt_json="$(param:option2json +tag_name tag_message=msg -msg)"
     gt:debug "$gen_gt_json"
-    ___x_cmd_gt_curl post "https://gitee.com/api/v5/repos/${owner_repo}/tags" "gen_gt_json" | ___x_cmd_gt_repo_tag_create_status_handler
+
+    ___x_cmd_gt_curl post "/repos/${owner_repo}/tags" "gen_gt_json" |  ___x_cmd_gt_repo_tag____ui_handler Create
 }
 
-___x_cmd_gt_repo_tag_create_status_handler(){
+___x_cmd_gt_repo_tag____ui_handler(){
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         cat
-        ___x_cmd_gt_curl_error
+        ___x_cmd_gt_http_error
         return
     fi
     (
-        x jo env . commit_sha=.commit.sha gt_resp_body=.
+        case "$1" in
+            Create)
+                _inf_msg="$1 $owner_repo tag $tag_name successfully"
+                _err_msg="$1 $owner_repo tag $tag_name failure"
+            ;;
+        esac
+        eval x jo env . commit_sha=.commit.sha gt_resp_err=.message gt_resp_err=.error
+
         if [ -n "$commit_sha" ]; then
-            ___x_cmd_ui_tf true     "Add $owner_repo tag $tag_name successfully"
+            ___x_cmd_ui_tf  true "${_inf_msg}:"
         else
-            ___x_cmd_ui_tf false    "Add $owner_repo tag $tag_name failure"  "ErrorMsg:"
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gt____handle_resp
             return 1
         fi

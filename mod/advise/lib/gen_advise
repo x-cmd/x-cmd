@@ -1,12 +1,14 @@
 # shellcheck shell=sh disable=SC3043,2120,2181,1091,2016,2034,2012
 # ___X_CMD_ADVISE_GEN_ADVISE_INDEX_FIELDS='useparam
 
-___X_CMD_ADVISE_ERREXIT="${___X_CMD_UNSEENCHAR_001}${___X_CMD_UNSEENCHAR_002}${___X_CMD_UNSEENCHAR_003}"
+___X_CMD_ADVISE_GEN_ADV_ERREXIT="${___X_CMD_UNSEENCHAR_001}${___X_CMD_UNSEENCHAR_002}${___X_CMD_UNSEENCHAR_003}"
 # useparam,name,synopsis,desc,exec,tldr,other,setup,tip,demo,subcmd,option,flag,[0-9]+,n
 
 ___x_cmd_advise_gen_advise__useparam()(
-    local mod_name="${1:?Provide mod name}"
-    local mod_path="${2:?Provide mod path}"
+    local mod_name="$1"
+    local mod_path="$2"
+    [ -n "$mod_name" ] || M="Please provide mod name" arg:ret:64
+    [ -d "$mod_path" ] || M="Unexisted directory of path. [path=$mod_path]" arg:ret:64
     xrc:mod "$mod_name/latest" || return 1
     local main_func; main_func="$___X_CMD_XRC_SET_MAIN"
     if [ -z "$main_func" ]; then
@@ -18,63 +20,108 @@ ___x_cmd_advise_gen_advise__useparam()(
         return 1
     }
 
-    advise:debug "useparam: X_CMD_ADVISE_FUNC_NAME=$main_func $main_func _x_cmd_advise_json"
+    advise:debug "Useparam - X_CMD_ADVISE_FUNC_NAME=$main_func $main_func _x_cmd_advise_json"
     X_CMD_ADVISE_FUNC_NAME="$main_func" "$main_func" _x_cmd_advise_json
 )
 
 ___x_cmd_advise_gen_advise__exec()(
-    local mod_path="${1:?Provide mod path}"; shift
+    local mod_path="$1"
+    arg:1:nonempty
+    shift
     x cd "$mod_path" || return 1
+    log:sub:init  -i gen_advise advise 'Executing'
     local cmd; printf "%s\n" "$*" | x jo env .\* cmd=. -- '
-    advise:warn "Executing: $cmd"
+    advise:warn "cmd - $cmd"
     ___x_cmd_evex "$cmd" 2>/dev/null || {
-        advise:error "Fail to exec: $cmd"
-        printf "%s\n" "$___X_CMD_ADVISE_ERREXIT"
+        advise:error "Fail to exec - $cmd"
+        printf "%s\n" "$___X_CMD_ADVISE_GEN_ADV_ERREXIT"
         exit 1
     }
 '
+    log:sub:fini
 )
+
+___x_cmd_advise_gen_advise__parse_adv_data(){
+    local mod_name="$1"
+    local mod_path="$2"
+    [ -n "$mod_name" ] || M="Please provide mod name" arg:ret:64
+    [ -d "$mod_path" ] || M="Unexisted directory of path. [path=$mod_path]" arg:ret:64
+    local adv_data="$mod_path/adv/data"
+    local res_data="$mod_path/res/data"
+    [ -d "$adv_data" ] || return
+    x mkdirp "$res_data"
+
+    find "$adv_data" | while read -r datafile; do
+        tagfile="${datafile#*"$adv_data/"}"
+        [ "$tagfile" != "$datafile" ] || continue
+        [ -f "$datafile" ] || {
+            x mkdirp "$res_data/$tagfile"
+            continue
+        }
+        case "$datafile" in
+            *.yml)
+                    advise:debug "Generate $mod_name res/data/${tagfile%.yml*}.jso from adv/data/$tagfile"
+                    < "$datafile" x yml y2j | ___x_cmd_advise_gen_advise__merge_awk > "$res_data/${tagfile%.yml*}.jso"
+                    ;;
+            *)      cp -r "$datafile" "$res_data/$tagfile" ;;
+        esac
+    done
+}
 
 ___x_cmd_advise_gen_advise__merge_awk(){
     command awk \
-    -v X_CMD_ADVISE_ERREXIT="$___X_CMD_ADVISE_ERREXIT" \
+    -v X_CMD_ADVISE_ERREXIT="$___X_CMD_ADVISE_GEN_ADV_ERREXIT" \
     -f "$___X_CMD_ROOT_MOD/awk/lib/default.awk" \
     -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"  \
     -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk" \
     -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk"   \
-    -f "$___X_CMD_ROOT_MOD/advise/lib/awk/build_merge.awk"
+    -f "$___X_CMD_ROOT_MOD/advise/lib/awk/gen.advise/build_merge.awk"
 }
 
+___x_cmd_advise_gen_advise___alreadylatest()(
+    arg:1:nonempty
+    x cd "$1" 2>/dev/null || exit 1
+    # check git last update
+    [ "$(git status -s | wc -l)" -eq 0 ] || return 1
+
+    local _expiration=86400 # 1-Day
+    local _fileage
+
+    # check files update.
+    [ -d res ] || return 1
+    find res -type f | while read -r adv_file; do
+        find adv lib latest -type f 2>/dev/null | x is newest "$adv_file" || return 1
+        _fileage="$(x fileage "$adv_file")"
+        advise:debug "{ filepath: $1/$adv_file, fileage: $_fileage, expiration: $_expiration }"
+        [ "$_fileage" -lt "$_expiration" ] || return 1
+    done
+)
+
 ___x_cmd_advise_gen_advise(){
-    local mod_name="${1:?Provide mod name}"
-    local mod_path="${2:?Provide mod path}"
+    arg:init advise
+    local mod_name="$1"
+    local mod_path="$2"
+    [ -n "$mod_name" ] || M="Please provide mod name" arg:ret:64
+    [ -d "$mod_path" ] || M="Unexisted directory of path. [path=$mod_path]" arg:ret:64
+
     local adv_dir="$mod_path/adv"
     local index_yml="$adv_dir/index.yml"
 
-    if [ ! -f "$index_yml" ]; then
-        advise:error "Not found $adv_dir/index.yml"
-        return 1
-    fi
+    [ -f "$index_yml" ] || M="Not found $adv_dir/index.yml" arg:ret:64
+
+    # ! ___x_cmd_advise_gen_advise___alreadylatest "$mod_path" || {
+    #     advise:info "Skip building advise.jso because it is the latest"
+    #     return 0
+    # }
+
     local resource;         resource="$mod_path/res";
     x rmrf "$resource";     x mkdirp "$resource"
 
     # parse adv/data dir
-    if [ -d "$adv_dir/data" ]; then
-        (
-            local res_data="$resource/data"; local datafile
-            x mkdirp "$res_data"
-            cd "$adv_dir/data" || exit
-            ls | while read -r datafile; do
-                case "$datafile" in
-                    *.yml)  < "$datafile" x y2j | ___x_cmd_advise_gen_advise__merge_awk > "$res_data/${datafile%.yml*}.jso" ;;
-                    *)      cp -r "$datafile" "$res_data/$datafile" ;;
-                esac
-            done
-        )
-    fi
+    ___x_cmd_advise_gen_advise__parse_adv_data "$mod_name" "$mod_path"
 
     # parse adv/index.yml
-    < "$index_yml" x y2j | {
+    < "$index_yml" x yml y2j | {
         local content;      content="$(cat)"
         printf "%s\n" "$content"
 
@@ -83,13 +130,13 @@ ___x_cmd_advise_gen_advise(){
             [ -z "$setup" ] || ___x_cmd_advise_gen_advise__exec "$mod_path" "$setup" || return 1
 
             find "$adv_dir" -maxdepth 1 -name '*.json' | while read -r jsonfile; do
-                advise:debug "cat $jsonfile"
+                advise:debug "Merge $jsonfile"
                 cat "$jsonfile"; printf "\n"
             done
 
             if [ "$useparam" = "true" ]; then
                 ___x_cmd_advise_gen_advise__useparam "$mod_name" "$mod_path"
-                [ "$?" = 0 ] || printf "%s\n" "$___X_CMD_ADVISE_ERREXIT"
+                [ "$?" = 0 ] || printf "%s\n" "$___X_CMD_ADVISE_GEN_ADV_ERREXIT"
             else printf "%s\n" "{}"    ; fi
         }
     } | ___x_cmd_advise_gen_advise__merge_awk > "$resource/advise.jso"
