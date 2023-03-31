@@ -56,8 +56,9 @@ function user_release_ref( o, kp,       _kp, l, i, arr, r, filepath, _ ){
     for (i=2; i<=l; ++i){
         _kp = _kp SUBSEP arr[i]
         if ( (r = jref_get(o, _kp) ) != false ) {
-            filepath = ___X_CMD_ROOT_MOD "/" juq(r)
+            filepath = comp_advise_get_ref_adv_jso_filepath( juq(r) )
             jiparse2leaf_fromfile( _, _kp, filepath )
+            if ( cat_is_filenotfound() ) panic( "Not found such filepath - " filepath  )
             jref_rm(o, _kp)
             cp_cover(o, _kp, _, _kp)
         }
@@ -73,6 +74,7 @@ function user_data_navi_subcmd( o, kp, rootkp,       l, _filepath, _obj_kp, i, _
         _filepath = substr( rootkp, l+1, RLENGTH-l)
         if ( ! change_is(FILE_DATA_OBJ, _filepath) ) {
             jiparse2leaf_fromfile(FILE_DATA_OBJ, "DATA" SUBSEP substr(rootkp, 1, RLENGTH), _filepath)
+            if ( cat_is_filenotfound() ) panic( "Not found such filepath - " _filepath  )
             change_set(FILE_DATA_OBJ, _filepath)
             FILE_DATA_OBJ[ "IS_FILE_NOT_FOUND", _filepath ] = cat_is_filenotfound()
         }

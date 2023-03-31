@@ -31,6 +31,7 @@ function parse_candidate_arr( arr,      s, i, l, _, v, d, _cand_exec, _cand_msg 
             v = arr[ "CODE", i ]
             d = arr[ "CODE", v ]
             v = juq(v)
+            gsub(" ", "\\ ", v)
             if (d != "\"\"") s = s shqu1( str_escape_special_char(v) ":" juq(d) ) "\n"
             else s = s shqu1( str_escape_special_char(v) ) "\n"
         }

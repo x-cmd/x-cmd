@@ -50,7 +50,7 @@ function arg_typecheck_then_generate_code( option_id, optarg_id, arg_var_name, _
 
 function handle_arguments_restargv_typecheck( use_ui_form, i, argval, is_dsl_default,           _tmp, _option_id, _optarg_id){
     _option_id = option_get_id_by_alias( "#" i )
-    _optarg_id = _option_id S 1
+    _optarg_id = _option_id # S 1
 
     if (argval != "") {
         _ret = assert(_optarg_id, "$" i, argval)
@@ -135,6 +135,7 @@ function handle_arguments_restargv(         _final_rest_argv_len, _set_arg_namel
     if (QUERY_CODE != ""){
         QUERY_CODE = "local ___X_CMD_UI_FORM_EXIT_STRATEGY=\"execute|exit\"; x ui form " substr(QUERY_CODE, 9)
         QUERY_CODE = QUERY_CODE ";\nif [ \"$___X_CMD_UI_FORM_EXIT\" = \"exit\" ]; then return 1; fi;"
+        # debug(QUERY_CODE)
         code_append(QUERY_CODE)
     }
 

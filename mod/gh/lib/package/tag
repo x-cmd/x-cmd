@@ -3,10 +3,10 @@
 
 ___x_cmd_gh_package_tag(){
     param:scope     ___x_cmd_github
-    param:subcmd ___x_cmd_gh_package_tag                               \
-        "ls|l"  "List packages for a specified organization or user."   \
-        "info|i"  "get user packages info"                                \
-        "rm"    "remove user packages"
+    param:subcmd ___x_cmd_gh_package_tag               \
+        "ls|l"          "List packages tag by owner"   \
+        "info|i"        "get user packages info"       \
+        "rm"            "remove user packages"
     param:subcmd:try
     param:run
 
@@ -23,7 +23,7 @@ ___x_cmd_gh_package_tag_ls() {
     param:dsl       '
 options:
     --package_name  "The name of the package."                  <>
-    --owner         "Specify an organization or user."          <>=""
+    --owner         "Specify an organization or user."          <>
     --package_type  "The type of supported package."            <> = container npm maven rubygems docker nuget
     --per_page      "Results per page"                          <>="30"
     --page          "Page number of the results to fetch."      <>="1"
@@ -33,7 +33,8 @@ options:
     local owner_type=""
     owner_type="$(___x_cmd_gh_owner_type_query "$owner" 2>/dev/null)"
     [ -n "$owner" ] || owner="$(___x_cmd_gh_config_get owner)"
-    ___x_cmd_gh_get_multi "/${owner_type}s/${owner}/packages/${package_type}/${package_name}/versions"
+    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json ID=.id Name=.name URL=.html_url -- $@' \
+        ___x_cmd_gh_get_multi "/${owner_type}s/${owner}/packages/${package_type}/${package_name}/versions"
 
 }
 # EndSection
@@ -44,17 +45,17 @@ ___x_cmd_gh_package_tag_info() {
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    #1              "Unique identifier of the package version." <>
-    --package_name  "The name of the package."                  <>
-    --owner         "Specify an organization or user."          <>=""
-    --package_type  "The type of supported package."            <> = container npm maven rubygems docker nuget
+    #1              "Unique identifier of the package version ID" <>
+    --package_name  "The name of the package."                    <>
+    --owner         "Specify an organization or user."            <>
+    --package_type  "The type of supported package."              <> = container npm maven rubygems docker nuget
 '
     param:run
 
     local owner_type=""
     owner_type="$(___x_cmd_gh_owner_type_query "$owner" 2>/dev/null)"
     [ -n "$owner" ] || owner="$(___x_cmd_gh_config_get owner)"
-    ___x_cmd_gh_curl get "/${owner_type}s/${owner}/packages/${package_type}/${package_name}/versions/$1"
+    ___x_cmd_gh_curl get "/${owner_type}s/${owner}/packages/${package_type}/${package_name}/versions/$1" | ___x_cmd_package_tag_____ui_handler Info "$1"
 }
 # EndSection
 
@@ -65,10 +66,10 @@ ___x_cmd_gh_package_tag_rm() {
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    #1              "Unique identifier of the package version." <>
-    --package_name  "The name of the package."                  <>
-    --owner         "Specify an organization or user."          <>=""
-    --package_type  "The type of supported package."            <> = container npm maven rubygems docker nuget
+    #1              "Unique identifier of the package version ID"   <>
+    --package_name  "The name of the package."                      <>
+    --owner         "Specify an organization or user."              <>=""
+    --package_type  "The type of supported package."                <> = container npm maven rubygems docker nuget
     --yes|-y        "Ignore remove prompt interception"
 '
     param:run
@@ -78,7 +79,7 @@ options:
 
     [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete this packages: $(___x_cmd_ui bold red "$1") ?" || return
     ___x_cmd_gh_curl del "/${owner_type}s/${owner}/packages/${package_type}/${package_name}/versions/$1" | (
-            [ -z "$___X_CMD_GH_IN_TEST_ENV" ] || { command cat; return; }
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
             x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
                 ___x_cmd_ui_tf  true "Remove $1 packages successfully:"
@@ -88,5 +89,34 @@ options:
                 return 1
             fi
         )
+}
+# EndSection
+
+# Section: package UI
+___x_cmd_package_tag_____ui_handler(){
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Info)
+                _data="name=.name url=.html_url license=.license package_type=.metadata.package_type created_at=.created_at updated_at=.updated_at"
+                _inf_msg="Getting $package_name package tag $2 information successfully"
+                _err_msg="Getting $package_name package tag $2 information failure"
+                ;;
+        esac
+        eval x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors "$_data"
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${_id:+"ID: $_id"} ${name:+"Name: $name"} \
+                ${license:+"License: $license"} ${package_type:+"Package_Type: $package_type"} \
+                ${created_at:+"Created_At: $created_at"} ${updated_at:+"Updated_At: $updated_at"} ${url:+"Url: $url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
 }
 # EndSection

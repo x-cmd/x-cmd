@@ -360,9 +360,10 @@ function generate_tip_help(arr,         _str, i, l, kp, color, title){
 
 function help_get_ref(obj, kp,        r, filepath, _){
     while ( (r = jref_get(obj, kp) ) != false ) {
-        filepath = ___X_CMD_ROOT_MOD "/" juq(r)
+        filepath = comp_advise_get_ref_adv_jso_filepath( juq(r) )
         jref_rm(obj, kp)
         jiparse2leaf_fromfile( _, kp, filepath )
+        if ( cat_is_filenotfound() ) panic( "Not found such advise jso file - " filepath  )
         cp_cover(obj, kp, _, kp)
         delete _
     }

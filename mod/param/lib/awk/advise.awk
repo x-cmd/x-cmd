@@ -8,6 +8,11 @@ function generate_advise_json_value_candidates_by_rules( optarg_id, advise_map, 
     AJADD("{");
     AJADD( swrap("#desc") ); AJADD( ":" ); AJADD( swrap(option_desc_get( optarg_id )) );
 
+    _default = optarg_default_get( optarg_id )
+    if (_default != "" && ! optarg_default_value_eq_require( _default ) ) {
+        AJADD(","); AJADD( swrap("#default") ); AJADD(":");                     AJADD( swrap( _default ) )
+    }
+
     if (advise_map[ optarg_id ] != "")  {
         AJADD(","); AJADD( swrap("#exec") ); AJADD(":");                        AJADD( swrap(advise_map[ optarg_id ]) );
     }
@@ -23,11 +28,6 @@ function generate_advise_json_value_candidates_by_rules( optarg_id, advise_map, 
 
     if (op == "=") {
         AJADD(","); AJADD( swrap("#cand") ); AJADD(":");                        AJADD("["); AJADD( oparr_join_wrap( optarg_id, SSS "," SSS ) ); AJADD("]")
-    }
-
-    _default = optarg_default_get( optarg_id )
-    if (_default != "" && ! optarg_default_value_eq_require( _default ) ) {
-        AJADD(","); AJADD( swrap("#default") ); AJADD(":");                     AJADD( swrap( _default ) )
     }
 
     AJADD("}");
@@ -86,6 +86,11 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
                 AJADD(","); AJADD( swrap("#synopsis") ); AJADD(":"); AJADD( swrap( _synopsis_str ))
             }
         }
+
+        if ( option_multarg_is_enable( _option_id ) ) {
+            AJADD(","); AJADD( swrap("#multiple") ); AJADD(":"); AJADD("true");
+        }
+
         for ( j=1; j<=_option_argc; ++j ) {
             AJADD(",")
             AJADD( swrap( "#" j ) ); AJADD(":");                                generate_advise_json_value_candidates_by_rules( _option_id SUBSEP j, advise_map );

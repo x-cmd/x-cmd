@@ -97,3 +97,14 @@ function comp_advise_remove_dev_tag_of_arr_group(o, kp, arr_group,          i, j
 }
 
 # EndSection
+
+# Section: advise filepath
+
+function comp_advise_get_ref_adv_jso_filepath( str,         _id ) {
+    if ( ! match(str, "^x-advise://") ) return str
+    str = substr( str, RLENGTH+1 )
+    if ( str ~ "/" ) return ___X_CMD_ROOT_ADV "/" str
+    return ___X_CMD_ROOT_ADV "/" str "/advise.jso"
+}
+
+# EndSection

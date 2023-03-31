@@ -4,9 +4,9 @@
 # get the candidate value
 function advise_get_ref(obj, kp,        r, _filepath, _, subcmd_group, option_group, flag_group){
     while ( (r = jref_get(obj, kp) ) != false ) {
-        _filepath = ___X_CMD_ROOT_MOD "/" juq(r)
+        _filepath = comp_advise_get_ref_adv_jso_filepath( juq(r) )
         jiparse2leaf_fromfile( _, kp, _filepath )
-        if ( cat_is_filenotfound() ) return advise_panic( "No such advise jso file: " _filepath )
+        if ( cat_is_filenotfound() ) return advise_panic( "No such advise jso file - " _filepath )
         jref_rm(obj, kp)
         cp_cover(obj, kp, _, kp)
         delete _
@@ -30,8 +30,8 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candida
                 _cand_kp = _cand_key SUBSEP "\""j"\""
                 v = aobj_get_cand_value( obj, _cand_kp)
                 _desc = ( ZSHVERSION != "" ) ? aobj_get_description(obj, _cand_kp SUBSEP v) : ""
-                if( v !~ "^\"" curval ) continue
                 if (v ~ "^\"") v = juq(v)
+                if( v !~ curval ) continue
                 jdict_put( CAND, "CODE", jqu(v), jqu(_desc) )
             }
         }
@@ -73,7 +73,6 @@ function advise_complete_option_value( curval, genv, lenv, obj, obj_prefix, opti
 
 # Just tell me the arguments
 function advise_complete_argument_value( curval, genv, lenv, obj, obj_prefix, nth, _candidate_code,      _kp ){
-
     _kp = obj_prefix SUBSEP "\"#" nth "\""
     if (aobj_get(obj, _kp) != "") return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
 

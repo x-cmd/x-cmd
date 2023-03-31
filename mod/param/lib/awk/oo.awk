@@ -31,7 +31,7 @@ function code_query_append_by_optionid_optargid( varname, option_id, optarg_id )
 function type_add_line(line_trimed,                 _name){
     match(line_trimed, /^[\-_A-Za-z0-9]+/)
     if (RLENGTH <= 0) {
-        panic_param_define_error("Should not happned for type lines: \n" line_trimed)
+        panic_param_define_error("Should not happned for type lines\nerror type: '" line_trimed"'")
     }
 
     _name = substr(line_trimed, 1, RLENGTH)

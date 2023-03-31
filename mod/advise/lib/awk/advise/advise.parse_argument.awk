@@ -4,6 +4,7 @@ function prepare_argarr( argstr, arr,      l, i, _arg ){
     if ( argstr == "" ) argstr = "" # "." "\002"
 
     gsub("\n", "\001", argstr)
+    gsub("\\\\ ", " ", argstr)
     l = split(argstr, arr, "\002")
     arr[L] = l
     for (i=1; i<=l; ++i) {

@@ -12,6 +12,7 @@ function handle( qpat,      varname, _arr, _arrl, i, _pat ){
 }
 
 END {
+    if (PANIC_EXIT != 0) exit( PANIC_EXIT )
     query_arrl = split(QUERY, query_arr, ",")
     for (i=1; i<=query_arrl; ++i) {
         handle( query_arr[ i ] )

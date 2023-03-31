@@ -21,7 +21,7 @@ ___x_cmd_advise_run(){
 
     COMPREPLY=(
         "${COMPREPLY[@]}"
-        $( compgen -W "${candidate_arr[*]}" -- "$cur")
+        "${candidate_arr[@]}"
         $( compgen -W "${candidate_exec_arr[*]}" -- "$cur")
     )
     ___x_cmd_advise___ltrim_bash_completions "$cur" "@" ":" "="

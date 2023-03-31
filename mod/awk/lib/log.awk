@@ -21,6 +21,12 @@ function escape_char033(s){
     return s
 }
 
+function log_mul_msg( msg ){
+    msg = "|\n" msg
+    gsub( "\n", "\n" ___X_CMD_LOG_YML_INDENT "    ", msg )
+    return msg
+}
+
 function log_debug( mod, msg ){
     log_level( "D", mod, msg, ___X_CMD_LOG_C_DEBUG )
 }

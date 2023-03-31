@@ -17,7 +17,8 @@ function pkg_init_table( jobj, table, table_kp,
 
     pkg_copy_table( jobj, jqu(pkg_name) SUBSEP jqu("meta"), table, table_kp )
 
-    pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name)
+    if ( pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name) == 0 )
+        panic( "Perhaps the platform is NOT supported your OS or ARCH - " table_osarch( table, pkg_name ) )
 
     _final_version = table_version( table, pkg_name)
     if ( _final_version != "" ) {
@@ -29,19 +30,23 @@ function pkg_init_table( jobj, table, table_kp,
     pkg_add_table( "arch", _os_arch[2], table, table_kp )
 }
 
-function pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name,         _version_osarch, _rule_kp, _rule_l, i ,k, _kpat){
+function pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name,         is_match_osarch, _osarch, _version_osarch, _rule_kp, _rule_l, i ,k, _kpat){
     _version_osarch = table_version_osarch( table, pkg_name ) # May define version or osarch (as default) in the meta file
+    _osarch = juq(table_osarch( table, pkg_name ))
     _rule_kp = pkg_kp( pkg_name, "meta", "rule" )
     _rule_l = jobj[ _rule_kp L ]
+
     for (i=1; i<=_rule_l; ++i) {
         k = jobj[ _rule_kp, i ]
         _kpat = juq( k )
+        if (  _kpat ~ _osarch ) is_match_osarch = 1
         gsub("\\*", "[^/]+", _kpat)
         if ( match( _version_osarch, "^" _kpat ) ) {
             pkg_copy_table( jobj, _rule_kp SUBSEP k, table, table_kp )
             _version_osarch = table_version_osarch( table, pkg_name )
         }
     }
+    return is_match_osarch
 }
 
 function pkg_get_version_or_head_version( jobj, table, pkg_name,            _final_version ){
@@ -175,5 +180,12 @@ function pkg_kp(a1, a2, a3, a4, a5, a6, a7, a8, a9,
 
     return ret
 }
+
+function panic( s ){
+    log_error( "pkg", s )
+    PANIC_EXIT = 1
+    exit(1)
+}
+
 
 # EndSection

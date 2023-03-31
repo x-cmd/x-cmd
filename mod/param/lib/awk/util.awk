@@ -38,14 +38,15 @@ function panic_error(msg){
         print "return 1"
         exit_now(1)
     }
-    print FG_LIGHT_RED "error: " UI_END msg "\nFor more information try " FG_BLUE "--help" UI_END > "/dev/stderr"
+    msg = FG_LIGHT_RED "error: " UI_END msg "\nFor more information try " FG_BLUE "--help" UI_END
+    log_error("param", log_mul_msg(msg) )
     print "return 1 2>/dev/null || exit 1 2>/dev/null"
     exit_now(1)
 }
 
 function panic_param_define_error( msg ){
-    print FG_LIGHT_RED "param define error: " UI_END msg "\nFor more information try " FG_BLUE "--help" UI_END > "/dev/stderr"
-    # "For more information try to read the demo in " FG_BLUE "https://gitee.com/x-bash/param/blob/main/.x-cmd/testcases/v0_test"
+    msg = FG_LIGHT_RED "param define error: " UI_END msg "\nFor more information try " FG_BLUE "--help" UI_END
+    log_error("param", log_mul_msg(msg) )
     print "return 1 2>/dev/null || exit 1 2>/dev/null"
     exit_now(1);
 }
@@ -60,7 +61,7 @@ function panic_match_candidate_error(option_id, value, candidate_list) {
 }
 
 function panic_match_candidate_error_msg(option_id, value, candidate_list) {
-    return ("Fail to match any candidate, option '" FG_YELLOW get_option_string(option_id) UI_END "' the part of value is '" FG_LIGHT_RED value UI_END "'\n" candidate_list)
+    return ("Fail to match any candidate, option '" FG_YELLOW get_option_string(option_id) UI_END "' the part of value is '" FG_LIGHT_RED value UI_END "'\n" "candidate: " candidate_list)
 }
 
 function panic_match_regex_error(option_id, value, regex) {
@@ -68,7 +69,7 @@ function panic_match_regex_error(option_id, value, regex) {
 }
 
 function panic_match_regex_error_msg(option_id, value, regex) {
-    return ("Fail to match any regex pattern, option '" FG_YELLOW get_option_string(option_id) UI_END "' the part of value is '" FG_LIGHT_RED value UI_END "'\n" regex )
+    return ("Fail to match any regex pattern, option '" FG_YELLOW get_option_string(option_id) UI_END "' the part of value is '" FG_LIGHT_RED value UI_END "'\n" "regex: " regex )
 }
 
 function panic_required_value_error(option_id) {

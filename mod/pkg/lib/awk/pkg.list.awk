@@ -9,6 +9,7 @@ function handle( qpat,  _arr, _arrl, i, _pat ){
 }
 
 END {
+    if (PANIC_EXIT != 0) exit( PANIC_EXIT )
     prefix = jqu(PKG_NAME) SUBSEP handle( EXPR )
     if ( "{" != table[ prefix ] ) {
         print table_eval(table, PKG_NAME, table[ prefix ])

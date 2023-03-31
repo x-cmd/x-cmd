@@ -21,32 +21,24 @@ ___x_cmd_advise_main(){
     local func="${1}"
     arg:init advise
     [ -n "$func" ] || M="Provide function name" arg:ret:64
-    local filepath="${2}"
+    local op="${2}"
     local alias_name="${3}"
-    local tmp_filepath="$___X_CMD_ADVISE_TMPDIR/$func"
+    local filepath="$___X_CMD_ADVISE_TMPDIR/$func"
 
     x mkdirp "$___X_CMD_ADVISE_TMPDIR"
 
-    if [ "-" = "$filepath" ]; then
-        filepath=$tmp_filepath
-        cat >"$filepath"
-    elif [ ! -f "$filepath" ]; then
-        # ___x_cmd_advise_update "$func"
-        filepath=$tmp_filepath
-        if [ ! -f "$filepath" ]; then
-            local content
-            advise:debug "Start generating advise for $func"
-            content="$(___X_CMD_META_MODE=1 X_CMD_ADVISE_FUNC_NAME=$func "$func" _x_cmd_advise_json)"
-            if [ ! $? -eq 0 ]; then
-                advise:error "Failed to generate advise json - 'X_CMD_ADVISE_FUNC_NAME=$func $func _x_cmd_advise_json'"
-                return 1
-            fi
-            printf "%s" "$content" >"$filepath"
-            advise:debug "Finished generating advise json for $func"
-        fi
+    if [ -f "$op" ]; then       cp "$op" "$filepath"
+    elif [ "-" = "$op" ]; then  cat >"$filepath"
     else
-        cp "$filepath" "$tmp_filepath"
-        filepath="$tmp_filepath"
+        # ___x_cmd_advise_update "$func"
+        if [ ! -f "$filepath" ]; then
+            local x_=; ___x_cmd_advise_get_mod_advise_jso_ "$func"
+            [ -f "$x_" ] || M="Not found advise jso file of $func. [filepath=${x_}]" arg:ret:64
+
+            [ "$___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST" != "${___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST#*${___X_CMD_UNSEENCHAR_NEWLINE}${func}${___X_CMD_UNSEENCHAR_NEWLINE}}" ] || \
+            xrc "$func"
+            cp "$x_" "$filepath"
+        fi
     fi
 
     local comp_word
@@ -61,21 +53,18 @@ ___x_cmd_advise_main(){
         alias_name="_$alias_name"
     fi
 
-    if [ -z "$ZSH_VERSION" ];then
-        if [[ ! "$BASH_VERSION" =~ (^3.*|^4.[0-3]) ]]; then
-            complete -o nosort -F "___x_cmd_advise_completer$alias_name" "$comp_word"
-        else
-            complete -F "___x_cmd_advise_completer$alias_name" "$comp_word"
-        fi
-    else
+    if [ -n "$ZSH_VERSION" ]; then
         compdef "___x_cmd_advise_completer$alias_name" "$comp_word"
+    elif [[ ！"$BASH_VERSION" =~ (^3.*|^4.[0-3]) ]]; then
+        complete -o nosort -F "___x_cmd_advise_completer$alias_name" "$comp_word"
+    else
+        complete -F "___x_cmd_advise_completer$alias_name" "$comp_word"
     fi
 }
 
 ___x_cmd_advise_get_result_from_awk(){
     arg:init advise
     arg:1:nonempty
-    local filepath="$1"
     local IFS="$___X_CMD_UNSEENCHAR_002"
     local s="${COMP_WORDS[*]}"
     s="${s#*"$IFS"}"
@@ -90,21 +79,21 @@ ___x_cmd_advise_get_result_from_awk(){
                 s="${s}${cur_1}$cur"
             fi
             ;;
-        *)
     esac
-    ___x_cmd_advise_get_result_from_awk_ "$s"
+    ___x_cmd_advise_get_result_from_awk_ "$1" "$s"
 }
 
 ___x_cmd_advise_get_result_from_awk_(){
+    local filepath="$1"; shift
     local IFS="$___X_CMD_UNSEENCHAR_002"
-    {
-        printf "%s\n" "$*"
-        cat "$filepath"
-    } | ___X_CMD_ADVISE_DEV_MOD="$___X_CMD_ADVISE_DEV_MOD" \
-        command awk \
+    local argstr="$*"
+    < "$filepath" \
+    ___X_CMD_ADVISE_DEV_MOD="$___X_CMD_ADVISE_DEV_MOD" \
+    ARGSTR="$argstr" \
+    command awk \
         -v ZSHVERSION="$ZSH_VERSION" \
         -v ADVISE_NO_COLOR="$NO_COLOR" \
-        -v ___X_CMD_ROOT_MOD="$___X_CMD_ROOT_MOD" \
+        -v ___X_CMD_ROOT_ADV="$___X_CMD_ROOT_ADV" \
         -v WEBSRC_REGION="$___X_CMD_WEBSRC_REGION" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/default.awk" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/arr.awk" \

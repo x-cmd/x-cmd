@@ -7,18 +7,17 @@ ___x_cmd_advise_run(){
     [ "$___X_CMD_ADVISE_RUN_CMD_FOLDER" != "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" ] || ___x_cmd_advise___load_xcmd_util_file "$___X_CMD_ADVISE_RUN_FILEPATH_"
     {   # Only different from main.3.bash, for words in COMP_WORDBREAKS
         local last="${COMP_WORDS[COMP_CWORD]}"
+        local tmp=
         case "$last" in
-            \"*|\'*)    COMP_LINE="${COMP_LINE%"$last"}"
-                        tmp=( $COMP_LINE ); tmp+=("$last")  ;;
-            *)          tmp=( $COMP_LINE ) ;;
+            \"*|\'*)
+                COMP_LINE="${COMP_LINE%"$last"}"
+                tmp=( $COMP_LINE ); tmp+=("$last")
+                COMP_WORDS=("${tmp[@]}")
+                COMP_CWORD="$(( ${#tmp[@]}-1 ))"
+                ;;
         esac
-
-        [ "${COMP_LINE% }" = "${COMP_LINE}" ] || tmp+=( "" )        # Ends with space
-
-        COMP_WORDS=("${tmp[@]}")
-        COMP_CWORD="$(( ${#tmp[@]}-1 ))"
+        # [ "${COMP_LINE% }" = "${COMP_LINE}" ] || tmp+=( "" )        # Ends with space
     }
-
     # Used in `eval "$candidate_exec"`
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local COMP_WORDS=("${COMP_WORDS[@]:0:$((COMP_CWORD+1))}")
@@ -33,7 +32,7 @@ ___x_cmd_advise_run(){
     eval "$candidate_exec" 2>/dev/null
     COMPREPLY=(
         "${COMPREPLY[@]}"
-        $( compgen -W "${candidate_arr[*]}" -- "$cur")
+        "${candidate_arr[@]}"
         $( compgen -W "${candidate_exec_arr[*]}" -- "$cur")
     )
     ___x_cmd_advise___ltrim_bash_completions "$cur" "@" ":" "="

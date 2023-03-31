@@ -54,7 +54,7 @@ function handle_optarg_declaration( arg_tokenarr, optarg_id,            _optarg_
     _optarg_definition_token1 = arg_tokenarr[ 1 ]
 
     if (! match( _optarg_definition_token1, /^<[-_A-Za-z0-9]*>/) ) {
-        panic_param_define_error("Unexpected optarg declaration: \n" _optarg_definition_token1)
+        panic_param_define_error("Unexpected optarg declaration\nerror optarg: '" _optarg_definition_token1 "'")
     }
 
     optarg_name_set( optarg_id,         substr( _optarg_definition_token1, 2,           RLENGTH-2 )  )

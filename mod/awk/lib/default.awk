@@ -73,6 +73,7 @@ function juq( str ){
     gsub( /\\v/, "\v", str )
     gsub( /\\b/, "\b", str )
     gsub( /\\r/, "\r", str )
+    gsub( "\\/", "/", str )                 # Notice: This is for the bwh json.
     gsub( "\001", "\\", str )
     return str
 }

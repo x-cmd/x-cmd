@@ -57,7 +57,7 @@ function assert(optarg_id, arg_name, arg_val,
 
     if (op == "=int") {
         if (! match(arg_val, "^[+-]?[0-9]+$") ) {    # float is: /[+-]?[0-9]+(.[0-9]+)?/
-            return "Arg: [" arg_name "] value is [" arg_val "]\n  Is NOT an integer."
+            return "Arg: [" arg_name "] value is [" arg_val "]\nIs not an integer."
         }
 
         if ( 2 <= len = oparr_len( optarg_id )){
@@ -77,16 +77,16 @@ function assert(optarg_id, arg_name, arg_val,
 
     } else if ( op == "=email" ) {
         if (! match(arg_val, "^"RE_EMAIL"$") ) {
-            return "Arg: [" arg_name "] value is [" arg_val "]\n  Is NOT a Correct Email Address ."
+            return "Arg: [" arg_name "] value is [" arg_val "]\nIs not a Correct Email Address ."
         }
     } else if (match(op, "^=url(:.+)?")) {      # =url:http   =url:https    =url:ftp
         _tmp = substr(op, 6)
         if (_tmp == ""){
             if(! re_wmatch(arg_val, RE_URL_BODY) ) {
-                return "Arg: [" arg_name "] value is [" arg_val "]\n  Is NOT an Url."
+                return "Arg: [" arg_name "] value is [" arg_val "]\nIs not an Url."
             }
         } else if (! re_wmatch(arg_val, "(" _tmp "://)" RE_URL_BODY) ) {    # float is: /[+-]?[0-9]+(.[0-9]+)?/
-            return "Arg: [" arg_name "] value is [" arg_val "]\n  Is NOT an Url."
+            return "Arg: [" arg_name "] value is [" arg_val "]\nIs not the specified Url."
         }
     } else if (op == "=") {
         sw = false

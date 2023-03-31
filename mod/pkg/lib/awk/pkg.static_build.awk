@@ -4,6 +4,7 @@ function handle( varname, val ){
 }
 
 END {
+    if (PANIC_EXIT != 0) exit( PANIC_EXIT )
     prefix = jqu(PKG_NAME) SUBSEP jqu("static-build")
     _sb_attr = juq( table[ prefix ] )
     if ( "{" != _sb_attr ) {

@@ -14,52 +14,96 @@ ___x_cmd_codi_stat_cal(){
 
 }
 
-___X_CMD_CODI_FILELANG_LIST="awk
+___X_CMD_CODI_FILELANG_LIST="
+nil
+
+awk
 c
 cpp
 go
 rust
+
 java
 jar
+
+lua
+
 js
 ts
+
 python
 perl
 ruby
 julia
 r
+
 yml
 json
 jso
 toml
 xml
 html
+
 markdown
+
 graphml
+
 text
+
 sh
 bash
 zsh
 fish
+
+LICENSE
+DOCKER
+make
+git
 "
 
+# TODO: first classify using the file extension, then use the file content to classify for the file with no extension
+# file without exensions: LICENSE, README, Makefile, .gitignore, .gitmodules
+# TODO: provide --merge, like --merge sh=zsh,bash,csh
+# TODO: provide db to cache the result
 ___x_cmd_codi_stat(){
+    local output_format=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --csv)  output_format=csv;      shift ;;
+            --json) output_format=json;     shift ;;
+            *)      break ;;
+        esac
+    done
+
     case "$#" in
         0)      folder=. ;;        # Notice: cannot replace . with $PWD just in case the current folder path is inside a hidden folder
         *)      folder=$1; shift ;;
     esac
 
+    case "$output_format" in
+        csv)    ___x_cmd_codi_stat_main | x csv convert --col 6; return ;;
+        json)   ___x_cmd_codi_stat_main | x csv convert --col 6; return ;;  # csv convert to json
+    esac
 
-    if [ "$#" -gt 0 ]; then
-        ___x_cmd_codi_stat_main
+    # TODO: Using --csv to convert the output to csv format
+    # TODO: Using --json to convert the output to json format
+    if [ -t 1 ] && ___x_cmd_is_interative_tty; then
+        ___x_cmd_codi_stat_main | x csv convert --col 6 | x csv app
     else
-        ___x_cmd_codi_stat_main | ___x_cmd_codi_stat_merge "$@"
+        ___x_cmd_codi_stat_main
     fi
 }
 
-___x_cmd_codi_stat_main()(
+___x_cmd_codi_stat_main(){(
     command find "$folder" -type f -not -path '*/.*' | ___x_cmd_codi_stat_pipe
-)
+
+    # using other flag to indicate output format
+    # if [ "$#" -gt 0 ]; then
+    #     :
+    # else
+    #     ___x_cmd_codi_stat_main | ___x_cmd_codi_stat_merge "$@"
+    # fi
+)}
 
 # calculate function number, global variable number
 # search function
@@ -72,7 +116,7 @@ ___x_cmd_codi_stat_main()(
 # TODO: Using wc to calculate all of stat of the files
 # TODO: Display the files of the type.
 # TODO: Make it to yuhang's first level test.
-___x_cmd_codi_stat_pipe()(
+___x_cmd_codi_stat_pipe(){(
     local x_
     local fp; while read -r fp; do
         ___x_cmd_codi_filelang_ "$fp"
@@ -81,19 +125,23 @@ ___x_cmd_codi_stat_pipe()(
 
     printf "%-12s\t%s\t%s\t%s\t%s\t%s\n" lang file line lavg word char
     local type; printf "%s\n" "$___X_CMD_CODI_FILELANG_LIST" | while read -r type; do
+        [ -n "$type" ] || continue  # x drop --empty
+
         eval filenum="\"\${fsc_$type:-0}\""
         [ "$filenum" -gt 0 ] || continue
 
+        # xargs cat -- fail to handle the file with space in the name
+        # | x args 128 'cat "$@"' 2>/dev/null \ # -0 is said to work. But it is not working on my mac.
         eval "$(
-            eval printf "\"%s\n\"" "\"\$fs_$type\""  \
-                | xargs cat \
+            eval printf "\"%s\"" "\"\$fs_$type\""  \
+                | x args 'cat "$@"'  \
                 | command wc \
                 | command awk '{ printf("line=%d;word=%d;char=%d\n", $1, $2, $3); }'
         )"
         printf "%-12s\t%d\t%d\t%d\t%d\t%d\n" "$type" "$filenum" "$line" "$((line/filenum))" "$word" "$char"
     done | sort -k 2 -n -r
 
-)
+)}
 
 # sh=sh,bash,zsh
 ___x_cmd_codi_stat_merge(){

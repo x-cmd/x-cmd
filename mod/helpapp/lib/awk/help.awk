@@ -22,3 +22,8 @@ function prepare_argarr( argstr,        l ){
     args[L] = l
 }
 # EndSection
+
+function panic( s ){
+    log_error( "help", s )
+    exit(1)
+}
