@@ -1,51 +1,91 @@
 # shellcheck shell=sh
-# shellcheck disable=SC2039,3043
+# shellcheck disable=SC3043,2034
+
+xrc cfgy
 
 ___x_cmd_gcode_config(){
-    param:subcmd ___x_cmd_gcode_config                                        \
-        which       "Show current config path"                             \
-        get         "Print the value of a given configuration key"         \
-        set         "Update configuration with a value for the given key"
-    param:subcmd:try
-    param:run
-
-    ___x_cmd_gcode_config _param_help_doc
-    return 1
-}
-
-___x_cmd_gcode_config_which(){
     param:void
-    printf "%s\n" "${___X_CMD_GCODE_CFG}/___x_cmd_gcode_GITCODE_DEFAULT"
+
+    [ "$#" -gt 0 ] || {
+        _____x_cmd_gcode_help config
+        return 64
+    }
+
+    local op="$1"; shift
+    case "$op" in
+        set)        ___x_cmd_gcode_config_set "$@"  ;;
+        get)        ___x_cmd_gcode_config_get "$@"  ;;
+        --help|-h)  _____x_cmd_gcode_help config    ;;
+        *)          ___x_cmd_gcode_config___invoke "$op" "$@" ;;
+    esac
 }
 
-# shellcheck disable=SC2154
-___x_cmd_gcode_config_get(){
-    param:scope     ___x_cmd_gcode
-    param:dsl       '
-type:
-    ConfigName  =   oauth_token user git_protocol
-options:
-    --host        "host name"                               <>="gitcode.net"
-    #1            "The name of the configuration to get"    <>:ConfigName
-'
-    param:run
-    [ -e  "${___X_CMD_GCODE_CFG}/___x_cmd_gcode_GITCODE_DEFAULT" ] || return 1
-    ___x_cmd_git_config_get "${___X_CMD_GCODE_CFG}/___x_cmd_gcode_GITCODE_DEFAULT" "$host" "$1"
-}
-
+# Section: Set
+# x gcode cfg set <token> [host]
+# shellcheck disable=2034
 ___x_cmd_gcode_config_set(){
-    param:scope     ___x_cmd_gcode
-    param:dsl       '
-type:
-    ConfigName  =   oauth_token user git_protocol
-options:
-    --host    "host name"                             <>="gitcode.net"
-    #1        "Please provide configuration key"      <>:ConfigName
-    #2        "Please provide configuration val"      <>
-'
-    param:run
-    local ___gitcode_path="${___X_CMD_GCODE_CFG}/___x_cmd_gcode_GITCODE_DEFAULT"
-    [ -e  "$___gitcode_path" ] || mkdir -p "$___X_CMD_GCODE_CFG"
-    ___x_cmd_git_config_set "$___gitcode_path" "$host" "$1" "$2" && return 0
-    gcode:error "gcode config set Fail"
+    local X_help_cmd="x help -m gcode config set"
+    cfgy:arg:config-profile:all
+
+    [ $# -ne 0 ] || {
+        gcode:error -h "x gcode config set [--config <config>] [--profile <profile>] <token> [owner] [host]" "accepts at least 1 arg(s), received 0."
+        return 64
+    }
+
+    config="${config:-$___X_CMD_GCODE_CURRENT_config}"
+    profile="${profile:-$___X_CMD_GCODE_CURRENT_profile}"
+
+    gcode:debug "Setting token for $profile in $config"
+
+    local token="$1"
+    local owner="${2}"
+    local host="${3:-"https://gitcode.net/api/v4"}"
+
+    eval ___x_cmd_gcode_config___invoke  set \
+        ${config:+--config "$config"}       \
+        ${profile:+--profile "$profile"}    \
+        ${token:+token="$token"} ${owner:+owner="$owner"} host="${host}"
+}
+# EndSection
+
+# Section: Get
+___x_cmd_gcode_config_get(){
+    local X_help_cmd="x help -m gcode config get"
+    cfgy:arg:config-profile:all
+
+    config="${config:-$___X_CMD_GCODE_CURRENT_config}"
+    profile="${profile:-$___X_CMD_GCODE_CURRENT_profile}"
+
+    if [ -z "$1" ]; then
+        eval ___x_cmd_gcode_config___invoke  cat  \
+            ${config:+--config "$config"}      \
+            ${profile:+--profile "$profile"}
+    else
+        eval ___x_cmd_gcode_config___invoke  get  \
+            ${config:+--config "$config"}      \
+            ${profile:+--profile "$profile"}   \
+            "$1"
+    fi
+}
+# EndSection
+
+# Section: Var
+___x_cmd_gcode_config___var(){
+    cfgy:arg:config-profile:all
+
+    config="${config:-$___X_CMD_GCODE_CURRENT_config}"
+    profile="${profile:-$___X_CMD_GCODE_CURRENT_profile}"
+
+    eval ___x_cmd_gcode_config___invoke  var  \
+            ${config:+--config "$config"}      \
+            ${profile:+--profile "$profile"}   \
+            "$*"
+}
+# EndSection
+
+___x_cmd_gcode_config___invoke(){
+    ___x_cmd_cfgy_obj                                              \
+        --prefix            ___X_CMD_GCODE_CFG_DATA                   \
+        --default-config    "${___X_CMD_ROOT_CFG}/gcode/X.cfg.yml"    \
+        "$@"
 }

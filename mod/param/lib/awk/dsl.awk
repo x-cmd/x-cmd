@@ -100,7 +100,7 @@ function parse_param_dsl_for_positional_argument( line,          _option_id, _ar
         if (option_exist_by_alias( _arg_name ))     panic_param_define_error("Already exsits: " _arg_name)
         option_set_alias( _option_id, _arg_name )
 
-        if ( i == 1 )              _arg_no = substr( _arg_name, 2)
+        if ( i == 1 )              _arg_no = int(substr( _arg_name, 2))
         else if ( i == 2 )         option_name_set( _option_id, _arg_name )
     }
 

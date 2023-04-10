@@ -8,6 +8,7 @@
 
 # gh repo collaborator +el:admin -user-a +user-b
 ___x_cmd_gh_repo_collaborator() {
+    param:scope  ___x_cmd_github
     param:subcmd ___x_cmd_gh_repo_collaborator    \
         app            "Interactive UI show repo of user"   \
         "ls|l"         "List collaborator"                  \
@@ -17,7 +18,6 @@ ___x_cmd_gh_repo_collaborator() {
         invitation     "repo invitations management"
     param:subcmd:try
     param:run
-
 
     ___x_cmd_gh_repo_collaborator _param_help_doc
     return 1
@@ -97,15 +97,16 @@ options:
 '
     param:run
 
+    [ "$#" -ne 0 ] || M='accepts arg(s) (username), received empty' arg:ret:64
     local _tmp_repo="$repo"
-    local name
-    # TODO: N to N && 1 TO N & N to 1
+    local _avt_name=""
     while true; do
         repo="${_tmp_repo%%,*}"
         _tmp_repo="${_tmp_repo#*,}"
         ___x_cmd_gh_param_init_owner_repo
-        for name in "$@"; do
-            ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${name##*/}" -- permission | ___x_cmd_gh_collaborator____ui_handler Add
+        for _avt_name in "$@"; do
+            ___x_cmd_gh____transform_avt_name || return
+            ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${_avt_name##*/}" -- permission | ___x_cmd_gh_collaborator____ui_handler Add
         done
         [ "$repo" != "$_tmp_repo" ] || return 0
     done
@@ -126,8 +127,11 @@ options:
 '
     param:run
 
+    [ -n "$1" ] || M='accepts 1 arg (username), received empty' arg:ret:64
+    local _avt_name="$1"
+    ___x_cmd_gh____transform_avt_name || return
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${1##*/}" -- permission | ___x_cmd_gh_collaborator____ui_handler Edit
+    ___x_cmd_gh_curl put  "/repos/$owner_repo/collaborators/${_avt_name##*/}" -- permission | ___x_cmd_gh_collaborator____ui_handler Edit
 }
 # EndSection
 
@@ -144,17 +148,19 @@ options:
 '
     param:run
 
+    [ "$#" -ne 0 ] || M='accepts arg(s) (username), received empty' arg:ret:64
     ___x_cmd_gh_param_init_owner_repo
-    local username=
-    for username in "$@"; do
-        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
-        ___x_cmd_gh_curl del "/repos/$owner_repo/collaborators/${username##*/}"| (
+    local _avt_name=""
+    for _avt_name in "$@"; do
+        ___x_cmd_gh____transform_avt_name || return
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove user: $(___x_cmd_ui bold red "$_avt_name") ?" || continue
+        ___x_cmd_gh_curl del "/repos/$owner_repo/collaborators/${_avt_name##*/}"| (
                 [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
                 x jo env . gh_resp_msg=.message gh_resp_err=.errors
                 if ___x_cmd_gh_http_error; then
-                    ___x_cmd_ui_tf  true "Remove $username collaborator from $owner_repo repo successfully:"
+                    ___x_cmd_ui_tf  true "Remove $_avt_name collaborator from $owner_repo repo successfully:"
                 else
-                    ___x_cmd_ui_tf false "Remove $username collaborator from $owner_repo repo failure:" >&2
+                    ___x_cmd_ui_tf false "Remove $_avt_name collaborator from $owner_repo repo failure:" >&2
                     ___x_cmd_gh____handle_resp
                     return 1
                 fi
@@ -174,8 +180,8 @@ ___x_cmd_gh_collaborator____ui_handler(){
         case "$1" in
             Add|Edit)
                 _data="repo=.repository.full_name permissions=.permissions invitee=.invitee.login __id=.id"
-                _inf_msg="$1 $name user to $owner_repo repo successfully"
-                _err_msg="$1 $name user to $owner_repo repo failure"
+                _inf_msg="$1 $_avt_name user to $owner_repo repo successfully"
+                _err_msg="$1 $_avt_name user to $owner_repo repo failure"
                 ;;
         esac
         eval x jo env . gh_resp_msg=.message gh_resp_err=.errors "$_data"
@@ -185,7 +191,7 @@ ___x_cmd_gh_collaborator____ui_handler(){
             if [ -n "$invitee" ]; then
                 ___x_cmd_ui_tf  true "Send $owner_repo invitation to $invitee successfully:" \
                     "Invitation URL: https://github.com/${owner_repo}/invitations" \
-                    ${__id:+"[Tip] The $name user also can run cmd to accept: 'x gh repo collaborator invitation accept ${__id}'"}
+                    ${__id:+"[Tip] The $_avt_name user also can run cmd to accept: 'x gh repo collaborator invitation accept ${__id}'"}
             else
                 ___x_cmd_ui_tf  true "${_inf_msg}:"  ${permissions:+"Permissions: $permissions"}
             fi

@@ -22,68 +22,49 @@ ___x_cmd_gcode_resp_header(){
 }
 
 ___x_cmd_gcode_resp_code(){
-    ___x_cmd_gcode_resp_header  | awk '$1 ~/HTTP\/1.1$/ {print ($2+0);exit(0)}'
+    ___x_cmd_gcode_resp_header  | awk '($1 ~ "HTTP/(1.*|2)$" && $3 != "Connection" && $4 != "established") {
+        print  int($2);
+        exit(0)
+    }'
 }
 
 ___x_cmd_gcode_curl(){
     local op="$1"
-    local _curl_url="\"${___X_CMD_GCODE_DOMAIN:-"https://gitcode.net"}/api/v4${2}\""
-    local _content_type="\"Content-Type: application/json\""
-    local _authorization
-    _authorization="\"PRIVATE-TOKEN: $(___x_cmd_gcode_token)\""
-    local gcode_header="$___X_CMD_GCODE_TMP/.____x_cmd_gcode_curl_header"
-    local ___X_CMD_GCODE_SHOW_HTTP_CODE=1
+    local _api_url="$2"
     shift 2
-    local req
+    local ___X_CMD_API_GL_HEADER="-s -H \"Content-Type: application/json\" -D \"$___X_CMD_GCODE_TMP/.____x_cmd_gcode_curl_header\""
+
+    local _curl_host_tmp=""
+    local ___X_CMD_API_GL_TOKEN=""
+    ___x_cmd_gcode_config___var  ___X_CMD_API_GL_TOKEN=token _curl_host_tmp=host 2>/dev/null
+    local ___X_CMD_API_GL_HOST="${___X_CMD_API_GODE_HOST:-"$_curl_host_tmp"}"
+
+    local ___X_CMD_GCODE_SHOW_HTTP_CODE=1
     case "$op" in
         get)
-            gcode:debug   "x curl -D  $gcode_header   -X GET -s -H  $_content_type  -H  $_authorization  $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gcode_curl___use_query_data "$@"))")  $_curl_url"
             if [ -n "$NO_CACHE" ]; then
-                eval       x curl -D "$gcode_header"  -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gcode_curl___use_query_data "$@"))") "$_curl_url"
+                ___x_cmd_api_gl get "$_api_url" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gcode_curl___use_query_data "$@"))")
             else
-                x ccmd 10s --         eval x curl -D "$gcode_header"  -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gcode_curl___use_query_data "$@"))") "$_curl_url"
+                x ccmd 10s --           eval "___X_CMD_API_GL_HOST=$___X_CMD_API_GL_HOST ___X_CMD_API_GL_TOKEN=$___X_CMD_API_GL_TOKEN ___x_cmd_api_gl get $_api_url $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gcode_curl___use_query_data "$@"))")"
             fi
-            ___x_cmd_gcode_http_error eval x curl -D "$gcode_header"  -X GET -s -H "$_content_type" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gcode_curl___use_query_data "$@"))") "$_curl_url"
-            return
+            ___x_cmd_gcode_http_error   eval "___X_CMD_API_GL_HOST=$___X_CMD_API_GL_HOST ___X_CMD_API_GL_TOKEN=$___X_CMD_API_GL_TOKEN ___x_cmd_api_gl get $_api_url $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gcode_curl___use_query_data "$@"))")"
+            ;;
+        post|put|patch|del)
+            ___x_cmd_api_gl "$op" "$_api_url" "$(x curl gencode "$@")"
+            ___x_cmd_gcode_http_error
             ;;
         upload)
-            local __file_path="${1?:"Please provide upload filepath"}"; shift;
+            [ -n "$1" ] || M='Please provide upload filepath' arg:ret:64
+            local __file_path="$1";  shift;
             [ -f "$__file_path" ] || {
                 gcode:error "Upload Failure: Not found target file. Please check file exist: $__file_path"
                 return 1
             }
-            gcode:debug "x curl --progress-bar -D  $gcode_header   -X  ${___X_CMD_GCODE_UPLOAD_REQ_METHOD:-"POST"}  -H  $_authorization  --form  file=@${__file_path}    $(x curl gencode "$@")   $_curl_url"
-            eval         x curl --progress-bar -D "$gcode_header"  -X "${___X_CMD_GCODE_UPLOAD_REQ_METHOD:-"POST"}" -H "$_authorization" --form  file=@"${__file_path}" "$(x curl gencode "$@")" "$_curl_url"
-            ___x_cmd_gcode_http_error; return
+            ___X_CMD_API_GL_HEADER="-L -# -D \"$___X_CMD_GCODE_TMP/.____x_cmd_gcode_curl_header\""
+            ___x_cmd_api_gl "${___X_CMD_GCODE_UPLOAD_REQ_METHOD:-"post"}" "$_api_url" --form file=@\""${__file_path}"\" "$(x curl gencode "$@")"
+            ___x_cmd_gcode_http_error
         ;;
-        post)           req="POST"      ;;
-        put)            req="PUT"       ;;
-        patch)          req="PATCH"     ;;
-        delete)         req="DELETE"    ;;
     esac
-    gcode:debug "x curl -D  $gcode_header  -X  $req  -s -H  $_content_type  -H  $_authorization   $(x curl gencode "$@")   $_curl_url"
-    eval         x curl -D "$gcode_header" -X "$req" -s -H "$_content_type" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"
-    ___x_cmd_gcode_http_error
-}
-
-___x_cmd_gcode_http_error(){
-    local http_resp_code
-    http_resp_code=$(___x_cmd_gcode_resp_code)
-    if [ -n "$http_resp_code" ] && [ "$http_resp_code" -ge 100 ] && [ "$http_resp_code" -le 303 ]; then
-        return 0
-    else
-        [ $# -eq 0 ] || {
-            gcode:debug "---! Cache Clear !---"
-            x ccmd invalidate "$@" 1>/dev/null 2>&1
-        }
-        [ -z "$___X_CMD_GCODE_SHOW_HTTP_CODE" ] || {
-            gcode:error "HTTP Code is $http_resp_code"
-            if command -v unset 1>/dev/null; then
-                unset ___X_CMD_GCODE_SHOW_HTTP_CODE
-            fi
-        }
-        return 1
-    fi
 }
 
 # shellcheck disable=SC2154
@@ -99,9 +80,35 @@ ___x_cmd_gcode_curl___use_query_data(){
     done
 }
 
+___x_cmd_gcode_http_error(){
+    local http_resp_code=""
+    http_resp_code=$(___x_cmd_gcode_resp_code)
+    if [ -n "$http_resp_code" ] && [ "$http_resp_code" -ge 100 ] && [ "$http_resp_code" -le 303 ]; then
+        return 0
+    else
+        [ $# -eq 0 ] || {
+            gcode:debug "Cache Clear"
+            x ccmd invalidate "$@" 1>/dev/null 2>&1
+        }
+        [ -z "$___X_CMD_GCODE_SHOW_HTTP_CODE" ] || {
+            gcode:error "HTTP Code is $http_resp_code"
+            if command -v unset 1>/dev/null; then
+                unset ___X_CMD_GCODE_SHOW_HTTP_CODE
+            fi
+        }
+        return 1
+    fi
+}
+
+___x_cmd_gcode____printf_error(){
+    if ! ___x_cmd_is_interative_tty || [ ! -t 2 ] || [ -n "$NO_COLOR" ]; then
+        printf "  - ErrorMsg: %s\n" "$1" >&2
+    else
+        printf "  \033[31m-\033[0m \033[1mErrorMsg: \033[31m%s\033[0m\n" "$1" >&2
+    fi
+}
 ___x_cmd_gcode____handle_resp(){
-    [ -z "$gcode_resp_body" ] || printf "%s" "$gcode_resp_body"
-    [ -z "$gcode_resp_err" ]  || printf "  \033[31m-\033[0m \033[1mErrorMsg: \033[31m%s\033[0m\n" "$gcode_resp_err" >&2
+    [ -z "$gcode_resp_err" ] || ___x_cmd_gcode____printf_error "$gcode_resp_err"
 }
 # EndSection
 
@@ -192,33 +199,57 @@ _____x_cmd_gcode_next_url(){
 # EndSection
 
 # Section: Parameter Utilities
-alias ___x_cmd_gcode_param_init_owner_project='
-    local owner_project=""
+alias ___x_cmd_gcode_param_init_owner_repo='
+    local owner_repo=""
     ___x_cmd_gcode_param_normalize_repo  || return
 '
 
 # shellcheck disable=SC2154,SC2034
 ___x_cmd_gcode_param_normalize_repo(){
-    local op="$project"
-    [ -z "$op" ] && op="$1"
+    local op="$repo"
+    [ -n "$op" ] || op="$1"
     case "$op" in
-    */*)
-        owner_project="$(printf "%s" "$op")"
-        ;;
-    "")
-        owner_project="$(_____x_cmd_git_repo)"
-        ;;
-    *)
-        ___x_cmd_gcode_current_owner 1>/dev/null
-        if [ -z "$___X_CMD_GCODE_DEFAULT_OWNER" ]; then
-            gcode:error "No owner provided. Default owner not set."
-            gcode:warn "Check your current token setting.$(_____x_cmd_gcode_help__token_setting)"
+        .id=*/*)
+            gcode:error "No support .id=<owner_id>/<repo_name>. Please use .id=<repo_id>"
             return 1
-        fi
-        owner_project="$(printf "%s" "$___X_CMD_GCODE_DEFAULT_OWNER/$op")"
-        ;;
+            ;;
+        .id=*)
+            owner_repo="${op#*'.id='}"
+            return 0
+            ;;
+        */*)
+            owner_repo="$op"
+            ;;
+        "")
+            if [ -n "$___X_CMD_GCODE_CURRENT_repo" ]; then
+                if [ "${___X_CMD_GCODE_CURRENT_repo##*/}" != "${___X_CMD_GCODE_CURRENT_repo}" ]; then
+                    owner_repo="$___X_CMD_GCODE_CURRENT_repo"
+                elif [ -n "$___X_CMD_GCODE_CURRENT_owner" ]; then
+                    owner_repo="${___X_CMD_GCODE_CURRENT_owner}/${___X_CMD_GCODE_CURRENT_repo}"
+                else
+                    if ! owner_repo="$(___x_cmd_gcode_config_get owner)/${___X_CMD_GCODE_CURRENT_repo}"; then
+                        gcode:error "No owner provided. Default owner not set."
+                        gcode:warn -h "$(x str ml wrap "$(_____x_cmd_gcode_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
+                        return 1
+                    fi
+                fi
+            else
+                owner_repo="$(_____x_cmd_git_repo)"
+            fi
+            ;;
+        *)
+            if [ -z "$___X_CMD_GCODE_CURRENT_owner" ]; then
+                local ___X_CMD_GCODE_CURRENT_owner=""
+                if ! ___X_CMD_GCODE_CURRENT_owner="$(___x_cmd_gcode_config_get owner)"; then
+                    gcode:error "No owner provided. Default owner not set."
+                    gcode:warn -h "$(x str ml wrap "$(_____x_cmd_gcode_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
+                    return 1
+                fi
+            fi
+            owner_repo="${___X_CMD_GCODE_CURRENT_owner}/${op}"
+            ;;
     esac
-    owner_project="$(printf "%s" "$owner_project" | sed s:'/':'%2F':g)"
+    owner_repo="$(printf "%s" "$owner_repo" | ___x_cmd_gcode___url_path_encode)"
 }
 
 _____x_cmd_git_repo(){
@@ -231,8 +262,8 @@ _____x_cmd_git_repo(){
 }
 # EndSection
 
-# Section: Resolve gitcode member access
-_____x_cmd_gcode_member_util(){
+# Section: gitcode utils
+___x_cmd_gcode___transform_member_access(){
     case $access_level in
         owner)
             access_level=50;;
@@ -245,5 +276,19 @@ _____x_cmd_gcode_member_util(){
         guest)
             access_level=10;;
     esac
+}
+
+# shellcheck disable=2016
+___x_cmd_gcode___url_encode(){
+    [ -n "$1" ] || M='accepts 1 arg(target str), received empty' arg:ret:64
+    printf "%s\n" "$1" |  x cawk  \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/ord.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/url.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"  \
+        '{ print urlencode( $0 ) }'
+}
+
+___x_cmd_gcode___url_path_encode(){
+    sed s:'/':'%2F':g
 }
 # EndSection

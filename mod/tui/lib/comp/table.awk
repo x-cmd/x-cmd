@@ -14,6 +14,7 @@ function comp_table_style_init(){
     TH_TABLE_ICON                   = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_ICON" ]                    : "" # "✨" # "⚡"
     TH_TABLE_ICON_STYLE             = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_ICON_STYLE" ]              : TH_TABLE_HEADER_ITEM_FOCUSED
     TH_TABLE_CURRENT_INFO           = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_CURRENT_INFO" ]            : "" # UI_FG_BLUE
+    TH_TABLE_DATA_BLANK_PROMPT      = "Data loading ..."
 }
 
 function comp_table_init( o, kp ){
@@ -398,7 +399,7 @@ function comp_table_paint_num( o, kp, i, w,         v, _prefix ){
 }
 
 function comp_table_paint_null_data( o, kp, i, w,        v){
-    v = "Data loading ..."
+    v = TH_TABLE_DATA_BLANK_PROMPT
     v = wcstruncate_cache( v, w )
     v = space_restrict_or_pad(v, w)
     if ( i == comp_table_get_focused_row(o, kp) ) v = UI_TEXT_REV v
@@ -426,6 +427,7 @@ function comp_table_paint_header(o, kp, x1, x2, y1, y2,                space_w, 
     for (i=1; i<=l; ++i){
         w = layout_avg_get_size(o, kp, i)
         v = comp_table_get_head_title(o, kp, layout_avg_get_item(o, kp, i))
+        gsub("\n.*$", "", v)
         if ( i != comp_table_get_focused_col(o, kp) ) v = th( TH_TABLE_HEADER_ITEM_NORMAL, space_restrict_or_pad_utf8(v, w) )
         else {
             icon_w = wcswidth_cache(TH_TABLE_ICON)

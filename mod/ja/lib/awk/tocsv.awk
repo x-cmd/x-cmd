@@ -16,6 +16,8 @@ BEGIN{
     # print _res
 
 }
+
+# TODO: Performance issue. There is a better design. Serialized object by object, using hash access instead of regex match.
 {
     if ($0 == "") next
     _item_arrl = json_split2tokenarr( _item_arr, $0 )
@@ -29,6 +31,7 @@ BEGIN{
             _res = (( i == 1 ) ? "" : _res "," ) csv_quote_ifmust(cell)
         }
         print _res
+        fflush()
         delete o
     }
 }

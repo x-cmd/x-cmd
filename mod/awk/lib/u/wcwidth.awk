@@ -684,11 +684,10 @@ function _wcwidth_unpack_data(_wchar,    _a, _b, _c, _data, _end, _entry,
         }
 
         if (_wchar <= _end) {
-            if (_wchar >= _start) {
+            WCWIDTH_SEARCH_CURSOR = _entry
+            if ((_width_of_wchar_argument == -1) && (_wchar >= _start)) {
                 _width_of_wchar_argument = _width
             }
-
-            WCWIDTH_SEARCH_CURSOR = _entry
         }
 
         WCWIDTH_RANGE_WIDTH[_entry] = _width

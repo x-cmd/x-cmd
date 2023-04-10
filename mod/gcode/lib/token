@@ -1,33 +1,50 @@
 # shellcheck shell=sh
-# shellcheck disable=SC2039,3043
-# shellcheck disable=SC2120
+# shellcheck disable=SC2039,3043,SC2154
 
 ___x_cmd_gcode_token(){
-    param:void
-    if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then _____x_cmd_gcode_help token; return 0
-    fi
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1          "access token. empty output current token"     <>=""
+    --host      "config request host"                          <>="https://gitcode.net/api/v4"
+    --profile   "config profile name. empty use default"       <>=""
+    --config    "config file path. empty use default"          <>=""
+    '
+    param:run
+
+    [ -z "$profile" ] || local ___X_CMD_GCODE_CURRENT_profile="$profile"
+    [ -z "$config"  ] || local ___X_CMD_GCODE_CURRENT_config="$config"
 
     if [ -z "$1" ]; then
-        ___x_cmd_gcode_config_get "oauth_token"  || return 1
+        ___x_cmd_gcode_config_get token 2>/dev/null || {
+            gcode:error "Can't find any token"
+            gcode:warn -m "Please check your token.$(_____x_cmd_gcode_help__token_setting)"
+            return 1
+        }
         return 0
     else
-        [ $# -lt 2 ] || gcode:warn "Multiple tokens cannot be set at the same time,Set only the first token"
-        local tmp_token
-        tmp_token="$(___x_cmd_gcode_config_get "oauth_token")"
-
+        [ $# -lt 2 ] || gcode:warn "Multiple tokens cannot be set at the same time, Set only the first token"
+        local tmp_token=
+        local tmp_host=
+        ___x_cmd_gcode_config___var    tmp_token=token tmp_host=host 2>/dev/null
         if [ "$1" = "$tmp_token" ]; then
             gcode:info "Consistent with the last recorded token"
-            return 0
+            ! ___x_cmd_gcode_config_get owner 1>/dev/null 2>&1 || return 0
         fi
 
-        ___x_cmd_gcode_config_set "oauth_token" "$1" 1>/dev/null
-        ___X_CMD_GCODE_DEFAULT_OWNER=
-        if ! ___x_cmd_gcode_current_owner 1>/dev/null 2>&1; then
-            [ -z "$tmp_token" ] || ___x_cmd_gcode_config_set "oauth_token" "$tmp_token" 1>/dev/null
+        ___x_cmd_gcode_config_set "$1" "" "$host"
+        local ___X_CMD_GCODE_CURRENT_owner=
+        x jo env . ___X_CMD_GCODE_CURRENT_owner=.username <<A
+            $(___x_cmd_gcode_curl get "/user")
+A
+        if [ -z "$___X_CMD_GCODE_CURRENT_owner" ]; then
+            # reback
+            [ -z "$tmp_token" ] || ___x_cmd_gcode_config_set "$tmp_token" "" "$tmp_host" 2>/dev/null
             gcode:error "Fail to update current owner with this token"
             return 1
         fi
-        ___x_cmd_ui_tf true "Set default token successfully, The default user is $___X_CMD_GCODE_DEFAULT_OWNER"
+        ___x_cmd_gcode_config_set "" "$___X_CMD_GCODE_CURRENT_owner" "$host"
+        ___x_cmd_ui_tf true "Setup token successfully, The owner is $___X_CMD_GCODE_CURRENT_owner:"
         return 0
     fi
 }

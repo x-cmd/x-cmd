@@ -1,7 +1,7 @@
 # shellcheck shell=sh
 # shellcheck disable=SC2039,3043
-___x_cmd_gcode_project_branch(){
-    param:subcmd ___x_cmd_gcode_project_branch       \
+___x_cmd_gcode_repo_branch(){
+    param:subcmd ___x_cmd_gcode_repo_branch       \
         "ls|l"              "list repo branch"              \
         "info|i"            "get repo branch info"          \
         rm                  "Delete repo branch"            \
@@ -10,18 +10,18 @@ ___x_cmd_gcode_project_branch(){
     param:subcmd:try
     param:run
 
-    ___x_cmd_gcode_project_branch _param_help_doc
+    ___x_cmd_gcode_repo_branch _param_help_doc
     return 1
 }
 
 # Section: List
 # http://localhost:4000/13.7/ee/api/branches.html#list-repository-branches
-___x_cmd_gcode_project_branch_ls(){
+___x_cmd_gcode_repo_branch_ls(){
     param:scope     ___x_cmd_gcode
     param:dsl       '
 options:
-    --project       "The ID or URL-encoded path of the project owned by the authenticated user" <>
-    --search        "Return list of branches containing the search string"                      <>=""
+    --repo|-r       "The ID or URL-encoded path of the repo"                            <>
+    --search        "Return list of branches containing the search string"              <>=""
 
     --per_page      "Results per page"                                                  <>=30
     --page          "Page number of the results to fetch."                              <>=1
@@ -29,62 +29,62 @@ options:
 '
     param:run
 
-    ___x_cmd_gcode_param_init_owner_project
+    ___x_cmd_gcode_param_init_owner_repo
     ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json BranchName=.name Protected=.protected Default=.default LastCommit=.commit.short_id -- $@' \
-         ___x_cmd_gcode_get_multi "/projects/$owner_project/repository/branches" search
+         ___x_cmd_gcode_get_multi "/projects/$owner_repo/repository/branches" search
 }
 # EndSection
 
 # Section: Info
 # http://localhost:4000/13.7/ee/api/branches.html#get-single-repository-branch
-___x_cmd_gcode_project_branch_info(){
+___x_cmd_gcode_repo_branch_info(){
     param:scope     ___x_cmd_gcode
     param:dsl       '
 options:
-    #1          "branch name"                                                               <>:Branch
-    --project   "The ID or URL-encoded path of the project owned by the authenticated user" <>
+    #1          "branch name"                                          <>:Branch
+    --repo|-r   "The ID or URL-encoded path of the repo owned"         <>
     --json|-j       "output json data"
 '
     param:run
 
-    ___x_cmd_gcode_param_init_owner_project
-    ___x_cmd_gcode_get_multi "/projects/${owner_project}/repository/branches/$1" | _____x_cmd_gcode_branch_ui_utils Info
+    ___x_cmd_gcode_param_init_owner_repo
+    ___x_cmd_gcode_get_multi "/projects/${owner_repo}/repository/branches/$1" | _____x_cmd_gcode_branch_ui_utils Info
 }
 # EndSection
 
 # Section: Remove
 # shellcheck disable=2154
-___x_cmd_gcode_project_branch_rm(){
+___x_cmd_gcode_repo_branch_rm(){
     param:scope     ___x_cmd_gcode
     param:dsl       '
 options:
     #1              "branch names"                                                               <>=""
-    --project       "The ID or URL-encoded path of the project owned by the authenticated user"  <>
-    --merged        "delete all branches that are merged into the project default branch"
+    --repo|-r       "The ID or URL-encoded path of the repo owned by the authenticated user"  <>
+    --merged        "delete all branches that are merged into the repo default branch"
 '
     param:run
-    ___x_cmd_gcode_param_init_owner_project
+    ___x_cmd_gcode_param_init_owner_repo
     local branch
     if [ -n "$merged" ]; then
         branch="all merged"
-        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete ${project} project $(___x_cmd_ui bold red "${branch}") branches ?" || return
-        ___x_cmd_gcode_curl delete "/projects/${owner_project}/repository/merged_branches" | ___x_cmd_gcode_project_branch_rm_status_handler
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete ${repo} repo $(___x_cmd_ui bold red "${branch}") branches ?" || return
+        ___x_cmd_gcode_curl del "/projects/${owner_repo}/repository/merged_branches" | ___x_cmd_gcode_repo_branch_rm_status_handler
     else
         [ -n "$1" ] || { gcode:error "Please provide at least one branch name"; return 1; }
         for branch in "$@"; do
-            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete ${project} project $(___x_cmd_ui bold red "${project} ${branch}") branch ?" || continue
-             ___x_cmd_gcode_curl delete "/projects/${owner_project}/repository/branches/${branch}" | ___x_cmd_gcode_project_branch_rm_status_handler
+            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete ${repo} repo $(___x_cmd_ui bold red "${repo} ${branch}") branch ?" || continue
+             ___x_cmd_gcode_curl del "/projects/${owner_repo}/repository/branches/${branch}" | ___x_cmd_gcode_repo_branch_rm_status_handler
         done
     fi
 }
 
-___x_cmd_gcode_project_branch_rm_status_handler(){
+___x_cmd_gcode_repo_branch_rm_status_handler(){
     (
         x jo env . gcode_resp_err=.error gcode_resp_err=.message
         if ___x_cmd_gcode_http_error; then
-            ___x_cmd_ui_tf  true "Delete ${project} $branch branch successfully."
+            ___x_cmd_ui_tf  true "Delete ${repo} $branch branch successfully."
         else
-            ___x_cmd_ui_tf false "Delete ${project} $branch branch failure"
+            ___x_cmd_ui_tf false "Delete ${repo} $branch branch failure"
             ___x_cmd_gcode____handle_resp
             return 1
         fi
@@ -93,22 +93,22 @@ ___x_cmd_gcode_project_branch_rm_status_handler(){
 # EndSection
 
 # Section: Defult
-___x_cmd_gcode_project_branch_default(){
+___x_cmd_gcode_repo_branch_default(){
     param:dsl       '
 options:
     #1          "branch name"                                   <>
-    --project   "The ID or URL-encoded path of the project."    <>:RepoName
+    --repo|-r   "The ID or URL-encoded path of the repo."    <>:RepoName
     --json|-j   "output json data"
 '
     param:run
 
     local default_branch="$1"
     local gen_gcode_json
-    gen_gcode_json="$(param:option2json -project +default_branch)"
+    gen_gcode_json="$(param:option2json -repo +default_branch)"
     gcode:debug "$gen_gcode_json"
 
-    ___x_cmd_gcode_param_init_owner_project
-    ___x_cmd_gcode_curl put "/projects/$owner_project" gen_gcode_json | _____x_cmd_gcode_branch_ui_utils Default
+    ___x_cmd_gcode_param_init_owner_repo
+    ___x_cmd_gcode_curl put "/projects/$owner_repo" gen_gcode_json | _____x_cmd_gcode_branch_ui_utils Default
 }
 # EndSection
 
@@ -125,8 +125,8 @@ _____x_cmd_gcode_branch_ui_utils(){
         case "$1" in
             Info)
                 _data="Protected=.protected sha=.commit.short_id merged=.merged url=.web_url"
-                _msg="get repo $project branch info success"
-                _error_msg="get repo $project branch info fail"
+                _msg="get repo $repo branch info success"
+                _error_msg="get repo $repo branch info fail"
                 ;;
             Default)
                 _data="url=.web_url"

@@ -1,8 +1,6 @@
 BEGIN{
     line_count = 0
-
-    printf(UI_CURSOR_SAVE) > "/dev/stderr"
-    printf(UI_CURSOR_HIDE) > "/dev/stderr"
+    printf("%s", UI_CURSOR_SAVE UI_CURSOR_HIDE) > "/dev/stderr"
 }
 
 function ui_cursor_goup_n_line(n){
@@ -13,13 +11,10 @@ function ui_cursor_godown_n_line(n){
     return "\033[" n "B"
 }
 
-function cal_empty_line(line_count, width,
-    i, ret){
-
-    ret = ""
-    for (i=1; i<=line_count; i=i+1) {
-        ret = ret str_rep(" ", width) "\n"
-    }
+function cal_empty_line(line_count, width,          i, ret, s){
+    s = str_rep(" ", width)
+    for (i=1; i<=line_count; i++)
+        ret = ret s "\n"
     return ret
 }
 
@@ -60,9 +55,6 @@ BEGIN {
 }
 
 function update(text){
-    # printf(UI_CURSOR_RESTORE)
-    # printf(UI_CURSOR_SAVE)
-    # printf "\033[%sA"
 
     LAST_OUTPUT_LINE_COUNT = OUTPUT_LINE_COUNT
 
@@ -70,14 +62,13 @@ function update(text){
 
     output_text = output(text, width)
 
-    printf(UI_CURSOR_RESTORE) > "/dev/stderr"
-    # printf(UI_CURSOR_SAVE)
+    printf("%s", UI_CURSOR_RESTORE) > "/dev/stderr"
     if (LAST_OUTPUT_LINE_COUNT < OUTPUT_LINE_COUNT) {
         # printf( "%s",
         #     last_output_test cal_empty_line(OUTPUT_LINE_COUNT - LAST_OUTPUT_LINE_COUNT, width) )
-        printf( "%s", str_rep("\n", OUTPUT_LINE_COUNT)) > "/dev/stderr"
-        printf("\033[" (OUTPUT_LINE_COUNT ) "A") > "/dev/stderr"
-        printf(UI_CURSOR_SAVE) > "/dev/stderr"
+        printf("%s", str_rep("\n", OUTPUT_LINE_COUNT) \
+            "\033[" (OUTPUT_LINE_COUNT ) "A" \
+            UI_CURSOR_SAVE) > "/dev/stderr"
     }
 
     printf("%s", output_text) > "/dev/stderr"
@@ -90,25 +81,17 @@ BEGIN{
 function end(){
     if (ALREAD_END == 1) return
     ALREAD_END = 1
-    printf(UI_CURSOR_RESTORE) > "/dev/stderr"
-    printf( "%s", cal_empty_line(OUTPUT_LINE_COUNT, KNOWN_WIDTH)) > "/dev/stderr"
-    printf(UI_CURSOR_RESTORE) > "/dev/stderr"
-
-    printf "\033[34h\033[?25h" > "/dev/stderr"
-    printf(UI_CURSOR_NORM) > "/dev/stderr"
+    printf("%s", UI_CURSOR_RESTORE \
+        UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
+        UI_CURSOR_NORMAL) > "/dev/stderr"
+    # printf( "%s", cal_empty_line(OUTPUT_LINE_COUNT, KNOWN_WIDTH)) > "/dev/stderr"
+    # printf(UI_CURSOR_RESTORE) > "/dev/stderr"
 }
 
 function env_code(VAR, text){
-    time = 0
-    time = time + gsub(/\\/, "\\\\", text)
-    time = time + gsub(/"/, "\\\"", text)
-    time = time + gsub("\n", "\\n", text)
-    # print "time:" time >> "aaa"
-    # if (time == 0) {
-    #     printf("%s", VAR "=\"" text "\"; ")
-    # } else {
-    #     printf("%s", VAR "=\"$(printf \"" text "\")\"; ")
-    # }
+    gsub(/\\/, "\\\\", text)
+    gsub(/"/, "\\\"", text)
+    gsub("\n", "\\n", text)
     printf("%s", VAR "=\"$(printf \"" text "\")\"; ")
 }
 

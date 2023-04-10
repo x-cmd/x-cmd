@@ -48,24 +48,30 @@ function tapp_handle_exit( exit_code,       _p, i, l ){
 # EndSection
 
 # Section: data binding: table and parsing data
-function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cell, _widths_l ){
+function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cell, _widths_l, _col ){
     arr_cut( arr, csv_trim(text), "\n" )
-    csv_parse( arr, CSV_DATA )
+    if ( csv_parse( arr, CSV_DATA ) <=0 ) panic( "Data error" )
     c = CSV_DATA[ L L ]
     l = CSV_DATA[ L ]
+    _col = tapp_canvas_colsize_get() - 7 - length(l) - c
     _widths_l = CSV_WIDTH[L]
-    for (i=1; i<=l; ++i){
-        for (j=1; j<=c; ++j){
-            _cell = CSV_DATA[ S i, j ]
-            if (i == 1) TABLE_ADD( _cell )
-            else TABLE_CELL_DEF( i-1, j, _cell )
-            if ( _widths_l >= j ) continue
+    for (i=1; i<=c; ++i){
+        _cell = CSV_DATA[ S 1, i ]
+        TABLE_ADD( _cell )
+        if ( _widths_l >= i ) CSV_WIDTH[i] =  int ( CSV_WIDTH[i] / 100 * _col )
+        else {
             gsub("\n.*$", "", _cell)
             w = wcswidth_cache( _cell )
-            if (CSV_WIDTH[j] < w) CSV_WIDTH[j] = w
+            if (w > _col) w = _col
+            CSV_WIDTH[i] = w
         }
+        TABLE_LAYOUT( i, CSV_WIDTH[i]+1 )
     }
-    for (i=1; i<=c; ++i) TABLE_LAYOUT( i, CSV_WIDTH[i]+1 )
+
+    for (i=2; i<=l; ++i){
+        for (j=1; j<=c; ++j)
+            TABLE_CELL_DEF( i-1, j, CSV_DATA[ S i, j ] )
+    }
 }
 
 # EndSection

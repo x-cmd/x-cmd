@@ -233,8 +233,8 @@ function handle_arguments(          i, _arg_arr_len, _subcmd_id, _tmp ) {
     code_append( "shift " (i-1) )
 
     _arg_arr_len = arg_arr[ L ]
-    if (final_rest_argv[ L ] < _arg_arr_len - (i - 1)) {
-        final_rest_argv[ L ] = _arg_arr_len - (i - 1)
+    if (final_rest_argv[ L ] < (_arg_arr_len = int(_arg_arr_len - (i - 1))) ) {
+        final_rest_argv[ L ] = _arg_arr_len
     }
 
     #Remove the processed arg_arr and move the arg_arr back forward

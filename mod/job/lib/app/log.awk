@@ -105,13 +105,24 @@ function user_paint_status( o, kp, x1, x2, y1, y2,      s, l, i, _, _log ) {
     return comp_textbox_paint( o, kp SUBSEP "navi.footer", x1, x2, y1, y2)
 }
 
-function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, arr ){
+function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, r, c, arr, _filepath ){
     if ( ! change_is(o, kp, "navi.preview") ) return
     change_unset(o, kp, "navi.preview")
 
     comp_textbox_clear(o, "CUSTOM_INFO_KP")
     if (split(rootkp, arr, ROOTKP_SEP) != 5) return
-    s = cat( JOB_LOG_FILE_BASEPATH "/" arr[3] "." arr[2] "." arr[4] "/" arr[5] )
+
+    _filepath = JOB_LOG_FILE_BASEPATH "/" arr[3] "." arr[2] "." arr[4] "/" arr[5]
+    while ((c=(getline r <_filepath))==1) {
+        if (r ~ "^"___X_CMD_OUTERR_MIX_PACK_PREFIX)
+            sub("^"___X_CMD_OUTERR_MIX_PACK_PREFIX, "", r)
+        else
+            r = "[stderr] " r
+        s = (s == "") ? r : s "\n" r
+    }
+    if (c == -1) panic( "Not found such filepath - " _filepath  )
+    close( _filepath )
+
     comp_textbox_put(o, "CUSTOM_INFO_KP", s)
     return comp_textbox_paint(o, "CUSTOM_INFO_KP", x1, x2, y1, y2)
 }

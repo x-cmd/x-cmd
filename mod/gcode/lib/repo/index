@@ -3,54 +3,55 @@
 # shellcheck disable=SC2154
 
 xrc:mod:lib gcode \
-    project/util \
-    project/member \
-    project/tag \
-    project/pr \
-    project/webhook \
-    project/branch/index \
-    project/branch/protection \
-    project/release/index \
-    project/release/attachment \
-    project/apply/index
+    repo/util \
+    repo/member \
+    repo/tag \
+    repo/pr \
+    repo/branch/index \
+    repo/branch/protection \
+    repo/release/index \
+    repo/release/attachment \
+    repo/apply/index
 
-___x_cmd_gcode_project(){
+___x_cmd_gcode_repo(){
     param:scope         ___x_cmd_gcode
-    param:subcmd ___x_cmd_gcode_project                         \
-        "ls|l"          "List project of owner"                 \
-        "info|i"        "Show detailed information of project"  \
-        "create|c"      "Create project"                        \
-        "edit|ed"       "Setup project configure"               \
-        rm              "Remove project"                        \
-        issue           "List project issue"                    \
-        "cl|clone"      "Clone project from gitcode"            \
-        apply           "Manage project by declare configure"   \
-        pr              "project pr management"                 \
-        tag             "project tag management"                \
-        branch          "project branch management"             \
-        member          "project member management"             \
-        release         "project release management"            \
-        webhook         "project webhook management"
+    param:subcmd        ___x_cmd_gcode_repo            \
+        "ls|l"                  "List repo of owner"                 \
+        "info|i"                "Show detailed information of repo"  \
+        "create|c"              "Create repo"                        \
+        "edit|ed"               "Setup repo configure"               \
+        rm                      "Remove repo"                        \
+        issue                   "List repo issue"                    \
+        "cl|clone"              "Clone repo from gitcode"            \
+        apply                   "Manage repo by declare configure"   \
+        pr                      "repo pr management"                 \
+        tag                     "repo tag management"                \
+        branch                  "repo branch management"             \
+        "member|collaborator"   "repo member management"             \
+        release                 "repo release management"
     param:subcmd:try
     param:run
 
-    ___x_cmd_gcode_project _param_help_doc
+    ___x_cmd_gcode_repo _param_help_doc
     return 1
 }
 
 # Section: Create
 # http://localhost:4000/13.7/ee/api/projects.html#create-project
-___x_cmd_gcode_project_create(){
+___x_cmd_gcode_repo_create(){
     param:scope     ___x_cmd_gcode
     param:dsl       '
 option:
-    #1                                                  "project names"                                                                     <>:RepoName
-    -p|--path                                           "project path"                                                                      <>=""
-    --group_id                                          "Namespace id (group_id) for the new project"                                                     <>=""
+    #1                                                  "repo names"                                                                        <>:RepoName
+    -p|--path                                           "repo path"                                                                         <>=""
+    --group|-g                                          "<group_path> or .id=<group_id>"                                                       <>=""
     --visibility                                        "See project visibility level."                                                     <>="private" = private internal public
     --default_branch                                    "The default branch name."                                                          <>=""
     --tag_list                                          "The list of tags for a project"                                                    <>=""
     --description                                       "Short project description."                                                        <>=""
+    --ci_config_path                                    "The path to CI configuration file."                                                <>=""
+    --initialize_with_readme                            "Whether to create a Git repository with just a README.md file"
+    --json|-j                                           "output json data"
 
     --topics                                            "The list of topics for a project"                                                  <>:Array=""
     --avatar                                            "Image file for avatar of the project."                                             <>=""
@@ -59,7 +60,6 @@ option:
     --build_timeout                                     "The maximum amount of time, in seconds, that a job can run."                       <>:Number=""
     --squash_option                                     "One of never, always, default_on, or default_off."                                 <>=""
     --template_name                                     "When used without use_custom_template, name of a built-in project template."       <>=""
-    --ci_config_path                                    "The path to CI configuration file."                                                <>=""
     --wiki_access_level                                 "wiki access level"                                                                 <>=""
     --build_git_strategy                                "The Git strategy. Defaults to fetch."                                              <>=""
     --repository_storage                                "Which storage shard the repository is on."                                         <>=""
@@ -94,7 +94,6 @@ option:
     --use_custom_template                               "Use either custom instance or group project template."
     --merge_trains_enabled                              "Enable or disable merge trains."
     --mirror_trigger_builds                             "Pull mirroring triggers builds."
-    --initialize_with_readme                            "Whether to create a Git repository with just a README.md file"
     --shared_runners_enabled                            "Enable shared runners for this project."
     --request_access_enabled                            "Allow users to request member access."
     --merge_requests_enabled                            "Enable merge requests for this project."
@@ -108,27 +107,48 @@ option:
     --printing_merge_request_link_enabled               "Show link to create/view merge request when pushing from the command line."
     --only_allow_merge_if_pipeline_succeeds             "Set whether merge requests can only be merged with successful pipelines."
     --only_allow_merge_if_all_discussions_are_resolved  "Set whether merge requests can only be merged when all the discussions are resolved."
-    --json|-j                                           "output json data"
 '
     param:run
-
-    local name="${___X_CMD_TX}"
-    local gen_gcode_json
-    gen_gcode_json="$(param:option2json +name -p ${p+"path=p"} -group_id ${group_id+"namespace_id=group_id"})"
-    gcode:debug "$gen_gcode_json"
+    [ -n "$1" ] || M='accepts args (<repos>), received empty' arg:ret:64
+    local name=""
+    local _avt_group="$group"
+    [ -z "$group" ] || {
+       for name in "$@"; do
+            case "$name" in
+                */*)    gcode:error "accepts only one group name, received multiple group name. '--group $group' & '${name%/*}'"
+                        return 1
+                        ;;
+            esac
+        done
+        ___x_cmd_gcode_avatar____transform_avt_group || return
+        local ____X_CMD_GCODE___has_group_opt=1
+    }
 
     for name in "$@"; do
-        gcode:debug "___x_cmd_gcode_repo_create_data:$(x tmpl "$gen_gcode_json"  "${name##%/}")"
-        x tmpl "$gen_gcode_json"  "${name##%/}" | \
-            ___x_cmd_gcode_curl post "/projects" "@-" | \
-            ___x_cmd_gcode_project_ui_utils Creating
+        [ -n "$_avt_group" ] || {
+            case "$name" in
+                */*)
+                    local _avt_group="${name%/*}"
+                    ___x_cmd_gcode_avatar____transform_avt_group || return
+                    name="${name##*/}"
+                    ;;
+            esac
+        }
+
+        local gen_gcode_json=""
+        gen_gcode_json="$(param:option2json +name ${_avt_group:+"namespace_id=_avt_group"} ${p:+"path=p"} -p -group)"
+        gcode:debug "$gen_gcode_json"
+
+        ___x_cmd_gcode_curl post "/projects" "gen_gcode_json" | ___x_cmd_gcode_repo_ui_utils Creating || return
+
+        [ -n "$____X_CMD_GCODE___has_group_opt" ] || _avt_group=""
     done
 }
 # EndSection
 
 # Section: List
 # http://localhost:4000/13.7/ee/api/projects.html#list-user-projects
-___x_cmd_gcode_project_ls(){
+___x_cmd_gcode_repo_ls(){
     param:scope     ___x_cmd_gcode
     param:dsl       '
 options:
@@ -138,10 +158,13 @@ options:
     --json|-j       "output json data"
 '
     param:run
-    if ___x_cmd_gcode_current_owner 1>/dev/null; then
-        ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Project_Id=.id Owner_Porject=.path_with_namespace Visibility=.visibility Default_Branch=.default_branch Description=.description  -- $@' \
-            ___x_cmd_gcode_get_multi "/users/$___X_CMD_GCODE_DEFAULT_OWNER/projects" visibility page per_page
+    local _owner=""
+    if _owner="$(___x_cmd_gcode_config_get owner)"; then
+        ___X_CMD_UI_STATIC=1 ___gcode_ui_mutual '___ui_table_json Repo_Id=.id Owner_Porject=.path_with_namespace Visibility=.visibility Default_Branch=.default_branch Description=.description  -- $@' \
+            ___x_cmd_gcode_get_multi "/users/$_owner/projects" visibility page per_page
     else
+        gcode:error "No owner provided. Default owner not set."
+        gcode:warn -h "$(x str ml wrap "$(_____x_cmd_gcode_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
         return 1
     fi
 }
@@ -149,25 +172,23 @@ options:
 
 # Section: Edit
 # http://localhost:4000/13.7/ee/api/projects.html#edit-project
-___x_cmd_gcode_project_edit(){
+___x_cmd_gcode_repo_edit(){
     param:scope     ___x_cmd_gcode
     param:dsl       '
 options:
-    #1                  "URL-encoded path of the project or project id (use --id flag)"     <>:RepoName
-    --visibility        "See project visibility level."                                     <>="" = private internal public
-    --tag_list          "The list of tags for a project"                                    <>=""
-    --description       "Short project description."                                        <>=""
+    #1                  "<owner>/<repo> or .id=<repo_id>"                                   <>:RepoName
+    --visibility        "See repo visibility level."                                        <>="" = private internal public
+    --tag_list          "The list of tags for a repo"                                       <>=""
+    --description       "Short repo description."                                           <>=""
     --default_branch    "The default branch name."                                          <>=""
-    --name              "The name of the project"                                           <>=""
-    -p|--path           "Custom repository name for the project."                           <>=""
-
+    --name              "The name of the repo"                                              <>=""
+    -p|--path           "Custom repository name for the repo."                              <>=""
+    --ci_config_path    "The path to CI configuration file."                                <>=""
     --json|-j           "output json data"
-    --id                "Using Porject id"
 
-    --avatar                                        "Image file for avatar of the project."                                                                                                         <>:mixed=""
+    --avatar                                        "Image file for avatar of the repo."                                                                                                         <>:mixed=""
     --import_url                                    "URL the repository was imported from."                                                                                                         <>=""
     --build_timeout                                 "The maximum amount of time, in seconds, that a job can run."                                                                                   <>:Number=""
-    --ci_config_path                                "The path to CI configuration file."                                                                                                            <>=""
     --issues_enabled                                "Set the merge method used."                                                                                                                    <>=""
     --mirror_user_id                                "User responsible for all the activity surrounding a pull mirror event. (administrators only)"                                                  <>:Number=""
     --build_git_strategy                            "The Git strategy. Defaults to fetch"                                                                                                           <>=""
@@ -179,14 +200,14 @@ options:
     --pages_access_level                            "One of disabled, private, enabled, or public."                                                                                                 <>=""
     --issues_access_level                           "One of disabled, private, or enabled"                                                                                                          <>=""
     --builds_access_level                           "One of disabled, private, or enabled."                                                                                                         <>=""
-    --forking_access_level                          "The classification label for the project."                                                                                                     <>=""
+    --forking_access_level                          "The classification label for the repo."                                                                                                     <>=""
     --snippets_access_level                         "One of disabled, private, or enabled"                                                                                                          <>=""
     --analytics_access_level                        "One of disabled, private or enabled"                                                                                                           <>=""
     --operations_access_level                       "One of disabled, private, or enabled"                                                                                                          <>=""
     --repository_access_level                       "One of disabled, private, or enabled"                                                                                                          <>=""
     --requirements_access_level                     "One of disabled, private, enabled or public"                                                                                                   <>=""
     --merge_requests_access_level                   "One of disabled, private, or enabled"                                                                                                          <>=""
-    --container_registry_access_level               "Set visibility of container registry, for this project, to one of , or . disabled private enabled"                                             <>=""
+    --container_registry_access_level               "Set visibility of container registry, for this repo, to one of , or . disabled private enabled"                                             <>=""
     --security_and_compliance_access_level          "Security and compliance access level. One of disabled, private, or enabled"                                                                    <>=""
     --auto_devops_deploy_strategy                   "Auto Deploy strategy (continuous, manual, or timed_incremental) "                                                                              <>=""
     --auto_cancel_pending_pipelines                 "Auto-cancel pending pipelines. This isnt a boolean, but enabled/disabled. "                                                                    <>=""
@@ -225,60 +246,58 @@ options:
     --snippets_enabled                              "(Deprecated) Enable snippets for this project. Use instead. snippets_access_level"
 '
     param:run
-    local project="$1"
-    ___x_cmd_gcode_param_init_owner_project
-    [ -z "$id" ] || owner_project="$project"
+    local repo="$1"
+    ___x_cmd_gcode_param_init_owner_repo
     local gen_gcode_json
     gen_gcode_json="$(param:option2json)"
     gcode:debug "$gen_gcode_json"
-    ___x_cmd_gcode_curl put "/projects/$owner_project" "gen_gcode_json" | ___x_cmd_gcode_project_ui_utils Update
+    ___x_cmd_gcode_curl put "/projects/$owner_repo" "gen_gcode_json" | ___x_cmd_gcode_repo_ui_utils Update
 }
 # EndSection
 
 # Section: Info
 # http://localhost:4000/13.7/ee/api/projects.html#get-single-project
-___x_cmd_gcode_project_info(){
+___x_cmd_gcode_repo_info(){
     param:scope     ___x_cmd_gcode
     param:dsl       '
 options:
-    #1                          "URL-encoded path of the project or project id (use --id flag)"    <>
+    #1                          "<owner>/<repo> or .id=<repo_id>"                                   <>:RepoName
     --license                   "Include project license data."
     --statistics                "Include project statistics. Only available to Reporter or higher level role members."
     --with_custom_attributes    "Include custom attributes in response. (administrator only)"
-    --id                        "Using Porject id"
     --json|-j                   "output json data"
 '
     param:run
 
-    local project="$1"
-    ___x_cmd_gcode_param_init_owner_project
-    [ -z "$id" ] || owner_project="$project"
-    ___x_cmd_gcode_curl get "/projects/$owner_project"| ___x_cmd_gcode_project_ui_utils Info
+    local repo="$1"
+    ___x_cmd_gcode_param_init_owner_repo
+    local gen_gcode_json=""
+    gen_gcode_json="$(param:option2json -json)"
+    gcode:debug "$gen_gcode_json"
+    ___x_cmd_gcode_curl get "/projects/$owner_repo" | ___x_cmd_gcode_repo_ui_utils Info
 }
 # EndSection
 
 # Section: Remove
 # http://localhost:4000/13.7/ee/api/projects.html#remove-project
-___x_cmd_gcode_project_rm(){
+___x_cmd_gcode_repo_rm(){
     param:scope     ___x_cmd_gcode
     param:dsl       '
 options:
-    #1          "URL-encoded path of the project or project id (use --id flag)"   <>
-    --id        "Using Porject id"
+    #1          "<owner>/<repo> or .id=<repo_id>"                                   <>:RepoName
     --yes|-y    "Ignore remove prompt interception"
 '
     param:run
-    local project
-    for project in "$@"; do
-        ___x_cmd_gcode_param_init_owner_project
-        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete project : $(___x_cmd_ui bold red "$project") ?" || continue
-        [ -z "$id" ] || owner_project="$project"
-        ___x_cmd_gcode_curl delete "/projects/${owner_project}" | (
+    local repo=""
+    for repo in "$@"; do
+        ___x_cmd_gcode_param_init_owner_repo
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete repo : $(___x_cmd_ui bold red "$repo") ?" || continue
+        ___x_cmd_gcode_curl del "/projects/${owner_repo}" | (
                 x jo env . gcode_resp_err=.error gcode_resp_err=.message
                 if ___x_cmd_gcode_http_error; then
-                    ___x_cmd_ui_tf  true "Deleting porject ${project} successfully."
+                    ___x_cmd_ui_tf  true "Deleting porject ${repo} successfully."
                 else
-                    ___x_cmd_ui_tf false "Deleting porject failure: ${project}. Probably because it desn't exists."
+                    ___x_cmd_ui_tf false "Deleting porject failure: ${repo}. Probably because it desn't exists."
                     ___x_cmd_gcode____handle_resp
                     return 1
                 fi
@@ -287,8 +306,8 @@ options:
 }
 # EndSection
 
-# Section: project utils
-___x_cmd_gcode_project_ui_utils(){
+# Section: repo utils
+___x_cmd_gcode_repo_ui_utils(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gcode_http_error
@@ -298,23 +317,23 @@ ___x_cmd_gcode_project_ui_utils(){
         case "$1" in
             Info)
                 _data="name=.name default_branch=.default_branch url=.web_url"
-                _msg="Get project information successfully."
-                _error_msg="Failed to get project information."
+                _msg="Get repo information successfully."
+                _error_msg="Failed to get repo information."
                 ;;
             Update)
-                _data="url=.web_url name=.name default_branch=.default_branch project_owner=.owner.username visibility=.visibility"
-                _msg="Update $project successfully."
-                _error_msg="Update failure: $project."
+                _data="url=.web_url name=.name default_branch=.default_branch repo_owner=.owner.username visibility=.visibility"
+                _msg="Update $repo successfully."
+                _error_msg="Update failure: $repo."
                 ;;
             Creating)
-                _data="url=.web_url project_owner=.owner.username visibility=.visibility"
-                _msg="Creating project $name successfully."
-                _error_msg="Creating project failure: $name."
+                _data="url=.web_url repo_owner=.owner.username visibility=.visibility"
+                _msg="Creating repo $name successfully."
+                _error_msg="Creating repo failure: $name."
                 ;;
         esac
         eval x jo env . id=.id gcode_resp_err=.error gcode_resp_err=.message "$_data"
         if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true "$_msg" "project_id: $id" ${project_owner:+"project_owner: $project_owner"}  \
+            ___x_cmd_ui_tf true "$_msg" "repo_id: $id" ${repo_owner:+"repo_owner: $repo_owner"}  \
                 ${name:+"name: $name"} ${default_branch:+"default_branch: $default_branch"} ${url:+"url: $url"} \
                 ${visibility:+"visibility: $visibility"}
         else

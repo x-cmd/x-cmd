@@ -1,4 +1,6 @@
 BEGIN {
+    # https://en.wikipedia.org/wiki/ANSI_escape_code
+
     UI_FG_BLACK         = "\033[30m"
     UI_FG_RED           = "\033[31m"
     UI_FG_GREEN         = "\033[32m"
@@ -19,6 +21,7 @@ BEGIN {
     UI_BG_CYAN          = "\033[46m"
     UI_BG_WHITE         = "\033[47m"
 
+    UI_END              = "\033[0m"
     UI_TEXT_BOLD        = "\033[1m"
     UI_TEXT_DIM         = "\033[2m"
     UI_TEXT_HID         = "\033[8m"
@@ -37,12 +40,15 @@ BEGIN {
 
     UI_SCREEN_SAVE      = "\033[?1049h"
     UI_SCREEN_RESTORE   = "\033[?1049l"
-    UI_SCREEN_CLEAR     = "\033[2J"
 
-    UI_EL               = "\033[K"
-    UI_EL1              = "\033[1K"
+    UI_LINE_CLEAR_RIGHT = "\033[K"
+    UI_LINE_CLEAR_LEFT  = "\033[1K"
+    UI_LINE_CLEAR       = "\033[2K"
 
-    UI_END              = "\033[0m"
+    UI_SCREEN_CLEAR_BOTTOM  = "\033[J"
+    UI_SCREEN_CLEAR_TOP     = "\033[1J"
+    UI_SCREEN_CLEAR         = "\033[2J"
+
 }
 
 

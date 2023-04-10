@@ -45,7 +45,7 @@ function handle_cmd(cmd,     _res, _max_len, _i, l, _key_len, _cmd_text){
 
     if (_max_len > COMP_TLDR_COL*0.6)  _res = _res handle_long_cmd(cmd)
     else _res = _res handle_short_cmd(cmd, _max_len)
-    return _res COMP_TLDR_NEWLINE
+    return _res
 }
 
 function handle_short_cmd(cmd, max_len,
@@ -138,7 +138,7 @@ function comp_tldr_init_of_mdfile(col, no_color){
         COMP_TLDR_CMD_INFO_COLOR_LONG = UI_TEXT_BOLD UI_FG_CYAN COMP_TLDR_BACKGROUND
     }
 
-    COMP_TLDR_SPACE_LINE = sprintf("%s\n", th(COMP_TLDR_BACKGROUND, space_rep(COMP_TLDR_COL)))
+    COMP_TLDR_SPACE_LINE = th(COMP_TLDR_BACKGROUND, space_rep(COMP_TLDR_COL)) "\n"
 }
 
 function comp_tldr_paint_of_file_content(content, width, no_color,      r, i, l, _, cmd, _res){
