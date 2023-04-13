@@ -29,15 +29,12 @@ options:
     param:run
 
     local url
-    if [ $# -gt 0 ]; then
+    if [ -n "$1" ]; then
         url="/users/$1/repos"
     else
         url="/user/repos"
     fi
 
-    # ___gh_ui_mutual '___ui_table_json Name=.name RepoPath=.full_name Visibility=.visibility Url=.html_url -- $@' \
-    #     ___x_cmd_gh_get_multi "$url" visibility affiliation sort direction
-    local ___gh_error_msg="get user repo list fail"
     local ___X_CMD_TUI_TABLE_FINAL_COMMAND
     local ___X_CMD_TUI_TABLE_CUR_LINE
     local ___X_CMD_TUI_TABLE_CUR_ITEM
@@ -78,14 +75,21 @@ options:
     param:run
 
     local url=""
-    if [ $# -gt 0 ]; then
+    if [ -n "$1" ]; then
         url="/users/$1/repos"
     else
         url="/user/repos"
     fi
     local visibility="$type"
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json RepoPath=.full_name Visibility=.visibility Description=.description -- $@' \
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
         ___x_cmd_gh_get_multi "$url" visibility affiliation sort direction
+    else
+        ___x_cmd_gh_get_multi "$url" visibility affiliation sort direction | \
+            x jo 2c            .full_name  .visibility .description        | \
+            x csv header --add RepoPath    Visibility  Description         | \
+            ___x_cmd_gh_st_tab
+    fi
 }
 
 # EndSection
@@ -131,14 +135,12 @@ option:
     gen_gh_json="$(
         param:option2json +name +private -access \
             has_issues=^no_issues                   has_wiki=^no_wiki                       has_projects=^no_projects           \
-            allow_rebase_merge=^no_rebase_merge     allow_squash_merge=^no_squash_merge     allow_merge_commit=^no_merge_commit \
-            auto_init=^^auto_init                   is_template=^^is_template)"
-    gh:debug "$gen_gh_json"
+            allow_rebase_merge=^no_rebase_merge     allow_squash_merge=^no_squash_merge     allow_merge_commit=^no_merge_commit
+        )"
 
     for name in "$@"; do
-        gh:debug "___x_cmd_gh_repo_create_data:$(x tmpl "$gen_gh_json"  "${name##%/}")"
-        x tmpl "$gen_gh_json"  "${name##%/}" | \
-        ___x_cmd_gh_curl post "/user/repos" "@-" | ___x_cmd_gh_repo____ui_handler Creating
+        gh:debug "$(x tmpl "$gen_gh_json"  "${name##%/}")"
+        x tmpl "$gen_gh_json"  "${name##%/}" | ___x_cmd_gh_curl post "/user/repos" "@-" | ___x_cmd_gh_repo____ui_handler Creating
     done
 }
 # EndSection

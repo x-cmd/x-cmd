@@ -29,10 +29,17 @@ options:
     --json|-j       "output json data"
 '
     param:run
-    ___x_cmd_gh_param_init_owner_repo
 
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Attachment_Id=.id Name=.name State=.state Label=.label Download_Count=.download_count Size=.size Updated_At=.updated_at -- $@' \
-        ___x_cmd_gh_curl get "/repos/${owner_repo}/releases/${release_id##*/}/assets" page per_page
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/releases/${release_id##*/}/assets"
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/releases/${release_id##*/}/assets" | \
+            x jo 2c             .id  .name  .state  .label  .download_count  .size  .updated_at  | \
+            x csv header --add   ID   Name   State   Label   Download_Count   Size   Updated_At  | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -49,15 +56,17 @@ options:
     --name          "The file name of the attachment(URL-encode)(default filename)" <>=""
     --label         "An alternate short description of the attachment(URL-encode)"  <>=""
     --file_type     "Target upload attachment media type"                           <>="octet-stream"
+    --host          "upload host"                                                   <>="https://uploads.github.com"
     --json|-j       "output json data"
 '
     param:run
-    ___x_cmd_gh_param_init_owner_repo
-    local ___X_CMD_API_GH_HOST="${___X_CMD_API_GH_HOST:-"https://uploads.github.com"}"
-    local _file_path="${1?:"Please provide target upload attachment file path"}"
+    [ -n "$1" ] || M='accepts 1 arg (target upload attachment file path), received empty' arg:ret:64
+    local _file_path="$1"
     [ "$_file_path" != '-' ] || _file_path="$(command cat)"
     [ -n "$name" ] || name="${_file_path##*/}"
 
+    local ___X_CMD_API_GH_HOST="$host"
+    ___x_cmd_gh_param_init_owner_repo
     ___x_cmd_gh_curl upload "/repos/${owner_repo}/releases/${release_id##*/}/assets?name=${name}${label:+"&&label=$label"}" "$_file_path" | \
         ___x_cmd_gh_release_attachment_____ui_handler Upload
 }
@@ -147,10 +156,12 @@ ___x_cmd_gh_release_attachment_____ui_handler(){
                 _err_msg="Get repo release attachment info failure"
                 ;;
         esac
-        x jo env . id=.id name=.name label=.label state=.state size=.size down_count=.download_count created_at=.created_at updated_at=.updated_at \
+
+        local _id=""
+        x jo env . _id=.id name=.name label=.label state=.state size=.size down_count=.download_count created_at=.created_at updated_at=.updated_at \
             down_url=.browser_download_url gh_resp_msg=.message gh_resp_err=.errors
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf  true "${_inf_msg}:" "Release_Attachment_Id: $id" ${name:+"Name: $name"} ${label:+"Label: $label"}             \
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" "Release_Attachment_Id: $_id" ${name:+"Name: $name"} ${label:+"Label: $label"}             \
                 ${state:+"State: $state"} ${size:+"Size: $size"} ${down_count:+"Download_Count: $down_count"} ${down_url:+"Download_URL: $down_url"}   \
                 ${created_at:+"Created_At: $created_at"} ${updated_at:+"Updated_At: $updated_at"}
         else

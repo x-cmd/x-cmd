@@ -34,9 +34,15 @@ options:
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    local ___gh_error_msg="get $owner_repo pull request list fail"
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json number=.number state=.state title=.title url=.html_url -- $@' \
-        ___x_cmd_gh_curl get "/repos/$owner_repo/pulls" state base sort direction
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/$owner_repo/pulls" state base sort direction
+    else
+        ___x_cmd_gh_get_multi "/repos/$owner_repo/pulls" state base sort direction | \
+            x jo 2c             .number  .state  .title   | \
+            x csv header --add   Number   State   Title   | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -139,6 +145,7 @@ options:
 
     ___x_cmd_gh_curl put "/repos/${owner_repo}/pulls/$1/merge" "gen_gh_json" | (
             [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            local merged=""
             x jo env . merged=.merged gh_resp_msg=.message gh_resp_err=.errors
             if [ "$merged" = "true" ]; then
                 ___x_cmd_ui_tf  true "Pull Request $1 merge to repo ${owner_repo} successfully:"
@@ -151,103 +158,6 @@ options:
 }
 # EndSection
 
-# Section: TODO
-___x_cmd_gh_repo_pr_view() {
-    param:scope     ___x_cmd_github
-    param:dsl       '
-options:
-    #1             "pr number"         <>:number
-'
-    param:run
-
-    ___x_cmd_gh_param_init_owner_repo
-
-    x http browse "https://github.com/${owner_repo}/pulls/$1"
-}
-
-___x_cmd_gh_repo_pr_comments(){
-    param:subcmd ___x_cmd_gh_repo_pr_comments   \
-        "ls|l"          "list pull requests comments"   \
-        "info|i"        "pull request comments info"    \
-        "create|c"      "create pull request comments"  \
-        "edit|ed"       "edit pull requests comments"
-    param:subcmd:try
-    param:run
-
-
-    ___x_cmd_gh_repo_pr_comments _param_help_doc
-    return 1
-}
-# TODO:github API error
-___x_cmd_gh_repo_pr_comments_ls() {
-    param:scope     ___x_cmd_github
-    param:dsl       '
-options:
-    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
-    --pr        "pr number."                                                        <>
-'
-    param:run
-    ___x_cmd_gh_param_init_owner_repo
-    local ___gh_error_msg="get $owner_repo pull request comments list fail"
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json id=.id body=.body url=.url -- $@' \
-        ___x_cmd_gh_curl get "/repos/${owner_repo}/pulls/$pr/comments"
-}
-
-___x_cmd_gh_repo_pr_comments_create(){
-    param:scope     ___x_cmd_github
-    param:dsl       '
-options:
-    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
-    --number        "pr number"                                                         <>
-    --body          "The text of the review comment."                                   <>
-    --commit_id     "The SHA of the commit needing a comment"                           <>=""
-    -p|--path       "The relative path to the file"                                     <>=""
-    --position      "The position in the diff where you want to add a review comment"   <>=""
-    --side          ""                                                                  <>=""
-    --line          ""                                                                  <>=""
-    --start_line    ""                                                                  <>=""
-    --start_side    ""                                                                  <>=""
-    --in_reply_to   ""                                                                  <>=""
-'
-    param:run
-    ___x_cmd_gh_param_init_owner_repo
-    local gen_gh_json=""
-    gen_gh_json="$(param:option2json -repo)"
-    gh:debug "$gen_gh_json"
-    ___x_cmd_gh_curl post "/repos/${owner_repo}/pulls/$number/comments" "gen_gh_json"
-}
-
-___x_cmd_gh_repo_pr_comments_rm(){
-    param:scope     ___x_cmd_github
-    param:dsl       '
-options:
-    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
-    #1          "The unique identifier of the comment."                             <>
-    --yes|-y    "Ignore remove prompt interception"
-'
-    param:run
-    ___x_cmd_gh_param_init_owner_repo
-    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove user: $(___x_cmd_ui bold red "$username") ?" || return
-    ___x_cmd_gh_curl del "/repos/${owner_repo}/pulls/comments/$1" | (
-            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
-            x jo env . gh_resp_msg=.message gh_resp_err=.errors
-            if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "Deleting repo pr comment successfully:"
-            else
-                ___x_cmd_ui_tf false "Deleting repo pr comment failure:" >&2
-                ___x_cmd_gh____handle_resp
-                return 1
-            fi
-        )
-}
-
-___x_cmd_gh_repo_pr_comments_edit(){
-    param:void
-    :
-}
-
-# EndSection
-
 # Section: pr UI
 ___x_cmd_gh_pr____ui_handler(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
@@ -258,22 +168,22 @@ ___x_cmd_gh_pr____ui_handler(){
     (
         case "$1" in
             Info)
-                _data="url=.html_url state=.state title=.title body=.body"
                 _inf_msg="Successfully obtained PR information"
                 _err_msg="Failed to get PR information"
                 ;;
             Creating)
-                _data="url=.html_url state=.state title=.title body=.body"
+
                 _inf_msg="Successfully obtained PR information"
                 _err_msg="Failed to get PR information"
                 ;;
             Edit)
-                _data="url=.html_url state=.state title=.title body=.body"
                 _inf_msg="Edit PR success"
                 _err_msg="Failed to Edit PR"
                 ;;
         esac
-        eval x jo env . id=.id gh_resp_msg=.message gh_resp_err=.errors "$_data"
+        local id=""
+        x jo env . id=.id gh_resp_msg=.message gh_resp_err=.errors \
+            url=.html_url state=.state title=.title body=.body
         if [ -n "$id" ]; then
             ___x_cmd_ui_tf  true "${_inf_msg}:" ${url:+"Url: $url"} ${state:+"State: $state"} ${title:+"Title: $title"} ${body:+"Body: $body"}
         else

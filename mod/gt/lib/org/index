@@ -34,9 +34,14 @@ options:
     --json|-j       "output origin json data"
 '
     param:run
-
-    ___X_CMD_UI_STATIC=1  ___gt_ui_mutual '___ui_table_json Id=.id Name=.name FollowCount=.follow_count Url=.repos_url -- $@' \
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gt_get_multi "/user/orgs" admin
+    else
+        ___x_cmd_gt_get_multi "/user/orgs" admin | \
+            x jo 2c             .id .name .follow_count .repos_url  | \
+            x csv header --add   Id  Name  FollowCount  Url         | \
+            x csv static_tab
+    fi
 }
 
 # shellcheck disable=SC2154
@@ -100,7 +105,7 @@ options:
         [ -z "$___X_CMD_GT_IN_TEST" ] || { command cat; return; }
         x jo env . gt_resp_err=.message gt_resp_err=.error
         if ___x_cmd_gt_http_error; then
-            ___x_cmd_ui_tf  true "Quit $_org organization successfully:"
+            ___x_cmd_ui_tf  true "[Success]: Quit $_org organization"
         else
             ___x_cmd_ui_tf false "Quit $_org organization failure:" >&2
             ___x_cmd_gt____handle_resp
@@ -118,23 +123,25 @@ ___x_cmd_gt_org____ui_handler(){
         return
     fi
     (
+        local _id=""
         case "$1" in
             Creating)
-                _inf_msg="$1 $2 organization successfully"
-                _err_msg="$1 $2 organization successfully failure"
+                x jo env . _id=.id gt_resp_err=.message gt_resp_err=.error
+                _inf_msg="[Success]: $1 $2 organization"
+                _err_msg="$1 $2 organization failure:"
             ;;
             Info)
-                _data="name=.name public=.public follow_count=.follow_count owner=.owner.name"
-                _inf_msg="Organization information"
-                _err_msg="No find any organization data by $2"
+                x jo env . _id=.id gt_resp_err=.message gt_resp_err=.error \
+                    _name=.name public=.public follow_count=.follow_count owner=.owner.name
+                _inf_msg="Organization information:"
+                _err_msg="No find any organization data by $2:"
             ;;
         esac
-        eval x jo env . _id=.id gt_resp_err=.message gt_resp_err=.error "$_data"
         if [ -n "$_id" ]; then
-            ___x_cmd_ui_tf  true "${_inf_msg}:" ${name:+"Name: $name"} ${public:+"Public: $public"}\
-                ${follow_count:+"Follow: $follow_count"} ${owner:+"Owner: $owner"}
+            ___x_cmd_ui_tf  true "${_inf_msg}" ${_name:+"Name: $_name"} ${public:+"Public: $public"}\
+                ${follow_count:+"Follow: $follow_count"} ${owner:+"Owner: $owner"} ${login:+"Login_path: $login"}
         else
-            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_ui_tf false "${_err_msg}" >&2
             ___x_cmd_gt____handle_resp
             return 1
         fi
@@ -169,11 +176,14 @@ options:
 '
     param:run
     [ -n "$1" ] || M='accepts 1 arg(organization path), received empty' arg:ret:64
-    local ___gt_error_msg="Couldn't find any data by $1"
-
-    ___X_CMD_UI_STATIC=1 ___gt_ui_mutual '___ui_table_json RepoPath=.full_name IsPrivate=.private Url=.html_url -- $@' \
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gt_get_multi "/orgs/$1/repos" type
-
+    else
+        ___x_cmd_gt_get_multi "/orgs/$1/repos" type | \
+            x jo 2c             .full_name .private   .html_url | \
+            x csv header --add   RepoPath   IsPrivate  Url      | \
+            x csv static_tab
+    fi
 }
 # EndSection
 

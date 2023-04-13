@@ -27,10 +27,6 @@ options:
     --page      "Page number of the results to fetch."      <>:Number="1"
 A
     param:run
-    # local ___gh_error_msg="Please provide owner and owner_type"
-    # ___gh_ui_mutual '___ui_table_json  Name=.name RepoPath=.full_name Visibility=.visibility Description=.description -- $@' \
-    #     ___x_cmd_gh_get_multi  "/orgs/$1/repos" type
-
     local ___gh_error_msg="Couldn't find any data by  ${1}"
     local Address="$1"
     local ___X_CMD_TUI_TABLE_FINAL_COMMAND
@@ -61,11 +57,19 @@ options:
     --json|-j   "output json data"
 A
     param:run
-    local _table_cols='___ui_table_json RepoPath=.full_name Visibility=.visibility Description=.description -- $@'
-    [ "$type" != "member" ] || _table_cols='___ui_table_json RepoPath=.full_name Visibility=.visibility Push=.permissions.push Maintain=.permissions.maintain -- $@'
-    local ___gh_error_msg="Please provide owner and owner_type"
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual "$_table_cols" \
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
         ___x_cmd_gh_get_multi  "/orgs/$1/repos" type sort direction
+    elif [ "$type" = "member" ] ; then
+        ___x_cmd_gh_get_multi  "/orgs/$1/repos" type sort direction | \
+            x jo 2c            .full_name  .visibility .permissions.push .permissions.maintain .description | \
+            x csv header --add RepoPath    Visibility  Push              Maintain               Description | \
+            ___x_cmd_gh_st_tab
+    else
+        ___x_cmd_gh_get_multi  "/orgs/$1/repos" type sort direction | \
+            x jo 2c            .full_name  .visibility .description | \
+            x csv header --add RepoPath    Visibility  Description  | \
+            ___x_cmd_gh_st_tab
+    fi
 }
 # EndSection
 
@@ -147,12 +151,13 @@ ___x_cmd_gh_org_repo____ui_handler(){
     (
         case "$1" in
             Creating)
-                _data="url=.html_url repo_owner=.owner.login"
                 _inf_msg="Creating repo $name success"
                 _err_msg="Creating $name repo failure"
                 ;;
         esac
-        eval x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors "$_data"
+        local _id=""
+        x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors \
+            url=.html_url repo_owner=.owner.login
         if [ -n "$_id" ]; then
             ___x_cmd_ui_tf  true "${_inf_msg}:" ${repo_owner:+"repo_owner: $repo_owner"} ${url:+"url: $url"}
         else

@@ -16,12 +16,13 @@ ___x_cmd_gh_repo(){
     param:scope  ___x_cmd_github
     param:subcmd ___x_cmd_gh_repo                               \
         app             "Interactive UI show repo by owner"     \
+        "browse|b"      "Open Github repo in the web browser"   \
         "ls|l"          "List repo by owner"                    \
         "info|i"        "Show repo detailed information"        \
         "create|c"      "Create repo"                           \
         "edit|ed"       "Edit repo information"                 \
         rename          "Rename repo"                           \
-        "cl|clone"      "clone repo from github"                \
+        "cl|clone"      "Clone repo from github"                \
         fork            "fork repo from github"                 \
         rm              "Remove repo"                           \
         apply           "manage repo by declare configure"      \
@@ -60,7 +61,7 @@ options:
             return 1
         fi
     }
-    eval "___x_cmd_gh_${owner_type}_repo_app"  --sort "$sort" --direction "$direction" --type "$type"  \
+    "___x_cmd_gh_${owner_type}_repo_app"  --sort "$sort" --direction "$direction" --type "$type"  \
         --per_page "$per_page" --page "$page" "$1"
 }
 # EndSection
@@ -76,8 +77,7 @@ options:
     --direction     "direction"                                 <>:Direction="desc"
     --per_page      "Results per page"                          <>="30"
     --page          "Page number of the results to fetch."      <>="1"
-
-    --json|-j   "output json data"
+    --json|-j       "output json data"
 '
     param:run
 
@@ -88,8 +88,8 @@ options:
             return 1
         fi
     }
-    eval "___x_cmd_gh_${owner_type}_repo_ls"  --sort "$sort" --direction "$direction" --type "$type"  \
-        --per_page "$per_page" --page "$page" "${1%%/*}"
+    "___x_cmd_gh_${owner_type}_repo_ls" --sort "$sort" --direction "$direction" --type "$type" \
+        --per_page "$per_page" --page "$page" ${json:+"--json"} "${1%%/*}"
 }
 # EndSection
 
@@ -143,14 +143,10 @@ option:
     --json|-j                   "output json data"
 '
     param:run
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (ownerPath/RepoPath), received empty' arg:ret:64
     [ -z "$json" ] || local ENFORCE_JSON=1
     local name=""
     for name in "$@"; do
-        local _cmd_opt="--access ${access}      ${description:+"--homepage '$description'"}     ${homepage:+"--homepage '$homepage'"} \
-            ${team_id:+"--team_id '$team_id'"}  ${gitignore_template:+"--gitignore_template '$gitignore_template'"}     ${license_template:+"--license_template '$license_template'"} \
-            ${no_merge_commit:+"--no_merge_commit"}   ${no_rebase_merge:+"--no_rebase_merge"}       ${no_squash_merge:+"--no_squash_merge"} \
-            ${no_issue:+"--no_issue"}                 ${no_projects:+"--no_projects"}               ${auto_init:+"--auto_init"}     ${no_wiki:+"--no_wiki"}   \
-            ${allow_auto_merge:+"--allow_auto_merge"} ${delete_branch_on_merge:+"--delete_branch_on_merge"}  ${is_template:+"--is_template"} "
         local owner_type=user
         [ "${name%%/*}" = "$name" ] || {
             if ! owner_type="$(___x_cmd_gh_owner_type_query "${name%%/*}")"; then
@@ -159,7 +155,12 @@ option:
             fi
         }
 
-        eval  "___x_cmd_gh_${owner_type}_repo_create" "$_cmd_opt" "$name"
+        "___x_cmd_gh_${owner_type}_repo_create" --access "${access}"   ${description:+"--description"} ${description:+"$description"}   ${homepage:+"--homepage"} ${homepage:+"$homepage"}  \
+            ${team_id:+"--team_id"} ${team_id:+"$team_id"}   ${gitignore_template:+"--gitignore_template"} ${gitignore_template:+"$gitignore_template"}   ${license_template:+"--license_template"} ${license_template:+"$license_template"} \
+            ${no_merge_commit:+"--no_merge_commit"}   ${no_rebase_merge:+"--no_rebase_merge"}   ${no_squash_merge:+"--no_squash_merge"}                     \
+            ${no_issue:+"--no_issue"}                 ${no_projects:+"--no_projects"}           ${auto_init:+"--auto_init"}     ${no_wiki:+"--no_wiki"}     \
+            ${allow_auto_merge:+"--allow_auto_merge"} ${is_template:+"--is_template"}           ${delete_branch_on_merge:+"--delete_branch_on_merge"}       \
+            "$name"
     done
 }
 # EndSection
@@ -206,7 +207,8 @@ option:
     local private=""
     local visibility=""
     case "$access" in
-        private)        private=true
+        private)
+            private=true
             [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to edit $1 repository access to $(___x_cmd_ui bold red "$access") ?${___X_CMD_UNSEENCHAR_NEWLINE}  - Will only authorized users will have access${___X_CMD_UNSEENCHAR_NEWLINE}  - Will loss of all stars and watchers${___X_CMD_UNSEENCHAR_NEWLINE}" || return 1
             ;;
         public)         private=false           ;;
@@ -276,7 +278,7 @@ options:
     --yes|-y    "Ignore remove prompt interception"
 '
     param:run
-    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (ownerPath/RepoPath), received empty' arg:ret:64
+    [ -n "$1" ] || M='accepts 1 arg(s) (ownerPath/RepoPath), received empty' arg:ret:64
     local owner_repo=""
     local i=""
     for i in "$@"; do
@@ -286,7 +288,7 @@ options:
                 [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
                 x jo env . gh_resp_msg=.message gh_resp_err=.errors
                 if ___x_cmd_gh_http_error; then
-                    ___x_cmd_ui_tf  true "Deleting repo $owner_repo successfully:"
+                    ___x_cmd_ui_tf  true "[Success]: Deleting repo $owner_repo"
                 else
                     ___x_cmd_ui_tf false "Deleting repo $owner_repo failure:" >&2
                     ___x_cmd_gh____handle_resp
@@ -297,22 +299,43 @@ options:
 }
 # EndSection
 
+___x_cmd_gh_repo_browse(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1           "<ownerPath>/<RepoPath> (default ownerPath: current user)"      <>:RepoName=""
+A
+    param:run
+    local repo="$1"
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='accepts 1 arg (<owner>/<repo>), received empty' arg:ret:64
+    local _host=""; _host=$(___x_cmd_gh___get_web_host)
+     _____x_cmd_git_browse "${_host}/${owner_repo}"
+}
+
 # Section: repo Tags ls
 # https://docs.github.com/en/rest/repos/repos#list-repository-tags
 ___x_cmd_gh_repo_tag(){
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"      <>:RepoName="$(_____x_cmd_git_repo)"
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"      <>:RepoName=""
     --per_page      "Results per page"                                              <>="30"
     --page          "Page number of the results to fetch."                          <>="1"
     --json|-j       "output json data"
 A
     param:run
-    [ -n "$repo" ] || { gh:error "Please provide --repo <owner/repo>"; return 1; }
     ___x_cmd_gh_param_init_owner_repo
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Name=.name Commit=.commit.sha -- $@' \
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gh_get_multi "/repos/${owner_repo}/tags"
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/tags" | \
+            x jo 2c            .name .commit.sha | \
+            x csv header --add  Name  Commit     | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -323,16 +346,22 @@ ___x_cmd_gh_repo_team(){
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
-    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName="$(_____x_cmd_git_repo)"
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName=""
     --per_page      "Results per page"                                                  <>="30"
     --page          "Page number of the results to fetch."                              <>="1"
     --json|-j       "output json data"
 A
     param:run
-    [ -n "$repo" ] || { gh:error "Please provide --repo <owner/repo>"; return 1; }
     ___x_cmd_gh_param_init_owner_repo
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Name=.name Slug=.slug Privacy=.privacy Permission=.permission Description=.description -- $@' \
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gh_get_multi "/repos/${owner_repo}/teams"
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/teams" | \
+            x jo 2c            .name .slug .privacy .permission .description | \
+            x csv header --add  Name  Slug  Privacy  Permission  Description | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -344,19 +373,22 @@ ___x_cmd_gh_repo____ui_handler(){
         return
     fi
     (
+        local _id=""
         case "$1" in
             Info)
+                x jo env . _id=.id url=.html_url gh_resp_msg=.message gh_resp_err=.errors \
+                    full_name=.full_name visibility=.visibility
                 _data="full_name=.full_name visibility=.visibility"
-                _inf_msg="$owner_repo repo info"
-                _err_msg="Fail. Couldn't find any repo $owner_repo"
+                _inf_msg="Getting $owner_repo repo information successfully"
+                _err_msg="Getting $owner_repo repo information failure"
                 ;;
             Creating|Edit)
-                _data="owner=.owner.login"
+                x jo env . _id=.id url=.html_url gh_resp_msg=.message gh_resp_err=.errors \
+                    owner=.owner.login
                 _inf_msg="$1 repo ${owner_repo:-$name} successfully"
                 _err_msg="$1 ${owner_repo:-$name} repo failure"
                 ;;
         esac
-        eval x jo env . _id=.id url=.html_url gh_resp_msg=.message gh_resp_err=.errors "$_data"
         if [ -n "$_id" ]; then
             ___x_cmd_ui_tf  true "${_inf_msg}:" ${full_name:+"Name: $full_name"}  ${url:+"URL: $url"} ${owner:+"Repo_Owner: $owner"} ${visibility:+"Visibility: $visibility"}
         else

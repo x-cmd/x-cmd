@@ -30,10 +30,7 @@ ___x_cmd_advise_run(){
     local IFS="$___X_CMD_ADVISE_IFS_INIT"
     local candidate_exec_arr
     eval "$candidate_exec" 2>/dev/null
-    COMPREPLY=(
-        "${COMPREPLY[@]}"
-        "${candidate_arr[@]}"
-        $( compgen -W "${candidate_exec_arr[*]}" -- "$cur")
-    )
+    [ -z "$candidate_arr" ] || COMPREPLY+=( "${candidate_arr[@]}" )
+    COMPREPLY+=( $( compgen -W "${candidate_exec_arr[*]}" -- "$cur") )
     ___x_cmd_advise___ltrim_bash_completions "$cur" "@" ":" "="
 }

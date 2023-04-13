@@ -37,8 +37,15 @@ options:
     local owner_type=""
     owner_type="$(___x_cmd_gh_owner_type_query "$owner" 2>/dev/null)"
     [ -n "$owner" ] || owner="$(___x_cmd_gh_config_get owner)"
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json ID=.id Name=.name Package_Type=.package_type Visibility=.visibility URL=.html_url -- $@' \
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
         ___x_cmd_gh_get_multi "/${owner_type}s/${owner}/packages" visibility package_type
+    else
+        ___x_cmd_gh_get_multi "/${owner_type}s/${owner}/packages" visibility package_type | \
+            x jo 2c             .id .name .package_type .visibility .html_url | \
+            x csv header --add   ID  Name  Package_Type  Visibility  URL | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -86,7 +93,7 @@ options:
             [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
             x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "Remove $1 packages successfully:"
+                ___x_cmd_ui_tf  true "[Success]: Remove $1 packages"
             else
                 ___x_cmd_ui_tf false "Remove $1 packages failure:" >&2
                 ___x_cmd_gh____handle_resp
@@ -106,12 +113,13 @@ ___x_cmd_package_____ui_handler(){
     (
         case "$1" in
             Info)
-                _data="name=.name owner=.owner.login url=.html_url version_count=.version_count visibility=.visibility created_at=.created_at updated_at=.updated_at"
                 _inf_msg="Getting package $2 information successfully"
                 _err_msg="Getting package $2 information failure"
                 ;;
         esac
-        eval x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors "$_data"
+        local _id=""
+        x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors \
+            name=.name owner=.owner.login url=.html_url version_count=.version_count visibility=.visibility created_at=.created_at updated_at=.updated_at
         if [ -n "$_id" ]; then
             ___x_cmd_ui_tf  true "${_inf_msg}:" ${_id:+"ID: $_id"} ${name:+"Name: $name"} ${owner:+"Owner: $owner"} \
                 ${visibility:+"Visibility: $visibility"} ${version_count:+"Version_Count: $version_count"} \

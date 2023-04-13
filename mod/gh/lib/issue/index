@@ -16,33 +16,6 @@ ___x_cmd_gh_issue() {
     return 1
 }
 
-# Section: Create
-# https://docs.github.com/en/rest/issues/issues#create-an-issue
-# shellcheck disable=SC2154
-___x_cmd_gh_issue_create(){
-    param:scope     ___x_cmd_github
-    param:dsl       '
-options:
-    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoName
-    --title     "The title of the issue."                                               <>:string
-
-    --body      "The contents of the issue."                                            <>:string=""
-    --assignees "User responsible for this issue.(separated by commas)"                 <>:array=""
-    --milestone "milestone number"                                                      <>:number="null"
-    --labels    "Labels to associate with this issue.(separated by commas)"             <>:array=""
-    --json|-j   "output json data"
-'
-    param:run
-    assignees=$(x jo "[$assignees]")
-    labels=$(x jo "[$labels]")
-    local gen_gh_json=""
-    gen_gh_json="$(param:option2json -json)"
-    gh:debug "$gen_gh_json"
-    ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl post "/repos/${owner_repo}/issues" gen_gh_json | ___x_cmd_gh_issue____ui_handler Creating
-}
-# EndSection
-
 # Section: List
 # https://docs.github.com/en/rest/issues/issues#list-repository-issues
 ___x_cmd_gh_issue_ls(){
@@ -51,7 +24,7 @@ ___x_cmd_gh_issue_ls(){
 options:
     --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoName
 
-    --state         "Indicates the state of the issues to return."                          <>="all"        = open closed all
+    --state         "Indicates the state of the issues to return."                          <>="open"        = open closed all
     --milestone     "milestone number"                                                      <>:number=""
     --assignee      "User responsible for this issue."                                      <>:string=""
     --creator       "The user that created the issue."                                      <>:string=""
@@ -67,8 +40,44 @@ options:
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Number=.number Title=.title State=.state Url=.html_url -- $@' \
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gh_get_multi "/repos/${owner_repo}/issues" state milestone assignee creator mentioned labels sort direction
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/issues" state milestone assignee creator mentioned labels sort direction | \
+            x jo 2c            .number  .state   .title | \
+            x csv header --add  Number   State    Title | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Create
+# https://docs.github.com/en/rest/issues/issues#create-an-issue
+# shellcheck disable=SC2154
+___x_cmd_gh_issue_create(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"              <>:RepoName
+    --title     "The title of the issue."                                               <>:string
+
+    --body      "The contents of the issue."                                            <>:string=""
+    --milestone "milestone number"                                                      <>:number=""
+    --assignees "User responsible for this issue.(separated by commas)"                 <>:array=""
+    --labels    "Labels to associate with this issue.(separated by commas)"             <>:array=""
+    --json|-j   "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    [ -z "$labels" ] || labels=$(x jo "[$labels]")
+    [ -z "$assignees" ] || assignees=$(x jo "[$assignees]")
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -repo -json)"
+    gh:debug "$gen_gh_json"
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/issues" gen_gh_json | ___x_cmd_gh_issue____ui_handler Creating
 }
 # EndSection
 
@@ -153,13 +162,18 @@ ___x_cmd_gh_issue____ui_handler(){
         return
     fi
     (
+        local _id=""
         case "$1" in
-            Creating|Edit)  _data="title=.title url=.html_url state=.state"  ;;
-            Reopen|Close)   ;;
+            Creating|Edit)
+                x jo env . _id=.number gh_resp_msg=.message gh_resp_err=.errors \
+                    title=.title url=.html_url state=.state
+                ;;
+            Reopen|Close)
+                x jo env . _id=.number gh_resp_msg=.message gh_resp_err=.errors
+                ;;
         esac
-        eval x jo env . id=.number gh_resp_msg=.message gh_resp_err=.errors "$_data"
-        if [ -n "$id" ]; then
-            ___x_cmd_ui_tf true "$1 issue successfully:" "number: $id" ${title:+"title: $title"}  ${url:+"url: $url"} ${state:+"state: $state"}
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf true "$1 issue successfully:" "number: $_id" ${title:+"title: $title"}  ${url:+"url: $url"} ${state:+"state: $state"}
         else
             ___x_cmd_ui_tf false "$1 issue failure:" >&2
             ___x_cmd_gh____handle_resp
@@ -191,8 +205,15 @@ options:
     --json|-j       "output origin json data"
 '
     param:run
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json issue=.number repo=.repository.full_name title=.title state=.state -- $@' \
+
+    if [ -n "$JSON" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gh_get_multi "/user/issues" filter state sort labels direction since
+    else
+        ___x_cmd_gh_get_multi "/user/issues" filter state sort labels direction since | \
+            x jo 2c            .number       .repository.full_name .state .title  | \
+            x csv header --add  Issue_Number  Repo_Name             State  Title | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -220,7 +241,13 @@ options:
     --json|-j       "output origin json data"
 '
     param:run
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json issue=.number repo=.repository.full_name title=.title state=.state -- $@' \
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gh_get_multi "/orgs/${org##*/}/issues" filter state sort labels direction since
+    else
+        ___x_cmd_gh_get_multi "/orgs/${org##*/}/issues" filter state sort labels direction since | \
+            x jo 2c            .number       .repository.full_name .state .title  | \
+            x csv header --add  Issue_Number  Repo_Name             State  Title | \
+            x csv static_tab
+    fi
 }
 # EndSection

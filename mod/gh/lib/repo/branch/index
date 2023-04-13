@@ -72,10 +72,15 @@ options:
     param:run
 
     ___x_cmd_gh_param_init_owner_repo
-    local ___gh_error_msg="get repo ${owner_repo} branch list fail"
-
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json BranchName=.name Protected=.protected LastCommit=.commit.sha -- $@' \
-         ___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected per_page page
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected | \
+            x jo 2c             .name       .protected  .commit.sha | \
+            x csv header --add   BranchName  Protected   LastCommit | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -146,18 +151,20 @@ ___x_cmd_gh_repo_branch_protection(){
 }
 
 # Section: List
+# shellcheck disable=SC2034
 ___x_cmd_gh_repo_branch_protection_ls(){
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
     --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
-
     --per_page      "Results per page"                                                  <>=30
     --page          "Page number of the results to fetch."                              <>=1
     --json|-j       "output json data"
 '
     param:run
-    ___X_CMD_UI_STATIC=1 ___x_cmd_gh_repo_branch_ls --protected --per_page "$per_page" --page "$page" --repo "$repo"
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    ___x_cmd_gh_repo_branch_ls --repo "${owner_repo}" --protected --per_page "${per_page}" --page "${page}" ${json:+'--json'}
 }
 # EndSection
 
@@ -179,15 +186,15 @@ options:
             ___x_cmd_gh_http_error
             return
         fi
-
-        x jo env . admins=.enforce_admins.enabled \
+        local _admins=""
+        x jo env . _admins=.enforce_admins.enabled \
             deletions=.allow_deletions.enabled linear=.required_linear_history.enabled \
             pushes=.allow_force_pushes.enabled signatures=.required_signatures.enabled \
             gh_resp_msg=.message gh_resp_err=.errors
-        if [ -n "$admins" ]; then
-            ___x_cmd_ui_tf true "protection branch $1 info:" "enforce_admins:$admins" \
-                "allow_deletions:$deletions" "required_linear_history:$linear" "allow_force_pushes:$pushes" \
-                 "required_signatures:$signatures"
+        if [ -n "$_admins" ]; then
+            ___x_cmd_ui_tf true "protection branch $1 info:" "enforce_admins: $_admins" \
+                "allow_deletions: $deletions" "required_linear_history: $linear" "allow_force_pushes: $pushes" \
+                 "required_signatures: $signatures"
         else
             ___x_cmd_ui_tf false "protection branch $1 info fetch failure:" >&2
             ___x_cmd_gh____handle_resp
@@ -237,7 +244,7 @@ options:
 
         x jo env . url=.url gh_resp_msg=.message gh_resp_err=.errors
         if [ -n "$url" ]; then
-            ___x_cmd_ui_tf  true "Set ${owner_repo} protection branch $1 successfully:"
+            ___x_cmd_ui_tf  true "[Success]: Set ${owner_repo} protection branch $1"
         else
             ___x_cmd_ui_tf false "Set ${owner_repo} protection branch $1 failure:" >&2
             ___x_cmd_gh____handle_resp
@@ -262,7 +269,7 @@ options:
         [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
         x jo env . gh_resp_msg=.message gh_resp_err=.errors
         if ___x_cmd_gh_http_error; then
-            ___x_cmd_ui_tf  true "Unset ${1} branch protection successfully:"
+            ___x_cmd_ui_tf  true "[Success]: Unset ${1} branch protection"
         else
             ___x_cmd_ui_tf false "Unset ${1} branch protection failure:" >&2
             ___x_cmd_gh____handle_resp
@@ -280,24 +287,27 @@ ___x_cmd_gh_branch____ui_handler(){
         return
     fi
     (
+        local _name=""
         case "$1" in
             Info)
-                _data="Protected=.protected sha=.commit.sha url=._links.html"
+                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors \
+                    Protected=.protected sha=.commit.sha url=._links.html
                 _inf_msg="get repo ${owner_repo} branch info success"
                 _err_msg="get repo ${owner_repo} branch info fail"
                 ;;
             Rename)
+                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors
                 _inf_msg="branch renamed from $branch to $new_name successfully"
                 _err_msg="${owner_repo} branch rename from $branch to $new_name failed"
                 ;;
             Default)
+                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors
                 _inf_msg="Successfully set repo default branch"
                 _err_msg="Failed to set repo default branch"
                 ;;
         esac
-        eval x jo env . name=.name gh_resp_msg=.message gh_resp_err=.errors "$_data"
-        if [ -n "$name" ]; then
-            ___x_cmd_ui_tf  true "${_inf_msg}:" ${name:+"Name: $name"} ${Protected:+"Protected: $Protected"}  ${sha:+"LastCommit: $sha"} ${url:+"Url: $url"}
+        if [ -n "$_name" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${_name:+"Name: $_name"} ${Protected:+"Protected: $Protected"}  ${sha:+"LastCommit: $sha"} ${url:+"Url: $url"}
         else
             ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp

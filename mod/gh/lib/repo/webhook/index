@@ -27,8 +27,16 @@ options:
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
-    ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json Id=.id name=.name active=.active type=.type  url=.config.url  -- $@' \
-        ___x_cmd_gh_get_multi "/repos/${owner_repo}/hooks" per_page page
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/hooks"
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/hooks" | \
+            x jo 2c             .id  .name  .active  .type  .config.url | \
+            x csv header --add   ID   Name   Active   Type   URL | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -152,7 +160,7 @@ A
             [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
             x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "Remove ${owner_repo} repo hook $1 successfully:"
+                ___x_cmd_ui_tf  true "[Success]: Remove ${owner_repo} repo hook $1"
             else
                 ___x_cmd_ui_tf false "Remove ${owner_repo} repo $1 hook failure:" >&2
                 ___x_cmd_gh____handle_resp
@@ -170,20 +178,23 @@ ___x_cmd_gh_hook____ui_handler(){
         return
     fi
     (
+        local _id=""
         case "$1" in
             Info)
+                x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors \
+                    name=.name active=.active type=.type  url=.config.url
                 _data="name=.name active=.active type=.type  url=.config.url"
                 _inf_msg="Get webhook info successfully"
                 _err_msg="Get webhook info failure"
                 ;;
             Creating|Edit)
+                x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors
                 _inf_msg="$1 repo webhook successfully"
                 _err_msg="$1 repo webhook failure"
                 ;;
         esac
-        eval x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors "$_data"
         if [ -n "$_id" ]; then
-            ___x_cmd_ui_tf  true "${_inf_msg}:" "ID: $Id" ${name:+"Name: $name"}  ${active:+"Active: $active"} ${type:+"Type: $type"} ${url:+"Url: $url"}
+            ___x_cmd_ui_tf  true "${_inf_msg}:" "ID: $_id" ${name:+"Name: $name"}  ${active:+"Active: $active"} ${type:+"Type: $type"} ${url:+"Url: $url"}
         else
             ___x_cmd_ui_tf false "${_err_msg}:" >&2
             ___x_cmd_gh____handle_resp

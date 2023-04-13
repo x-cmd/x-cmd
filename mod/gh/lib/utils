@@ -45,9 +45,9 @@ ___x_cmd_gh_curl(){
             if [ -n "$NO_CACHE" ]; then
                 ___x_cmd_api_gh get "$_api_url" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gh_curl___use_query_data "$@"))")
             else
-                x ccmd 10s --        eval "___X_CMD_API_GH_HOST=$___X_CMD_API_GH_HOST ___X_CMD_API_GH_TOKEN=$___X_CMD_API_GH_TOKEN ___x_cmd_api_gh get $_api_url $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gh_curl___use_query_data "$@"))")"
+                x ccmd 10s --        eval "___X_CMD_API_GH_HOST=$___X_CMD_API_GH_HOST ___X_CMD_API_GH_TOKEN=$___X_CMD_API_GH_TOKEN ___x_cmd_api_gh get \"$_api_url\" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gh_curl___use_query_data "$@"))")"
             fi
-            ___x_cmd_gh_http_error   eval "___X_CMD_API_GH_HOST=$___X_CMD_API_GH_HOST ___X_CMD_API_GH_TOKEN=$___X_CMD_API_GH_TOKEN ___x_cmd_api_gh get $_api_url $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gh_curl___use_query_data "$@"))")"
+            ___x_cmd_gh_http_error   eval "___X_CMD_API_GH_HOST=$___X_CMD_API_GH_HOST ___X_CMD_API_GH_TOKEN=$___X_CMD_API_GH_TOKEN ___x_cmd_api_gh get \"$_api_url\" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gh_curl___use_query_data "$@"))")"
             ;;
         post|put|patch|del)
             ___x_cmd_api_gh "$op" "$_api_url" "$(x curl gencode "$@")"
@@ -62,7 +62,7 @@ ___x_cmd_gh_curl(){
             if ! ___x_cmd_gh_http_error; then
                 (
                     command cat "$__out" 2>/dev/null | x jo env . gh_resp_msg=.message gh_resp_err=.errors
-                    ___x_cmd_ui_tf false "Download Failure" >&2
+                    ___x_cmd_ui_tf false "Download failure:" >&2
                     ___x_cmd_gh____handle_resp
                     return 1
                 )
@@ -74,7 +74,7 @@ ___x_cmd_gh_curl(){
             local __file_type="\"Content-Type: ${file_type:-"octet-stream"}\""
             ___X_CMD_API_GH_HEADER="-L -# -H \"Accept:application/vnd.github.v3+json\" -D \"$___X_CMD_GH_TMP/.____x_cmd_gh_curl_header\" -H ${__file_type}"
             [ -f "$__file_path" ] || {
-                gh:error "Upload Failure: Not found target file. Please check file exist: $__file_path"
+                gh:error "Upload Failure. Not found target file. Please check file exist $__file_path"
                 return 1
             }
             gh:info "Uploading file..."
@@ -87,8 +87,8 @@ ___x_cmd_gh_curl(){
 # shellcheck disable=SC2154
 ___x_cmd_gh_curl___use_query_data(){
     [ $# -gt 0 ] || return
-    local name=""
     printf "%s " "-G"
+    local name=""
     for name in "$@";
     do
         if [ "$name" = "p" ];then  [ -z "$p" ] || printf "%s " "path==$p";
@@ -131,20 +131,13 @@ ___x_cmd_gh____handle_resp(){
 # EndSection
 
 # Section: Resolve pagination
-___gh_ui_mutual() {
-    local tmp="$1"
-    shift 1
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
-        ENFORCE_JSON=1 "$@"
+
+___x_cmd_gh_st_tab(){
+    if ! ___x_cmd_is_interative_tty || [ ! -t 1 ]; then
+        x csv static_tab
     else
-        # run ui table
-        eval "$tmp"
+        x csv static_tab "$@"
     fi
-    local ___gh_exit_code="$?"
-    [ "$___gh_exit_code" -eq 0 ] || {
-        ___x_cmd_ui_tf false "${___gh_error_msg:-"Couldn't find any data"}:" >&2
-        return "$___gh_exit_code"
-    }
 }
 
 ___x_cmd_gh_get_multi() {
@@ -155,6 +148,7 @@ ___x_cmd_gh_get_multi() {
 
     local page=1
     local per_page=100
+    local NO_CACHE=1
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gh_get_multi___json_prt "$@"
     else
@@ -170,7 +164,7 @@ ___x_cmd_gh_get_multi___ui_table(){
     [ -n "$next_url" ] || return
 
     while [ -n "$next_url" ]; do
-        ___x_cmd_gh_curl get "$next_url"
+        ___x_cmd_gh_curl get "$next_url" || return
         printf "\n"
         _____x_cmd_gh_next_url
     done
@@ -178,7 +172,7 @@ ___x_cmd_gh_get_multi___ui_table(){
 
 ___x_cmd_gh_get_multi___json_prt(){
     local tmp=""
-    tmp=$(mktemp)
+    tmp=$(command mktemp)
     ___x_cmd_gh_curl get "$@" page per_page > "$tmp"
     printf "\n" >> "$tmp"
 
@@ -191,7 +185,7 @@ ___x_cmd_gh_get_multi___json_prt(){
     fi
 
     while [ -n "$next_url" ]; do
-        ___x_cmd_gh_curl get "$next_url" >> "$tmp"
+        { ___x_cmd_gh_curl get "$next_url" >> "$tmp"; } || return
         printf "\n" >> "$tmp"
         _____x_cmd_gh_next_url
     done
@@ -284,5 +278,17 @@ _____x_cmd_gh_advise_parse() {
     case "$op" in
         orgls) x ccmd 1d -- x gh org ls 2>/dev/null;;
     esac
+}
+# EndSection
+
+# Section: gh util
+# NOTE: remove prefix: _host_tmp="${_host_tmp#*'://'}";
+___x_cmd_gh___get_web_host(){
+    local _host_tmp=""
+    if _host_tmp="$(___x_cmd_gh_config_get web_host 2>/dev/null)"; then
+        printf "%s" "$_host_tmp"
+    else
+        printf "%s" "https://github.com"
+    fi
 }
 # EndSection

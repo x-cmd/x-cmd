@@ -23,7 +23,7 @@ ___x_cmd_advise_run(){
     local candidate_exec_arr
     eval "$candidate_exec" 2>/dev/null
 
-    [ -z "$candidate_arr" ] || _describe 'commands' candidate_arr
-    [ -z "$candidate_exec_arr" ] || _describe 'commands' candidate_exec_arr
-    [ -z "$_message_str" ] || _message -r "$_message_str"
+    [ -z "$candidate_arr" ] || LC_ALL=en_US.UTF-8 _describe 'commands' candidate_arr
+    [ -z "$candidate_exec_arr" ] || LC_ALL=en_US.UTF-8 _describe 'commands' candidate_exec_arr
+    [ -z "$_message_str" ] || LC_ALL=en_US.UTF-8 _message -r "$_message_str"
 }

@@ -15,7 +15,7 @@ ___x_cmd_gh_action_art(){ param:void; ___x_cmd_gh_action_artifact "$@"; }
 
 # Section: List
 # https://docs.github.com/en/rest/actions/artifacts#list-artifacts-for-a-repository
-# shellcheck disable=2154,2034
+# shellcheck disable=2034
 ___x_cmd_gh_action_artifact_ls(){
     param:scope ___x_cmd_github
     param:dsl <<A
@@ -28,15 +28,17 @@ options:
     --json|-j   "output json data"
 A
     param:run
-    ___x_cmd_gh_param_init_owner_repo
-    local NO_CACHE=1
-    local ___ls_tmp="___x_cmd_gh_curl get /repos/${owner_repo}/actions/artifacts name per_page page"
 
+    local NO_CACHE=1
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
-        eval "$___ls_tmp"
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/actions/artifacts" name
     else
-        ___X_CMD_UI_STATIC=1 ___ui_table_json Artifact_ID=.id name=.name Size=.size_in_bytes Expired=.expired Created=.created_at -- \
-            "$___ls_tmp | x jo q0 .artifacts"
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/actions/artifacts" name | x jo .artifacts | \
+            x jo 2c            .id         .name .size_in_bytes  .expired .created_at | \
+            x csv header --add Artifact_ID  Name  Size            Expired  Created     | \
+            x csv static_tab
     fi
 }
 
@@ -104,6 +106,7 @@ options:
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
     ___x_cmd_gh_curl get "/repos/${owner_repo}/actions/artifacts/${1##*/}" | ___x_cmd_gh_action_artifact_info____ui_handler "${owner_repo}" "${1##*/}"
 
 }
@@ -115,10 +118,11 @@ ___x_cmd_gh_action_artifact_info____ui_handler(){
         return
     fi
     (
-        x jo env . id=.id name=.name size_in_bytes=.size_in_bytes expired=.expired created_at=.created_at expires_at=.expires_at \
+        local _name=""
+        x jo env . _name=.name id=.id size_in_bytes=.size_in_bytes expired=.expired created_at=.created_at expires_at=.expires_at \
             gh_resp_msg=.message gh_resp_err=.errors
-        if [ -n "$name" ]; then
-            ___x_cmd_ui_tf true "Get $1 $id artifact info successfully:" "Name: $name" "Size_Bytes: $size_in_bytes" "Expired: $expired" \
+        if [ -n "$_name" ]; then
+            ___x_cmd_ui_tf true "Get $1 $id artifact info successfully:" "Name: $_name" "Size_Bytes: $size_in_bytes" "Expired: $expired" \
                 "Created_At: $created_at" "Expires_At: $expires_at"
         else
             ___x_cmd_ui_tf false "Couldn't find any data by $* :" >&2
@@ -141,20 +145,21 @@ options:
     --yes|-y    "Ignore remove prompt interception"
 A
     param:run
+
     ___x_cmd_gh_param_init_owner_repo
-    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure ${owner_repo} to remove artifact: $(___x_cmd_ui bold red "${1##*/}") ?" || return 1
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    [ "$yes" = "true" ]  || ___x_cmd_ui_yesno "Are you sure ${owner_repo} to remove artifact: $(___x_cmd_ui bold red "${1##*/}") ?" || return 1
     ___x_cmd_gh_curl del  "/repos/${owner_repo}/actions/artifacts/${1##*/}" | (
             [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
             x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf true  "Remove ${owner_repo} ${1##*/} artifact successfully:"
+                ___x_cmd_ui_tf true  "[Success]: Remove ${owner_repo} ${1##*/} artifact"
             else
                 ___x_cmd_ui_tf false "Remove ${owner_repo} ${1##*/} artifact failure:" >&2
                 ___x_cmd_gh____handle_resp
                 return 1
             fi
         )
-
 }
 # EndSection
 
@@ -170,6 +175,8 @@ options:
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
     local gh_output_dir="${___X_CMD_GH_ART}/artifact/${owner_repo}"
     [ -z "$output" ] || gh_output_dir="$output"
     local gh_output="${gh_output_dir}/${1##*/}.zip"

@@ -31,13 +31,19 @@ options:
     --json|-j       "output json data"
 '
     param:run
-    if [ -n "$repo" ]; then
+    local _url="/user/repository_invitations"
+    [ -n "$repo" ] || {
         ___x_cmd_gh_param_init_owner_repo
-        ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json ID=.id Repo=.repository.full_name Inviter=.inviter.login Invitee=.invitee.login Permission=.permissions -- $@' \
-            ___x_cmd_gh_get_multi "/repos/${owner_repo}/invitations" per_page page
+        _url="/repos/${owner_repo}/invitations"
+    }
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "$_url"
     else
-        ___X_CMD_UI_STATIC=1 ___gh_ui_mutual '___ui_table_json ID=.id Repo=.repository.full_name Inviter=.inviter.login Invitee=.invitee.login Permission=.permissions -- $@' \
-            ___x_cmd_gh_get_multi "/user/repository_invitations" per_page page
+        ___x_cmd_gh_get_multi "$_url" | \
+            x jo 2c             .id  .repository.full_name  .inviter.login  .invitee.login  .permissions | \
+            x csv header --add   ID   Repo                   Inviter         Invitee         Permission  | \
+            x csv static_tab
     fi
 }
 # EndSection
@@ -78,7 +84,7 @@ options:
             [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
             x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "Accept ${1##*/} interception successfully:"
+                ___x_cmd_ui_tf  true "[Success]: Accept ${1##*/} interception"
             else
                 ___x_cmd_ui_tf false "Accept ${1##*/} interception failure:" >&2
                 ___x_cmd_gh____handle_resp
@@ -106,7 +112,7 @@ options:
             [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
             x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "Decline ${1##*/} interception successfully:"
+                ___x_cmd_ui_tf  true "[Success]: Decline ${1##*/} interception"
             else
                 ___x_cmd_ui_tf false "Decline ${1##*/} interception failure:" >&2
                 ___x_cmd_gh____handle_resp
@@ -137,7 +143,7 @@ options:
                 [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
                 x jo env . gh_resp_msg=.message gh_resp_err=.errors
                 if ___x_cmd_gh_http_error; then
-                    ___x_cmd_ui_tf  true "Remove $__id interception from $owner_repo repo successfully:"
+                    ___x_cmd_ui_tf  true "[Success]: Remove $__id interception from $owner_repo repo"
                 else
                     ___x_cmd_ui_tf false "Remove $__id interception from $owner_repo repo failure:" >&2
                     ___x_cmd_gh____handle_resp
@@ -158,13 +164,15 @@ ___x_cmd_gh_repo_collaborator_invitation____ui_handler(){
     (
         case "$1" in
             Modify)
-                _data="permissions=.permissions expired=.expired"
+                _data=""
                 _inf_msg="$1 $2 invitation to $owner_repo repo successfully"
                 _err_msg="$1 $2 invitation to $owner_repo repo failure"
                 ;;
         esac
-        eval x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors "$_data"
 
+        local _id=""
+        x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors \
+            permissions=.permissions expired=.expired
         if [ -n "$_id" ]; then
             ___x_cmd_ui_tf  true "${_inf_msg}:"  ${permissions:+"Permission: $permissions"} ${expired:+"Expired: $expired"}
         else
