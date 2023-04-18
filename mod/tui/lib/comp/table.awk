@@ -43,7 +43,7 @@ function comp_table_handle( o, kp, char_value, char_name, char_type,        r, c
     else if ((char_value == "h") || (char_name == U8WC_NAME_LEFT))  _has_no_handle = 1 - ctrl_table___dec(o, kp )
     else if ((char_value == "l") || (char_name == U8WC_NAME_RIGHT)) _has_no_handle = 1 - ctrl_table___inc(o, kp )
     else if (((char_value == " ") || (char_name == U8WC_NAME_HORIZONTAL_TAB)) && comp_table___multiple_sel_sw_get(o, kp)) {
-        draw_table_row_selected_sw_toggle(o, kp, r)
+        comp_table___row_selected_sw_toggle(o, kp, r)
         ctrl_page_rinc(o, kp)
     }
     else _has_no_handle = true
@@ -77,8 +77,8 @@ function ctrl_table___inc( o, kp ){
 
 function comp_table___multiple_sel(o, kp, v){    ctrl_sw_init( o, kp SUBSEP "ismultiple", v);     }
 function comp_table___multiple_sel_sw_get(o, kp){     return ctrl_sw_get(o, kp SUBSEP "ismultiple");    }
-function draw_table_row_selected_sw_toggle(o, kp, r,        l){
-    if (draw_table_row_is_sel(o, kp, r)) comp_table___sel_row_set(o, kp, r, false)
+function comp_table___row_selected_sw_toggle(o, kp, r,        l){
+    if (comp_table___row_is_sel(o, kp, r)) comp_table___sel_row_set(o, kp, r, false)
     else if ( ((l = o[ kp, "limit"]) == "no-limit") || l > comp_table___sel_len(o, kp))
         comp_table___sel_row_set(o, kp, r, true)
 }
@@ -90,7 +90,7 @@ function comp_table___sel_row_set(o, kp, r, tf){
 function comp_table___sel_len(o, kp){
     return model_arr_data_len( o, kp SUBSEP "selected" )
 }
-function draw_table_row_is_sel(o, kp, r){
+function comp_table___row_is_sel(o, kp, r){
     return o[ kp, "data-arr", "data", "ROW", r, "IS_SELECTED" ]
 }
 function comp_table___selected_get(o, kp, i){

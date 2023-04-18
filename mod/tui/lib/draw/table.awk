@@ -114,7 +114,7 @@ function draw_table___on_cell( o, kp, i, j, w,             ri, ci, v, l, _v_1 ){
 function draw_table___on_num( o, kp, i, w,         v, _prefix ){
     v = space_restrict_or_pad(i, w)
     if (comp_table___multiple_sel_sw_get(o, kp)) {
-        if (draw_table_row_is_sel( o, kp, i ) ) _prefix = TH_TABLE_NUM_PREFIX_SELECTED
+        if (comp_table___row_is_sel( o, kp, i ) ) _prefix = TH_TABLE_NUM_PREFIX_SELECTED
         else _prefix = TH_TABLE_NUM_PREFIX_UNSELECTED
     }
     if (i == comp_table_get_cur_row( o, kp ) ) return _prefix th( TH_TABLE_NUM_FOCUSED, v )
