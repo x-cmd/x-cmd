@@ -102,4 +102,5 @@ BEGIN {
 
 {
     jiter_tokenized_normalized( $0 )
+    fflush()
 }

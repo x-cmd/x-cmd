@@ -15,11 +15,12 @@ function tapp_canvas_colsize_get(){
 }
 
 function tapp_init0( rows, cols,  r ){
-    printf("%s", UI_CURSOR_RESTORE UI_CURSOR_HIDE) >"/dev/stderr"
+    if ((rows<3) || (cols<30)) panic("Unable to display content, wrong screen size")
     r = tapp_canvas_rowsize_recalulate( rows )
     if (r <= 0) panic("Screen Size Not Match")
 
-    printf("%s", str_rep("\r\n", r) painter_up(r) UI_CURSOR_SAVE ) >"/dev/stderr"
+    printf("%s", UI_CURSOR_RESTORE UI_CURSOR_HIDE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
+        str_rep("\r\n", r) painter_up(r) UI_CURSOR_SAVE ) >"/dev/stderr"
     CANVAS_ROWSIZE = (___TAPP_DISPLAYMODE_ == "") ? r : rows - 1
     CANVAS_COLSIZE = cols - 2
 }
@@ -27,6 +28,7 @@ function tapp_init0( rows, cols,  r ){
 # Section: display mode
 function ___tapp_displaymode_normal_clean(){
     printf("%s", UI_CURSOR_RESTORE UI_SCREEN_SAVE \
+        UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR UI_CURSOR_RESTORE \
         space_screen(ROWS, COLS) "\r" painter_up(ROWS) UI_CURSOR_SAVE ) >"/dev/stderr"
 }
 
@@ -67,6 +69,7 @@ END{
     ___tapp_exit_screen_recover()
     printf("%s", UI_SCREEN_RESTORE UI_CURSOR_RESTORE \
         space_screen(CANVAS_ROWSIZE+1, COLS) "\r" painter_up(CANVAS_ROWSIZE) \
+        UI_CURSOR_RESTORE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
         UI_CURSOR_NORMAL UI_CURSOR_SHOW) >"/dev/stderr"
     tapp_handle_exit( PANIC_EXIT )
     if (PANIC_TEXT != "") log_error("tui", PANIC_TEXT)

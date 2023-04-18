@@ -23,7 +23,6 @@ function comp_label_put( o, kp, val ) {
 }
 
 function comp_label_clear( o, kp ) {
-    change_set( o, kp, "label" )
     comp_label_put( o, kp, "" )
 }
 # EndSection

@@ -82,4 +82,5 @@ BEGIN{
 
 {
     jiter_print_color( _, $0 )
+    fflush()
 }

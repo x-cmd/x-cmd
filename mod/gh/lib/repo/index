@@ -23,16 +23,17 @@ ___x_cmd_gh_repo(){
         "edit|ed"       "Edit repo information"                 \
         rename          "Rename repo"                           \
         "cl|clone"      "Clone repo from github"                \
-        fork            "fork repo from github"                 \
+        fork            "Fork repo from github"                 \
+        download        "Download repo archive from github"     \
         rm              "Remove repo"                           \
-        apply           "manage repo by declare configure"      \
-        tag             "list repo tags"                        \
+        tag             "List repo tags"                        \
         team            "List repository teams"                 \
-        collaborator    "manage collaborator"                   \
-        pr              "manage pr"                             \
-        hook            "repo webhook manage"                   \
-        branch          "manage branch"                         \
-        release         "repo release manage"
+        apply           "manage repo by declare configure"      \
+        collaborator    "manage repo collaborator"              \
+        pr              "manage repo pr"                        \
+        hook            "manage repo webhook"                   \
+        branch          "manage repo branch"                    \
+        release         "manage repo release"
     param:subcmd:try
     param:run
 
@@ -299,6 +300,7 @@ options:
 }
 # EndSection
 
+# Section: Browse
 ___x_cmd_gh_repo_browse(){
     param:scope ___x_cmd_github
     param:dsl <<A
@@ -312,6 +314,54 @@ A
     local _host=""; _host=$(___x_cmd_gh___get_web_host)
      _____x_cmd_git_browse "${_host}/${owner_repo}"
 }
+# EndSection
+
+# Section: Download
+# shellcheck disable=2154,SC2034
+___x_cmd_gh_repo_download(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1              "<ownerPath>/<RepoPath> or <ownerPath>/<RepoPath>#<ref>"        <>
+    #2              "output file path"                                              <>=""
+A
+    param:run
+    local repo="$1"
+    local ref=""
+    case "$repo" in
+        *@*)
+            repo="${1%'@'*}"
+            ref="${1##*'@'}"
+            ;;
+        *)
+            x jo env . ref=.default_branch <<A
+            $(___x_cmd_gh_repo_info --json "$repo")
+A
+            if [ -z "$ref" ]; then
+                gh:error "Can not get default branch of repo $repo. Please have check it."
+                return 1
+            fi
+            ;;
+    esac
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='accepts 1 arg (<owner>/<repo>), received empty' arg:ret:64
+
+    local gh_output="$2"
+    local ball_type="tarball"
+    case "$gh_output" in
+        "")             gh_output="./${owner_repo%/*}-${owner_repo##*/}-${ref}.tar.gz"  ;;
+        *.zip)          ball_type="zipball";;
+        *.tar.gz|*.tgz) ;;
+        *)              gh:error "Unsupported output file type $gh_output. Please use tar.gz or zip file type."; return 1;;
+    esac
+
+    if ! ___x_cmd_gh_curl download "/repos/${owner_repo}/${ball_type}/${ref}" "$gh_output"; then
+        [ "$(___x_cmd_gh_resp_code)" != 404 ] || gh:warn "Possible the repository is empty or no exist. Please have check it."
+        x rmrf "$gh_output"
+    fi
+}
+
+# EndSection
 
 # Section: repo Tags ls
 # https://docs.github.com/en/rest/repos/repos#list-repository-tags

@@ -134,6 +134,7 @@ function tapp_canvas_rowsize_recalulate( rows ){
 }
 
 function tapp_handle_clocktick( idx, trigger, row, col ){
+    if ((row < 5) || (col < 50)) panic("Screen Size Not Match")
     if (ROWS_COLS_HAS_CHANGED) user_change_set_all()
     user_paint( 1, row, 1, col )
 

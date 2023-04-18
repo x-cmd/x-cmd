@@ -226,13 +226,13 @@ function exit_is_with_cmd(){
 # Section: cache utf-8 width calculation
 
 function wcswidth_cache(v,       w){
-    if ( (w = CACHEUTF8[ "utf8-cache", "wcswidth", v ]) != "" ) return w
-    return CACHEUTF8[ "utf8-cache", "wcswidth", v ] = wcswidth(v)
+    if ( (w = CACHEUTF8[ "utf8-cache-wcswidth", v ]) != "" ) return w
+    return CACHEUTF8[ "utf8-cache-wcswidth", v ] = wcswidth(v)
 }
 
 function wcstruncate_cache(v, l,     s){
-    if ( (s = CACHEUTF8[ "utf8-cache", "wcstruncate", v, l ]) != "" ) return s
-    return CACHEUTF8[ "utf8-cache", "wcstruncate", v, l ] = wcstruncate(v, l)
+    if ( (s = CACHEUTF8[ "utf8-cache-wcstruncate", v, l ]) != "" ) return s
+    return CACHEUTF8[ "utf8-cache-wcstruncate", v, l ] = wcstruncate(v, l)
 }
 
 # EndSection

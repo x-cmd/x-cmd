@@ -39,7 +39,7 @@ END{
     # print "aaa: " profile_idx >"/dev/stderr"
     kp = kp SUBSEP jqu(profile_idx)
 
-    op[ L ] = split( ENVIRON["op"], op, "\n" )
+    arr_cut( op, ENVIRON["op"], "\n" )
     for (i=1; i<=op[L]; ++i) {
         str_divide_( op[ i ], "=" )
         key = x_1

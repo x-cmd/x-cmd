@@ -4,9 +4,8 @@ function TABLE_CELL_DEF( rowid, colid, val ){ table_cell_def( o, TABLE_KP, rowid
 function TABLE_STATUSLINE_ADD( v, s, l ){   table_statusline_add(o, TABLE_KP, v, s, l);}
 
 BEGIN{
-    ___X_CMD_CSV_APP_WIDTH = ENVIRON[ "___X_CMD_CSV_APP_WIDTH" ]
+    CSV_APP_WIDTH_CUSTOM = ENVIRON[ "___X_CMD_CSV_APP_WIDTH" ]
     ___X_CMD_CSV_APP_RET_PREFIX = ENVIRON[ "___X_CMD_CSV_APP_RET_PREFIX" ]
-    arr_cut(CSV_WIDTH, ___X_CMD_CSV_APP_WIDTH, ",")
 }
 
 # Section: user controler -- tapp definition
@@ -20,7 +19,7 @@ function tapp_canvas_rowsize_recalulate( rows ){
 }
 
 function tapp_handle_clocktick( idx, trigger, row, col,        v ){
-    user_view(1, row, 1, col)
+    user_view(1, row-1, 1, col)
     # request data
     table_datamodel_refill(o, TABLE_KP )
 }
@@ -51,27 +50,28 @@ function tapp_handle_exit( exit_code,       _p, i, l ){
 function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cell, _widths_l, _col ){
     arr_cut( arr, csv_trim(text), "\n" )
     if ( csv_parse( arr, CSV_DATA ) <=0 ) panic( "Data error" )
+
     c = CSV_DATA[ L L ]
     l = CSV_DATA[ L ]
     _col = tapp_canvas_colsize_get() - 7 - length(l) - c
-    _widths_l = CSV_WIDTH[L]
-    for (i=1; i<=c; ++i){
-        _cell = CSV_DATA[ S 1, i ]
-        TABLE_ADD( _cell )
-        if ( _widths_l >= i ) CSV_WIDTH[i] =  int ( CSV_WIDTH[i] / 100 * _col )
-        else {
-            gsub("\n.*$", "", _cell)
-            w = wcswidth_cache( _cell )
-            if (w > _col) w = _col
-            CSV_WIDTH[i] = w
-        }
-        TABLE_LAYOUT( i, CSV_WIDTH[i]+1 )
-    }
+    if (CSV_APP_WIDTH_CUSTOM != "") csv_parse_width(CSV_WIDTH, CSV_APP_WIDTH_CUSTOM, _col, ",")
 
-    for (i=2; i<=l; ++i){
-        for (j=1; j<=c; ++j)
-            TABLE_CELL_DEF( i-1, j, CSV_DATA[ S i, j ] )
+    _widths_l = int(CSV_WIDTH[L])
+    c = (_widths_l != 0) ? _widths_l : c
+    for (i=1; i<=l; ++i){
+        for (j=1; j<=c; ++j){
+            _cell = CSV_DATA[ S i, j ]
+            if (i == 1) TABLE_ADD( _cell )
+            else {
+                TABLE_CELL_DEF( i-1, j, _cell )
+                if (CSV_WIDTH[j, "CUSTOM_WIDTH"]) continue
+                w = wcswidth_cache( _cell )
+                if (w > _col) w = _col
+                if (CSV_WIDTH[j, "width"] < w) CSV_WIDTH[j, "width"] = w
+            }
+        }
     }
+    for (i=1; i<=c; ++i) TABLE_LAYOUT( i, CSV_WIDTH[i, "width"]+1 )
 }
 
 # EndSection

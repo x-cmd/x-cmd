@@ -1,4 +1,5 @@
 
+# TODO: this module try to provide facility for filesystem manipulation in the future.
 function cat( filepath,    r, c ){
     CAT_FILENOTFOUND = false
     while ((c=(getline <filepath))==1) {
@@ -13,13 +14,13 @@ function cat_is_filenotfound(){
     return CAT_FILENOTFOUND
 }
 
-
 function bcat_oct_init(){
     if (BCAT_INIT == 1) return
     BCAT_INIT = 1
     for (i=1; i<=256; ++i) OCTARR[ sprintf("%03o", i) ] = sprintf("%c", i)
 }
 
+# I remember this is for the binary file during the script module development.
 function bcat( filepath, a,     _tmprs, _cmd ){
     _tmprs = RS
     _cmd = "hexdump -v -b " filepath " 2>/dev/null"
@@ -42,6 +43,7 @@ function bcat( filepath, a,     _tmprs, _cmd ){
         a[ ++i ] = OCTARR[$16]
         a[ ++i ] = OCTARR[$17]
     }
+    close(_cmd)
 
     RS = _tmprs
     return a[ L ] = i

@@ -34,4 +34,5 @@ BEGIN{
 
 {
     jiter_print( _, $0 )
+    fflush()
 }

@@ -24,11 +24,12 @@ BEGIN {
     UI_END              = "\033[0m"
     UI_TEXT_BOLD        = "\033[1m"
     UI_TEXT_DIM         = "\033[2m"
-    UI_TEXT_HID         = "\033[8m"
     UI_TEXT_ITALIC      = "\033[3m"
     UI_TEXT_UNDERLINE   = "\033[4m"
     UI_TEXT_BLINK       = "\033[5m"
     UI_TEXT_REV         = "\033[7m"
+    UI_TEXT_HID         = "\033[8m"
+    UI_TEXT_DELETE      = "\033[9m"
 
 
     UI_CURSOR_SAVE      = "\0337"

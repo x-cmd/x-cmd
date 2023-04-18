@@ -6,7 +6,15 @@ function comp_textbox_init( o, kp, scrollable ) {
     ctrl_page_init( o, kp, 1, 1, 1 )
 }
 
-function comp_textbox_handle_pageble( o, kp, char_value, char_name, char_type ) {
+# Section: handle
+function comp_textbox_handle( o, kp, char_value, char_name, char_type ) {
+    if ( o[ kp, "TYPE" ] != "textbox" ) return false
+    if (o[ kp, "MODE" ] == "scrollable")
+        return  comp_textbox___handle_scrollable( o, kp, char_value, char_name, char_type )
+    return      comp_textbox___handle_pageble( o, kp, char_value, char_name, char_type )
+}
+
+function comp_textbox___handle_pageble( o, kp, char_value, char_name, char_type ) {
     if ((char_value == "k") || (char_name == U8WC_NAME_UP))          ctrl_page_prev_page( o, kp )
     else if ((char_value == "j") || (char_name == U8WC_NAME_DOWN))   ctrl_page_next_page( o, kp )
     else return false
@@ -14,7 +22,7 @@ function comp_textbox_handle_pageble( o, kp, char_value, char_name, char_type ) 
     return true
 }
 
-function comp_textbox_handle_scrollable( o, kp, char_value, char_name, char_type ) {
+function comp_textbox___handle_scrollable( o, kp, char_value, char_name, char_type ) {
     if ((char_value == "k") || (char_name == U8WC_NAME_UP))          ctrl_page_dec( o, kp )
     else if ((char_value == "j") || (char_name == U8WC_NAME_DOWN))   ctrl_page_inc( o, kp )
     else return false
@@ -22,21 +30,20 @@ function comp_textbox_handle_scrollable( o, kp, char_value, char_name, char_type
     return true
 }
 
-function comp_textbox_handle( o, kp, char_value, char_name, char_type ) {
-    if ( o[ kp, "TYPE" ] != "textbox" ) return false
-    if (o[ kp, "MODE" ] == "scrollable")
-        return  comp_textbox_handle_scrollable( o, kp, char_value, char_name, char_type )
-    return      comp_textbox_handle_pageble( o, kp, char_value, char_name, char_type )
-}
+# EndSection
 
-# How to render?
-# pageble
-
+# Section print
 function comp_textbox_change_set( o, kp ){
     change_set(o, kp, "textbox")
 }
 
-function comp_textbox_paint_pageble( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding,          a, l, i, col, row, _next_line, s, _start, _end, _comp_box, _comp_clear, _comp_text ){
+function comp_textbox_paint( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding ){
+    if (o[ kp, "MODE" ] == "scrollable")
+        return  comp_textbox___paint_scrollable( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding )
+    return      comp_textbox___paint_pageble( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding )
+}
+
+function comp_textbox___paint_pageble( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding,          a, l, i, col, row, _next_line, s, _start, _end, _comp_box, _comp_clear, _comp_text ){
     if ( ! change_is(o, kp, "textbox") ) return
     change_unset(o, kp, "textbox")
 
@@ -64,7 +71,7 @@ function comp_textbox_paint_pageble( o, kp, x1, x2, y1, y2, has_box, color, is_b
     return _comp_clear _comp_text _comp_box
 }
 
-function comp_textbox_paint_scrollable( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding,          a, l, i, col, row, _next_line, s, _start, _comp_box, _comp_clear, _comp_text ){
+function comp_textbox___paint_scrollable( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding,          a, l, i, col, row, _next_line, s, _start, _comp_box, _comp_clear, _comp_text ){
     if ( ! change_is(o, kp, "textbox") ) return
     change_unset(o, kp, "textbox")
 
@@ -91,12 +98,7 @@ function comp_textbox_paint_scrollable( o, kp, x1, x2, y1, y2, has_box, color, i
     }
     return _comp_clear _comp_text _comp_box
 }
-
-function comp_textbox_paint( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding ){
-    if (o[ kp, "MODE" ] == "scrollable")
-        return  comp_textbox_paint_scrollable( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding )
-    return      comp_textbox_paint_pageble( o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padding )
-}
+# EndSection
 
 # Section: private
 function comp_textbox_get( o, kp ) {

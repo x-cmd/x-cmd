@@ -13,7 +13,7 @@ function jkey_( k,          a, i, l ){
 }
 
 END{
-    op[ L ] = split( ENVIRON["op"], op, "\n" )
+    arr_cut( op, ENVIRON["op"], "\n" )
 
     for (i=1; i<=op[L]; ++i) {
         str_divide_( op[ i ], "=" )

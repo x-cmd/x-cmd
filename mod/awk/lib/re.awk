@@ -93,7 +93,7 @@ BEGIN {
 
     RE_IP_SUBNET = ""
 
-    RE_URL_BODY     =   "[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[.][a-z]{2,6}(/[-A-Za-z0-9+&@#/%=~_|]*)?"
+    RE_URL_BODY     =   "[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[.][a-z]{2,6}(/[-A-Za-z0-9+&@#/%?=~_|]*)?"
     RE_URL          =   "([a-zA-Z0-9]+://)?" RE_URL_BODY
     RE_URL_HTTP     =   "(http)://"          RE_URL_BODY
     RE_URL_HTTPX    =   "(httpS?)://"        RE_URL_BODY

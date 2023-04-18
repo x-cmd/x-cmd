@@ -17,6 +17,7 @@ function json_to_machine_friendly(text){
     if ( (LAST = O[l]) !~ /^"[^"\\\001-\037]*((\\[^u\001-\037]|\\u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])[^"\\\001-\037]*)*$/ ) {
         print LAST; LAST = ""
     }
+    fflush()
 }
 
 END{  if (LAST != "") print LAST; }

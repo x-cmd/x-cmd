@@ -3,5 +3,6 @@
     for (i=1; i<=l; ++i) {
         t = O[i]
         if (t != "") print t
+        fflush()
     }
 }

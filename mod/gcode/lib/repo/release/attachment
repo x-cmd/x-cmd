@@ -106,9 +106,9 @@ ___x_cmd_gcode_repo_release_attachment_rm(){
     param:scope  ___x_cmd_gcode
     param:dsl    '
 options:
-    #1              "The ID of the link"                                                                <>
-    --repo|-r       "URL-encoded path of the repo owned by the authenticated user"                   <>
-    --tag_name      "The Git tag the release is associated with"                                        <>
+    #1              "The ID of the link"                                            <>
+    --repo|-r       "URL-encoded path of the repo owned by the authenticated user"  <>
+    --tag_name      "The Git tag the release is associated with"                    <>
     --yes|-y        "Ignore remove prompt interception"
 '
     param:run
@@ -118,11 +118,11 @@ options:
     for _link_id in "$@"; do
         [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove link $(___x_cmd_ui bold red "${_link_id}") on the $repo $tag_name ?" || return
         ___x_cmd_gcode_curl del "/projects/${owner_repo}/releases/${tag_name}/assets/links/${_link_id}" | (
-            x jo env . gcode_resp_err=.error gcode_resp_err=.message
+            x jo env . gcode_resp_err=.error gcode_resp_msg=.message
             if ___x_cmd_gcode_http_error; then
-                ___x_cmd_ui_tf  true "Remove repo release link ${_link_id} successfully:"
+                ___x_cmd_ui_tf  true "[Success]: Remove repo release link ${_link_id}"
             else
-                ___x_cmd_ui_tf false "Remove repo release link failure: $repo $tag_name ${_link_id}:"
+                ___x_cmd_ui_tf false "Remove repo release link ${_link_id} on $owner_repo $tag_name failure:"
                 ___x_cmd_gcode____handle_resp
                 return 1
             fi
@@ -149,23 +149,25 @@ options:
     param:run
 
     ___x_cmd_gcode_param_init_owner_repo
-    local _file_path="${1?:"Please provide target upload attachment file path"}"
+    [ -n "$1" ] || M='accepts 1 arg(target upload attachment file path), received empty' arg:ret:64
+    local _file_path="$1"
     [ "$_file_path" != '-' ] || _file_path="$(command cat)"
 
     gcode:info "Upload file $_file_path ..."
     ___x_cmd_gcode_curl upload "/projects/${owner_repo}/uploads" "$_file_path" | (
-        x jo env . gcode_resp_err=.error gcode_resp_err=.message full_path=.full_path
+        local full_path=""
+        x jo env . gcode_resp_err=.error gcode_resp_msg=.message full_path=.full_path
         if [ -n "$full_path" ]; then
-            local _target_url="${___X_CMD_GCODE_HOST:-"https://gitcode.net"}${full_path}"
+            local _target_url="https://gitcode.net${full_path}"
             [ -n "$name" ] || name="${_target_url##*/}"
             [ -n "$filepath" ] || filepath="/${_target_url##*/}"
 
             gcode:info "Create release attachment link. Please wait a moment..."
             if ___x_cmd_gcode_repo_release_attachment_create --repo "${repo}" --tag_name "$tag_name" --name "$name" \
                 --url "$_target_url" --filepath "$filepath" --link_type "$link_type" --json 1>/dev/null; then
-                ___x_cmd_ui_tf true  "Upload repo attachment successfully:"
+                ___x_cmd_ui_tf true  "[Success]: Upload repo attachment"
             else
-                ___x_cmd_ui_tf false "Upload $repo $tag_name repo $_file_path $_target_url attachment failure:"
+                ___x_cmd_ui_tf false "[Fail]: Upload $repo $tag_name repo $_file_path $_target_url attachment"
             fi
         else
             ___x_cmd_ui_tf false "Upload $repo $tag_name repo $_file_path attachment failure:"
@@ -186,20 +188,21 @@ ______x_cmd_gcode_repo_release_attachment_ui_utils(){
     (
         case "$1" in
             Creating|Edit)
-                _msg="$1 repo release link successfully"
-                _error_msg="$1 repo release link failure"
+                _inf_msg="$1 repo release link successfully"
+                _err_msg="$1 repo release link failure"
                 ;;
             Info)
-                _msg="Successfully get repo release link info"
-                _error_msg="Get repo release link info failure"
+                _inf_msg="Getting repo release link info successfully"
+                _err_msg="Getting repo release link info failure"
                 ;;
         esac
-        _data="name=.name external=.external url=.url link_type=.link_type"
-        eval x jo env . _id=.id gcode_resp_err=.error gcode_resp_err=.message "$_data"
+        local _id=""
+        x jo env . _id=.id gcode_resp_err=.error gcode_resp_msg=.message \
+            name=.name external=.external url=.url link_type=.link_type
         if [ -n "$_id" ]; then
-            ___x_cmd_ui_tf true "$_msg" ${_id:+"Link_ID: $_id"} ${external:+"External: $external"} ${link_type:+"Link_Type: $link_type"} ${url:+"URL: $url"}
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${_id:+"Link_ID: $_id"} ${external:+"External: $external"} ${link_type:+"Link_Type: $link_type"} ${url:+"URL: $url"}
         else
-            ___x_cmd_ui_tf false "$_error_msg"
+            ___x_cmd_ui_tf false "${_err_msg}:"
             ___x_cmd_gcode____handle_resp
             return 1
         fi
