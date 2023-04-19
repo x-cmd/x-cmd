@@ -16,19 +16,6 @@ function comp_statusline_init( o, kp, val, bool ){
     comp_statusline_set_fullscreen(o, kp, 1, tapp_canvas_rowsize_get(), 1, tapp_canvas_colsize_get())
 }
 
-function comp_statusline_set_fullscreen( o, kp, x1, x2, y1, y2 ){
-    model_arr_set_key_value(o, kp, "full-size.x1", x1)
-    model_arr_set_key_value(o, kp, "full-size.x2", x2)
-    model_arr_set_key_value(o, kp, "full-size.y1", y1)
-    model_arr_set_key_value(o, kp, "full-size.y2", y2)
-}
-function comp_statusline_fullscreen_clear(o, kp,    x1, x2, y1, y2){
-    return painter_clear_screen( model_arr_get(o, kp, "full-size.x1")\
-        , model_arr_get(o, kp, "full-size.x2") \
-        , model_arr_get(o, kp, "full-size.y1") \
-        , model_arr_get(o, kp, "full-size.y2") )
-}
-
 function comp_statusline_handle(o, kp, char_value, char_name, char_type,        _has_no_handle){
     if ( o[ kp, "TYPE" ] != "statusline" ) return false
     if ( ctrl_sw_get(o, kp SUBSEP "expand" )) {
@@ -49,6 +36,20 @@ function comp_statusline_handle(o, kp, char_value, char_name, char_type,        
     return true
 }
 
+# Section: paint
+function comp_statusline_set_fullscreen( o, kp, x1, x2, y1, y2 ){
+    model_arr_set_key_value(o, kp, "full-size.x1", x1)
+    model_arr_set_key_value(o, kp, "full-size.x2", x2)
+    model_arr_set_key_value(o, kp, "full-size.y1", y1)
+    model_arr_set_key_value(o, kp, "full-size.y2", y2)
+}
+function comp_statusline_fullscreen_clear(o, kp,    x1, x2, y1, y2){
+    return painter_clear_screen( model_arr_get(o, kp, "full-size.x1")\
+        , model_arr_get(o, kp, "full-size.x2") \
+        , model_arr_get(o, kp, "full-size.y1") \
+        , model_arr_get(o, kp, "full-size.y2") )
+}
+
 function comp_statusline_change_set_all(o, kp){
     change_set(o, kp, "statusline")
 }
@@ -61,8 +62,8 @@ function comp_statusline_paint(o, kp, x1, x2, y1, y2,       l, i, s, c, v){
     if (! comp_statusline_isfullscreen(o, kp)) {
 
         for (i=1; i<=l; ++i) {
-            c = comp_statusline_get_command(o, kp, i)
-            v = comp_statusline_get_command_shortval(o, kp, c)
+            c = comp_statusline___get_command(o, kp, i)
+            v = comp_statusline_data_get_short(o, kp, c)
             if (v == "") continue
             s = s th( TH_STATUSLINE_NORMAL_KEY, "<" c ">:" ) th( TH_STATUSLINE_NORMAL_VAL, v ) "  "
         }
@@ -71,8 +72,8 @@ function comp_statusline_paint(o, kp, x1, x2, y1, y2,       l, i, s, c, v){
         comp_textbox_paint(o, kp SUBSEP "short-help", x1, x1, y1, y2)
     } else {
         for (i=1; i<=l; ++i) {
-            c = comp_statusline_get_command(o, kp, i)
-            v = comp_statusline_get_command_longval(o, kp, c)
+            c = comp_statusline___get_command(o, kp, i)
+            v = comp_statusline_data_get_long(o, kp, c)
             if (v != "") s = ((s) ? s "\n" : "") th( TH_STATUSLINE_FULL_KEY, c ":" )"\n" v
         }
 
@@ -87,21 +88,23 @@ function comp_statusline_paint(o, kp, x1, x2, y1, y2,       l, i, s, c, v){
         comp_textbox_paint(o, kp SUBSEP "long-help", x1+1, x2-1, y1+1, y2-1)
     }
 }
+# EndSection
+
+# Section: data
+function comp_statusline___get_command(o, kp, i){
+    return o[ kp, "data-arr", "data", i ]
+}
 
 function comp_statusline_isfullscreen(o, kp){
     return ctrl_sw_get( o, kp SUBSEP "expand"  )
 }
 
-function comp_statusline_get_command(o, kp, i){
-    return o[ kp, "data-arr", "data", i ]
-}
-
-function comp_statusline_get_command_shortval(o, kp, command){
-    return model_arr_get(o, kp, command SUBSEP "short")
-}
-
-function comp_statusline_get_command_longval(o, kp, command){
+function comp_statusline_data_get_long(o, kp, command){
     return model_arr_get(o, kp, command SUBSEP "long")
+}
+
+function comp_statusline_data_get_short(o, kp, command){
+    return model_arr_get(o, kp, command SUBSEP "short")
 }
 
 function comp_statusline_data_set_long(o, kp, command, val){
@@ -127,4 +130,4 @@ function comp_statusline_data_clear( o, kp,     v ){
     model_arr_clear(o, kp)
     comp_statusline_init( o, kp, v, ctrl_sw_get(o, kp SUBSEP "expand" ) )
 }
-
+# EndSection

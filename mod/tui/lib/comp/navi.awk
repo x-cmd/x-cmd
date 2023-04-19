@@ -300,10 +300,10 @@ function comp_navi___sel_paint( o, kp, rootkp, x1, x2, y1, y2, is_dim, is_previe
 
     if (ctrl_navi_sel_sw_get(o, kp) && (rootkp == comp_navi___trace_col_val_get( o, kp, comp_navi___cur_col_get(o, kp)))) {
         comp_gsel_title_set( o, gkp, "Search:" )
-        _comp_gsel_title = comp_gsel_paint_title( o, gkp, x1, x1, y1, y2)
+        _comp_gsel_title = comp_gsel___paint_title( o, gkp, x1, x1, y1, y2)
         x1++
     }
-    _comp_gsel_body = comp_gsel_paint_body( o, gkp, x1, x2, y1, y2)
+    _comp_gsel_body = comp_gsel___paint_body( o, gkp, x1, x2, y1, y2)
     comp_gsel_style_init()
     return _comp_gsel_title _comp_gsel_body
 }

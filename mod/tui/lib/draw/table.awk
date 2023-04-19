@@ -61,7 +61,7 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2,      _next_line, row, _sel
 
     row = x2-x1+1
     col = y2-y1+1
-    if (comp_table___multiple_sel_sw_get(o, kp)) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
+    if (draw_table_multiple_sel_sw_get(o, kp)) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
     _num_w = length( l = model_arr_get(o, kp, "view-row" L) ) + 1 + _selected_w
     layout_avg_cal(o, kp, col = col-_num_w)
     ctrl_page_pagesize_set( o, kp, row )
@@ -113,8 +113,8 @@ function draw_table___on_cell( o, kp, i, j, w,             ri, ci, v, l, _v_1 ){
 
 function draw_table___on_num( o, kp, i, w,         v, _prefix ){
     v = space_restrict_or_pad(i, w)
-    if (comp_table___multiple_sel_sw_get(o, kp)) {
-        if (comp_table___row_is_sel( o, kp, i ) ) _prefix = TH_TABLE_NUM_PREFIX_SELECTED
+    if (draw_table_multiple_sel_sw_get(o, kp)) {
+        if (draw_table_row_is_sel( o, kp, i ) ) _prefix = TH_TABLE_NUM_PREFIX_SELECTED
         else _prefix = TH_TABLE_NUM_PREFIX_UNSELECTED
     }
     if (i == comp_table_get_cur_row( o, kp ) ) return _prefix th( TH_TABLE_NUM_FOCUSED, v )
@@ -141,7 +141,7 @@ function draw_table___on_box( o, kp, x1, x2, y1, y2, color,       s ){
 function draw_table___on_header(o, kp, x1, x2, y1, y2,                space_w, _selected_w, s, l, i, w, v, icon_w, c ){
     if ( ! change_is(o, kp, "table.head") ) return
     change_unset(o, kp, "table.head")
-    if (comp_table___multiple_sel_sw_get(o, kp)) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
+    if (draw_table_multiple_sel_sw_get(o, kp)) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
     c = space_w = length( model_arr_get(o, kp, "view-row" L) ) + 1 + _selected_w
     layout_avg_cal(o, kp, y2-y1+1-space_w)
     l = layout_avg_get_len(o, kp)
@@ -171,7 +171,7 @@ function draw_table___on_filter(o, kp, x1, x2, y1, y2,         ci, v, _keypath){
     _keypath = kp SUBSEP "slct" SUBSEP ci
     comp_lineedit_change_set( o, _keypath )
     if (v == "") v = th( UI_TEXT_DIM, comp_table_get_head_title(o, kp, ci) )
-    else         v = comp_lineedit_paint_with_cursor(o, _keypath, x1, y1+8, y2)
+    else         v = comp_lineedit_paint(o, _keypath, x1, x1, y1+8, y2)
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) "FILTER: " v
 }
 
@@ -215,5 +215,34 @@ function draw_table_col_highlight_set( o, kp, col, tf ){
 function draw_table_col_is_highlight( o, kp, col ){
     # return (o[ kp, "data-arr", "data", "COL", col, "HIGHLIGHT" ] == true) ? true : false
     return (o[ kp, "draw", "hl-col", col ] == true) ? true : false
+}
+
+function draw_table_multiple_sel_sw_set(o, kp, v){
+    ctrl_sw_init( o, kp SUBSEP "ismultiple", v)
+}
+
+function draw_table_multiple_sel_sw_get(o, kp){
+    return ctrl_sw_get(o, kp SUBSEP "ismultiple")
+}
+
+function draw_table_row_selected_sw_toggle(o, kp, r,        l){
+    if (draw_table_row_is_sel(o, kp, r)) draw_table_sel_row_set(o, kp, r, false)
+    else if ( ((l = o[ kp, "limit"]) == "no-limit") || l > draw_table_sel_len(o, kp))
+        draw_table_sel_row_set(o, kp, r, true)
+}
+function draw_table_sel_row_set(o, kp, r, tf){
+    # o[ kp, "data-arr", "data", "ROW", r, "IS_SELECTED" ] = tf = (tf != "") ? tf : true
+    o[ kp, "draw", "sel-row", r ] = tf = (tf != "") ? tf : true
+    if (tf == true) model_arr_add( o, kp SUBSEP "selected", r )
+    else model_arr_rm( o, kp SUBSEP "selected", r )
+}
+function draw_table_sel_len(o, kp){
+    return model_arr_data_len( o, kp SUBSEP "selected" )
+}
+function draw_table_row_is_sel(o, kp, r){
+    return o[ kp, "draw", "sel-row", r ]
+}
+function draw_table_selected_get(o, kp, i){
+    return model_arr_data_get(o, kp SUBSEP "selected", i)
 }
 # EndSection

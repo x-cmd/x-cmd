@@ -145,7 +145,7 @@ function comp_gsel___slct_get( o, kp ){
 function comp_gsel___slct_get_with_cursor( o, kp, x1, y1, y2 ){
     comp_lineedit_width(o, kp SUBSEP "select", y2-y1)
     comp_lineedit_change_set(o, kp SUBSEP "select")
-    return comp_lineedit_paint_with_cursor(o, kp SUBSEP "select", x1, y1, y2)
+    return comp_lineedit_paint(o, kp SUBSEP "select", x1, x1, y1, y2)
 }
 
 # EndSection
@@ -160,14 +160,14 @@ function comp_gsel_change_set_all( o, kp ){
 function comp_gsel_paint( o, kp, x1, x2, y1, y2,             _comp_body, _comp_title, _comp_footer, _comp_box, w ){
 
     w = wcswidth_cache(TH_GSEL_ITEM_UNFOCUSED_PREFIX)
-    _comp_title  = comp_gsel_paint_title(o, kp, x1, x1, y1+w, y2)
-    _comp_body   = comp_gsel_paint_body(o, kp, x1+1, x2-1, y1, y2)
-    _comp_footer = comp_gsel_paint_footer(o, kp, x2, x2, y1+w, y2)
+    _comp_title  = comp_gsel___paint_title(o, kp, x1, x1, y1+w, y2)
+    _comp_body   = comp_gsel___paint_body(o, kp, x1+1, x2-1, y1, y2)
+    _comp_footer = comp_gsel___paint_footer(o, kp, x2, x2, y1+w, y2)
 
     return _comp_title _comp_body _comp_footer
 }
 
-function comp_gsel_paint_body( o, kp, x1, x2, y1, y2,       r, w, iw, ps, l, i, _start, _end, _comp_body ){
+function comp_gsel___paint_body( o, kp, x1, x2, y1, y2,       r, w, iw, ps, l, i, _start, _end, _comp_body ){
     if ( ! change_is(o, kp, "gsel.body") ) return
     change_unset(o, kp, "gsel.body")
     comp_gsel___handle_slct(o, kp)
@@ -191,7 +191,7 @@ function comp_gsel_paint_body( o, kp, x1, x2, y1, y2,       r, w, iw, ps, l, i, 
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) _comp_body
 }
 
-function comp_gsel_paint_title(o, kp, x1, x2, y1, y2,       v){
+function comp_gsel___paint_title(o, kp, x1, x2, y1, y2,       v){
     if ( ! change_is(o, kp, "gsel.title") ) return
     change_unset(o, kp, "gsel.title")
     v = comp_gsel___slct_get(o, kp)
@@ -200,7 +200,7 @@ function comp_gsel_paint_title(o, kp, x1, x2, y1, y2,       v){
     return painter_clear_screen(x1, x2, y1, y2) v
 }
 
-function comp_gsel_paint_footer(o, kp, x1, x2, y1, y2,      v, i, s, p){
+function comp_gsel___paint_footer(o, kp, x1, x2, y1, y2,      v, i, s, p){
     if ( ! change_is(o, kp, "gsel.foot") ) return
     change_unset(o, kp, "gsel.foot")
     s = ctrl_page_pagesize_get(o, kp)

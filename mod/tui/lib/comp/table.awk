@@ -19,7 +19,7 @@ function comp_table_init( o, kp ){
 # Section: ctrl handle
 function comp_table_set_limit(o, kp, v) {
     if (v <= 1) return
-    comp_table___multiple_sel(o, kp, true)
+    comp_table___multiple_sel_sw_set(o, kp, true)
     o[ kp, "limit" ] = (v ~ "^[0-9]+$") ? v : "no-limit"
 }
 
@@ -75,27 +75,18 @@ function ctrl_table___inc( o, kp ){
     return true
 }
 
-function comp_table___multiple_sel(o, kp, v){    ctrl_sw_init( o, kp SUBSEP "ismultiple", v);     }
-function comp_table___multiple_sel_sw_get(o, kp){     return ctrl_sw_get(o, kp SUBSEP "ismultiple");    }
-function comp_table___row_selected_sw_toggle(o, kp, r,        l){
-    if (comp_table___row_is_sel(o, kp, r)) comp_table___sel_row_set(o, kp, r, false)
-    else if ( ((l = o[ kp, "limit"]) == "no-limit") || l > comp_table___sel_len(o, kp))
-        comp_table___sel_row_set(o, kp, r, true)
+function comp_table___multiple_sel_sw_set(o, kp, v){
+    draw_table_multiple_sel_sw_set(o, kp, v)
 }
-function comp_table___sel_row_set(o, kp, r, tf){
-    o[ kp, "data-arr", "data", "ROW", r, "IS_SELECTED" ] = tf = (tf != "") ? tf : true
-    if (tf == true) model_arr_add( o, kp SUBSEP "selected", r )
-    else model_arr_rm( o, kp SUBSEP "selected", r )
+
+function comp_table___multiple_sel_sw_get(o, kp){
+    return draw_table_multiple_sel_sw_get(o, kp)
 }
-function comp_table___sel_len(o, kp){
-    return model_arr_data_len( o, kp SUBSEP "selected" )
+
+function comp_table___row_selected_sw_toggle(o, kp, r){
+    draw_table_row_selected_sw_toggle(o, kp, r)
 }
-function comp_table___row_is_sel(o, kp, r){
-    return o[ kp, "data-arr", "data", "ROW", r, "IS_SELECTED" ]
-}
-function comp_table___selected_get(o, kp, i){
-    return model_arr_data_get(o, kp SUBSEP "selected", i)
-}
+
 # EndSection
 
 # Section: slct
