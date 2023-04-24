@@ -51,7 +51,7 @@ function comp_lineeditadvise___paint_with_cursor_advise(o, kp, x1, x2, y1, y2,  
 
     s = comp_lineeditadvise_get(o, kp)
     i = comp_lineeditadvise___curpos(o, kp)
-    b = ctrl_stredit_border_left_get( o, kp )
+    b = comp_lineeditadvise___start( o, kp )
     lv = substr(s, b+1, i-b)
     rv = substr(s, i+1)
     adv = comp_lineeditadvise___get_adv(o, kp, rv)
@@ -59,7 +59,7 @@ function comp_lineeditadvise___paint_with_cursor_advise(o, kp, x1, x2, y1, y2,  
     e = substr( wcstruncate_cache( lv adv rv, ctrl_stredit_width_get( o, kp )-1 ), i-b+1 )
     if (e == "") _str = lv th(TH_CURSOR, " ")
     else {
-        l = ctrl_stredit_nextfont_width(e)
+        l = wcwidth_first_char_cache(e)
         rv = substr(e, l+1)
         adv = substr(adv, l+1)
         _str = lv th(TH_CURSOR, substr(e, 1, l)) th(UI_TEXT_DIM, adv) substr(rv, length(adv)+1)
@@ -167,7 +167,8 @@ function comp_lineeditadvise___get_advise_fromfile(o, kp, argstr,           arga
 function comp_lineeditadvise_get(o, kp){ return comp_lineedit_get(o, kp) }
 function comp_lineeditadvise_put(o, kp, val){ comp_lineedit_put(o, kp, val) }
 function comp_lineeditadvise_clear(o, kp){ comp_lineedit_clear(o, kp) }
-function comp_lineeditadvise___curpos(o, kp){ return comp_lineedit___curpos(o, kp) }
+function comp_lineeditadvise___curpos(o, kp){ return comp_lineedit___cursor_pos(o, kp) }
+function comp_lineeditadvise___start(o, kp){ return comp_lineedit___start_pos(o, kp) }
 function comp_lineeditadvise___get_cursor_left_value(o, kp){ return comp_lineedit___get_cursor_left_value(o, kp) }
 function comp_lineeditadvise___get_cursor_right_value(o, kp){ return comp_lineedit___get_cursor_right_value(o, kp) }
 # EndSection

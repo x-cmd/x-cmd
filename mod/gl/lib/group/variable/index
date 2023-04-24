@@ -3,10 +3,10 @@
 # https://docs.gitlab.com/ee/api/group_level_variables.html
 ___x_cmd_gl_group_variable(){
     param:subcmd ___x_cmd_gl_group_variable            \
-        ls              "List groups variable"         \
-        info            "Show groups variable info"    \
-        create          "Create groups variable"       \
-        edit            "Update groups variable"       \
+        "ls|l"          "List groups variable"         \
+        "info|i"        "Show groups variable info"    \
+        "create|c"      "Create groups variable"       \
+        "edit|ed"       "Update groups variable"       \
         rm              "Remove variable"
     param:subcmd:try
     param:run
@@ -21,15 +21,23 @@ ___x_cmd_gl_group_variable_ls(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-    --groups        "The ID of a group or URL-encoded path of the group owned by the authenticated user"      <>
+    --group|-g      "<group_path> or .id=<group_id>"                                                          <>
     --per_page      "Results per page"                                                                        <>=""
     --page          "Page number of the results to fetch."                                                    <>=""
     --json|-j       "output json data"
 '
     param:run
-
-    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json key=.key value=.value variable_type=.variable_type environment_scope=.environment_scope  -- $@' \
-    ___x_cmd_gl_get_multi "/groups/$groups/variables"
+    [ -n "$group" ] || M='accepts option --group (<group_path> or .id=<group_id>), received empty' arg:ret:64
+    local _avt_group="$group"
+    ___x_cmd_gl____transform_avt_group || return
+     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_get_multi "/groups/$_avt_group/variables" query user_ids
+    else
+        ___x_cmd_gl_get_multi "/groups/$_avt_group/variables" query user_ids | \
+            x jo 2c             .key  .value .variable_type .environment_scope | \
+            x csv header --add   Key   Value  Variable_Type  Environment_Scope | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -118,10 +126,10 @@ options:
     local key_name
     for key_name in "$@"; do
         [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete variable : $(___x_cmd_ui bold red "$key_name") ?" || continue
-        ___x_cmd_gl_curl delete "/groups/$groups/variables/$key_name" | (
+        ___x_cmd_gl_curl del "/groups/$groups/variables/$key_name" | (
             x jo env . error=.
             if  ___x_cmd_gl_http_error; then
-                ___x_cmd_ui_tf true "Remove variable $key_name successfully."
+                ___x_cmd_ui_tf true "[Success]: Remove variable $key_name"
             else
                 ___x_cmd_ui_tf false "Remove variable $key_name failure"
                 return 1
@@ -132,36 +140,35 @@ options:
 # EndSection
 
 # Section: groups variable utils
-_____x_cmd_gl_group_variable_ui_utils()(
+_____x_cmd_gl_group_variable_ui_utils(){
+
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gl_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Info)
-            data="key=.key value=.value variable_type=.variable_type environment_scope=.environment_scope"
-            msg="Get groups variable information successfully"
-            error_msg="Failed to get groups variable information"
-            ;;
-        Create|Edit)
-            data="key=.key value=.value variable_type=.variable_type environment_scope=.environment_scope"
-            msg="$1 groups variable successfully"
-            error_msg="Failed to $1 groups variable"
-            ;;
-    esac
-    eval x jo env . Key=.key gl_resp_err=.error gl_resp_err=.message "$data"
-    if [ -n "$Key" ]; then
-        ___x_cmd_ui_tf true "$msg" ${Key+"Key: $Key"} ${value+"Value: $value"} ${variable_type+"Variable_type: $variable_type"} \
-            ${environment_scope+"Environment_scope: $environment_scope"}
-    else
-        ___x_cmd_ui_tf false "$error_msg"
-        ___x_cmd_gl____handle_resp
-        return 1
-    fi
-)
+    (
+        local _key=""
+        x jo env . _key=.key gl_resp_err=.error gcode_resp_msg=.message \
+            value=.value variable_type=.variable_type environment_scope=.environment_scope
+        case "$1" in
+            Info)
+                _inf_msg="Getting groups variable information successfully"
+                _err_msg="Getting groups variable information failure"
+                ;;
+            Create|Edit)
+                _inf_msg="$1 groups variable successfully"
+                _err_msg="$1 groups variable failure"
+                ;;
+        esac
+        if [ -n "$Key" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${Key+"Key: $Key"} ${value+"Value: $value"} ${variable_type+"Variable_type: $variable_type"} \
+                ${environment_scope+"Environment_scope: $environment_scope"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
 # EndSection

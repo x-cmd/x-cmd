@@ -22,10 +22,7 @@ ___x_cmd_gcode_resp_header(){
 }
 
 ___x_cmd_gcode_resp_code(){
-    ___x_cmd_gcode_resp_header  | awk '($1 ~ "HTTP/(1.*|2)$" && $3 != "Connection" && $4 != "established") {
-        print  int($2);
-        exit(0)
-    }'
+    ___x_cmd_gcode_resp_header | _____x_cmd_gx_get_resp_code_by_header
 }
 
 ___x_cmd_gcode_curl(){
@@ -122,6 +119,7 @@ ___x_cmd_gcode_get_multi() {
 
     local page=1
     local per_page=100
+    local NO_CACHE=1
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gcode_get_multi___json_prt "$@"
     else
@@ -153,8 +151,8 @@ ___x_cmd_gcode_get_multi___json_prt(){
     local next_url
     _____x_cmd_gcode_next_url
     if [ -z "$next_url" ]; then
-        cat "$tmp"
-        rm "$tmp"
+        command cat "$tmp"
+        x rmrf "$tmp"
         return
     fi
 
@@ -163,24 +161,17 @@ ___x_cmd_gcode_get_multi___json_prt(){
         printf "\n" >> "$tmp"
         _____x_cmd_gcode_next_url
     done
-    < "$tmp" x jo q0 \*.\* . | awk 'BEGIN{ print "["}
-        END{ print "]"}
-        {
-            if ($0 == "") next
-            if ((NR != 1) && ( aaa == 0 )) print ","
-            if (($0 == "{") || ( $0 == "[")) aaa++
-            if (($0 == "}") || ( $0 == "]")) aaa--
-            print $0
-        }'
-    rm "$tmp"
+    < "$tmp" x jo q0 \*.\* . | ___x_cmd_gx_merge_multi_page_json_array
+    x rmrf "$tmp"
 }
 
 _____x_cmd_gcode_next_url(){
-    next_url="$(grep "link:" "$___X_CMD_GCODE_TMP/.____x_cmd_gcode_curl_header")"
+    # NOTE: gcode url return header is 'Link:' not gitlab 'link:'
+    next_url="$(grep "Link:" "$___X_CMD_GCODE_TMP/.____x_cmd_gcode_curl_header")"
     next_url="${next_url#*'rel="prev", <'}"
     local tmp_url="${next_url%%'>; rel="next"'*}"
     if [ "$next_url" != "$tmp_url" ];then
-         next_url="${tmp_url#*'api/v4'*}"
+        next_url="${tmp_url#*'https://gitcode.net/api/v4'}"
     else
         next_url=""
     fi
@@ -212,7 +203,7 @@ ___x_cmd_gcode_param_normalize_repo(){
         "")
             case "$___X_CMD_GCODE_CURRENT_repo" in
                 */*) owner_repo="$___X_CMD_GCODE_CURRENT_repo"  ;;
-                "")  owner_repo="$(_____x_cmd_git_repo)"     ;;
+                "")  owner_repo="$(___x_cmd_gx_get_owner_repo)" ;;
                 *)
                     if [ -n "$___X_CMD_GCODE_CURRENT_owner" ]; then
                         owner_repo="${___X_CMD_GCODE_CURRENT_owner}/${___X_CMD_GCODE_CURRENT_repo}"
@@ -240,19 +231,10 @@ ___x_cmd_gcode_param_normalize_repo(){
     esac
     owner_repo="$(printf "%s" "$owner_repo" | ___x_cmd_gcode___url_path_encode)"
 }
-
-_____x_cmd_git_repo(){
-    local repo
-    repo="$(git config --get remote.origin.url 2>/dev/null)"
-    repo="${repo##*".com:"}"
-    repo="${repo##*".com/"}"
-    repo="${repo%.*}"
-    printf "%s" "$repo"
-}
 # EndSection
 
 # Section: gitcode utils
-___x_cmd_gcode___transform_member_access(){
+___x_cmd_gcode____transform_member_access(){
     case $access_level in
         owner)
             access_level=50;;

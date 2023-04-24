@@ -48,5 +48,3 @@ function math_floor(num) {
         return int(num)
     }
 }
-
-

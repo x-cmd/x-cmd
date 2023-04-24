@@ -72,9 +72,7 @@ function navi_handle_clocktick( o, kp, idx, trigger, row, col ){
 }
 
 function navi_handle_wchar( o, kp, value, name, type,          _has_no_handle ){
-    if (name == U8WC_NAME_END_OF_TEXT)                              exit(0)
-    else if (name == U8WC_NAME_END_OF_TRANSIMISSION)                exit(0)
-
+    comp_handle_exit( value, name, type )
     if (comp_statusline_isfullscreen(o, kp SUBSEP "statusline")){
         if (! comp_statusline_handle( o, kp SUBSEP "statusline", value, name, type )) _has_no_handle = true
         if (! comp_statusline_isfullscreen(o, kp SUBSEP "statusline")) navi_change_set_all( o, kp )

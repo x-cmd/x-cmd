@@ -7,7 +7,7 @@ _____x_cmd_gh_help__token_setting(){
     printf "\n%s %s \n%s\n" \
         "$(___x_cmd_ui yellow 'Run command to add|repleace token:')" \
         "$(___x_cmd_ui bold cyan "\`x gh token <token>\`")"   \
-        "$(___x_cmd_ui 'https://github.com/settings/tokens')"
+        "$(___x_cmd_ui "$(___x_cmd_gh___get_web_host)/settings/tokens")"
 }
 
 _____x_cmd_gh_help(){
@@ -18,14 +18,11 @@ _____x_cmd_gh_help(){
 
 # Section: HTTP header & body & request
 ___x_cmd_gh_resp_header() {
-    cat "$___X_CMD_GH_TMP/.____x_cmd_gh_curl_header"
+    command cat "$___X_CMD_GH_TMP/.____x_cmd_gh_curl_header"
 }
 
 ___x_cmd_gh_resp_code(){
-    ___x_cmd_gh_resp_header  | awk '($1 ~ "HTTP/(1.*|2)$" && $3 != "Connection" && $4 != "established") {
-        print  int($2);
-        exit(0)
-    }'
+    ___x_cmd_gh_resp_header | _____x_cmd_gx_get_resp_code_by_header
 }
 
 ___x_cmd_gh_curl(){
@@ -182,25 +179,17 @@ ___x_cmd_gh_get_multi___json_prt(){
     local next_url=""
     _____x_cmd_gh_next_url
     if [ -z "$next_url" ]; then
-        cat "$tmp"
+        command cat "$tmp"
         x rmrf "$tmp"
         return
     fi
 
     while [ -n "$next_url" ]; do
-        { ___x_cmd_gh_curl get "$next_url" >> "$tmp"; } || return
+        ___x_cmd_gh_curl get "$next_url" >> "$tmp" || return
         printf "\n" >> "$tmp"
         _____x_cmd_gh_next_url
     done
-    < "$tmp" x jo q0 \*.\* . | awk 'BEGIN{ print "["}
-        END{ print "]"}
-        {
-            if ($0 == "") next
-            if ((NR != 1) && ( aaa == 0 )) print ","
-            if (($0 == "{") || ( $0 == "[")) aaa++
-            if (($0 == "}") || ( $0 == "]")) aaa--
-            print $0
-        }'
+    < "$tmp" x jo q0 \*.\* . | ___x_cmd_gx_merge_multi_page_json_array
     x rmrf "$tmp"
 }
 
@@ -209,7 +198,11 @@ _____x_cmd_gh_next_url() {
     next_url="${next_url#*'rel="prev", <'}"
     local tmp_url="${next_url%%'>; rel="next"'*}"
     if [ "$next_url" != "$tmp_url" ]; then
-        next_url="${tmp_url#*'.com'*}"
+        local _split_host=""
+        if ! _split_host="$(___x_cmd_gh_config_get host 2>/dev/null)"; then
+            _split_host="https://api.github.com"
+        fi
+        next_url="${tmp_url#*"${_split_host}"}"
     else
         next_url=""
     fi
@@ -233,8 +226,8 @@ ___x_cmd_gh_param_normalize_repo() {
         ;;
     "")
         case "$___X_CMD_GH_CURRENT_repo" in
-            */*) owner_repo="$___X_CMD_GH_CURRENT_repo"  ;;
-            "")  owner_repo="$(_____x_cmd_git_repo)"     ;;
+            */*) owner_repo="$___X_CMD_GH_CURRENT_repo"     ;;
+            "")  owner_repo="$(___x_cmd_gx_get_owner_repo)" ;;
             *)
                 if [ -n "$___X_CMD_GH_CURRENT_owner" ]; then
                     owner_repo="${___X_CMD_GH_CURRENT_owner}/${___X_CMD_GH_CURRENT_repo}"

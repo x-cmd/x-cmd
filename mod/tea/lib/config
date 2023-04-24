@@ -1,51 +1,91 @@
 # shellcheck shell=sh
-# shellcheck disable=SC2039,3043
+# shellcheck disable=SC3043,2034
+
+xrc cfgy
 
 ___x_cmd_tea_config(){
-    param:subcmd ___x_cmd_tea_config                                 \
-        which      "Show current config path"                       \
-        get        "Print the value of a given configuration key"   \
-        set        "Update configuration with a value for the given key"
-    param:subcmd:try
-    param:run
-
-    ___x_cmd_tea_config _param_help_doc
-    return 1
-}
-
-# Section: config which
-___x_cmd_tea_config_which() {
     param:void
-    printf "%s\n" "${___X_CMD_TEA_CFG}/___x_cmd_tea_GITEA_DEFAULT"
+
+    [ "$#" -gt 0 ] || {
+        _____x_cmd_tea_help config
+        return 64
+    }
+
+    local op="$1"; shift
+    case "$op" in
+        set)        ___x_cmd_tea_config_set "$@"  ;;
+        get)        ___x_cmd_tea_config_get "$@"  ;;
+        --help|-h)  _____x_cmd_tea_help config    ;;
+        *)          ___x_cmd_tea_config___invoke "$op" "$@" ;;
+    esac
+}
+
+# Section: Set
+# x tea cfg set <token> [host]
+# shellcheck disable=2034
+___x_cmd_tea_config_set(){
+    local X_help_cmd="x help -m tea config set"
+    cfgy:arg:config-profile:all
+
+    [ $# -ne 0 ] || {
+        tea:error -h "x tea config set [--config <config>] [--profile <profile>] <token> [owner] [host] [web_host]" "accepts at least 1 arg(s), received 0."
+        return 64
+    }
+
+    config="${config:-$___X_CMD_TEA_CURRENT_config}"
+    profile="${profile:-$___X_CMD_TEA_CURRENT_profile}"
+
+    tea:debug "Setting token for $profile in $config"
+
+    local token="$1"
+    local owner="${2}"
+    local host="${3:-"https://gitea.com/api/v1"}"
+
+    ___x_cmd_tea_config___invoke  set                    \
+        ${config:+--config}   ${config:+"$config"}      \
+        ${profile:+--profile} ${profile:+"$profile"}    \
+        ${token:+token="$token"} ${owner:+owner="$owner"} host="${host}"
 }
 # EndSection
 
-# Section get and set
-# shellcheck disable=SC2154
-___x_cmd_tea_config_get() {
-    param:scope     ___x_cmd_tea
-    param:dsl       '
-options:
-    --host        "host name"                               <>="gitea.com"
-    #1            "The name of the configuration to get"    <>:ConfigName
-'
-    param:run
-    [ -e  "${___X_CMD_TEA_CFG}/___x_cmd_tea_GITEA_DEFAULT" ] || return 1
-    ___x_cmd_git_config_get "${___X_CMD_TEA_CFG}/___x_cmd_tea_GITEA_DEFAULT" "$host" "$1"
-}
+# Section: Get
+___x_cmd_tea_config_get(){
+    local X_help_cmd="x help -m tea config get"
+    cfgy:arg:config-profile:all
 
-___x_cmd_tea_config_set() {
-    param:scope     ___x_cmd_tea
-    param:dsl       '
-options:
-    --host    "host name"                           <>="gitea.com"
-    #1        "Please provide configuration key"    <>:ConfigName
-    #2        "Please provide configuration val"    <>
-'
-    param:run
-    local ___teacode_path="${___X_CMD_TEA_CFG}/___x_cmd_tea_GITEA_DEFAULT"
-    [ -e  "$___teacode_path" ] || mkdir -p "$___X_CMD_TEA_CFG"
-    ___x_cmd_git_config_set "$___teacode_path" "$host" "$1" "$2" && return 0
-    tea:error "tea config set Fail"
+    config="${config:-$___X_CMD_TEA_CURRENT_config}"
+    profile="${profile:-$___X_CMD_TEA_CURRENT_profile}"
+
+    if [ -z "$1" ]; then
+        ___x_cmd_tea_config___invoke  cat \
+            ${config:+--config}   ${config:+"$config"}      \
+            ${profile:+--profile} ${profile:+"$profile"}
+    else
+        ___x_cmd_tea_config___invoke  get \
+            ${config:+--config}   ${config:+"$config"}      \
+            ${profile:+--profile} ${profile:+"$profile"}    \
+            "$1"
+    fi
 }
 # EndSection
+
+# Section: Var
+___x_cmd_tea_config___var(){
+    cfgy:arg:config-profile:all
+
+    config="${config:-$___X_CMD_TEA_CURRENT_config}"
+    profile="${profile:-$___X_CMD_TEA_CURRENT_profile}"
+
+    ___x_cmd_tea_config___invoke  var  \
+        ${config:+--config}   ${config:+"$config"}      \
+        ${profile:+--profile} ${profile:+"$profile"}    \
+        "$@"
+}
+# EndSection
+
+___x_cmd_tea_config___invoke(){
+    ___x_cmd_cfgy_obj   \
+        --prefix                ___X_CMD_TEA_CFG_DATA                   \
+        --default-config        "${___X_CMD_ROOT_CFG}/tea/X.cfg.yml"    \
+        "$@"
+}

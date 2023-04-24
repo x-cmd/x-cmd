@@ -16,7 +16,7 @@ BEGIN{
     Q2_INTERNAL = "\"internal\""
 
     Q2_LOGIN = "\"username\""
-    Q2_PROJECT = "\"project\""
+    Q2_REPO = "\"repo\""
     Q2_PATH_WITH_NAMESPACE = "\"path_with_namespace\""
     Q2_DEFAULE_BRANCH = "\"default_branch\""
 }
@@ -46,15 +46,15 @@ function gl_api_to_member( o, obj,            kp, _kp_member, _kp_permission, l,
         n = obj[ kp, jqu(i), Q2_LOGIN ]
         access = obj[ kp, jqu(i), Q2_ACCESS_LEVEL ]
         if ( access == 50 ) {
-            gl_project_member_add( o, n, Q2_OWNER)
+            gl_repo_member_add( o, n, Q2_OWNER)
         } else if ( access == 40 ) {
-            gl_project_member_add( o, n, Q2_MAINTAINER)
+            gl_repo_member_add( o, n, Q2_MAINTAINER)
         } else if ( access == 30 ) {
-            gl_project_member_add( o, n, Q2_DEVELOPER)
+            gl_repo_member_add( o, n, Q2_DEVELOPER)
         } else if ( access == 20 ) {
-            gl_project_member_add( o, n, Q2_REPORTER)
+            gl_repo_member_add( o, n, Q2_REPORTER)
         } else if ( access == 10 ) {
-            gl_project_member_add( o, n, Q2_GUEST)
+            gl_repo_member_add( o, n, Q2_GUEST)
         }
     }
 
@@ -62,12 +62,12 @@ function gl_api_to_member( o, obj,            kp, _kp_member, _kp_permission, l,
 
 function gl_api_to_name(o, obj,         kp, v, l){
     kp = SUBSEP Q2_1
-    v = o[ kp, Q2_PROJECT ]
+    v = o[ kp, Q2_REPO ]
     if ( v == "" ) {
         o[ kp L ] = l = o[ kp L ] + 1
-        o[ kp, l ] = Q2_PROJECT
+        o[ kp, l ] = Q2_REPO
     }
-    o[ kp, Q2_PROJECT ] = obj[ kp , Q2_PATH_WITH_NAMESPACE ]
+    o[ kp, Q2_REPO ] = obj[ kp , Q2_PATH_WITH_NAMESPACE ]
 }
 
 function gl_api_to_visibility(o, obj,       kp){

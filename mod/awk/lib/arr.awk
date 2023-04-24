@@ -22,18 +22,21 @@ function arr_get( a, i ){
     return a[i]
 }
 
+# arr[ ++arr[ L ] ] = elem
 function arr_push(arr, elem,        l){
     arr[ L ] = l = arr[ L ] + 1
     arr[ l ] = elem
     return l
 }
 
+# arr[ arr[ L ] -- ]
 function arr_pop(arr,   l){
     if ((l = arr[ L ]) < 1)     return NULL
     arr[ L ] = l - 1
     return arr[ l ]
 }
 
+# arr[ arr[ L ] ]
 function arr_top(arr,   l) {
     if ((l = arr[ L ]) < 1)     return NULL
     return arr[ l ]
@@ -51,6 +54,7 @@ function arr_join(arr,              _sep, _start, l,              _i, _result) {
     return _result
 }
 
+# arr[ L ] = split(str, arr, sep)
 function arr_cut(arr, str, sep,       l){
     l = split(str, arr, sep)
     return arr[ L ] = l
@@ -97,6 +101,25 @@ function arr_print( arr, s, l,  i, l2, t ){
     for (i= (s=="") ? 1 : s ; i<=l; ++i) print arr[i]
 }
 
+function arr_pr( arr, sep, start, step, end ){
+    if (sep == "")  sep = "\n"
+    if (step == "") {
+        seq_parse( start )
+        start   = SEQ_START
+        step    = SEQ_STEP
+        end     = SEQ_END
+    } else {
+        if (end == "")  end = arr[L]
+    }
+
+    if (end < 0)    for (i=start; i<=end; i+=step) printf("%s%s", arr[i], sep)
+    else            for (i=start; i>=end; i+=step) printf("%s%s", arr[i], sep)
+}
+
+function arr_pl( arr, start, step, end ){
+    return arr_pr( arr, "\n", start, step, end )
+}
+
 function arr_gc( arr, gcl,      i, j ){
     if ( (l = arr[ L ]) <= gcl ) return
     j = l - gcl
@@ -117,6 +140,6 @@ function arr_uniq( arr,         l, i, j ) {
     for (i=2; i<=l; ++i) {
         if (arr[i] != arr[i-1]) arr[++j] = arr[i]
     }
-    arr[ L ] = j
+    return arr[ L ] = j
 }
 

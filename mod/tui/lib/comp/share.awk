@@ -235,4 +235,16 @@ function wcstruncate_cache(v, l,     s){
     return CACHEUTF8[ "utf8-cache-wcstruncate", v, l ] = wcstruncate(v, l)
 }
 
+function wcwidth_first_char_cache(v,    l){
+    if ( (l = CACHEUTF8[ "utf8-cache-wcwidth-first-char", v ]) != "" ) return l
+    return CACHEUTF8[ "utf8-cache-wcwidth-first-char", v ] = wcwidth_first_char(v)
+}
+
+function wcwidth_first_char(s,        l, w, i){
+    if (s == "") return 0
+    l = length(s)
+    for (i=1; w=="" && i<=l; ++i) w = wcstruncate_cache( s, i)
+    return (w != "") ? length(w) : l
+}
+
 # EndSection

@@ -5,10 +5,10 @@ ___x_cmd_gh_repo_collaborator_invitation() {
     param:scope  ___x_cmd_github
     param:subcmd ___x_cmd_gh_repo_collaborator_invitation    \
         "ls|l"         "List invitation for repo or current user"   \
-        "edit|ed"      "Edit invitation permission"                 \
-        "accept"       "Accept invitation"                          \
-        "decline"      "Decline invitation"                         \
-        rm             "Delete a repository invitation"
+        "edit|ed"      "Edit repository invitation permission"      \
+        accept         "Accept invitation for user"                 \
+        rm             "Decline invitation for user"                \
+        cancel         "Cancel the invitation by the repository"
 
     param:subcmd:try
     param:run
@@ -32,7 +32,7 @@ options:
 '
     param:run
     local _url="/user/repository_invitations"
-    [ -n "$repo" ] || {
+    [ -z "$repo" ] || {
         ___x_cmd_gh_param_init_owner_repo
         _url="/repos/${owner_repo}/invitations"
     }
@@ -41,8 +41,8 @@ options:
         ___x_cmd_gh_get_multi "$_url"
     else
         ___x_cmd_gh_get_multi "$_url" | \
-            x jo 2c             .id  .repository.full_name  .inviter.login  .invitee.login  .permissions | \
-            x csv header --add   ID   Repo                   Inviter         Invitee         Permission  | \
+            x jo 2c             .id  .repository.full_name  .inviter.login  .invitee.login  .permissions .expired | \
+            x csv header --add   ID   Repo                   Inviter         Invitee         Permission   Is_Expired| \
             x csv static_tab
     fi
 }
@@ -80,13 +80,13 @@ options:
     param:run
     local __id=
     for __id in "$@"; do
-    ___x_cmd_gh_curl patch "/user/repository_invitations/${1##*/}" | (
+    ___x_cmd_gh_curl patch "/user/repository_invitations/${__id##*/}" | (
             [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
             x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "[Success]: Accept ${1##*/} interception"
+                ___x_cmd_ui_tf  true "[Success]: Accept ${__id##*/} interception"
             else
-                ___x_cmd_ui_tf false "Accept ${1##*/} interception failure:" >&2
+                ___x_cmd_ui_tf false "Accept ${__id##*/} interception failure:" >&2
                 ___x_cmd_gh____handle_resp
                 return 1
             fi
@@ -97,7 +97,7 @@ options:
 
 # Section: Decline
 # https://docs.github.com/en/rest/collaborators/invitations#decline-a-repository-invitation
-___x_cmd_gh_repo_collaborator_invitation_decline() {
+___x_cmd_gh_repo_collaborator_invitation_rm() {
     param:scope ___x_cmd_github
     param:dsl '
 options:
@@ -105,16 +105,16 @@ options:
     --yes|-y    "Ignore remove prompt interception"
 '
     param:run
-    local __id=
+    local __id=""
     for __id in "$@"; do
         [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure decline interception: $(___x_cmd_ui bold red "$__id") ?" || continue
-        ___x_cmd_gh_curl del "/user/repository_invitations/${1##*/}" | (
+        ___x_cmd_gh_curl del "/user/repository_invitations/${__id##*/}" | (
             [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
             x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "[Success]: Decline ${1##*/} interception"
+                ___x_cmd_ui_tf  true "[Success]: Decline ${__id##*/} interception"
             else
-                ___x_cmd_ui_tf false "Decline ${1##*/} interception failure:" >&2
+                ___x_cmd_ui_tf false "Decline ${__id##*/} interception failure:" >&2
                 ___x_cmd_gh____handle_resp
                 return 1
             fi
@@ -125,7 +125,7 @@ options:
 
 # Section: Remove
 # https://docs.github.com/en/rest/collaborators/invitations#delete-a-repository-invitation
-___x_cmd_gh_repo_collaborator_invitation_rm() {
+___x_cmd_gh_repo_collaborator_invitation_cancel() {
     param:scope ___x_cmd_github
     param:dsl '
 options:
@@ -138,7 +138,7 @@ options:
     ___x_cmd_gh_param_init_owner_repo
     local __id=
     for __id in "$@"; do
-        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove interception: $(___x_cmd_ui bold red "$username") ?" || continue
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove interception: $(___x_cmd_ui bold red "$__id") ?" || continue
         ___x_cmd_gh_curl del "/repos/$owner_repo/invitations/${__id##*/}"| (
                 [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
                 x jo env . gh_resp_msg=.message gh_resp_err=.errors

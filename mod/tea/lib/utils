@@ -7,7 +7,7 @@ _____x_cmd_tea_help__token_setting(){
     printf "\n%s %s \n%s\n" \
         "$(___x_cmd_ui yellow 'Run command to add|repleace token:')" \
         "$(___x_cmd_ui bold cyan "\`x tea token <token>\`")"   \
-        "$(___x_cmd_ui "${___X_CMD_TEA_DOMAIN:-"https://gitea.com"}/user/settings/applications")"
+        "$(___x_cmd_ui "$(___x_cmd_tea___get_web_host)/user/settings/applications")"
 }
 
 _____x_cmd_tea_help(){
@@ -21,41 +21,35 @@ ___x_cmd_tea_resp_header() {
 }
 
 ___x_cmd_tea_resp_code(){
-    ___x_cmd_tea_resp_header  | awk '$1 ~/HTTP\/2$/ {print ($2+0);exit(0)}'
+    ___x_cmd_tea_resp_header | _____x_cmd_gx_get_resp_code_by_header
 }
 
-# https://gitea.com/api/v1/user
-# https://codeberg.org/api/v1/user
 ___x_cmd_tea_curl(){
     local op="$1"
-    local _curl_url="\"${___X_CMD_TEA_DOMAIN:-"https://gitea.com"}/api/v1$2\""
-    local _accept="\"Accept:application/json\""
-    local _content="\"Content-Type:application/json\""
-    local _authorization
-    _authorization="\"Authorization:token $(___x_cmd_tea_token)\""
-    local tea_header="$___X_CMD_TEA_TMP/.____x_cmd_tea_curl_header"
-    local ___X_CMD_TEA_SHOW_HTTP_CODE=1
+    local _api_url="$2"
     shift 2
-    local req
+    local ___X_CMD_API_TEA_HEADER="-s -H \"accept: application/json\" -H \"Content-Type: application/json\" -D \"$___X_CMD_TEA_TMP/.____x_cmd_tea_curl_header\""
+
+    local _curl_host_tmp=""
+    local ___X_CMD_API_TEA_TOKEN=""
+    ___x_cmd_tea_config___var  ___X_CMD_API_TEA_TOKEN=token _curl_host_tmp=host 2>/dev/null
+    local ___X_CMD_API_TEA_HOST="${___X_CMD_API_GODE_HOST:-"$_curl_host_tmp"}"
+
+    local ___X_CMD_TEA_SHOW_HTTP_CODE=1
     case "$op" in
         get)
-            tea:debug "x curl -D  $tea_header   -X GET -s -H  $_accept  -H $_content   -H  $_authorization  $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))")  $_curl_url"
             if [ -n "$NO_CACHE" ]; then
-                eval   x curl -D "$tea_header"  -X GET -s -H "$_accept" -H "$_content" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))") "$_curl_url"
+                ___x_cmd_api_tea get "$_api_url" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))")
             else
-                x ccmd 10s --        eval x curl -D "$tea_header"  -X GET -s -H "$_accept" -H "$_content" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))") "$_curl_url"
+                x ccmd 10s --        eval "___X_CMD_API_TEA_HOST=$___X_CMD_API_TEA_HOST ___X_CMD_API_TEA_TOKEN=$___X_CMD_API_TEA_TOKEN ___x_cmd_api_tea get \"$_api_url\" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))")"
             fi
-            ___x_cmd_tea_http_error  eval x curl -D "$tea_header"  -X GET -s -H "$_accept" -H "$_content" -H "$_authorization" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))") "$_curl_url"
-            return
+            ___x_cmd_tea_http_error   eval "___X_CMD_API_TEA_HOST=$___X_CMD_API_TEA_HOST ___X_CMD_API_TEA_TOKEN=$___X_CMD_API_TEA_TOKEN ___x_cmd_api_tea get \"$_api_url\" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_tea_curl___use_query_data "$@"))")"
             ;;
-        post)           req="POST"      ;;
-        put)            req="PUT"       ;;
-        patch)          req="PATCH"     ;;
-        delete)         req="DELETE"    ;;
+        post|put|patch|del)
+            ___x_cmd_api_tea "$op" "$_api_url" "$(x curl gencode "$@")"
+            ___x_cmd_tea_http_error
+            ;;
     esac
-    tea:debug "x curl -D  $tea_header  -X  $req  -s -H  $_accept  -H  $_content  -H  $_authorization   $(x curl gencode "$@")   $_curl_url"
-    eval       x curl -D "$tea_header" -X "$req" -s -H "$_accept" -H "$_content" -H "$_authorization" "$(x curl gencode "$@")" "$_curl_url"
-    ___x_cmd_tea_http_error
 }
 
 ___x_cmd_tea_curl___use_query_data(){
@@ -77,7 +71,7 @@ ___x_cmd_tea_http_error(){
         return 0
     else
         [ $# -eq 0 ] || {
-            tea:debug "---! Cache Clear !---"
+            tea:debug "Cache Clear"
             x ccmd invalidate "$@" 1>/dev/null 2>&1
         }
         [ -z "$___X_CMD_TEA_SHOW_HTTP_CODE" ] || {
@@ -90,22 +84,17 @@ ___x_cmd_tea_http_error(){
     fi
 }
 
-___x_cmd_tea____handle_resp(){
-    [ -z "$tea_resp_body" ] || printf "%s" "$tea_resp_body"
-    [ -z "$tea_resp_err" ]  || printf "  \033[31m-\033[0m \033[1mErrorMsg: \033[31m%s\033[0m\n" "$tea_resp_err" >&2
+___x_cmd_tea____printf_error(){
+    if ! ___x_cmd_is_interative_tty || [ ! -t 2 ] || [ -n "$NO_COLOR" ]; then
+        printf "  - ErrorMsg: %s\n" "$1" >&2
+    else
+        printf "  \033[31m-\033[0m \033[1mErrorMsg: \033[31m'%s'\033[0m\n" "$1" >&2
+    fi
 }
 
-___x_cmd_tea____handle_no_content(){
-    local tea_resp_body
-    local tea_resp_err
-    x jo env . tea_resp_body=. tea_resp_err=.message
-
-    [ -z "$gh_resp_body" ] || {
-        tea:debug "tea_resp_body: $tea_resp_body"
-        ___x_cmd_tea____handle_resp
-        return 1
-    }
-    ___x_cmd_gh_http_error
+___x_cmd_tea____handle_resp(){
+    [ -z "$tea_resp_err" ] || [ "$tea_resp_err" = "null" ] || ___x_cmd_tea____printf_error "$tea_resp_err"
+    [ -z "$tea_resp_msg" ] || [ "$tea_resp_msg" = "null" ] || ___x_cmd_tea____printf_error "$tea_resp_msg"
 }
 # EndSection
 
@@ -118,6 +107,7 @@ ___x_cmd_tea_get_multi() {
 
     local page=1
     local limit=100
+    local NO_CACHE=1
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_tea_get_multi___json_prt "$@"
     else
@@ -133,7 +123,7 @@ ___x_cmd_tea_get_multi___ui_table(){
     [ -n "$next_url" ] || return
 
     while [ -n "$next_url" ]; do
-        ___x_cmd_tea_curl get "$next_url"
+        ___x_cmd_tea_curl get "$next_url" || return
         printf "\n"
         _____x_cmd_tea_next_url
     done
@@ -148,8 +138,8 @@ ___x_cmd_tea_get_multi___json_prt(){
     local next_url
     _____x_cmd_tea_next_url
     if [ -z "$next_url" ]; then
-        cat "$tmp"
-        rm "$tmp"
+        command cat "$tmp"
+        x rmrf "$tmp"
         return
     fi
 
@@ -158,16 +148,8 @@ ___x_cmd_tea_get_multi___json_prt(){
         printf "\n" >> "$tmp"
         _____x_cmd_tea_next_url
     done
-    < "$tmp" x jo q0 \*.\* . | awk 'BEGIN{ print "["}
-        END{ print "]"}
-        {
-            if ($0 == "") next
-            if ((NR != 1) && ( aaa == 0 )) print ","
-            if (($0 == "{") || ( $0 == "[")) aaa++
-            if (($0 == "}") || ( $0 == "]")) aaa--
-            print $0
-        }'
-    rm "$tmp"
+    < "$tmp" x jo q0 \*.\* . | ___x_cmd_gx_merge_multi_page_json_array
+    x rmrf "$tmp"
 }
 
 _____x_cmd_tea_next_url() {
@@ -175,7 +157,11 @@ _____x_cmd_tea_next_url() {
     next_url="${next_url#*'rel="prev", <'}"
     local tmp_url="${next_url%%'>; rel="next"'*}"
     if [ "$next_url" != "$tmp_url" ]; then
-        next_url="${tmp_url#*'.com'*}"
+        local _split_host=""
+        if ! _split_host="$(___x_cmd_tea_config_get host 2>/dev/null)"; then
+            _split_host="https://gitea.com/api/v1"
+        fi
+        next_url="${tmp_url#*"$_split_host"}"
     else
         next_url=""
     fi
@@ -183,75 +169,60 @@ _____x_cmd_tea_next_url() {
 
 # EndSection
 
-# Section 3: Parameter Utilities
+# Section: Parameter Utilities
 alias ___x_cmd_tea_param_init_owner_repo='
-    local owner_repo
+    local owner_repo=""
     ___x_cmd_tea_param_normalize_repo  || return
 '
 
-# shellcheck disable=SC2034
+# shellcheck disable=SC2154,SC2034
 ___x_cmd_tea_param_normalize_repo() {
     local op="$repo"
-    [ -z "$op" ] && op="$1"
+    [ -n "$op" ] || op="$1"
     case "$op" in
     */*)
-        owner_repo="$(printf "%s" "$op")"
+        owner_repo="$op"
         ;;
     "")
-        owner_repo="$(_____x_cmd_git_repo)"
+        case "$___X_CMD_TEA_CURRENT_repo" in
+            */*) owner_repo="$___X_CMD_TEA_CURRENT_repo"    ;;
+            "")  owner_repo="$(___x_cmd_gx_get_owner_repo)" ;;
+            *)
+                if [ -n "$___X_CMD_TEA_CURRENT_owner" ]; then
+                    owner_repo="${___X_CMD_TEA_CURRENT_owner}/${___X_CMD_TEA_CURRENT_repo}"
+                else
+                    owner_repo="$(___x_cmd_tea_config_get owner)/${___X_CMD_TEA_CURRENT_repo}" || {
+                        tea:error "No owner provided. Default owner not set."
+                        tea:warn -h "$(x str ml wrap "$(_____x_cmd_tea_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
+                        return 1
+                    }
+                fi
+            ;;
+        esac
         ;;
     *)
-        ___x_cmd_tea_current_owner 1>/dev/null 2>&1
-        if [ -z "$___X_CMD_TEA_DEFAULT_OWNER" ]; then
-            tea:error "No owner provided. Default owner not set."
-            tea:warn "Check your current token setting.$(_____x_cmd_tea_help__token_setting)"
-            return 1
+        if [ -z "$___X_CMD_TEA_CURRENT_owner" ]; then
+            local ___X_CMD_TEA_CURRENT_owner=""
+            if ! ___X_CMD_TEA_CURRENT_owner="$(___x_cmd_tea_config_get owner)"; then
+                tea:error "No owner provided. Default owner not set."
+                tea:warn -h "$(x str ml wrap "$(_____x_cmd_tea_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
+                return 1
+            fi
         fi
-        owner_repo="$(printf "%s" "$___X_CMD_TEA_DEFAULT_OWNER/$op")"
+        owner_repo="${___X_CMD_TEA_CURRENT_owner}/${op}"
         ;;
     esac
 }
+# EndSection
 
-___x_cmd_tea_default() {
-    param_default "$@" 2>/dev/null || return 1
-}
-
-_____x_cmd_git_repo() {
-    local repo
-    repo="$(git config --get remote.origin.url 2>/dev/null)"
-    repo="${repo##*".com:"}"
-    repo="${repo##*".com/"}"
-    repo="${repo%.*}"
-    printf "%s" "$repo"
-}
-_____x_cmd_git_branch() {
-    git symbolic-ref -q --short HEAD 2>/dev/null
-}
-
-___tea_ui_mutual() {
-    local tmp="$1"
-    shift 1
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
-        ENFORCE_JSON=1 "$@"
+# Section: tea util
+# NOTE: remove prefix: _host_tmp="${_host_tmp#*'://'}";
+___x_cmd_tea___get_web_host(){
+    local _host_tmp=""
+    if _host_tmp="$(___x_cmd_tea_config_get host 2>/dev/null)"; then
+        printf "%s" "${_host_tmp%'/api/'*}"
     else
-        # run ui table
-        eval "$tmp"
+        printf "%s" "https://gitea.com"
     fi
-    local ___tea_exit_code="$?"
-    [ "$___tea_exit_code" -eq 0 ] || {
-        ___x_cmd_ui_tf false "${___tea_error_msg:-"Couldn't find any data"}" ;
-        return "$___tea_exit_code"
-    }
-}
-
-_____x_cmd_tea_advise() {
-    _____x_cmd_tea_advise_parse "$@" | x jo .\* .login | x ja '{printf("%s ", $0)}'
-}
-
-_____x_cmd_tea_advise_parse() {
-    local op="$1"
-    case "$op" in
-        orgls) x ccmd 1d -- x tea org ls 2>/dev/null;;
-    esac
 }
 # EndSection

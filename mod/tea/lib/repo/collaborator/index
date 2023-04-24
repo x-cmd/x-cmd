@@ -21,12 +21,12 @@ ___x_cmd_tea_repo_collaborator() {
     return 1
 }
 # Section: List
-# https://try.gitea.io/api/swagger#/repository/repoListCollaborators
+# https://gitea.com/api/swagger#/repository/repoListCollaborators
 ___x_cmd_tea_repo_collaborator_ls() {
     param:scope  ___x_cmd_tea
     param:dsl '
 options:
-    --repo          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --repo|-r          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
     --limit         "Results per page"                                                  <>:Numbers="30"
     --page          "Page number of the results to fetch."                              <>:Numbers="1"
     --json|-j       "output json data"
@@ -34,119 +34,114 @@ options:
     param:run
     ___x_cmd_tea_param_init_owner_repo
 
-    ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Id=.id Name=.login Url=.html_url Role=.role_name -- $@' \
-        ___x_cmd_tea_get_multi "/repos/${owner_repo}/collaborators" limit page
+    # ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Id=.id Name=.login Url=.html_url Role=.role_name -- $@' \
+    #     ___x_cmd_tea_get_multi "/repos/${owner_repo}/collaborators" limit page
+    ___x_cmd_tea_get_multi "/repos/${owner_repo}/collaborators"
 }
 # EndSection
 
-# Section: Add & Rm
-#TODO:  UI
-# https://try.gitea.io/api/swagger#/repository/repoAddCollaborator
+# Section: Add
+# https://gitea.com/api/swagger#/repository/repoAddCollaborator
 ___x_cmd_tea_repo_collaborator_add() {
     param:scope  ___x_cmd_tea
     param:dsl '
 options:
-    --repo          "Provide owner_name/repo_name list separated by commas."    <>:MultipleRepoName
+    #1              "Username list separated by commas"                         <>
+    --repo|-r          "Provide owner_name/repo_name list separated by commas."    <>:MultipleRepoName
     --permission    "The permission to grant the collaborator."                 <>="push"     = pull triage push maintain admin
-    --name          "Username list separated by commas"                         <>:Username_multiple
 
     --json|-j       "output json data"
 '
     param:run
 
-    local tmpRepo="$repo"
-    local username="$name"
-    local source_username="$name"
-    # TODO:N to N && 1 TO N & N to 1
+    [ "$#" -ne 0 ] || M='accepts arg(s) (username), received empty' arg:ret:64
+    local _tmp_repo="$repo"
+    local _avt_name=""
     while true; do
-        repo="${tmpRepo%%,*}"
-        tmpRepo="${tmpRepo#*,}"
+        repo="${_tmp_repo%%,*}"
+        _tmp_repo="${_tmp_repo#*,}"
         ___x_cmd_tea_param_init_owner_repo
-        while true; do
-            name="${username%%,*}"
-            username="${username#*,}"
-            if ___x_cmd_tea_curl put  "/repos/$owner_repo/collaborators/${name##*/}" -- permission | ___x_cmd_tea____handle_no_content; then
-                ___x_cmd_ui_tf true "Add success"
-            else
-                ___x_cmd_ui_tf false "Add failure"
-            fi
-            [ "$name" = "$username" ] && {
-                username="$source_username"
-                break
-            }
+        for _avt_name in "$@"; do
+            ___x_cmd_tea____transform_avt_name || return
+            ___x_cmd_tea_curl put  "/repos/$owner_repo/collaborators/${_avt_name##*/}" -- permission | _____x_cmd_tea_collaborator_ui_utils Add
         done
-        [ "$repo" = "$tmpRepo" ] && return 0
+        [ "$repo" != "$_tmp_repo" ] || return 0
     done
 }
-#TODO:  204	APIEmpty is an empty response
+# EndSection
+
+# Section: Edit
 ___x_cmd_tea_repo_collaborator_edit() {
     param:scope  ___x_cmd_tea
     param:dsl '
 options:
-    --repo          "Provide owner_name/repo_name list separated by commas."    <>:MultipleRepoName
+    #1              "Username"                                                  <>
+    --repo|-r          "Provide owner_name/repo_name list separated by commas."    <>:MultipleRepoName
     --permission    "The permission to grant the collaborator."                 <>="push"     = pull triage push maintain admin
-    --name          "Username"                                                  <>:Username_multiple
 
     --json|-j       "output json data"
 '
     param:run
 
+    [ -n "$1" ] || M='accepts 1 arg (username), received empty' arg:ret:64
+    local _avt_name="$1"
+    ___x_cmd_tea____transform_avt_name || return
     ___x_cmd_tea_param_init_owner_repo
-    ___x_cmd_tea_curl put  "/repos/$owner_repo/collaborators/${name##*/}" -- permission | (
-        _____x_cmd_tea_collaborator_ui_utils Edit
-    )
+    ___x_cmd_tea_curl put  "/repos/$owner_repo/collaborators/${_avt_name##*/}" -- permission | _____x_cmd_tea_collaborator_ui_utils Modify
 }
+# EndSection
 
-# https://try.gitea.io/api/swagger#/repository/repoDeleteCollaborator
-# TODO: UI
+# Section: Remove
+# https://gitea.com/api/swagger#/repository/repoDeleteCollaborator
 ___x_cmd_tea_repo_collaborator_rm() {
     param:scope  ___x_cmd_tea
     param:dsl '
 options:
-    --repo      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
     #1          "Username list"
+    --repo|-r      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
     --yes|-y    "Ignore remove prompt interception"
 '
     param:run
 
     ___x_cmd_tea_param_init_owner_repo
-    local username
-    for username in "$@"; do
-        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove user: $(___x_cmd_ui bold red "$username") ?" || continue
-        if ___x_cmd_tea_curl delete "/repos/$owner_repo/collaborators/${username##*/}" | ___x_cmd_tea____handle_no_content; then
-            ___x_cmd_ui_tf true "Remove success"
-        else
-            ___x_cmd_ui_tf false "Remove success"
-        fi
+    local _avt_name=""
+    for _avt_name in "$@"; do
+        ___x_cmd_tea____transform_avt_name || return
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove user: $(___x_cmd_ui bold red "${_avt_name##*/}") ?" || continue
+        ___x_cmd_tea_curl delete "/repos/$owner_repo/collaborators/${_avt_name##*/}" | _____x_cmd_tea_collaborator_ui_utils Remove
     done
 }
 # EndSection
 
 # Section: collaborator ui utils
-_____x_cmd_tea_collaborator_ui_utils()(
-    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+_____x_cmd_tea_collaborator_ui_utils(){
+    if [ -n "$___X_CMD_TEA_IN_TEST" ]; then
         cat
-        ___x_cmd_tea_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Add|Edit)
-            data="repo=.repository.full_name permissions=.permissions"
-            msg="$1 repo user success"
-            error_msg="Failed to $1 repo user"
-            ;;
-    esac
-    eval x jo env . id=.id tea_resp_err=.message "$data"
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "$msg"  ${repo+"Repo: $repo"}  ${permissions+"Permissions: $permissions"}
-    else
-        ___x_cmd_ui_tf false "$error_msg"
-        ___x_cmd_tea____handle_resp
-        return 1
-    fi
-)
+    (
+        case "$1" in
+            Add)
+                _inf_msg="[Success]: $1 $_avt_name user to $owner_repo repo"
+                _err_msg="$1 $_avt_name user to $owner_repo repo failure:"
+                ;;
+            Modify)
+                _inf_msg="[Success]: $1 $_avt_name user to $permission permission on $owner_repo repo"
+                _err_msg="$1 $_avt_name user to $permission permission on $owner_repo repo failure:"
+                ;;
+            Remove)
+                _inf_msg="[Success]: $1 $_avt_name user from $owner_repo repo"
+                _err_msg="$1 $_avt_name user from $owner_repo repo failure:"
+                ;;
+        esac
+        x jo env . tea_resp_msg=.message tea_resp_err=.errors
+        if ___x_cmd_tea_http_error 2>/dev/null; then
+            ___x_cmd_ui_tf  true "$_inf_msg"
+        else
+            ___x_cmd_ui_tf false "$_err_msg" >&2
+            ___x_cmd_tea____handle_resp
+            return 1
+        fi
+    )
+}
 # EndSection

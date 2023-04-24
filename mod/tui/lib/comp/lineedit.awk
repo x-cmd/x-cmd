@@ -7,7 +7,8 @@ function comp_lineedit_init( o, kp, val, w) {
 }
 
 function comp_lineedit_width(o, kp, w){
-    return ctrl_stredit_width_set(o, kp, w)
+    if (w == "")    return ctrl_stredit_width_get(o, kp)
+    else            return ctrl_stredit_width_set(o, kp, w)
 }
 
 function comp_lineedit_handle( o, kp, char_value, char_name, char_type,       d ) {
@@ -25,29 +26,15 @@ function comp_lineedit_handle( o, kp, char_value, char_name, char_type,       d 
 }
 
 function comp_lineedit_change_set( o, kp ){
-    change_set(o, kp, "lineedit")
+    draw_lineedit_change_set( o, kp )
 }
 
-function comp_lineedit_paint( o, kp, x1, x2, y1, y2 ){
-    return comp_lineedit___paint_with_cursor(o, kp, x1, y1, y2)
-}
-
-function comp_lineedit___paint_with_cursor(o, kp, x1, y1, y2,       s, i, b, lv, rv, l, _str){
-    if ( ! change_is(o, kp, "lineedit") ) return
-    change_unset(o, kp, "lineedit")
-
-    s = comp_lineedit_get(o, kp)
-    i = comp_lineedit___curpos(o, kp)
-    b = ctrl_stredit_border_left_get( o, kp )
-    lv = substr(s, b+1, i-b)
-    rv = substr( wcstruncate_cache(  substr(s, b+1), ctrl_stredit_width_get( o, kp )-1 ), i-b+1 )
-
-    if (rv == "") _str = lv th(TH_CURSOR, " ")
-    else {
-        l = ctrl_stredit_nextfont_width(rv)
-        _str = lv th( TH_CURSOR, substr(rv, 1, l) ) substr(rv, l+1)
-    }
-    return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) _str
+function comp_lineedit_paint( o, kp, x1, x2, y1, y2,        _opt ){
+    opt_set( _opt, "line.text",     comp_lineedit_get(o, kp) )
+    opt_set( _opt, "line.width",    comp_lineedit_width(o, kp) )
+    opt_set( _opt, "cursor.pos",    comp_lineedit___cursor_pos(o, kp) )
+    opt_set( _opt, "start.pos",     comp_lineedit___start_pos(o, kp) )
+    return draw_lineedit_paint( o, kp, x1, x2, y1, y2, _opt )
 }
 
 # Section: private
@@ -65,19 +52,23 @@ function comp_lineedit_clear( o, kp ) {
     comp_lineedit_put( o, kp, "" )
 }
 
-function comp_lineedit___curpos(o, kp) {
-    return ctrl_stredit_curpos(o, kp)
+function comp_lineedit___cursor_pos(o, kp) {
+    return ctrl_stredit_cursor_pos(o, kp)
+}
+
+function comp_lineedit___start_pos(o, kp) {
+    return ctrl_stredit_start_pos(o, kp)
 }
 
 function comp_lineedit___get_cursor_left_value(o, kp,        v, p){
     v = comp_lineedit_get(o, kp)
-    p = comp_lineedit___curpos(o, kp)
+    p = comp_lineedit___cursor_pos(o, kp)
     return substr(v, 1, p-1)
 }
 
 function comp_lineedit___get_cursor_right_value(o, kp,        v, p){
     v = comp_lineedit_get(o, kp)
-    p = comp_lineedit___curpos(o, kp)
+    p = comp_lineedit___cursor_pos(o, kp)
     return substr(v, p)
 }
 

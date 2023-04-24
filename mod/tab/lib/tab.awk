@@ -2,16 +2,19 @@
 BEGIN {
     MAX_INT = 4294967295
     STREAM_MODE = 1
-    SEP1="    "
-    SEP2="\n"
+
+    TAB_SEP1 = SEP1 = "    "
+    TAB_SEP2 = SEP2 = "\n"
 }
 
+# TODO: seq_init_data
 function tab_set_sep( obj, idx, start, end, sep ){
     obj[ idx "S" ] = start = ( start != "") ? start : 1
     obj[ idx "E" ] = end = ( end != "" ) ? end : MAX_INT
     obj[ idx "P" ] = ( sep != "" ) ? sep : ( ((start > end) && ( end > 0 )) ? -1 : 1 )
 }
 
+# TODO: seq_init
 function handle( astr, obj, idx,    arr, arrl ){
     arrl = split(astr, arr, ":")
     if (arrl == 1)          tab_set_sep( obj, idx, arr[1], arr[1], 1 )
@@ -27,6 +30,8 @@ BEGIN{
         rowl = split(ROW, row, ",")
         for (i=1; i<=rowl; ++i){
             handle( row[i], row, i )
+            # TODO: There should be no empty for row[ "S" ] and  row[ "P" ]
+            # STREAM_MODE = seq_canstream( row[i "S"], row[i "E"], row[i "P"] )
             if ( (row[i "E"] != "") && (row[i "E"] < 0) )  STREAM_MODE = 0
             if ( (row[i "P"] != "") && (row[i "P"] < 0) )  STREAM_MODE = 0
         }
@@ -52,6 +57,9 @@ function handle_column_by_rule(linedata,        i, j, _first, _start, _end, _sep
         _end     = col[ i "E" ]
         _sep     = col[ i "P" ]
         if (_end < 0 ) _end = NF + _end + 1
+
+        # TODO:
+        # if ((_sep < 0) && (_start > _end))
         for (j=_start; (((_sep < 0) && (_start > _end)) ? j>=_end : j<=_end ) && j<=NF; j+=_sep){
             if (_add_comma == 0){
                 _add_comma=1;       printf("%s", $j)
@@ -89,6 +97,8 @@ END{
 
     for (i=1; i<=rowl; ++i)     if ( (row_end = row[ i "E" ]) < 0 )    row[ i "E" ] = row_end + NR + 1
 
+    # TODO:
+    # if ((_sep < 0) && (_start > _end))
 
     # for (j=1; j<=NR; ++j) handle_row_by_rule( j, data[ j ] )
     if ( (row[i "P"] > 0) || (row_end < 0) ) for (j=1; j<=NR; ++j) handle_row_by_rule( j, data[ j ] )

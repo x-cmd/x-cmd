@@ -75,7 +75,7 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
             j = parse_args_to_env___option( obj, obj_prefix, args, argl, arg, i, genv_table, lenv_table )
             if (j > argl) return true       # Not Running at all
             else if (j !=0) { i = j; continue }
-            else break
+            else { i = i - 1; break; }
         } else if (arg ~ /^-/) {
             j = parse_args_to_env___option( obj, obj_prefix, args, argl, arg, i, genv_table, lenv_table )
 

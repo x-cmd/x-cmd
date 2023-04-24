@@ -154,23 +154,59 @@ function csv_unquote( e ){
     return e
 }
 
-function csv_dump( o, kp ){
-    return csv_tostr( o, kp )
+function csv_dump( o, kp, seqstr, col_seqstr ){
+    return csv_tostr( o, kp, seqstr, col_seqstr )
 }
 
-function csv_tostr( o, kp,         r, c, i, j, t, _res ){
-    r = o[ kp L ]; c = o[ kp L L ]
-    for (i=1; i<=r; ++i) {
-        t = csv_dump_row( o, kp, i )
-        _res = (_res == "") ? t : (_res "\n" t)
+function csv_tostr( o, kp, seqstr, col_seqstr,       \
+    r, c, i, j, t, _res, _start, _step, _end, _col_start, _col_step, _col_end, seqarr ){
+
+    if (seqstr == "") {
+        _start = 1
+        _end = o[ kp L ]
+        _step = 1
+    } else {
+        seq_init(seqstr, seqarr, "row")
+        _start = seqarr[ "row" "S" ]
+        _step  = seqarr[ "row" "P" ]
+        _end   = seqarr[ "row" "E" ]
+        if (_end > o[ kp L ]) _end = o[ kp L ]
+    }
+
+    if (col_seqstr == "") {
+        _col_start = 1
+        _col_end = o[ kp L ]
+        _col_step = 1
+    } else {
+        seq_init(seqstr, seqarr, "col")
+        _col_start = seqarr[ "col" "S" ]
+        _col_step  = seqarr[ "col" "P" ]
+        _col_end   = seqarr[ "col" "E" ]
+        if (_col_end > o[ kp L ]) _col_end = o[ kp L L ]
+    }
+
+    if (_step > 0) {
+        for (i=_start; i<=_end; i+=_step) {
+            t = csv_dump_row( o, kp, i, _col_start, _col_step, _col_end )
+            _res = (_res == "") ? t : (_res "\n" t)
+        }
+    } else {
+        for (i=_start; i>=_end; i+=_step) {
+            t = csv_dump_row( o, kp, i, _col_start, _col_step, _col_end )
+            _res = (_res == "") ? t : (_res "\n" t)
+        }
     }
     return _res
 }
 
-function csv_dump_row( o, kp, i,     c, j, _res ){
-    c = o[ kp L L ]
-    for (j=1; j<=c; ++j)
-        _res = ((_res == "") ? "" : _res "," ) csv_quote_ifmust(o[ kp, i, j ])
+function csv_dump_row( o, kp, i, _col_start, _col_step, _col_end,    j, _res ){
+    if (_col_step > 0) {
+        for (j=_col_start; j<=_col_end; j+=_col_step)
+            _res = ((_res == "") ? "" : _res "," ) csv_quote_ifmust(o[ kp, i, j ])
+    } else {
+        for (j=_col_start; j>=_col_end; j+=_col_step)
+            _res = ((_res == "") ? "" : _res "," ) csv_quote_ifmust(o[ kp, i, j ])
+    }
     return _res
 }
 

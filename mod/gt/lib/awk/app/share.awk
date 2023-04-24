@@ -3,13 +3,13 @@ function TABLE_add( name ) {     return comp_table_head_add(o, TABLE_KP, name); 
 
 function user_datamodel_refill(         r){
     if (! lock_unlocked( o, TABLE_KP )) return
-    if ( (r = comp_table_get_unava(o, TABLE_KP)) != "" ) {     # comp_table_paint_data_is_inavailable( o, TABLE_KP )
+    if ( (r = comp_table_unava(o, TABLE_KP)) != "" ) {     # comp_table_paint_data_is_inavailable( o, TABLE_KP )
         user_datamodel_request_page( o, TABLE_KP, r )
     } else {
         if (comp_table_model_fulldata_mode_is_ontheway( o, TABLE_KP )) {
             r = comp_table_get_the_first_unava(o, TABLE_KP)     # Get the first unavailable
             if ( r != "" ) user_datamodel_request_page( o, TABLE_KP, r )
-            else comp_table_model_fulldata_mode_set(o, TABLE_KP, FULLDATA_MODE_TRUE)
+            else comp_table_model_fulldata_mode(o, TABLE_KP, FULLDATA_MODE_TRUE)
         }
     }
 }
@@ -54,7 +54,7 @@ function tapp_handle_response( fp,      _content, _start ){
     _content = cat( fp )
     if ( match( _content, "^data:total_count:[0-9]+") ) {
         gsub("^.+:.+:", "", _content)
-        comp_table_model_maxrow_set(o, TABLE_KP, int(_content))
+        comp_table_model_maxrow(o, TABLE_KP, int(_content))
         comp_table_model_end(o, TABLE_KP)
         lock_release( o, TABLE_KP )
         return
@@ -91,7 +91,7 @@ function tapp_handle_wchar( value, name, type ){
         else if (value == "/")       {
             ctrl_sw_toggle( o, TABLE_KP)
             comp_table_change_set_all( o, TABLE_KP )
-            if ( ! comp_table_model_isfulldata(o, TABLE_KP) ) comp_table_model_fulldata_mode_set( o, TABLE_KP, FULLDATA_MODE_ONTHEWAY )
+            if ( ! comp_table_model_isfulldata(o, TABLE_KP) ) comp_table_model_fulldata_mode( o, TABLE_KP, FULLDATA_MODE_ONTHEWAY )
         }
         else if (comp_statusline_handle(o, TAB_STATUSLINE_KP, value, name, type )) return comp_statusline_data_set_long(o, TAB_STATUSLINE_KP, "CURRENT INFO", comp_table_get_cur_line(o, TABLE_KP))
         else if (name == U8WC_NAME_CARRIAGE_RETURN)     exit_with_elegant("ENTER")

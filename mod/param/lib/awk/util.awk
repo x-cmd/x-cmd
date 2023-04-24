@@ -1,14 +1,3 @@
-BEGIN {
-    false = 0;  true = 1
-    # L-EN   ="len"
-    # K-SEP  = "\034"
-
-    S = SUBSEP # "\001"
-    T = "\002"
-    L = "\003"
-
-    EXIT_CODE = 0
-}
 
 # Section: panic and debug and exit
 
@@ -20,17 +9,6 @@ BEGIN{
         FG_YELLOW     = "\033[33m"
         UI_END        = "\033[0m"
     }
-}
-
-
-function exit_now(code){
-    EXIT_CODE = code
-    exit code
-}
-
-function exit_print(exit_code){
-    print "return " exit_code " 2>/dev/null || exit " exit_code
-    exit_now( exit_code )
 }
 
 function panic_error(msg){
@@ -78,10 +56,6 @@ function panic_required_value_error(option_id) {
 
 function panic_required_value_error_msg(option_id) {
     return ("Option require value, but none was supplied: '" FG_YELLOW get_option_string(option_id) UI_END "'")
-}
-
-function debug(msg){
-    print FG_RED msg UI_END > "/dev/stderr"
 }
 
 # EndSection

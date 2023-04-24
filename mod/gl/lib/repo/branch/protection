@@ -1,0 +1,140 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+# https://docs.gitlab.com/ee/api/protected_branches.html
+___x_cmd_gl_repo_branch_protection(){
+    param:subcmd ___x_cmd_gl_repo_branch_protection \
+        "info|i"            "protection branch info"            \
+        "ls|l"              "protection branch list"            \
+        unset               "remove branch protection"          \
+        set                 "set branch to protection branch"
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_gl_repo_branch_protection _param_help_doc
+    return 1
+}
+
+# Section: ls
+# https://docs.gitlab.com/ee/api/protected_branches.html#list-protected-branches
+___x_cmd_gl_repo_branch_protection_ls(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --repo|-r   "The ID or URL-encoded path of the repo."                        <>:RepoName
+    --search    "Name or part of the name of protected branches to be searched for" <>=""
+
+    --json|-j   "output json data"
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_repo
+    if [ -n "$json" ]  || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/projects/$owner_repo/protected_branches" search
+    else
+        ___x_cmd_gl_curl get "/projects/$owner_repo/protected_branches" search | \
+            x jo 2c             .name .allow_force_push .code_owner_approval_required | \
+            x csv header --add   Name  AllowForcePush    CodeOwnerApprovalRequired    | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: info
+# https://docs.gitlab.com/ee/api/protected_branches.html#get-a-single-protected-branch-or-wildcard-protected-branch
+___x_cmd_gl_repo_branch_protection_info(){
+    param:dsl       '
+options:
+    #1          "branch name"                                   <>
+    --repo|-r   "The ID or URL-encoded path of the repo."    <>:RepoName
+
+    --json|-j   "output json data"
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_repo
+    ___x_cmd_gl_curl get "/projects/${owner_repo}/protected_branches/$1" | _____x_cmd_gl_branch_protection_ui_utils Info
+}
+# EndSection
+
+# Section: set
+# https://docs.gitlab.com/ee/api/protected_branches.html#update-a-protected-branch
+___x_cmd_gl_repo_branch_protection_set(){
+    param:dsl       '
+options:
+    #1              "branch name"                                                   <>:Branch
+    --repo|-r       "The ID or URL-encoded path of the repo."                    <>:RepoName
+
+    --push_access_level         "Access levels allowed to push (defaults: 40)"      <>:Number=""
+    --merge_access_level        "Access levels allowed to merge (defaults: 40)"     <>:Number=""
+    --unprotect_access_level    "Access levels allowed to unprotect (defaults: 40)" <>:Number=""
+    --allow_force_push          "Allow all users with push access to force push."   <>:Boolean=""
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    local name="$1"
+    local gen_gl_json
+    gen_gl_json="$(param:option2json +name)"
+    gl:debug "$gen_gl_json"
+
+    ___x_cmd_gl_param_init_owner_repo
+    ___x_cmd_gl_curl post "/projects/${owner_repo}/protected_branches" "gen_gl_json" | _____x_cmd_gl_branch_protection_ui_utils Set
+}
+# EndSection
+
+# https://docs.gitlab.com/ee/api/protected_branches.html#unprotect-repository-branches
+___x_cmd_gl_repo_branch_protection_unset(){
+    param:dsl       '
+options:
+    #1          "branch name"                                   <>
+    --repo|-r   "The ID or URL-encoded path of the repo."    <>:RepoName
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_repo
+    ___x_cmd_gl_curl del "/projects/$owner_repo/protected_branches/$1"| (
+        x jo env . gl_resp_err=.error gl_resp_msg=.message
+        if ___x_cmd_gl_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Unset ${1} branch protection"
+        else
+            ___x_cmd_ui_tf false "Unset ${1} branch protection failure:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+
+# Section: utils
+_____x_cmd_gl_branch_protection_ui_utils(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gl_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Info)
+                _inf_msg="Getting repo $repo protection branch info successfully"
+                _err_msg="Getting repo $repo protection branch info failure"
+                ;;
+            Set)
+                _inf_msg="set protection branch successfully"
+                _err_msg="set protection branch failure."
+                ;;
+        esac
+        local _name=""
+        x jo env . _name=.name gl_resp_err=.error gl_resp_msg=.message \
+            Allow_Force_Push=.allow_force_push Code_Owner_Approval_Required=.code_owner_approval_required
+        if [ -n "$_name" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:"  ${_name:+"Name: $_name"} ${Allow_Force_Push:+"Allow_Force_Push: $Allow_Force_Push"} \
+                ${Code_Owner_Approval_Required:+"Code_Owner_Approval_Required: $Code_Owner_Approval_Required"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

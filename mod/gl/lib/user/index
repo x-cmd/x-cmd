@@ -4,7 +4,7 @@
 ___x_cmd_gl_user(){
     param:scope     ___x_cmd_gl
     param:subcmd ___x_cmd_gl_user               \
-        info        "Show user information"      \
+        "info|i"        "Show user information"      \
         email       "Get current user email"    \
         issue       "List all issues"
     param:subcmd:try
@@ -23,26 +23,24 @@ ___x_cmd_gl_user_info(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-    #1              "user login path or user id(use --id flag)"            <>=""
-    --id            "Use user id"
+    #1              "<user_login_path> or .id=<user_id>"            <>=""
     --json|-j       "output json data"
 '
     param:run
 
-    local url
-    if [ -z "$1" ]; then
-        url="/user"
-    elif [ -n "$id" ]; then
-        url="/users/$1"
-    else
-        # shellcheck disable=2034
-         local username="$1"
-        ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id Name=.username Url=.web_url State=.state -- $@' \
-        ___x_cmd_gl_curl get "/users" username
-        return
-    fi
+    local _url=""
+    case $1 in
+        "")
+            _url="/user"
+            ;;
+        *)
+            local _avt_name="${1}"
+            ___x_cmd_gl____transform_avt_name || return
+            _url="/users/$_avt_name"
+            ;;
+    esac
 
-    ___x_cmd_gl_curl get "$url" | ___x_cmd_gl_user_info_json_status_handler
+    ___x_cmd_gl_curl get "$_url" | ___x_cmd_gl_user_info_json_status_handler
 }
 
 # shellcheck disable=2154
@@ -52,11 +50,12 @@ ___x_cmd_gl_user_info_json_status_handler(){
         return
     fi
     (
-        x jo env . _id=.id name=.username email=.email web_url=.web_url state=.state gl_resp_err=.error gl_resp_err=.message
+        local _id=""
+        x jo env . _id=.id name=.username email=.email web_url=.web_url state=.state gl_resp_err=.error gl_resp_msg=.message
         if [ -n "$_id" ]; then
-            ___x_cmd_ui_tf true "get user info success" "ID: $_id" "Name: $name" "Email: $email" "State: $state" "Url: $web_url"
+            ___x_cmd_ui_tf  true "Getting user info successfully:" "ID: $_id" "Name: $name" "Email: $email" "State: $state" "Url: $web_url"
         else
-            ___x_cmd_ui_tf false "get user info fail"
+            ___x_cmd_ui_tf false "Getting user info failure:"
             ___x_cmd_gl____handle_resp
             return 1
         fi
@@ -71,51 +70,12 @@ options:
     --json|-j       "output json data"
 '
     param:run
-    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id Email=.email Confirmed_at=.confirmed_at -- $@' \
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gl_curl get "/user/emails"
+    else
+        ___x_cmd_gl_curl get "/user/emails" | \
+            x jo 2c             .id .email .confirmed_at | \
+            x csv header --add   ID  Email  Confirmed_at | \
+            x csv static_tab
+    fi
 }
-
-# Section: list user issue
-# https://docs.gitlab.com/ee/api/users.html#list-current-user
-___x_cmd_gl_user_issue(){
-    param:scope     ___x_cmd_gl
-    param:dsl       '
-options:
-    --assignee_id           "Return issues assigned to the given user id."                                                                                                                              <>:Number=""
-    --assignee_username     "Return issues assigned to the given username."                                                                                                                             <>:array=""
-    --author_id             "Return issues created by the given user id."                                                                                                                               <>:Number=""
-    --author_username       "Return issues created by the given username."                                                                                                                              <>=""
-    --confidential          "Filter confidential or public issues."
-    --created_after         "Return issues created on or after the given time. Expected in ISO 8601 format"                                                                                             <>:datetime=""
-    --created_before        "Return issues created on or before the given time."                                                                                                                        <>:datetime=""
-    --due_date              "Return issues that have no due date,are overdue,or whose due date is this week,this month,or between two weeks ago and next month"                                         <>=""
-    --epic_id               "Return issues associated with the given epic ID."                                                                                                                          <>:Number=""
-    --iids                  "Return only the issues having the given iid"                                                                                                                               <>:array=""
-    --in                    "Modify the scope of the search attribute. title, description, or a string joining them with comma. Default is title,description"                                           <>=""
-    --issue_type            "Filter to a given type of issue."                                                                                                                                          <>=""
-    --iteration_id          "Return issues assigned to the given iteration ID."                                                                                                                         <>:Number=""
-    --iteration_title       "Return issues assigned to the iteration with the given title."                                                                                                             <>=""
-    --labels                "Comma-separated list of label names, issues must have all labels to be returned. "                                                                                         <>=""
-    --milestone             "The milestone title. "                                                                                                                                                     <>=""
-    --milestone_id          "Returns issues assigned to milestones with a given timebox value."                                                                                                         <>=""
-    --my_reaction_emoji     "Return issues reacted by the authenticated user by the given emoji. "                                                                                                      <>=""
-    --non_archived          "Return issues only from non-archived projects."
-    --not                   "Return issues that do not match the parameters supplied. "                                                                                                                 <>:hash=""
-    --order_by              "Return issues ordered by created_at,due_date,label_priority,milestone_due,popularity,priority,relative_position,title, updated_at,or weight fields.Default is created_at"  <>=""
-    --scope                 "Return issues for the given scope."                                                                                                                                        <>=""
-    --sort                  "Return issues sorted in asc or desc order. Default is desc"                                                                                                                <>=""
-    --search                "Search issues against their title and description"                                                                                                                         <>=""
-    --state                 "Return all issues or just those that are opened or closed"                                                                                                                 <>=""
-    --updated_after         "Return issues updated on or after the given time."                                                                                                                         <>:datetime=""
-    --updated_before        "Return issues updated on or before the given time."                                                                                                                        <>:datetime=""
-    --weight                "Return issues with the specified weight."                                                                                                                                  <>:Number=""
-    --with_labels_details   "If true, the response returns more details for each label in labels field: :name, :color, :description, :description_html,:text_color.Default is false."
-    --json|-j               "output json data"
-'
-    param:run
-
-    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id iid=.iid project_id=.project_id title=.title state=.state web_url=.web_url -- $@' \
-        ___x_cmd_gl_get_multi "/issues" sort order_by search state
-}
-
-# EndSection

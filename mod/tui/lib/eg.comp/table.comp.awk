@@ -1,8 +1,9 @@
 # Section: table init
 function table_init(o, kp){
-    table_datamodel_request_page(o, kp, 1)
     table_datamodel_request_page_count()
+    table_datamodel_request_page(o, kp, 1)
     comp_table_init(o, kp)
+    comp_table_model_fulldata_mode( o, kp, FULLDATA_MODE_ONTHEWAY )
 }
 
 function table_statusline_init(o, kp){
@@ -46,9 +47,7 @@ function table_statusline_add( o, kp, v, s, l,          i ){
 
 # Section: handle_wchar,table_handle_wchar
 function table_handle_wchar( o, kp, value, name, type,            _has_no_handle ){
-    if (name == U8WC_NAME_END_OF_TEXT)                      exit(0)
-    else if (name == U8WC_NAME_END_OF_TRANSIMISSION)        exit(0)
-
+    comp_handle_exit( value, name, type )
     if (comp_statusline_isfullscreen(o, kp SUBSEP "statusline")){
         if (! comp_statusline_handle( o, kp SUBSEP "statusline", value, name, type ) ) _has_no_handle = true
         if (! comp_statusline_isfullscreen(o, kp SUBSEP "statusline")) table_change_set_all( o, kp )
@@ -59,7 +58,7 @@ function table_handle_wchar( o, kp, value, name, type,            _has_no_handle
         else if (value == "/"){
             ctrl_sw_toggle( o, kp)
             table_change_set_all( o, kp )
-            if ( ! comp_table_model_isfulldata(o, kp) )     comp_table_model_fulldata_mode_set( o, kp, FULLDATA_MODE_ONTHEWAY )
+            if ( ! comp_table_model_isfulldata(o, kp) )     comp_table_model_fulldata_mode( o, kp, FULLDATA_MODE_ONTHEWAY )
         }
         else _has_no_handle = true
 
@@ -97,13 +96,13 @@ function table_paint(o, kp, x1, x2, y1, y2, has_change_canvas,        _res, r ){
 # Section: user controller: tapp_handle_response --- request data
 function table_datamodel_refill(o, kp,         r){
     if (! lock_unlocked( o, kp )) return
-    if ( (r = comp_table_get_unava(o, kp)) != "" ) {     # comp_table_paint_data_is_inavailable( o, kp )
+    if ( (r = comp_table_unava(o, kp)) != -1 ) {     # comp_table_paint_data_is_inavailable( o, kp )
         table_datamodel_request_page( o, kp, r )
     } else {
         if (comp_table_model_fulldata_mode_is_ontheway( o, kp )) {
             r = comp_table_get_the_first_unava(o, kp)     # Get the first unavailable
             if ( r != "" ) table_datamodel_request_page( o, kp, r )
-            else comp_table_model_fulldata_mode_set(o, kp, FULLDATA_MODE_TRUE)
+            else comp_table_model_fulldata_mode(o, kp, FULLDATA_MODE_TRUE)
         }
     }
 }
@@ -121,7 +120,7 @@ function table_datamodel_request_page_count(){
 function table_handle_response( o, kp, content,             _start ){
     if ( match( content, "^data:total_count:[0-9]+") ) {
         gsub("^.+:.+:", "", content)
-        comp_table_model_maxrow_set(o, kp, int(content))
+        comp_table_model_maxrow(o, kp, int(content))
         comp_table_model_end(o, kp)
         lock_release( o, kp )
         return true

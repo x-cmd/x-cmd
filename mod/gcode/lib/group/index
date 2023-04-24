@@ -11,8 +11,9 @@ ___x_cmd_gcode_group(){
         "edit|ed"               "Update group"               \
         rm                      "Remove group"               \
         member                  "group member manage"        \
-        repo                    "group repo mange"        \
-        issue                   "group issue list"
+        repo                    "group repo mange"           \
+        issue                   "List group issue"           \
+        mr                      "List group merge request"
     param:subcmd:try
     param:run
 
@@ -73,7 +74,7 @@ options:
     param:run
     [ -n "$1" ] || M='accepts arg (<group_path> or .id=<group_id>), received empty' arg:ret:64
     local _avt_group="$1"
-    ___x_cmd_gcode_avatar____transform_avt_group || return
+    ___x_cmd_gcode____transform_avt_group || return
     ___x_cmd_gcode_curl get "/groups/$_avt_group" | _____x_cmd_group_ui_utils Info
 }
 # EndSection
@@ -123,7 +124,7 @@ options:
     param:run
     [ -n "$1" ] || M='accepts arg (<group_path> or .id=<group_id>), received empty' arg:ret:64
     local _avt_group="$1"
-    ___x_cmd_gcode_avatar____transform_avt_group || return
+    ___x_cmd_gcode____transform_avt_group || return
 
     local gen_gcode_json
     gen_gcode_json="$(param:option2json -p ${p:+"path=p"})"
@@ -148,7 +149,7 @@ options:
 
     local _avt_group=""
     for _avt_group in "$@"; do
-        ___x_cmd_gcode_avatar____transform_avt_group || return
+        ___x_cmd_gcode____transform_avt_group || return
         [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure groups to remove: $(___x_cmd_ui bold red "$_avt_group") ?" || continue
         ___x_cmd_gcode_curl del "/groups/$_avt_group" | (
             x jo env . gcode_resp_err=.error gcode_resp_msg=.message
@@ -162,132 +163,6 @@ options:
         )
     done
 }
-# EndSection
-
-# http://localhost:4000/13.7/ee/api/groups.html
-___x_cmd_gcode_subgroup(){
-    param:scope  ___x_cmd_gcode
-    param:subcmd ___x_cmd_gcode_subgroup                   \
-        "ls|l"                      "List all subgroups"       \
-        "create|c"                  "Create subgroups"
-    param:subcmd:try
-    param:run
-
-    ___x_cmd_gcode_subgroup _param_help_doc
-    return 1
-}
-
-# Section: List
-# http://localhost:4000/13.7/ee/api/groups.html#list-a-groups-subgroups
-___x_cmd_gcode_subgroup_ls(){
-    param:scope     ___x_cmd_gcode
-    param:dsl       '
-type:
-    order_by = name path id
-    sort = asc desc
-options:
-    #1                          "<group_id> or /<group_path>"                                               <>
-    --sort                      "Order groups in asc or desc order."                                        <>=""
-    --search                    "Return the list of authorized groups matching the search criteria"         <>=""
-    --order_by                  "Order groups by name, path or id. Default is name"                         <>=""
-    --skip_groups               "Skip the group IDs passed"                                                 <>=""
-    --min_access_level          "Limit to groups where current user has at least this access level"         <>:Number=""
-    --owned                     "Limit to groups explicitly owned by the current user"
-    --statistics                "Include group statistics (admins only)"
-    --all_available             "Show all the groups you have access to"
-    --with_custom_attributes    "Include custom attributes in response (admins only)"
-
-    --json|-j                   "output json data"
-'
-    param:run
-    [ -n "$1" ] || M='accepts arg (<group_id> or /<group_path>), received empty' arg:ret:64
-    local _avt_group="$1"
-    ___x_cmd_gcode_avatar____transform_avt_group || return
-
-    if [ -n "$json" ]  || [ -n "$ENFORCE_JSON" ]; then
-        ___x_cmd_gcode_curl get "/groups/$_avt_group/subgroups" sort search order_by skip_groups min_access_level owned statistics all_available with_custom_attributes
-    else
-        ___x_cmd_gcode_curl get "/groups/$_avt_group/subgroups" sort search order_by skip_groups min_access_level owned statistics all_available with_custom_attributes | \
-            x jo 2c             .id .name .path .visibility .web_url | \
-            x csv header --add   ID  Name  Path  Visibility  URL     | \
-            x csv static_tab
-    fi
-}
-# EndSection
-
-# Section: Create
-# shellcheck disable=SC2181
-# TODO:On gcode SaaS, you must use the gcode UI to create groups without a parent group. You cannot use the API to do this.???
-# http://localhost:4000/13.7/ee/api/groups.html#new-subgroup
-___x_cmd_gcode_subgroup_create(){
-    param:scope     ___x_cmd_gcode
-    param:dsl       '
-options:
-    #1                  "subgroup name"                                 <>
-    --parent            "<parent_group_path> or .id=<parent_group_id>"  <>
-    -p|--path           "subgroup path(default subgroup name)"          <>=""
-    --json|-j           "output json data"
-'
-    param:run
-    [ -n "$1" ] || M='accepts arg (new subgroup name), received empty' arg:ret:64
-    local name="$1"
-
-    [ -n "$parent" ] || M='accepts option (--parent <parent_group_path> or .id=<parent_group_id>), received empty' arg:ret:64
-    local _avt_group="$parent"
-    ___x_cmd_gcode_avatar____transform_avt_group || return
-
-    [ -n "$p" ] || p="$name"
-
-    gen_gcode_json="$(param:option2json -p -parent +name  parent_id=_avt_group  path=p)"
-    gcode:debug "$gen_gcode_json"
-    ___x_cmd_gcode_curl post "/groups" "gen_gcode_json"| _____x_cmd_group_ui_utils Creating
-}
-# EndSection
-
-___x_cmd_gcode_group_repo(){
-    param:subcmd ___x_cmd_gcode_group_repo    \
-        ls          "list group repo"
-        # NOTE: project create --namespace_id <group_id>
-        # create      "groups project create"
-    param:subcmd:try
-    param:run
-
-    ___x_cmd_gcode_group_repo _param_help_doc
-    return 1
-}
-
-# Section: List
-# http://localhost:4000/13.7/ee/api/groups.html#list-a-groups-projects
-___x_cmd_gcode_group_repo_ls(){
-    param:scope     ___x_cmd_gcode
-    param:dsl       '
-options:
-    #1              "<group_path> or .id=<group_id>"    <>:Address
-    --page          "page"                              <>:NatureNumber=1
-    --per_page      "per_page"                          <>:NatureNumber=20
-    --visibility    "Limit by visibility"               <>=""
-    --archived      "Limit by archived status"
-
-    --json|-j       "output json data"
-'
-    param:run
-    [ -n "$1" ] || M='accepts arg (<group_path> or .id=<group_id>), received empty' arg:ret:64
-    local _avt_group="$1"
-    ___x_cmd_gcode_avatar____transform_avt_group || return
-
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        ___x_cmd_gcode_get_multi "/groups/$_avt_group/projects"  visibility archived
-    else
-        ___x_cmd_gcode_get_multi "/groups/$_avt_group/projects"  visibility archived | \
-            x jo 2c            .id .name .path .visibility .web_url | \
-            x csv header --add  ID  Name  Path  Visibility  URL     | \
-            x csv static_tab
-    fi
-}
-# EndSection
-
-# Section: Create
-
 # EndSection
 
 # Section: Group Issue List
@@ -330,7 +205,7 @@ options:
     param:run
     [ -n "$group" ] || M='accepts option --group (<group_path> or .id=<group_id>), received empty' arg:ret:64
     local _avt_group="$group"
-    ___x_cmd_gcode_avatar____transform_avt_group || return
+    ___x_cmd_gcode____transform_avt_group || return
 
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
         ___x_cmd_gcode_get_multi "/groups/$_avt_group/issues" sort order_by search state author_username milestone_id
@@ -338,6 +213,176 @@ options:
         ___x_cmd_gcode_get_multi "/groups/$_avt_group/issues" sort order_by search state author_username milestone_id |\
             x jo 2c           .id .iid          .project_id .title .state .web_url | \
             x csv header --add ID  ISSUE_Nubmer Repo_ID      Title  State  URL     | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Group Merge Request List
+# http://localhost:4000/13.7/ee/api/merge_requests.html#list-group-merge-requests
+___x_cmd_gcode_group_mr(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --group|-g                    "<group_path> or .id=<group_id>"                                                                                                              <>
+    --view                        "If simple, returns the iid, URL, title, description, and basic state of merge request."                                                      <>=""
+    --iids                        "Return the request having the given iid."                                                                                                    <>:array=""
+    --sort                        "Return requests sorted in asc or desc order."                                                                                                <>="desc"
+    --state                       "Return all merge requests or just those that are opened, closed, locked, or merged."                                                         <>=""
+    --scope                       "Return merge requests for the given scope: created_by_me, assigned_to_me or all."                                                            <>=""
+    --labels                      "Return merge requests matching a comma-separated list of labels."                                                                            <>=""
+    --search                      "Search merge requests against their title and description."                                                                                  <>=""
+    --order_by                    "Return requests ordered by created_at or updated_at fields"                                                                                  <>="created_at"
+    --milestone                   "Return merge requests for a specific milestone. "                                                                                            <>=""
+    --author_id                   "Return prs created by the given user id."                                                                                                    <>:Number=""
+    --assignee_id                 "Returns merge requests assigned to the given user id."                                                                                       <>:Number=""
+    --approver_ids                "Returns merge requests which have specified all the users with the given id as individual approvers."                                        <>:array=""
+    --non_archived                "Return merge requests from non archived projects only"                                                                                       <>:bole=""
+    --source_branch               "Return merge requests with the given source branch."                                                                                         <>=""
+    --target_branch               "Return merge requests with the given target branch."                                                                                         <>=""
+    --created_before              "Return merge requests created on or before the given time."                                                                                  <>:datetime=""
+    --created_after               "Return merge requests created on or after the given time. Expected in ISO 8601 format."                                                      <>:datetime=""
+    --updated_after               "Return prs updated on or after the given time."                                                                                              <>:datetime=""
+    --updated_before              "Return prs updated on or before the given time."                                                                                             <>:datetime=""
+    --approved_by_ids             "Returns merge requests which have been approved by all the users with the given id, with a maximum of 5. "                                   <>:array=""
+    --my_reaction_emoji           "Return merge requests reacted by the authenticated user by the given emoji. "                                                                <>=""
+    --author_username             "Return prs created by the given username."                                                                                                   <>=""
+    --with_labels_details         "If true, the response returns more details for each label in labels field: :name, :color, :description, :description_html,:text_color."      <>:bole="false"
+    --with_merge_status_recheck   "If true, the response returns more details for each label in labels field: :name, :color, :description, :description_html,:text_color."      <>:bole="false"
+    --page                        "page"                                                              <>:Per_page="1"
+    --per_page                    "per_page"                                                          <>:Numbers="30"
+    --json|-j                     "output json data"
+'
+    param:run
+    [ -n "$group" ] || M='accepts option --group (<group_path> or .id=<group_id>), received empty' arg:ret:64
+    local _avt_group="$group"
+    ___x_cmd_gcode____transform_avt_group || return
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gcode_get_multi "/groups/${_avt_group}/merge_requests" sort order_by search state labels source_branch target_branch
+    else
+        ___x_cmd_gcode_get_multi "/groups/${_avt_group}/merge_requests" sort order_by search state labels source_branch target_branch | \
+            x jo 2c             .id .iid .project_id .title .state .web_url | \
+            x csv header --add   ID  IID  Project_Id  Title  State  Url     | \
+            x csv static_tab
+    fi
+}
+
+# EndSection
+
+___x_cmd_gcode_subgroup(){
+    param:scope  ___x_cmd_gcode
+    param:subcmd ___x_cmd_gcode_subgroup                   \
+        "ls|l"                      "List all subgroups"       \
+        "create|c"                  "Create subgroups"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_subgroup _param_help_doc
+    return 1
+}
+
+# Section: List
+# http://localhost:4000/13.7/ee/api/groups.html#list-a-groups-subgroups
+___x_cmd_gcode_subgroup_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+type:
+    order_by = name path id
+    sort = asc desc
+options:
+    #1                          "<group_id> or /<group_path>"                                               <>
+    --sort                      "Order groups in asc or desc order."                                        <>=""
+    --search                    "Return the list of authorized groups matching the search criteria"         <>=""
+    --order_by                  "Order groups by name, path or id. Default is name"                         <>=""
+    --skip_groups               "Skip the group IDs passed"                                                 <>=""
+    --min_access_level          "Limit to groups where current user has at least this access level"         <>:Number=""
+    --owned                     "Limit to groups explicitly owned by the current user"
+    --statistics                "Include group statistics (admins only)"
+    --all_available             "Show all the groups you have access to"
+    --with_custom_attributes    "Include custom attributes in response (admins only)"
+
+    --json|-j                   "output json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts arg (<group_id> or /<group_path>), received empty' arg:ret:64
+    local _avt_group="$1"
+    ___x_cmd_gcode____transform_avt_group || return
+
+    if [ -n "$json" ]  || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gcode_curl get "/groups/$_avt_group/subgroups" sort search order_by skip_groups min_access_level owned statistics all_available with_custom_attributes
+    else
+        ___x_cmd_gcode_curl get "/groups/$_avt_group/subgroups" sort search order_by skip_groups min_access_level owned statistics all_available with_custom_attributes | \
+            x jo 2c             .id .name .path .visibility .web_url | \
+            x csv header --add   ID  Name  Path  Visibility  URL     | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Create
+# shellcheck disable=SC2181
+# TODO:On gcode SaaS, you must use the gcode UI to create groups without a parent group. You cannot use the API to do this.???
+# http://localhost:4000/13.7/ee/api/groups.html#new-subgroup
+___x_cmd_gcode_subgroup_create(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                  "subgroup name"                                 <>
+    --parent            "<parent_group_path> or .id=<parent_group_id>"  <>
+    -p|--path           "subgroup path(default subgroup name)"          <>=""
+    --json|-j           "output json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts arg (new subgroup name), received empty' arg:ret:64
+    local name="$1"
+
+    [ -n "$parent" ] || M='accepts option (--parent <parent_group_path> or .id=<parent_group_id>), received empty' arg:ret:64
+    local _avt_group="$parent"
+    ___x_cmd_gcode____transform_avt_group || return
+
+    [ -n "$p" ] || p="$name"
+
+    gen_gcode_json="$(param:option2json -p -parent +name  parent_id=_avt_group  path=p)"
+    gcode:debug "$gen_gcode_json"
+    ___x_cmd_gcode_curl post "/groups" "gen_gcode_json"| _____x_cmd_group_ui_utils Creating
+}
+# EndSection
+
+___x_cmd_gcode_group_repo(){
+    param:subcmd ___x_cmd_gcode_group_repo    \
+        "ls|l"          "list group repo"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_group_repo _param_help_doc
+    return 1
+}
+
+# Section: List
+# http://localhost:4000/13.7/ee/api/groups.html#list-a-groups-projects
+___x_cmd_gcode_group_repo_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1              "<group_path> or .id=<group_id>"    <>:Address
+    --page          "page"                              <>:NatureNumber=1
+    --per_page      "per_page"                          <>:NatureNumber=20
+    --visibility    "Limit by visibility"               <>=""
+    --archived      "Limit by archived status"
+
+    --json|-j       "output json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts arg (<group_path> or .id=<group_id>), received empty' arg:ret:64
+    local _avt_group="$1"
+    ___x_cmd_gcode____transform_avt_group || return
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gcode_get_multi "/groups/$_avt_group/projects"  visibility archived
+    else
+        ___x_cmd_gcode_get_multi "/groups/$_avt_group/projects"  visibility archived | \
+            x jo 2c            .id .name .path .visibility .web_url | \
+            x csv header --add  ID  Name  Path  Visibility  URL     | \
             x csv static_tab
     fi
 }

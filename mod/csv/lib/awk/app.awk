@@ -39,7 +39,7 @@ function tapp_handle_exit( exit_code,       _p, i, l ){
             tapp_send_finalcmd( sh_varset_val( _p "CURROW", comp_table_get_cur_row(o, TABLE_KP) ) )
             tapp_send_finalcmd( sh_varset_val( _p "CURCOL", comp_table_get_cur_col(o, TABLE_KP) ) )
             for (i=1; i<=l; ++i)
-                tapp_send_finalcmd( sh_varset_val( _p "CURROW_" i, csv_dump_row(CSV_DATA, "", i) ) )
+                tapp_send_finalcmd( sh_varset_val( _p "CURROW_" i, csv_dump_row(CSV_DATA, "", i, 1, 1, CSV_DATA[ L L ]) ) )
         }
     }
 }

@@ -4,9 +4,9 @@
 ___x_cmd_gl_issue(){
     param:scope         ___x_cmd_gl
     param:subcmd ___x_cmd_gl_issue              \
-        ls              "List issue"            \
-        create          "Create issue"          \
-        edit            "Edit issue"            \
+        "ls|l"          "List issue"            \
+        "create|c"      "Create issue"          \
+        "edit|ed"       "Edit issue"            \
         rm              "Delete issue"          \
         close           "Close issue"           \
         reopen          "Reopen issue"
@@ -56,10 +56,16 @@ options:
     --with_labels_details   "If true, the response returns more details for each label in labels field. :name,:color,:description,:description_html,:text_color. Default is false."
     --json|-j               "output json data"
 '
- param:run
+    param:run
 
-    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id iid=.iid project_id=.project_id title=.title state=.state web_url=.web_url -- $@' \
-        ___x_cmd_gl_get_multi "/issues" sort order_by search state assignee_username labels milestone
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_get_multi "/issues" sort order_by search state milestone_id
+    else
+        ___x_cmd_gl_get_multi "/issues" sort order_by search state milestone_id | \
+            x jo 2c             .id .iid           .project_id .title .state .web_url | \
+            x csv header --add   ID  ISSUE_Nubmer   Project_ID  Title  State  Web_URL | \
+            x csv static_tab
+    fi
 }
 # EndSection
 
@@ -69,7 +75,7 @@ ___x_cmd_gl_issue_create(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-   --project                                    "The ID or URL-encoded path of the project owned by the authenticated user"             <>
+   --repo|-r                                    "The ID or URL-encoded path of the project owned by the authenticated user"             <>
    --title                                      "The title of an issue "                                                                <>
 
    --iid                                        "The internal ID of the project issue (requires administrator or project owner riglts)" <>=""
@@ -92,11 +98,11 @@ options:
     param:run
 
     local gen_gl_json
-    gen_gl_json="$(param:option2json -project)"
+    gen_gl_json="$(param:option2json -repo)"
     gl:debug "$gen_gl_json"
-    ___x_cmd_gl_param_init_owner_project
+    ___x_cmd_gl_param_init_owner_repo
 
-    ___x_cmd_gl_curl post "/projects/$owner_project/issues" "gen_gl_json" | _____x_cmd_gl_issue_ui_utils Creating
+    ___x_cmd_gl_curl post "/projects/$owner_repo/issues" "gen_gl_json" | _____x_cmd_gl_issue_ui_utils Creating
 }
 # EndSection
 
@@ -106,8 +112,8 @@ ___x_cmd_gl_issue_edit(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-   #1                   "The internal iid of a project issue"                                                   <>
-   --project            "The ID or URL-encoded path of the project owned by the authenticated user"             <>
+   #1                   "The internal iid of a repo issue"                                                   <>
+   --repo|-r            "The ID or URL-encoded path of the repo owned by the authenticated user"             <>
 
    --add_labels         "Comma-separated label names to add to an issue."                                       <>=""
    --assignee_ids       "The IDs of the users to assign the issue to."                                          <>:array=""
@@ -130,11 +136,11 @@ options:
 '
     param:run
     local gen_gl_json
-    gen_gl_json="$(param:option2json -project)"
+    gen_gl_json="$(param:option2json -repo)"
     gl:debug "$gen_gl_json"
 
-    ___x_cmd_gl_param_init_owner_project
-    ___x_cmd_gl_curl put "/projects/$owner_project/issues/$1" "gen_gl_json" | _____x_cmd_gl_issue_ui_utils Edit
+    ___x_cmd_gl_param_init_owner_repo
+    ___x_cmd_gl_curl put "/projects/$owner_repo/issues/$1" "gen_gl_json" | _____x_cmd_gl_issue_ui_utils Edit
 }
 # EndSection
 
@@ -144,22 +150,22 @@ ___x_cmd_gl_issue_rm(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-    #1              "The internal iid of a project issue"                                           <>
-    --project       "The ID or URL-encoded path of the project owned by the authenticated user."    <>
+    #1              "The internal iid of a repo issue"                                           <>
+    --repo|-r       "The ID or URL-encoded path of the repo owned by the authenticated user."    <>
 
     --yes|-y        "Ignore remove prompt interception"
 '
     param:run
 
-    ___x_cmd_gl_param_init_owner_project
-    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete repo : $(___x_cmd_ui bold red "$owner_project") ?" || return 0
+    ___x_cmd_gl_param_init_owner_repo
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete repo : $(___x_cmd_ui bold red "$owner_repo") ?" || return 0
 
-    ___x_cmd_gl_curl delete "/projects/$owner_project/issues/$1" | (
-        x jo env . gl_resp_err=.error gl_resp_err=.message
+    ___x_cmd_gl_curl del "/projects/$owner_repo/issues/$1" | (
+        x jo env . gl_resp_err=.error gl_resp_msg=.message
         if ___x_cmd_gl_http_error; then
-            ___x_cmd_ui_tf  true "Successfully deleted iid $1 issue in $project project"
+            ___x_cmd_ui_tf  true "[Success]: Deleted id $1 issue on $repo repo"
         else
-            ___x_cmd_ui_tf false "Failed to delete iid $1 issue in $project project."
+            ___x_cmd_ui_tf false "Deleted id $1 issue on $repo repo failure:"
             ___x_cmd_gl____handle_resp
             return 1
         fi
@@ -167,14 +173,14 @@ options:
 }
 # EndSection
 
-# Section: project issue ls
+# Section: Repo issue ls
 # TODO: order_by type: created_at,due_date,label_priority,milestone_due,popularity,priority,relative_position,title, updated_at,or weight
 # https://docs.gitlab.com/ee/api/issues.html#list-project-issues
-___x_cmd_gl_project_issue(){
+___x_cmd_gl_repo_issue(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-    --project               "The ID or URL-encoded path of the project owned by the authenticated user"         <>
+    --repo|-r               "The ID or URL-encoded path of the repo owned by the authenticated user"         <>
 
     --assignee_id           "Return issues assigned to the given user id."                                      <>:Number=""
     --assignee_username     "Return issues assigned to the given username."                                     <>:array=""
@@ -203,12 +209,70 @@ options:
 
     --json|-j               "output json data"
 '
- param:run
+    param:run
 
-    ___x_cmd_gl_param_init_owner_project
-    ___X_CMD_UI_STATIC=1 ___gl_ui_mutual '___ui_table_json Id=.id iid=.iid project_id=.project_id title=.title state=.state web_url=.web_url -- $@' \
-        ___x_cmd_gl_get_multi "/projects/$owner_project/issues" sort order_by search state assignee_username labels milestone
+    ___x_cmd_gl_param_init_owner_repo
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_get_multi "/projects/$owner_repo/issues" sort order_by search state
+    else
+        ___x_cmd_gl_get_multi "/projects/$owner_repo/issues" sort order_by search state | \
+            x jo 2c .id .iid .project_id .title .state .web_url | \
+            x csv header --add ID ISSUE_Nubmer Porject_ID Title State URL | \
+            x csv static_tab
+    fi
 }
+# EndSection
+
+# Section: User issue ls
+# Section: list user issue
+# https://docs.gitlab.com/ee/api/users.html#list-current-user
+___x_cmd_gl_user_issue(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --assignee_id           "Return issues assigned to the given user id."                                                                                                                              <>:Number=""
+    --assignee_username     "Return issues assigned to the given username."                                                                                                                             <>:array=""
+    --author_id             "Return issues created by the given user id."                                                                                                                               <>:Number=""
+    --author_username       "Return issues created by the given username."                                                                                                                              <>=""
+    --confidential          "Filter confidential or public issues."
+    --created_after         "Return issues created on or after the given time. Expected in ISO 8601 format"                                                                                             <>:datetime=""
+    --created_before        "Return issues created on or before the given time."                                                                                                                        <>:datetime=""
+    --due_date              "Return issues that have no due date,are overdue,or whose due date is this week,this month,or between two weeks ago and next month"                                         <>=""
+    --epic_id               "Return issues associated with the given epic ID."                                                                                                                          <>:Number=""
+    --iids                  "Return only the issues having the given iid"                                                                                                                               <>:array=""
+    --in                    "Modify the scope of the search attribute. title, description, or a string joining them with comma. Default is title,description"                                           <>=""
+    --issue_type            "Filter to a given type of issue."                                                                                                                                          <>=""
+    --iteration_id          "Return issues assigned to the given iteration ID."                                                                                                                         <>:Number=""
+    --iteration_title       "Return issues assigned to the iteration with the given title."                                                                                                             <>=""
+    --labels                "Comma-separated list of label names, issues must have all labels to be returned. "                                                                                         <>=""
+    --milestone             "The milestone title. "                                                                                                                                                     <>=""
+    --milestone_id          "Returns issues assigned to milestones with a given timebox value."                                                                                                         <>=""
+    --my_reaction_emoji     "Return issues reacted by the authenticated user by the given emoji. "                                                                                                      <>=""
+    --non_archived          "Return issues only from non-archived projects."
+    --not                   "Return issues that do not match the parameters supplied. "                                                                                                                 <>:hash=""
+    --order_by              "Return issues ordered by created_at,due_date,label_priority,milestone_due,popularity,priority,relative_position,title, updated_at,or weight fields.Default is created_at"  <>=""
+    --scope                 "Return issues for the given scope."                                                                                                                                        <>=""
+    --sort                  "Return issues sorted in asc or desc order. Default is desc"                                                                                                                <>=""
+    --search                "Search issues against their title and description"                                                                                                                         <>=""
+    --state                 "Return all issues or just those that are opened or closed"                                                                                                                 <>=""
+    --updated_after         "Return issues updated on or after the given time."                                                                                                                         <>:datetime=""
+    --updated_before        "Return issues updated on or before the given time."                                                                                                                        <>:datetime=""
+    --weight                "Return issues with the specified weight."                                                                                                                                  <>:Number=""
+    --with_labels_details   "If true, the response returns more details for each label in labels field: :name, :color, :description, :description_html,:text_color.Default is false."
+    --json|-j               "output json data"
+'
+    param:run
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_get_multi "/issues" sort order_by search state
+    else
+        ___x_cmd_gl_get_multi "/issues" sort order_by search state | \
+            x jo 2c             .id .iid            .project_id .title .state .web_url  | \
+            x csv header --add   ID  ISSUE_Nubmer    Porject_ID  Title  State  URL      | \
+            x csv static_tab
+    fi
+}
+
 # EndSection
 
 # Section: Reopen
@@ -217,16 +281,16 @@ ___x_cmd_gl_issue_reopen(){
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    #1             "The internal iid of a project issue"                                                   <>
-    --project      "The ID or URL-encoded path of the project owned by the authenticated user"             <>
+    #1             "The internal iid of a repo issue"                                                   <>
+    --repo|-r      "The ID or URL-encoded path of the repo owned by the authenticated user"             <>
     --json|-j      "output json data"
 '
     param:run
 
     local state_event=reopen
 
-    ___x_cmd_gl_param_init_owner_project
-    ___x_cmd_gl_curl put "/projects/${owner_project}/issues/${1}" -- state_event | _____x_cmd_gl_issue_ui_utils Reopen
+    ___x_cmd_gl_param_init_owner_repo
+    ___x_cmd_gl_curl put "/projects/${owner_repo}/issues/${1}" -- state_event | _____x_cmd_gl_issue_ui_utils Reopen
 }
 # EndSection
 
@@ -236,50 +300,43 @@ ___x_cmd_gl_issue_close(){
      param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    #1             "The internal iid of a project issue"                                                   <>
-    --project      "The ID or URL-encoded path of the project owned by the authenticated user"             <>
+    #1             "The internal iid of a repo issue"                                                   <>
+    --repo|-r      "The ID or URL-encoded path of the repo owned by the authenticated user"             <>
     --json|-j      "output json data"
 '
     param:run
 
     local state_event=close
 
-    ___x_cmd_gl_param_init_owner_project
-    ___x_cmd_gl_curl put "/projects/${owner_project}/issues/${1}" -- state_event | _____x_cmd_gl_issue_ui_utils Close
+    ___x_cmd_gl_param_init_owner_repo
+    ___x_cmd_gl_curl put "/projects/${owner_repo}/issues/${1}" -- state_event | _____x_cmd_gl_issue_ui_utils Close
 }
 # EndSection
 
 # Section: issue utils
 # https://docs.gitlab.com/ee/api/issues_statistics.html#get-issues-statistics
-_____x_cmd_gl_issue_ui_utils()(
+_____x_cmd_gl_issue_ui_utils(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         cat
         ___x_cmd_gl_http_error
         return
     fi
-
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Creating|Edit)
-            data="iid=.iid title=.title state=.state url=.web_url author=.author.username"
-            msg="$1 issue successfully."
-            error_msg="Failed to $1 issue."
-            ;;
-        Reopen|Close)
-            data="iid=.iid state=.state"
-            msg="$1 issue successfully."
-            error_msg="Failed to $1 issue."
-            ;;
-    esac
-    eval x jo env . id=.id error=. "$data"
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "$msg" "id: $id" ${iid+"iid: $iid"} ${title+"title: $title"} ${state+"state: $state"} ${author+"author: $author"} ${url+"url: $url"}
-    else
-        ___x_cmd_ui_tf false "$error_msg"
-        ___x_cmd_gl____handle_resp
-        return 1
-    fi
-)
+    (
+        case "$1" in
+            Creating|Edit|Reopen|Close)
+                x jo env . _id=.id gl_resp_err=.error gl_resp_msg=.message \
+                    iid=.iid title=.title state=.state url=.web_url author=.author.username
+                _inf_msg="$1 issue successfully"
+                _err_msg="$1 issue failure"
+                ;;
+        esac
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" "ID: $_id" ${iid:+"IID: $iid"} ${title:+"Title: $title"} ${state:+"State: $state"} ${author:+"Author: $author"} ${url:+"URL: $url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
 # EndSection

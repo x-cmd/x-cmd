@@ -244,8 +244,7 @@ function handle_arguments(          i, _arg_arr_len, _subcmd_id, _tmp ) {
 }
 
 END{
-    # if (EXIT_CODE == "000") code_print()    # TODO: Why?
-    if (EXIT_CODE == 0) {
+    if (EXIT_CODE <= 0) {
         handle_arguments()
         # debug( CODE )
         code_print()

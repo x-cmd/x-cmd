@@ -61,37 +61,30 @@ function table_arr_init( o, kp ){
     o[ kp L ] = 0
 }
 
-function table_arr_add( o, kp, i, j, val ) {
-    kp = kp SUBSEP "data-arr"
-
-    l = o[ kp, "data", i L ] = o[ kp, "data", i L ] + 1
-    o[ kp, "data", i, j ] = val
-
-    if (o[ kp, i, "ava" ] == "") {
-        o[ kp, i, "ava" ] = 1
-        o[ kp, "ava-row" ] += 1
-    }
-}
-
-function table_arr_is_available(o, kp, i){  return ( o[ kp, "data-arr", i, "ava" ] == true );   }
-function table_arr_available_row(o, kp){    return o[ kp, "data-arr", "ava-row" ];  }
 function table_arr_get_data(o, kp, i, j){   return o[ kp, "data-arr", "data", i, j ];   }
-
-function table_arr_cp( o, kp, src, srckp, start, end,       i, j, l ) {
-    kp = kp SUBSEP "data-arr"
-
-    for (i=start; i<=end; ++i) {
-        l = o[kp, "data", i L]
-        for (j=1; j<=l; ++j) o[kp, "data", i, j] = src[ srckp, i, j ]
-        src[ srckp, i L]
-    }
-    src[ srckp, "ava-row" ] += (start - end + 1)
-}
-
-function table_arr_clear( o, kp ) {
+function table_arr_data_clear( o, kp ) {
     kp = kp SUBSEP "data-arr"
     o[ kp, "data" L ] = 0
 }
+function table_arr_data_add( o, kp, i, j, val ) {
+    kp = kp SUBSEP "data-arr" SUBSEP "data"
+
+    if ( o[ kp, i L ] == 0 ) o[ kp L ] = o[ kp L ] + 1
+    o[ kp, i L ] = o[ kp, i L ] + 1
+    o[ kp, i, j ] = val
+}
+
+function table_arr_head_len(o, kp){     return o[ kp, "data-arr", "head" L ]; }
+function table_arr_head_get(o, kp, i){  return o[ kp, "data-arr", "head", i ]; }
+function table_arr_head_add(o, kp, title,       l){
+    kp = kp SUBSEP "data-arr" SUBSEP "head"
+    o[ kp L ] = l = o[ kp L ] + 1
+    o[ kp, l ] = title
+    return l
+}
+
+function table_arr_is_available(o, kp, i){  return ( o[ kp, "data-arr", "data", i L ] > 0 );   }
+function table_arr_available_row(o, kp){    return o[ kp, "data-arr", "data" L ];  }
 
 # EndSection
 

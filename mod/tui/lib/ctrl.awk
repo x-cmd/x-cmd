@@ -489,55 +489,49 @@ function ctrl_page_prev_col( o, kp,        s ){
 function ctrl_stredit_init( o, kp, val, w,          i, l){
     o[ kp, "stredit-ctrl" ] = ""
     o[ kp, "stredit-ctrl", "value" ] = val
-    o[ kp, "stredit-ctrl", "curpos" ] = i = length(val)
+    o[ kp, "stredit-ctrl", "cursor-point" ] = i = length(val)
 
     o[ kp, "stredit-ctrl", "width" ] = w
-    if (( l=wcswidth_cache( val)-w+1 ) > 0) o[ kp, "stredit-ctrl", "border-left" ] = length( wcstruncate_cache( val, l ) )
-    else o[ kp, "stredit-ctrl", "border-left" ] = 0
+    if (( l=wcswidth_cache( val)-w+1 ) > 0) o[ kp, "stredit-ctrl", "start-point" ] = length( wcstruncate_cache( val, l ) )
+    else o[ kp, "stredit-ctrl", "start-point" ] = 0
 }
 function ctrl_stredit_width_set( o, kp, w ){ o[ kp, "stredit-ctrl", "width" ] = w;     }
 function ctrl_stredit_width_get( o, kp ){ return o[ kp, "stredit-ctrl", "width" ];     }
-function ctrl_stredit_border_left_get(o, kp){
-    return o[ kp, "stredit-ctrl", "border-left" ]
-}
 
 function ctrl_stredit_cursor_forward( o, kp,        i, e, l, b, w ){
-    i = o[ kp, "stredit-ctrl", "curpos" ]
+    i = o[ kp, "stredit-ctrl", "cursor-point" ]
     e = substr( s = ctrl_stredit_value(o, kp), i + 1 )
     if (e == "") return false
-    l = ctrl_stredit_nextfont_width(e)
-    o[ kp, "stredit-ctrl", "curpos" ] = (i = i + l)
-    b = o[ kp, "stredit-ctrl", "border-left" ]
+    l = wcwidth_first_char_cache(e)
+    o[ kp, "stredit-ctrl", "cursor-point" ] = (i = i + l)
+    b = o[ kp, "stredit-ctrl", "start-point" ]
     w = o[ kp, "stredit-ctrl", "width" ]
 
     if ( ( l = wcswidth_cache( v = substr( s, b+1, i-b ) ) - w + 1  ) > 0 )
-         o[ kp, "stredit-ctrl", "border-left" ] = b + length( wcstruncate_cache( v, l ) )
+         o[ kp, "stredit-ctrl", "start-point" ] = b + length( wcstruncate_cache( v, l ) )
 }
 
 function ctrl_stredit_cursor_backward( o, kp,       i, l, e ){
-    i = o[ kp, "stredit-ctrl", "curpos" ]
+    i = o[ kp, "stredit-ctrl", "cursor-point" ]
     if (i<=0) return false
     l = wcswidth_cache(  e = substr( ctrl_stredit_value(o, kp), 1, i ) )
-    o[ kp, "stredit-ctrl", "curpos" ] = (i = length( wcstruncate_cache(  e, l-1 ) ))
+    o[ kp, "stredit-ctrl", "cursor-point" ] = (i = length( wcstruncate_cache(  e, l-1 ) ))
 
-    if ( o[ kp, "stredit-ctrl", "border-left" ] > i )
-        o[ kp, "stredit-ctrl", "border-left" ] = i
+    if ( o[ kp, "stredit-ctrl", "start-point" ] > i )
+        o[ kp, "stredit-ctrl", "start-point" ] = i
 }
 
-function ctrl_stredit_curpos(o, kp){
-    return o[ kp, "stredit-ctrl", "curpos" ]
+function ctrl_stredit_start_pos(o, kp){
+    return o[ kp, "stredit-ctrl", "start-point" ]
 }
 
-function ctrl_stredit_nextfont_width(s,        l, w, i){
-    if (s == "") return 0
-    l = length(s)
-    for (i=1; w=="" && i<=l; ++i) w = wcstruncate_cache( s, i)
-    return (w != "") ? length(w) : l
+function ctrl_stredit_cursor_pos(o, kp){
+    return o[ kp, "stredit-ctrl", "cursor-point" ]
 }
 
 # function ctrl_stredit_cursor_insert( o, kp, e ){
 #     v = ctrl_stredit_value(o, kp)
-#     p = ctrl_stredit_curpos(o, kp)
+#     p = ctrl_stredit_cursor_pos(o, kp)
 #     o[ kp, "stredit-ctrl", "value" ] = substr(v, 1, p-1) e substr(v, p)
 # }
 
@@ -547,22 +541,22 @@ function ctrl_stredit_value( o, kp ){
 
 function ctrl_stredit_value_add(o, kp, val,     v, i, b, w, l, s){
     v = ctrl_stredit_value(o, kp)
-    i = ctrl_stredit_curpos(o, kp)
+    i = ctrl_stredit_cursor_pos(o, kp)
     o[ kp, "stredit-ctrl", "value" ] = (v =substr(v, 1, i) val substr(v, i+1))
-    o[ kp, "stredit-ctrl", "curpos" ] = (i = i + length(val))
-    b = o[ kp, "stredit-ctrl", "border-left" ]
+    o[ kp, "stredit-ctrl", "cursor-point" ] = (i = i + length(val))
+    b = o[ kp, "stredit-ctrl", "start-point" ]
     w = o[ kp, "stredit-ctrl", "width" ]
 
     if ((l = wcswidth_cache( s = substr( v, b+1, i-b )) - w + 1) > 0 )
-        o[ kp, "stredit-ctrl", "border-left" ] = b + length( wcstruncate_cache( s, l ) )
+        o[ kp, "stredit-ctrl", "start-point" ] = b + length( wcstruncate_cache( s, l ) )
 
 }
 
 function ctrl_stredit_value_del(o, kp,      v, p, l){
     v = ctrl_stredit_value(o, kp)
-    l = ctrl_stredit_curpos(o, kp)
+    l = ctrl_stredit_cursor_pos(o, kp)
     ctrl_stredit_cursor_backward(o, kp)
-    p = ctrl_stredit_curpos(o, kp)
+    p = ctrl_stredit_cursor_pos(o, kp)
     o[ kp, "stredit-ctrl", "value" ] = substr(v, 1, p) substr(v, l+1)
 }
 

@@ -24,7 +24,6 @@ function layout_avg_cal( o, kp, size,       i, l, w, d ){
     l = o[ kp, "avg-layout" L ]
     for (i=1; i<=l; ++i) {
         w = o[ kp, "avg-layout", i, "min" ]
-        # o[ kp, "avg-layout", i ] = o[ kp, "avg-layout", i ]
         if (size < w) break
         size -= w
         o[ kp, "avg-layout", i, "size" ] = w

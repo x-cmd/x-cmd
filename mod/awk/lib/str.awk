@@ -171,12 +171,6 @@ function str_join(sep, obj, prefix, start, end,     i, _result) {
     return _result
 }
 
-# function str_joinwrap(left, right, obj, prefix, start, end,     i, _result) {
-#     _result = ""
-#     for (i=start; i<=end; ++i) _result = _result left obj[prefix i] right
-#     return _result
-# }
-
 function str_joinwrap(sep, left, right, obj, prefix, start, end,     i, _result) {
     _result = (start <= end) ? left obj[prefix start] right : ""
     for (i=start+1; i<=end; ++i) _result = _result sep left obj[prefix i] right

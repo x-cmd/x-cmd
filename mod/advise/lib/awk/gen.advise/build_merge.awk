@@ -13,7 +13,7 @@ function parse_yml_data_after_tokenize( obj, text,       _arr, _arrl, i, j, item
     for (i=1; i<=_arrl; ++i) {
         item = _arr[i]
         if ( ( item ~ /^"/) && ( JITER_LAST_KP == "") && ( JITER_STATE == "{")) { #"
-            if (item ~ /^"<[^<>]+>"$/) {
+            if ((item ~ /^"<[^<>]+>"$/) && (JITER_FA_KEYPATH !~ "\"#synopsis\"")) {
                 v = juq(item)
                 if (v == "<ref>") item = "\"$ref\""
                 else item = jqu( "#" substr(v, 2, length(v)-2) )
