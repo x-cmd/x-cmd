@@ -11,10 +11,10 @@ function testcase_panic( errmsg ){
     return 0
 }
 
-function testcase( errmsg, ok ){
+function testcase( description, ok ){
     if ((ok != "") && (ok != 1)) {
         TESTC_EXIT_CODE = 1
-        testcase_panic( errmsg )
+        testcase_panic( description )
         return 0
     }
     return 1

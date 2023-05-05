@@ -20,7 +20,7 @@ function comp_table_init( o, kp ){
 function comp_table_set_limit(o, kp, v) {
     if (v <= 1) return
     comp_table___multiple_mode(o, kp, true)
-    draw_table_row_selected_limit( o, kp, ((v ~ "^[0-9]+$") ? v : "no-limit") )
+    draw_table_row_selected_limit( o, kp, ((v ~ "^[0-9]+$") ? int(v) : "no-limit") )
 }
 
 function comp_table_handle( o, kp, char_value, char_name, char_type,        r, c, _has_no_handle ) {
@@ -107,9 +107,7 @@ function comp_table___slct_data( o, kp,             i, l, _viewl ){
         if (comp_table___slct_data_do( o, kp, i ) == false) continue
         model_arr_set_key_value(o, kp, "view-row" SUBSEP (++_viewl), i)
     }
-
-    model_arr_set_key_value( o, kp, "view-row" L, _viewl )
-    comp_table___slct_data_maxrow( o, kp, _viewl )
+    comp_table___slct_data_maxrow( o, kp, int(_viewl) )
 }
 
 function comp_table___slct_data_do( o, kp, rowi,         i, l, _slct){
@@ -220,7 +218,7 @@ function comp_table_model_fulldata_mode_is_ontheway( o, kp ){
 }
 
 function comp_table_model_isfulldata( o, kp ){
-    return (comp_table_model_maxrow(o, kp) <= table_arr_available_row(o, kp))
+    return (comp_table_model_maxrow(o, kp) <= table_arr_available_count(o, kp))
 }
 
 function comp_table_unava(o, kp, row){
@@ -265,8 +263,8 @@ function comp_table_paint( o, kp, x1, x2, y1, y2,       _opt, _slct_change, _bod
     _res = draw_table( o, kp, x1, x2, y1, y2, _opt )
 
     if ( _body_change ) {
-        comp_table____pagesize_row( o, kp, opt_get( _opt, "pagesize.row" ))
-        comp_table____pagesize_col( o, kp, opt_get( _opt, "pagesize.col" ))
+        comp_table___pagesize_row( o, kp, opt_get( _opt, "pagesize.row" ))
+        comp_table___pagesize_col( o, kp, opt_get( _opt, "pagesize.col" ))
         comp_table_unava(o, kp, opt_get( _opt, "unava.row" ))
     }
 
@@ -283,12 +281,12 @@ function comp_table_inject_statusline_default( statuso, kp ){
     comp_statusline_data_put( statuso, kp, "n/p", "Next/Previous page", "Press 'n' to table next page, 'p' to table previous page" )
 }
 
-function comp_table____pagesize_row(o, kp, v){
+function comp_table___pagesize_row(o, kp, v){
     if (v == "")  return ctrl_page_pagesize_get(o, kp)
     else          ctrl_page_pagesize_set(o, kp, v)
 }
 
-function comp_table____pagesize_col(o, kp, v){
+function comp_table___pagesize_col(o, kp, v){
     if (v == "")  return ctrl_num_get_max(o, kp)
     else          ctrl_num_set_max(o, kp, v)
 }

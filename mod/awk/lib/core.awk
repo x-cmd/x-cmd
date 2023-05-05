@@ -9,7 +9,55 @@ BEGIN {
     L = "\003"
 }
 
+# Section: new core
 function clone( src, dst,   i ){    for (i in src) dst[i] = src[i];     }
+
+BEGIN{
+    TRIMH = "(^[ \t\b\v\n]+)"
+    TRIMT = "([ \t\b\v\n]+$)"
+    TRIM = "(" TRIMH ")|(" TRIMT ")"
+}
+
+# This will slow down the speed ...
+function trim( astr ){  gsub(TRIM, "", astr);  return astr; }
+function trimh( astr ){ gsub(TRIMH, "", astr);  return astr; }
+function trimt( astr ){ gsub(TRIMT, "", astr);  return astr; }
+
+function join( sep, arr, prefix, start, end ){
+    _result = (start <= end) ? obj[prefix start]: ""
+    for (i=start+1; i<=end; ++i) _result = _result sep obj[prefix i]
+    return _result
+}
+
+function joinwrap( sep, left, right, arr, prefix, start, end ){
+    _result = (start <= end) ? left obj[prefix start] right : ""
+    for (i=start+1; i<=end; ++i) _result = _result sep left obj[prefix i] right
+    return _result
+}
+
+BEGIN{
+    STR_TERMINAL_ESCAPE033 = "\033\\[([0-9]+;)*([0-9]+)?(m|dh|A|B|C|D)"
+    STR_TERMINAL_ESCAPE033_LIST = "(" STR_TERMINAL_ESCAPE033 ")+"
+    TRIM033 = STR_TERMINAL_ESCAPE033_LIST
+}
+
+function trim033(){
+    gsub( TRIM033, "", text )
+    return text
+}
+
+function divide( astr, _sep, ret,     i ){
+    if ( (i = index( astr, _sep )) <= 0 ) return false
+    ret[1] = substr( astr, 1, i-1 )
+    ret[2] = substr( astr, i+1 )
+    return true
+}
+
+function repeat(char, number,       _i, _s) {
+    for (   _i=1; _i<=number; ++_i  ) _s = _s char
+    return _s
+}
+# EndSection
 
 # Section: debug
 function debug(msg){
@@ -291,6 +339,40 @@ function bcat( filepath, a,     _tmprs, _cmd ){
 }
 # EndSection
 
+# Section: ord.awk
+# For those who need efficiency: BEGIN{ ord_init(); } { _ord_[]; }
+function ord_init(    low, high, i, t) {
+    if (low == "")  low = 0
+    if (high == "") high = 255
+    for (i = low; i <= high; i++) {
+        t = sprintf("%c", i)
+        _ord_[t] = i
+    }
+    ___ORD_INIT_FLAG = 1
+}
+
+function ord(c){
+    if ( 1 != ___ORD_INIT_FLAG ) ord_init()
+    return _ord_[c]
+}
+
+function ord_is_number(o) {     return ( (o >= 48) && (o <= 57) );  }
+function ord_is_letter(o) {     return ! ((ord_is_uppercase(o) == false) && (ord_is_lowercase(o) == false)); }
+function ord_is_uppercase(o) {  return ( (o >= 65) && (o <= 90) );  }
+function ord_is_lowercase(o) {  return ( (o >= 97) && (o <= 122) ); }
+
+function ord_leading1( o ){
+    if (o < 128) return 0
+    if (o < 192) return 1
+    if (o < 224) return 2
+    if (o < 240) return 3
+    if (o < 248) return 4
+    if (o < 252) return 5
+    if (o < 254) return 6
+    if (o < 256) return 7
+}
+# EndSection
+
 # Section: arr
 BEGIN {
     NULL = "\001"
@@ -349,6 +431,7 @@ function arr_join(arr,              _sep, _start, l,              _i, _result) {
 }
 
 # arr[ L ] = split(str, arr, sep)
+# function arr_split(arr, str, sep,       l){
 function arr_cut(arr, str, sep,       l){
     l = split(str, arr, sep)
     return arr[ L ] = l
@@ -651,27 +734,3 @@ function str_divide( astr, _sep, ret,    i ){
     ret[2] = substr( astr, i+1 )
 }
 # EndSection
-
-####
-# not-included
-####
-
-# re.awk
-# qsort.awk
-# date.awk
-
-# sh.awk
-# shx.awk
-# cmd.awk
-
-# csv.awk
-# j/*
-# k.awk
-# u/*
-# ui/*
-# semver.awk
-
-# gli.awk   # This is for the parser
-# math.awk  # Figure out the collision in gawk
-# rand.awk
-# testcase

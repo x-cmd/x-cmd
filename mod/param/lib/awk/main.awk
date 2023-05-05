@@ -133,8 +133,8 @@ function handle_arguments_restargv(         _final_rest_argv_len, _set_arg_namel
 
     # TODO: You should set the default value, if you have no .
     if (QUERY_CODE != ""){
-        QUERY_CODE = "local ___X_CMD_UI_FORM_EXIT_STRATEGY=\"execute|exit\"; x ui form " substr(QUERY_CODE, 9)
-        QUERY_CODE = QUERY_CODE ";\nif [ \"$___X_CMD_UI_FORM_EXIT\" = \"exit\" ]; then return 1; fi;"
+        QUERY_CODE = "local ___X_CMD_UI_FORM_EXIT_STRATEGY=\"execute|exit\"; local ___X_CMD_UI_FORM_EXIT=; x ui form " substr(QUERY_CODE, 9)
+        QUERY_CODE = QUERY_CODE ";\n[ \"$___X_CMD_UI_FORM_EXIT\" = \"execute\" ] || return;"
         # debug(QUERY_CODE)
         code_append(QUERY_CODE)
     }

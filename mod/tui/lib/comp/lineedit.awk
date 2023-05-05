@@ -26,10 +26,13 @@ function comp_lineedit_handle( o, kp, char_value, char_name, char_type,       d 
 }
 
 function comp_lineedit_change_set( o, kp ){
-    draw_lineedit_change_set( o, kp )
+    change_set(o, kp, "lineedit")
 }
 
 function comp_lineedit_paint( o, kp, x1, x2, y1, y2,        _opt ){
+    if ( ! change_is(o, kp, "lineedit") ) return
+    change_unset(o, kp, "lineedit")
+
     opt_set( _opt, "line.text",     comp_lineedit_get(o, kp) )
     opt_set( _opt, "line.width",    comp_lineedit_width(o, kp) )
     opt_set( _opt, "cursor.pos",    comp_lineedit___cursor_pos(o, kp) )

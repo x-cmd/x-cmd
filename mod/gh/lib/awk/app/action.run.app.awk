@@ -50,7 +50,7 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, l, _key, _q
     jiparse_after_tokenize(obj, text)
     JITER_CURLEN = 0
     _q2_1 = SUBSEP "\"1\""
-    comp_table_model_maxrow_set(o, kp, int(obj[ _q2_1, "\"total_count\"" ]))
+    comp_table_model_maxrow(o, kp, int(obj[ _q2_1, "\"total_count\"" ]))
     _key = _q2_1 SUBSEP "\"workflow_runs\""
     l = obj[ _key L ]
     for (i=1; i<=l; ++i){

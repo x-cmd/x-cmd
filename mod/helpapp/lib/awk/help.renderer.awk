@@ -116,7 +116,7 @@ function generate_optarg_rule_string_inner(obj, kp, tag,          _str, _dafault
             _kl = split( _cand_id, _cand_id_arr, SUBSEP )
             _k_id = juq(_cand_id_arr[ _kl - 2 ])
             split( _k_id, _k_id_arr, "|" )
-            _str = _str " ...(Type '" _k_id_arr[1] "' for more candidate information)"
+            _str = _str " ...(Type '--help " _k_id_arr[1] "' for more candidate information)"
         }
         _str = _str "]"
     }

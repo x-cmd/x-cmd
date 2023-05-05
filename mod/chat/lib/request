@@ -5,29 +5,31 @@ ___x_cmd_chat_request(){
     local system="$1"; shift
     local current_message; current_message="$( printf "%s\n" "$*" | x jo n | x jo t " " )"
 
-    local history; ___x_cmd_chat_history_get_;
-    history="${x_:-3}"  # default loading the last 3 history record as the context
-
-    # TODO: loading history from here, system + history + user
+    # default loading the last 3 history record as the context
+    local x_=""; ___x_cmd_chat_current get_ history;
     local message; message="$(
         {
             printf "[\n%s\n" "$system"
-            ___x_cmd_chat_handler___get_history_record "$___X_CMD_CHAT_SESSION_DIR" "$history"
+            ___x_cmd_chat_handler___get_history_record "$___X_CMD_CHAT_SESSION_DIR" "$x_"
             printf "%s\n]\n" "$current_message"
         } | x jo n | x jo t " "
     )"
 
     # Handle the output by increasing the index
     local outputfile="$___X_CMD_CHAT_TMP/output.$$"
-    if ___x_cmd_is_interative_tty; then
-        ___x_cmd_chat_request___api "$outputfile" "$type" "$message" "$current_message"
+    ___x_cmd_chat_request___api "$outputfile" "$type" "$message" "$current_message"
+
+    case "$___X_CMD_CHAT_OUTPUT" in
+        raw)        cat "$outputfile" ; return ;;
+    esac
+
+    if ___x_cmd_is_interative; then
         case "$type" in
             normal)     ___x_cmd_chat_handler___stream_to_print <"$outputfile" | x md show ;;
             json)       ___x_cmd_chat_handler___stream_to_print <"$outputfile" | x jo color ;;
             *)          ___x_cmd_chat_handler___stream_to_print <"$outputfile" ;;
         esac
     else
-        ___x_cmd_chat_request___api "$outputfile" "$type" "$message" "$current_message"
         # Just Using tail
         ___x_cmd_chat_handler___stream_to_print <"$outputfile"
     fi
@@ -39,8 +41,8 @@ ___x_cmd_chat_request___api(){(
     local type="$2"         # Shoud be a quoted json string
     local message="$3"     # Shoud be a quoted json string
     shift 3
-    local current_message="$*"
-    local filepath; filepath="$___X_CMD_CHAT_SESSION_DIR/$(x pidid vlseqid ___X_CMD_CHAT_REC)"
+    local IFS=" ";  local current_message="$*"
+    local filepath; filepath="$___X_CMD_CHAT_SESSION_DIR/$(x pidid vlseqid ___X_CMD_CHAT_REC).jso"
 
     x rmrf "$output"    # Using
     mkfifo "$output"
@@ -49,13 +51,17 @@ ___x_cmd_chat_request___api(){(
         [ -z "$BASH_VERSION" ] || shopt -s expand_aliases
         x ensurefp "$filepath"
         chat:debug "Sending request $output => $message"
-        local answer=""; answer="$(___x_cmd_chat_request___api_ "$message" | tee "$output" | ___x_cmd_chat_handler___stream_to_print)"
+        local resp=""; resp="$(___x_cmd_chat_request___api_ "$message" | tee "$output" | ___x_cmd_chat_handler___get_response )"
         chat:debug "Saving => $filepath"
+
+        # TODO: Use pure json instead of yml.
         {
-            printf "type: %s\n" "$type"
-            printf "current_message: %s\n" "$current_message"
-            printf "message: %s\n" "$message"
-            printf "answer: %s\n" "$(___x_cmd_chat_jqu "$answer")"
+            printf "%s\n" '{
+                type: "'"$type"'",
+                current_message: '"${current_message:-"\"\""}"',
+                message: '"${message:-"\"\""}"',
+                response: '"${resp:-"\"\""}"'
+            }' | x jo n
         } >>"$filepath"
 
         x rmrf "$output"
@@ -68,15 +74,16 @@ ___x_cmd_chat_request___api_(){
     local message="$1"
     local x_
 
-    local apikey;   ___x_cmd_chat_apikey_ensureget_ || return
-    apikey="$x_"    # Using environment
+    local apikey;   local proxy;    local maxtoken
+    ___x_cmd_chat_current apikey:= proxy:= maxtoken:=
 
-    local proxy;    ___x_cmd_chat_proxy_get_;
-    proxy="$x_"
+    [ -n "$apikey" ] || {
+        chat:error "Please setting up your apikey first ==> 'x chat cfg apikey=<your apikey>' or 'x chat apikey=<your apikey>'"
+        return 1
+    }
 
-    local maxtoken; ___x_cmd_chat_maxtoken_get_;
-    maxtoken="${x_:-1000}"
-
+    # default maxtoken 1000
+    maxtoken="$maxtoken"
     local data='{
         "model": "gpt-3.5-turbo",
         "messages": '"$message"',

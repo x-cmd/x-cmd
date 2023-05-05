@@ -67,7 +67,7 @@ function user_release_ref( o, kp,       _kp, l, i, arr, r, filepath, _ ){
 
 function user_data_navi_subcmd( o, kp, rootkp,       l, _filepath, _obj_kp, i, _, v, j, k, _l, subcmd_group ){
     if (! lock_acquire( o, kp ) ) panic("lock bug")
-    comp_navi_data_set_available( o, kp, rootkp, true )
+    comp_navi_data_available( o, kp, rootkp, true )
     lock_release( o, kp )
     if (match( rootkp, "^"ROOTKP_SEP"[^"ROOTKP_SEP"]+")) {
         l = length( ROOTKP_SEP )
@@ -139,7 +139,7 @@ function tapp_handle_clocktick( idx, trigger, row, col ){
     user_paint( 1, row, 1, col )
 
     if (! lock_unlocked( o, NAVI_KP )) return
-    if ( comp_navi_unava_has_set( o, NAVI_KP ) ) user_data_navi_subcmd( o, NAVI_KP, comp_navi_unava_get( o, NAVI_KP ) )
+    if ( comp_navi_unava_has_set( o, NAVI_KP ) ) user_data_navi_subcmd( o, NAVI_KP, comp_navi_unava( o, NAVI_KP ) )
 }
 
 function tapp_handle_wchar( value, name, type,              ctrl_sw, _has_no_handle ){

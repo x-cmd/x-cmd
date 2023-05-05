@@ -3,7 +3,7 @@ function table_init(o, kp){
     table_datamodel_request_page_count()
     table_datamodel_request_page(o, kp, 1)
     comp_table_init(o, kp)
-    comp_table_model_fulldata_mode( o, kp, FULLDATA_MODE_ONTHEWAY )
+    # comp_table_model_fulldata_mode( o, kp, FULLDATA_MODE_ONTHEWAY )
 }
 
 function table_statusline_init(o, kp){
@@ -96,8 +96,8 @@ function table_paint(o, kp, x1, x2, y1, y2, has_change_canvas,        _res, r ){
 # Section: user controller: tapp_handle_response --- request data
 function table_datamodel_refill(o, kp,         r){
     if (! lock_unlocked( o, kp )) return
-    if ( (r = comp_table_unava(o, kp)) != -1 ) {     # comp_table_paint_data_is_inavailable( o, kp )
-        table_datamodel_request_page( o, kp, r )
+    if ( (r = comp_table_unava(o, kp)) >= 1 ) {     # comp_table_paint_data_is_inavailable( o, kp )
+        if (!comp_table_model_isfulldata(o, kp)) table_datamodel_request_page( o, kp, r )
     } else {
         if (comp_table_model_fulldata_mode_is_ontheway( o, kp )) {
             r = comp_table_get_the_first_unava(o, kp)     # Get the first unavailable

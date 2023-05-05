@@ -404,14 +404,11 @@ function ctrl_page_set( o, kp, val ){
     return ctrl_num_set( o, kp, val )
 }
 
-function ctrl_page_pagesize_set( o, kp, pagesize ){
-    o[ kp, "ctrl-win", "pagesize" ] = pagesize
-}
-
-function ctrl_page_rowsize_set( o, kp, rowsize ){
-    o[ kp, "ctrl-win", "rowsize" ] = rowsize
-}
+function ctrl_page_pagesize_set( o, kp, pagesize ){ o[ kp, "ctrl-win", "pagesize" ] = pagesize ; }
+function ctrl_page_rowsize_set( o, kp, rowsize ){   o[ kp, "ctrl-win", "rowsize" ] = rowsize; }
 function ctrl_page_pagesize_get( o, kp ){   return o[ kp, "ctrl-win", "pagesize" ];     }
+function ctrl_page_rowsize_get( o, kp ){   return o[ kp, "ctrl-win", "rowsize" ];     }
+
 function ctrl_page_max_get( o, kp ){   return ctrl_num_get_max( o, kp SUBSEP "ctrl-win" SUBSEP );   }
 
 function ctrl_page_max_set( o, kp, v ){

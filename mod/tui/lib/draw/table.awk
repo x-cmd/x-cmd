@@ -58,7 +58,7 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row,
     row = x2-x1+1
     col = y2-y1+1
     if (opt_getor( opt, "multiple.enable", false )) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
-    _num_w = length( l = model_arr_get(o, kp, "view-row" L) ) + 1 + _selected_w
+    _num_w = length( l = opt_get( opt, "data.maxrow" ) ) + 1 + _selected_w
     layout_avg_cal(o, kp, col = col-_num_w)
     _viewcoll = layout_avg_get_len(o, kp)
 
@@ -66,7 +66,7 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row,
     opt_set( opt, "pagesize.col", _viewcoll )
 
     _start = draw_unit_page_begin( opt_get( opt, "cur.row" ), row )
-    _end   = draw_unit_page_end( opt_get( opt, "cur.row" ), row, opt_get( opt, "data.maxrow" ) )
+    _end   = draw_unit_page_end( opt_get( opt, "cur.row" ), row, l )
     for (i=_start; i<=_end; ++i) {
         if (i > l) {    _str = _str space_rep(col) _next_line;  continue;   }
 
@@ -94,7 +94,7 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row,
 function draw_table___on_cell( o, kp, i, j, w,             ri, ci, v, l, _v_1 ){
     ri = model_arr_get(o, kp, "view-row" SUBSEP i)
     ci = layout_avg_get_item(o, kp, j)
-    v  =  table_arr_get_data(o, kp, ri, ci)
+    v  = table_arr_get_data(o, kp, ri, ci)
     gsub("\n.*$", "", v)
     w --
 
@@ -139,7 +139,7 @@ function draw_table___on_header(o, kp, x1, x2, y1, y2, opt,               space_
     if ( ! change_is(o, kp, "table.head") ) return
     change_unset(o, kp, "table.head")
     if (opt_getor( opt, "multiple.enable", false )) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
-    c = space_w = length( model_arr_get(o, kp, "view-row" L) ) + 1 + _selected_w
+    c = space_w = length( opt_get( opt, "data.maxrow" ) ) + 1 + _selected_w
     layout_avg_cal(o, kp, y2-y1+1-space_w)
     l = layout_avg_get_len(o, kp)
 

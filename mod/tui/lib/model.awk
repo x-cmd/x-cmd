@@ -55,36 +55,26 @@ function model_arr_set_key_value(o, kp, key, val){
 # EndSection
 
 # Section: table
-
-function table_arr_init( o, kp ){
-    kp = kp SUBSEP "data-arr"
-    o[ kp L ] = 0
-}
-
+function table_arr_init( o, kp ){           o[ kp, "data-arr" L ] = 0;  }
 function table_arr_get_data(o, kp, i, j){   return o[ kp, "data-arr", "data", i, j ];   }
-function table_arr_data_clear( o, kp ) {
-    kp = kp SUBSEP "data-arr"
-    o[ kp, "data" L ] = 0
-}
+function table_arr_data_clear( o, kp ) {    return o[ kp, "data-arr", "data" L ] = 0;   }
+function table_arr_is_available(o, kp, i){  return ( o[ kp, "data-arr", "data", i L ] > 0 );   }
+function table_arr_available_count(o, kp){  return o[ kp, "data-arr", "data" L ];  }
 function table_arr_data_add( o, kp, i, j, val ) {
     kp = kp SUBSEP "data-arr" SUBSEP "data"
-
     if ( o[ kp, i L ] == 0 ) o[ kp L ] = o[ kp L ] + 1
     o[ kp, i L ] = o[ kp, i L ] + 1
     o[ kp, i, j ] = val
 }
 
-function table_arr_head_len(o, kp){     return o[ kp, "data-arr", "head" L ]; }
-function table_arr_head_get(o, kp, i){  return o[ kp, "data-arr", "head", i ]; }
+function table_arr_head_len(o, kp){         return o[ kp, "data-arr", "head" L ]; }
+function table_arr_head_get(o, kp, i){      return o[ kp, "data-arr", "head", i ]; }
 function table_arr_head_add(o, kp, title,       l){
     kp = kp SUBSEP "data-arr" SUBSEP "head"
     o[ kp L ] = l = o[ kp L ] + 1
     o[ kp, l ] = title
     return l
 }
-
-function table_arr_is_available(o, kp, i){  return ( o[ kp, "data-arr", "data", i L ] > 0 );   }
-function table_arr_available_row(o, kp){    return o[ kp, "data-arr", "data" L ];  }
 
 # EndSection
 

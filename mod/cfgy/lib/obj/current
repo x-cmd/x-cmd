@@ -1,42 +1,190 @@
 
 ___x_cmd_cfgy_obj_current(){
+    [ "$#" -gt 0 ] || {
+        ___x_cmd_cfgy_obj_current_ls
+        return
+    }
+
     local op="$1"; shift
+    #TODO: let ?
     case "$op" in
-        get|get_|set|getset|profile)
-            ___x_cmd_cfgy_obj_current_"$op" "$@" ;;
-        *)  x help -m cfgy obj current >&2
-            return 1
-            ;;
+        let|get|get_|getor|print|set|import|\
+        ls|lsi|clear)
+                        ___x_cmd_cfgy_obj_current_"$op"     "$@" ;;
+        *,*)            ___x_cmd_cfgy_obj_current_print     "$op" ;;
+        *:=*)           ___x_cmd_cfgy_obj_current_import    "$op" "$@" ;;
+        *=*)            ___x_cmd_cfgy_obj_current_set       "$op" "$@" ;;
+        *_)             ___x_cmd_cfgy_obj_current_get_ "${op%_}" ;;
+        --help|-h)      x help -m cfgy obj current >&2; return 1 ;;
+        *)              N=cfgy M="Unknown command ==> $op" log:ret:64
+                        return 1 ;;
     esac
 }
 
-___x_cmd_cfgy_obj_current_getset(){
-    local envvarname="$1"
-    local key="$2"
-    [ -n "$envvarname" ] || N=cfgy M="Provide current env varname" log:ret:64
-    [ -n "$key" ] || N=cfgy M="Provide current key" log:ret:64
-    shift 2
-    if [ $# -eq 0 ]; then   ___x_cmd_cfgy_obj_current_get "$envvarname" "$key"
-    else                    ___x_cmd_cfgy_obj_current_set "$envvarname" "$key"  "$@"
-    fi
-}
-
 ___x_cmd_cfgy_obj_current_get(){
-    local x_
+    local x_=""
     ___x_cmd_cfgy_obj_current_get_ "$@" || return
     printf "%s\n" "$x_"
 }
 
-# x chat proxy get X_CHAT_PROXY key
-___x_cmd_cfgy_obj_current_get_(){
-    local envvarname="$1";
-    [ -n "$envvarname" ] || N=cfgy M="Provide current env varname" log:ret:64
-    shift;  x_=""
-    [ -z "$envvarname" ] || eval x_=\"\$"$envvarname"\"
-
-    [ -z "$x_" ] || return 0
-    ___x_cmd_cfgy_obj_get_ "$1"
+___x_cmd_cfgy_obj_current_get_config_(){
+    x_="${___X_CMD_CFGY_OBJ_CURRENT_CONFIG:-$___X_CMD_CFGY_OBJ_DEFAULT_CONFIG}"
 }
+
+___x_cmd_cfgy_obj_current_get_profile_(){
+    x_="${___X_CMD_CFGY_OBJ_CURRENT_PROFILE}"
+    [ -n "$x_" ] || ___x_cmd_cfgy_obj_get_ profile
+    x_="${x_:-X}"
+}
+
+___x_cmd_cfgy_obj_current_get_(){
+    local var="$1";
+    x_=
+    case "$var" in
+        config)     ___x_cmd_cfgy_obj_current_get_config_;  return ;;
+        profile)    ___x_cmd_cfgy_obj_current_get_profile_; return ;;
+        "")         N=cfgy M="Provide current env varname" log:ret:64 ;;
+    esac
+
+    ___x_cmd_cfgy_obj___hasvar "$var" || {
+        N=cfgy M="Unknown varname ==> $var" log:ret:64
+        return 1
+    }
+
+    [ -z "$var" ]   || eval x_=\"\$"${___X_CMD_CFGY_OBJ_PREFIX}_CURRENT_${var}"\"
+    [ -z "$x_" ]    || return 0
+    # TODO: In the config-disable mode, no config is loaded, so we return the environment defined using current
+    ___x_cmd_cfgy_obj_get_ "$var"
+}
+
+___x_cmd_cfgy_obj_current_getor_(){
+    ___x_cmd_cfgy_obj_current_get_ "$1" || x_="$2"
+}
+
+___x_cmd_cfgy_obj_current_getor(){
+    local x_
+    ___x_cmd_cfgy_obj_current_getor_ "$@"
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_cfgy_obj_current_set(){
+    local var
+    local val
+    # TODO: there is a better but more complex way to invoke eval just once
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            *=*)    var="${1%%=*}"              val="${1#*=}";  shift ;;
+            *)      var="$1"
+                    if [ $# -gt 2 ]; then       val=;           shift
+                    else                        val="$2";       shift 2
+                    fi ;;
+        esac
+
+        case "$var" in
+            config)     eval "${___X_CMD_CFGY_OBJ_PREFIX}_CURRENT_CONFIG=\"\$val\""     ;;
+            profile)    eval "${___X_CMD_CFGY_OBJ_PREFIX}_CURRENT_PROFILE=\"\$val\""    ;;
+            *)
+                        ___x_cmd_cfgy_obj___hasvar "$var" || {
+                            N=cfgy M="Unknown varname ==> $val" log:ret:64
+                            return 1
+                        }
+                        eval "${___X_CMD_CFGY_OBJ_PREFIX}_CURRENT_${var}=\"\$val\""
+        esac
+    done
+}
+
+___x_cmd_cfgy_obj_current_import(){
+    while [ $# -gt 0 ]; do
+        local newvar="${1%%:=*}";   local var="${1#*:=}";   shift
+        [ -n "$var" ] || var="$newvar"
+        case "$var" in
+            config|profile)     ;;
+            *)                  ___x_cmd_cfgy_obj___hasvar "$var" || N=cfgy M="Unknown varname ==> $var" log:ret:64
+        esac
+
+        local x_=""
+        ___x_cmd_cfgy_obj_current_get_ "$var"
+        eval "${newvar}=\"\$x_\""
+    done
+}
+
+# If it is ignore, then we should provide a list...
+___x_cmd_cfgy_obj_current_print(){
+    [ "$#" -gt 0 ] || {
+        # TODO: print config and profile first
+        set -- "config,profile,$___X_CMD_CFGY_OBJ_VARLIST"
+    }
+    local x_=""; local IFS=,
+    local var; for var in $1; do
+        [ "$var" != "" ] || continue
+        x_=""
+        ___x_cmd_cfgy_obj_current_get_ "$var"
+        printf "%s=%s\n" "$var" "$x_"
+    done
+}
+
+___x_cmd_cfgy_obj_current_ls(){
+    ___x_cmd_cfgy_obj_current_print
+}
+
+# TODO: Add profile handling
+___x_cmd_cfgy_obj_current_clear(){
+    local x_=""; local IFS=,
+    for var in $___X_CMD_CFGY_OBJ_VARLIST; do
+        x_="${x_}${___X_CMD_CFGY_OBJ_PREFIX}_${___X_CMD_CFGY_OBJ_CURRENT_PROFILE}_${var}=
+"
+    done
+    eval "$x_"
+}
+
+# For debug
+___x_cmd_cfgy_obj_current_lsi(){
+    local IFS=,
+    local var; for var in $___X_CMD_CFGY_OBJ_VARLISTALL; do
+        [ "$var" != "" ] || continue
+        local x_=""
+        ___x_cmd_cfgy_obj_current_get_ "$var"
+        printf "%s=%s\n" "${___X_CMD_CFGY_OBJ_PREFIX}_${___X_CMD_CFGY_OBJ_CURRENT_PROFILE}_${var}" "$x_"
+    done
+}
+
+# Deprecated ...
+# ___x_cmd_cfgy_obj_current_getorfail_(){
+#     ___x_cmd_cfgy_obj_current_get_ "$@" || {
+#         # TODO: Add more logs: chat:error "Fail to fetch apikey. Please set apikey using 'x chat <$1>=<val>'."
+#         cfgy:error "Fail to fetch $1. Please set $1 first."
+#         return 1
+#     }
+# }
+
+# ___x_cmd_cfgy_obj_current_initenv(){
+#     local mod=
+#     while [ $# -gt 0 ]; do
+#         case "$1" in
+#             --mod)
+#                 mod="$2"; shift 2
+#                 ;;
+#             *)
+#                 break
+#         esac
+#     done
+
+#     local PREFIX="___x_cmd_cfgy_current_$mod"
+
+#     [ -n "$PREFIX" ] || N=cfgy M="Provide current initenv prefix"   log:ret:64
+
+#     while [ $# -gt 0 ]; do
+#         local varname="${PREFIX}_$1"; shift
+#         eval "${PREFIX}_CODE_LS=\"\${${PREFIX}_CODE_CLEAR}printf \"%s\n\" ${varname}
+# \""
+#         eval "${PREFIX}_CODE_CLEAR=\"\${${PREFIX}_CODE_CLEAR}${varname}=
+# \""
+#     done
+
+#     # set the code to reset and ls
+#     # also set the code to init the env
+
+# }
 
 
 # x chat proxy set --save
@@ -44,17 +192,28 @@ ___x_cmd_cfgy_obj_current_get_(){
 
 # generate code
 # gen
-___x_cmd_cfgy_obj_current_set(){
-    local envvarname="$1";
-    local key="$2";         shift 2
-    [ -n "$envvarname" ] || N=cfgy M="Provide current env varname" log:ret:64
-    [ -n "$key" ] || N=cfgy M="Provide current key" log:ret:64
+# ___x_cmd_cfgy_obj_current_set(){
+#     local envvarname="$1";
+#     local key="$2";         shift 2
+#     [ -n "$envvarname" ]    || N=cfgy M="Provide current env varname"   log:ret:64
+#     [ -n "$key" ]           || N=cfgy M="Provide current key"           log:ret:64
 
-    local _save=""
-    case "$1" in
-        --save|-s)  _save=1; shift ;;
-    esac
+#     local _save=""
+#     case "$1" in
+#         --save|-s)  _save=1; shift ;;
+#     esac
 
-    [ -z "$_save" ] || ___x_cmd_cfgy_obj_set "$key=$1"
-    eval "$envvarname=\"\$1\""
-}
+#     [ -z "$_save" ] || ___x_cmd_cfgy_obj_set "$key=$1"
+#     eval "$envvarname=\"\$1\""
+# }
+
+# ___x_cmd_cfgy_obj_current_getset(){
+#     local envvarname="$1"
+#     local key="$2"
+#     [ -n "$envvarname" ]    || N=cfgy M="Provide current env varname"   log:ret:64
+#     [ -n "$key" ]           || N=cfgy M="Provide current key"           log:ret:64
+#     shift 2
+#     if [ $# -eq 0 ]; then   ___x_cmd_cfgy_obj_current_get "$envvarname" "$key"
+#     else                    ___x_cmd_cfgy_obj_current_set "$envvarname" "$key"  "$@"
+#     fi
+# }

@@ -2,9 +2,9 @@
 
 ___x_cmd_advise_run(){
     [ -z "$___X_CMD_ADVISE_RUN_CMD_FOLDER" ] && ___X_CMD_ADVISE_RUN_CMD_FOLDER="$___X_CMD_ADVISE_TMPDIR"
-
-    local ___X_CMD_ADVISE_RUN_FILEPATH_;  ___x_cmd_advise_run_filepath_ "${1:-${COMP_WORDS[0]}}" || return 1
-    [ "$___X_CMD_ADVISE_RUN_CMD_FOLDER" != "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" ] || ___x_cmd_advise___load_xcmd_util_file "$___X_CMD_ADVISE_RUN_FILEPATH_"
+    local name="${1:-${COMP_WORDS[0]}}"
+    local ___X_CMD_ADVISE_RUN_FILEPATH_;  ___x_cmd_advise_run_filepath_ "$name" || return 1
+    [ "$___X_CMD_ADVISE_RUN_CMD_FOLDER" != "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" ] || ___x_cmd_advise___load_xcmd_advise_util_file "$name"
     {   # Only different from main.3.bash, for words in COMP_WORDBREAKS
         local last="${COMP_WORDS[COMP_CWORD]}"
         local tmp=
