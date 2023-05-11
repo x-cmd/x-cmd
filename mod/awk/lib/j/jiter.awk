@@ -449,6 +449,7 @@ function jiparse2leaf_fromfile( obj, kp, filepath,     c, r ){
     CAT_FILENOTFOUND = false
     JITER_CURLEN = 0
     jiparse2leaf_init( kp )
+    filepath = filepath_adjustifwin( filepath )
     while ((c=(getline <filepath))==1) jiparse2leaf_after_tokenize(obj, $0)
     if (c == -1)    CAT_FILENOTFOUND = true
     close( filepath )

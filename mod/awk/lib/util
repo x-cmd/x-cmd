@@ -1,0 +1,147 @@
+
+# TODO: If the filepath contains single quote, the following code will fail
+
+___X_CMD_ROOT_AWKLIB="$___X_CMD_ROOT_MOD/awk/lib"
+___X_CMD_ROOT_TMP_AWK="$___X_CMD_ROOT_TMP/awk"
+
+alias awk:argparse:init='
+    local AWK_MOD=
+    local AWK_ARG=
+    local AWK_CODE=
+    local AWK_ENV_CODE=
+    local AWK_ENV_SH=
+    ! x os name win: || AWK_ENV_SH="IS_OS_WIN=1 "
+'
+
+# Notice: The Reason We are using -v because in some awk ==> the value pass from -v cannot contain \n
+
+# shellcheck disable=SC2142
+alias awk:argparse:handle='
+    case "$1" in
+        -m)
+            [ -n "$2" ] || N=awk M="Invalid argument after -m ==> $2" log:ret:64
+            ___x_cmd_awk_parse_modstr_ "$2"; AWK_MOD="$x_"
+            shift 2;    continue ;;
+        -f)
+            [ -n "$2" ] ||  N=awk M="Invalid argument after -f ==> $2" log:ret:64
+            AWK_ARG="$AWK_ARG -f '\''$2'\''";
+            shift 2;    continue ;;
+        -b) [ -n "$2" ] ||  N=awk M="Invalid argument after -b ==> $2" log:ret:64
+            AWK_CODE="${AWK_CODE}BEGIN{${___X_CMD_UNSEENCHAR_NEWLINE}${2}${___X_CMD_UNSEENCHAR_NEWLINE}}";
+            shift 2;    continue ;;
+        -e) [ -n "$2" ] ||  N=awk M="Invalid argument after -e ==> $2" log:ret:64
+            AWK_CODE="${AWK_CODE}END{${___X_CMD_UNSEENCHAR_NEWLINE}${2}${___X_CMD_UNSEENCHAR_NEWLINE}}";
+            shift 2;    continue ;;
+        -n) [ -n "$2" ] ||  N=awk M="Invalid argument after -n ==> $2" log:ret:64
+            AWK_CODE="${AWK_CODE}{${___X_CMD_UNSEENCHAR_NEWLINE}${2}${___X_CMD_UNSEENCHAR_NEWLINE}}";
+            shift 2;    continue ;;
+        -E)
+            [ -n "$2" ] ||  N=awk M="Invalid argument after -E ==> $2" log:ret:64
+            ___x_cmd_awk_parse_envlist_ "$2"; AWK_ENV_SH="$AWK_ENV_SH $x_"
+            shift 2;    continue ;;
+        *)  AWK_CODE="${AWK_CODE}${1}${___X_CMD_UNSEENCHAR_NEWLINE}"
+            shift; continue ;;
+    esac
+'
+
+# shellcheck disable=SC2142
+alias awk:argparse:handle-v-using-arg='
+    case "$1" in
+        -v)
+            [ -n "$2" ] || N=awk M="Invalid argument after -v ==> $2" log:ret:64
+            case "$2" in
+                *=*)
+                    local AWK_VAR_NAME="${2%%=*}"
+                    local AWK_VAR_ENVNAME=___X_CMD_AWK_${AWK_VAR_NAME}
+                    eval "$AWK_VAR_ENVNAME=\"\${2#*=}\""
+                    AWK_ARG="$AWK_ARG -v $AWK_VAR_NAME=\"\$$AWK_VAR_ENVNAME\""
+                ;;
+                *)
+                    AWK_ARG="$AWK_ARG -v $2=\"\$$2\""
+                ;;
+            esac
+            shift 2;    continue ;;
+    esac
+'
+
+# shellcheck disable=SC2142
+alias awk:argparse:handle-v-using-env-stage1='
+case "$1" in
+    -v)
+        [ -n "$2" ] || N=mawk M="Invalid argument after -v ==> $2" log:ret:64
+        case "$2" in
+            *=*)
+                local AWK_VAR_NAME="${2%%=*}"
+                local AWK_VAR_ENVNAME=___X_CMD_AWK_${AWK_VAR_NAME}
+                eval "$AWK_VAR_ENVNAME=\"\${2#*=}\""
+                AWK_ENV_CODE="${AWK_ENV_CODE}${AWK_VAR_NAME} = ENVIRON[\"$AWK_VAR_ENVNAME\"];${___X_CMD_UNSEENCHAR_NEWLINE}"
+                AWK_ENV_SH="${AWK_ENV_SH} $AWK_VAR_ENVNAME=\"\${$AWK_VAR_ENVNAME}\""
+            ;;
+            *)
+                AWK_ENV_CODE="${AWK_ENV_CODE}${2} = ENVIRON[\"$2\"];${___X_CMD_UNSEENCHAR_NEWLINE}"
+                AWK_ENV_SH="${AWK_ENV_SH} $2=\"\${$2}\""
+            ;;
+        esac
+        shift 2;    continue ;;
+esac
+'
+
+
+alias awk:argparse:handle-v-using-env-stage2='
+    if [ -n "$AWK_ENV_CODE" ]; then
+        AWK_CODE="BEGIN{
+${AWK_ENV_CODE}
+}
+
+$AWK_CODE"
+    fi
+'
+
+___x_cmd_awk_parse_modstr_(){
+    x_=
+    local str=$1    # trim space
+    local elem="${str%%,*}"
+    x_="${x_} -f '${___X_CMD_ROOT_AWKLIB}/$elem.awk'"
+    while [ "$elem" != "$str" ]; do
+        str=${str#*,}
+        elem="${str%%,*}"
+        x_="${x_} -f '${___X_CMD_ROOT_AWKLIB}/$elem.awk'"
+    done
+}
+
+___x_cmd_awk_parse_envlist_(){
+    x_=
+    local str=$1    # trim space
+    local elem="${str%%,*}"
+    x_="${x_} $elem=\"\${$elem}\""
+    while [ "$elem" != "$str" ]; do
+        str=${str#*,}
+        elem="${str%%,*}"
+        x_="${x_} $elem=\"\${$elem}\""
+    done
+}
+
+___x_cmd_awk_runinside(){
+    local AWK_ENV_SH="$1"; shift
+    eval "${AWK_ENV_SH} ___x_cmd_awk_runinside1 \"\$@\""
+}
+
+___x_cmd_awk_runinside1(){
+    local AWK_IMPL="$1"
+    local AWK_RUNNER="$2"
+    local AWK_MODLIST="$3"
+    local AWK_ARGLIST="$4"
+    local AWK_CODE="$5"
+    shift 5
+
+    # shellcheck disable=SC2086
+    eval set -- "$AWK_RUNNER"                       \
+        -f "${___X_CMD_ROOT_AWKLIB}/core.awk"       \
+        "$AWK_MODLIST"                              \
+        "$AWK_ARGLIST"                              \
+        "\"\$AWK_CODE\""
+
+    # No LC_ALL=c
+    ___X_CMD_AWK_IMPL="${AWK_IMPL}" "$@"
+}
+

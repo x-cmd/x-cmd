@@ -39,7 +39,7 @@ function pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name,        
     for (i=1; i<=_rule_l; ++i) {
         k = jobj[ _rule_kp, i ]
         _kpat = juq( k )
-        if (  _kpat ~ _osarch ) is_match_osarch = 1
+        if ( _kpat ~ "/"_osarch"$" ) is_match_osarch = 1
         gsub("\\*", "[^/]+", _kpat)
         if ( match( _version_osarch, "^" _kpat ) ) {
             pkg_copy_table( jobj, _rule_kp SUBSEP k, table, table_kp )

@@ -74,10 +74,10 @@ function advise_complete_option_value( curval, genv, lenv, obj, obj_prefix, opti
 # Just tell me the arguments
 function advise_complete_argument_value( curval, genv, lenv, obj, obj_prefix, nth, _candidate_code,      _kp ){
     _kp = obj_prefix SUBSEP "\"#" nth "\""
-    if (aobj_get(obj, _kp) != "") return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
+    if ( advise_get_ref(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
 
     _kp = obj_prefix SUBSEP "\"#n\""
-    if (aobj_get(obj, _kp) != "") return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
+    if ( advise_get_ref(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
 
     return advise_complete___generic_value( curval, genv, lenv, obj, obj_prefix )
 }

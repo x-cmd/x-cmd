@@ -50,6 +50,9 @@ BEGIN {
     UI_SCREEN_CLEAR_TOP     = "\033[1J"
     UI_SCREEN_CLEAR         = "\033[2J"
 
+    UI_LINEWRAP_DISABLE     = "\033[?7l"
+    UI_LINEWRAP_ENABLE      = "\033[?7h"
+
 }
 
 

@@ -62,11 +62,11 @@ function yml_hex2dec( hex ) {
 }
 
 BEGIN{
-    YML_RE_BOOL_TRUE = "true|True|TRUE"
-    YML_RE_BOOL_FALSE = "false|False|FALSE"
+    YML_RE_BOOL_TRUE = "(true|True|TRUE)"
+    YML_RE_BOOL_FALSE = "(false|False|FALSE)"
     YML_RE_BOOL = re( YML_RE_BOOL_TRUE "|" YML_RE_BOOL_FALSE )
 
-    YML_RE_NULL = "null|Null|NULL|~"
+    YML_RE_NULL = "(null|Null|NULL|~)"
 }
 
 function yml_parse_special_value( o, k, r ){

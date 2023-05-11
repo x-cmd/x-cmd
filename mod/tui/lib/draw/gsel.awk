@@ -80,7 +80,7 @@ function draw_gsel___on_footer(o, kp, x1, x2, y1, y2, opt,       v, i, s, p){
 function draw_gsel___on_cell( o, kp, i, w, opt,         v, ri){
     w = w - TH_GSEL_ITEM_PREFIX_WIDTH
     ri = model_arr_get(o, kp, "view-row" SUBSEP i)
-    v = comp_gsel_data_get(o, kp, ri)
+    v = model_arr_data_get(o, kp, ri)
     v = space_restrict_or_pad_utf8_esc(v, w)
 
     if (draw_gsel_cell_selected( o, kp, ri )) v = TH_GSEL_ITEM_SELECTED_PREFIX th( TH_GSEL_ITEM_SELECTED, v )

@@ -6,12 +6,21 @@
 _____x_cmd_gl_help__token_setting(){
     printf "\n%s %s \n%s\n" \
         "$(___x_cmd_ui yellow 'Run command to add|repleace token:')" \
-        "$(___x_cmd_ui bold cyan "\`x gl token <token>\`")"   \
+        "$(___x_cmd_ui bold cyan "\`x gl cfg token=<token>\`")"   \
         "$(___x_cmd_ui "$(___x_cmd_gl___get_web_host)/-/profile/personal_access_tokens")"
 }
 
+_____x_cmd_gl_help__owner_setting(){
+    printf "|\n    %s %s\n    %s %s\n" \
+        "$(___x_cmd_ui yellow 'Run current command to setup default owner in the current session:')" \
+        "$(___x_cmd_ui bold cyan "\`x gl cur owner=<owner>\`")" \
+        "$(___x_cmd_ui yellow 'Run config  command to save default owner to local configure file:')" \
+        "$(___x_cmd_ui bold cyan "\`x gl cfg owner=<owner>\`")"
+}
+
 _____x_cmd_gl_help(){
-    x help -m gl "$@"
+    x help -m gl "$@" 1>&2
+    return 1
 }
 
 # EndSection
@@ -31,9 +40,8 @@ ___x_cmd_gl_curl(){
     shift 2
     local ___X_CMD_API_GL_HEADER="-s -H \"Content-Type: application/json\" -D \"$___X_CMD_GL_TMP/.____x_cmd_gl_curl_header\""
 
-    local _curl_host_tmp=""
-    local ___X_CMD_API_GL_TOKEN=""
-    ___x_cmd_gl_config___var  ___X_CMD_API_GL_TOKEN=token _curl_host_tmp=host 2>/dev/null
+    local ___X_CMD_API_GL_TOKEN=""; local _curl_host_tmp="";
+    ___x_cmd_gl_current    ___X_CMD_API_GL_TOKEN:=token  _curl_host_tmp:=host 2>/dev/null
     local ___X_CMD_API_GL_HOST="${___X_CMD_API_GODE_HOST:-"$_curl_host_tmp"}"
 
     local ___X_CMD_GL_SHOW_HTTP_CODE=1
@@ -78,7 +86,11 @@ ___x_cmd_gl_curl___use_query_data(){
 }
 
 ___x_cmd_gl_http_error(){
-    local http_resp_code
+    if [ "$op" = get ] && [ "$___X_CMD_CCMD_AGE" -ne -1 ]; then
+        gl:debug "Is cache data"
+        return 0
+    fi
+    local http_resp_code=""
     http_resp_code=$(___x_cmd_gl_resp_code)
     if [ -n "$http_resp_code" ] && [ "$http_resp_code" -ge 200 ] && [ "$http_resp_code" -le 303 ]; then
         return 0
@@ -204,32 +216,28 @@ ___x_cmd_gl_param_normalize_repo(){
             owner_repo="$op"
             ;;
         "")
-            case "$___X_CMD_GL_CURRENT_repo" in
-                */*) owner_repo="$___X_CMD_GL_CURRENT_repo"     ;;
+            local owner=""; local repo="";
+            ___x_cmd_gl_current owner:=owner repo:=repo 2>/dev/null
+            case "$repo" in
+                */*) owner_repo="$repo"     ;;
                 "")  owner_repo="$(___x_cmd_gx_get_owner_repo)" ;;
                 *)
-                    if [ -n "$___X_CMD_GL_CURRENT_owner" ]; then
-                        owner_repo="${___X_CMD_GL_CURRENT_owner}/${___X_CMD_GL_CURRENT_repo}"
+                    if [ -n "$owner" ]; then
+                        owner_repo="${owner}/${repo}"
                     else
-                        owner_repo="$(___x_cmd_gl_config_get owner)/${___X_CMD_GL_CURRENT_repo}" || {
-                            gl:error "No owner provided. Default owner not set."
-                            gl:warn -h "$(x str ml wrap "$(_____x_cmd_gl_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
-                            return 1
-                        }
+                        gl:error -h "$(_____x_cmd_gl_help__owner_setting)" "No owner provided. Default owner not set."
+                        return 1
                     fi
                 ;;
             esac
             ;;
         *)
-            if [ -z "$___X_CMD_GL_CURRENT_owner" ]; then
-                local ___X_CMD_GL_CURRENT_owner=""
-                if ! ___X_CMD_GL_CURRENT_owner="$(___x_cmd_gl_config_get owner)"; then
-                    gl:error "No owner provided. Default owner not set."
-                    gl:warn -h "$(x str ml wrap "$(_____x_cmd_gl_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
-                    return 1
-                fi
+            local x_=""; ___x_cmd_gl_current get_ owner 2>/dev/null
+            if [ -z "$x_" ]; then
+                gl:error -h "$(_____x_cmd_gl_help__owner_setting)" "No owner provided. Default owner not set."
+                return 1
             fi
-            owner_repo="${___X_CMD_GL_CURRENT_owner}/${op}"
+            owner_repo="${x_}/${op}"
             ;;
     esac
     owner_repo="$(printf "%s" "$owner_repo" | ___x_cmd_gl___url_path_encode)"
@@ -274,5 +282,11 @@ ___x_cmd_gl___get_web_host(){
     else
         printf "%s" "https://gitlab.com"
     fi
+}
+
+___x_cmd_gl___get_owner_(){
+    ___x_cmd_gl_current get_ owner || x jo env . x_=.username <<A
+        $(___x_cmd_gl_curl get "/user")
+A
 }
 # EndSection

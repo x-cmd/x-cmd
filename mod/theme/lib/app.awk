@@ -135,20 +135,21 @@ BEGIN{
 }
 
 
-function get_theme_arr(         _cmd, _theme, _line){
+function get_theme_arr(         _cmd, _theme, _line, c){
     _cmd = "tar -f " THEME_TAR_PATH " -t style/ 2>/dev/null"
-    while ( _cmd | getline _line ) {
+    while ((c=(_cmd | getline _line)) == 1) {
         _theme = substr(_line, 7)
         if ( _theme == "" ) continue
         THEME_ARR[ ++THEME_ARR_L ] = _theme
     }
+    if (c == -1) exit(1)
 }
 
-function get_theme_tag(         _cmd, i, _tag, _line, _theme){
+function get_theme_tag(         _cmd, i, _tag, _line, _theme, c){
     _cmd = "tar -f " THEME_TAR_PATH " -O -x index.yml 2>/dev/null"
     # _cmd = "cat ../xcmd/theme/ui.yml 2>/dev/null"
     THEME_TAG_L = 0
-    while ( _cmd | getline _line) {
+    while ((c=(_cmd | getline _line)) == 1) {
         if ( _line == "" ) continue
         if ( _line ~ /^-/ ) {
             THEME_TAG_ITEM[ _tag L ] = i
@@ -165,22 +166,24 @@ function get_theme_tag(         _cmd, i, _tag, _line, _theme){
             if ( max_theme_len < _theme_len ) max_theme_len = _theme_len
         }
     }
+    if (c == -1) exit(1)
     THEME_TAG_ITEM[ _tag L ] = i
     ctrl_rstate_init( SELECTED_THEME_TAG_IDX, 1, THEME_TAG_L )
 }
 
-function get_theme_preview( theme,          _cmd, i, c, _line){
+function get_theme_preview( theme,          _cmd, r, c, _line){
     if (theme == "") return
     c = PREVIEW[theme]
     if ( c == "" ) {
         _cmd = "tar -f " THEME_TAR_PATH " -O -x style-preview/" theme " 2>/dev/null"
-        for (i=1; _cmd | getline _line; i++) {
+        while ((r=(_cmd | getline _line)) == 1) {
             c = c "\n" _line
         }
         gsub(/^[ \t\b\v\n]+/, "", c)
         gsub(/[ \t\b\v\n]+$/, "", c)
         PREVIEW[theme] = c
     }
+    if (r == -1) exit(1)
 }
 # EndSection
 

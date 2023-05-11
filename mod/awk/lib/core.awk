@@ -291,6 +291,7 @@ function log_level( level, mod, msg, c, c_bg, c_msg ){
 # TODO: this module try to provide facility for filesystem manipulation in the future.
 function cat( filepath,    r, c ){
     CAT_FILENOTFOUND = false
+    filepath = filepath_adjustifwin( filepath )
     while ((c=(getline <filepath))==1) {
         r = (r == "") ? $0 : r RS $0
     }
@@ -303,6 +304,16 @@ function cat_is_filenotfound(){
     return CAT_FILENOTFOUND
 }
 
+BEGIN{
+    IS_OS_WIN = int(ENVIRON[ "IS_OS_WIN" ])
+}
+
+# This is for cawk ...
+function filepath_adjustifwin( fp ){
+    if ( (IS_OS_WIN == 1) && (fp ~ "^/[A-Za-z]") ) return substr(fp, 2, 1) ":/" substr(fp, 3)
+    return fp
+}
+
 function bcat_oct_init(){
     if (BCAT_INIT == 1) return
     BCAT_INIT = 1
@@ -310,11 +321,12 @@ function bcat_oct_init(){
 }
 
 # I remember this is for the binary file during the script module development.
-function bcat( filepath, a,     _tmprs, _cmd ){
+function bcat( filepath, a,     _tmprs, _cmd, c ){
     _tmprs = RS
+    # filepath = filepath_adjustifwin( filepath )
     _cmd = "hexdump -v -b " filepath " 2>/dev/null"
 
-    i = 0; while (_cmd | getline) {
+    i = 0; while ((c=(_cmd | getline))==1) {
         a[ ++i ] = OCTARR[$2]
         a[ ++i ] = OCTARR[$3]
         a[ ++i ] = OCTARR[$4]
@@ -332,6 +344,7 @@ function bcat( filepath, a,     _tmprs, _cmd ){
         a[ ++i ] = OCTARR[$16]
         a[ ++i ] = OCTARR[$17]
     }
+    if (c == -1)    CAT_FILENOTFOUND = true
     close(_cmd)
 
     RS = _tmprs
