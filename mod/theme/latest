@@ -3,6 +3,7 @@
 ___x_cmd_theme_control(){
     local op="$1"
     case "$op" in
+        set)                            shift; "___x_cmd_theme_control_use" "$@"   ;;
         ls|use|try|font|zinit|unset)    shift; "___x_cmd_theme_control_$op" "$@"   ;;
         -h|--help)                      _____x_cmd_theme_help                      ;;
         *)                              ___x_cmd_theme_control_app "$@"            ;;
@@ -105,7 +106,7 @@ ___x_cmd_theme_control_try_inner(){
                         ;;
     esac
     ___X_CMD_THEME_NAME="$name"
-    [ -z "$(command -v _____x_cmd_theme_register_hook)" ] || _____x_cmd_theme_register_hook
+    ! command -v _____x_cmd_theme_register_hook >/dev/null || _____x_cmd_theme_register_hook
 }
 # EndSection
 
@@ -114,17 +115,20 @@ ___x_cmd_theme_control_zinit(){
     case "$1" in
         --help|-h)    _____x_cmd_theme_help zinit; return ;;
     esac
+    [ -n "$ZSH_VERSION" ] || {
+        x log :theme error "Only support Zsh shell"
+        return 1
+    }
 
     # load theme
-    [ -n "$(command -v ___x_cmd_theme_prompt_format)" ] || ___x_cmd_theme_control_use ""
+    command -v ___x_cmd_theme_prompt_format >/dev/null || ___x_cmd_theme_control_use
     # load zsh plugins
-    if [ -z "$ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME" ] || [ -z "$ZSH_HIGHLIGHT_REVISION" ]; then
-        x pkg install zsh-plugin || return
-        ZSH_PLUGIN="zsh-syntax-highlighting,zsh-autosuggestions" x pkg activate zsh-plugin
-        x boot rc add "x-zsh-plugin" \
-            "[ -n \"\$ZSH_VERSION\" ] && ZSH_PLUGIN=\"zsh-syntax-highlighting,zsh-autosuggestions\" x pkg activate zsh-plugin"
-        x log :theme "ZSH plugin \"syntax-highlighting\" and \"autosuggestions\" initialized"
-    fi
+    local ZSH_PLUGIN="${1:-"zsh-syntax-highlighting,zsh-autosuggestions,zsh-config"}"
+    x pkg install zsh-plugin || return
+    x pkg activate zsh-plugin
+    x boot rc add \
+        "x-zsh-plugin" "[ -z \"\$ZSH_VERSION\" ] || ZSH_PLUGIN=\"$ZSH_PLUGIN\" x pkg activate zsh-plugin"
+    x log :theme "ZSH enhanced plugins and configure initialized"
     # load font
     [ -n "$SSH_CONNECTION" ] || [ -f "/.dockerenv" ] || ___x_cmd_theme_control_font
     x log :theme "Successfully initialized"
@@ -160,7 +164,7 @@ ___x_cmd_theme_control_font() {
 
         tar -zxf "$cache" -C "$_font_dir" || return 1
 
-        if command -v fc-cache >/dev/null; then
+        if command -v fc-cache >/dev/null 2>&1; then
             x log :theme "Resetting font cache, this may take a moment..."
             command fc-cache -f "$_font_dir"
         fi
@@ -191,7 +195,7 @@ ___x_cmd_theme_control_unset(){
     esac
 
     x boot rc del x-theme
-    [ -z "$(command -v _____x_cmd_theme_unset_hook)" ] || _____x_cmd_theme_unset_hook
+    ! command -v _____x_cmd_theme_unset_hook >/dev/null || _____x_cmd_theme_unset_hook
     x log :theme "Unset the theme ${1:+"and ZSH plugin "}successfully." "${___X_CMD_UNSEENCHAR_033}[1;33mNow you can restart your terminal.${___X_CMD_UNSEENCHAR_033}[0m"
 }
 # EndSection
@@ -214,7 +218,8 @@ ___x_cmd_theme_control_app(){
 # Section: help
 # shellcheck disable=2120
 _____x_cmd_theme_help(){
-    x help -m theme "$@"
+    x help -m theme "$@" 1>&2
+    return 1
 }
 # EndSection
 

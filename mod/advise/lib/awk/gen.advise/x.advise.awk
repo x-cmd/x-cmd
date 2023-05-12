@@ -33,6 +33,7 @@ function gen_blacklist(o, str,      _, i, l){
 function get_mod_desc_of_advise_file(o, kp, filepath,       _, c, RS_OLD, _last_curkey){
     RS_OLD = RS
     RS = "\n"
+    filepath = filepath_adjustifwin( filepath )
     while ((c=(getline <filepath))==1) {
         _last_curkey = (JITER_CURKEY != "") ? JITER_CURKEY : JITER_LAST_KP
         if ( jiter_regexarr_parse(_, $0, patarrl, patarr) == false )    continue

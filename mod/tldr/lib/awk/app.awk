@@ -1,29 +1,34 @@
-function user_request_data( rootkp,            list, kp, i, j, k, l, _pl, _sl, _cl, _pv, _sv, _cv, arr, _){
+function user_request_data( rootkp,            list, kp, i, j, k, l, _pages, _system, _cmd, _pl, _sl, _cl, _pv, _sv, _cv, arr, _){
     list =  TLDR_APP_DATA
     kp = TLDR_KP
     l = split(list, arr, "\n")
     for (i=1; i<=l; ++i){
         split(arr[i], _, "/")
-        jdict_put(_pagr_lang, "", _[1], true)
+        jdict_put(_pages, "", _[1], true)
         jdict_put(_system, _[1], _[2], true)
         jdict_put(_cmd, _[1] S _[2], _[3], true)
     }
-    l = _pagr_lang[ L ]
+    l = _pages[ L ]
+    comp_navi_data_init( o, kp )
     for (i=1; i<=l; ++i){
-        _pv = _pagr_lang[ "", i ]
+        _pv = _pages[ "", i ]
         comp_navi_data_add_kv( o, kp, "", _pv, "{", _pv, 13)
         _sl = _system[ _pv L ]
+        comp_navi_data_init( o, kp, _pv )
         for (j=1; j<=_sl; ++j){
             _sv = _system[ _pv, j ]
-            comp_navi_data_add_kv( o, kp, S _pv, _sv, "{", _sv, 10)
+            comp_navi_data_add_kv( o, kp, _pv, _sv, "{", _pv "/" _sv, 10)
             _cl = _cmd[ _pv, _sv L ]
+            comp_navi_data_init( o, kp, _pv "/" _sv )
             for (k=1; k<=_cl; ++k){
                 _cv = _cmd[ _pv, _sv, k ]
-                comp_navi_data_add_kv( o, kp, S _pv S _sv, _cv, "", _cv)
-                o[ kp, "TLDR.PATH", S _pv S _sv S _cv ] = _pv "/" _sv "/" _cv
+                comp_navi_data_add_kv( o, kp, _pv "/" _sv, _cv, "", _pv "/" _sv "/" _cv)
             }
+            comp_navi_data_end( o, kp, _pv "/" _sv )
         }
+        comp_navi_data_end( o, kp, _pv )
     }
+    comp_navi_data_end( o, kp )
 }
 
 # Section: user model
@@ -59,7 +64,7 @@ function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr){
 function tapp_handle_exit( exit_code,       p, v ){
     if (exit_is_with_cmd()){
         if ((FINALCMD == "ENTER") && (! comp_navi_cur_preview_type_is_sel( o, TLDR_KP )))
-            tapp_send_finalcmd( "___x_cmd_tldr_cat " o[ TLDR_KP, "TLDR.PATH", comp_navi_get_cur_rootkp(o, TLDR_KP) ] )
+            tapp_send_finalcmd( "___x_cmd_tldr_cat " comp_navi_get_cur_rootkp(o, TLDR_KP) )
     }
 }
 
@@ -69,10 +74,8 @@ function tapp_handle_exit( exit_code,       p, v ){
 function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, _filepath, _content ){
     if ( ! change_is(o, kp, "navi.preview") ) return
     change_unset(o, kp, "navi.preview")
-
-    _filepath = o[ kp, "TLDR.PATH", rootkp ]
+    _filepath = rootkp
     if (_filepath == "") return
-
     if ((_content = o[ kp, TLDR_DOC_KP, "content", _filepath ]) == "")
         o[ TLDR_DOC_KP, "content", _filepath ] = _content = cat(TLDR_APP_BASEPATH "/" _filepath)
 
@@ -85,7 +88,6 @@ function user_paint_status( o, kp, x1, x2, y1, y2,      s, _log, _path ) {
     if ( ! change_is(o, kp, "navi.footer") ) return
     change_unset(o, kp, "navi.footer")
     s = comp_navi_get_cur_rootkp(o, kp)
-    gsub(ROOTKP_SEP, " ", s)
     s = th( UI_TEXT_BOLD TH_THEME_COLOR, "Path: " ) s
     comp_textbox_put( o, kp SUBSEP "navi.footer" , s )
     return comp_textbox_paint( o, kp SUBSEP "navi.footer", x1, x2, y1, y2)

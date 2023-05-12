@@ -1,5 +1,5 @@
-function user_request_data( rootkp ){
-    navi_request_data(o, LSENV_KP, rootkp, "", " ")
+function user_request_data( o, kp, rootkp ){
+    navi_request_data(o, kp, rootkp)
 }
 
 # Section: user model
@@ -27,24 +27,23 @@ function tapp_handle_response(fp,       _content, _rootkp, l, i, arr){
     else if ( match( _content, "^data:item:" ) ){
         lock_release( o, LSENV_KP )
         l = split(_content, arr, "\n")
-        _rootkp = arr[1];   gsub( "^data:item:", "", _rootkp )
-        user_data_add( o, LSENV_KP, _rootkp, arr[2] )
-        for (i=3; i<=l; ++i) {
-            user_data_add( o, LSENV_KP, _rootkp, arr[i] )
-        }
+        _rootkp = substr( arr[1], RLENGTH+1 )
+        comp_navi_data_init( o, LSENV_KP, _rootkp )
+        for (i=2; i<=l; ++i) user_data_add( o, LSENV_KP, _rootkp, arr[i] )
+        comp_navi_data_end( o, LSENV_KP, _rootkp )
     }
 }
 
 function user_data_add( o, kp, rootkp, str,         preview, _, v) {
     split( str, _, " ")
     v = _[1]
-    if (v != "" ) preview = "{"
-    if (_[2] != "") {
+    if (_[2] == "") preview = "{"
+    else {
         jqparse_dict0(_[2], o, kp SUBSEP rootkp SUBSEP v SUBSEP "info")
         jdict_put(o, kp SUBSEP rootkp SUBSEP v SUBSEP "info", "\"version\"", v )
         preview = ""
     }
-    comp_navi_data_add_kv( o, kp, rootkp, v, preview, v )
+    comp_navi_data_add_kv( o, kp, rootkp, v, preview, rootkp " " v )
 }
 
 function tapp_handle_exit( exit_code,       s, v, _ ){
@@ -52,9 +51,9 @@ function tapp_handle_exit( exit_code,       s, v, _ ){
         s = comp_navi_get_cur_rootkp(o, LSENV_KP)
         v = o[ LSENV_KP, s, "info", "\"version\"" ]
         if (v == "") return
-        split( s, _, ROOTKP_SEP )
+        split( s, _, " " )
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_FINAL_COMMAND", FINALCMD ) )
-        tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_APP_CANDIDATE", _[3] "=" v ) )
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_APP_CANDIDATE", _[2] "=" v ) )
     }
 }
 
@@ -65,8 +64,8 @@ function user_paint_status( o, kp, x1, x2, y1, y2,      s, l, i, _ ) {
     if ( ! change_is(o, kp, "navi.footer") ) return
     change_unset(o, kp, "navi.footer")
     s = comp_navi_get_cur_rootkp(o, kp)
-    l = split( s, _, ROOTKP_SEP)
-    s = th( TH_THEME_MINOR_COLOR, "CANDIDATE: " ) _[3]
+    l = split( s, _, " ")
+    s = th( TH_THEME_MINOR_COLOR, "CANDIDATE: " ) _[2]
     comp_textbox_put( o, kp SUBSEP "navi.footer" , s )
     return comp_textbox_paint( o, kp SUBSEP "navi.footer", x1, x2, y1, y2)
 }

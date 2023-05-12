@@ -44,36 +44,31 @@ function user_statusline_help(o, kp){
 function user_data_navi_init( o, kp,         _list, l, i, _, v ){
     _list = ENVIRON[ "___X_CMD_HELPAPP_APP_LIST" ]
     l = split( _list, _, "\n" )
+    comp_navi_data_init( o, kp )
     for (i=1; i<=l; ++i){
         v = _[ i ]
         if ( ! match( v, "\001") ) continue
         comp_navi_data_add_kv( o, kp, "", substr( v, 1, RSTART-1), "{",  substr(v, RSTART+1))
     }
+    comp_navi_data_end( o, kp )
 }
 
-function user_release_ref( o, kp,       _kp, l, i, arr, r, filepath, _ ){
+function user_release_ref( o, kp,       _kp, l, i, arr, msg){
     l = split( kp, arr, SUBSEP)
     for (i=2; i<=l; ++i){
         _kp = _kp SUBSEP arr[i]
-        if ( (r = jref_get(o, _kp) ) != false ) {
-            filepath = comp_advise_get_ref_adv_jso_filepath( juq(r) )
-            jiparse2leaf_fromfile( _, _kp, filepath )
-            if ( cat_is_filenotfound() ) panic( "Not found such filepath - " filepath  )
-            jref_rm(o, _kp)
-            cp_cover(o, _kp, _, _kp)
-        }
+        if ((msg = comp_advise_get_ref(o, _kp)) != true) return panic( msg )
     }
 }
 
-function user_data_navi_subcmd( o, kp, rootkp,       l, _filepath, _obj_kp, i, _, v, j, k, _l, subcmd_group ){
+function user_data_navi_subcmd( o, kp, rootkp,       _filepath, _obj_kp, i, l, _, v, j, k, _l, subcmd_group ){
     if (! lock_acquire( o, kp ) ) panic("lock bug")
     comp_navi_data_available( o, kp, rootkp, true )
     lock_release( o, kp )
-    if (match( rootkp, "^"ROOTKP_SEP"[^"ROOTKP_SEP"]+")) {
-        l = length( ROOTKP_SEP )
-        _filepath = substr( rootkp, l+1, RLENGTH-l)
+    if (match( rootkp, "^[^"SUBSEP"]+")) {
+        _filepath = substr( rootkp, 1, RLENGTH)
         if ( ! change_is(FILE_DATA_OBJ, _filepath) ) {
-            jiparse2leaf_fromfile(FILE_DATA_OBJ, "DATA" SUBSEP substr(rootkp, 1, RLENGTH), _filepath)
+            jiparse2leaf_fromfile(FILE_DATA_OBJ, "DATA" SUBSEP _filepath, _filepath)
             if ( cat_is_filenotfound() ) panic( "Not found such filepath - " _filepath  )
             change_set(FILE_DATA_OBJ, _filepath)
             FILE_DATA_OBJ[ "IS_FILE_NOT_FOUND", _filepath ] = cat_is_filenotfound()
@@ -89,12 +84,14 @@ function user_data_navi_subcmd( o, kp, rootkp,       l, _filepath, _obj_kp, i, _
             k = subcmd_group[i]
             if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
             _l = subcmd_group[ k L ]
+            comp_navi_data_init( o, kp, rootkp )
             for (j=1; j<=_l; ++j){
                 v = subcmd_group[ k, "\""j"\"" ]
                 split( juq(v), _, "|" )
-                comp_navi_data_add_kv( o, kp, rootkp, _[1], "{",  v)
+                comp_navi_data_add_kv( o, kp, rootkp, _[1], "{", rootkp SUBSEP v)
             }
         }
+        comp_navi_data_end( o, kp, rootkp )
         user_change_set_all()
     }
 }

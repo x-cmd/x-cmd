@@ -2,15 +2,8 @@
 # shellcheck shell=bash
 
 # get the candidate value
-function advise_get_ref(obj, kp,        r, _filepath, _, subcmd_group, option_group, flag_group){
-    while ( (r = jref_get(obj, kp) ) != false ) {
-        _filepath = comp_advise_get_ref_adv_jso_filepath( juq(r) )
-        jiparse2leaf_fromfile( _, kp, _filepath )
-        if ( cat_is_filenotfound() ) return advise_panic( "No such advise jso file - " _filepath )
-        jref_rm(obj, kp)
-        cp_cover(obj, kp, _, kp)
-        delete _
-    }
+function advise_get_ref_and_group(obj, kp,        msg, subcmd_group, option_group, flag_group){
+    if ((msg = comp_advise_get_ref(obj, kp)) != true) return advise_panic( msg )
     comp_advise_parse_group(obj, kp, subcmd_group, option_group, flag_group)
     comp_advise_remove_dev_tag_of_arr_group(obj, kp, subcmd_group)
     comp_advise_remove_dev_tag_of_arr_group(obj, kp, option_group)
@@ -44,7 +37,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candida
             if (v !~ "^"curval) continue
             if ( ! aobj_is_multiple(obj, kp SUBSEP _option_id) && (lenv[ _option_id ] != "")) continue
             if (( curval == "" ) && ( v ~ "^-" )) if ( ! aobj_is_subcmd(obj, kp SUBSEP _option_id ) ) continue
-            if (( curval == "-" ) && ( v ~ "^--" )) continue
+            if (( curval == "-" ) && ( v ~ "^--." )) continue
             jdict_put( CAND, "CODE", jqu(v), jqu(_desc) )
         }
     }
@@ -74,10 +67,10 @@ function advise_complete_option_value( curval, genv, lenv, obj, obj_prefix, opti
 # Just tell me the arguments
 function advise_complete_argument_value( curval, genv, lenv, obj, obj_prefix, nth, _candidate_code,      _kp ){
     _kp = obj_prefix SUBSEP "\"#" nth "\""
-    if ( advise_get_ref(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
+    if ( advise_get_ref_and_group(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
 
     _kp = obj_prefix SUBSEP "\"#n\""
-    if ( advise_get_ref(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
+    if ( advise_get_ref_and_group(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
 
     return advise_complete___generic_value( curval, genv, lenv, obj, obj_prefix )
 }

@@ -1,6 +1,5 @@
-function user_request_data( rootkp,             arr, args ){
-    if (split(rootkp, arr, ROOTKP_SEP) == 4) args = arr[3] "." arr[2] "." arr[4]
-    navi_request_data(o, JOB_LOG_KP, rootkp, args)
+function user_request_data( o, kp, rootkp ){
+    navi_request_data(o, kp, rootkp)
 }
 
 # Section: user model
@@ -47,40 +46,43 @@ function user_data_add( o, kp, rootkp, arr, start, end,         s, str, _process
             }
         }
 
-        if ((l = _[ L ]) == 0) {
-            comp_navi_data_add_kv( o, kp )
-            _log = "job log ls is null"
-        }
+        comp_navi_data_init( o, kp )
+        if ((l = _[ L ]) == 0) _log = "job log ls is null"
 
         for (i=1; i<=l; ++i){
             _process = _[ S i ]
             comp_navi_data_add_kv( o, kp, "", _process, "{",  _process)
             _pl = _[ _process L ]
+            comp_navi_data_init( o, kp, _process )
             for (j=1; j<=_pl; ++j){
                 _date = _[ _process, j ]
-                comp_navi_data_add_kv( o, kp, S _process, _date, "{",  _date, 30)
+                comp_navi_data_add_kv( o, kp, _process, _date, "{", _process S _date, 30)
                 _dl = _[ _process, _date L ]
+                comp_navi_data_init( o, kp, _process S _date )
                 for (k=1; k<=_dl; ++k){
                     _random = _[ _process, _date, k ]
-                    comp_navi_data_add_kv( o, kp, S _process S _date, _random, "{",  _random )
+                    comp_navi_data_add_kv( o, kp, _process S _date, _random, "{", _date "." _process "." _random )
                 }
+                comp_navi_data_end( o, kp, _process S _date )
             }
+            comp_navi_data_end( o, kp, _process )
         }
+        comp_navi_data_end( o, kp )
     } else {
-        comp_navi_data_add_kv( o, kp, rootkp, arr[start], "", arr[start] )
-        for (s=start+1; s<=end; ++s) comp_navi_data_add_kv( o, kp, rootkp, arr[s], "", arr[s] )
         if (start == end)  _log = "job log dir ls is null"
+        comp_navi_data_init( o, kp, rootkp )
+        for (s=start; s<=end; ++s) comp_navi_data_add_kv( o, kp, rootkp, arr[s], "file", rootkp "/" arr[s] )
+        comp_navi_data_end( o, kp, rootkp )
     }
     o[ kp, "LOG_INFO" ] = _log
 }
 
 function tapp_handle_exit( exit_code,       arr, logfile, finalcmd, position ){
     if (exit_is_with_cmd()){
-        if (comp_navi_get_cur_preview_type(o, JOB_LOG_KP) == "") {
-            if (split(comp_navi_get_cur_rootkp(o, JOB_LOG_KP), arr, ROOTKP_SEP) != 5) return
+        if (comp_navi_get_cur_preview_type(o, JOB_LOG_KP) == "file") {
             finalcmd = FINALCMD
             position = comp_navi_current_position_get(o, JOB_LOG_KP)
-            logfile = JOB_LOG_FILE_BASEPATH "/" arr[3] "." arr[2] "." arr[4] "/" arr[5]
+            logfile = JOB_LOG_FILE_BASEPATH "/" comp_navi_get_cur_rootkp(o, JOB_LOG_KP)
             tapp_send_finalcmd( sh_varset_val( "logfile", logfile ))
         }
     }
@@ -97,7 +99,7 @@ function user_paint_status( o, kp, x1, x2, y1, y2,      s, l, i, _, _log ) {
     s = comp_navi_get_cur_rootkp(o, kp)
     _log = o[ kp, "LOG_INFO" ]
 
-    gsub( ROOTKP_SEP, " ", s )
+    gsub( S, " ", s )
     s = th( TH_THEME_MINOR_COLOR, "JOB_LOG: " ) s
     if (_log != "") s = s "\n" th( UI_FG_YELLOW, "Log: " ) _log
 
@@ -110,14 +112,10 @@ function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, r
     change_unset(o, kp, "navi.preview")
 
     comp_textbox_clear(o, "CUSTOM_INFO_KP")
-    if (split(rootkp, arr, ROOTKP_SEP) != 5) return
-
-    _filepath = JOB_LOG_FILE_BASEPATH "/" arr[3] "." arr[2] "." arr[4] "/" arr[5]
+    _filepath = filepath_adjustifwin( JOB_LOG_FILE_BASEPATH "/" rootkp )
     while ((c=(getline r <_filepath))==1) {
-        if (r ~ "^"___X_CMD_OUTERR_MIX_PACK_PREFIX)
-            sub("^"___X_CMD_OUTERR_MIX_PACK_PREFIX, "", r)
-        else
-            r = "[stderr] " r
+        if (r !~ "^"___X_CMD_OUTERR_MIX_PACK_PREFIX) r = "[stderr] " r
+        else sub("^"___X_CMD_OUTERR_MIX_PACK_PREFIX, "", r)
         s = (s == "") ? r : s "\n" r
     }
     if (c == -1) panic( "Not found such filepath - " _filepath  )

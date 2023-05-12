@@ -1,19 +1,146 @@
 # shellcheck shell=dash
 
+xrc:mod:lib    solo        __exec/inplace     __exec/ws
+
+___X_CMD_SOLO_WORKSPACE_ROOT=$___X_CMD_ROOT_DATA/solo/ws
+
 ___x_cmd_solo___exec(){
-    local solo_workpath="${___X_CMD_ROOT_DATA}/solo/link${1}"
+    local x_engine
+    local x_setup
+    local x_mode
 
-    local solo_entrypoint="$solo_workpath/X"
+    local filepath="$1"; shift
 
-    [ -e "$solo_entrypoint" ] || {
-        solo:error "Please init before exec"
-        return 1
-    }
+    ___x_cmd_solo_parse_ "$filepath"
+    ___x_cmd_solo___exec_engine_detect_from_fileext_ "$filepath" || x_=source
+    x_engine="$x_"
 
-    [ "$solo_entrypoint" -ot "$1" ] || {
-        solo:error "Please init again before exec for solo script is changed"
-        return 1
-    }
+    if [ source = "$engine" ]; then
+        x source "$filepath" "$@"
+        return
+    fi
 
-    . "$solo_workpath/X"
+    (
+        ___x_cmd_solo___exec___mode_ "$filepath"
+        local running_filepath="$x_"
+
+        x "$engine" load
+
+        local ___x_cmd_solo_oldpwd="$PWD"
+        cd "${x_%/*}}"
+        ___x_cmd_solo___exec_setup "$x_setup" || return
+        [ -z "$___x_cmd_solo_oldpwd" ] || command cd "$___x_cmd_solo_oldpwd"
+
+        local ___x_cmd_errcode=0; x "$x_engine" "${___X_CMD_ENGINE_SUBCMD_NAME:-__enginerun}" "$running_filepath" "$@" || ___x_cmd_errcode=$?
+        return $___x_cmd_errcode
+    )
 }
+
+___x_cmd_solo___exec___mode_(){
+    x abspath_ "$1"
+
+    case "$x_mode" in
+        inplace)    x_="$x_"; return ;;
+        ws)         "$@" ;;
+        *)          [ -n "$x_setup" ] || x_="$x_"; return  ;;
+    esac
+
+    local filename="${x_##*/}"
+    local dirname="${x_%/*}"
+    wspath="${___X_CMD_SOLO_WORKSPACE_ROOT}/$dirname"
+    command cp "$PWD/$filename" "$wspath/$filename"
+    x_="$wspath/$filename"
+}
+
+___x_cmd_solo___exec_setup(){
+    local setupcode="$1"; shift
+    if [ -f "${wspath}/.x-cmd/.setup.fail" ]; then
+        x ui yesno "setup fail last time. retry?" || return 1
+        x rmrf "$wspath/.x-cmd"
+        ___x_cmd_solo___exec_setup_main "$@"
+    elif [ ! -f "${wspath}/.x-cmd/.setup.ok" ]; then
+        ___x_cmd_solo___exec_setup_main "$@" || {
+            x:error "Fail to setup workspace"
+            return 1
+        }
+    fi
+}
+
+___x_cmd_solo___exec_setup_main(){
+    local setupcode="$1"; shift
+
+    x abspath_ "$1"
+    local filename="${x_##*/}"
+    local dirname="${x_%/*}"
+    wspath="${___X_CMD_SOLO_WORKSPACE_ROOT}/$dirname"
+    command mkdir -p "${wspath}/.x-cmd"
+    command cp "$dirname/$filename" "${wspath}/$filename"
+
+    printf "%s\n%s\n%s\n" \
+        "# x-cmd.engine: source" \
+        "# x-cmd.end" "$setupcode" >"${wspath}/.x-cmd/setup"
+
+    local ___x_cmd_solot_oldpwd="$PWD"
+    cd "${wspath}"
+    x ws setup || {
+        touch "${wspath}/.x-cmd/.setup.fail"
+        cd "$___x_cmd_solot_oldpwd"
+        x:error "Fail to setup workspace"
+        return 1
+    }
+
+    touch "${wspath}/.x-cmd/.setup.ok"
+    cd $___x_cmd_solot_oldpwd
+}
+
+___x_cmd_solo___exec_engine_detect_from_fileext_(){
+    local filepath="${1:?filepath}"; shift
+    local ext="${filepath##*.}"
+    x_=
+    case "$ext" in
+        "$filepath")    return 126      ;;
+        py)             x_=python       ;;
+        pl)             x_=perl         ;;
+        rb)             x_=ruby         ;;
+        js)             x_=node         ;;
+        ts)             x_=ts           ;;
+        raku|rakumod)   x_=raku         ;;
+
+        bash)           x_=bash         ;;
+        zsh)            x_=zsh          ;;
+        fish)           x_=fish         ;;
+        ksh)            x_=ksh          ;;
+        sh)             x_=sh           ;;
+
+        java)           x_=java         ;;      # No File Header for this.
+        jar)            x_=jar          ;;      # No File Header for this.
+        groovy)         x_=groovy       ;;
+        kts)            x_=kotlin       ;;      # No File Header for this.
+
+        txt)            x_=bat          ;;
+        yml|yaml)       x_=yml          ;;
+        json|jso)       x_=ja           ;;
+        toml)           x_=bat          ;;
+
+        *)              return 126      ;;
+    esac
+}
+
+
+# ___x_cmd_solo___exec(){
+#     local solo_workpath="${___X_CMD_ROOT_DATA}/solo/link${1}"
+
+#     local solo_entrypoint="$solo_workpath/X"
+
+#     [ -e "$solo_entrypoint" ] || {
+#         solo:error "Please init before exec"
+#         return 1
+#     }
+
+#     [ "$solo_entrypoint" -ot "$1" ] || {
+#         solo:error "Please init again before exec for solo script is changed"
+#         return 1
+#     }
+
+#     . "$solo_workpath/X"
+# }

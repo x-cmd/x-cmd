@@ -38,10 +38,7 @@ function csva_handle( data,     r, b, c, i, _lastcell, _tmp, _tmpl ){
 }
 
 function cval( i,   v ){
-    v = cget( i )
-
-    if (v ~ "^\"")  return csv_unquote( v )
-    else            return v
+    return ( ( v = cget( i ) ) ~ "^\"" ) ? csv_unquote( v ) : v
 }
 
 function cget( i ){

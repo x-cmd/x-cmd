@@ -1,13 +1,9 @@
+# Section: navi init and statusline
 function navi_request_data( o, kp, rootkp, args, sep ){
     if (! lock_acquire( o, kp ) ) panic("lock bug")
-    if (sep != "") {
-        args = rootkp
-        gsub( ROOTKP_SEP, sep, args)
-    }
-    tapp_request( "data:request:" args " " rootkp)
+    tapp_request( "data:request:" rootkp)
 }
 
-# Section: navi init and statusline
 function navi_init( o, kp ){
     comp_navi_init(o, kp)
     ctrl_sw_init( o, kp SUBSEP "IS_CTRL_CUSTOM_PREVIEW", false)
@@ -68,7 +64,7 @@ function navi_handle_clocktick( o, kp, idx, trigger, row, col ){
 
     if (! lock_unlocked( o, kp )) return
     comp_navi_current_position_set(o, kp)
-    if ( comp_navi_unava_has_set( o, kp ) ) user_request_data( comp_navi_unava( o, kp ) )
+    if ( comp_navi_unava_has_set( o, kp ) ) user_request_data( o, kp, comp_navi_unava( o, kp ) )
 }
 
 function navi_handle_wchar( o, kp, value, name, type,          _has_no_handle ){

@@ -101,10 +101,29 @@ function comp_advise_remove_dev_tag_of_arr_group(o, kp, arr_group,          i, j
 # Section: advise filepath
 
 function comp_advise_get_ref_adv_jso_filepath( str,         _id ) {
-    if ( ! match(str, "^x-advise://") ) return str
-    str = substr( str, RLENGTH+1 )
-    if ( str ~ "/" ) return ___X_CMD_ROOT_ADV "/" str
-    return ___X_CMD_ROOT_ADV "/" str "/advise.jso"
+    if (match(str, "^x-advise://")) {
+        str = substr( str, RLENGTH+1 )
+        if ( str ~ "/" ) return ___X_CMD_ROOT_ADV "/" str
+        return ___X_CMD_ROOT_ADV "/" str "/advise.jso"
+    }
+    else if (match(str, "^x-cmd-advise://")) {
+        str = substr( str, RLENGTH+1 )
+        if ( str ~ "/" ) return ___X_CMD_ADVISE_MAN_XCMD_FOLDER "/" str
+        return ___X_CMD_ADVISE_MAN_XCMD_FOLDER "/" str "/advise.t.jso"
+    }
+    return str
+}
+
+function comp_advise_get_ref(obj, kp,        r, filepath, _){
+    while ( (r = jref_get(obj, kp) ) != false ) {
+        filepath = comp_advise_get_ref_adv_jso_filepath( juq(r) )
+        jref_rm(obj, kp)
+        jiparse2leaf_fromfile( _, kp, filepath )
+        if ( cat_is_filenotfound() ) return "Not found such advise jso file - " filepath
+        cp_cover(obj, kp, _, kp)
+        delete _
+    }
+    return true
 }
 
 # EndSection

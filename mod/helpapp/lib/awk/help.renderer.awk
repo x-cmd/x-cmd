@@ -200,6 +200,7 @@ function generate_rest_argument_help( obj, kp, arr,         i, v, l, _str, _max_
     l = arr_len(arr)
     for ( i=1; i<=l; ++i ) {
         v = arr[ i ]
+        help_get_ref(obj, kp SUBSEP v)
         if (str_remove_esc(_option_after = aobj_get_description(obj, kp SUBSEP v) COMP_HELPDOC_UI_END generate_optarg_rule_string(obj, kp, v, "ARGS")) == "") continue
         _str = _str comp_helpdoc_unit_line( th_interval(COMP_HELPDOC_UI_THEME) _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
             th_interval(COMP_HELPDOC_UI_DESC) _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
@@ -358,15 +359,8 @@ function generate_tip_help(arr,         _str, i, l, kp, color, title){
     return _str "\n"
 }
 
-function help_get_ref(obj, kp,        r, filepath, _){
-    while ( (r = jref_get(obj, kp) ) != false ) {
-        filepath = comp_advise_get_ref_adv_jso_filepath( juq(r) )
-        jref_rm(obj, kp)
-        jiparse2leaf_fromfile( _, kp, filepath )
-        if ( cat_is_filenotfound() ) panic( "Not found such advise jso file - " filepath  )
-        cp_cover(obj, kp, _, kp)
-        delete _
-    }
+function help_get_ref(obj, kp,        msg){
+    if ((msg = comp_advise_get_ref(obj, kp)) != true) return panic( msg )
 }
 
 function print_helpdoc( obj, kp, width,        _res, i, j, l, v, s, _has_tip, _has_name, _has_description, _has_synopsis, _has_tldr, _has_other, TIP, RESTOPT, OPTION_GROUP, SUBCMD_GROUP, FLAG_GROUP ){

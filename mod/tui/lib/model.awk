@@ -79,6 +79,44 @@ function table_arr_head_add(o, kp, title,       l){
 # EndSection
 
 
+# Section: navi
+function navi_arr_data_add_kv( o, kp, rootkp, viewdata, previewdata, preview_kp, viewlen,        l ){
+    l = o[ kp, "data", rootkp L ] = o[ kp, "data", rootkp L ] + 1
+    o[ kp, "data", rootkp, l, "view" ] = viewdata
+    o[ kp, "data", rootkp, l, "preview" ] = previewdata
+    o[ kp, "data", rootkp, l, "preview_kp" ] = preview_kp
+    navi_arr_data_sel_add( o, kp, rootkp, viewdata)
+    navi_arr_data_view_width(o, kp, rootkp, ((viewlen != "") ? int(viewlen) : 20))
+}
+
+function navi_arr_data_view_width( o, kp, rootkp, v,       l, m ){
+    if (v == "")    return ( (l = o[ kp, "data", rootkp, "view.width" ]) > (m = navi_arr_data_maxview_width(o, kp)) ) ? m : l
+    else            o[ kp, "data", rootkp, "view.width" ] = int(v)
+}
+
+function navi_arr_data_maxview_width( o, kp, v ){
+    if (v == "")    return o[ kp, "maxview.width" ]
+    else            o[ kp, "maxview.width" ] = int(v)
+}
+
+function navi_arr_data_preview_is_sel( o, kp, rootkp, idx ){
+    return (navi_arr_data_preview( o, kp, rootkp, idx ) == "{")
+}
+
+function navi_arr_data_trace_col_val( o, kp, col, val, force_set ){
+    if ((val == "") && (!force_set))  return o[ kp, "trace.col.rootkp", col ]
+    else                              o[ kp, "trace.col.rootkp", col ] = val
+}
+
+function navi_arr_data_sel_add( o, kp, rootkp, val ){   model_arr_add( o, kp SUBSEP "comp.sel" SUBSEP rootkp, val);     }
+function navi_arr_data_sel_kp_get( kp, rootkp ) {       return kp SUBSEP "comp.sel" SUBSEP rootkp;                      }
+function navi_arr_data_len( o, kp, rootkp ) {           return o[ kp, "data", rootkp L ];                               }
+function navi_arr_data_view( o, kp, rootkp, idx ){      return o[ kp, "data", rootkp, idx, "view" ];                    }
+function navi_arr_data_preview( o, kp, rootkp, idx ){   return o[ kp, "data", rootkp, idx, "preview" ];                 }
+function navi_arr_data_preview_kp( o, kp, rootkp, idx ){return o[ kp, "data", rootkp, idx, "preview_kp" ];              }
+
+# EndSection
+
 function lock_acquire( o, kp ){
     if (o[ kp, "___LOCK" ]) return false
     o[ kp, "___LOCK" ] = true

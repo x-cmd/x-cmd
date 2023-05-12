@@ -4,6 +4,11 @@ function draw_navi_change_set_all( o, kp ){
     draw_navi_paint_preview_ischange( o, kp, true )
 }
 
+function draw_navi_data_available( o, kp, rootkp, tf ){
+    if (tf == "")        return o[ kp, "data", rootkp, "ava" ]
+    o[ kp, "data", rootkp, "ava" ] = tf
+}
+
 function draw_navi_paint( o, kp, x1, x2, y1, y2, is_dim, opt,       _draw_clear, _draw_sel, _draw_preview, _draw_box ){
     if ( ! change_is(o, kp, "navi.body") ) return
     change_unset(o, kp, "navi.body")
@@ -23,18 +28,18 @@ function draw_navi_paint( o, kp, x1, x2, y1, y2, is_dim, opt,       _draw_clear,
 
 function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, _start, _width, i, l, w, s, c ){
     _width = y2-y1+1
-    draw_navi_data_maxview_width( o, kp, int(_width/3))
+    navi_arr_data_maxview_width( o, kp, int(_width/3))
     l = opt_get( opt, "cur.col" )
     draw_navi_layout_init( o, kp, _width, l)
 
     _start = o[ kp, "viewcol.begin" ]
     for (i=_start; i<=l; ++i) {
-        _rootkp = comp_navi___trace_col_val( o, kp, i )
-        if (!comp_navi_data_available(o, kp, _rootkp)) {
+        _rootkp = navi_arr_data_trace_col_val( o, kp, i )
+        if (!draw_navi_data_available(o, kp, _rootkp)) {
             draw_navi_unava( o, kp, _rootkp, true )
             break
         } else {
-            w = draw_navi_data_view_width( o, kp, _rootkp )
+            w = navi_arr_data_view_width( o, kp, _rootkp )
             s = s draw_navi___paint_body_sel( o, kp, _rootkp, x1, x2, y1+c, y1+c+w-2, (i != l), opt)
             c += w
         }
@@ -50,12 +55,12 @@ function draw_navi___paint_body_sel(o, kp, rootkp, x1, x2, y1, y2, is_dim, opt, 
 
 function draw_navi___paint_preview( o, kp, x1, x2, y1, y2, opt,            c, r, s, rootkp ){
     c = opt_get( opt, "cur.col" )
-    if ((r = comp_navi___col_row_get( o, kp, c )) == "" )   return s
+    if ( (r = opt_get( opt, "cur.col.row" )) == "" )   return s
 
-    rootkp = comp_navi_get_cur_rootkp( o, kp )
+    rootkp = opt_get( opt, "cur.rootkp" )
     draw_navi_paint_preview_ischange(o, kp, false)
-    if (draw_navi_cur_preview_type_is_sel( o, kp )) {
-        if (!comp_navi_data_available(o, kp, rootkp)) draw_navi_unava( o, kp, rootkp, true )
+    if (navi_arr_data_preview_is_sel( o, kp, navi_arr_data_trace_col_val( o, kp, c ), r )) {
+        if (!draw_navi_data_available(o, kp, rootkp)) draw_navi_unava( o, kp, rootkp, true )
         else s = draw_navi___paint_preview_sel(o, kp, rootkp, x1, x2, y1, y2, opt)
     } else {
         change_set( o, kp, "navi.preview" )
@@ -70,7 +75,7 @@ function draw_navi___paint_preview_sel(o, kp, rootkp, x1, x2, y1, y2, opt,      
 }
 
 function draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, is_dim, is_preview, opt,          gkp, _draw_gsel, _no_title ) {
-    gkp = kp SUBSEP "comp.sel" SUBSEP rootkp
+    gkp = navi_arr_data_sel_kp_get( kp, rootkp )
     draw_gsel_change_set_all( o, gkp )
     if (is_dim == true) {
         if (is_preview != true) TH_GSEL_ITEM_FOCUSED_PREFIX = ">"
@@ -82,7 +87,7 @@ function draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, is_dim, is_previe
     }
 
     _no_title = true
-    if (opt_get( opt, "sel.sw" ) && (rootkp == comp_navi___trace_col_val( o, kp, opt_get( opt, "cur.col" )))) {
+    if (opt_get( opt, "sel.sw" ) && (rootkp == navi_arr_data_trace_col_val( o, kp, opt_get( opt, "cur.col" )))) {
         comp_gsel_title( o, gkp, "Search:" )
         _no_title = false
     }
@@ -115,14 +120,6 @@ function draw_navi___paint_is_dim( o, kp, v ){
     else            o[ kp, "IS_DIM" ] = v
 }
 
-function draw_navi_cur_preview_type_is_sel( o, kp ){
-    return (comp_navi_get_cur_preview_type( o, kp ) == "{")
-}
-
-function draw_navi_col_preview_type_is_sel( o, kp, c ){
-    return (comp_navi_get_col_preview_type( o, kp, c ) == "{")
-}
-
 function draw_navi_unava_has_set( o, kp ){
     return (draw_navi_unava(o, kp) != -1)
 }
@@ -132,20 +129,10 @@ function draw_navi_unava(o, kp, v, force_set){
     else o[ kp, "unava" ] = v
 }
 
-function draw_navi_data_view_width( o, kp, rootkp, v,       l, m ){
-    if (v == "")    return ( (l = o[ kp, "data", rootkp, "view.width" ]) > (m = draw_navi_data_maxview_width(o, kp)) ) ? m : l
-    else            o[ kp, "data", rootkp, "view.width" ] = v
-}
-
-function draw_navi_data_maxview_width( o, kp, v ){
-    if (v == "")    return o[ kp, "maxview.width" ]
-    else            o[ kp, "maxview.width" ] = int(v)
-}
-
 function draw_navi_layout_init( o, kp, w, l,       i, _colw, _viewcol_begin ){
-    w -= draw_navi_data_maxview_width(o, kp)
+    w -= navi_arr_data_maxview_width(o, kp)
     for (i=l; i>=1; --i){
-        _colw = draw_navi_data_view_width( o, kp, comp_navi___trace_col_val(o, kp, i) )
+        _colw = navi_arr_data_view_width( o, kp, navi_arr_data_trace_col_val(o, kp, i) )
         w -= _colw
         if (w < 0) break
         _viewcol_begin = i

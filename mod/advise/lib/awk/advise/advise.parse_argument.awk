@@ -54,7 +54,7 @@ function parse_args_to_env___option( obj, obj_prefix, args, argl, arg, arg_idx, 
 
 function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv_table, i, j, k, _subcmdid, _optarg_id, _arg_arrl, _optargc, _rest_argc, rest_argc_max, rest_argc_min, argl, arg ){
 
-    if (! advise_get_ref(obj, obj_prefix)) return false
+    if (! advise_get_ref_and_group(obj, obj_prefix)) return false
     argl = args[ L ]
     i = 1;
     while ( i<argl ) {
@@ -66,7 +66,7 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
                 return advise_panic("All required options should be set")
             }
             obj_prefix = obj_prefix SUBSEP _subcmdid
-            if (! advise_get_ref(obj, obj_prefix)) return false
+            if (! advise_get_ref_and_group(obj, obj_prefix)) return false
             delete lenv_table
             continue
         }
