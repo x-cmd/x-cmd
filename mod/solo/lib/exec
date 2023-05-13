@@ -1,7 +1,5 @@
 # shellcheck shell=dash
 
-xrc:mod:lib    solo        __exec/inplace     __exec/ws
-
 ___X_CMD_SOLO_WORKSPACE_ROOT=$___X_CMD_ROOT_DATA/solo/ws
 
 ___x_cmd_solo___exec(){
@@ -11,25 +9,25 @@ ___x_cmd_solo___exec(){
 
     local filepath="$1"; shift
 
-    ___x_cmd_solo_parse_ "$filepath"
+    ___x_cmd_solo___parse_ "$filepath"
     ___x_cmd_solo___exec_engine_detect_from_fileext_ "$filepath" || x_=source
     x_engine="$x_"
 
-    if [ source = "$engine" ]; then
+    if [ source = "$x_engine" ]; then
         x source "$filepath" "$@"
         return
     fi
 
     (
+        local wspath="$PWD"
         ___x_cmd_solo___exec___mode_ "$filepath"
+        solo:debug "x_mode=$x_mode , wspath=$wspath"
+
         local running_filepath="$x_"
+        solo:debug "running_filepath=$running_filepath , PWD=$PWD"
 
-        x "$engine" load
-
-        local ___x_cmd_solo_oldpwd="$PWD"
-        cd "${x_%/*}}"
-        ___x_cmd_solo___exec_setup "$x_setup" || return
-        [ -z "$___x_cmd_solo_oldpwd" ] || command cd "$___x_cmd_solo_oldpwd"
+        x "$x_engine" load
+        ___x_cmd_solo___exec_setup "$x_setup" "$running_filepath" || return
 
         local ___x_cmd_errcode=0; x "$x_engine" "${___X_CMD_ENGINE_SUBCMD_NAME:-__enginerun}" "$running_filepath" "$@" || ___x_cmd_errcode=$?
         return $___x_cmd_errcode
@@ -50,47 +48,47 @@ ___x_cmd_solo___exec___mode_(){
     wspath="${___X_CMD_SOLO_WORKSPACE_ROOT}/$dirname"
     command cp "$PWD/$filename" "$wspath/$filename"
     x_="$wspath/$filename"
+    ___x_cmd_inner_cd "$wspath" || return 1
 }
 
 ___x_cmd_solo___exec_setup(){
-    local setupcode="$1"; shift
+    local setupcode="$1"
+    local running_filepath="$2"
+
+    local ___x_cmd_solo_oldpwd="$PWD"
+    ___x_cmd_inner_cd "${running_filepath%/*}"
+
     if [ -f "${wspath}/.x-cmd/.setup.fail" ]; then
         x ui yesno "setup fail last time. retry?" || return 1
         x rmrf "$wspath/.x-cmd"
-        ___x_cmd_solo___exec_setup_main "$@"
+        ___x_cmd_solo___exec_setup_main "$setupcode" "$running_filepath"
     elif [ ! -f "${wspath}/.x-cmd/.setup.ok" ]; then
-        ___x_cmd_solo___exec_setup_main "$@" || {
+        ___x_cmd_solo___exec_setup_main "$setupcode" "$running_filepath" || {
             x:error "Fail to setup workspace"
             return 1
         }
     fi
+
+    [ -z "$___x_cmd_solo_oldpwd" ] || ___x_cmd_inner_cd  "$___x_cmd_solo_oldpwd"
 }
 
 ___x_cmd_solo___exec_setup_main(){
-    local setupcode="$1"; shift
+    local setupcode="$1"
+    local running_filepath="$2"
 
-    x abspath_ "$1"
-    local filename="${x_##*/}"
-    local dirname="${x_%/*}"
-    wspath="${___X_CMD_SOLO_WORKSPACE_ROOT}/$dirname"
     command mkdir -p "${wspath}/.x-cmd"
-    command cp "$dirname/$filename" "${wspath}/$filename"
-
     printf "%s\n%s\n%s\n" \
         "# x-cmd.engine: source" \
         "# x-cmd.end" "$setupcode" >"${wspath}/.x-cmd/setup"
 
     local ___x_cmd_solot_oldpwd="$PWD"
-    cd "${wspath}"
     x ws setup || {
         touch "${wspath}/.x-cmd/.setup.fail"
-        cd "$___x_cmd_solot_oldpwd"
         x:error "Fail to setup workspace"
         return 1
     }
 
     touch "${wspath}/.x-cmd/.setup.ok"
-    cd $___x_cmd_solot_oldpwd
 }
 
 ___x_cmd_solo___exec_engine_detect_from_fileext_(){
