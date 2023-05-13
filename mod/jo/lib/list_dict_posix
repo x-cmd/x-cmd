@@ -7,12 +7,13 @@ ___x_cmd_jo_list(){
     IFS="$(printf "\001")"
     printf "%s" "$*" | awk -v RS="$IFS" '
 function quote( a ){
-    gsub(/"/, "\\\"", a)
-    gsub(/\n/, "\\n", a)
-    gsub(/\r/, "\\r", a)
-    gsub(/\b/, "\\b", a)
-    gsub(/\t/, "\\t", a)
-    gsub(/\v/, "\\v", a)
+    gsub( "\\\\", "&\\", a )
+    gsub( "\"", "\\\"", a )
+    gsub( "\n", "\\n", a )
+    gsub( "\t", "\\t", a )
+    gsub( "\v", "\\v", a )
+    gsub( "\b", "\\b", a )
+    gsub( "\r", "\\r", a )
     return "\"" a "\""
 }
 
@@ -21,7 +22,7 @@ function quote( a ){
     if (res ~ /^:/) {
         res = quote(substr(res,2))
     } else if (res !~ /(^\{.*}$)|(^\[.*]$)/) {
-        if (res !~ /^([-+]?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?)|(true)|(false)|(null)$/) {
+        if (res !~ /^(([-+]?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?)|(true|false|null))$/) {
             res = quote(res)
         }
     }
@@ -57,14 +58,23 @@ ___x_cmd_jo_dict(){
         done
     } | awk -v RS="$___RS" '
 function quote( a ){
-    gsub(/"/, "\\\"", a)
-    gsub(/\n/, "\\n", a)
-    gsub(/\r/, "\\r", a)
-    gsub(/\b/, "\\b", a)
-    gsub(/\t/, "\\t", a)
-    gsub(/\v/, "\\v", a)
+    gsub( "\\\\", "&\\", a )
+    gsub( "\"", "\\\"", a )
+    gsub( "\n", "\\n", a )
+    gsub( "\t", "\\t", a )
+    gsub( "\v", "\\v", a )
+    gsub( "\b", "\\b", a )
+    gsub( "\r", "\\r", a )
     return "\"" a "\""
 }
+
+function escape( a ){
+    # TODO: use ja jiter_tokenized_normalized
+    if (a ~ /(^\{.*}$)|(^\[.*]$)/) return a
+    if (a ~ /^(([-+]?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?)|(true|false|null))$/) return a
+    return quote(a)
+}
+
 NR==1{
     gsub(/\n/, "\003", $0)
     argl = split($0, argv, "\002")
@@ -84,28 +94,20 @@ END {
     for (i=1; i<=argl; ++i) {
         if (i != 1) printf ",\n"
         var = argv[ i ]
-        gsub("\003", "\n", $0)
+        gsub("\003", "\n", var)
         if (var ~ /=/) {
             idx = index(var, "=")
             key = substr(var, 1, idx-1)
             value = substr(var, idx+1)
-
-            if (value !~ /(^\{.*}$)|(^\[.*]$)/) {
-                if(value !~ /^([-+]?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?)|(true)|(false)|(null)$/) {
-                    value = quote(value)
-                }
-            }
-            printf( "%s\n:\n%s\n", quote(key), value )
+            printf( "%s\n:\n%s\n", quote(key), escape(value) )
         } else if (var ~ /:/) {
             idx = index(var, ":")
             key = substr(var, 1, idx-1)
             value = substr(var, idx+1)
-
             printf( "%s\n:\n%s\n", quote(key), quote(value) )
         } else {
             value = env[var]
-            if (value ~ /^(true)|(false)|(null)$/) printf( "%s\n:\n%s\n", quote(var), value )
-            else printf( "%s\n:\n%s\n", quote(var), quote(value) )
+            printf( "%s\n:\n%s\n", quote(var), escape(value) )
         }
     }
     printf "}\n"

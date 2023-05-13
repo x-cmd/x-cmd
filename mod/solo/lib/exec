@@ -9,9 +9,13 @@ ___x_cmd_solo___exec(){
 
     local filepath="$1"; shift
 
-    ___x_cmd_solo___parse_ "$filepath"
-    ___x_cmd_solo___exec_engine_detect_from_fileext_ "$filepath" || x_=source
-    x_engine="$x_"
+    ___x_cmd_solo___parse_ "$filepath" || return
+
+    if [ -z "$x_engine" ]; then
+        solo:debug "x_engine not found, try to detect from fileext"
+        ___x_cmd_solo___exec_engine_detect_from_fileext_ "$filepath" || x_=source
+        x_engine="$x_"
+    fi
 
     if [ source = "$x_engine" ]; then
         x source "$filepath" "$@"
@@ -20,13 +24,13 @@ ___x_cmd_solo___exec(){
 
     (
         local wspath="$PWD"
-        ___x_cmd_solo___exec___mode_ "$filepath"
-        solo:debug "x_mode=$x_mode , wspath=$wspath"
-
+        ___x_cmd_solo___exec___mode_ "$filepath" || return
         local running_filepath="$x_"
+
+        solo:debug "x_mode=$x_mode , wspath=$wspath, x_engine=$x_engine, x_setup=$x_setup"
         solo:debug "running_filepath=$running_filepath , PWD=$PWD"
 
-        x "$x_engine" load
+        x "$x_engine" load --installable
         ___x_cmd_solo___exec_setup "$x_setup" "$running_filepath" || return
 
         local ___x_cmd_errcode=0; x "$x_engine" "${___X_CMD_ENGINE_SUBCMD_NAME:-__enginerun}" "$running_filepath" "$@" || ___x_cmd_errcode=$?
@@ -39,14 +43,18 @@ ___x_cmd_solo___exec___mode_(){
 
     case "$x_mode" in
         inplace)    x_="$x_"; return ;;
-        ws)         "$@" ;;
-        *)          [ -n "$x_setup" ] || x_="$x_"; return  ;;
+        ws)         ;;
+        *)          [ -n "$x_setup" ] || { x_="$x_"; return ; } ;;
     esac
 
     local filename="${x_##*/}"
     local dirname="${x_%/*}"
-    wspath="${___X_CMD_SOLO_WORKSPACE_ROOT}/$dirname"
-    command cp "$PWD/$filename" "$wspath/$filename"
+
+    wspath="${___X_CMD_SOLO_WORKSPACE_ROOT}/${dirname}"
+    solo:debug "wspath=$wspath"
+
+    x mkdirp "$wspath"
+    command cp "$x_" "$wspath/$filename"
     x_="$wspath/$filename"
     ___x_cmd_inner_cd "$wspath" || return 1
 }
@@ -56,14 +64,18 @@ ___x_cmd_solo___exec_setup(){
     local running_filepath="$2"
 
     local ___x_cmd_solo_oldpwd="$PWD"
-    ___x_cmd_inner_cd "${running_filepath%/*}"
+    ___x_cmd_inner_cd "${running_filepath%/*}" || return 1
 
-    if [ -f "${wspath}/.x-cmd/.setup.fail" ]; then
+    local runtime_id; runtime_id="$(command -v "$x_engine")"
+    local setup_state_folder=${wspath}/.x-cmd/$runtime_id
+    x mkdirp "$setup_state_folder"
+
+    if [ -f "${setup_state_folder}/.setup.fail" ]; then
         x ui yesno "setup fail last time. retry?" || return 1
-        x rmrf "$wspath/.x-cmd"
-        ___x_cmd_solo___exec_setup_main "$setupcode" "$running_filepath"
-    elif [ ! -f "${wspath}/.x-cmd/.setup.ok" ]; then
-        ___x_cmd_solo___exec_setup_main "$setupcode" "$running_filepath" || {
+        x rmrf "$wspath/.x-cmd.setup.fail"
+        ___x_cmd_solo___exec_setup_main "$setupcode" "$running_filepath" "$setup_state_folder"
+    elif [ ! -f "${setup_state_folder}/.setup.ok" ]; then
+        ___x_cmd_solo___exec_setup_main "$setupcode" "$running_filepath" "$setup_state_folder" || {
             x:error "Fail to setup workspace"
             return 1
         }
@@ -75,20 +87,21 @@ ___x_cmd_solo___exec_setup(){
 ___x_cmd_solo___exec_setup_main(){
     local setupcode="$1"
     local running_filepath="$2"
+    local setup_state_folder="$3"
 
-    command mkdir -p "${wspath}/.x-cmd"
+    x mkdirp "${wspath}/.x-cmd"
     printf "%s\n%s\n%s\n" \
         "# x-cmd.engine: source" \
         "# x-cmd.end" "$setupcode" >"${wspath}/.x-cmd/setup"
 
     local ___x_cmd_solot_oldpwd="$PWD"
     x ws setup || {
-        touch "${wspath}/.x-cmd/.setup.fail"
+        touch "${setup_state_folder}/.setup.fail"
         x:error "Fail to setup workspace"
         return 1
     }
 
-    touch "${wspath}/.x-cmd/.setup.ok"
+    touch "${setup_state_folder}/.setup.ok"
 }
 
 ___x_cmd_solo___exec_engine_detect_from_fileext_(){
