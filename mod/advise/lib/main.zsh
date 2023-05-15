@@ -12,7 +12,7 @@ ___x_cmd_advise_run(){
     # Used in `eval "$candidate_exec"`
     local cur="${COMP_WORDS[CURRENT]}"
 
-    local candidate_arr
+    local candidate_arr;        LANG=en_US.UTF-8 candidate_arr=()
     local candidate_exec
     local _message_str
     local offset
@@ -20,7 +20,7 @@ ___x_cmd_advise_run(){
     eval "$(___x_cmd_advise_get_result_from_awk "$___X_CMD_ADVISE_RUN_FILEPATH_")" 2>/dev/null
 
     local IFS="$___X_CMD_ADVISE_IFS_INIT"
-    local candidate_exec_arr
+    local candidate_exec_arr;   LANG=en_US.UTF-8 candidate_exec_arr=()
     eval "$candidate_exec" 2>/dev/null
 
     [ -z "$candidate_arr" ] || LANG=en_US.UTF-8 _describe 'commands' candidate_arr

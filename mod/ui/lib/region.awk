@@ -21,9 +21,6 @@ function cal_empty_line(line_count, width,          i, ret, s){
 BEGIN{
     LAST_OUTPUT_LINE_COUNT = 0
     OUTPUT_LINE_COUNT = 0
-
-    UI_LINEWRAP_DISABLE="\033[?7l"
-    UI_LINEWRAP_ENABLE="\033[?7h"
 }
 function output(text,
     line, line_arr, line_arr_len, return_text, i, blank_line){
@@ -83,7 +80,7 @@ function end(){
     ALREAD_END = 1
     printf("%s", UI_CURSOR_RESTORE \
         UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
-        UI_CURSOR_NORMAL) > "/dev/stderr"
+        UI_CURSOR_NORMAL UI_CURSOR_SHOW) > "/dev/stderr"
     # printf( "%s", cal_empty_line(OUTPUT_LINE_COUNT, KNOWN_WIDTH)) > "/dev/stderr"
     # printf(UI_CURSOR_RESTORE) > "/dev/stderr"
 }
