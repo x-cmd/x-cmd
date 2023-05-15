@@ -134,7 +134,7 @@ function sh_varset_val( var, val, is_local,       _local ){
 
 function sh_varset_var( var, var1, is_local,       _local ){
     if (is_local == true) _local = sh_var_local( var )
-    return _local sh_varset(var, "\"$" val "\"")
+    return _local sh_varset(var, "\"$" var1 "\"")
 }
 
 # EndSection

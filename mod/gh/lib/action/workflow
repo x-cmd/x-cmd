@@ -11,6 +11,7 @@ ___x_cmd_gh_action_workflow() {
         enable                   "Enable a workflow"
     param:subcmd:try
     param:run
+
     ___x_cmd_gh_action_workflow _param_help_doc
     return 1
 }
@@ -35,7 +36,7 @@ A
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
         ___x_cmd_gh_get_multi "/repos/${owner_repo}/actions/workflows"
     else
-        ___x_cmd_gh_get_multi "/repos/${owner_repo}/actions/workflows" name | x jo .workflows | \
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/actions/workflows" | x jo .workflows | \
             x jo 2c            .id          .name .path .state | \
             x csv header --add  Workflow_ID  Name  Path  State | \
             x csv static_tab
@@ -176,37 +177,109 @@ A
 }
 # EndSection
 
-# Section: Dispatch
+# Section: Run
 # shellcheck disable=2034,2154
 # https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event
-
 # https://cli.github.com/manual/gh_workflow_run
-# TODO: -f|m <k>=<v> -F <k>=<v>
 ___x_cmd_gh_action_workflow_run() {
     param:scope ___x_cmd_github
     param:dsl <<A
 options:
+    #1              "workflow <name> or <file_name> or .id=<workflow_id>"                     <>
     --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"                <>:RepoName
     --ref           "The git reference for the workflow."                                     <>="main"
-    --inputs        "Input keys and values configured in the workflow file.(json)(stdin -)"   <>=""
-    #1              "The ID of the workflow"                                                  <>:Number
+    --field|-f|m    "Input <key>=<value> parameter in the workflow file"                     <>=""
+    --inputs        "Input keys and values parameter in the workflow file (json)(stdin -)"   <>=""
 A
     param:run
     ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    if [ -n "$inputs" ]; then
+        [ -z "$field_1" ] || {
+            gh:error "Only one of --inputs or --field can be passed"
+            return 1
+        }
+        [ "$inputs" != '-' ] || inputs="$(command cat)"
+    fi
+
+    [ -n "$1" ] || M='accepts 1 arg (workflow name or file name or .id=<workflow_id>), received empty' arg:ret:64
+    local x_wfid="$1"; shift
+    ___x_cmd_gh____transform_x_wfid_ || return
+
+    if [ -n "$field_1" ]; then
+        local i=""; local tmp_field=""
+        for i in $(param_marg field); do
+            [ -z "$(param_marg field "$i")" ] || set -- "$@" "$(param_marg field "$i")"
+        done
+        inputs="$(x jo dict "$@")"
+    fi
+
     local gen_gh_json=""
-    [ "$inputs" != '-' ] || inputs="$(command cat)"
     gen_gh_json="$(param:option2json -repo)"
     gh:debug "$gen_gh_json"
-    ___x_cmd_gh_curl post "/repos/${owner_repo}/actions/workflows/${1##*/}/dispatches" gen_gh_json | (
+
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/actions/workflows/$x_wfid/dispatches" gen_gh_json | (
             [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
             x jo env . gh_resp_msg=.message gh_resp_err=.errors
             if ___x_cmd_gh_http_error; then
-                ___x_cmd_ui_tf  true "[Success]: Created workflow_dispatch event for ${1##*/} at ${ref}"
+                ___x_cmd_ui_tf  true "[Success]: Created workflow_dispatch event for ${1##*/}($x_wfid) at ${ref}"
             else
                 ___x_cmd_ui_tf false "Created workflow_dispatch event failure:" >&2
                 ___x_cmd_gh____handle_resp
                 return 1
             fi
         )
+}
+
+___x_cmd_gh____transform_x_wfid_(){
+    [ -n "$x_wfid" ] || M='accepts x_wfid (workflow id), received empty' arg:ret:64
+    case "$x_wfid" in
+        .id=*)
+            x_wfid="${x_wfid#*'.id='}"
+            ;;
+        *)
+            local _tmp_x_wfid=""
+            _tmp_x_wfid="$(___x_cmd_gh_get_multi "/repos/$owner_repo/actions/workflows" | ___x_cmd_gh____transform_x_wfid_search_id "$x_wfid")"
+            [ -n "$_tmp_x_wfid" ] || {
+                gh:error "Not found workflow id by $x_wfid (workflow name or filename) in $owner_repo"
+                return 1
+            }
+            x_wfid="$_tmp_x_wfid"
+            ;;
+    esac
+    return 0
+}
+
+___x_cmd_gh____transform_x_wfid_search_id(){
+    x ja -v arg="$1" '
+        BEGIN{
+            FIND_ID = 1
+        }
+        END{
+            find_id_byname(arg)
+            if(FIND_ID == 1 ) find_id_bypath(arg)
+            if(FIND_ID == 1 ) exit(1)
+        }
+        function find_id_byname(arg,    i, l){
+            l = O[ kp(1, "workflows") L ]
+            for (i=1; i<=l; ++i){
+                if(arg == juq(O[ kp(1, "workflows", i, "name") ]) ){
+                    FIND_ID = 0
+                    print O[ kp(1, "workflows", i, "id") ]
+                }
+            }
+        }
+        function find_id_bypath(arg,    i, l){
+            arg = ".github/workflows/" arg
+            l = O[ kp(1, "workflows") L ]
+            for (i=1; i<=l; ++i){
+                path = juq(O[ kp(1, "workflows", i, "path") ])
+                if(arg == path) {
+                    FIND_ID = 0
+                    print O[ kp(1, "workflows", i, "id") ]
+                }
+            }
+        }'
 }
 # EndSection

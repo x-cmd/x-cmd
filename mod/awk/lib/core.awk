@@ -189,7 +189,11 @@ function opt_getor( arr, k,   default ){
 # Section: seq
 function seq( seqstr, a,    i, j ){
     seq_parse( seqstr )
-    for (i=SEQ_START; i<=SEQ_END; i+=SEQ_STEP) a[ ++j ] = i
+    if (SEQ_STEP < 0) {
+        for (i=SEQ_START; i>=SEQ_END; i+=SEQ_STEP) a[ ++j ] = i
+    } else {
+        for (i=SEQ_START; i<=SEQ_END; i+=SEQ_STEP) a[ ++j ] = i
+    }
 }
 
 function seq_parse(  seqstr,       l, a ){
@@ -205,7 +209,11 @@ function seq_parse(  seqstr,       l, a ){
 
 function seq_within( number, seqstr ){
     seq_parse( seqstr )
-    return ( (number >= SEQ_START) && (number <= SEQ_END) && ( 0 == (number - SEQ_START) % SEQ_STEP ) )
+    if (SEQ_STEP < 0) {
+        return ( (number <= SEQ_START) && (number >= SEQ_END) && ( 0 == (number - SEQ_END) % SEQ_STEP ) )
+    } else {
+        return ( (number >= SEQ_START) && (number <= SEQ_END) && ( 0 == (number - SEQ_START) % SEQ_STEP ) )
+    }
 }
 
 BEGIN{
@@ -502,8 +510,8 @@ function arr_pr( arr, sep, start, step, end ){
         if (end == "")  end = arr[L]
     }
 
-    if (end < 0)    for (i=start; i<=end; i+=step) printf("%s%s", arr[i], sep)
-    else            for (i=start; i>=end; i+=step) printf("%s%s", arr[i], sep)
+    if (step < 0)   for (i=start; i>=end; i+=step) printf("%s%s", arr[i], sep)
+    else            for (i=start; i<=end; i+=step) printf("%s%s", arr[i], sep)
 }
 
 function arr_pl( arr, start, step, end ){
@@ -623,7 +631,7 @@ function str_trim_left(astr){
 }
 
 function str_trim_right(astr){
-    gsub(/^[ \t\b\v\n]+$/, "", astr)
+    gsub(/[ \t\b\v\n]+$/, "", astr)
     return astr
 }
 

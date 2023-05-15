@@ -175,14 +175,14 @@ function csv_tostr( o, kp, seqstr, col_seqstr,       \
 
     if (col_seqstr == "") {
         _col_start = 1
-        _col_end = o[ kp L ]
+        _col_end = o[ kp L L ]
         _col_step = 1
     } else {
         seq_init(seqstr, seqarr, "col")
         _col_start = seqarr[ "col" "S" ]
         _col_step  = seqarr[ "col" "P" ]
         _col_end   = seqarr[ "col" "E" ]
-        if (_col_end > o[ kp L ]) _col_end = o[ kp L L ]
+        if (_col_end > o[ kp L L ]) _col_end = o[ kp L L ]
     }
 
     if (_step > 0) {

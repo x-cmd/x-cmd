@@ -7,7 +7,7 @@ function cmd( text ){
 }
 
 function cmd_sleep( sec ){
-    cmd( "sleep " sec )
+    return cmd( "sleep " sec )
 }
 
 function cmd_sh( work ){
