@@ -2,19 +2,9 @@ BEGIN{
     args = ENVIRON[ "args" ]
     ARG_ARR_L = split( args, ARG_ARR, "\001" )
     PATARR[1] = "^\"[0-9]+\"$"
-    PATARR[2] = "^\"[0-9]+\"$"
-    PATARRL   = 2
+    # PATARR[2] = "^\"[0-9]+\"$"
+    PATARRL   = 1
     EXIT_ERROR = true
-
-    # for (i=1; i<=ARG_ARR_L; ++i){
-    #     v = jpath( ARG_ARR[i] )
-    #     ARG_ARR[i] = v
-    #     l = split( v, _, SUBSEP)
-    #     _res = (( _res == "") ? "" : _res "," ) csv_quote_ifmust( juq(_[l]) )
-    #     delete _
-    # }
-    # print _res
-
 }
 
 # TODO: Performance issue. There is a better design. Serialized object by object, using hash access instead of regex match.

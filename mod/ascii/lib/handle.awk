@@ -24,7 +24,12 @@ NR==128{
 }
 
 END {
+    printf("%s\t%s\t%s\t%s\n", "Hex", "Oct", "Char/Acronym", "Description")
     for (i=0; i<=127; ++i) {
-        printf("0x%02x\t%03o\t%-10s\t%s\n", i, i, a[i], en[i])
+        if (___X_CMD_WEBSRC_REGION == cn){
+            printf("0x%02x\t%03o\t%-10s\t%s\n", i, i, a[i], zh[i])
+        } else {
+            printf("0x%02x\t%03o\t%-10s\t%s\n", i, i, a[i], en[i])
+        }
     }
 }

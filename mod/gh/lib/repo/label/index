@@ -1,26 +1,139 @@
-# shellcheck shell=sh
+# shellcheck shell=dash
 # shellcheck disable=
 
 ___x_cmd_gh_repo_label(){
-    :
+    param:subcmd ___x_cmd_gh_repo_label             \
+        "ls|l"           "list a label for repo"     \
+        "create"         "create a label for repo"   \
+        "edit"           "update a label for repo"  \
+        "rm"             "remove a label for repo"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_repo_label _param_help_doc
+    return 1
 }
 
+# Section: List
 # https://docs.github.com/en/rest/issues/labels#list-labels-for-a-repository
 ___x_cmd_gh_repo_label_ls(){
-    :
-}
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"          <>:RepoName
+    --per_page      "Results per page"                                                  <>=30
+    --page          "Page number of the results to fetch."                              <>=1
+    --json|-j       "output json data"
+'
+    param:run
 
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/labels"
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/labels"  | \
+            x jo 2c             .name .color .description | \
+            x csv header --add   Name  Color  Description | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Create
 # https://docs.github.com/en/rest/issues/labels#create-a-label
 ___x_cmd_gh_repo_label_create(){
-    :
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "The name of the label"                                           <>
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"        <>:RepoName
+    --color         "The hexadecimal color code for the label (without #)"            <>=""
+    --description   "A short description of the label"                                <>=""
+    --json|-j       "output json data"
+'
+    param:run
+    local name="$1"
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -repo +name)"
+    gh:debug "$gen_gh_json"
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl post "/repos/$owner_repo/labels" gen_gh_json | ___x_cmd_gh_label____ui_handler Creating
 }
+# EndSection
 
+# Section: Edit
 # https://docs.github.com/en/rest/issues/labels#update-a-label
 ___x_cmd_gh_repo_label_edit(){
-    :
-}
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "The name of the label"                                              <>
+    --repo|-r       "<ownerPath>/<RepoPath> (default ownerPath: current user)"           <>:RepoName
+    --new_name      "The new name of the label"                                          <>
+    --color         "The hexadecimal color code for the label. (without #)"              <>=""
+    --description   "A short description of the label(Must be 100 characters or fewer)"  <>=""
+    --json|-j       "output json data"
+'
+    param:run
 
-# https://docs.github.com/en/rest/issues/labels#delete-a-label
-___x_cmd_gh_repo_label_rm(){
-    :
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -repo)"
+    gh:debug "$gen_gh_json"
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl patch "/repos/${owner_repo}/labels/${1}" gen_gh_json  | ___x_cmd_gh_label____ui_handler Edit
 }
+# EndSection
+
+# Section: Remove
+# https://docs.github.com/en/rest/issues/labels#delete-a-label
+# shellcheck disable=2154
+___x_cmd_gh_repo_label_rm(){
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1           "The name of the label"                                    <>
+    --repo|-r   "<ownerPath>/<RepoPath> (default ownerPath: current user)"  <>:RepoName
+    --yes|-y    "Ignore remove prompt interception"
+    --json|-j   "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ "$yes" = "true" ]  || ___x_cmd_ui_yesno "Are you sure to remove $owner_repo repo label $(___x_cmd_ui bold red "$1") ?" || return
+    ___x_cmd_gh_curl del "/repos/${owner_repo}/labels/${1}" | (
+                [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+                x jo env . gh_resp_msg=.message gh_resp_err=.errors
+                if ___x_cmd_gh_http_error; then
+                    ___x_cmd_ui_tf  true "[Success]: Remove label $1 to repo"
+                else
+                    ___x_cmd_ui_tf false "Remove label $1 to repo failure:" >&2
+                    ___x_cmd_gh____handle_resp
+                    return 1
+                fi
+            )
+}
+# EndSection
+
+# Section: UI Handler
+___x_cmd_gh_label____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Creating|Edit)
+                x jo env . _id=.id name=.name description=.description
+                ;;
+        esac
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf true "$1 issue successfully:" "id: $_id" ${name:+"name: $name"}  ${description:+"descriptionl: $description"}
+        else
+            ___x_cmd_ui_tf false "$1 issue failure:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
