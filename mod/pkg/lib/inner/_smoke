@@ -4,37 +4,52 @@ ___x_cmd_pkg__smoke() (
     local candidate; candidate="$(___x_cmd_pkg___get_binmod_name "$bin_mod_name")"
     local version="${2:-$(___x_cmd_pkg_default_version "$candidate")}"
 
-    pkg:info "Smoke testing bin_mod_name => $bin_mod_name candidate => $candidate version => $version"
+    pkg:info "Smoke testing bin_mod_name=$bin_mod_name candidate=$candidate version=$version"
 
-    pkg:debug "Checking the active version of $candidate"
+    pkg:info "Step1 => Checking the active version of $candidate"
     if ! x env try "$candidate"="$version"; then
         pkg:error "Smoke FAIL. Failed to set $candidate=$version"
-        return 1
+        return 11
     fi
 
-    pkg:debug "Checking the install path of $candidate $version"
+    pkg:info "Step2 => Checking the install path of $candidate $version"
     local bin_path; bin_path="$(command -v "$bin_mod_name")"
     if [ -L "$bin_path" ]; then
+        tobe_remove="$bin_path"
+        pkg:debug "Found symlink $bin_path"
         bin_path="$(ls -al  "$___X_CMD_PKG_BASE_PATH/bin" | grep "$candidate" | awk '{print $11}')"
     fi
 
     if [ "${bin_path#"$___X_CMD_PKG_INSTALL_PATH/$candidate/$version/"}" = "$bin_path" ]; then
-        pkg:error "Smoke FAIL. Install path of $candidate $version is not $___X_CMD_PKG_INSTALL_PATH/$candidate/$version/, current path => $bin_path"
-        return 1
+        pkg:error "Smoke FAIL. Install path of $candidate $version is not $___X_CMD_PKG_INSTALL_PATH/$candidate/$version/, current path=$bin_path"
+        ! [ -f "$tobe_remove" ] || {
+            pkg:debug "Removing symlink $tobe_remove"
+            rm "$tobe_remove"
+        }
+        return 12
     fi
 
-    pkg:debug "Checking the smoke file of $candidate $version"
+    pkg:info "Step3 => Checking the smoke of $candidate $version md5=$(x md5 "$bin_path")"
     local smokepath; smokepath=$(ls "$___X_CMD_PKG_RAW_PATH"/*"/$candidate/.x-cmd/smoke.sh") 2>/dev/null
-    if ! [ -f "$smokepath" ]; then
-        pkg:warn "Smoke file of $candidate doesn't exist, smokepath => $smokepath"
-        return 1
+    if ! [ -f "$smokepath" ] || ! . "$smokepath" >&2; then
+        pkg:error "Smoke FAIL. Smoke file not found or returned exit code candidate=$candidate version=$version smokepath=$smokepath"
+        ! [ -f "$smokepath" ] || {
+            cat "$smokepath"; echo >&2
+            pkg:error "Smoke FAIL. smoke file end"
+        }
+
+        ! [ -f "$tobe_remove" ] || {
+            pkg:debug "Removing symlink $tobe_remove"
+            rm "$tobe_remove"
+        }
+        return 13
     fi
 
-    pkg:debug "Checking the smoke of $candidate $version"
-    if ! . "$smokepath"; then
-        pkg:error "Smoke FAIL. Smoke file returned exit code $candidate $version"
-        return 1
-    fi
-
+    ! [ -f "$tobe_remove" ] || {
+        pkg:debug "Removing symlink $tobe_remove"
+        rm "$tobe_remove"
+    }
     pkg:info "Smoke PASS. $candidate $version "
 )
+
+#TODO: remove tobe_remove
