@@ -163,6 +163,7 @@ function aobj_is_null(obj, kp){
 }
 
 function aobj_uq(v) {
-    return ( (v ~ "^\"") ? juq(v) : v )
+    v = ( (v ~ "^\"") ? juq(v) : v )
+    return str_trim(v)
 }
 

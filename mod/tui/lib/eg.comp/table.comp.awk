@@ -91,6 +91,10 @@ function table_paint(o, kp, x1, x2, y1, y2, has_change_canvas,        _res, r ){
         paint_screen( comp_statusline_paint(o, kp SUBSEP "statusline") )
     }
 }
+
+function table_body_maxwidth(data_row){
+    return tapp_canvas_colsize_get() - 7 - length(data_row)
+}
 # EndSection
 
 # Section: user controller: tapp_handle_response --- request data

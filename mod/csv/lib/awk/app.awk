@@ -4,7 +4,7 @@ function TABLE_CELL_DEF( rowid, colid, val ){ table_cell_def( o, TABLE_KP, rowid
 function TABLE_STATUSLINE_ADD( v, s, l ){   table_statusline_add(o, TABLE_KP, v, s, l);}
 
 BEGIN{
-    CSV_APP_WIDTH_CUSTOM = ENVIRON[ "___X_CMD_CSV_APP_WIDTH" ]
+    ___X_CMD_CSV_APP_WIDTH = ENVIRON[ "___X_CMD_CSV_APP_WIDTH" ]
     ___X_CMD_CSV_APP_RET_PREFIX = ENVIRON[ "___X_CMD_CSV_APP_RET_PREFIX" ]
 }
 
@@ -14,8 +14,8 @@ function tapp_init(){
 }
 
 function tapp_canvas_rowsize_recalulate( rows ){
-    if (rows < 13) return false
-    return 13 # rows -1  # Assure the screen size
+    if (rows < 11) return false
+    return (ROW_RECALULATE == "") ? 11 : ROW_RECALULATE # rows -1  # Assure the screen size
 }
 
 function tapp_handle_clocktick( idx, trigger, row, col,        v ){
@@ -53,10 +53,10 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
 
     c = CSV_DATA[ L L ]
     l = CSV_DATA[ L ]
-    _col = tapp_canvas_colsize_get() - 7 - length(l) - c
-    if (CSV_APP_WIDTH_CUSTOM != "") csv_parse_width(CSV_WIDTH, CSV_APP_WIDTH_CUSTOM, _col, ",")
+    _col = table_body_maxwidth(l) - c
+    if (___X_CMD_CSV_APP_WIDTH != "") csv_parse_width(CSV_WIDTH, ___X_CMD_CSV_APP_WIDTH, _col, ",")
 
-    _widths_l = int(CSV_WIDTH[L])
+    _widths_l = CSV_WIDTH[L]
     c = (_widths_l != 0) ? _widths_l : c
     for (i=1; i<=l; ++i){
         for (j=1; j<=c; ++j){
@@ -72,6 +72,12 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
         }
     }
     for (i=1; i<=c; ++i) TABLE_LAYOUT( i, CSV_WIDTH[i, "width"]+1 )
+
+    if ((ROWS-1) > tapp_canvas_rowsize_get()) {
+        if( l >= (ROWS - 9)) ROW_RECALULATE = ROWS-1
+        else ROW_RECALULATE = l + 8
+        tapp_canvas_has_changed()
+    }
 }
 
 # EndSection
@@ -88,8 +94,8 @@ function user_table_model_init(){
 # EndSection
 
 # Section: user view
-function user_view( x1, x2 ,y1, y2 ){
-    table_paint(o,TABLE_KP, x1, x2, y1, y2, ROWS_COLS_HAS_CHANGED )
+function user_view( x1, x2, y1, y2 ){
+    table_paint( o, TABLE_KP, x1, x2, y1, y2, ROWS_COLS_HAS_CHANGED )
 }
 
 # EndSection

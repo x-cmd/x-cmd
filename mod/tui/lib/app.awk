@@ -14,6 +14,10 @@ function tapp_canvas_colsize_get(){
     return CANVAS_COLSIZE
 }
 
+function tapp_canvas_has_changed(){
+    ROWS = COLS = 0
+}
+
 function tapp_init0( rows, cols,  r ){
     if ((rows<3) || (cols<30)) panic("Unable to display content, wrong screen size")
     r = tapp_canvas_rowsize_recalulate( rows )
@@ -45,7 +49,7 @@ function ___tapp_displaymode_alter(){
         ___tapp_displaymode_full_clean()
         ___TAPP_DISPLAYMODE_ = ""
     }
-    ROWS = 0;  COLS = 0;    # Using this to force reset
+    tapp_canvas_has_changed()    # Using this to force reset
 }
 # EndSection
 
@@ -95,6 +99,7 @@ END{
     }
 
     tapp_handle_clocktick(a[2], trigger, CANVAS_ROWSIZE, CANVAS_COLSIZE) # seq, row, column
+    fflush()
     next
 }
 
