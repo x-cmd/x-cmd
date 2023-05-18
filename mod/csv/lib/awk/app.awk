@@ -52,14 +52,14 @@ function tapp_handle_exit( exit_code,       _p, i, l ){
 # EndSection
 
 # Section: data binding: table and parsing data
-function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cell, _widths_l, _col ){
+function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cell, _widths_l, _width ){
     arr_cut( arr, csv_trim(text), "\n" )
     if ( csv_parse( arr, CSV_DATA ) <=0 ) panic( "Data error" )
 
     c = CSV_DATA[ L L ]
     l = CSV_DATA[ L ]
-    _col = table_body_maxwidth(l) - c
-    if (___X_CMD_CSV_APP_WIDTH != "") csv_parse_width(CSV_WIDTH, ___X_CMD_CSV_APP_WIDTH, _col, ",")
+    _width= table_body_maxwidth(l) - c
+    if (___X_CMD_CSV_APP_WIDTH != "") csv_parse_width(CSV_WIDTH, ___X_CMD_CSV_APP_WIDTH, _width, ",")
 
     _widths_l = CSV_WIDTH[L]
     c = (_widths_l != 0) ? _widths_l : c
@@ -67,16 +67,19 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
         for (j=1; j<=c; ++j){
             _cell = CSV_DATA[ S i, j ]
             if (i == 1) TABLE_ADD( _cell )
-            else {
-                TABLE_CELL_DEF( i-1, j, _cell )
-                if (CSV_WIDTH[j, "CUSTOM_WIDTH"]) continue
-                w = wcswidth_cache( _cell )
-                if (w > _col) w = _col
-                if (CSV_WIDTH[j, "width"] < w) CSV_WIDTH[j, "width"] = w
-            }
+            else TABLE_CELL_DEF( i-1, j, _cell )
+
+            if (CSV_WIDTH[j, "CUSTOM_WIDTH"]) continue
+            w = wcswidth_cache( _cell )
+            if (CSV_WIDTH[j, "width"] < w) CSV_WIDTH[j, "width"] = w
         }
     }
-    for (i=1; i<=c; ++i) TABLE_LAYOUT( i, CSV_WIDTH[i, "width"]+1 )
+    for (i=1; i<=c; ++i) {
+        w = CSV_WIDTH[i, "width"] + 1
+        if (w > _width) w = _width
+        TABLE_LAYOUT( i, w )
+        _width -= w
+    }
 
     if ((ROWS-1) > tapp_canvas_rowsize_get()) {
         if( l >= (ROWS - 9)) ROW_RECALULATE = ROWS-1

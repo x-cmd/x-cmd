@@ -12,16 +12,6 @@ ___x_cmd_pkg_download(){
     local osarch="${3:-${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}}"
     [ -n "$version" ] || return
 
-    local sb_repo
-    local sb_app
-    ___x_cmd_pkg___static_build_attr "$name" "$version" "$osarch"
-    if [ -n "$sb_repo" ] && [ -n "$sb_app" ]; then
-        ___x_cmd_pkg_download_file___from_static_build_and_deflate "$sb_repo" "$sb_app" "$version" ||  {
-            pkg:error "Download static-build file failed" ; return 1
-        }
-        return
-    fi
-
     local url_list
     url_list="$(___x_cmd_pkg___list "$name" "$version" "$osarch" "url.${___X_CMD_WEBSRC_REGION:-internet}" )" || return
 
@@ -85,79 +75,6 @@ ___x_cmd_pkg_download(){
 $url_list
 A
     )
-}
-
-___x_cmd_pkg_download_file___from_static_build_and_deflate(){
-    local IFS='
-'
-    local repo="${1:?Provide repo name, like p7zip}"
-    local app="${2:-${repo}}"
-    local version="${3:?Provide version}"
-
-    pkg:debug --repo "$repo" --app "$app" "Download static-build"
-
-    local target="$___X_CMD_PKG_INSTALL_PATH/$app/$version"
-    x mkdirp "$target" || return 1
-
-    local osarch
-    osarch="${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}"
-    local arch="${osarch#*/}"
-    local osname="${osarch%/*}"
-
-    local exe="$app.${osname}.${arch}";  [ "$osname" != win ] || exe="${exe}.exe"
-
-    # Rely
-    if [ ! -f "$target/$exe" ]; then
-        pkg:info "Downloading - '$repo/$app/$version/$exe.7z to $target'"
-        if ! ___x_cmd_httpget_gitx static-build "${repo}" main "$app/$version/$exe.7z" "$target/$exe.7z"; then
-            pkg:warn "Download failure: $repo/main $app/$version/$exe.7z. Perhaps platform unsupported."
-            x rmrf "$target"
-            return 1
-        fi
-
-        (
-            cd "$target" && {
-                local size
-
-                size=$(wc -c "$exe.7z")
-                size=${size% *}
-                size=$(printf "%s" $size)   # Notice: Intentionary let it unquoted.
-
-                xrc p7zip
-                if [ "$size" -gt 20 ]; then
-                    p7zd x "$exe.7z" 1>/dev/null 2>/dev/null
-                else
-                    size="$(cat "$exe.7z")"
-                    local i
-                    local suffix
-
-                    # TODO: using curl shared-connection facility.
-                    for i in $(seq "$size"); do
-                        # suffix="$(printf "%03s" "$i")" # Not work in gnu bash
-                        suffix="$(printf "%3s" "$i" | tr " " 0)"
-                        pkg:info "Downloading - '$repo/$app/$version/$exe.7z.$suffix to $target'"
-                        if ! ___x_cmd_httpget_gitx static-build "${repo}" main "$app/$version/$exe.7z.$suffix" "$target/$exe.7z.$suffix"; then
-                            pkg:warn "Download failure in $exe.7z.$suffix" >&2
-                            return 1
-                        fi
-                    done
-
-                    pkg:info "Using p7zd to decompress - '$target/$exe.7z.001'"
-                    cat "$target/$exe".7z.0* > "$exe.7z"
-                    p7zd x "$exe.7z" 1>/dev/null 2>/dev/null || {
-                        pkg:error "p7zd unzip $exe.7z failed"
-                        return 1
-                    }
-                fi
-                if chmod +x "$exe"; then
-                    pkg:info "Finish file decompress and chmod."
-                else
-                    pkg:error "chmod - Operation not permitted "
-                fi
-            }
-        )
-    fi && return 0
-    return 1
 }
 
 

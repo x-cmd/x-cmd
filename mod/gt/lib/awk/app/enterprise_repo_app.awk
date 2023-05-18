@@ -25,6 +25,11 @@ function tapp_canvas_rowsize_recalulate( rows ){
     return rows -1  # Assure the screen size
 }
 
+function tapp_canvas_colsize_recalulate( cols ){
+    if (cols < 30) return false
+    return cols -2
+}
+
 function tapp_handle_clocktick( idx, trigger, row, col,        v ){
     user_view(1, row, 1, col)
     # request data
@@ -54,7 +59,7 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, j, il, jl, 
             TABLE_CELL_DEF( data_offset, TABLE_COL_OWNERNAME,                juq(obj[ _dkp, "\"owner\"" SUBSEP "\"name\""  ] ) )
             TABLE_CELL_DEF( data_offset, TABLE_COL_DEFAULTBTANCH,            juq(obj[ _dkp, "\"default_branch\""  ] ) )
             TABLE_CELL_DEF( data_offset, TABLE_COL_OPENISSUESCOUNT,          juq(obj[ _dkp, "\"open_issues_count\""  ] ) )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_LICENSE,                  obj[ _dkp, "\"license\""  ] ) 
+            TABLE_CELL_DEF( data_offset, TABLE_COL_LICENSE,                  obj[ _dkp, "\"license\""  ] )
             TABLE_CELL_DEF( data_offset, TABLE_COL_URL,                      juq(obj[ _dkp, "\"html_url\""  ] ) )
 
             ++ data_offset

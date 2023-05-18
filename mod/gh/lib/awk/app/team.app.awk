@@ -22,6 +22,11 @@ function tapp_canvas_rowsize_recalulate( rows ){
     return rows -1  # Assure the screen size
 }
 
+function tapp_canvas_colsize_recalulate( cols ){
+    if (cols < 30) return false
+    return cols -2
+}
+
 function tapp_handle_clocktick( idx, trigger, row, col,        v ){
     user_view(1, row, 1, col)
     # request data

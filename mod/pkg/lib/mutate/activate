@@ -1,4 +1,4 @@
-# shellcheck    shell=sh            disable=SC3043,SC1090      # xrc
+# shellcheck    shell=sh            disable=SC3043,SC1090,SC2155     # xrc
 
 ___x_cmd_pkg_activate(){
     ___x_cmd_pkg_activate___min "$@"
@@ -40,26 +40,52 @@ $name=$version
 "
 }
 
+#NOTE:
+# 1. nickname name is a many-to-one relationship, there is only one name
+# 2. name must have a nickname with the same name
 ___x_cmd_pkg_activate___min_default(){
     local name="${1:?Provide pkg name}"
     local version="${2:?Provide version}"
+
     local bin_path
     if ! bin_path="$(___x_cmd_pkg_xbin_path "$name" "$version")" ; then
         pkg:error "Get bin path failed for $name $version"
         return 1
     fi
 
-    if ! [ -f "$bin_path" ] ; then
-        pkg:error "No bin path($bin_path) for $name $version"
+    if [ -z "$bin_path" ] ; then
+        pkg:debug "have no bin path for $name $version"
         return 0
     fi
 
-    pkg:debug "path add_existed_folder $bin_path"
+    if ! [ -f "$bin_path" ] ; then
+        pkg:error "No bin path($bin_path) for $name $version"
+        return 1
+    fi
 
-    if ! [ -f "$___X_CMD_PKG_BIN_PATH/$name" ]; then
-        chmod +x "$bin_path" && command ln -s "$bin_path"  "$___X_CMD_PKG_BIN_PATH/$name" 2>/dev/null || {
-            pkg:error "Path unshift failed"
-            return 1
-        }
+    local soft_bin_path="$___X_CMD_PKG_INSTALL_PATH/$name/.${version}_bin"
+    x mkdirp "$soft_bin_path"
+    if  [ -x "$soft_bin_path/$name" ]; then
+        ___x_cmd_path_unshift "$soft_bin_path"
+    else
+        local nickname_name_list="$(command cat "$___X_CMD_PKG_RAW_PATH/binmod.txt" | command grep "$name")"
+        while read -r nickname_name; do
+            nickname="${nickname_name%:"$name"*}"
+            nickname=${nickname#*:}
+
+            chmod +x "$bin_path" || {
+                pkg:error "chmod - Operation not permitted bin_path=$bin_path"
+                return 1
+            }
+
+            ln -s "$bin_path"  "$soft_bin_path/$nickname" 2>/dev/null || {
+                pkg:error "ln - Operation failure "
+                return 1
+            }
+        done <<A
+$nickname_name_list
+A
+        pkg:debug "path add_existed_folder $soft_bin_path"
+        ___x_cmd_path_unshift "$soft_bin_path"
     fi
 }
