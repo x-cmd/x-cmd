@@ -19,14 +19,14 @@ function tapp_canvas_has_changed(){
 }
 
 function tapp_init0( rows, cols,  r ){
-    if ((rows<3) || (cols<30)) panic("Unable to display content, wrong screen size")
     r = tapp_canvas_rowsize_recalulate( rows )
-    if (r <= 0) panic("Screen Size Not Match")
+    c = tapp_canvas_colsize_recalulate( cols )
+    if ((r <= 0) || (c <= 0)) panic("The current screen size is insufficient to display the content")
 
     printf("%s", UI_CURSOR_RESTORE UI_CURSOR_HIDE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
         str_rep("\r\n", r) painter_up(r) UI_CURSOR_SAVE ) >"/dev/stderr"
     CANVAS_ROWSIZE = (___TAPP_DISPLAYMODE_ == "") ? r : rows - 1
-    CANVAS_COLSIZE = cols - 2
+    CANVAS_COLSIZE = (___TAPP_DISPLAYMODE_ == "") ? c : cols - 2
 }
 
 # Section: display mode

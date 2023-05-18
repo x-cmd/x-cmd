@@ -52,6 +52,11 @@ function tapp_canvas_rowsize_recalulate( rows,          r ){
     return (rows <= r) ? rows - 3 : r
 }
 
+function tapp_canvas_colsize_recalulate( cols ){
+    if (cols < 30) return false
+    return cols -2
+}
+
 # use user_paint and user_request_data
 function navi_change_set_all(o, kp){
     comp_navi_change_set_all( o, kp )
