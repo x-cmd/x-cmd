@@ -270,7 +270,7 @@ function generate_name_help( obj, kp,       n, d, _str){
     n = obj[ kp ]
     if ( n == "{" ) {
         n = obj[ kp, 1 ]
-        if ((d = obj[ kp, n ]) == "null") d = get_value_with_local_language(obj, kp, COMP_HELPDOC_WEBSRC_REGION)
+        if ((d = obj[ kp, n ]) == "null") d = aobj_get_value_with_local_language(obj, kp, COMP_HELPDOC_WEBSRC_REGION)
     }
     _str = _str COMP_HELPDOC_HELP_INDENT_STR  th_interval(COMP_HELPDOC_UI_THEME) juq(n) COMP_HELPDOC_UI_END ( aobj_str_is_null(d) ? "" : " - " aobj_uq(d) ) "\n"
     return _str "\n"
@@ -280,7 +280,7 @@ function generate_desc_help(obj, kp,        _str, d){
     if (aobj_is_null( obj, kp)) return
     _str =generate_title("DESCRIPTON:") "\n"
     d = obj[ kp ]
-    if ( d == "{" ) d = get_value_with_local_language(obj, kp, COMP_HELPDOC_WEBSRC_REGION)
+    if ( d == "{" ) d = aobj_get_value_with_local_language(obj, kp, COMP_HELPDOC_WEBSRC_REGION)
     _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line(aobj_uq(d), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     return _str "\n"
 }
@@ -297,7 +297,7 @@ function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {
     for (i=1; i<=l; ++i){
         k = obj[ kp, jqu(i), 1]
         v = obj[ kp, jqu(i), k]
-        if (v == "null") v = get_value_with_local_language(obj, kp SUBSEP jqu(i), COMP_HELPDOC_WEBSRC_REGION)
+        if (v == "null") v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), COMP_HELPDOC_WEBSRC_REGION)
         _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( th_interval(COMP_HELPDOC_UI_THEME) juq(k) " " COMP_HELPDOC_UI_END aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     }
     return _str "\n"
@@ -310,16 +310,16 @@ function generate_tldr_help(obj, kp,            l, i, k, v, _str){
     l = obj[ kp L ]
     for (i=1; i<=l; ++i){
         k = obj[ kp, jqu(i), "\"cmd\"" ]
-        v = get_value_with_local_language(obj, kp SUBSEP jqu(i), COMP_HELPDOC_WEBSRC_REGION)
+        v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), COMP_HELPDOC_WEBSRC_REGION)
         if ( ! aobj_str_is_null(v) ) _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( th_interval(COMP_HELPDOC_UI_THEME) aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
         _str = _str space_rep(COMP_HELPDOC_HELP_INDENT_LEN * 2) COMP_HELPDOC_UI_END  str_cut_line(aobj_uq(k), COMP_HELPDOC_HELP_INDENT_LEN * 2) "\n"
     }
     return _str "\n"
 }
 
-function generate_other_help_unit(obj, kp,      l, i, k, v, _str){
-    if ( ! aobj_is_null(obj, kp SUBSEP COMP_HELPDOC_WEBSRC_REGION) )
-        return generate_other_help_unit(obj, kp SUBSEP COMP_HELPDOC_WEBSRC_REGION)
+function generate_other_help_unit(obj, kp,      l, i, k, v, _str, _kp_language){
+    _kp_language = aobj_get_kp_with_local_language(obj, kp, COMP_HELPDOC_WEBSRC_REGION)
+    if ( ! aobj_is_null(obj, _kp_language) ) return generate_other_help_unit(obj, _kp_language)
     l = obj[ kp L ]
     for (i=1; i<=l; ++i){
         k = obj[ kp, i]
@@ -340,7 +340,7 @@ function generate_other_help(obj, kp,       l, i, k, v, _str){
 function generate_tip_help_unit( arr, kp, color, title,            l, i, _str, v){
     l = arr[ kp L ]
     for (i=1; i<=l; ++i) {
-        if ( (v = arr[ kp, "\""i"\"" ]) == "{" ) v = aobj_uq(get_value_with_local_language(arr, kp SUBSEP "\""i"\"", COMP_HELPDOC_WEBSRC_REGION))
+        if ( (v = arr[ kp, "\""i"\"" ]) == "{" ) v = aobj_uq(aobj_get_value_with_local_language(arr, kp SUBSEP "\""i"\"", COMP_HELPDOC_WEBSRC_REGION))
         sub("\n+$", "", v)
         _str = _str COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_UI_TITLE color title "\n" COMP_HELPDOC_UI_END COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_HELP_INDENT_STR  str_cut_line( v, COMP_HELPDOC_HELP_INDENT_LEN * 2) COMP_HELPDOC_UI_END "\n"
     }
