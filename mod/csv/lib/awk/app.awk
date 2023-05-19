@@ -20,7 +20,7 @@ function tapp_canvas_rowsize_recalulate( rows ){
 
 function tapp_canvas_colsize_recalulate( cols ){
     if (cols < 30) return false
-    return cols -2
+    return (COL_RECALULATE == "") ? cols - 2 : COL_RECALULATE
 }
 
 function tapp_handle_clocktick( idx, trigger, row, col,        v ){
@@ -58,7 +58,7 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
 
     c = CSV_DATA[ L L ]
     l = CSV_DATA[ L ]
-    _width= table_body_maxwidth(l) - c
+    if (l < 2) panic("The CSV data is empty.")
     if (___X_CMD_CSV_APP_WIDTH != "") csv_parse_width(CSV_WIDTH, ___X_CMD_CSV_APP_WIDTH, _width, ",")
 
     _widths_l = CSV_WIDTH[L]
@@ -74,6 +74,7 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
             if (CSV_WIDTH[j, "width"] < w) CSV_WIDTH[j, "width"] = w
         }
     }
+    _width = tapp_canvas_colsize_get() - table_paint_necessary_cols(l)
     for (i=1; i<=c; ++i) {
         w = CSV_WIDTH[i, "width"] + 1
         if (w > _width) w = _width
@@ -81,11 +82,10 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
         _width -= w
     }
 
-    if ((ROWS-1) > tapp_canvas_rowsize_get()) {
-        if( l >= (ROWS - 9)) ROW_RECALULATE = ROWS-1
-        else ROW_RECALULATE = l + 8
-        tapp_canvas_has_changed()
-    }
+    # if (_width > 0 ) COL_RECALULATE = COLS -2 - _width
+    if( l < (ROWS - 1 - table_paint_necessary_rows())) ROW_RECALULATE = l + table_paint_necessary_rows()
+    else ROW_RECALULATE = ROWS - 1
+    tapp_canvas_has_changed()
 }
 
 # EndSection

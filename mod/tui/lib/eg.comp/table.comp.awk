@@ -79,6 +79,8 @@ function table_change_set_all( o, kp ){
     comp_statusline_change_set_all(o, kp SUBSEP "statusline")
 }
 
+function table_paint_necessary_rows(){   return 9; }
+function table_paint_necessary_cols(data_row){   return 7+length(data_row); }
 function table_paint(o, kp, x1, x2, y1, y2, has_change_canvas,        _res, r ){
     if (has_change_canvas == true) table_change_set_all( o, kp )
     if (! comp_statusline_isfullscreen(o, kp SUBSEP "statusline")){
@@ -92,13 +94,11 @@ function table_paint(o, kp, x1, x2, y1, y2, has_change_canvas,        _res, r ){
     }
 }
 
-function table_body_maxwidth(data_row){
-    return tapp_canvas_colsize_get() - 7 - length(data_row)
-}
 # EndSection
 
 # Section: user controller: tapp_handle_response --- request data
 function table_datamodel_refill(o, kp,         r){
+    if (ROWS_COLS_HAS_CHANGED) table_change_set_all( o, kp )
     if (! lock_unlocked( o, kp )) return
     if ( (r = comp_table_unava(o, kp)) >= 1 ) {     # comp_table_paint_data_is_inavailable( o, kp )
         if (!comp_table_model_isfulldata(o, kp)) table_datamodel_request_page( o, kp, r )
