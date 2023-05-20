@@ -34,17 +34,16 @@ function tapp_handle_wchar( value, name, type ){
     else if ( value == "r" )                                    user_table_model_init()
 }
 
-function tapp_handle_exit( exit_code,       _p, i, l ){
+function tapp_handle_exit( exit_code,       r, _cur_row ){
     if (exit_is_with_cmd()){
+        if (___X_CMD_CSV_APP_RET_STYLE == "") return
+        r = comp_table_get_cur_row(o, TABLE_KP) + 1
+        _cur_row = csv_dump_row(CSV_DATA, "", r, 1, 1, CSV_DATA[ L L ])
+
         if (___X_CMD_CSV_APP_RET_STYLE == "var"){
-            _p = "___X_CMD_CSV_APP_DATA_"
-            tapp_send_finalcmd( sh_varset_val( _p "KEY", FINALCMD ) )
-            tapp_send_finalcmd( sh_varset_val( _p "COL", CSV_DATA[ L L ] ) )
-            tapp_send_finalcmd( sh_varset_val( _p "ROW", l = CSV_DATA[ L ] ) )
-            tapp_send_finalcmd( sh_varset_val( _p "CURROW", comp_table_get_cur_row(o, TABLE_KP) ) )
-            tapp_send_finalcmd( sh_varset_val( _p "CURCOL", comp_table_get_cur_col(o, TABLE_KP) ) )
-            for (i=1; i<=l; ++i)
-                tapp_send_finalcmd( sh_varset_val( _p "CURROW_" i, csv_dump_row(CSV_DATA, "", i, 1, 1, CSV_DATA[ L L ]) ) )
+            tapp_send_finalcmd( sh_varset_val( "___X_CMD_CSV_APP_DATA_CURROW", _cur_row ) )
+        } else if (___X_CMD_CSV_APP_RET_STYLE == "line"){
+            tapp_send_finalcmd( sh_varset_val( "___X_CMD_CSV_APP_DATA_CURROW", _cur_row, true ) )
         }
     }
 }
