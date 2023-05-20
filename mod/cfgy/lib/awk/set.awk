@@ -36,7 +36,6 @@ END{
         jdict_put( o, kp SUBSEP jqu(profile_idx), jqu("name"), profile_jqu )
     }
 
-    # print "aaa: " profile_idx >"/dev/stderr"
     kp = kp SUBSEP jqu(profile_idx)
 
     arr_cut( op, ENVIRON["op"], "\n" )

@@ -11,6 +11,7 @@ function return_space_str(w,       s){
 }
 
 BEGIN{
+    printf UI_LINEWRAP_DISABLE "\r" > "/dev/stderr"
     PROPORTION = ENVIRON[ "PROPORTION" ]
     COLUMNS = ENVIRON[ "COLUMNS" ]
     SEP = "   "
@@ -32,7 +33,10 @@ BEGIN{
 }
 
 END{
-    if (IS_STREAM == true) exit 0
+    if (IS_STREAM == true) {
+        printf UI_LINEWRAP_ENABLE "\r" > "/dev/stderr"
+        exit 0
+    }
 
     l = o[ L ]
     c = ( CUSTOM_LEN != "" ) ? CUSTOM_LEN : o[ L L ]
@@ -49,4 +53,6 @@ END{
             printf_item(o[ S i, j ], arr[ j, "width" ], SEP)
         printf("\n")
     }
+
+    printf UI_LINEWRAP_ENABLE "\r" > "/dev/stderr"
 }

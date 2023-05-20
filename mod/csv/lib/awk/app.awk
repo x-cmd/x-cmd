@@ -5,7 +5,7 @@ function TABLE_STATUSLINE_ADD( v, s, l ){   table_statusline_add(o, TABLE_KP, v,
 
 BEGIN{
     ___X_CMD_CSV_APP_WIDTH = ENVIRON[ "___X_CMD_CSV_APP_WIDTH" ]
-    ___X_CMD_CSV_APP_RET_PREFIX = ENVIRON[ "___X_CMD_CSV_APP_RET_PREFIX" ]
+    ___X_CMD_CSV_APP_RET_STYLE = ENVIRON[ "___X_CMD_CSV_APP_RET_STYLE" ]
 }
 
 # Section: user controler -- tapp definition
@@ -36,8 +36,8 @@ function tapp_handle_wchar( value, name, type ){
 
 function tapp_handle_exit( exit_code,       _p, i, l ){
     if (exit_is_with_cmd()){
-        if (___X_CMD_CSV_APP_RET_PREFIX != ""){
-            _p = ___X_CMD_CSV_APP_RET_PREFIX "_"
+        if (___X_CMD_CSV_APP_RET_STYLE == "var"){
+            _p = "___X_CMD_CSV_APP_DATA_"
             tapp_send_finalcmd( sh_varset_val( _p "KEY", FINALCMD ) )
             tapp_send_finalcmd( sh_varset_val( _p "COL", CSV_DATA[ L L ] ) )
             tapp_send_finalcmd( sh_varset_val( _p "ROW", l = CSV_DATA[ L ] ) )
@@ -58,6 +58,7 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
 
     c = CSV_DATA[ L L ]
     l = CSV_DATA[ L ]
+    _width = tapp_canvas_colsize_get() - table_paint_necessary_cols(l)
     if (l < 2) panic("The CSV data is empty.")
     if (___X_CMD_CSV_APP_WIDTH != "") csv_parse_width(CSV_WIDTH, ___X_CMD_CSV_APP_WIDTH, _width, ",")
 
@@ -74,7 +75,6 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
             if (CSV_WIDTH[j, "width"] < w) CSV_WIDTH[j, "width"] = w
         }
     }
-    _width = tapp_canvas_colsize_get() - table_paint_necessary_cols(l)
     for (i=1; i<=c; ++i) {
         w = CSV_WIDTH[i, "width"] + 1
         if (w > _width) w = _width
