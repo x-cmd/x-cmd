@@ -14,6 +14,7 @@ function comp_table_init( o, kp ){
 
     comp_textbox_init(o, kp SUBSEP "footer-textbox")
     draw_table_init( o, kp )
+    comp_table_display_column_num( o, kp, true )
 }
 
 # Section: ctrl handle
@@ -21,6 +22,16 @@ function comp_table_set_limit(o, kp, v) {
     if (v <= 1) return
     comp_table___multiple_mode(o, kp, true)
     draw_table_row_selected_limit( o, kp, ((v ~ "^[0-9]+$") ? int(v) : "no-limit") )
+}
+
+function comp_table___multiple_mode(o, kp, v){
+    if ( v == "" )      return o[ kp, "ismultiple" ]
+    o[ kp, "ismultiple" ] = (v == true)
+}
+
+function comp_table_display_column_num(o, kp, v){
+    if (v == "") return o[ kp, "display_num" ]
+    o[ kp, "display_num" ] = v
 }
 
 function comp_table_handle( o, kp, char_value, char_name, char_type,        r, c, _has_no_handle ) {
@@ -73,11 +84,6 @@ function comp_table___handle_right( o, kp ){
     if (ctrl_num_get( o, kp ) == ctrl_num_get_max(o, kp)) return false
     ctrl_num_inc(o, kp )
     return true
-}
-
-function comp_table___multiple_mode(o, kp, v){
-    if ( v == "" )      return ctrl_sw_get(o, kp SUBSEP "ismultiple")
-    else                ctrl_sw_init( o, kp SUBSEP "ismultiple", v)
 }
 
 function comp_table___row_selected_sw_toggle(o, kp, r){
@@ -245,6 +251,7 @@ function comp_table_paint( o, kp, x1, x2, y1, y2,       _opt, _slct_change, _bod
     _cur_row_true = comp_table_get_cur_row(o, kp)
 
     opt_set( _opt, "multiple.enable", comp_table___multiple_mode(o, kp) )
+    opt_set( _opt, "num.enable",      comp_table_display_column_num(o, kp) )
     opt_set( _opt, "filter.enable",   ctrl_sw_get(o, kp) )
 
     if ( _slct_change ) {

@@ -57,8 +57,10 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row,
 
     row = x2-x1+1
     col = y2-y1+1
+    l = opt_get( opt, "data.maxrow" )
+    if (opt_getor( opt, "num.enable", false )) _num_w = length( l ) + 1
     if (opt_getor( opt, "multiple.enable", false )) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
-    _num_w = length( l = opt_get( opt, "data.maxrow" ) ) + 1 + _selected_w
+    _num_w = _num_w + _selected_w
     layout_avg_cal(o, kp, col = col-_num_w)
     _viewcoll = layout_avg_get_len(o, kp)
 
@@ -109,7 +111,7 @@ function draw_table___on_cell( o, kp, i, j, w,             ri, ci, v, l, _v_1 ){
 }
 
 function draw_table___on_num( o, kp, i, w, opt,        v, _prefix ){
-    v = space_restrict_or_pad(i, w)
+    if (opt_getor( opt, "num.enable", false )) v = space_restrict_or_pad(i, w)
     if (opt_getor( opt, "multiple.enable", false )) {
         if (draw_table_row_selected( o, kp, model_arr_get(o, kp, "view-row" SUBSEP i) ) ) _prefix = TH_TABLE_NUM_PREFIX_SELECTED
         else _prefix = TH_TABLE_NUM_PREFIX_UNSELECTED
@@ -135,15 +137,16 @@ function draw_table___on_box( o, kp, x1, x2, y1, y2, color,       s ){
     return s
 }
 
-function draw_table___on_header(o, kp, x1, x2, y1, y2, opt,               space_w, _selected_w, s, l, i, w, v, icon_w, c ){
+function draw_table___on_header(o, kp, x1, x2, y1, y2, opt,               _num_w, _space_w, _selected_w, s, l, i, w, v, icon_w, c ){
     if ( ! change_is(o, kp, "table.head") ) return
     change_unset(o, kp, "table.head")
     if (opt_getor( opt, "multiple.enable", false )) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
-    c = space_w = length( opt_get( opt, "data.maxrow" ) ) + 1 + _selected_w
-    layout_avg_cal(o, kp, y2-y1+1-space_w)
+    if (opt_getor( opt, "num.enable", false )) _num_w = length( opt_get( opt, "data.maxrow" ) ) + 1
+    c = _space_w = _num_w + _selected_w
+    layout_avg_cal(o, kp, y2-y1+1-_space_w)
     l = layout_avg_get_len(o, kp)
 
-    s = TH_TABLE_HEADER_ITEM_NORMAL space_rep(space_w)
+    s = TH_TABLE_HEADER_ITEM_NORMAL space_rep(_space_w)
     for (i=1; i<=l; ++i){
         w = layout_avg_get_size(o, kp, i)
         v = table_arr_head_get(o, kp, layout_avg_get_item(o, kp, i))
