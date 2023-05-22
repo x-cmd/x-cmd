@@ -6,6 +6,7 @@ function TABLE_STATUSLINE_ADD( v, s, l ){   table_statusline_add(o, TABLE_KP, v,
 BEGIN{
     ___X_CMD_CSV_APP_WIDTH = ENVIRON[ "___X_CMD_CSV_APP_WIDTH" ]
     ___X_CMD_CSV_APP_RET_STYLE = ENVIRON[ "___X_CMD_CSV_APP_RET_STYLE" ]
+    ___X_CMD_CSV_APP_IS_HIDE_INDEX = ENVIRON[ "___X_CMD_CSV_APP_IS_HIDE_INDEX" ]
 }
 
 # Section: user controler -- tapp definition
@@ -96,6 +97,7 @@ function user_table_model_init(){
 
     table_init(o, TABLE_KP)
     comp_table_set_limit(o, TABLE_KP, ENVIRON["TEST_TABLE_LIMIT"])
+    if (___X_CMD_CSV_APP_IS_HIDE_INDEX == true) comp_table_display_column_num( o, TABLE_KP, false )
     table_statusline_init(o, TABLE_KP)
 }
 # EndSection

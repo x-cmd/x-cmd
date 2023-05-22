@@ -28,14 +28,12 @@ function chr( o ){
 }
 
 END {
-    printf("%s\t%s\t%s\t%10s\t%-10s\t%s\n", "Dec", "Hex", "Oct", "ctrl",  "Acronym", "Description")
+    printf("%s,%s,%s,%s,%s,%s\n", "Dec", "Hex", "Oct", "ctrl",  "Acronym", "Description")
     for (i=0; i<=127; ++i) {
-        CTRL = ((i>=1) && (i<=26)) ? ("ctrl-" chr(i)) : "     "
-
-        if (___X_CMD_WEBSRC_REGION == cn){
-            printf("%d\t0x%02x\t%03o\t%10s\t%-10s\t%s\n", i, i, i, CTRL, a[i], zh[i])
-        } else {
-            printf("%d\t0x%02x\t%03o\t%10s\t%-10s\t%s\n", i, i, i, CTRL, a[i], en[i])
-        }
+        CTRL = ((i>=1) && (i<=26)) ? ("ctrl-" chr(i)) : ""
+        if (i==34)      a[i] = "\"\"\"\""
+        else if (i==39) a[i] = "\"'\""
+        DESC = (___X_CMD_WEBSRC_REGION == cn) ? zh[i] : en[i]
+        printf( "%d,0x%02x,%03o,%s,%s,%s\n", i, i, i, CTRL, a[i], DESC )
     }
 }
