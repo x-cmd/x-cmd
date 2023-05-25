@@ -44,3 +44,10 @@ function cval( i,   v ){
 function cget( i ){
     return CROW[ i ]
 }
+
+function cget_row(     i, _ret){
+    for (i=1; i<=CNF; ++i) _ret = ( _ret == "") ? CROW[ i ] : _ret "," CROW[ i ]
+    return _ret
+}
+
+

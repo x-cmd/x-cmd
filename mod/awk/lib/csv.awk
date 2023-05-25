@@ -86,11 +86,11 @@ function csv_parse_iter_all___put( arr, key, value ){
 BEGIN{
     ___CSV_CELL_PAT_STR_CONTENT = "((\"\")|[^\"])*"
     ___CSV_CELL_PAT_STR_QUOTE = "\"" ___CSV_CELL_PAT_STR_CONTENT "\""
-    ___CSV_CELL_PAT_ATOM = "[^\",]+"
+    ___CSV_CELL_PAT_ATOM = "[^\",]*"
 
     ___CSV_CELL_PAT_STR_LEFT_HALF = "\"" ___CSV_CELL_PAT_STR_CONTENT "$"
 
-    ___CSV_CELL_PAT_WHOLE = sprintf( "((%s)|(%s))*($|,)", ___CSV_CELL_PAT_STR_QUOTE, ___CSV_CELL_PAT_ATOM )
+    ___CSV_CELL_PAT_WHOLE = sprintf( "((%s)|(%s))($|,)", ___CSV_CELL_PAT_STR_QUOTE, ___CSV_CELL_PAT_ATOM )
     CSV_CELL_PAT = sprintf("(%s)|(%s)", ___CSV_CELL_PAT_STR_LEFT_HALF, ___CSV_CELL_PAT_WHOLE)
 
     ___CSV_CELL_PAT_STR_RIGHT = ___CSV_CELL_PAT_STR_CONTENT "\""

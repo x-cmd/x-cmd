@@ -1,4 +1,5 @@
 # shellcheck shell=bash disable=SC2166,2012,2034,2207,1090,2076
+
 ___x_cmd_advise_man(){
     local op="$1"; [ "$#" -le 0 ] || shift
     case "$op" in
@@ -13,7 +14,7 @@ ___x_cmd_advise_man(){
 }
 
 ___X_CMD_ADVISE_MAN_PKG="$___X_CMD_ROOT_SHARED/advise"
-
+___X_CMD_ADVISE_MAN_BG_LOG_FILE="$___X_CMD_ROOT_LOG/advise/man.bg"
 ___X_CMD_ADVISE_MAN_XCMD_FOLDER="$___X_CMD_ROOT_DATA/advise/xcmd"
 ___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER="$___X_CMD_ROOT_DATA/advise/completions"
 ___X_CMD_ADVISE_MAN_XCMD_PKG="$___X_CMD_ADVISE_MAN_PKG/all.tgz"
@@ -45,6 +46,16 @@ ___x_cmd_advise_man_pkg_whether_not_update(){
     [ "$_fileage" -lt "$_expiration" ]
 }
 
+___x_cmd_advise_man_completion_check_update(){
+    ___x_cmd_advise_man_pkg_whether_not_update "$___X_CMD_ADVISE_MAN_COMPLETIONS_PKG" || \
+        ___x_cmd_advise_man_completion_update || return
+}
+
+___x_cmd_advise_man_xcmd_check_update(){
+    ___x_cmd_advise_man_pkg_whether_not_update "$___X_CMD_ADVISE_MAN_XCMD_PKG" || \
+        ___x_cmd_advise_man_xcmd_update || return
+}
+
 # Section: advise man install
 ___x_cmd_advise_man_completion_update(){
     ___x_cmd_is_suitable_advise_completion_env || return 1
@@ -55,7 +66,7 @@ ___x_cmd_advise_man_completion_update(){
 ___x_cmd_advise_man_completion_download(){
     ___x_cmd_is_suitable_advise_completion_env || return 1
     advise:info "Download $___X_CMD_CUR_SHELL-completions.7z from static-build/${___X_CMD_CUR_SHELL}-completions"
-    ___x_cmd_httpget_gitx static-build "$___X_CMD_CUR_SHELL"-completions main "$___X_CMD_CUR_SHELL-completions.7z" "$___X_CMD_ADVISE_MAN_COMPLETIONS_PKG" || {
+    ___x_cmd_httpget_gitx static-build "$___X_CMD_CUR_SHELL"-completions main "$___X_CMD_CUR_SHELL-completions.7z" "$___X_CMD_ADVISE_MAN_COMPLETIONS_PKG" - || {
         advise:error "Fail to download $___X_CMD_CUR_SHELL-completions.7z from static-build/${___X_CMD_CUR_SHELL}-completions"
         return 1
     }
@@ -105,9 +116,7 @@ ___x_cmd_advise_man_update(){
 ___x_cmd_advise_man_ls(){
     ___x_cmd_advise_man_xcmd_exists || ___x_cmd_advise_man_xcmd_unzip || return
     case "$1" in
-        x-cmd)              local line; x ls "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" | while read -r line; do
-                                [ "$line" = "LICENSE" ] || printf "%s\n" "$line"
-                            done ;;
+        x-cmd)              x fsiter --folder "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" ;;
         npx)                x ls "$___X_CMD_ADVISE_MAN_XCMD_FOLDER/npx/_" ;;
         pipx)               x ls "$___X_CMD_ADVISE_MAN_XCMD_FOLDER/pipx/_" ;;
         docker)             x ls "$___X_CMD_ADVISE_MAN_XCMD_FOLDER/docker/_" ;;
@@ -166,19 +175,20 @@ ___x_cmd_advise_man_which(){
     esac
 }
 
-___x_cmd_advise_man_xcmd_load_one(){
+___x_cmd_advise_man_xcmd___load_one(){
     if [ -n "$ZSH_VERSION" ];then                                   compdef "___x_cmd_advise_man_xcmd_completer" "$@"
     elif ___x_cmd_is_suitable_advise_completion_env; then           complete -o nosort -F"___x_cmd_advise_man_xcmd_completer" "$@"
     else                                                            complete -F "___x_cmd_advise_man_xcmd_completer" "$@"
     fi
 }
 
-___x_cmd_advise_man_xcmd_load_all(){
+___x_cmd_advise_man_xcmd___load_all(){
+    ___x_cmd_advise_man_xcmd_exists || return
     advise:debug "Load x-cmd/advise from $___X_CMD_ADVISE_MAN_XCMD_FOLDER"
     eval "$(___x_cmd_advise_man_ls x-cmd | command awk '
         {                           code = code " " $1;                                         }
-        (NR % 50 == 0){             print "___x_cmd_advise_man_xcmd_load_one" code;      code = ""   }
-        END {   if (code != "")     print "___x_cmd_advise_man_xcmd_load_one" code;                  }
+        (NR % 50 == 0){             print "___x_cmd_advise_man_xcmd___load_one" code;      code = ""   }
+        END {   if (code != "")     print "___x_cmd_advise_man_xcmd___load_one" code;                  }
     ')"
 }
 
@@ -188,15 +198,19 @@ ___x_cmd_advise_man_xcmd_load(){
         return 1
     fi
 
-    ___x_cmd_advise_man_pkg_whether_not_update "$___X_CMD_ADVISE_MAN_XCMD_PKG" || ___x_cmd_advise_man_xcmd_update
-    if [ "$#" -ge 1 ]; then ___x_cmd_advise_man_xcmd_load_one "$@"
-    else ___x_cmd_advise_man_xcmd_load_all
+    ___x_cmd_advise_man_xcmd_check_update || return
+    if [ "$#" -ge 1 ]; then ___x_cmd_advise_man_xcmd___load_one "$@"
+    else ___x_cmd_advise_man_xcmd___load_all
     fi
 }
 
 ___x_cmd_advise_man_completion_load(){
-    ___x_cmd_advise_man_pkg_whether_not_update "$___X_CMD_ADVISE_MAN_COMPLETIONS_PKG" || ___x_cmd_advise_man_completion_update
-    if ___x_cmd_advise_man_completion_exists || ___x_cmd_advise_man_completion_unzip; then
+    ___x_cmd_advise_man_completion_check_update || return
+    ___x_cmd_advise_man_completion___load_main
+}
+
+___x_cmd_advise_man_completion___load_main(){
+    if ___x_cmd_advise_man_completion_exists; then
         local filename="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/$___X_CMD_CUR_SHELL-completions/completions.sh"
         if [ -f "$filename" ]; then
             advise:debug "Load $___X_CMD_CUR_SHELL completions from $filename"
@@ -211,13 +225,50 @@ ___x_cmd_advise_man_x_load(){
     ___x_cmd_advise init x "$___X_CMD_ADVISE_MAN_CACHE_X_ADVISE_JSO"
 }
 
+___x_cmd_advise_man_load_bg___check_update(){
+    x log timestamp "+%Y-%m-%d_%H:%M:%S" >/dev/null
+    ___x_cmd_advise_man_completion_check_update
+    ___x_cmd_advise_man_xcmd_check_update
+    [ -z "$PID_OF_ADVISE_MAN_BG" ] || kill -s USR1 "$PID_OF_ADVISE_MAN_BG"
+    x log timestamp off
+}
+
+___x_cmd_advise_man_load_bg(){
+    trap '___x_cmd_advise_man_completion___load_main; ___x_cmd_advise_man_xcmd___load_all' USR1
+    x ensurefp "$___X_CMD_ADVISE_MAN_BG_LOG_FILE"
+    (
+        PID_OF_ADVISE_MAN_BG="$$" \
+        name="advise.man.bg" \
+        x bgsingleton run ___x_cmd_advise_man_load_bg___check_update >> "$___X_CMD_ADVISE_MAN_BG_LOG_FILE" 2>&1
+    )
+
+}
+
+___x_cmd_advise_man_load_all(){
+    case "$1" in
+        bg)     ___x_cmd_advise_man_load_bg
+                ___x_cmd_advise_man_x_load
+                ;;
+        bg-log)
+                [ -f "$___X_CMD_ADVISE_MAN_BG_LOG_FILE" ] || return
+                advise:info "The log file is located at: $___X_CMD_ADVISE_MAN_BG_LOG_FILE"
+                command less "$___X_CMD_ADVISE_MAN_BG_LOG_FILE"
+                ;;
+        -h|--help)
+                ___x_cmd_advise_help man load all;;
+        *)
+                ___x_cmd_advise_man_completion_load
+                ___x_cmd_advise_man_xcmd_load
+                ___x_cmd_advise_man_x_load
+                ;;
+    esac
+}
+
 ___x_cmd_advise_man_load(){
     case "$1" in
         x-cmd)          shift; ___x_cmd_advise_man_xcmd_load "$@" ;;
         completion)     ___x_cmd_advise_man_completion_load ;;
-        all)            ___x_cmd_advise_man_completion_load
-                        ___x_cmd_advise_man_xcmd_load
-                        ___x_cmd_advise_man_x_load ;;
+        all)            shift; ___x_cmd_advise_man_load_all "$@" ;;
         *)              ___x_cmd_advise_help man load ;;
     esac
 }
