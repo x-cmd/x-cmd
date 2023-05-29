@@ -198,12 +198,13 @@ function comp_table_get_cur_col(o, kp){
     return layout_avg_get_item(o, kp, comp_table_get_focused_col(o, kp))
 }
 
-function comp_table_get_cur_line(o, kp, has_color,     _line, _color_end, _color, l, i, ri){
+function comp_table_get_cur_line(o, kp, has_color, sep,             _line, _color_end, _color, l, i, ri){
+    if (sep == "") sep = "\n"
     l = comp_table_model_maxcol(o, kp)
     ri = comp_table_get_cur_row(o, kp)
     if (has_color) { _color = TH_TABLE_CURRENT_INFO; _color_end = UI_END; }
     _line = _color comp_table_get_head_title(o, kp, 1) ": " _color_end table_arr_get_data(o, kp, ri, 1)
-    for (i=2; i<=l; ++i) _line = _line "\n" _color comp_table_get_head_title(o, kp, i) ": " _color_end table_arr_get_data(o, kp, ri, i)
+    for (i=2; i<=l; ++i) _line = _line sep _color comp_table_get_head_title(o, kp, i) ": " _color_end table_arr_get_data(o, kp, ri, i)
     return _line
 }
 

@@ -78,7 +78,6 @@ function table_arr_head_add(o, kp, title,       l){
 
 # EndSection
 
-
 # Section: navi
 function navi_arr_data_add_kv( o, kp, rootkp, viewdata, previewdata, preview_kp, viewlen,        l ){
     l = o[ kp, "data", rootkp L ] = o[ kp, "data", rootkp L ] + 1

@@ -20,7 +20,7 @@ function comp_statusline_handle(o, kp, char_value, char_name, char_type,        
     if ( o[ kp, "TYPE" ] != "statusline" ) return false
     if ( ctrl_sw_get(o, kp SUBSEP "expand" )) {
         if (comp_textbox_handle( o, kp SUBSEP "long-help", char_value, char_name, char_type )) _has_no_handle = false
-        else if ( o[ kp, "sw" ] == char_value ) {
+        else if (( o[ kp, "sw" ] == char_value ) || (char_value == "q")) {
             ctrl_page_set(o, kp SUBSEP "long-help", 1)
             ctrl_sw_toggle(o, kp SUBSEP "expand" )
             change_set(o, "fullscreen")
@@ -74,7 +74,7 @@ function comp_statusline_paint(o, kp, x1, x2, y1, y2,       l, i, s, c, v){
         for (i=1; i<=l; ++i) {
             c = comp_statusline___get_command(o, kp, i)
             v = comp_statusline_data_get_long(o, kp, c)
-            if (v != "") s = ((s) ? s "\n" : "") th( TH_STATUSLINE_FULL_KEY, c ":" )"\n" v
+            if (v != "") s = ((s) ? s "\n" : "") th( TH_STATUSLINE_FULL_KEY, c ) "\n  " v
         }
 
         comp_textbox_put(o, kp SUBSEP "long-help", s)

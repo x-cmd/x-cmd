@@ -64,7 +64,7 @@ function table_handle_wchar( o, kp, value, name, type,            _has_no_handle
 
         # update statusline
         if ((_has_no_handle == true) && (comp_statusline_handle( o, kp SUBSEP "statusline", value, name, type )))
-            comp_statusline_data_set_long(o, kp SUBSEP "statusline", "CURRENT INFO", comp_table_get_cur_line(o, kp, true))
+            comp_statusline_data_set_long(o, kp SUBSEP "statusline", "CURRENT INFO", comp_table_get_cur_line(o, kp, true, "\n  "))
         else if (ctrl_sw_get(o, kp)) table_statusline_search(o, kp SUBSEP "statusline")
         else table_statusline_normal(o, kp SUBSEP "statusline")
     }
