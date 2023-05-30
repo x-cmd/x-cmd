@@ -51,7 +51,7 @@ Your support is our biggest motivation.
 4. Provides a range of interactive CLI tools ([github](https:/github.com/), [gitee](https://gitee.com/), with more tool modulesto be released in the next six months).
 5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 500KB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
-## 应用模块列表
+## module write in pure posix shell
 
 | 模块 | 功能 | 类似项目 |
 | --- | --- | --- |
@@ -66,17 +66,17 @@ Your support is our biggest motivation.
 | env | 安装脚本运行/开发环境  | [asdf](https://asdf-vm.com/)/[nvm](https://github.com/nvm-sh/nvm)/[sdkman](https://sdkman.io/)/[pyenv](https://github.com/pyenv/pyenv)/[rbenv](https://github.com/rbenv/rbenv)/... |
 | hub | 脚本发布服务 | ? |
 
-## 封装模块列表
+## Module empowered by modern command tools
 
 | 模块 | 封装目标 | 功能 |
 | -- | -- | -- |
-| ssl/openssl | [openssl](https://www.openssl.org/) | 安全密码学工具 |
-| p7zip | [7zip](https://www.7-zip.org) | 加解压工具 |
-| ff | [ffmpeg](https://ffmpeg.org/) | 音视频工具工具 |
-| pandoc | [pandoc](https://pandoc.org/) | 文档格式转换工具 |
-| nmap | [nmap](https://nmap.org/) | 安全扫描工具 |
-| fd | [fd](https://github.com/sharkdp/fd) | find的高效替代 |
-| grep | [ag](https://github.com/ggreer/the_silver_searcher) | grep的高效替代 |
-| smartmontools | [smartmontools](https://www.smartmontools.org/) | 硬盘监控工具 |
-| bat | [bat](https://github.com/sharkdp/bat) | cat的rust实现 |
-| jq/yq | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/)处理 |
+| ssl/openssl | [openssl](https://www.openssl.org/) | Secure cryptographic |
+| p7zip | [7zip](https://www.7-zip.org) | Compression and decompression |
+| ff | [ffmpeg](https://ffmpeg.org/) | Audio and video  |
+| pandoc | [pandoc](https://pandoc.org/) | Document format conversion |
+| nmap | [nmap](https://nmap.org/) | Security scanning |
+| fd | [fd](https://github.com/sharkdp/fd) | Efficient replacement for find|
+| grep | [ag](https://github.com/ggreer/the_silver_searcher) | Efficient replacement for grep  |
+| smartmontools | [smartmontools](https://www.smartmontools.org/) | Hard drive monitoring tool   |
+| bat | [bat](https://github.com/sharkdp/bat) |Rust implementation of cat|
+| jq/yq | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/) |
