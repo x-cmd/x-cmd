@@ -1,99 +1,65 @@
 # shellcheck    shell=sh            disable=SC3043,SC1090,SC2155     # xrc
 
-___x_cmd_pkg_activate(){
-
+___x_cmd_pkg_pathenv(){
     case "$1" in
-        -h|--help)
-            ___x_cmd_pkg_help activate
-            return 1
-            ;;
+        -h|--help) ___x_cmd_pkg_help pathenv ; return 1 ;;
     esac
 
-    ___x_cmd_pkg_activate___min "$@"
-}
-
-___x_cmd_pkg_activate___min(){
     local name="${1:?Provide pkg name}"
     local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    local path_dir="${3:-"bin"}"
     [ -n "$version" ] || return
     local tmp="${___X_CMD_PKG_ACTIVATE___LIST#*"$name=$version"}"
-    local osarch="${4:-${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}}"
-    local os="${osarch%/*}";  local arch="${osarch#*/}"
 
     if ! [ "$tmp" = "$___X_CMD_PKG_ACTIVATE___LIST" ]; then
-        pkg:debug "$name had been activated"
-        # TODO: What should I return ?
+        pkg:debug "$name had been add into path"
         return 0
     fi
 
-    local script_path="$3"
-
-    if [ -z "$script_path" ] && \
-            ! script_path="$(___x_cmd_pkg___get_script_path "$name" "$version" "${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}" activate)"; then
-
-        if ! ___x_cmd_pkg_activate___min_default "$name" "$version" ; then
-            pkg:error "Use default activate script failed for $name"
-            return 1
-        fi
-    else
-        pkg:debug "Activate running $script_path for $name $version"
-        if ! . "${script_path}" ; then
-            pkg:error "Source $script_path failed"
-            return 1
-        fi
+    if ! ___x_cmd_pkg_pathenv___min_default "$name" "$version" "$path_dir"; then
+        pkg:error "Use default pathenv  failed for $name $version"
+        return 1
     fi
+
 
     ___X_CMD_PKG_ACTIVATE___LIST="$___X_CMD_PKG_ACTIVATE___LIST
 $name=$version
 "
 }
 
-#NOTE:
-# 1. nickname name is a many-to-one relationship, there is only one name
-# 2. name must have a nickname with the same name
-___x_cmd_pkg_activate___min_default(){
+___x_cmd_pkg_pathenv___min_default(){
     local name="${1:?Provide pkg name}"
     local version="${2:?Provide version}"
-
+    local path_dir="${3:-"bin"}"
+    local osarch="$(___x_cmd_pkg_osarch)"
+    local tgt="$___X_CMD_PKG_POPULATE_PATH/$name/$version"
     local bin_path
-    if ! bin_path="$(___x_cmd_pkg_xbin_path "$name" "$version")" ; then
+    local mutiple_bin_path
+
+    if ! mutiple_bin_path="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.${path_dir}" )" ; then
         pkg:error "Get bin path failed for $name $version"
         return 1
     fi
+    local file_path
+    while read -r bin_path; do
+            if [ -z "$bin_path" ];then
+                continue
+            fi
 
-    if [ -z "$bin_path" ] ; then
-        pkg:debug "have no bin path for $name $version"
-        return 0
-    fi
+        file_path="$tgt/$bin_path"
+        if ! [ -d "$file_path" ] ; then
+            pkg:error "No a bin folder($file_path) for $name $version"
+            return 1
+        fi
 
-    if ! [ -f "$bin_path" ] ; then
-        pkg:error "No bin path($bin_path) for $name $version"
-        return 1
-    fi
+        pkg:debug "path add_existed_folder $file_path"
+        ___x_cmd_path_unshift "$file_path" || {
+            pkg:error "Path unshift failed"
+            return 1
+        }
 
-    local soft_bin_path="$___X_CMD_PKG_INSTALL_PATH/$name/.${version}_bin"
-    x mkdirp "$soft_bin_path"
-    if  [ -x "$soft_bin_path/$name" ]; then
-        ___x_cmd_path_unshift "$soft_bin_path"
-    else
-        local nickname_name_list="$(command cat "$___X_CMD_PKG_RAW_PATH/binmod.txt" | command grep "$name")"
-        while read -r nickname_name; do
-            nickname="${nickname_name%:"$name"*}"
-            nickname=${nickname#*:}
-
-            chmod +x "$bin_path" || {
-                pkg:error "chmod - Operation not permitted bin_path=$bin_path"
-                return 1
-            }
-
-            ln -s "$bin_path"  "$soft_bin_path/$nickname" 2>/dev/null || {
-                pkg:error "ln - Operation failure "
-                return 1
-            }
-        done <<A
-$nickname_name_list
+    done <<A
+$mutiple_bin_path
 A
-        pkg:debug "path add_existed_folder $soft_bin_path"
-        ___x_cmd_path_unshift "$soft_bin_path"
-    fi
+
 }

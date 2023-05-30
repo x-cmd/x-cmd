@@ -1,3 +1,131 @@
+# shellcheck    shell=sh    disable=SC3043,SC2154 # xrc
 ___x_cmd_pkg_link(){
-    :
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    local osarch="${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}"
+    local dir_path="${3:-$___X_CMD_PKG_BASE_PATH/bin}"
+    local link_dir="${4:-bin}"
+    local tgt="$___X_CMD_PKG_POPULATE_PATH/$name/$version"
+
+    local binlink_list
+    x mkdirp "$___X_CMD_PKG_BIN_PATH"
+    if binlink_list="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "link.${link_dir}")"; then
+        if [ -z "$binlink_list" ]; then
+            pkg:error "link bin is not exist"
+            return 1
+        fi
+
+        local abs_bin_path
+        local binlink_name
+        local binary_name
+        while read -r binlink; do
+            if [ -z "$binlink" ];then
+                continue
+            fi
+            abs_bin_path="${tgt}/${binlink}"
+            binlink_name=${binlink##*/}
+            if ! [ -d "$abs_bin_path" ] ; then
+                pkg:error "No bin link($abs_bin_path) for $name $version"
+                return 1
+            fi
+
+            chmod +x "$abs_bin_path" || {
+                pkg:error "chmod - Operation not permitted binlink address=$abs_bin_path"
+                return 1
+            }
+            binary_name=$(ls "$abs_bin_path")
+            if ! [ -x "$dir_path/${binlink_name}" ]; then
+                ln -s -f "$abs_bin_path/$binary_name"  "$dir_path/$binary_name" 2>/dev/null || {
+                    pkg:error "ln - Operation failure source=$abs_bin_path target=$dir_path/${binlink_name}"
+                    return 1
+                }
+            else
+                pkg:info "${binlink_name} has existed in $dir_path"
+                return 0
+            fi
+
+        done <<A
+$binlink_list
+A
+        ___x_cmd_pkg_linkenv "$name" "$version" "$dir_path"
+        pkg:debug "Set link from link bin. binlink_list=$binlink_list"
+        pkg:info  "Successfully set link from link bin "
+
+    else
+
+        local abs_bin_path; local binary_name
+        binlink_list="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.bin")"
+        if [ -z "$binlink_list" ]; then
+            pkg:error "link bin is not exist"
+            return 1
+        fi
+        while read -r binlink_dir; do
+            if [ -z "$binlink_dir" ];then
+                continue
+            fi
+            abs_bin_path="$tgt/$binlink_dir"
+            if ! [ -d "$abs_bin_path" ] ; then
+                pkg:error "No bin link($abs_bin_path) for $name $version"
+                return 1
+            fi
+            binary_name=$(ls "$abs_bin_path")
+            while read -r binlink; do
+                ! [ -f "$dir_path/$binlink"  ] || continue
+                if [ -x "$abs_bin_path/$binlink" ]; then
+                    chmod +x "$abs_bin_path/$binlink"
+                    ln -s "$abs_bin_path/$binlink"  "$dir_path/$binlink" 2>/dev/null || {
+                        pkg:error "ln - Operation failure "
+                        return 1
+                    }
+                fi
+            done <<A
+            $binary_name
+A
+        done <<A
+    $binlink_list
+A
+        ___x_cmd_pkg_linkenv "$name" "$version" "$dir_path"
+        pkg:debug "Set link from path. binary_name=$binary_name"
+        pkg:info "Successfully set link from path "
+    fi
+}
+
+___x_cmd_pkg_linkenv(){
+    xrc path
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    local dir_path="${3}"
+    local osarch="${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}"
+    local abs_bin_path
+    ___x_cmd_path_unshift "$dir_path"
+    ! [ "$dir_path" = "$___X_CMD_PKG_BASE_PATH/bin" ] || return
+
+    local link_dir; local abs_bin_path; local link_path
+    link_dir="$(___x_cmd_pkg___link_content "$name" "$version" "$osarch" "path")"
+
+    while read -r dir; do
+        case "$dir" in
+            bin|"") continue ;;
+        esac
+        ! [ -d "$dir_path" ] || return
+        if [ "$dir" = "man" ]; then
+            link_path="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.$dir" )"
+            abs_bin_path="$___X_CMD_PKG_POPULATE_PATH/$name/$version/$link_path"
+            ln -s "$abs_bin_path" "$dir_path" || return 1
+        fi
+
+        if [ "$dir" = "lib" ]; then
+            link_path="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.$dir" )"
+            abs_bin_path="$___X_CMD_PKG_POPULATE_PATH/$name/$version/$link_path"
+            ln -s "$abs_bin_path" "$dir_path" || return 1
+        fi
+
+        if [ "$dir" = "include" ]; then
+            link_path="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.$dir" )"
+            abs_bin_path="$___X_CMD_PKG_POPULATE_PATH/$name/$version/$link_path"
+            ln -s "$abs_bin_path" "$dir_path" || return 1
+        fi
+    done <<A
+$link_dir
+A
 }

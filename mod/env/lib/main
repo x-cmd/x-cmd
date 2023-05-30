@@ -17,80 +17,20 @@ ___x_cmd_env___pasre_pkg_version(){
     esac
 }
 
-# use = try + save-config
+# use = download + populate + link + linkenv + boot + save config
 ___x_cmd_env_use(){
+    local dir_path
     case "$1" in
-        -h|--help)
-            ___x_cmd_env___help use
-            return 1
-            ;;
+        --ws) shift; dir_path="${1}"; shift ;;
+        -h|--help) ___x_cmd_env___help use;  return 1 ;;
     esac
 
-    local ___X_CMD_ENV___PARSE_VERSION
-    local ___X_CMD_ENV___PARSE_PKG
     local ___X_CMD_ENV_LSENV_APP_CANDIDATE
     [ $# -gt 0 ] || ___x_cmd_env_lsenv_app || return 1
     [ -z "$___X_CMD_ENV_LSENV_APP_CANDIDATE" ] || set -- "$___X_CMD_ENV_LSENV_APP_CANDIDATE"
 
     x:trace env/use
-    if ! ___x_cmd_env_try "$@" ; then
-        env:error "Failed to use $*"
-        return 1
-    fi
 
-    local script_path
-    local code="___x_cmd_env___configstr_set_ \"\$(cat \"\$___X_CMD_ENV_VERSION_CONFIG_PATH\")\$___X_CMD_UNSEENCHAR_NEWLINE\""
-    local i; for i in "$@"; do
-        ___x_cmd_env___pasre_pkg_version "$i"
-        if [ -z "$___X_CMD_ENV___PARSE_VERSION" ]; then
-            env:warn "Not found $___X_CMD_ENV___PARSE_PKG version."
-            return 1
-        fi
-
-        script_path="$(___x_cmd_pkg___get_script_path "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "" activate)"
-        env:debug "{ script_path: ""$script_path", "___X_CMD_ENV___PARSE_PKG: " "$___X_CMD_ENV___PARSE_PKG", "___X_CMD_ENV___PARSE_VERSION: " "$___X_CMD_ENV___PARSE_VERSION }"
-        code="$code $___X_CMD_ENV___PARSE_PKG=$___X_CMD_ENV___PARSE_VERSION=$script_path"
-    done
-
-    local ___X_CMD_ENV___CONFIGSTR_SET_;    eval "$code"
-    ___x_cmd_env_config___write "$___X_CMD_ENV___CONFIGSTR_SET_" ||  return 1
-}
-
-___x_cmd_env_unuse(){
-    case "$1" in
-        -h|--help)
-            ___x_cmd_env___help unuse
-            return 1
-            ;;
-    esac
-
-    x:trace env/unuse
-    ___x_cmd_env_untry "$@" || {
-        env:error "Cannot untry $@"
-        return 1
-    }
-
-    local unuse_tmp; unuse_tmp="$(cat "$___X_CMD_ENV_VERSION_CONFIG_PATH")$___X_CMD_UNSEENCHAR_NEWLINE"
-    local i; for i in "$@"; do
-        ___x_cmd_env___sdict rm unuse_tmp "${i%%=*}"
-    done
-
-    ___x_cmd_env_config___write "$unuse_tmp" "$___X_CMD_ENV_VERSION_CONFIG_PATH" || {
-        env:error "Cant't write "
-        return 1
-    }
-}
-
-# try = install + activate
-___x_cmd_env_try(){
-    case "$1" in
-        -h|--help)
-            ___x_cmd_env___help try
-            return 1
-            ;;
-    esac
-
-    x:trace env/try
     local ___X_CMD_ENV___PARSE_PKG
     local ___X_CMD_ENV___PARSE_VERSION
 
@@ -102,28 +42,121 @@ ___x_cmd_env_try(){
             return 1
         fi
 
-        env:debug "Prepare $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
-        if ! ___x_cmd_pkg install "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION"; then
-            env:error "Cannot install package - '$___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION'"
+        env:debug "Step 1/4: Downloading $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        if ! ___x_cmd_pkg download "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION"; then
+            env:error "Cannot download package - '$___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION'"
             return 1
         fi
 
-        if ! ___x_cmd_env___store_prev "$___X_CMD_ENV___PARSE_PKG" ; then
-            env:error "Cannot store previous version of $___X_CMD_ENV___PARSE_PKG"
+        env:debug "Step 2/4: Populating $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        if ! ___x_cmd_pkg populate "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" ; then
+            env:error "Cannot populate package - '$___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION'"
             return 1
         fi
 
-        ___x_cmd_pkg deactivate "$___X_CMD_ENV___PARSE_PKG" 2>/dev/null || true
-        if ! ___x_cmd_pkg activate "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" ; then
-            env:error "Cannot activate $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        env:debug "Step 3/4: Linking $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        ___x_cmd_pkg link "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$dir_path"  || {
+            env:error "Cannot link $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+            return 1
+        }
+
+        env:debug "Step 4/4: Booting $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        ___x_cmd_env_boot "--tip" "${___X_CMD_ENV___PARSE_PKG}=${___X_CMD_ENV___PARSE_VERSION}"
+        code="$code $___X_CMD_ENV___PARSE_PKG=$___X_CMD_ENV___PARSE_VERSION"
+    done
+
+    local ___X_CMD_ENV___CONFIGSTR_SET_;    eval "___x_cmd_env___configstr_set_ \"\$___X_CMD_ENV_VERSION_CONFIG\" $code"
+    env:info "Successfully set ${code# } in the current environment."
+    ___X_CMD_ENV_VERSION_CONFIG="$___X_CMD_ENV___CONFIGSTR_SET_"
+
+    ___x_cmd_env_use___save_config "$@"
+}
+
+___x_cmd_env_use___save_config(){
+    local ___X_CMD_ENV___PARSE_PKG
+    local ___X_CMD_ENV___PARSE_VERSION
+    local boot_script_path
+    local code="___x_cmd_env___configstr_set_ \"\$(cat \"\$___X_CMD_ENV_VERSION_CONFIG_PATH\")\$___X_CMD_UNSEENCHAR_NEWLINE\""
+    local i; for i in "$@"; do
+        ___x_cmd_env___pasre_pkg_version "$i"
+        if [ -z "$___X_CMD_ENV___PARSE_VERSION" ]; then
+            env:warn "Not found $___X_CMD_ENV___PARSE_PKG version."
             return 1
         fi
 
-        if ! ___x_cmd_env___store_current "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" ; then
-            env:error "Cannot store current version of $___X_CMD_ENV___PARSE_PKG"
+        boot_script_path="$(___x_cmd_pkg___get_script_path "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "" boot)"
+        env:debug "{ boot_script_path: ""$boot_script_path", "___X_CMD_ENV___PARSE_PKG: " "$___X_CMD_ENV___PARSE_PKG", "___X_CMD_ENV___PARSE_VERSION: " "$___X_CMD_ENV___PARSE_VERSION }"
+        code="$code $___X_CMD_ENV___PARSE_PKG=$___X_CMD_ENV___PARSE_VERSION=$boot_script_path"
+    done
+
+    local ___X_CMD_ENV___CONFIGSTR_SET_;    eval "$code"
+    ___x_cmd_env_config___write "$___X_CMD_ENV___CONFIGSTR_SET_" ||  return 1
+}
+
+___x_cmd_env_unuse(){
+    local dir_path
+    case "$1" in
+        --ws) shift; dir_path="${1}"; shift ;;
+        -h|--help) ___x_cmd_env___help unuse;  return 1 ;;
+    esac
+    x:trace env/unuse
+    local j; for j in "$@"; do
+    ___x_cmd_env___pasre_pkg_version "$j"
+    ___x_cmd_pkg_unlink "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$dir_path" || {
+        env:error "Cannot unuse $j"
+        return 1
+    }
+    done
+
+    local unuse_tmp; unuse_tmp="$(cat "$___X_CMD_ENV_VERSION_CONFIG_PATH")$___X_CMD_UNSEENCHAR_NEWLINE"
+
+    local i; for i in "$@"; do
+        ___x_cmd_env___sdict rm unuse_tmp "${i%%=*}"
+    done
+    ___x_cmd_env_config___write "$unuse_tmp" "$___X_CMD_ENV_VERSION_CONFIG_PATH" || {
+        env:error "Can't write into env config "
+        return 1
+    }
+}
+
+
+# try = download + populate + linkenv + boot
+___x_cmd_env_try(){
+    local dir_path
+    case "$1" in
+        -h|--help) ___x_cmd_env___help try;  return 1 ;;
+    esac
+    local ___X_CMD_ENV___PARSE_PKG
+    local ___X_CMD_ENV___PARSE_VERSION
+
+    local code
+    local i; for i in "$@"; do
+        ___x_cmd_env___pasre_pkg_version "$i"
+        if [ -z "$___X_CMD_ENV___PARSE_VERSION" ]; then
+            env:warn "Not found $___X_CMD_ENV___PARSE_PKG version"
             return 1
         fi
 
+        env:debug "Step 1/4: Downloading $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        if ! ___x_cmd_pkg download "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "" "$dir_path"; then
+            env:error "Cannot download package - '$___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION'"
+            return 1
+        fi
+
+        env:debug "Step 2/4: Populating $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        if ! ___x_cmd_pkg populate "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "" "$dir_path"; then
+            env:error "Cannot populate package - '$___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION'"
+            return 1
+        fi
+
+        env:debug "Step 3/4: Add PATH $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        ___x_cmd_pkg pathenv "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" || {
+            env:error "Cannot add path into env: $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+            return 1
+        }
+
+        env:debug "Step 4/4: Booting $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        ___x_cmd_env_boot "--tip" "${___X_CMD_ENV___PARSE_PKG}=${___X_CMD_ENV___PARSE_VERSION}"
         code="$code $___X_CMD_ENV___PARSE_PKG=$___X_CMD_ENV___PARSE_VERSION"
     done
 
@@ -132,8 +165,6 @@ ___x_cmd_env_try(){
     ___X_CMD_ENV_VERSION_CONFIG="$___X_CMD_ENV___CONFIGSTR_SET_"
 }
 
-
-# TODO
 ___x_cmd_env_untry(){
     case "$1" in
         -h|--help)
@@ -143,16 +174,16 @@ ___x_cmd_env_untry(){
     esac
 
     x:trace env/untry
-    local pkg_name
-    local version     #TODO: Where to use it?
+    local ___X_CMD_ENV___PARSE_PKG
+    local ___X_CMD_ENV___PARSE_VERSION
     local ___X_CMD_ENV_PREV
 
     local code="___x_cmd_env___configstr_set_ \"\$___X_CMD_ENV_VERSION_CONFIG\""
 
     local i; for i in "$@"; do
-        pkg_name="${i%=*}"
-        ___x_cmd_pkg deactivate "$pkg_name"
-        code="$code $pkg_name="
+        ___x_cmd_env___pasre_pkg_version "$i"
+        ___x_cmd_pkg deactivate "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION"
+        code="$code $___X_CMD_ENV___PARSE_PKG="
     done
 
     local ___X_CMD_ENV___CONFIGSTR_SET_;    eval "$code"

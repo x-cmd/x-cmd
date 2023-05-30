@@ -17,7 +17,7 @@ function pkg_init_table( jobj, table, table_kp,
     pkg_copy_table( jobj, jqu(pkg_name) SUBSEP jqu("meta"), table, table_kp )
 
     if ( pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name) == 0 )
-        panic( "Perhaps the platform is NOT supported your OS or ARCH - " table_osarch( table, pkg_name ) )
+        panic( "Perhaps the platform is NOT supported your OS or ARCH - " table_osarch( table, pkg_name ) " ----> " pkg_name )
 
     _final_version = table_version( table, pkg_name)
     if ( _final_version != "" ) {
@@ -94,7 +94,7 @@ function pkg_copy_table___list( src_obj, src_kp, table, table_kp,       l, i, _l
     table[ table_kp L ] = l
 
     for (i=1; i<=l; ++i) {
-        pkg_copy_table( src_obj, src_kp SUBSEP i, table, table_kp SUBSEP i )
+        pkg_copy_table( src_obj, src_kp SUBSEP "\""i"\"", table, table_kp SUBSEP "\""i"\"" )
     }
 }
 # EndSection
