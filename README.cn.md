@@ -1,23 +1,23 @@
 <p align="center">
-    <a target="_blank" href="https://x-cmd.com/zh/">
+    <a target="_blank" href="https://cn.x-cmd.com">
         <img src="https://foruda.gitee.com/images/1676141778442772704/6846937e_9641432.png" alt="x-cmd-logo" width="140" hight="140">
     </a>
 </p>
 
-<h1 align="center"><a target="_blank" href="https://x-cmd.com/zh/">X-CMD</a></h1>
+<h1 align="center"><a target="_blank" href="https://cn.x-cmd.com">X-CMD</a></h1>
 
 <p align="center">在云上 施展 弹指神通 ～</p>
 
 <p align="center">
-  <a target="_blank" href="https://x-cmd.com/zh/">
+  <a target="_blank" href="https://cn.x-cmd.com">
     <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/badge/alpha v0.1.0-107fbc.svg">
   </a>
 </p>
 
 <p align="center">
-  <a target="_blank" href="https://x-cmd.com/zh/">官网</a>
+  <a target="_blank" href="https://cn.x-cmd.com">官网</a>
   &nbsp; | &nbsp;
-  <a href="https://x-cmd.com/">安装</a>
+  <a href="https://cn.x-cmd.com/">安装</a>
 </p>
 
 现在仍处于内测阶段（v0.1.0 版本）。我们计划在6月25日发布首个公测版本。
