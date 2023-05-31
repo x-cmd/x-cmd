@@ -28,7 +28,7 @@ function user_table_comp_init(){
 # Section: statusline
 function user_statusline_set(){
     if ( ! ctrl_sw_get( o, APPKP ) ) {
-        if (ctrl_sw_get( o, TABLE_KP )) user_statusline_table_search( o, STATUSLINE_KP )
+        if (comp_table_ctrl_filter_sw_get( o, TABLE_KP)) user_statusline_table_search( o, STATUSLINE_KP )
         else user_statusline_table_normal( o, STATUSLINE_KP )
     }
     else user_statusline_text(o, STATUSLINE_KP)
@@ -37,11 +37,11 @@ function user_statusline_table_normal(o, kp){
     comp_statusline_data_clear( o, kp )
     comp_statusline_data_put( o, kp, "?", "Open help", "Close help" )
     comp_table_inject_statusline_default( o, kp )
-    comp_statusline_data_put( o, kp, "/", "Search",     "Press '/' to search items" )
+    comp_statusline_data_put( o, kp, "/", "Filter",     "Press '/' to filter items" )
     comp_statusline_data_put( o, kp, "q", "Quit",       "Press 'q' to quit table" )
     if (!user_app_style(o, APPKP)) comp_statusline_data_put( o, kp, "v", "Open view", "Press 'v' to see workflow view" )
     comp_statusline_data_put( o, kp, "r", "Refresh",    "Press 'r' to refresh table data" )
-    comp_statusline_data_put( o, kp, "i", "Dispatch",   "Press 'r' to dispatch workflow" )
+    comp_statusline_data_put( o, kp, "i", "Dispatch",   "Press 'i' to dispatch workflow" )
     comp_statusline_data_put( o, kp, "d", "Disable",    "Press 'd' to disable workflow" )
     comp_statusline_data_put( o, kp, "e", "Enable",     "Press 'e' to enable workflow" )
     comp_statusline_data_put( o, kp, "CURRENT INFO" )
@@ -180,7 +180,7 @@ function tapp_handle_wchar(value, name, type,       r){
             else if (value == "d")                                                  exit_with_elegant(value)
             else if (value == "e")                                                  exit_with_elegant(value)
             else if (value == "/"){
-                ctrl_sw_toggle( o, TABLE_KP)
+                comp_table_ctrl_filter_sw_toggle( o, TABLE_KP)
                 if ( ! comp_table_model_isfulldata(o, TABLE_KP) )                   comp_table_model_fulldata_mode( o, TABLE_KP, FULLDATA_MODE_ONTHEWAY )
             }
             else if (comp_statusline_handle( o, STATUSLINE_KP, value, name, type )) {
@@ -198,6 +198,7 @@ function tapp_handle_wchar(value, name, type,       r){
 
         } else {
             if (comp_textbox_handle( o, VIEW_KP, value, name, type ))               change_set(o, VIEW_KP)
+            else if (value == "q")                                                  exit(0)
             else if ((user_app_style(o, APPKP) == 0) && (value == "v"))             user_comp_ctrl_sw_toggle()
             else if ((user_app_style(o, APPKP) == 1) && (name == U8WC_NAME_LEFT))   user_comp_ctrl_sw_toggle()
             else if (comp_statusline_handle( o, STATUSLINE_KP, value, name, type )) _has_no_handle = false

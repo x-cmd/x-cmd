@@ -23,14 +23,15 @@ function draw_table_init( o, kp ){
 
 function draw_table_change_set_all( o, kp ){
     change_set( o, kp, "table.box" )
-    change_set( o, kp, "table.slct" )
+    change_set( o, kp, "table.filter" )
+    change_set( o, kp, "table.search" )
     change_set( o, kp, "table.head" )
     change_set( o, kp, "table.body" )
     change_set( o, kp, "table.foot" )
 }
 
 function draw_table( o, kp, x1, x2, y1, y2, opt, \
-    _draw_box, _draw_filter, _draw_header, _draw_boby, _draw_footer ){
+    _draw_box, _draw_filter, _draw_header, _draw_boby, _draw_footer, _draw_search ){
 
     _draw_box = draw_table___on_box(            o, kp, x1,      x2,     y1, y2, TH_TABLE_BOX )
     x1++; x2--; y1++; y2--
@@ -39,12 +40,16 @@ function draw_table( o, kp, x1, x2, y1, y2, opt, \
     if ( opt_getor( opt, "filter.enable", false ) ) {
         _draw_filter = draw_table___on_filter(  o, kp, x1,      x1,     y1, y2, opt )
         x1++
+    } else if ( opt_getor( opt, "search.enable", false ) ) {
+        _draw_search = draw_table___on_search(  o, kp, x1,      x1,     y1, y2, opt )
+        x1++
     }
+
     _draw_header = draw_table___on_header(      o, kp, x1,      x1,     y1, y2, opt )
     _draw_boby   = draw_table___on_body(        o, kp, x1+1,    x2-2,   y1, y2, opt )
     _draw_footer = draw_table___on_footer(      o, kp, x2+1,    x2+1,   y1, y2, opt )
 
-    return _draw_box _draw_filter _draw_header _draw_boby _draw_footer
+    return _draw_box _draw_filter _draw_search _draw_header _draw_boby _draw_footer
 }
 
 # Section: paint table body
@@ -164,11 +169,11 @@ function draw_table___on_header(o, kp, x1, x2, y1, y2, opt,               _num_w
 }
 
 function draw_table___on_filter(o, kp, x1, x2, y1, y2, opt,         ci, v, _keypath, _opt){
-    if ( ! change_is(o, kp, "table.slct") ) return
-    change_unset(o, kp, "table.slct")
+    if ( ! change_is(o, kp, "table.filter") ) return
+    change_unset(o, kp, "table.filter")
     ci = opt_get( opt, "cur.col.true" )
     v = opt_get( opt, "filter.text" )
-    _keypath = kp SUBSEP "slct" SUBSEP ci
+    _keypath = kp SUBSEP "filter" SUBSEP ci
     if (v == "") v = th( UI_TEXT_DIM, table_arr_head_get(o, kp, ci) )
     else {
         opt_set( _opt, "line.text",     v )
@@ -178,6 +183,22 @@ function draw_table___on_filter(o, kp, x1, x2, y1, y2, opt,         ci, v, _keyp
         v = draw_lineedit_paint(o, _keypath, x1, x1, y1+8, y2, _opt)
     }
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) "FILTER: " v
+}
+
+function draw_table___on_search(o, kp, x1, x2, y1, y2, opt,         v, _opt){
+    if ( ! change_is(o, kp, "table.search") ) return
+    change_unset(o, kp, "table.search")
+    ci = opt_get( opt, "cur.col.true" )
+    v = opt_get( opt, "search.text" )
+    if (v == "") v = th( UI_TEXT_DIM, table_arr_head_get(o, kp, ci) )
+    else {
+        opt_set( _opt, "line.text",     v )
+        opt_set( _opt, "line.width",    opt_get( opt, "search.width" ) )
+        opt_set( _opt, "cursor.pos",    opt_get( opt, "search.cursor" ) )
+        opt_set( _opt, "start.pos",     opt_get( opt, "search.start" ) )
+        v = draw_lineedit_paint(o, kp SUBSEP "search", x1, x1, y1+8, y2, _opt)
+    }
+    return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) "SEARCH: " v
 }
 
 function draw_table___on_footer(o, kp, x1, x2, y1, y2, opt,        i, j, v){

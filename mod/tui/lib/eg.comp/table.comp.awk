@@ -18,7 +18,8 @@ function table_statusline_normal(o, kp,         l, i, v){
     comp_statusline_data_clear( o, kp )
     comp_statusline_data_put( o, kp, "?", "Open help", "Close help" )
     comp_table_inject_statusline_default( o, kp )
-    comp_statusline_data_put( o, kp, "/", "Search", "Press '/' to search items" )
+    comp_statusline_data_put( o, kp, "/", "Filter", "Press '/' to filter items" )
+    comp_statusline_data_put( o, kp, "s", "Search", "Press 's' to search items" )
     comp_statusline_data_put( o, kp, "q", "Quit", "Press 'q' to quit table" )
     l = o[ kp, "custom" L ]
     for (i=1; i<=l; i++) {
@@ -30,10 +31,9 @@ function table_statusline_normal(o, kp,         l, i, v){
 
 function table_statusline_search(o, kp){
     comp_statusline_data_clear( o, kp )
-    comp_statusline_data_put( o, kp, "enter", "Quit filter" )
+    comp_statusline_data_put( o, kp, "enter", "Quit filter/search" )
 }
 # EndSection
-
 
 function table_cell_def( o, kp, rowid, colid, val ){     comp_table_model_set_cell( o, kp, rowid, colid, val ); }
 function table_layout( o, kp, colid, min, max ){    return comp_table_layout_avg_ele_add( o, kp, colid, min, max );   }
@@ -56,7 +56,12 @@ function table_handle_wchar( o, kp, value, name, type,            _has_no_handle
         else if (name == U8WC_NAME_CARRIAGE_RETURN)         exit_with_elegant("ENTER")
         else if (value == "q")                              exit(0)
         else if (value == "/"){
-            ctrl_sw_toggle( o, kp)
+            comp_table_ctrl_filter_sw_toggle(o, kp)
+            table_change_set_all( o, kp )
+            if ( ! comp_table_model_isfulldata(o, kp) )     comp_table_model_fulldata_mode( o, kp, FULLDATA_MODE_ONTHEWAY )
+        }
+        else if (value == "s"){
+            comp_table_ctrl_search_sw_toggle(o, kp)
             table_change_set_all( o, kp )
             if ( ! comp_table_model_isfulldata(o, kp) )     comp_table_model_fulldata_mode( o, kp, FULLDATA_MODE_ONTHEWAY )
         }
@@ -65,7 +70,8 @@ function table_handle_wchar( o, kp, value, name, type,            _has_no_handle
         # update statusline
         if ((_has_no_handle == true) && (comp_statusline_handle( o, kp SUBSEP "statusline", value, name, type )))
             comp_statusline_data_set_long(o, kp SUBSEP "statusline", "CURRENT INFO", comp_table_get_cur_line(o, kp, true, "\n  "))
-        else if (ctrl_sw_get(o, kp)) table_statusline_search(o, kp SUBSEP "statusline")
+        else if (comp_table_ctrl_filter_sw_get(o, kp) || comp_table_ctrl_search_sw_get(o, kp))
+            table_statusline_search(o, kp SUBSEP "statusline")
         else table_statusline_normal(o, kp SUBSEP "statusline")
     }
 
