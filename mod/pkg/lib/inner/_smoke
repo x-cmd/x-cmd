@@ -1,10 +1,9 @@
 # shellcheck    shell=dash disable=SC2010
 ___x_cmd_pkg__smoke() (
-    local bin_mod_name="${1:?Provide a candidate name}"
-    local candidate; candidate="$(___x_cmd_pkg___get_binmod_name "$bin_mod_name")"
+    local candidate; candidate="$1"
     local version="${2:-$(___x_cmd_pkg_default_version "$candidate")}"
 
-    pkg:info "Smoke testing bin_mod_name=$bin_mod_name candidate=$candidate version=$version"
+    pkg:info "Smoke testing candidate=$candidate version=$version"
 
     pkg:info "Step1 => Checking the active version of $candidate"
     if ! x env try "$candidate"="$version"; then
@@ -13,20 +12,23 @@ ___x_cmd_pkg__smoke() (
     fi
 
     pkg:info "Step2 => Checking the install path of $candidate $version"
-    local bin_path; bin_path="$(command -v "$bin_mod_name")"
-    # NOTE: gitbash on windows will have no symlink
-    # if [ -L "$bin_path" ]; then
-    #     bin_path="$(ls -al  "$bin_path" | grep "$candidate" | awk '{print $11}')"
-    #     pkg:info "Step2.1 => Checking the install path of $candidate $version (resolved symlink) bin_path=$bin_path"
-    # fi
+    local bin_path; local bin_name; local cur
+    ___x_cmd_pkg___list_all_bin_path "$candidate" "$version" | while read -r bin_path; do
+        bin_name="${bin_path##*/}"
+        cur="$(command -v "$bin_name")"
+        if [ -z "$bin_path" ]; then
+            pkg:error "Smoke FAIL. $candidate $version is not installed, command -v $bin_name returned empty"
+            return 12
+        fi
 
-    local expected_prefix="$___X_CMD_PKG_POPULATE_PATH/$candidate"
-    if [  "${bin_path#"$expected_prefix"}" = "$bin_path" ] || ! ( printf "%s" "$bin_path" | grep -q "$version") ; then
-        pkg:error "Smoke FAIL. $candidate $version is not installed in $expected_prefix or $bin_path does not contain $version"
-        return 12
-    fi
+        local expected_prefix="$___X_CMD_PKG_POPULATE_PATH/$candidate"
+        if [  "${cur#"$expected_prefix"}" = "$cur" ] || ! ( printf "%s" "$cur" | grep -q "$version") ; then
+            pkg:error "Smoke FAIL. $candidate $version is not installed in $expected_prefix or $cur does not contain $version"
+            return 12
+        fi
+    done
 
-    pkg:info "Step3 => Checking the smoke of $candidate $version md5=$(x md5 "$bin_path")"
+    pkg:info "Step3 => Checking the smoke of $candidate $version"
     local smokepath; smokepath=$(ls "$___X_CMD_PKG_RAW_PATH"/*"/$candidate/.x-cmd/smoke.sh") 2>/dev/null
     if ! [ -f "$smokepath" ] || ! . "$smokepath"; then
         pkg:error "Smoke FAIL. Smoke file not found or returned exit code candidate=$candidate version=$version smokepath=$smokepath"
