@@ -95,12 +95,3 @@ function jiter_tokenized_normalized( text,      _arr, _arrl, i ){
         jinormal( _, _arr[ i ])
     }
 }
-
-BEGIN {
-    if (ARGV[1] !="")  print jiter_tokenized_normalized(ARGV[1])
-}
-
-{
-    jiter_tokenized_normalized( $0 )
-    fflush()
-}
