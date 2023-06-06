@@ -120,6 +120,7 @@ function comp_gsel___slct_data_maxrow(o, kp, v){
 function comp_gsel___slct_set( o, kp, char_value, char_name, char_type ){
     return comp_lineedit_handle(o, kp SUBSEP "select", char_value, char_name, char_type)
 }
+function comp_gsel___slct_put(o, kp, v){      comp_lineedit_put(o, kp SUBSEP "select", v);    }
 function comp_gsel___slct_get(o, kp){         return comp_lineedit_get(o, kp SUBSEP "select");    }
 function comp_gsel___slct_width(o, kp){       return comp_lineedit_width(o, kp SUBSEP "select");    }
 function comp_gsel___slct_cursor_pos(o, kp){  return comp_lineedit___cursor_pos(o, kp SUBSEP "select");    }

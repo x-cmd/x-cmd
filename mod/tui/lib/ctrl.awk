@@ -488,7 +488,7 @@ function ctrl_stredit_init( o, kp, val, w,          i, l){
     o[ kp, "stredit-ctrl", "value" ] = val
     o[ kp, "stredit-ctrl", "cursor-point" ] = i = length(val)
 
-    o[ kp, "stredit-ctrl", "width" ] = w
+    o[ kp, "stredit-ctrl", "width" ] = w = ((w>0) ? w : int(o[ kp, "stredit-ctrl", "width" ]))
     if (( l=wcswidth_cache( val)-w+1 ) > 0) o[ kp, "stredit-ctrl", "start-point" ] = length( wcstruncate_cache( val, l ) )
     else o[ kp, "stredit-ctrl", "start-point" ] = 0
 }

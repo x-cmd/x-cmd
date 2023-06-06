@@ -107,12 +107,69 @@ function navi_arr_data_trace_col_val( o, kp, col, val, force_set ){
     else                              o[ kp, "trace.col.rootkp", col ] = val
 }
 
-function navi_arr_data_sel_add( o, kp, rootkp, val ){   model_arr_add( o, kp SUBSEP "comp.sel" SUBSEP rootkp, val);     }
-function navi_arr_data_sel_kp_get( kp, rootkp ) {       return kp SUBSEP "comp.sel" SUBSEP rootkp;                      }
+function navi_arr_data_sel_add( o, kp, rootkp, val ){   model_arr_add( o, kp SUBSEP "comp.gsel" SUBSEP rootkp, val);     }
+function navi_arr_data_sel_kp_get( kp, rootkp ) {       return kp SUBSEP "comp.gsel" SUBSEP rootkp;                      }
 function navi_arr_data_len( o, kp, rootkp ) {           return o[ kp, "data", rootkp L ];                               }
 function navi_arr_data_view( o, kp, rootkp, idx ){      return o[ kp, "data", rootkp, idx, "view" ];                    }
 function navi_arr_data_preview( o, kp, rootkp, idx ){   return o[ kp, "data", rootkp, idx, "preview" ];                 }
 function navi_arr_data_preview_kp( o, kp, rootkp, idx ){return o[ kp, "data", rootkp, idx, "preview_kp" ];              }
+
+# EndSection
+
+# Section: form
+function form_arr_data_add(o, kp, var, desc, val,       l){
+    model_arr_add(o, kp, var)
+    l = model_arr_data_len(o, kp)
+    model_arr_set_key_value(o, kp, l SUBSEP "desc",  desc)
+    model_arr_set_key_value(o, kp, l SUBSEP "val", val)
+    return l
+}
+
+function form_arr_get_data_len(o, kp){      return model_arr_data_len(o, kp);   }
+function form_arr_get_data_var(o, kp, i){   return model_arr_data_get(o, kp, i);}
+function form_arr_data_desc_width(o, kp, v){
+    if (v == "")                    return model_arr_get(o, kp, "desc.width")
+    return model_arr_set_key_value(o, kp, "desc.width",  v)
+}
+function form_arr_data_desc(o, kp, i, v, force_set){
+    if ((v == "") && (!force_set))  return model_arr_get(o, kp, i SUBSEP "desc")
+    return model_arr_set_key_value(o, kp, i SUBSEP "desc",  v)
+}
+function form_arr_data_val(o, kp, i, v, force_set){
+    if ((v == "") && (!force_set))  return model_arr_get(o, kp, i SUBSEP "val")
+    return model_arr_set_key_value(o, kp, i SUBSEP "val", v)
+}
+
+function form_arr_data_is_match_rule(o, kp, i, v,       j, l){
+    l = form_arr_data_rule_len(o, kp, i)
+    for (j=1; j<=l; ++j){
+        if (v ~ form_arr_data_rule_get(o, kp, i, j)) return true
+    }
+    return false
+}
+function form_arr_data_is_rule(o, kp, i){           return (form_arr_data_rule_len(o, kp, i) > 0); }
+function form_arr_data_rule_len(o, kp, i){          return model_arr_data_len(o, kp SUBSEP i SUBSEP "rule"); }
+function form_arr_data_rule_get(o, kp, i, j){       return model_arr_data_get(o, kp SUBSEP i SUBSEP "rule", j); }
+function form_arr_data_rule_set_add(o, kp, i, v){   model_arr_add(o, kp SUBSEP i SUBSEP "rule", v); }
+function form_arr_data_rule_set_arr(o, kp, i, arr,               j, l){
+    l = arr[L]
+    for (j=1; j<=l; ++j) model_arr_add(o, kp SUBSEP i SUBSEP "rule", arr[j])
+}
+
+function form_arr_data_is_select(o, kp, i){         return (form_arr_data_select_len(o, kp, i) > 0); }
+function form_arr_data_select_len(o, kp, i){        return model_arr_data_len(o, kp SUBSEP i SUBSEP "comp.gsel");}
+function form_arr_data_select_set_add(o, kp, i, v){ model_arr_add(o, kp SUBSEP i SUBSEP "comp.gsel", v);}
+function form_arr_data_select_set_arr(o, kp, i, arr,               j, l){
+    l = arr[L]
+    for (j=1; j<=l; ++j) model_arr_add(o, kp SUBSEP i SUBSEP "comp.gsel", arr[j])
+}
+
+function form_arr_exit_strategy_len(o, kp){     return model_arr_data_len(o, kp SUBSEP "form.exit.strategy");}
+function form_arr_exit_strategy_get(o, kp, i){  return model_arr_data_get(o, kp SUBSEP "form.exit.strategy", i);}
+function form_arr_exit_strategy_set(o, kp, arr,         i, l){
+    l = arr[L]
+    for (i=1; i<=l; ++i) model_arr_add( o, kp SUBSEP "form.exit.strategy", arr[i])
+}
 
 # EndSection
 

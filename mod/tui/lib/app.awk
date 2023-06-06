@@ -70,11 +70,17 @@ function ___tapp_exit_screen_recover(){
 }
 
 END{
-    ___tapp_exit_screen_recover()
-    printf("%s", UI_SCREEN_RESTORE UI_CURSOR_RESTORE \
-        space_screen(CANVAS_ROWSIZE+1, COLS) "\r" painter_up(CANVAS_ROWSIZE) \
-        UI_CURSOR_RESTORE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
-        UI_CURSOR_NORMAL UI_CURSOR_SHOW) >"/dev/stderr"
+    if (sw_clear_on_exit == true) {
+        ___tapp_exit_screen_recover()
+        printf("%s", UI_SCREEN_RESTORE UI_CURSOR_RESTORE \
+            space_screen(CANVAS_ROWSIZE+1, COLS) "\r" painter_up(CANVAS_ROWSIZE) \
+            UI_CURSOR_RESTORE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR) >"/dev/stderr"
+    } else {
+        printf("%s", UI_SCREEN_RESTORE UI_CURSOR_RESTORE \
+            "\r" painter_down(CANVAS_ROWSIZE) UI_LINE_CLEAR) >"/dev/stderr"
+    }
+
+    printf("%s", UI_CURSOR_NORMAL UI_CURSOR_SHOW) >"/dev/stderr"
     tapp_handle_exit( PANIC_EXIT )
     if (PANIC_TEXT != "") log_error("tui", PANIC_TEXT)
     tapp_send_finalcmd( "___X_CMD_TUI_APP_TMP_EXITCODE='" PANIC_EXIT "'" )

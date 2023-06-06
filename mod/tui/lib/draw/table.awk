@@ -102,12 +102,7 @@ function draw_table___on_cell( o, kp, i, j, w,             ri, ci, v, l, _v_1 ){
     ri = model_arr_get(o, kp, "view-row" SUBSEP i)
     ci = layout_avg_get_item(o, kp, j)
     v  = table_arr_get_data(o, kp, ri, ci)
-    gsub("\n.*$", "", v)
-    w --
-
-    _v_1 = wcstruncate_cache( v, w )
-    if (_v_1 == v)  v = v space_rep(w - wcswidth_cache( v )) " "
-    else            v = wcstruncate_cache( _v_1, w-2 ) "…  "
+    v = draw_unit_truncate_string( v, --w ) " "
 
     if ( draw_table_cell_highlight(o, kp, i, j) )  v = th( TH_TABLE_SELECTED_ROW_COL, v )
     else if ( draw_table_row_highlight(o, kp, i) ) v = th( TH_TABLE_SELECTED_ROW, v )
@@ -168,19 +163,18 @@ function draw_table___on_header(o, kp, x1, x2, y1, y2, opt,               _num_w
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) s
 }
 
-function draw_table___on_filter(o, kp, x1, x2, y1, y2, opt,         ci, v, _keypath, _opt){
+function draw_table___on_filter(o, kp, x1, x2, y1, y2, opt,         ci, v, _opt){
     if ( ! change_is(o, kp, "table.filter") ) return
     change_unset(o, kp, "table.filter")
     ci = opt_get( opt, "cur.col.true" )
     v = opt_get( opt, "filter.text" )
-    _keypath = kp SUBSEP "filter" SUBSEP ci
     if (v == "") v = th( UI_TEXT_DIM, table_arr_head_get(o, kp, ci) )
     else {
         opt_set( _opt, "line.text",     v )
         opt_set( _opt, "line.width",    opt_get( opt, "filter.width" ) )
         opt_set( _opt, "cursor.pos",    opt_get( opt, "filter.cursor" ) )
         opt_set( _opt, "start.pos",     opt_get( opt, "filter.start" ) )
-        v = draw_lineedit_paint(o, _keypath, x1, x1, y1+8, y2, _opt)
+        v = draw_lineedit_paint(x1, x1, y1+8, y2, _opt)
     }
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) "FILTER: " v
 }
@@ -196,7 +190,7 @@ function draw_table___on_search(o, kp, x1, x2, y1, y2, opt,         v, _opt){
         opt_set( _opt, "line.width",    opt_get( opt, "search.width" ) )
         opt_set( _opt, "cursor.pos",    opt_get( opt, "search.cursor" ) )
         opt_set( _opt, "start.pos",     opt_get( opt, "search.start" ) )
-        v = draw_lineedit_paint(o, kp SUBSEP "search", x1, x1, y1+8, y2, _opt)
+        v = draw_lineedit_paint(x1, x1, y1+8, y2, _opt)
     }
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) "SEARCH: " v
 }

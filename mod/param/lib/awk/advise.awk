@@ -33,16 +33,22 @@ function generate_advise_json_value_candidates_by_rules( optarg_id, advise_map, 
     AJADD("}");
 }
 
-function generate_advise_json_subcmd(       i, l, subcmd_funcname, subcmd_invocation, _name_arr, _ret ){
+function generate_advise_json_subcmd(       i, l, subcmd_name, subcmd_true, subcmd_funcname, subcmd_invocation, _name_arr, _ret ){
     l = subcmd_len()
     if ( l <= 0 ) return
     AJADD("',"); AJADD( swrap("#subcmd_help_tip") ); AJADD(":"); AJADD("true"); AJADD("'");
     for ( i=1; i<=l; ++i ) {
         split(subcmd_id( i ), _name_arr, "|") # get the subcmd name list
-        if( subcmd_map[ _name_arr[ 1 ], SUBCMD_FUNCNAME ] != "" )   subcmd_funcname = subcmd_map[ _name_arr[ 1 ], SUBCMD_FUNCNAME ] "_" _name_arr[ 1 ]
-        else                                                        subcmd_funcname = "${X_CMD_ADVISE_FUNC_NAME}_" _name_arr[ 1 ]
+        subcmd_name = _name_arr[ 1 ]
+        subcmd_true = ""
+        if (subcmd_name ~ "^--") {
+            subcmd_name = substr(subcmd_name, 3)
+            subcmd_true = "X_CMD_ADVISE_SUBCMD_TRUE=1"
+        }
+        if( subcmd_map[ _name_arr[ 1 ], SUBCMD_FUNCNAME ] != "" )   subcmd_funcname = subcmd_map[ _name_arr[ 1 ], SUBCMD_FUNCNAME ] "_" subcmd_name
+        else                                                        subcmd_funcname = "${X_CMD_ADVISE_FUNC_NAME}_" subcmd_name
 
-        subcmd_invocation = sprintf("\\$( B=\"\\$( PARAM_SUBCMD_DEF=''; X_CMD_ADVISE_FUNC_NAME=%s %s _x_cmd_advise_json %s)\"; if [ -n \"\\$B\" ]; then printf \"%%s\" \"\\$B\"; else return 1; fi; )", subcmd_funcname, subcmd_funcname, qu1( subcmd_desc(i) ) )
+        subcmd_invocation = sprintf("\\$( B=\"\\$( PARAM_SUBCMD_DEF=''; %s X_CMD_ADVISE_FUNC_NAME=%s %s _x_cmd_advise_json %s)\"; if [ -n \"\\$B\" ]; then printf \"%%s\" \"\\$B\"; else return 1; fi; )", subcmd_true, subcmd_funcname, subcmd_funcname, qu1( subcmd_desc(i) ) )
 
         _ret = "'," SSS swrap(subcmd_id( i )) SSS ":" SSS "'"
         ADVISE_JSON = ADVISE_JSON SSS "A=\"\\${A}\"" _ret "\"" subcmd_invocation "\""
@@ -69,6 +75,10 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
         AJADD( swrap("#name") ); AJADD( ":" ); AJADD( "{" );
         AJADD( swrap( ___X_CMD_PARAM_ADIVSE_NAME ) ); AJADD( ":" ); AJADD( "null" );
         AJADD( "}" ); AJADD(",");
+    }
+
+    if (X_CMD_ADVISE_SUBCMD_TRUE) {
+        AJADD( swrap("#subcmd") ); AJADD( ":" ); AJADD( "true" ); AJADD(",");
     }
 
     AJADD( swrap("#desc") ); AJADD( ":" ); AJADD( swrap( arg_arr[2] ) );
@@ -120,6 +130,7 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
 }
 
 function generate_advise_json(){
+    X_CMD_ADVISE_SUBCMD_TRUE = ENVIRON[ "X_CMD_ADVISE_SUBCMD_TRUE" ]
     generate_advise_json_except_subcmd()
     generate_advise_json_subcmd( )
     AJADD( "'\n}';" )

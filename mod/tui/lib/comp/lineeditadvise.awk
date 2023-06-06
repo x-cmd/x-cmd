@@ -18,7 +18,7 @@ function comp_lineeditadvise_handle( o, kp, char_value, char_name, char_type,   
     if ( char_type != U8WC_TYPE_SPECIAL ) {
         if (char_name == U8WC_NAME_DELETE)  ctrl_stredit_value_del(o, kp)
         else if (char_name == U8WC_NAME_HORIZONTAL_TAB) ctrl_stredit_value_add(o, kp, comp_lineeditadvise___get_adv(o, kp))
-        else if (char_value != "") ctrl_stredit_value_add(o, kp, char_value)
+        else if ((char_value != "") && (char_name == "")) ctrl_stredit_value_add(o, kp, char_value)
         else return false
     }
     else if (char_name == U8WC_NAME_LEFT)   ctrl_stredit_cursor_backward(o, kp)
@@ -28,6 +28,7 @@ function comp_lineeditadvise_handle( o, kp, char_value, char_name, char_type,   
     return true
 }
 
+# Section: paint
 function comp_lineeditadvise_change_set( o, kp ){
     change_set(o, kp, "lineedit")
 }
@@ -36,37 +37,20 @@ function comp_lineeditadvise_paint( o, kp, x1, x2, y1, y2 ){
     return comp_lineeditadvise___paint_with_cursor_advise(o, kp, x1, x2, y1, y2)
 }
 
-function comp_lineeditadvise___paint_with_advise_box(o, kp, x1, x2, y1, y2,         rv){
-    rv = comp_lineeditadvise___get_cursor_right_value(o, kp)
-    comp_lineeditadvise___load_advise(o, kp, rv)
-    if (o[ kp, "advise", "candidate.data" L ] <= 0) return
-    # comp_lsel_data_clear(o, kp SUBSEP "lsel")
-    # comp_lsel_data_cp(o, kp SUBSEP "lsel", o, kp SUBSEP "advise")
-    # return comp_lsel_paint_body( o, kp SUBSEP "lsel", x1, x2, y1, y2 )
-}
-
-function comp_lineeditadvise___paint_with_cursor_advise(o, kp, x1, x2, y1, y2,       s, i, b, lv, rv, l, adv, e, _str){
+function comp_lineeditadvise___paint_with_cursor_advise(o, kp, x1, x2, y1, y2,       s, i, _obj){
     if ( ! change_is(o, kp, "lineedit") ) return
     change_unset(o, kp, "lineedit")
 
-    s = comp_lineeditadvise_get(o, kp)
-    i = comp_lineeditadvise___curpos(o, kp)
-    b = comp_lineeditadvise___start( o, kp )
-    lv = substr(s, b+1, i-b)
-    rv = substr(s, i+1)
-    adv = comp_lineeditadvise___get_adv(o, kp, rv)
+    opt_set( _opt, "line.text",     (s = comp_lineeditadvise_get(o, kp)) )
+    opt_set( _opt, "line.width",    comp_lineeditadvise_width(o, kp) )
+    opt_set( _opt, "cursor.pos",    (i = comp_lineeditadvise___cursor_pos(o, kp)) )
+    opt_set( _opt, "start.pos",     comp_lineeditadvise___start_pos(o, kp) )
+    opt_set( _opt, "advise.text",   comp_lineeditadvise___get_adv(o, kp, substr(s, i+1)) )
 
-    e = substr( wcstruncate_cache( lv adv rv, ctrl_stredit_width_get( o, kp )-1 ), i-b+1 )
-    if (e == "") _str = lv th(TH_CURSOR, " ")
-    else {
-        l = wcwidth_first_char_cache(e)
-        rv = substr(e, l+1)
-        adv = substr(adv, l+1)
-        _str = lv th(TH_CURSOR, substr(e, 1, l)) th(UI_TEXT_DIM, adv) substr(rv, length(adv)+1)
-    }
-    return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) _str
+    return draw_lineeditadvise_paint( x1, x2, y1, y2, _opt )
 }
 
+# EndSection
 
 # Section: advise jso
 function comp_lineeditadvise_set_advise_fromarr(o, kp, arr, argstr){
@@ -102,7 +86,7 @@ function comp_lineeditadvise___get_adv(o, kp, rv,           adv, _completed_val)
 function comp_lineeditadvise___load_advise(o, kp, rv,       s, i){
     if (rv == ""){
         s = comp_lineeditadvise_get(o, kp)
-        i = comp_lineeditadvise___curpos(o, kp)
+        i = comp_lineeditadvise___cursor_pos(o, kp)
         rv = substr(s, i+1)
     }
     if ((rv == "") || (rv ~ "^ ")){
@@ -113,7 +97,7 @@ function comp_lineeditadvise___load_advise(o, kp, rv,       s, i){
 
 function comp_lineeditadvise___get_advise(o, kp,   s, i, fp, obj, _content, _, genv_table, lenv_table, OFFSET){
     s = comp_lineeditadvise_get(o, kp)
-    i = comp_lineeditadvise___curpos(o, kp)
+    i = comp_lineeditadvise___cursor_pos(o, kp)
     kp = kp SUBSEP "advise"
     argstr = o[ kp, "adv.argstr" ] substr(s, 1, i)
     gsub("\\\\", "\\\\", argstr)
@@ -167,8 +151,8 @@ function comp_lineeditadvise___get_advise_fromfile(o, kp, argstr,           arga
 function comp_lineeditadvise_get(o, kp){ return comp_lineedit_get(o, kp) }
 function comp_lineeditadvise_put(o, kp, val){ comp_lineedit_put(o, kp, val) }
 function comp_lineeditadvise_clear(o, kp){ comp_lineedit_clear(o, kp) }
-function comp_lineeditadvise___curpos(o, kp){ return comp_lineedit___cursor_pos(o, kp) }
-function comp_lineeditadvise___start(o, kp){ return comp_lineedit___start_pos(o, kp) }
+function comp_lineeditadvise___cursor_pos(o, kp){ return comp_lineedit___cursor_pos(o, kp) }
+function comp_lineeditadvise___start_pos(o, kp){ return comp_lineedit___start_pos(o, kp) }
 function comp_lineeditadvise___get_cursor_left_value(o, kp){ return comp_lineedit___get_cursor_left_value(o, kp) }
 function comp_lineeditadvise___get_cursor_right_value(o, kp){ return comp_lineedit___get_cursor_right_value(o, kp) }
 # EndSection

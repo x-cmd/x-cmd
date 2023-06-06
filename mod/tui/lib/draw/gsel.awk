@@ -61,7 +61,7 @@ function draw_gsel___on_title(o, kp, x1, x2, y1, y2, opt,        v, _opt){
         opt_set( _opt, "line.width",    opt_get( opt, "filter.width" ) )
         opt_set( _opt, "cursor.pos",    opt_get( opt, "filter.cursor" ) )
         opt_set( _opt, "start.pos",     opt_get( opt, "filter.start" ) )
-        v = draw_lineedit_paint(o, kp SUBSEP "select", x1, x1, y1, y2, _opt)
+        v = draw_lineedit_paint(x1, x1, y1, y2, _opt)
     }
     return painter_clear_screen(x1, x2, y1, y2) v
 }

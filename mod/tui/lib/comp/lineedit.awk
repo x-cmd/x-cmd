@@ -15,7 +15,7 @@ function comp_lineedit_handle( o, kp, char_value, char_name, char_type,       d 
     if ( o[ kp, "TYPE" ] != "lineedit" ) return false
     if ( char_type != U8WC_TYPE_SPECIAL ) {
         if (char_name == U8WC_NAME_DELETE)  ctrl_stredit_value_del(o, kp)
-        else if (char_value != "") ctrl_stredit_value_add(o, kp, char_value)
+        else if ((char_value != "") && (char_name == "")) ctrl_stredit_value_add(o, kp, char_value)
         else return false
     }
     else if (char_name == U8WC_NAME_LEFT)   ctrl_stredit_cursor_backward(o, kp)
@@ -37,7 +37,7 @@ function comp_lineedit_paint( o, kp, x1, x2, y1, y2,        _opt ){
     opt_set( _opt, "line.width",    comp_lineedit_width(o, kp) )
     opt_set( _opt, "cursor.pos",    comp_lineedit___cursor_pos(o, kp) )
     opt_set( _opt, "start.pos",     comp_lineedit___start_pos(o, kp) )
-    return draw_lineedit_paint( o, kp, x1, x2, y1, y2, _opt )
+    return draw_lineedit_paint( x1, x2, y1, y2, _opt )
 }
 
 # Section: private
