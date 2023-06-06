@@ -1,0 +1,251 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043,SC2034
+___x_cmd_gh_action_run() {
+    param:subcmd  ___x_cmd_gh_action_run                            \
+        app         "Interactive UI show workflow runs information" \
+        ls          "List workflow runs in a repository"            \
+        "view|v"    "List jobs summary for a workflow run"          \
+        "browse|b"  "Open the action run in the browser"            \
+        cancel      "Cancel a workflow runs"                        \
+        rerun       "Re-run a workflow runs"                        \
+        log         "View workflow runs log"
+    param:subcmd:try
+    param:run
+    ___x_cmd_gh_action_run _param_help_doc
+    return 1
+}
+
+# Section: App
+___x_cmd_gh_action_run_app(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+type:
+    run_status = Success Failure
+options:
+    --repo|-r           "<owner_path>/<repo_path>"                                              <>:RepoName
+
+    --branch            "Returns workflow runs associated with a branch."                       <>=""
+    --actor             "returns someone workflow runs."                                        <>:Username=""
+    --event             "Returns workflow run triggered by the event you specify."              <>=""
+    --sta|--status      "Returns workflow runs with the check run status."                      <>=""
+    --created           "Returns workflow runs created within the given date-time range."       <>=""
+    --check_suite_id    "Returns workflow runs with the check_suite_id that you specify."       <>=""
+    --exclude_pull_requests  "Not pull requests are omitted from the response "
+    --page              "Page number of the results to fetch."                                  <>="1"
+    --per_page          "Results per page (max 100)"                                            <>="30"
+A
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+
+    local ___gh_error_msg="get githubaction info list fail"
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_curl get /repos/$owner_repo/actions/runs actor branch event sta created check_suite_id exclude_pull_requests page per_page'
+    ___x_cmd_gh_tui_app "action.run.app.awk"
+
+    ___x_cmd_gh_action_run_app_status_handler
+}
+
+___x_cmd_gh_action_run_app_status_handler(){
+    local workflow_id
+    workflow_id="${___X_CMD_TUI_TABLE_CUR_LINE##*Id: }"
+    workflow_id=${workflow_id%%
+Name:*}
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "i")            ___x_cmd_gh_action_run_log              --repo "${owner_repo}"   $workflow_id             ;;
+            *)              return
+    esac
+}
+# EndSection
+
+# Section: List
+# https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-repository
+___x_cmd_gh_action_run_ls() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    --repo|-r           "<owner_path>/<repo_path>"                                              <>:RepoName
+
+    --branch            "Returns workflow runs associated with a branch."                       <>=""
+    --actor             "returns someone workflow runs."                                        <>:Username=""
+    --event             "Returns workflow run triggered by the event you specify."              <>=""
+    --sta|--status      "Returns workflow runs with the check run status."                      <>=""
+    --created           "Returns workflow runs created within the given date-time range."       <>=""
+    --check_suite_id    "Returns workflow runs with the check_suite_id that you specify."       <>=""
+    --exclude_pull_requests  "Not pull requests are omitted from the response "
+
+    --page              "Page number of the results to fetch."                                  <>="1"
+    --per_page          "Results per page (max 100)"                                            <>="30"
+    --json|-j           "output json data"
+A
+    param:run
+
+    local NO_CACHE=1
+    ___x_cmd_gh_param_init_owner_repo
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
+        ___x_cmd_gh_get_multi "/repos/$owner_repo/actions/runs" actor branch event sta created check_suite_id exclude_pull_requests
+    else
+        ___x_cmd_gh_get_multi "/repos/$owner_repo/actions/runs" actor branch event sta created check_suite_id exclude_pull_requests | \
+            x jo .workflow_runs | \
+            x jo 2c            .id    .name .conclusion .event .head_branch .created_at | \
+            x csv header --add Run_ID Name  Conclusion  Event  Branch       Created     | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: View
+# https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run
+___x_cmd_gh_action_run_view___get_data(){ ___x_cmd_gh_get_multi "/repos/${owner_repo}/actions/runs/${1}/jobs" filter; }
+___x_cmd_gh_action_run_view() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+type:
+    Filters = latest all
+options:
+    #1          "Provide run_id"                                      <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"                            <>:RepoName
+
+    --filter    "Filters jobs by their completed_at timestamp"        <>:Filters="latest"
+    --page      "Page number of the results to fetch."                <>:Numbers="1"
+    --per_page  "Results per page (max 100)"                          <>:Per_page="30"
+    --json|-j   "output json data"
+A
+    param:run
+
+    local NO_CACHE=1
+    ___x_cmd_gh_param_init_owner_repo
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_action_run_view___get_data "$1"
+    else
+        local _code; if _code="$(___x_cmd_gh_action_run_view___get_data "$1" | x ja -f "$___X_CMD_ROOT_MOD/gh/lib/awk/gh_job_ui.awk")"; then
+            eval "$_code"
+        else
+            ___x_cmd_gh_http_error
+            gh:error "Not found any data"
+            return 1
+        fi
+    fi
+}
+# EndSection
+
+# Section: Cancel
+# https://docs.github.com/en/rest/actions/workflow-runs#cancel-a-workflow-run
+___x_cmd_gh_action_run_cancel() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1          "The unique identifier of the workflow run"         <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"                          <>:RepoName
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    ___x_cmd_gh_curl post  "/repos/${owner_repo}/actions/runs/${1##*/}/cancel" | (
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "[Success]: Cancel ${1##*/} runs:"
+            else
+                ___x_cmd_ui_tf false "Cancel ${1##*/} runs failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
+
+# Section: ReRun
+# https://docs.github.com/en/rest/actions/workflow-runs#re-run-a-workflow
+___x_cmd_gh_action_run_rerun() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1          "The unique identifier of the workflow run"         <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"                          <>:RepoName
+    --fail|-f   "Re-run failed jobs from a workflow run"
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    {
+        if [ -n "$fail" ]; then
+            ___x_cmd_gh_curl post  "/repos/${owner_repo}/actions/runs/${1##*/}/rerun-failed-jobs"
+        else
+            ___x_cmd_gh_curl post  "/repos/${owner_repo}/actions/runs/${1##*/}/rerun"
+        fi
+    } | (
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "[Success]: Re-run ${fail:+'failed '}${1##*/} workflow jobs"
+            else
+                ___x_cmd_ui_tf false "Re-run ${fail:+'failed '}${1##*/} workflow jobs failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
+
+# Section: Log
+# https://docs.github.com/en/rest/actions/workflow-runs#download-workflow-run-logs
+___x_cmd_gh_action_run_log() {
+    param:scope ___x_cmd_github
+    param:dsl <<A
+type:
+    Filters = latest all
+options:
+    #1          "Provide run_id"                        <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"              <>:RepoName
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    local gh_output_dir="${___X_CMD_GH_CACHE}/log/action/${owner_repo}"
+    local gh_output="${gh_output_dir}/${1##*/}"
+
+    x mkdirp "$gh_output"
+    if [ ! -f "${gh_output_dir}/${1##*/}-log.zip" ]; then
+        if ! ___x_cmd_gh_curl download \
+                "/repos/${owner_repo}/actions/runs/${1##*/}/logs" \
+                "${gh_output_dir}/${1##*/}-log.zip"; then
+
+            [ "$(___x_cmd_gh_resp_code)" != 404 ] || gh:warn "Possible the action state is still unfinished. please wait action finish to retry or check the run_id exist $1. \`x gh action run ls\`"
+            x rmrf "$gh_output" "${gh_output_dir}/${1##*/}-log.zip"
+            return 1
+        fi
+    fi
+    [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+
+    x uz "${gh_output_dir}/${1##*/}-log.zip" "$gh_output" 1>/dev/null 2>&1
+    command cat "$gh_output"/*.txt | command awk '{
+            date=substr($0, 3, 8)
+            time=substr($0, 12, 8)
+            idx=index($0, " ")
+            gsub("-", "/", date)
+            print "\033[90m" date "/" time "\033[0m" substr($0, idx)
+        }' | eval "${___X_CMD_GH_EDITOR:-"command less -r"}"
+    x rmrf "$gh_output"
+}
+
+# EndSection
+
+# Section: Browse
+___x_cmd_gh_action_run_browse(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1          "Provide run_id"                <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"      <>:RepoName=""
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='accepts option --repo|-r (<owner>/<repo>), received empty' arg:ret:64
+    local _endpoint=""; _endpoint=$(___x_cmd_gh___get_web_endpoint)
+    x open "${_endpoint}/${owner_repo}/actions/runs/$1"
+}
+# EndSection

@@ -1,0 +1,130 @@
+# shellcheck shell=sh disable=SC3043
+# Section: framework init fini
+
+___x_cmd_job_failfast_fini___interrupt(){
+    ___X_CMD_JOB_FAILFAST_INTERRUPTED=1
+    local pid
+    x ldict vals ___X_CMD_JOB_FAILFAST | {
+        while read -r pid; do
+            job:warn "Fail Fast: sending kill signal to $pid"           # TODO: change to debug
+            kill "$pid"  2>/dev/null
+        done
+        job:info "Fail Fast: killing signal all sent"       # TODO: list all pid here.
+    }
+
+    kill "$waiting_usr1" 2>/dev/null
+}
+
+___x_cmd_job_failfast_fini()(
+    local IFS="
+"
+
+    local ___X_CMD_JOB_OFFER_LOG; read -r ___X_CMD_JOB_OFFER_LOG;
+    log:sub:init -i fini job "log_dir=${___X_CMD_JOB_OFFER_LOG}"
+
+    local ___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM;   read -r ___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM
+    job:debug "upstream_pid=$___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM"
+
+    trap '' INT  # Ignore SIGINT
+
+    local exit_code=0
+    local job_count=0;      local job_count_fail=0;     local job_count_succ=0
+
+    local job_worker_count=0
+    local waiting_usr1=
+
+    local idx; local pid; local code;  local srccode
+    local failed_job_idx
+
+    local line; while read -r line; do
+        case "$line" in
+            pid:*/*)
+                line="${line#pid:}";        idx="${line%%/*}"
+                pid="${line##*/}"
+                x ldict put ___X_CMD_JOB_FAILFAST "$idx" "$pid"
+                if [ -n "$___X_CMD_JOB_FAILFAST_INTERRUPTED" ]; then
+                    job:warn "JOB[$idx] Reject new job but process already interrupted: sending kill signal to pid=$pid"           # TODO: change to debug
+                    kill "$pid"  2>/dev/null
+                fi
+                ;;
+            start:*/*)
+                job_count="$((job_count + 1))"
+                line="${line#start:}";      idx="${line%%/*}"
+                srccode="${line#*/}"
+                job:debug "JOB[$idx] Starting cmd=$srccode"
+                ;;
+
+            exit:*/*/*)
+                line="${line#exit:}";       idx="${line%%/*}"
+                line="${line#"$idx"/}";     code="${line%%/*}";     srccode="${line#"$code"/}"
+                x ldict rm ___X_CMD_JOB_FAILFAST "$idx"
+
+                if [ "$code" -eq 0 ]; then
+                    job_count_succ=$((job_count_succ+1))
+                    job:info "JOB[$idx] |${job_count_succ}:${job_count_fail}/${job_count}|PASS| $srccode"
+
+                    ### request-usr1
+                    if [ -n "$waiting_usr1" ]; then
+                        job:debug "Sending USR1 to notify decrease count Pid[$pid]"
+                        kill "$waiting_usr1" 2>/dev/null
+                        waiting_usr1=
+                    else
+                        job_worker_count="$((job_worker_count+1))"
+                    fi
+                    ### request-usr1
+                else
+                    job_count_fail=$((job_count_fail+1))
+
+                    job:error "JOB[$idx] |${job_count_succ}:${job_count_fail}/${job_count}|FAIL| $job_count_fail with code=$code cmd=$srccode"
+
+                    [ "$job_count_fail" -eq 1 ] || continue
+                    failed_job_idx=$idx
+
+                    exit_code=$code
+
+                    job:info "JOB[$idx] FAIL, send errexit signal to UPSTREAM(${___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM})"
+                    kill -s USR2 "${___X_CMD_PIDOFSUBSHELL_OF_UPSTREAM}" 2>/dev/null
+
+                    ___x_cmd_job_failfast_fini___interrupt
+                fi
+                ;;
+            interrupt)
+                job:warn "Recv interrupt from the upstream."
+                exit_code=130
+                ___x_cmd_job_failfast_fini___interrupt
+                ;;
+            request-usr1:*)
+                # request-usr1
+                job:debug "Recv request-usr1.: $job_worker_count"
+                if [ "$job_worker_count" -gt 0 ]; then
+                    job:debug "Sending USR1 to notify decrease count pid=$pid"
+                    kill "${line#*:}" 2>/dev/null
+                    job_worker_count="$((job_worker_count-1))"
+                    waiting_usr1=
+                else
+                    waiting_usr1="${line#*:}"
+                fi
+                # request-usr1
+                ;;
+            *)
+                job:warn "Unexpeted Line=$line"
+                ;;
+        esac
+    done
+
+    case "$exit_code" in
+        0)          job:info    "All $job_count job(s) PASS"  ;;
+        130)        job:warn    "Abort because intterrupted after ${job_count} job(s) started" ;;
+        *)          job:error   "${job_count_fail} of ${job_count} job(s) FAIL" ;;
+    esac
+
+    if [ -n "$failed_job_idx" ]; then
+        job:warn "Output Log failed job ${idx} begin"
+        command cat "${___X_CMD_JOB_OFFER_LOG}/${idx}" 2>/dev/null | ___x_cmd_main outerr unpack
+        job:warn "Output Log failed job ${idx} end"
+    fi
+
+    return "$exit_code"
+)
+
+## EndSection

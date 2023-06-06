@@ -1,0 +1,174 @@
+# shellcheck shell=sh
+# shellcheck disable=SC3043,SC2154
+
+___x_cmd_gh_repo_release_attachment(){
+    param:subcmd ___x_cmd_gh_repo_release_attachment    \
+        ls              "List repo release attachment"              \
+        info            "Get repo release attachment information"   \
+        upload          "Upload repo release attachment"            \
+        "edit|ed"       "Edit repo release attachment information"  \
+        rm              "Remove repo release attachment"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_repo_release_attachment _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.github.com/en/rest/releases/assets#list-release-assets
+___x_cmd_gh_repo_release_attachment_ls() {
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                                          <>:RepoName
+    --release_id    "Release ID"                                                        <>:Number
+
+    --per_page      "Results per page"                                                  <>="30"
+    --page          "Page number of the results to fetch."                              <>="1"
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/releases/${release_id##*/}/assets"
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/releases/${release_id##*/}/assets" | \
+            x jo 2c             .id  .name  .state  .label  .download_count  .size  .updated_at  | \
+            x csv header --add   ID   Name   State   Label   Download_Count   Size   Updated_At  | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Upload
+# https://docs.github.com/en/rest/releases/assets#upload-a-release-asset
+# TODO: !!!Request URL query encode
+___x_cmd_gh_repo_release_attachment_upload() {
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1              "target upload attachment file path"                            <>
+    --repo|-r       "<owner_path>/<repo_path>"                                      <>:RepoName
+    --release_id    "Release ID"                                                    <>:Number
+    --name          "The file name of the attachment(URL-encode)(default filename)" <>=""
+    --label         "An alternate short description of the attachment(URL-encode)"  <>=""
+    --file_type     "Target upload attachment media type"                           <>="octet-stream"
+    --endpoint      "upload endpoint"                                               <>="https://uploads.github.com"
+    --json|-j       "output json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg (target upload attachment file path), received empty' arg:ret:64
+    local _file_path="$1"
+    [ "$_file_path" != '-' ] || _file_path="$(command cat)"
+    [ -n "$name" ] || name="${_file_path##*/}"
+
+    local ___X_CMD_API_GH_ENDPOINT="$endpoint"
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl upload "/repos/${owner_repo}/releases/${release_id##*/}/assets?name=${name}${label:+"&&label=$label"}" "$_file_path" | \
+        ___x_cmd_gh_release_attachment_____ui_handler Upload
+}
+# EndSection
+
+# Section: Info
+# https://docs.github.com/en/rest/releases/assets#get-a-release-asset
+___x_cmd_gh_repo_release_attachment_info() {
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1          "Release Attachment ID"                     <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"                  <>:RepoName
+    --json|-j   "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/releases/assets/${1##*/}" | ___x_cmd_gh_release_attachment_____ui_handler Info
+}
+# EndSection
+
+# Section: Edit
+# https://docs.github.com/en/rest/releases/assets#update-a-release-asset
+___x_cmd_gh_repo_release_attachment_edit() {
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1          "Release Attachment ID"                                     <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"                                  <>:RepoName
+
+    --name      "The file name of the attachment"                           <>=""
+    --label     "An alternate short description of the attachment"          <>=""
+    --json|-j   "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -repo)"
+    gh:debug "$gen_gh_json"
+
+    ___x_cmd_gh_curl patch "/repos/${owner_repo}/releases/assets/${1##*/}" "gen_gh_json" | ___x_cmd_gh_release_attachment_____ui_handler Edit
+}
+# EndSection
+
+# Section: Remove
+# https://docs.github.com/en/rest/releases/assets#delete-a-release-asset
+___x_cmd_gh_repo_release_attachment_rm() {
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1          "Release Attachment ID"                     <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"                  <>:RepoName
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove release attachment $(___x_cmd_ui bold red "$1") on $owner_repo repo ?" || return
+    ___x_cmd_gh_curl del "/repos/${owner_repo}/releases/assets/${1##*/}" | (
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "Remove ${owner_repo} ${1##*/} release attachment successfully"
+            else
+                ___x_cmd_ui_tf false "Remove ${owner_repo} ${1##*/} release attachment failure" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
+
+# Section: attachment UI
+___x_cmd_gh_release_attachment_____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Upload|Edit)
+                _inf_msg="$1 repo release attachment successfully"
+                _err_msg="$1 repo release attachment failure"
+                ;;
+            Info)
+                _inf_msg="Get repo release attachment info successfully"
+                _err_msg="Get repo release attachment info failure"
+                ;;
+        esac
+
+        local _id=""
+        x jo env . _id=.id name=.name label=.label state=.state size=.size down_count=.download_count created_at=.created_at updated_at=.updated_at \
+            down_url=.browser_download_url gh_resp_msg=.message gh_resp_err=.errors
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" "Release_Attachment_Id: $_id" ${name:+"Name: $name"} ${label:+"Label: $label"}             \
+                ${state:+"State: $state"} ${size:+"Size: $size"} ${down_count:+"Download_Count: $down_count"} ${down_url:+"Download_URL: $down_url"}   \
+                ${created_at:+"Created_At: $created_at"} ${updated_at:+"Updated_At: $updated_at"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

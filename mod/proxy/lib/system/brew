@@ -1,0 +1,149 @@
+# shellcheck shell=sh disable=SC3043
+
+# Cannot works well because of this
+# https://e.gitee.com/lteam18/issues/list?is%5Bsearch%5D=proxy&issue=I3YXC0
+
+# Reference: https://brew.idayer.com/guide/change-source/
+# Reference: https://zhuanlan.zhihu.com/p/90508170
+
+___x_cmd_proxy_brew(){
+    param:subcmd ___x_cmd_proxy_brew \
+        url             "Provide url of mirror candidates" \
+        get             "Get the mirror"                   \
+        set             "Setting the mirror"               \
+        unset           "Reset the source to the original official"
+    param:subcmd:try
+    param:run
+    
+    if ! command -v brew >/dev/null; then
+        proxy:error "command not found. brew, you should install brew in your system."
+        return 1
+    else
+        ___x_cmd_proxy___util_current_mirror "brew"
+    fi
+}
+
+___x_cmd_proxy_brew_url(){
+    param:dsl <<A
+option:
+    #1    "Mirror name"       <mirror-name>=tuna    = bfsu tuna ustc tencent
+A
+    param:run
+
+    case "$1" in
+        bfsu)            printf https://mirrors.bfsu.edu.cn          ;;
+        tuna)            printf https://mirrors.tuna.tsinghua.edu.cn ;;
+        ustc)            printf https://mirrors.ustc.edu.cn          ;;
+        tencent)         printf http://mirrors.cloud.tencent.com     ;;
+        ali)             printf https://mirrors.aliyun.com/homebrew  ;;
+        *)
+            proxy:error "Unknown mirror name: $1"
+            return 1
+    esac
+}
+
+___x_cmd_proxy_brew_get(){
+    param:void
+    git -C "$(brew --repo)" remote get-url origin
+    git -C "$(brew --repo homebrew/core)" remote get-url origin
+    git -C "$(brew --repo homebrew/cask)" remote get-url origin
+}
+
+___x_cmd_proxy_brew_set(){
+    param:dsl <<A
+option:
+    #1    "Mirror name"     <mirror-name>=bfsu    = bfsu tuna ustc tencent official
+A
+    param:run
+
+    if [ "$1" = "official" ] ; then
+        ___x_cmd_proxy_brew_unset "$@"
+        return
+    fi
+
+    local url
+    url="$(___x_cmd_proxy_brew_url "${1}")"
+    proxy:info "Setting brew mirror $url"
+
+    sys_name="$(xrc os && ___x_cmd_os name)"
+    local core_url
+    local s="export HOMEBREW_BOTTLE_DOMAIN=$url"
+    case "$1" in
+        bfsu|tuna)         url="$url"/git/homebrew ;;
+        ustc)              ;;
+        tencent)           url="$url"/homebrew ;;
+    esac
+    case "$sys_name" in 
+        darwin)
+            s="$s/homebrew-bottles"
+            eval "$s"
+            core_url="$url/homebrew-core.git"
+        ;;
+        linux)
+            s="$s/linuxbrew-bottles"
+            eval "$s"
+            core_url="$url/linuxbrew-core.git"
+        ;;
+    esac
+    git -C "$(brew --repo)" remote set-url origin "$url/brew.git"
+    git -C "$(brew --repo homebrew/core)" remote set-url origin "$core_url"
+    git -C "$(brew --repo homebrew/cask)" remote set-url origin "$url/homebrew-cask.git"
+
+    proxy:info "git -C \"$(brew --repo)\" remote set-url origin $url/brew.git"
+    proxy:info "git -C \"$(brew --repo homebrew/core)\" remote set-url origin $core_url"
+    proxy:info "git -C \"$(brew --repo homebrew/cask)\" remote set-url origin $url/homebrew-cask.git"
+    proxy:info "$s"
+    
+    local i
+    local src
+    for i in $HOME/.zshrc $HOME/.bashrc $HOME/.kshrc; do
+        if [ ! -f "$i" ]; then
+            continue
+        fi
+
+        if src="$(grep -v "export HOMEBREW_BOTTLE_DOMAIN=" "$i")"; then
+            printf "%s" "$src" > "$i"
+        fi
+
+        proxy:info "last line in $i : $(tail -n 1 "$i")"
+
+        if ! grep "$s" "$i" 2>/dev/null ; then
+            printf "\n%s" "$s" >> "$i"
+        fi
+        proxy:info "last line in $i : $(tail -n 1 "$i")"
+    done
+
+    proxy:info "Now brew update"
+    brew update --verbose
+}
+
+___x_cmd_proxy_brew_unset(){
+    param:void
+    local url="https://github.com/Homebrew"
+
+    git -C "$(brew --repo)" remote set-url origin "$url"/brew.git
+    git -C "$(brew --repo homebrew/core)" remote set-url origin "$url"/homebrew-core.git
+    git -C "$(brew --repo homebrew/cask)" remote set-url origin "$url"/homebrew-cask.git
+
+    proxy:info "git -C \"$(brew --repo)\" remote set-url origin $url/brew.git"
+    proxy:info "git -C \"$(brew --repo homebrew/core)\" remote set-url origin $url/homebrew-core.git"
+    proxy:info "git -C \"$(brew --repo homebrew/cask)\" remote set-url origin $url/homebrew-cask.git"
+
+    unset HOMEBREW_BOTTLE_DOMAIN
+    proxy:info "after HOMEBREW_BOTTLE_DOMAIN: $HOMEBREW_BOTTLE_DOMAIN"
+
+    local i
+    local src
+    for i in $HOME/.zshrc $HOME/.bashrc $HOME/.kshrc; do
+        if [ ! -f "$i" ]; then
+            continue
+        fi
+        if src="$(grep -v "export HOMEBREW_BOTTLE_DOMAIN=" "$i")"; then
+            printf "%s" "$src"> "$i"
+        fi
+        proxy:info "last line in $i : $(tail -n 1 "$i")"
+    done
+
+    proxy:info "Now brew update"
+    brew update --verbose
+}

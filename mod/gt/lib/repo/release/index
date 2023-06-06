@@ -1,0 +1,228 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gt_repo_release(){
+    param:subcmd ___x_cmd_gt_repo_release        \
+        ls                  "List repo release"                     \
+        create              "Create repo release"                   \
+        info                "Show detailed information of repo"     \
+        "edit|ed"           "Update release information"            \
+        rm                  "Remove repo release"                   \
+        latest              "Show latest release"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_repo_release _param_help_doc
+    return 1
+}
+
+# Section: List
+
+# shellcheck disable=SC2086,SC2154
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoReleases
+___x_cmd_gt_repo_release_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                              <>:RepoPath
+    --direction     "direction(asc,desc)"                                   <>:Direction="asc"
+    --json|-j       "output origin json data"
+'
+    param:run
+    ___x_cmd_gt_param_init_owner_repo
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/releases" direction
+    else
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/releases" direction | \
+            x jo 2c             .id   .name        .tag_name  .prerelease | \
+            x csv header --add   Id    ReleaseName  TagName    IsPreRelease | \
+            x csv static_tab
+    fi
+}
+
+# EndSection
+
+# Section: Create
+
+# shellcheck disable=SC2154,SC2181,SC2034
+# https://gitee.com/api/v5/swagger#/postV5ReposOwnerRepoReleases
+___x_cmd_gt_repo_release_create(){
+    param:scope  ___x_cmd_gt
+    param:dsl    '
+options:
+    --repo|-r           "<owner_path>/<repo_path>"                                           <>:RepoPath
+    --tag               "Please provide tag name"                                            <>
+    --body              "Release Description(support markdown)"                              <>
+    --target_commitish  "branch name or commit SHA"                                          <>
+    --name              "Release name(default is tag)"                                       <>=""
+    --prerelease        "Is pre-release version"
+    --json|-j           "output origin json data"
+'
+    param:run
+    ___x_cmd_gt_param_init_owner_repo
+    [ -n "$name" ] || name="$tag"
+    local gen_gt_json
+    gen_gt_json="$(param:option2json tag_name=tag -tag)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl post "/repos/${owner_repo}/releases" "gen_gt_json" | \
+        ___x_cmd_gt_repo_release____ui_handler Create
+}
+
+# EndSection
+
+# Assume pr and owner_repo are environments
+______x_cmd_gt_repo_release_init_owner_repo_and_release_main(){
+    local release_id="${release##*/}"
+    owner_repo="${release%"$release_id"}"
+    ___x_cmd_gt_param_normalize_repo "$owner_repo"
+    release="$release_id"
+}
+
+alias ______x_cmd_gt_repo_release_init_owner_repo_and_release='
+    [ -n $release ]     || local release
+    [ -n $owner_repo ]  || local owner_repo
+    ______x_cmd_gt_repo_release_init_owner_repo_and_release_main || return
+'
+
+# Section: Edit and Remove
+
+# shellcheck disable=SC2154,SC2181,SC2034
+# https://gitee.com/api/v5/swagger#/patchV5ReposOwnerRepoReleasesId
+___x_cmd_gt_repo_release_edit(){
+    param:scope  ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                  "Release ID"                                                         <>:NatureNumber
+    --repo|-r           "<owner_path>/<repo_path>"                                           <>:RepoPath
+    --tag               "Please provide tag name"                                            <>
+    --name              "Release name"                                                       <>
+    --body              "Release Description(support markdown)"                              <>
+    --prerelease        "Is release version"
+    --json|-j           "output origin json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(Release ID), received empty' arg:ret:64
+    local release="$1"
+    local gen_gt_json=""
+    gen_gt_json="$(param:option2json tag_name=tag -tag)"
+    gt:debug "$gen_gt_json"
+
+    ______x_cmd_gt_repo_release_init_owner_repo_and_release
+    ___x_cmd_gt_curl patch "/repos/${owner_repo}/releases/${release}" "gen_gt_json" | \
+        ___x_cmd_gt_repo_release____ui_handler Modify
+}
+
+# https://gitee.com/api/v5/swagger#/deleteV5ReposOwnerRepoReleasesId
+# shellcheck disable=SC2034
+___x_cmd_gt_repo_release_rm(){
+    param:scope  ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                  "Release ID"                        <>:NatureNumber
+    --repo|-r           "<owner_path>/<repo_path>"          <>:RepoPath
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(Release ID), received empty' arg:ret:64
+    local release="$1"
+    ______x_cmd_gt_repo_release_init_owner_repo_and_release
+
+    ___x_cmd_gt_curl del "/repos/${owner_repo}/releases/$release" | (
+            [ -z "$___X_CMD_GT_IN_TEST" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "[Success]: Deleting release ${owner_repo} ${release}"
+            else
+                ___x_cmd_ui_tf false "Deleting release ${owner_repo} ${release} failure:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
+}
+
+# EndSection
+
+# Section: Info
+
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoReleasesId
+___x_cmd_gt_repo_release_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                  "Release ID"                        <>:NatureNumber
+    --repo|-r           "<owner_path>/<repo_path>"          <>:RepoPath
+    --json|-j           "output origin json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(Release ID), received empty' arg:ret:64
+    local release="$1"
+    ______x_cmd_gt_repo_release_init_owner_repo_and_release
+
+    ___x_cmd_gt_curl get "/repos/${owner_repo}/releases/${release}" | \
+        ___x_cmd_gt_repo_release____ui_handler Getting
+}
+
+# shellcheck disable=SC2086,SC2154
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoReleasesTagsTag
+___x_cmd_gt_repo_get_release_by_tag(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                 "tag name"                           <>
+    --repo|-r          "<owner_path>/<repo_path>"           <>:RepoPath
+    --json|-j          "output origin json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(tag name), received empty' arg:ret:64
+    local _tag_name="$1"
+    ___x_cmd_gt_param_init_owner_repo
+
+    ___x_cmd_gt_curl get "/repos/${owner_repo}/releases/tags/${_tag_name}" | \
+        ___x_cmd_gt_repo_release____ui_handler Getting
+
+}
+
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoReleasesLatest
+# shellcheck disable=SC2034
+___x_cmd_gt_repo_release_latest(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    --repo|-r       "<owner_path>/<repo_path>"          <>:RepoPath
+    --json|-j       "output origin json data"
+'
+    param:run
+    ___x_cmd_gt_param_init_owner_repo
+    ___x_cmd_gt_curl get "/repos/${owner_repo}/releases/latest" | \
+        ___x_cmd_gt_repo_release____ui_handler Getting
+}
+# EndSection
+
+# Section: repo release UI
+___x_cmd_gt_repo_release____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Create|Modify|Getting)
+                _inf_msg="$1 repo release successfully"
+                _err_msg="$1 repo release failure"
+            ;;
+        esac
+        local _id=""
+        x jo env . _id=.id gt_resp_err=.message gt_resp_err=.error \
+            tag_name=.tag_name name=.name target_commitish=.target_commitish prerelease=.prerelease
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${_id:+"ID: $_id"} ${tag_name:+"Tag: $tag_name"} ${Name:+"name: $name"} \
+                ${target_commitish:+"Target Commitish: $target_commitish"}  ${prerelease:+"Prerelease: $prerelease"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

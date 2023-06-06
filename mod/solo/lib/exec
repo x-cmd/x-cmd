@@ -1,0 +1,195 @@
+# shellcheck shell=dash
+
+___X_CMD_SOLO_WORKSPACE_ROOT=$___X_CMD_ROOT_DATA/solo/ws
+
+___x_cmd_solo___exec(){
+    local x_engine
+    local x_setup
+    local x_mode
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --root)
+                local ___X_CMD_SOLO_WORKSPACE_ROOT="$2"
+                shift 2
+                ;;
+            *)
+                break
+        esac
+    done
+
+    local filepath="$1"; shift
+
+    # Or try [ -f "${filepath}.py" ] || [ -f "${filepath}.js" ] || [ -f "${filepath}.ts", etc
+    if [ ! -f "$filepath" ]; then
+        local filepath_candidate; for filepath_candidate in "$filepath".*; do
+            [ -f "$filepath_candidate" ] || continue
+            filepath="$filepath_candidate"
+            break
+        done
+        [ -f "$filepath" ] || N=solo M="File not found ==> $filepath" log:ret:1
+    fi
+
+    ___x_cmd_solo___parse_ "$filepath" || return
+
+    local x_
+    if [ -z "$x_engine" ]; then
+        solo:debug "x_engine not found, try to detect from fileext"
+        ___x_cmd_solo___exec_engine_detect_from_fileext_ "$filepath" || {
+            # if ___x_cmd_is_interative; then
+            #     x_=$(x ask "Engine not found, please select one" python node deno ts-node java kotlin groovy r julia ruby perl)
+            # else
+            #     x:error "Unknown engine, please specify one."
+            #     return 1
+            # fi
+            x_=source       # source ==> x src subshell ssrc
+        }
+        x_engine="$x_"
+    fi
+
+    case "$x_engine" in
+        source|ssrc)        x "$x_engine" "$filepath" "$@";          return ;;
+    esac
+
+    (
+        local wspath=""
+        ___x_cmd_solo___exec___mode_ "$filepath" || return
+        local running_filepath="$x_"
+
+        solo:debug "x_mode=$x_mode , wspath=$wspath, x_engine=$x_engine, x_setup=$x_setup"
+        solo:debug "running_filepath=$running_filepath , PWD=$PWD, wspath=$wspath"
+
+        x "$x_engine" load --installable
+        ___x_cmd_solo___exec_setup "$x_setup" "$running_filepath" || return
+
+        solo:debug "PWD=$PWD"
+        solo:debug "Running==> x $x_engine ${___X_CMD_ENGINE_SUBCMD_NAME:-__enginerun} $running_filepath $*"
+
+        local ___x_cmd_errcode=0; x "$x_engine" "${___X_CMD_ENGINE_SUBCMD_NAME:-__enginerun}" "$running_filepath" "$@" || ___x_cmd_errcode=$?
+        return $___x_cmd_errcode
+    )
+}
+
+___x_cmd_solo___exec___mode_(){
+    x abspath_ "$1"
+
+    local dirname="${x_%/*}"
+    wspath="${dirname}"
+    case "$x_mode" in
+        inplace)    x_="$x_"; return ;;
+        ws)         ;;
+        *)          # [ -z "$x_setup" ] || { x_="$x_"; return ; }
+            ;;
+    esac
+
+    wspath="${___X_CMD_SOLO_WORKSPACE_ROOT}${dirname}"
+
+    local filename="${x_##*/}"
+    x mkdirp "$wspath"
+    printf "%s\n" "*" >"$wspath/.gitignore"       # ignore all files in the directory, maybe add svn support later.
+
+    command cp "$x_" "$wspath/$filename"
+    x_="$wspath/$filename"
+}
+
+___x_cmd_solo___exec_setup(){
+    local setupcode="$1"
+    local running_filepath="$2"
+
+    local ___x_cmd_solo_oldpwd="$PWD"
+    ___x_cmd_inner_cd "${running_filepath%/*}" || return 1
+    solo:debug "Setup workspace ==> $PWD"
+
+    local runtime_id; runtime_id="$(command -v "$x_engine")"
+    local setup_state_folder=${wspath}/.x-cmd/$runtime_id
+    x mkdirp "$setup_state_folder"
+
+    if [ -f "${setup_state_folder}/.setup.fail" ]; then
+        x ui yesno "setup fail last time. retry?" || return 1
+        x rmrf "$wspath/.x-cmd.setup.fail"
+        ___x_cmd_solo___exec_setup_main "$setupcode" "$running_filepath" "$setup_state_folder"
+    elif [ ! -f "${setup_state_folder}/.setup.ok" ]; then
+        ___x_cmd_solo___exec_setup_main "$setupcode" "$running_filepath" "$setup_state_folder" || {
+            x:error "Fail to setup workspace"
+            return 1
+        }
+    fi
+
+    [ -z "$___x_cmd_solo_oldpwd" ] || ___x_cmd_inner_cd  "$___x_cmd_solo_oldpwd"
+    solo:debug "Setup workspace done"
+}
+
+___x_cmd_solo___exec_setup_main(){
+    local setupcode="$1"
+    local running_filepath="$2"
+    local setup_state_folder="$3"
+
+    x mkdirp "${wspath}/.x-cmd"
+    printf "%s\n"                   \
+        "# x-cmd.engine: source"    \
+        "# x-cmd.end"               \
+        "$setupcode" >"${wspath}/.x-cmd/setup"
+
+    ___x_cmd_solo_oldpwd="$PWD"
+    x ws setup || {
+        touch "${setup_state_folder}/.setup.fail"
+        x:error "Fail to setup workspace"
+        return 1
+    }
+
+    touch "${setup_state_folder}/.setup.ok"
+}
+
+___x_cmd_solo___exec_engine_detect_from_fileext_(){
+    local filepath="${1:?filepath}"; shift
+    local ext="${filepath##*.}"
+    [ "$ext" != "$filepath" ] || return 126
+
+    x_=
+    case "$ext" in
+        "$filepath")    return 126      ;;
+        py)             x_=python       ;;
+        pl)             x_=perl         ;;
+        rb)             x_=ruby         ;;
+        js)             x_=node         ;;
+        ts)             x_=ts           ;;
+        raku|rakumod)   x_=raku         ;;
+
+        bash)           x_=bash         ;;
+        zsh)            x_=zsh          ;;
+        fish)           x_=fish         ;;
+        ksh)            x_=ksh          ;;
+        sh)             x_=sh           ;;
+
+        java)           x_=java         ;;      # No File Header for this.
+        jar)            x_=jar          ;;      # No File Header for this.
+        groovy)         x_=groovy       ;;
+        kts)            x_=kotlin       ;;      # No File Header for this.
+
+        txt)            x_=bat          ;;
+        yml|yaml)       x_=yml          ;;
+        json|jso)       x_=ja           ;;
+        toml)           x_=bat          ;;
+
+        *)              return 126      ;;
+    esac
+}
+
+
+# ___x_cmd_solo___exec(){
+#     local solo_workpath="${___X_CMD_ROOT_DATA}/solo/link${1}"
+
+#     local solo_entrypoint="$solo_workpath/X"
+
+#     [ -e "$solo_entrypoint" ] || {
+#         solo:error "Please init before exec"
+#         return 1
+#     }
+
+#     [ "$solo_entrypoint" -ot "$1" ] || {
+#         solo:error "Please init again before exec for solo script is changed"
+#         return 1
+#     }
+
+#     . "$solo_workpath/X"
+# }

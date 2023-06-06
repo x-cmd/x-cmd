@@ -1,0 +1,79 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gl_user(){
+    param:scope     ___x_cmd_gl
+    param:subcmd ___x_cmd_gl_user           \
+        info    "Show user information"     \
+        email   "Get current user email"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_user _param_help_doc
+    return 1
+}
+
+# Section: info repo email issue
+# shellcheck disable=SC2154
+# https://docs.gitlab.com/ee/api/users.html#single-user
+# https://docs.gitlab.com/ee/api/users.html#for-normal-users
+___x_cmd_gl_user_info(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "<user_login_path> or .id=<user_id>"            <>=""
+    --json|-j       "output json data"
+'
+    param:run
+
+    local _url=""
+    case $1 in
+        "")
+            _url="/user"
+            ;;
+        *)
+            local _avt_name="${1}"
+            ___x_cmd_gl____transform_avt_name || return
+            _url="/users/$_avt_name"
+            ;;
+    esac
+
+    ___x_cmd_gl_curl get "$_url" | ___x_cmd_gl_user_info_json_status_handler
+}
+
+# shellcheck disable=2154
+___x_cmd_gl_user_info_json_status_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        return
+    fi
+    (
+        local _id=""
+        x jo env . _id=.id name=.username email=.email web_url=.web_url state=.state gl_resp_err=.error gl_resp_msg=.message
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "Getting user info successfully:" "ID: $_id" "Name: $name" "Email: $email" "State: $state" "Url: $web_url"
+        else
+            ___x_cmd_ui_tf false "Getting user info failure:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+
+# https://docs.gitlab.com/ee/api/users.html#list-emails
+___x_cmd_gl_user_email(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --json|-j       "output json data"
+'
+    param:run
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/user/emails"
+    else
+        ___x_cmd_gl_curl get "/user/emails" | \
+            x jo 2c             .id .email .confirmed_at | \
+            x csv header --add   ID  Email  Confirmed_at | \
+            x csv static_tab
+    fi
+}

@@ -1,0 +1,91 @@
+# shellcheck    shell=sh    disable=SC3043,SC2154 # xrc
+
+___x_cmd_pkg_link() {
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    local global_bin_path="${3:-$___X_CMD_PKG_BASE_PATH/bin}"
+    local osarch="${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}"
+    local tgt="$___X_CMD_PKG_POPULATE_PATH/$name/$version"
+
+    local target
+    ___x_cmd_pkg___list_all_bin_path "$name" "$version" | while read -r source; do
+        target="$global_bin_path/${source##*/}"
+        pkg:debug "linking source=$source target=$target"
+        ln -s -f "$source" "$target" || {
+            pkg:error "ln - Operation failure source=$source target=$target"
+            return 1
+        }
+    done
+    ___x_cmd_pkg_linkenv "$name" "$version" "$global_bin_path"
+    pkg:info "Successfully set link from path "
+}
+
+___x_cmd_pkg___list_all_bin_path() {
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    local osarch="${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}"
+    local tgt="$___X_CMD_PKG_POPULATE_PATH/$name/$version"
+
+    local bin_dir_list
+    bin_dir_list="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.bin")"
+    if [ -z "$bin_dir_list" ]; then
+        pkg:error "link bin is not exist"
+        return 1
+    fi
+
+    printf "%s\n" "$bin_dir_list" | while read -r bin_dir; do
+        [ -n "$bin_dir" ] || continue
+        abs_bin_path="$tgt/$bin_dir"
+        if ! [ -d "$abs_bin_path" ]; then
+            pkg:error "No bin link($abs_bin_path) for $name $version"
+            return 1
+        fi
+
+        bin_name_list="$(ls "$abs_bin_path")"
+        printf "%s\n" "$bin_name_list" | while read -r bin_name; do
+            [ -n "$bin_name" ] || continue
+            [ -x "$abs_bin_path/$bin_name" ] || continue
+            printf "%s\n" "$abs_bin_path/$bin_name"
+        done
+    done
+}
+
+___x_cmd_pkg_linkenv() {
+    xrc path
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    local global_bin_path="${3}"
+    local osarch="${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}"
+    local abs_bin_path
+    ___x_cmd_path_unshift "$global_bin_path"
+    ! [ "$global_bin_path" = "$___X_CMD_PKG_BASE_PATH/bin" ] || return
+
+    local link_dir
+    local abs_bin_path
+    local link_path
+    link_dir="$(___x_cmd_pkg___get_linkenv "$name" "$version" "$osarch" "path")"
+
+    printf "%s\n" "$link_dir" |  while read -r dir; do
+        case "$dir" in
+            bin|"") continue ;;
+        esac
+        ! [ -d "$global_bin_path" ] || return
+        if [ "$dir" = "man" ]; then
+            link_path="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.$dir")"
+            abs_bin_path="$___X_CMD_PKG_POPULATE_PATH/$name/$version/$link_path"
+            ln -s "$abs_bin_path" "$global_bin_path" || return 1
+        fi
+
+        if [ "$dir" = "lib" ]; then
+            link_path="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.$dir")"
+            abs_bin_path="$___X_CMD_PKG_POPULATE_PATH/$name/$version/$link_path"
+            ln -s "$abs_bin_path" "$global_bin_path" || return 1
+        fi
+
+        if [ "$dir" = "include" ]; then
+            link_path="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.$dir")"
+            abs_bin_path="$___X_CMD_PKG_POPULATE_PATH/$name/$version/$link_path"
+            ln -s "$abs_bin_path" "$global_bin_path" || return 1
+        fi
+    done
+}

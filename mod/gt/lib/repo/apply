@@ -1,0 +1,109 @@
+# shellcheck shell=sh disable=SC3043,2002,SC2154
+
+# x gt repo apply a.yml lijunhao=edwinjhlee zhengyuhang=mnnna
+# x gt repo apply .x-cmd/gitee-repo.yml  lijunhao=edwinjhlee
+
+___x_cmd_gt_repo_apply(){
+    param:void
+    if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then _____x_cmd_gt_help repo apply; return;
+    fi
+    ___x_cmd_gt_config_get owner 1>/dev/null || return 1
+
+    [ -n "$1" ] || M='accepts 1 arg(apply file path), received empty' arg:ret:64
+    local filepath="$1"; shift
+    local _errexit="${___X_CMD_UNSEENCHAR_001}${___X_CMD_UNSEENCHAR_002}${___X_CMD_UNSEENCHAR_003}"
+
+    local code; if code="$(
+        {
+            ___x_cmd_gt_repo_apply___parse_data | {
+                x jo env . content=. owner_repo=.repo  apply_push=.push  apply_collaborator=.collaborator
+                [ -n "$content" ]    || { gt:error "Not found apply configure data"; printf "%s\n" "$_errexit"; return 1; }
+                [ -n "$owner_repo" ] || { gt:error "Not found apply configure 'repo' main key"; printf "%s\n" "$_errexit"; return 1; }
+
+                ___x_cmd_gt_repo_apply__replace_args "$@"
+                printf "%s\n" "$content"
+                gt:info "Getting repo info ..."
+                ___x_cmd_gt_repo_apply__collaborator_info
+                ___x_cmd_gt_repo_apply__repo_info
+                ___x_cmd_gt_repo_apply__push_info
+            }
+        } | {
+            awk -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+                -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk" \
+                -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"  \
+                -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk" \
+                -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk" \
+                -f "$___X_CMD_ROOT_MOD/gt/lib/awk/repo/collaborator.awk" \
+                -f "$___X_CMD_ROOT_MOD/gt/lib/awk/repo/review.awk" \
+                -f "$___X_CMD_ROOT_MOD/gt/lib/awk/repo/push.awk" \
+                -f "$___X_CMD_ROOT_MOD/gt/lib/awk/repo.awk" \
+                -f "$___X_CMD_ROOT_MOD/gt/lib/awk/replace.awk" \
+                -f "$___X_CMD_ROOT_MOD/gt/lib/repo/apply.awk"
+        }
+    )"; then
+        gt:debug "apply code $code"
+        [ -n "$code" ] || {
+            printf "%s\n" ""; gt:info "Repo apply no changes required"
+            return 0
+        }
+        gt:info "Handling repo by info ..."
+        if [ -n "$___X_CMD_GT_DRY_RUN" ]; then      printf "%s\n" "$code";
+        else                                        eval "$code";
+        fi
+        # echo "$code"
+    else
+        code=$?
+        gt:error "Exit=$code. Fail to apply $filepath" >/dev/stderr
+    fi
+}
+
+# In bash env will cause error
+___x_cmd_gt_repo_apply___parse_data(){
+    case "$filepath" in
+        -)              cat | x y2j ;;
+        *.json)         cat "$filepath" ;;
+        *.yml)          (
+                            cd "$(dirname "$filepath")" || return 1
+                            printf "%s\n" "$(pwd)/$(basename "$filepath")"
+                        ) | awk \
+                        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+                        -f "$___X_CMD_ROOT_MOD/awk/lib/re.awk"  \
+                        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"  \
+                        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk" \
+                        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk" \
+                        -f "$___X_CMD_ROOT_MOD/yml/lib/yutil.awk"   \
+                        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.value.awk"  \
+                        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.json.awk"  \
+                        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.awk"  \
+                        -f "$___X_CMD_ROOT_MOD/gt/lib/awk/xrc.awk";;
+        *)              <"$filepath" x y2j ;;
+    esac
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gt_repo_apply__collaborator_info(){
+    [ -n "$apply_collaborator" ] || { printf "\n"; return 0; }
+
+    NO_CACHE=1 x gt repo collaborator ls --json --repo "$owner_repo" | x ja t "\t" ; printf "\n"
+    # cat "$(x wsroot)"/.x-cmd/repo_member.json | x ja t "\t" ; printf "\n"
+}
+
+___x_cmd_gt_repo_apply__repo_info(){
+    NO_CACHE=1  x gt repo info --json "$owner_repo" | x ja t "\t" ; printf "\n"
+    # cat "$(x wsroot)"/.x-cmd/repo_info.json | x ja t "\t" ; printf "\n"
+}
+
+___x_cmd_gt_repo_apply__push_info(){
+    [ -n "$apply_push" ] || { printf "\n"; return 0; }
+
+    NO_CACHE=1  x gt repo push info --json --repo "$owner_repo" | x ja t "\t" ; printf "\n"
+    # cat "$(x wsroot)"/.x-cmd/repo_push_info.json | x ja t "\t" ; printf "\n"
+}
+
+___x_cmd_gt_repo_apply__replace_args(){
+    if [ -f "$1" ]; then cat "$1" | x y2j | x ja t "\t" ; printf "\n"
+    else    local IFS=","; printf "replace:%s\n" "$*"
+    fi
+}
+
+#  x gt repo apply ./.x-cmd/apply/gitee-repo.yml

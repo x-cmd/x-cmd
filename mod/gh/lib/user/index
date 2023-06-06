@@ -1,0 +1,86 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gh_user(){
+    param:scope     ___x_cmd_github
+    param:subcmd ___x_cmd_gh_user                       \
+        info        "Show information"                  \
+        email       "get user email"                    \
+        issue       "List all issues"                   \
+        ssh         "user public SSH key management"    \
+        gpg         "user GPG key management"           \
+        repo        "user repo management"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_user _param_help_doc
+    return 1
+}
+
+# Section: Info
+# https://docs.github.com/en/rest/users/users#get-a-user
+# https://docs.github.com/en/rest/users/users#get-the-authenticated-user
+___x_cmd_gh_user_info() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "Username, empty is using current user"     <>=""
+    --json|-j       "output json data"
+'
+    param:run
+
+    local _avt_name="$1"
+    local url=""
+    if [ -z "$_avt_name" ]; then
+        url="/user"
+    else
+        ___x_cmd_gh____transform_avt_name || return
+        url="/users/$_avt_name"
+    fi
+    ___x_cmd_gh_curl get "$url" | ___x_cmd_gh_user_info____status_hander
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gh_user_info____status_hander(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        return
+    fi
+    (
+        local id=""
+        x jo env . id=.id url=.html_url name=.login followers=.followers public_repos=.public_repos email=.email blog=.blog \
+            gh_resp_msg=.message gh_resp_err=.errors
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true  "Get${_avt_name:+" $_avt_name"} user info successfully:" "Id: $id" "Name: $name" "Followers: $followers" \
+                "Public_Repos: $public_repos" "Email: $email" ${blog:+"Blog: $blog"} "Url: $url"
+        else
+            ___x_cmd_ui_tf false "Get${_avt_name:+" $_avt_name"} user info failure:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: Email
+# https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user
+___x_cmd_gh_user_email(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --page          "page"                        <>="1"
+    --per_page      "per_page"                    <>="30"
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/user/emails"
+    else
+        ___x_cmd_gh_get_multi "/user/emails"     | \
+            x jo 2c             .email .verified | \
+            x csv header --add   Email  Verified | \
+            x csv static_tab
+    fi
+}
+# EndSection

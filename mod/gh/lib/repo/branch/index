@@ -1,0 +1,317 @@
+# shellcheck shell=sh disable=SC2039,3043,SC2154
+___x_cmd_gh_repo_branch(){
+    param:subcmd ___x_cmd_gh_repo_branch            \
+        app             "Interactive UI show team of user" \
+        ls              "list repo branch"          \
+        info            "get repo branch info"      \
+        rename          "rename the repo branch"    \
+        default         "set default branch"        \
+        protection      "protection branch management"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_repo_branch _param_help_doc
+    return 1
+}
+
+# Section: App
+___x_cmd_gh_repo_branch_app(){
+    param:scope     ___x_cmd_gh
+    param:dsl       '
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                                      <>:RepoName
+    --protected     "returns only protected branches."
+    --per_page      "Results per page"                                              <>=30
+    --page          "Page number of the results to fetch."                          <>=1
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    local ___gh_error_msg="get repo ${owner_repo} branch list fail"
+
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected per_page page'
+    ___x_cmd_gh_tui_app "repo.branch.app.awk"
+
+    ___x_cmd_gh_repo_branch_app_status_handler
+}
+___x_cmd_gh_repo_branch_app_status_handler(){
+
+    local branchName
+    branchName="${___X_CMD_TUI_TABLE_CUR_LINE##*BranchName: }"
+    branchName=${branchName%%
+Protected:*}
+
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "c")            ___x_cmd_gh_repo_branch_rename            --repo "${repo}"          "$branchName"       ;;
+            "u")            ___x_cmd_gh_repo_branch_info              --repo "${owner_repo}"    "$branchName"             ;;
+            "a")            ___x_cmd_gh_repo_branch_default           --repo "${owner_repo}"    "$branchName"             ;;
+            "d")            ___x_cmd_gh_repo_branch_protection_set    --repo "${owner_repo}"    "$branchName"             ;;
+            "f")            ___x_cmd_gh_repo_branch_protection_unset  --repo "${owner_repo}"    "$branchName"             ;;
+            *)              return
+    esac
+}
+# EndSection
+
+# Section: List
+# https://docs.github.com/en/rest/branches/branches#list-branches
+___x_cmd_gh_repo_branch_ls(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                      <>:RepoName
+    --per_page      "Results per page"                              <>=30
+    --page          "Page number of the results to fetch."          <>=1
+    --protected     "returns only protected branches."
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected | \
+            x jo 2c             .name       .protected  .commit.sha | \
+            x csv header --add   BranchName  Protected   LastCommit | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Info
+# https://docs.github.com/en/rest/branches/branches#get-a-branch
+___x_cmd_gh_repo_branch_info(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "branch name"                       <>:Branch
+    --repo|-r       "<owner_path>/<repo_path>"          <>:RepoName
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_get_multi "/repos/${owner_repo}/branches/$1" | ___x_cmd_gh_branch____ui_handler Info
+}
+
+# EndSection
+
+# Section: Rename
+# https://docs.github.com/en/rest/branches/branches#rename-a-branch
+___x_cmd_gh_repo_branch_rename(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "branch name"                       <>:Branch
+    --repo|-r       "<owner_path>/<repo_path>"          <>:RepoName
+    --new_name      "branch new name"                   <>
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/branches/$1/rename" -- new_name | ___x_cmd_gh_branch____ui_handler Rename
+}
+# EndSection
+
+# Section: Default
+___x_cmd_gh_repo_branch_default(){
+    param:dsl       '
+options:
+    #1          "branch name"                       <>
+    --repo|-r   "<owner_path>/<repo_path>"          <>:RepoName
+    --json|-j   "output json data"
+
+'
+    param:run
+
+    # TODO:source data
+    ___x_cmd_gh_repo_edit -j --default_branch "$1" "$repo" | ___x_cmd_gh_branch____ui_handler Default
+}
+# EndSection
+
+___x_cmd_gh_repo_branch_protection(){
+    param:subcmd ___x_cmd_gh_repo_branch_protection \
+        ls              "protection branch list"            \
+        info            "protection branch info"            \
+        set             "set branch to protection branch"   \
+        unset           "remove branch protection"
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_gh_repo_branch_protection _param_help_doc
+    return 1
+}
+
+# Section: List
+# shellcheck disable=SC2034
+___x_cmd_gh_repo_branch_protection_ls(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                  <>:RepoName
+    --per_page      "Results per page"                          <>=30
+    --page          "Page number of the results to fetch."      <>=1
+    --json|-j       "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    ___x_cmd_gh_repo_branch_ls --repo "${owner_repo}" --protected --per_page "${per_page}" --page "${page}" ${json:+'--json'}
+}
+# EndSection
+
+# Section: Info
+# https://docs.github.com/en/rest/branches/branch-protection#get-branch-protection
+___x_cmd_gh_repo_branch_protection_info(){
+    param:dsl       '
+options:
+    #1          "branch name"                 <>
+    --repo|-r   "<owner_path>/<repo_path>"    <>:RepoName
+    --json|-j   "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/branches/${1}/protection" | (
+        if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+            cat
+            ___x_cmd_gh_http_error
+            return
+        fi
+        local _admins=""
+        x jo env . _admins=.enforce_admins.enabled \
+            deletions=.allow_deletions.enabled linear=.required_linear_history.enabled \
+            pushes=.allow_force_pushes.enabled signatures=.required_signatures.enabled \
+            gh_resp_msg=.message gh_resp_err=.errors
+        if [ -n "$_admins" ]; then
+            ___x_cmd_ui_tf true "protection branch $1 info:" "enforce_admins: $_admins" \
+                "allow_deletions: $deletions" "required_linear_history: $linear" "allow_force_pushes: $pushes" \
+                 "required_signatures: $signatures"
+        else
+            ___x_cmd_ui_tf false "protection branch $1 info fetch failure:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: Set
+# shellcheck disable=2034
+# https://docs.github.com/en/rest/branches/branch-protection#update-branch-protection
+___x_cmd_gh_repo_branch_protection_set(){
+    param:dsl       '
+options:
+    #1              "branch name"                                                               <>:Branch
+    --repo|-r       "<owner_path>/<repo_path>"                                                  <>:RepoName
+    --strict        "Require branches to be up to date before merging"                          <>:Boolean=""
+    --admins        "enforce required status checks for repository administrators"              <>="null" = true false null
+    --history       "Prevent merge commits from being pushed to matching branches."             <>:Boolean=""
+    --force_push    "Permit force pushes for all users with push access."                       <>:Boolean=""
+    --deletions     "Allow users with push access to delete matching branches."                 <>:Boolean=""
+    --json|-j       "output json data"
+'
+    param:run
+
+    # TODO:限制成员的设计 checks:[{context:xxx,app_id:111}]
+    # --checks   "The list of status checks to require in order to merge into this branch."  <>=""
+    # https://docs.github.com/en/rest/branches/branch-protection#update-branch-protection
+    local required_status_checks="null"
+    local enforce_admins="$admins"
+    local required_pull_request_reviews="null"
+    local restrictions="null"
+    local gen_gh_json
+    gen_gh_json="$(param:option2json -repo -admins -history -force_push -deletions +required_status_checks +enforce_admins \
+        +required_pull_request_reviews +restrictions ${history+"required_linear_history=history"} \
+        ${force_push+"allow_force_pushes=force_push"} ${deletions+"allow_deletions=deletions"})"
+    gh:debug "$gen_gh_json"
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl put "/repos/${owner_repo}/branches/${1}/protection" "gen_gh_json" | (
+        if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+            cat
+            ___x_cmd_gh_http_error
+            return
+        fi
+
+        x jo env . url=.url gh_resp_msg=.message gh_resp_err=.errors
+        if [ -n "$url" ]; then
+            ___x_cmd_ui_tf  true "[Success]: Set ${owner_repo} protection branch $1"
+        else
+            ___x_cmd_ui_tf false "Set ${owner_repo} protection branch $1 failure:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: Unset
+# https://docs.github.com/en/rest/branches/branch-protection#delete-branch-protection
+___x_cmd_gh_repo_branch_protection_unset(){
+    param:dsl       '
+options:
+    #1          "branch name"                       <>
+    --repo|-r   "<owner_path>/<repo_path>"          <>:RepoName
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl del "/repos/${owner_repo}/branches/${1}/protection"| (
+        [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+        x jo env . gh_resp_msg=.message gh_resp_err=.errors
+        if ___x_cmd_gh_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Unset ${1} branch protection"
+        else
+            ___x_cmd_ui_tf false "Unset ${1} branch protection failure:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: branch UI
+___x_cmd_gh_branch____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        local _name=""
+        case "$1" in
+            Info)
+                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors \
+                    Protected=.protected sha=.commit.sha url=._links.html
+                _inf_msg="get repo ${owner_repo} branch info success"
+                _err_msg="get repo ${owner_repo} branch info fail"
+                ;;
+            Rename)
+                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors
+                _inf_msg="branch renamed from $branch to $new_name successfully"
+                _err_msg="${owner_repo} branch rename from $branch to $new_name failed"
+                ;;
+            Default)
+                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors
+                _inf_msg="Successfully set repo default branch"
+                _err_msg="Failed to set repo default branch"
+                ;;
+        esac
+        if [ -n "$_name" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${_name:+"Name: $_name"} ${Protected:+"Protected: $Protected"}  ${sha:+"LastCommit: $sha"} ${url:+"Url: $url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

@@ -1,0 +1,117 @@
+# shellcheck shell=dash
+
+# TODO: adding the md5 command lookup table.
+
+# ___x_cmd_ccmd_age(){
+#     local x_
+#     ___x_cmd_ccmd_age_ "$@" || return
+#     printf "%s\n" "$x_"
+# }
+
+# ___x_cmd_ccmd_age_(){
+#     printf "%s\n" "$___X_CMD_CCMD_AGE"
+#     # if [ "$#" -eq 0 ]; then
+#         # return 0
+#     # fi
+#     # TODO: Provide ccmmd to get the age of cache
+# }
+
+# x ccmd -- curl aaa aa aa
+# x ccmd is-result-from-cache
+___x_cmd_ccmd_isresultfromcache(){
+    [ "$___X_CMD_CCMD_AGE" -ne -1 ]
+}
+
+___x_cmd_ccmd_exec(){
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_ccmd_help
+        return 0
+    fi
+
+    local IFS=""
+    local expiration
+    local filepath
+
+    while [ ! "$1" = -- ]; do
+        if [ "$#" -eq 0 ]; then
+            ___x_cmd_ccmd_help "PANIC: Expect -- and its following command\n" >&2
+            return 64
+        fi
+        if [ -z "$expiration" ]; then       expiration="$1"
+        elif [ -z "$filepath" ]; then       filepath="$1"
+        else
+            ___x_cmd_ccmd_help "More than 3 arguments before --."
+            return 64 # EX_USAGE=64         # The command was used incorrectly, e.g., with the wrong number of arguments, a bad flag, a bad syntax in a parameter, or whatever.
+        fi
+        shift
+    done
+
+    shift
+
+    expiration=${expiration:-1d}
+    local ___X_CMD___CCMD_EXPIRE_IN_SECOND_
+    if ! ___x_cmd___ccmd_expire_in_second_ "$expiration"; then
+        ___x_cmd_ccmd_help "PANIC: Expiration should match pattern n[dmwsh]." >&2
+        return 65 # EX_DATAERR=65       # The input data was incorrect in some way. This should only be used for user's data and not system files.
+    fi
+    expiration="$___X_CMD___CCMD_EXPIRE_IN_SECOND_"
+
+    ___X_CMD_CCMD_AGE=-1
+
+    if [ -z "$filepath" ]; then
+        filepath="${___X_CMD_CCMD_CACHE:-$___X_CMD_CCMD_CACHEPATH_DEFAULT}"
+        x mkdirp "$filepath"
+        filepath="$filepath/$(___x_cmd_str_md5 "$@")"
+    fi
+
+    local ___X_CMD_FILEAGE_; if ___x_cmd_fileage_ "$filepath"; then
+        if [ "$___X_CMD_FILEAGE_" -lt "$expiration" ]; then
+            ccmd:debug "Using cache in Cache Path: $filepath"
+            ___X_CMD_CCMD_AGE="$___X_CMD_FILEAGE_"
+            command cat "$filepath"
+            return
+        fi
+    fi
+
+    ccmd:debug "FILEPATH does't exists or older than ${expiration} second. Update"
+    ccmd:debug "Caching command: $*"
+
+    local TEMP_PATH="$filepath.x-bash.origin.65c10911d8b8591219a21ebacf46da01"
+    if "$@" | tee "$TEMP_PATH"; then
+        command mv "$TEMP_PATH" "$filepath"
+        return 0
+    else
+        ccmd:error "cache failed: $*"
+        local code=$?
+        command rm "$TEMP_PATH"
+        return "$code"
+    fi
+}
+
+___x_cmd___ccmd_expire_in_second_(){
+    ___X_CMD___CCMD_EXPIRE_IN_SECOND_=0
+    local fmt="${1:?Provide time}"
+    case "$fmt" in
+        *w) ___X_CMD___CCMD_EXPIRE_IN_SECOND_=$(( ${fmt%w} * 60 * 60 * 24 * 7 ))   ;;
+        *d) ___X_CMD___CCMD_EXPIRE_IN_SECOND_=$(( ${fmt%d} * 60 * 60 * 24 ))   ;;
+        *h) ___X_CMD___CCMD_EXPIRE_IN_SECOND_=$(( ${fmt%h} * 60 * 60 ))   ;;
+        *m) ___X_CMD___CCMD_EXPIRE_IN_SECOND_=$(( ${fmt%m} * 60 ))   ;;
+        *s) ___X_CMD___CCMD_EXPIRE_IN_SECOND_=$(( ${fmt%s} ))   ;;
+        *)  ___X_CMD___CCMD_EXPIRE_IN_SECOND_=; return 1
+    esac
+    return 0
+}
+
+
+# ___x_cmd___ccmd_validate_time_format(){
+#     local tmp
+#     case "${1:?Provide time}" in
+#         *d) tmp=d   ;;
+#         *m) tmp=m   ;;
+#         *w) tmp=w   ;;
+#         *s) tmp=s   ;;
+#         *h) tmp=h   ;;
+#     esac
+#     [ "${1%"$tmp"*}" -gt 0 ] 2>/dev/null
+#     return $?
+# }

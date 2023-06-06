@@ -1,0 +1,225 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043,SC2139,2154
+
+___x_cmd_gh_repo_release(){
+    param:subcmd ___x_cmd_gh_repo_release           \
+        ls                  "List repo release"                 \
+        info                "Show detailed information of repo" \
+        latest              "Get latest release"                \
+        create              "Create repo release"               \
+        "edit|ed"           "Update release information"        \
+        rm                  "Remove repo release"               \
+        "attachment|asset"  "release attachment management"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_repo_release _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.github.com/en/rest/releases/releases#list-releases
+___x_cmd_gh_repo_release_ls() {
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                      <>:RepoName
+    --per_page      "Results per page"                              <>="30"
+    --page          "Page number of the results to fetch."          <>="1"
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/releases"
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/releases" | \
+            x jo 2c             .id  .name  .tag_name  .target_commitish  .prerelease | \
+            x csv header --add   ID   Name   Tag        Branch             Prerelease | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Info
+# https://docs.github.com/en/rest/releases/releases#get-a-release
+___x_cmd_gh_repo_release_info() {
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1              "Release ID"                        <>:number
+    --repo|-r       "<owner_path>/<repo_path>"          <>:RepoName
+    --json|-j       "output json"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/releases/${1##*/}" | ___x_cmd_gh_release____ui_handler Info
+}
+# EndSection
+
+# Section: Latest
+# https://docs.github.com/en/rest/releases/releases#get-the-latest-release
+___x_cmd_gh_repo_release_latest() {
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    --repo|-r   "<owner_path>/<repo_path>"      <>:RepoName
+    --json|-j   "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/releases/latest" | ___x_cmd_gh_release____ui_handler Latest
+}
+# EndSection
+
+# Section: Create
+# https://docs.github.com/en/rest/releases/releases#create-a-release
+___x_cmd_gh_repo_release_create() {
+
+    param:scope  ___x_cmd_github
+    param:dsl    '
+options:
+    --tag               "Please provide tag name"           <>
+    --repo|-r           "<owner_path>/<repo_path>"          <>:RepoName
+    --name              "Release name"                      <>=""
+    --body              "Release Description"               <>=""
+    --target_commitish  "Default is main"                   <>:name="main"
+
+    --prerelease        "Is release version"
+    --draft             "mark as draft release"
+    --json|-j           "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -tag tag_name=tag)"
+    gh:debug "$gen_gh_json"
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/releases" "gen_gh_json" | ___x_cmd_gh_release____ui_handler Creating
+}
+# EndSection
+
+# Section: Edit
+# https://docs.github.com/en/rest/releases/releases#update-a-release
+___x_cmd_gh_repo_release_edit() {
+    param:scope  ___x_cmd_github
+    param:dsl    '
+options:
+    #1                      "Release ID"                                                            <>:number
+    --repo|-r               "<owner_path>/<repo_path>"                                              <>:RepoName
+    --tag_name              "The name of the tag."                                                  <>=""
+    --target_commitish      "Is release version"                                                    <>=""
+    --name                  "The name of the release."                                              <>=""
+    --body                  "Text describing the contents of the tag."                              <>=""
+
+    --draft                 "true makes the release a draft, and false publishes the release."
+    --prerelease            "true to identify the release as a prerelease, false to identify the release as a full release."
+    --json|-j               "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -repo)"
+    gh:debug "$gen_gh_json"
+
+    ___x_cmd_gh_curl patch "/repos/${owner_repo}/releases/${1##*/}" "gen_gh_json" | ___x_cmd_gh_release____ui_handler Edit
+}
+# EndSection
+
+# Section: Remove
+# https://docs.github.com/en/rest/releases/releases#delete-a-release
+# shellcheck disable=SC2154
+___x_cmd_gh_repo_release_rm() {
+    param:scope  ___x_cmd_github
+    param:dsl    '
+options:
+    #1           "Release ID"                            <>:number
+    --repo|-r    "<owner_path>/<repo_path>"              <>:RepoName
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete release $(___x_cmd_ui bold red "$1") on $owner_repo repo ?" || return
+    ___x_cmd_gh_curl del "/repos/${owner_repo}/releases/${1##*/}" | (
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "[Success]: Remove ${owner_repo} ${1##*/} release"
+            else
+                ___x_cmd_ui_tf false "Remove ${owner_repo} ${1##*/} release failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
+
+# Section: release UI
+___x_cmd_gh_release____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Creating|Edit)
+                _inf_msg="$1 repo release successfully"
+                _err_msg="$1 repo release failure"
+                ;;
+            Latest)
+                _inf_msg="Successfully obtained the latest release information of the repo"
+                _err_msg="Failed to get the latest release information of repo"
+                ;;
+            Info)
+                _inf_msg="Get repo release info successfully"
+                _err_msg="Get repo release info failure"
+                ;;
+        esac
+        x jo env . id=.id name=.name tag_name=.tag_name branch=.target_commitish html_url=.html_url author=.author.login \
+            gh_resp_msg=.message gh_resp_err=.errors
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" "Release_Id: $id" ${name:+"Name: $name"} ${tag_name+"Tag: $tag_name"}  ${branch:+"TargetCommitish: $branch"} ${author:+"Author: $author"} ${html_url:+"Url: $html_url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: TODO
+___x_cmd_gh_repo_get_release_by_tag() {
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1              "tag name"                          <>
+    --repo|-r       "<owner_path>/<repo_path>"          <>:RepoName
+
+    --json|-j       "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/releases/tags/${1##*/}"
+}
+# EndSection
+
+# Assume pr and owner_repo are environments
+# ___x_cmd_gh_repo_release_init_owner_repo_and_release_main(){
+#     local release_id="${release##*/}"
+#     owner_repo="${release%"$release_id"}"
+#     ___x_cmd_gh_param_normalize_repo "$owner_repo"
+#     release="$release_id"
+# }
+
+# alias ___x_cmd_gh_repo_release_init_owner_repo_and_release="
+#     [ -n $release ]     || local release
+#     [ -n $owner_repo ]  || local owner_repo
+#     ___x_cmd_gh_repo_release_init_owner_repo_and_release_main || return
+# "

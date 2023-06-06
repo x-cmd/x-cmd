@@ -1,0 +1,84 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gh_org(){
+    param:scope     ___x_cmd_github
+    param:subcmd ___x_cmd_gh_org                \
+        repo                    "org repo management"               \
+        "membership|member"     "membership management"             \
+        ls                      "get organizations list"            \
+        info                    "Show information"                  \
+        issue                    "List organizations issue"          \
+        apply                   "manage org by declare configure"
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_gh_org _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.github.com/en/rest/orgs/orgs#list-organizations-for-a-user
+___x_cmd_gh_org_ls() {
+    param:dsl       '
+options:
+    --user          "get target user open organization"         <>=""
+    --per_page      "Results per page"                          <>=30
+    --page          "Page number of the results to fetch."      <>=1
+    --json|-j       "output json data"
+'
+    param:run
+    local _url="/user/orgs"
+    [ -z "$user" ] || _url="/users/${user}/orgs"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
+        ___x_cmd_gh_get_multi "$_url"
+    else
+        ___x_cmd_gh_get_multi "$_url" | \
+            x jo 2c            .id .login | \
+            x csv header --add  Id  Name  | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Info
+# https://docs.github.com/en/rest/orgs/orgs#get-an-organization
+___x_cmd_gh_org_info() {
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    #1    "org space address"    <>  = /[-A-Za-z0-9_]+/
+    --json|-j   "output json data"
+A
+    param:run
+    [ -n "$1" ] || M='Please privide org name' arg:ret:64
+    local org="$1"
+    ___x_cmd_gh_curl get "/orgs/$org" | ___x_cmd_gh_org_info____ui_handler
+}
+
+# shellcheck disable=SC2154
+___x_cmd_gh_org_info____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+
+    (
+        local _id=""; local private_repos=""
+        x jo env . _id=.id url=.html_url name=.login public_repos=.public_repos private_repos=.total_private_repos \
+            gh_resp_msg=.message gh_resp_err=.errors
+
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "$org organizations info:" "ID: $_id" "Name: $name" "Url: $url" "Public_Repos: $public_repos" ${private_repos:+"Private_Repos: $private_repos"}
+        else
+            ___x_cmd_ui_tf false "Get $org organizations info failure:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+
+# EndSection

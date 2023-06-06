@@ -1,0 +1,192 @@
+
+# shellcheck shell=sh disable=SC3043
+
+# author:       Li Junhao           l@x-cmd.com
+xrc ui/latest
+xrc ui/lib/region
+xrc ui/lib/getchar
+xrc awk
+
+
+# Section: main
+___x_cmd_ui_table(){
+    local O="${O:-___X_CMD_UI_TABLE_DEFAULT}"
+    case "${1}" in
+        json)       shift; ___ui_table_json      "$@"       ;;
+        -)          ___ui_table_clear                       ;;
+        +)          shift; ___ui_table_read      "$@"       ;;
+        h)          shift; HEADER_INPUT=1; ___ui_table_read "$@"   ;;
+        func)       shift; ___ui_table_out_func  "$@"       ;;
+        *)          [ $# -gt 0 ] && shift; ___ui_table_out3      "$@"       ;;
+    esac
+}
+
+
+___X_CMD_UI_TABLE_DEFAULT=0
+___ui_table_read(){
+
+    local O="${O:-___X_CMD_UI_TABLE_DEFAULT}"
+    local NR
+    local IFS
+    local s
+    NR=$(printf "\002")
+    if [ -n "$HEADER_INPUT" ]; then
+        IFS=$(printf "\t")
+        s="$(eval echo \"\$"$*"\")"
+        HEADER_INPUT=""
+    else
+        IFS=$(printf "\003")
+        s="$(eval echo \"\$"{$O}$NR$*"\")"
+    fi
+    eval "$O=\"\$s\""
+}
+
+___ui_table_out(){
+    local O="${O:-___X_CMD_UI_TABLE_DEFAULT}"
+
+    local out="${1:-1}"
+
+    if [ "${-#*i}" != "$-" ]; then
+        eval "printf \"%s\" \"\${$O}\"" | \
+            LANG=en_US.UTF-8  awk -v HIGHCOL="${HIGHCOL:-""}" -v HIGHROW="${HIGHROW:-""}" -v out="$out" "$(xrc cat awk/lib/u/wcwidth.awk)$(xrc cat ui/lib/table.awk)"
+    else
+        eval "printf \"%s\" \"\${$O}\"" | \
+            LANG=en_US.UTF-8  awk -v HIGHCOL="${HIGHCOL:-""}" -v HIGHROW="${HIGHROW:-""}"  -v out="$out" "$(xrc cat awk/lib/u/wcwidth.awk)$(xrc cat ui/lib/table.awk)"
+    fi
+}
+
+___ui_table_clear(){
+    local O="${O:-___X_CMD_UI_TABLE_DEFAULT}"
+    eval ___X_CMD_UI_TABLE_DEFAULT_ROW_$O=0
+    eval "$O="
+}
+# EndSection
+
+# Section: table app 1: all data
+
+# 1. Input data is primitive data
+# 2. Input json, then tranfer as primitive data to awk
+# 3. Using instruction to control table
+___x_cmd_ui_table_control_awk(){
+    command awk \
+        "$@" \
+        -v TH_THEME_COLOR="\\033[${___X_CMD_THEME_COLOR_CODE}m" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/u/wcwidth.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/ui/ui.awk" \
+        -f "$___X_CMD_ROOT_MOD/ui/lib/share.awk" \
+        -f "$___X_CMD_ROOT_MOD/ui/lib/theme.awk" \
+        -f "$___X_CMD_ROOT_MOD/ui/lib/table${___X_CMD_UI_STATIC+_static}.awk"
+}
+
+___x_cmd_ui_table_control_main(){
+    if [ "$(___x_cmd_awk impl)" = "mawk" ]; then
+        ___x_cmd_ui_table_control_awk -W interactive
+    else
+        ___x_cmd_ui_table_control_awk
+    fi
+}
+
+___x_cmd_ui_table_control_display(){
+    printf "%s" "$___X_CMD_UI_TABLE_DEFAULT"
+}
+
+___ui_table_out3(){
+    ___ui_table_out_func ___x_cmd_ui_table_control_display
+}
+
+
+___x_cmd_ui_table_control(){
+    {
+        printf "UPDATE %s %s\n" "${COLUMNS}" "${LINES}"
+        if [ -n "$DIRECT_INPUT" ]; then
+            "$@"
+        else
+            "$@" | awk -v RS="$___X_CMD_UNSEENCHAR_002" -v FS="$___X_CMD_UNSEENCHAR_003" '
+NR==1{
+    print( $0 )
+}
+NR>1{
+    for (i=1; i<=NF; ++i) {
+        print $i
+        print "\003"
+    }
+    print "\002"
+}
+END{
+    print "\003\002\005"
+}
+'
+        fi
+        cat
+    } | ___x_cmd_ui_table_control_main
+}
+
+___ui_table_out_func(){
+    if [ -z "$___X_CMD_UI_STATIC" ]; then
+        ___x_cmd_ui_region_autorefresh_with_keyboard ___x_cmd_ui_table_control "$@"
+    else
+        {
+            x tty update
+            printf "UPDATE %s %s\n" "${COLUMNS}" "${LINES}"
+            "$@" # 2>/dev/null
+        } | ___x_cmd_ui_table_control_main
+    fi
+}
+
+# EndSection
+
+# Section: json to table
+___x_cmd_ui_json2table(){
+    local CODE="$(xrc cat awk/lib/core.awk awk/lib/j/json.awk awk/lib/j/jiter.awk )"
+    local args=""
+    local IFS_TMP
+    IFS_TMP=$(printf "\003")
+    while [ "$#" -gt 0 ]; do
+        if [ "$1" != -- ];then
+            args="$args${IFS_TMP}$1"
+        else
+            shift
+            break
+        fi
+        shift
+    done
+    ___x_cmd_evex "$@" | x ja tc | ___x_cmd_ui_region_update_awk -v args="$args" "$CODE"'
+BEGIN{
+    arrl=split(args, arr, "\003")
+    for(j=2; j<=arrl; j++) {
+        idx = index(arr[j], "=")
+        if (idx == 0) {
+            head_text = ( head_text == "" ) ? arr[j] : head_text "\t" arr[j]
+            continue
+        }
+        head_text = ( head_text == "" ) ? substr(arr[j], 1, idx-1) : head_text "\t" substr(arr[j], 1, idx-1)
+        arr[j] = substr(arr[j], idx+1)
+    }
+    print head_text
+    par[1] = "^\"[0-9]+\"$"
+    par[2] = "^\"[0-9]+\"$"
+    parl = 2
+}
+{
+    if ($0 == "") next
+    if (jiter_regexarr_parse(_, $0,  parl, par) == true ){
+        for (i=2; i<=arrl; i++) {
+            item_text = jstr1(_, arr[i])
+            print ( item_text !~ /^".*"$/ ) ? item_text : juq(item_text)
+            print "\003"
+        }
+        print "\002"
+        fflush()
+        delete _
+    }
+}
+END{ print "\003\002\005"; }
+'
+}
+
+___ui_table_json(){
+    DIRECT_INPUT=1 ___ui_table_out_func ___x_cmd_ui_json2table "$@"
+}
+
+# EndSection

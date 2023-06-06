@@ -1,0 +1,183 @@
+# shellcheck shell=dash
+# shellcheck disable=SC2039,3043,2034
+
+# x gcode avatar add x-cmd-root 1666666
+# x gcode repo member add -r x-cmd/x-cmd x-cmd-root
+
+___x_cmd_gcode_avatar(){
+    param:scope  ___x_cmd_gcode
+    param:subcmd ___x_cmd_gcode_avatar    \
+        ls         "List all address books for the current session record"  \
+        "add|put"      "Add or Edit the key and value in the address book"      \
+        get            "Get the value of the address book record by key"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_avatar _param_help_doc
+    return 1
+}
+
+# Section: List
+# shellcheck disable=SC2016
+___x_cmd_gcode_avatar_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --raw    "output format as key=value"
+'
+    param:run
+    if [ -n "$raw" ]; then
+        x sdict print ___x_cmd_gcode_avatar___user_addressbook
+    else
+        x sdict print ___x_cmd_gcode_avatar___user_addressbook | ___x_cmd_gx_avatar_sdict_to_csv | x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Put
+___x_cmd_gcode_avatar_add(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1    "address book key"      <>
+    #2    "address book value"    <>
+'
+    param:run
+
+    [ "$#" -ne 0 ] || M='accepts 2 arg(s) (x gcode avatar add|put <key> <value>), received empty' arg:ret:64
+    while [ $# -ne 0 ]; do
+        [ -n "$1" ] || M='accepts the frist arg (user avatar key), received empty' arg:ret:64
+        [ -n "$2" ] || M="The frist arg is $1. accepts the second arg (user avatar value), But received empty" arg:ret:64
+        x sdict put ___x_cmd_gcode_avatar___user_addressbook  "$1" "$2"
+        shift 2
+    done
+}
+# EndSection
+
+# Section: Get
+___x_cmd_gcode_avatar_get(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1    "address book key"      <>
+'
+    param:run
+
+    [ -n "$1" ] || M='accepts arg (user avatar key), received empty' arg:ret:64
+    x sdict get ___x_cmd_gcode_avatar___user_addressbook  "$1"
+}
+# EndSection
+
+# Section: Transform Username
+# gcode:error "Can't get avatar value by \"${_avt_name#*/}\" key. Please use \`x gcode avatar ls\` to check the avatar key and value is exist."
+___x_cmd_gcode____transform_avt_name(){
+    [ -n "$_avt_name" ] || M='accepts _avt_name var (username), received empty' arg:ret:64
+    local _tmp_avt_name=""
+    if _tmp_avt_name=$(___x_cmd_gcode_avatar_get "$_avt_name"); then
+        _avt_name="$_tmp_avt_name"
+        return 0
+    fi
+    case "$_avt_name" in
+        .id=*)
+            _avt_name="${_avt_name#*'.id='}"
+            ;;
+        *@*)
+            # Email
+            _tmp_avt_name=$(___x_cmd_gcode_avatar____fuzzy_search_user_id "${_avt_name}")
+            [ -n "$_tmp_avt_name" ] || {
+                gcode:error "Not found user id by $_avt_name email"
+                return 1
+            }
+            _avt_name="$_tmp_avt_name"
+            ;;
+        *)
+            _tmp_avt_name=$(___x_cmd_gcode_avatar____full_search_user_id "${_avt_name}")
+            [ -n "$_tmp_avt_name" ] || _tmp_avt_name=$(___x_cmd_gcode_avatar____full_search_user_id_by_id "${_avt_name}")
+            [ -n "$_tmp_avt_name" ] || {
+                gcode:error "Not found user id by $_avt_name username"
+                return 1
+            }
+            _avt_name="$_tmp_avt_name"
+            ;;
+    esac
+}
+
+___x_cmd_gcode_avatar____full_search_user_id(){
+    local username="$1"
+    NO_CACHE=1 ___x_cmd_gcode_curl get "/users" username 2>/dev/null | x jo .1.id
+}
+
+___x_cmd_gcode_avatar____full_search_user_id_by_id(){
+    NO_CACHE=1 ___x_cmd_gcode_curl get "/users/$1" 2>/dev/null | x jo .id
+}
+
+___x_cmd_gcode_avatar____fuzzy_search_user_id(){
+    local search="$1"
+    NO_CACHE=1 ___x_cmd_gcode_curl get "/users" search 2>/dev/null | x jo .1.id
+}
+# EndSection
+
+# Section: Transform Group
+___x_cmd_gcode____transform_avt_group(){
+    [ -n "$_avt_group" ] || M='accepts _avt_group var (group), received empty' arg:ret:64
+    case "$_avt_group" in
+        .id=*)
+            _avt_group="${_avt_group#*'.id='}"
+            ;;
+        *)
+            local _tmp_avt_group=""
+            _tmp_avt_group=$(___x_cmd_gcode_avatar____full_search_group_id "${_avt_group}")
+            [ -n "$_tmp_avt_group" ] || {
+                gcode:error "Not found group id by ${_avt_group} group path"
+                return 1
+            }
+            _avt_group="$_tmp_avt_group"
+        ;;
+    esac
+}
+
+___x_cmd_gcode_avatar____full_search_group_id(){
+    NO_CACHE=1 ___x_cmd_gcode_curl get "/groups/$(printf "%s" "$1" | ___x_cmd_gcode___url_path_encode)" 2>/dev/null | x jo .id
+}
+# EndSection
+
+# Section: Transform Repo
+# NOTE: For only using repo ID
+___x_cmd_gcode_avatar____transform_avt_repo(){
+    [ -n "$_avt_repo" ] || M='accepts _avt_repo var (repo_path), received empty' arg:ret:64
+    case "$_avt_repo" in
+        .id=*)
+            _avt_repo="${_avt_repo#*'.id='}"
+            ;;
+        */*)
+            local _tmp_avt_repo=""
+            _tmp_avt_repo=$(___x_cmd_gcode_avatar____full_search_repo_id "${_avt_repo}")
+            [ -n "$_tmp_avt_repo" ] || {
+                gcode:error "Not found repo id by ${_avt_repo} repo path"
+                return 1
+            }
+            _avt_repo="$_tmp_avt_repo"
+            ;;
+        *)
+            local x_=""; ___x_cmd_gcode_current get_ owner 2>/dev/null
+            if [ -z "$_x" ]; then
+                gcode:error "No owner provided. Default owner not set."
+                gcode:warn -h "$(x str ml wrap "$(_____x_cmd_gcode_help__token_setting)" '    ')" -m "Can retry setup token to update owner.${___X_CMD_UNSEENCHAR_NEWLINE}Or check your current token setting."
+                return 1
+            fi
+            local _tmp_avt_repo=""
+            _tmp_avt_repo=$(___x_cmd_gcode_avatar____full_search_repo_id "${_x}/${_avt_repo}")
+            [ -n "$_tmp_avt_repo" ] || {
+                gcode:error "Not found repo id by ${_x}/${_avt_repo} repo path"
+                return 1
+            }
+            _avt_repo="$_tmp_avt_repo"
+            ;;
+    esac
+}
+
+# For ___x_cmd_gcode_avatar____transform_avt_repo and ___x_cmd_gcode_param_normalize_repo
+___x_cmd_gcode_avatar____full_search_repo_id(){
+    NO_CACHE=1 ___x_cmd_gcode_curl get "/projects/$(printf "%s" "$1" | ___x_cmd_gcode___url_path_encode)" 2>/dev/null | x jo .id
+}
+# EndSection

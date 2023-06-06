@@ -1,0 +1,316 @@
+# shellcheck shell=sh disable=SC2154,SC2120,SC3043
+
+# Reference: https://open.dingtalk.com/document/group/custom-robot-access
+
+# Section(inner): endpoint, send_json
+
+___x_cmd_dingtalk_bot___send_json() {
+    local req_json ; req_json="$(cat)"
+    dingtalk:debug "$(printf "%s" "$req_json" | x jo fmt)"
+    local webhook ; webhook="$(___x_cmd_dingtalk_webhook)" || return 1
+    
+    local res ; res="$(___x_cmd_http post json "$webhook" "$req_json")"
+    printf "%s" "$res"
+}
+
+# EndSection
+
+___x_cmd_dingtalk_bot(){
+    param:subcmd ___x_cmd_dingtalk_bot    \
+        send   "send msg"                 
+
+    param:subcmd:try
+    param:run
+    dingtalk:error "Subcommand required"
+    ___x_cmd_dingtalk help
+}
+
+___x_cmd_dingtalk_bot_send() {
+    param:subcmd ___x_cmd_dingtalk_bot_send    \
+        text             "send text"           \
+        link             "send link msg"       \
+        markdown         "send markdown msg"   \
+        raw              "send raw json"       \
+        action           "send action"         \
+        actioncards      "send card"           \
+        feedcard         "send card"            
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_dingtalk_bot_send_text "$@"
+}
+___x_cmd_dingtalk_bot_send_text() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    #1                  "Provide text"      <content>:text
+    --atall|-a          "Notify all member of the group" 
+    --atMobiles         "The cell phone number of the person being @ (in the text content should have @ cell phone number)" 
+                                            <atMobiles>:phone_number=""
+    --atUserIds         "The userid of the person being @ (@userid should be included in the text content)"
+                                            <atMobiles>:user_id=""
+    --json|-j           "output origin json data"
+
+A
+    param:run
+    local text="$1"
+    local atall="${atall:-false}"
+    local atMobile; local atUserId
+    atMobile=$(___x_cmd_dingtalk___get_mobiles "${atMobiles}")
+    atUserId=$(___x_cmd_dingtalk___get_mobiles "${atUserIds}")
+    local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "text",
+    "text": {
+        "content": "$text"
+    },
+    "at": {
+        "atMobiles":[ ${atMobile} ],
+        "atUserIds":[ ${atUserId} ],
+        "isAtAll": ${atall:-false}
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Text
+}
+
+___x_cmd_dingtalk_bot_send_raw() {
+    param:scope             dingtalk
+    param:dsl <<A
+option:
+    #1                  "Provide raw json(If #1 is '-', the json is read from stdin)"      <raw>:json
+    --json|-j           "output origin json data"
+
+A
+    param:run
+
+    local raw="${1}"; [ "$raw" != "-" ] || raw="$(cat)"
+    local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
+$raw
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Raw
+}
+
+___x_cmd_dingtalk_bot_send_link() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    --title         "Provide title"     <title>:title
+    --text          "Provide text"      <text>:text
+    --picurl        "Provide picurl"    <picurl>:url
+    --msgurl        "Provide msgurl"    <msgurl>:url
+    --json|-j       "output origin json data"
+
+A
+    param:run
+
+    local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "link",
+    "link": {
+        "text": "${text}",
+        "title": "${title}",
+        "picUrl": "${picurl}",
+        "messageUrl": "${msgurl}"
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Link
+}
+
+___x_cmd_dingtalk_bot_send_markdown() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    --title             "Provide title"     <title>:title
+    --text              "Provide text"      <text>:text
+    --atall|-a          "Notify all member of the group"
+    --atMobiles         "The cell phone number of the person being @ (in the text content should have @ cell phone number)" 
+                                            <atMobiles>:phone_number=""
+    --atUserIds         "The userid of the person being @ (@userid should be included in the text content)"
+                                            <atMobiles>:user_id=""
+    --json|-j           "output origin json data"
+
+A
+    param:run
+    local atall="${atall:-false}"
+    atMobiles=$(___x_cmd_dingtalk___get_mobiles "${atMobiles}")
+    atUserIds=$(___x_cmd_dingtalk___get_mobiles "${atUserIds}")
+
+    local res; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "markdown",
+    "markdown": {
+        "title": "$title",
+        "text":  "$text"
+    },
+    "at": {
+        "atMobiles": [ ${atMobiles} ],
+        "atUserIds": [ ${atUserIds} ],
+        "isAtAll": ${atall:-false}
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Markdown
+}
+
+___x_cmd_dingtalk_bot_send_action() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    --title             "Provide title"                                 <title>:title
+    --text              "Provide text"                                  <text>:text
+    --atall|-a          "Notify all member of the group"
+    --horizontal|-H     "horizontal"
+    --linktitle         "Link title"                                    <title>:title
+    --linkurl           "link url"                                      <link>:url
+    
+    --json|-j           "output origin json data"
+
+A
+    param:run
+
+    local atall="${atall:-false}"
+
+    local btnOrientation=0
+    [ -z "$horizontal" ] || btnOrientation=1
+
+    local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "actionCard",
+    "actionCard": {
+        "title": "$title",
+        "text":  "$text",
+        "btnOrientation": "$btnOrientation",
+        "singleTitle" :   "$linktitle",
+        "singleURL" :     "$linkurl"
+    },
+    "at": {
+        "isAtAll": ${atall:-false}
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Action
+}
+
+___x_cmd_dingtalk_bot_send_actioncards() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    --title             "Provide title"                                                      <title>:title
+    --text              "Provide text"                                                       <text>:text
+    --btnOrientation    "0:The buttons are arranged vertically,1:Horizontal arrangement"     <btnOrientation>:btnOrientation
+    --btn|m             "Provide button titles and action links . [ <title> <action-url> ] " 
+        <title>:title     
+        <action-url>:url
+    --json|-j           "output origin json data"
+
+A
+    param:run
+
+    local atall="${atall:-false}"
+    local IFS="
+"
+    local all; local actionTitle ; local actionURL 
+    for i in $(param_marg btn); do
+        actionTitle="$(param_marg btn "$i" 1)"
+        actionURL="$(param_marg btn "$i" 2)"
+        all="$all$(x jo dict "title:$actionTitle" "actionURL:$actionURL")"
+    done
+    
+    local res; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "actionCard",
+    "actionCard": {
+        "title": "$title",
+        "text":  "$text",
+        "btnOrientation": "$btnOrientation",
+        "btns": [
+            $(printf "%s" "$all" | x jo)
+        ]
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Actioncards
+}
+
+___x_cmd_dingtalk_bot_send_feedcard() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    --card|m            "Provide multiple action card in following format. [ <title> <message-url> <picture-url> ] ..." 
+        <title>:text     
+        <message-url>:url    
+        <picture-url>:url
+    --json|-j           "output origin json data"
+
+A
+    param:run
+
+    local IFS="
+"
+    local all; local title ; local messageURL ; local picURL
+    for i in $(param_marg card); do
+        title=$(param_marg_get card "$i" 1)
+        messageURL=$(param_marg_get card "$i" 2)
+        picURL=$(param_marg_get card "$i" 3)
+        all="$all$(x jo dict "title:$title" "messageURL:$messageURL" "picURL:$picURL")"
+
+    done
+
+    local res; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "feedCard",
+    "feedCard": {
+        "links": [
+            $(printf "%s" "$all" | x jo)
+        ]
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Feedcard
+}
+
+_____x_cmd_dingtalk_ui_utils(){
+    if  [ -n "$json" ]; then
+        printf "%s\n" "$res"
+        return
+    fi
+    case "$1" in
+        Text)
+            msg="Sent text: $text  successfully"
+            ;;
+        Raw)
+            msg="Sent message  successfully"
+            ;;
+        Markdown)
+            msg="Sent markdown: $text  successfully"
+            ;;
+        Link)
+            msg="Sent link: $title  successfully"
+            ;;
+        Action)
+            msg="Sent separate jump ActionCard: $title  successfully"
+            ;;
+        Actioncards)
+            msg="Sent Overall jump ActionCard: $title  successfully"
+            ;;
+        Feedcard)
+            msg="Sent feedcard: $title  successfully"
+            ;;
+    esac
+    local statu ; statu="$(printf "%s" "$res" | {  x jo env .errmsg ; echo "$errmsg" ; })"
+    if [ "$statu" = "ok" ]; then
+        ___x_cmd_ui_tf true "$msg"
+    else
+        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$res"
+    fi
+}

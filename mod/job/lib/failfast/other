@@ -1,0 +1,63 @@
+# shellcheck shell=sh disable=SC3043
+
+# Section: put offer active
+___x_cmd_job_failfast_put(){
+    local ___X_CMD_JOB_FAILFAST_PUT_PID
+    while true; do
+        ___x_cmd_job_failfast___offer "$@"
+        case "$?" in
+            0)      return 0 ;;
+            1)      ;;
+            130)    return 130
+        esac
+
+        sleep 2147483647 & ___X_CMD_JOB_FAILFAST_PUT_PID=$!       # Infinite sleep.
+        printf "%s\n" "request-usr1:$___X_CMD_JOB_FAILFAST_PUT_PID"
+        wait "$___X_CMD_JOB_FAILFAST_PUT_PID" >/dev/null || true
+        : $((___X_CMD_JOB_OFFER_ALIVE--))
+    done
+}
+
+___x_cmd_job_failfast___offer(){
+    [ -z "$___X_CMD_JOB_FAILFAST_INTERRUPTED" ] || {
+        job:error "Trying to offer a job for a shell interrupted."
+        return 130
+    }
+
+    if [ "$___X_CMD_JOB_OFFER_ALIVE" -ge "${___X_CMD_JOB_OFFER_MAX:-10}" ]; then
+        job:debug "ActiveSize=$___X_CMD_JOB_OFFER_ALIVE. Waiting: $*"
+        return 1
+    fi
+
+    ___X_CMD_JOB_OFFER_LEN=$((___X_CMD_JOB_OFFER_LEN+1))
+    ___X_CMD_JOB_OFFER_ALIVE=$((___X_CMD_JOB_OFFER_ALIVE+1))
+
+    job:debug "ActiveSize=$___X_CMD_JOB_OFFER_ALIVE. Running: $*"
+    ___x_cmd_job_failfast_offer_wrapper "$@"
+}
+
+
+# TODO: using writeml and readml
+___x_cmd_job_failfast_offer_wrapper(){
+    (
+        case "$___X_CMD_SHELL" in
+            bash)   shopt -s expand_aliases  ;; # This is very important ...
+            zsh)    setopt aliases           ;;
+        esac
+
+        ___x_cmd_job_failfast_pidofsubshell
+
+        local IFS=" "; printf "%s\n" "start:$___X_CMD_JOB_OFFER_LEN/$*"    # TODO: IFS=" " might have a problem for following subshell.
+        trap ' :; ' INT
+
+        x touch "${___X_CMD_JOB_OFFER_LOG}/${___X_CMD_JOB_OFFER_LEN}"
+        ! command -v sync 1>/dev/null || sync
+        ___x_cmd_main outerr pack "$@" >"${___X_CMD_JOB_OFFER_LOG}/${___X_CMD_JOB_OFFER_LEN}"
+
+        ___X_CMD_JOB_FAILFAST_OFFER_WRAPPER_CODE=$?
+        # Notice: Make sure it can send exit msg on all conditions, especially in trap, INT, TERM, ...
+        printf "%s\n" "exit:$___X_CMD_JOB_OFFER_LEN/$___X_CMD_JOB_FAILFAST_OFFER_WRAPPER_CODE/$*"
+    ) &
+}
+
+## EndSection

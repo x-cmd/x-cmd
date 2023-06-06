@@ -1,0 +1,197 @@
+# shellcheck shell=sh disable=SC2154,SC2120,SC3043,SC2034
+
+# Reference: https://discord.com/developers/docs/resources/webhook#execute-webhook
+
+# Section(inner): curl send_json, send_file
+
+___x_cmd_discord_bot___send_json() {
+    local req_json ; req_json="$(cat)"
+    discord:debug "$(printf "%s" "$req_json" | x jo fmt)"
+    local webhook ; webhook="$(___x_cmd_discord_webhook)" || return 1
+
+    local res ; res="$(___x_cmd_http post json "$webhook?wait=true" "$req_json")"
+    printf "%s" "$res"
+}
+
+___x_cmd_discord_bot___send_file() {
+    local webhook ; webhook="$(___x_cmd_discord_webhook)" || return 1
+
+    local cmd="___x_cmd_discord___curl -X POST '$webhook' -H 'Content-Type:multipart/form-data' -F file=@${1}"
+    # TODO: when http return error code, curl will not return error code
+    local res ; res="$(eval "$cmd")"
+    printf "%s" "$res" 
+    }
+
+# EndSection
+
+___x_cmd_discord_bot(){
+    param:subcmd ___x_cmd_discord_bot    \
+        send             "send msg"
+
+    param:subcmd:try
+    param:run
+    discord:error "Subcommand required"
+    ___x_cmd_discord help
+}
+
+___x_cmd_discord_bot_send() {
+    param:subcmd ___x_cmd_discord_bot_send       \
+        text             "send text"             \
+        file             "send file"             \
+        raw              "send raw json"         \
+        embed            "send embed"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_discord_bot_send_text "$@"
+}
+
+# Section: send text/file/raw/embed
+___x_cmd_discord_bot_send_text() {
+    param:scope             discord
+    param:dsl <<A
+option:
+    --json|-j           "output origin json data"
+    #1                  "provide text"              <content>:text
+A
+    param:run
+    local content="$1"
+    res="$(___x_cmd_discord_bot___send_json <<A
+{
+    "content":"$content"
+}
+A
+)" || return 1
+    _____x_cmd_discord_ui_utils Text
+}
+
+___x_cmd_discord_bot_send_file() {
+    param:scope             discord
+    param:dsl <<A
+option: 
+    --json          "output origin json data"
+    #1              "provide file_path"         <file_path>:file_path      
+A
+    param:run
+    local res ; res="$(___x_cmd_discord_bot___send_file "$1" )"|| return 1
+    _____x_cmd_discord_ui_utils File
+}
+
+___x_cmd_discord_bot_send_raw() {
+    param:scope             discord    
+    param:dsl <<A
+option:
+    #1              "Provide raw json(If #1 is '-', the json is read from stdin)"      <raw>:json
+    --json          "output origin json data"
+
+A
+    param:run
+    local raw="${1}"; [ "$raw" != "-" ] || raw="$(cat)"
+    local res ; res="$(___x_cmd_discord_bot___send_json <<A
+$raw
+A
+)" || return 1
+    _____x_cmd_discord_ui_utils Raw
+}
+
+___x_cmd_discord_bot_send_embed() {
+    param:scope             discord    
+    param:dsl <<A
+option:
+    --username              "provide bot name"                          <username>:username     
+    --avatar_url            "provide avatar url"                        <avatar_url>:url   
+    --content               "provide content"                           <content>:text
+    --author_name           "provide author name"                       <author_name>:author_name       
+    --author_url            "provide author url"                        <author_url>:url     
+    --author_icon_url       "provide author avatar url"                 <author_icon_url>:url 
+    --title                 "provide title"                             <title>:title  
+    --title_url             "provide title url"                         <title_url>:url
+    --description           "provide description support markdown"      <description>:description
+    --color                 "Set color for webhook embed"               <color>:number
+    --fields|m              "Provide multiple fields in following format. [ <name> <value> ]"        
+                                                                        <name>:text
+                                                                        <value>:text
+    --thumbnail_url         "provide thumbnail url"                     <thumbnail_url>:url     
+    --image_url             "provide image url"                         <image_url>:url
+    --footer_text           "provide footer text"                       <footer_text>:text      
+    --footer_icon_url       "Provide url of footer icon"                <footer_icon_url>:url      
+
+    --json|-j               "output origin json data"
+A
+    param:run
+    local IFS="
+"
+    local all; local name ; local value 
+    for i in $(param_marg fields); do
+        name="$(param_marg fields "$i" 1)"
+        value="$(param_marg fields "$i" 2)"
+        all="$all$(x jo dict "name:$name" "value:$value")"
+    done
+
+    local res ; res="$(___x_cmd_discord_bot___send_json <<A
+{
+  "username": "$username",
+  "avatar_url": "$avatar_url",
+  "content": "$content",
+  "embeds": [
+    {
+      "author": {
+        "name": "$author_name",
+        "url": "$author_url",
+        "icon_url": "$author_icon_url"
+      },
+      "title": "$title",
+      "url": "$title_url",
+      "description": "$description",
+      "color": $color,
+      "fields": [
+            $(printf "%s" "$all" | x jo)
+      ],
+      "thumbnail": {
+        "url": "$thumbnail_url"
+      },
+      "image": {
+        "url": "$image_url"
+      },
+      "footer": {
+        "text": "$footer_text",
+        "icon_url": "$footer_icon_url"
+      }
+    }
+  ]
+}
+A
+)" || return 1
+    _____x_cmd_discord_ui_utils Embed
+}
+
+# EndSection
+_____x_cmd_discord_ui_utils(){
+    if  [ -n "$json" ]; then
+        printf "%s\n" "$res"
+        return
+    fi
+    case "$1" in
+        Text)
+            msg="Sent text: $content  successfully"
+            ;;
+        Raw)
+            msg="Sent message  successfully"
+            ;;
+        File)
+            filename="$(printf "%s" "$res" | {  x jo env .attachments.1.filename ; echo "$filename" ; })"
+            msg="Sent file:$filename  successfully"
+            ;;
+        Embed)
+            msg="Sent embed: $title  successfully"
+            ;;
+    esac
+    local id ; id="$(printf "%s" "$res" | {  x jo env .id ; echo "$id" ; })"
+    if [ -n "$id" ]; then
+        ___x_cmd_ui_tf true "$msg"
+    else
+        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$res"
+    fi
+}
+

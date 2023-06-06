@@ -1,0 +1,334 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043,2154,2016
+___x_cmd_gt_repo_pr(){
+    param:subcmd ___x_cmd_gt_repo_pr                            \
+        set             "Setup repo review and tester repo configure"   \
+        ls              "List pull request"                             \
+        create          "Create pull request"                           \
+        "edit|ed"       "Edit pull request"                             \
+        info            "Show pull request info"                        \
+        log             "List pull request log"                         \
+        commit          "List pull request commit message"              \
+        "browse|b"      "Open pull request in browser"                  \
+        merge           "Merge pull request"                            \
+        assign          "repo pull request assigner management"         \
+        tester          "repo pull request tester   management"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_repo_pr _param_help_doc
+    return 1
+}
+
+# Assume pr and owner_repo are environments
+___parse_pr_init_owner_repo_and_pr_main(){
+    local pr_number="${pr##*/}"
+    owner_repo="${pr%/"$pr_number"}"
+    ___x_cmd_gt_param_normalize_repo "$owner_repo"
+    pr="$pr_number"
+}
+
+alias ___parse_pr_init_owner_repo_and_pr='
+    local owner_repo=""
+    ___parse_pr_init_owner_repo_and_pr_main || return
+'
+
+# Section: Setting PR review config
+
+# shellcheck disable=SC2154,SC2181
+# https://gitee.com/api/v5/swagger#/putV5ReposOwnerRepoReviewer
+___x_cmd_gt_repo_pr_set(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --repo|-r             "<owner_path>/<repo_path>"                                           <>:RepoPath
+    --assignees           "assignees username list(separator ,)"                               <>:UserName
+    --testers             "testers usrename list(separator ,)"                                 <>:UserName
+    --assignees_number    "number of reviewers"                                                <>:NatureNumber="1"
+    --testers_number      "number of people tested"                                            <>:NatureNumber="1"
+    --json|-j             "output origin json data"
+'
+    param:run
+    ___x_cmd_gt_param_init_owner_repo
+    local gen_gt_json=""
+    gen_gt_json="$(param:option2json)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl put "/repos/${owner_repo}/reviewer" "gen_gt_json" | \
+        ___x_cmd_gt_repo_pr____ui_handler Setuping
+}
+# EndSection
+
+# Section: List
+
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoPulls
+# shellcheck disable=SC2034
+___x_cmd_gt_repo_pr_ls(){
+
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    State = open merged closed all
+    Sort  = created updated popularity long-running
+    Direction = desc asc
+options:
+    --repo|-r           "<owner_path>/<repo_path>"                                           <>:RepoPath
+    --state             "state"                                                              <>:State="open"
+    --head              "source branch. Format: [username:]<branch>"                         <>=""
+    --base              "target branch. Format: [username:]<branch>"                         <>=""
+    --since             "since"                                                              <>=""
+    --sort              "sort"                                                               <>:Sort="created"
+    --direction         "direction"                                                          <>:Direction="desc"
+    --milestone_number  "milestone id"                                                       <>=""
+    --labels            "labels"                                                             <>=""
+    --page              "page"                                                               <>="1"
+    --per_page          "per_page"                                                           <>="30"
+    --json|-j           "output origin json data"
+'
+    param:run
+    ___x_cmd_gt_param_init_owner_repo
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/pulls" state head base sort since direction milestone_number labels
+    else
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/pulls" state head base sort since direction milestone_number labels | \
+            x jo 2c .number .title .state .user.login .mergeable .head.ref .base.ref .html_url | \
+            x csv header --add PR Title State User Mergeable SourceBranch TargetBranch Url | \
+            x csv static_tab
+    fi
+}
+
+# EndSection
+
+# Section: Info
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoPullsNumber
+___x_cmd_gt_repo_pr_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                 "pr number"                          <>:NatureNumber
+    --repo|-r          "<owner_path>/<repo_path>"           <>:RepoPath
+    --json|-j          "output origin json data"
+'
+    param:run
+    local pr="$1"
+    ___parse_pr_init_owner_repo_and_pr
+
+    ___x_cmd_gt_curl get "/repos/${owner_repo}/pulls/$pr" | ___x_cmd_gt_repo_pr____ui_handler Info
+}
+# EndSection
+
+# Section: Create
+# https://gitee.com/api/v5/swagger#/postV5ReposOwnerRepoPulls
+# shellcheck disable=SC2154,SC2181,SC2034
+___x_cmd_gt_repo_pr_create(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    Bool = true false
+options:
+    --repo|-r               "<owner_path>/<repo_path>"                                           <>:RepoPath
+    --title                 "pr title"                                                           <>
+    --head                  "source branch. Format: [username:]<branch>"                         <>
+    --base                  "target branch. Format: [username:]<branch>"                         <>
+
+    --body                  "pull request content"                                               <>=""
+    --milestone_number      "milestone id"                                                       <>=""
+    --labels                "labels"                                                             <>=""
+    --issue                 "issue id"                                                           <>=""
+    --assignees             "reviewer username list. Format: <username>[,<username>]"            <>=""
+    --testers               "tester username list. Format: <username>[,<username>]"              <>=""
+    --assignees_number      "minimum number of reviewers"                                        <>=""
+    --testers_number        "minimum test number"                                                <>=""
+    --close_related_issue   "close related issue"
+    --prune_source_branch   "prune source branch"
+    --draft                 "is draft"
+    --squash                "use squash merge PR"
+    --json|-j               "output origin json data"
+'
+    param:run
+    local gen_gt_json
+    ___x_cmd_gt_param_init_owner_repo
+    gen_gt_json="$(param:option2json                close_related_issue=^^close_related_issue \
+        prune_source_branch=^^prune_source_branch    draft=^^draft      squash=^^squash)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl post "/repos/${owner_repo}/pulls" "gen_gt_json" | ___x_cmd_gt_repo_pr____ui_handler Create
+}
+# EndSection
+
+# Section: Edit
+# https://gitee.com/api/v5/swagger#/patchV5ReposOwnerRepoPullsNumber
+___x_cmd_gt_repo_pr_edit(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    State = open closed
+options:
+    #1                      "pr number"                                                       <>:NatureNumber
+    --repo|-r               "<owner_path>/<repo_path>"                                        <>:RepoPath
+    --state                 "pr state"                                                        <>:State
+
+    --title                 "pr title"                                                        <>=""
+    --body                  "pull request content"                                            <>=""
+    --milestone_number      "milestone number"                                                <>=""
+    --labels                "labels separated by commas(,)"                                   <>=""
+    --assignees_number      "minimum number of reviewers"                                     <>=""
+    --testers_number        "minimum test number"                                             <>=""
+    --draft                 "is draft"
+    --squash                "use squash merge PR"
+    --json|-j               "output origin json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(PR number), received empty' arg:ret:64
+    local pr="$1"
+    local gen_gt_json
+    gen_gt_json="$(param:option2json draft=^^draft squash=^^squash)"
+    gt:debug "$gen_gt_json"
+    ___parse_pr_init_owner_repo_and_pr
+
+    ___x_cmd_gt_curl patch "/repos/${owner_repo}/pulls/$pr" "gen_gt_json"  | \
+        ___x_cmd_gt_repo_pr____ui_handler Update
+}
+# EndSection
+
+# Section: Merge
+# https://gitee.com/api/v5/swagger#/putV5ReposOwnerRepoPullsNumberMerge
+___x_cmd_gt_repo_pr_merge(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    Merge = merge squash  rebase
+options:
+    #1                      "pr number"                                                       <>:NatureNumber
+    --repo|-r               "<owner_path>/<repo_path>"                                        <>:RepoPath
+    --merge_method          "merge method(merge,squash,rebase)"                               <>:Merge="merge"
+    --title                 "title"                                                           <>=""
+    --description           "description"                                                     <>=""
+    --prune_source_branch   "is need close relate branch"
+    --json|-j               "output origin json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(PR number), received empty' arg:ret:64
+    local pr="$1"
+    ___parse_pr_init_owner_repo_and_pr
+    local gen_gt_json
+    gen_gt_json="$(param:option2json prune_source_branch=^^prune_source_branch)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl put "/repos/${owner_repo}/pulls/$pr/merge" "gen_gt_json" | \
+        ___x_cmd_gt_repo_pr____ui_handler Merge
+}
+# EndSection
+
+# Section: Log | Commit | Web
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoPullsNumberOperateLogs
+___x_cmd_gt_repo_pr_log(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    State  = desc asc
+options:
+    #1                 "pr number"                                                       <>:NatureNumber
+    --repo|-r          "<owner_path>/<repo_path>"                                        <>:RepoPath
+    --sort             "sort"                                                            <>:State="desc"
+    --json|-j          "output origin json data"
+'
+    param:run
+    local pr="$1"
+    ___parse_pr_init_owner_repo_and_pr
+    if [ -n "$1" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_curl get "/repos/${owner_repo}/pulls/$pr/operate_logs" sort
+    else
+        ___x_cmd_gt_curl get "/repos/${owner_repo}/pulls/$pr/operate_logs" sort | \
+            x jo 2c             .action_type .content .link_target .created_at | \
+            x csv header --add   ActionType   Content  LinkTarget   CreatedAt | \
+            x csv static_tab
+    fi
+}
+
+# https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoPullsNumberCommits
+___x_cmd_gt_repo_pr_commit(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                 "pr number"                          <>:NatureNumber
+    --repo|-r          "<owner_path>/<repo_path>"           <>:RepoPath
+    --json|-j          "output origin json data"
+'
+    param:run
+
+    local pr="$1"
+    ___parse_pr_init_owner_repo_and_pr
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_curl get "/repos/${owner_repo}/pulls/$pr/commits"
+    else
+        ___x_cmd_gt_curl get "/repos/${owner_repo}/pulls/$pr/commits" | \
+            x jo 2c             .commit.message .html_url | \
+            x csv header --add   CommitMessage   Url | \
+            x csv static_tab
+    fi
+}
+
+___x_cmd_gt_repo_pr_browse(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                 "pr number"                          <>:NatureNumber
+    --repo|-r          "<owner_path>/<repo_path>"           <>:RepoPath
+'
+    param:run
+    local pr="$1"
+    ___parse_pr_init_owner_repo_and_pr
+
+    ___x_cmd_http browse "https://gitee.com/${owner_repo}/pulls/$pr"
+}
+
+# EndSection
+
+# Section: repo pr Ui
+___x_cmd_gt_repo_pr____ui_handler(){
+     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        local _number=""; local _name=""; local _sha="";
+        case "$1" in
+            Create|Update)
+                x jo env . gt_resp_err=.message gt_resp_err=.error \
+                    _number=.number url=.html_url remote_branch=.head.label target_branch=.base.label
+                _inf_msg="$1 $owner_repo pull request successfully"
+                _err_msg="$1 $owner_repo pull request failure"
+            ;;
+            Info)
+                x jo env . gt_resp_err=.message gt_resp_err=.error \
+                    _number=.number url=.html_url remote_branch=.head.label target_branch=.base.label state=.state
+                _inf_msg="$owner_repo $number pull request information"
+                _err_msg="No find any $owner_repo $number pull request information"
+            ;;
+            Merge)
+                x jo env . gt_resp_err=.message gt_resp_err=.error \
+                    _sha=.sha
+                _inf_msg="$1 $owner_repo $pr pull request successfully"
+                _err_msg="$1 $owner_repo $pr pull request failure"
+            ;;
+            Setuping)
+                x jo env . gt_resp_err=.message gt_resp_err=.error \
+                    _name=.name
+                _inf_msg="$1 $owner_repo review configure successfully"
+                _err_msg="$1 $owner_repo review configure failure"
+            ;;
+        esac
+        if [ -n "$_number" ] || [ -n "$_name" ] || [ -n "$_sha" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${number:+"PR Number: $number"} ${html_url:+"URL: $html_url"} ${remote_branch:+"Remote Branch: $remote_branch"} \
+                ${target_branch:+"Target Branch: $target_branch"} ${state:+"State: $state"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+}
+
+# EndSection

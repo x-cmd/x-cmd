@@ -1,0 +1,48 @@
+
+___x_cmd_gitb_fetch(){
+    if [ "$#" -eq 1 ]; then     ___x_cmd_gitb___fetch_one "$1"
+    else                        ___x_cmd_gitb_fetch_multi "$@"
+    fi
+}
+
+___x_cmd_gitb___fetch_one()(
+    local ___X_CMD_GITB___NAME_TO_BRPATH_
+    if ! ___x_cmd_gitb___name_to_brpath_ "${1:?Provide repo}"; then
+        case "$1" in
+            git@*:*.git)    ;;
+            https://*.*/*/*.git)    ;;
+            *)
+                gitb:error "Cannot locate ${1} in the existed bare repo cache."
+                gitb:error "Cannot clone from ${1}."
+                return 1
+        esac
+
+        ___x_cmd_gitb_clone "$1" || return 1
+        ___x_cmd_gitb___name_to_brpath_ "$1" || {
+            gitb:error "Unexpcted Error: Cannot locate ${1} after clone."
+            return 1
+        }
+    fi
+
+    x mcd "$___X_CMD_GITB___NAME_TO_BRPATH_" || return
+    git fetch --all
+    git fetch -u origin +refs/heads/*:refs/heads/*
+    git fetch -u origin +refs/tags/*:refs/tags/*
+)
+
+# Using
+___x_cmd_gitb_fetch_multi(){
+    # ___x_cmd_gitb_lsbrpath | _wread eval 'x job put "$___X_CMD_GIT_CONCURRENCY" ___x_cmd_gitb___update_one "$e"' | x job report
+
+    ___x_cmd_gitb___cat_or_all_or_list "$@" | {
+        {
+            x job failfast init "$___X_CMD_GIT_CONCURRENCY"
+            while read -r brpath; do
+                x job failfast put x gitb fetch "$brpath"
+            done
+        } | (
+            x job failfast fini
+        )
+    }
+}
+

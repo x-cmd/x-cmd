@@ -1,0 +1,125 @@
+# shellcheck shell=dash #xrc
+
+ ___x_cmd_pkg_remove(){
+    x:trace pkg/remove
+    case "$1" in
+        -h|--help) ___x_cmd_pkg_help remove; return 1 ;;
+    esac
+
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    [ -n "$version" ] || return
+    local osarch="${3:-$(___x_cmd_pkg_osarch)}"
+    local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
+
+    local remove_path="$tgt"
+    local download_file_ext
+    ___x_cmd_pkg___attr "$name" "$version" "$osarch" download_file_ext
+    local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}.${download_file_ext}"
+
+    if [ -e "$ball" ]; then
+        pkg:info "Remove $ball"
+        x rmrf "$ball" || {
+            pkg:error "Remove $ball failed "; return 1
+        }
+    fi
+    if ! [ -d "$remove_path" ];then
+        pkg:warn "This $name $version is no exist."
+    else
+        pkg:info "Uninstalling $name $version"
+        x rmrf "$remove_path"
+    fi
+}
+
+# This is default
+___x_cmd_pkg_populate___unzip(){
+    local name="${1:?Provide pkg name}"
+    local version="${2:?Provide version}"
+    local osarch="${3:-$(___x_cmd_pkg_osarch)}"
+    local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
+    local os="${osarch%/*}";  local arch="${osarch#*/}"
+    local download_file_ext unpack
+    ___x_cmd_pkg___attr "$name" "$version" "$osarch" "download_file_ext,unpack"
+    if [ "$unpack" = "none" ] && [ -z "$download_file_ext" ]; then
+        local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$name.${os}.${arch}"
+    else
+        local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}_${os}_${arch}.${download_file_ext}"
+    fi
+    [ -f "$ball" ] || {
+        pkg:error "Cant found zip package: $name $version"
+        return 1
+    }
+
+    pkg:debug --bin_path "$bin_path"  --unpack "$unpack"
+
+    if [ "$unpack" = "folder" ]; then
+        local unpack_dir="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$version"
+        pkg:debug --ball "$ball"   --to  "$unpack_dir" Unpack
+        x uz "$ball" "$unpack_dir" 1>/dev/null || {
+            pkg:error "Fail to unzip $ball" ; return 1
+        }
+        x rmrf "$tgt"
+        mkdir -p "$tgt"
+        pkg:debug "Moving $unpack_dir to $tgt"
+        x mv -f "$unpack_dir"/*/* "$tgt"
+        x rmrf "$unpack_dir"
+    elif [ "$unpack" = "none" ]; then
+        local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name"
+        mkdir -p "$tgt"
+        pkg:debug "Moving $ball to $tgt"
+        x mv -f "$ball"/* "$tgt"
+    elif [ "$unpack" = "file" ]; then
+        pkg:info "Unpack - '$ball to $tgt'"
+        x uz "$ball" "$tgt"  || {
+            pkg:error "Fail to unzip $ball"; return 1
+        }
+    else
+        pkg:error "Yml of $name lacks of unpack key"
+        return 1
+    fi
+
+    pkg:info "Finish unpack $name $version to $tgt"
+}
+
+___x_cmd_pkg_populate(){
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    local osarch="${3:-$(___x_cmd_pkg_osarch)}"
+    local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
+
+    [ -n "$version" ] || {
+        pkg:error "Not found candidate: $name or version;"
+        pkg:error "Please use 'x pkg ll' or 'x pkg ls all <candidate>' to check available candidate and version"
+        return 1
+    }
+
+    local bin_path
+    bin_path="$(___x_cmd_pkg_xbin_path "$name" "$version" "$osarch" "$tgt")"
+
+    [ ! -x "$bin_path" ] || return 0
+
+    ___x_cmd_pkg_populate___unzip "$name" "$version" "$osarch" "$tgt" || {
+        pkg:error "unzip $name $version $osarch failed"
+        return 1
+    }
+
+    local script_path
+    if ! script_path="$(___x_cmd_pkg___get_script_path "$name" "$version" "$osarch" populate)"; then
+        return 0
+    fi
+
+    pkg:info "Running $script_path"
+    pkg:debug --name "$name"  --version "$version"  --osarch "$osarch" --script_path "$script_path"
+
+    local ___X_CMD_PKG___META_NAME="$name"
+    local ___X_CMD_PKG___META_VERSION="$version"
+    local ___X_CMD_PKG___META_OS="${osarch%%/*}"
+    local ___X_CMD_PKG___META_ARCH="${osarch##*/}"
+    local ___X_CMD_PKG___META_TGT="$tgt"
+    {
+        trap 'x rmrf $tgt; printf "\r\n";  pkg:error "pxopulate interrupted"; return 1;' INT
+        . "$script_path" || {
+            pkg:error "Source $script_path failed" ; return 1
+        }
+    }
+}

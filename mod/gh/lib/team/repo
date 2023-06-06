@@ -1,0 +1,168 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+___x_cmd_gh_team_repo(){
+    param:subcmd ___x_cmd_gh_team_repo                                                      \
+        ls              "Lists a team's repositories visible to the authenticated user."    \
+        add             "Add exist repository to team"                                      \
+        "edit|ed"       "Update the team's permissions to the repository"                   \
+        check           "Checks whether a team has permission for a repository."            \
+        rm              "remove org team repo"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_team_repo _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.github.com/en/rest/teams/teams#list-team-repositories
+# shellcheck disable=SC2154
+___x_cmd_gh_team_repo_ls() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --team      "The slug of the team name."            <>
+    --org       "The organization name."                <>:Address
+    --per_page  "Results per page"                      <>:Number=30
+    --page      "Page number of the results to fetch."  <>:Number=1
+    --json|-j   "Output json data"
+'
+    param:run
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
+        ___x_cmd_gh_get_multi "/orgs/${org##*/}/teams/$team/repos"
+    else
+        ___x_cmd_gh_get_multi "/orgs/${org##*/}/teams/$team/repos" | \
+            x jo 2c             .id .name .full_name .visibility .description | \
+            x csv header --add   ID  Name  RepoPath   Visibility  Description | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Add
+# shellcheck disable=SC2154
+# https://docs.github.com/en/rest/teams/teams#add-or-update-team-repository-permissions
+___x_cmd_gh_team_repo_add() {
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    #1              "The organization repo name"                                        <>:RepoName
+    --org           "The organization name"                                             <>:Address
+    --team          "The slug of the team name."                                        <>
+    --permission|-p "The permission to grant the team on this repo"                     <>="push"     = pull triage push maintain admin
+    --json|-j       "output json data"
+A
+    param:run
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -org -team)"
+    gh:debug "$gen_gh_json"
+    local repo=
+    for repo in "$@"; do
+        repo="${repo##*/}"
+        ___x_cmd_gh_curl put  "/orgs/${org##*/}/teams/$team/repos/${org}/${repo}" "gen_gh_json" | ___x_cmd_team_repo____ui_handler Add
+    done
+}
+# EndSection
+
+# Section: Edite
+# shellcheck disable=SC2154,SC2034
+___x_cmd_gh_team_repo_edit() {
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    #1              "The organization repo name"                                        <>:RepoName
+    --org           "The organization name"                                             <>:Address
+    --team          "The slug of the team name."                                        <>
+    --permission|-p "The permission to grant the team on this repo"                     <>="push"     = pull triage push maintain admin
+    --json|-j       "output json data"
+A
+    param:run
+    local repo="${1##*/}"
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -org -team)"
+    gh:debug "$gen_gh_json"
+
+    ___x_cmd_gh_curl put  "/orgs/${org##*/}/teams/${team}/repos/${org}/${repo}" "gen_gh_json" | ___x_cmd_team_repo____ui_handler Update
+}
+# EndSection
+
+# Section: Check
+# https://docs.github.com/en/rest/teams/teams#check-team-permissions-for-a-repository
+___x_cmd_gh_team_repo_check() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "The organization repo name"                                        <>:RepoName
+    --org           "The organization name"                                             <>:Address
+    --team      "The slug of the team name."                                            <>
+'
+    param:run
+
+    local repo=
+    ___x_cmd_gh_curl get "/orgs/${org##*/}/teams/${team}/repos/${org}/${repo}" | ___x_cmd_team_repo____ui_handler Check
+}
+# EndSection
+
+# Section: Remove
+# https://docs.github.com/en/rest/teams/teams#remove-a-repository-from-a-team
+# shellcheck disable=SC2154,SC2034
+___x_cmd_gh_team_repo_rm() {
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    #1              "The organization repo name"                                        <>:RepoName
+    --org           "The organization name"                                             <>:Address
+    --team          "The slug of the team name."                                        <>
+
+    --yes|-y        "Ignore remove prompt interception"
+A
+    param:run
+
+    local repo=
+    for repo in "$@"; do
+        repo="${repo##*/}"
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $(___x_cmd_ui bold red "$team") team remove the repo: $(___x_cmd_ui bold red "$repo") ?" || return
+        ___x_cmd_gh_curl del "/orgs/${org}/teams/${team}/repos/${org}/${repo}" | (
+                [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+                x jo env . gh_resp_msg=.message gh_resp_err=.errors
+                if ___x_cmd_gh_http_error; then
+                    ___x_cmd_ui_tf  true "[Success]: Remove repo $repo from ${org}/${team}"
+                else
+                    ___x_cmd_ui_tf false "Remove repo $repo from ${org}/${team} team failure:" >&2
+                    ___x_cmd_gh____handle_resp
+                    return 1
+                fi
+            )
+    done
+}
+# EndSection
+
+# Section: team repo UI
+# shellcheck disable=SC2154
+___x_cmd_team_repo____ui_handler(){
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        return
+    fi
+    (
+        case "$1" in
+            Check)
+                _inf_msg="[Success]: The team $team has permission for repo ${org}/${repo}"
+                _err_msg="The team $team NO permission for repo ${org}/${repo}:"
+                ;;
+            Add|Update)
+                _inf_msg="[Success]: $1 $repo repo to ${org}/${team} team"
+                _err_msg="$1 $repo repo to ${org}/${team} team failure:"
+                ;;
+        esac
+        x jo env . gh_resp_msg=.message gh_resp_err=.errors
+        if ___x_cmd_gh_http_error 2>/dev/null; then
+            ___x_cmd_ui_tf  true "${_inf_msg}"
+        else
+            ___x_cmd_ui_tf false "${_err_msg}" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

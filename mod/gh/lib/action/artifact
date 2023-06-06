@@ -1,0 +1,193 @@
+# shellcheck shell=sh disable=SC2039,3043,SC2154
+___x_cmd_gh_action_artifact() {
+    param:subcmd  ___x_cmd_gh_action_artifact                           \
+        app                  "Interactive UI show artifact by owner"    \
+        ls                   "List artifacts for a repository"          \
+        info                 "Get workflow run artifacts detail info"   \
+        rm                   "Remove an repo artifact"                  \
+        "download|install"   "Download artifact from repo artifacts"
+    param:subcmd:try
+    param:run
+    ___x_cmd_gh_action_artifact _param_help_doc
+    return 1
+}
+___x_cmd_gh_action_art(){ param:void; ___x_cmd_gh_action_artifact "$@"; }
+
+# Section: List
+# https://docs.github.com/en/rest/actions/artifacts#list-artifacts-for-a-repository
+# shellcheck disable=2034
+___x_cmd_gh_action_artifact_ls(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    --repo|-r   "<owner_path>/<repo_path>"                                              <>:RepoName
+
+    --name      "Filters artifacts by exact match on their name field"                  <>=""
+    --page      "Page number of the results to fetch."                                  <>:Numbers="1"
+    --per_page  "Results per page (max 100)"                                            <>:Per_page="30"
+    --json|-j   "output json data"
+A
+    param:run
+
+    local NO_CACHE=1
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/actions/artifacts" name
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/actions/artifacts" name | x jo .artifacts | \
+            x jo 2c            .id         .name .size_in_bytes  .expired .created_at | \
+            x csv header --add Artifact_ID  Name  Size            Expired  Created     | \
+            x csv static_tab
+    fi
+}
+
+# EndSection
+
+# Section: app
+___x_cmd_gh_action_artifact_app(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+type:
+    run_status = Success Failure
+options:
+    --repo|-r           "<owner_path>/<repo_path>"                                              <>:RepoName
+
+    --branch            "Returns workflow runs associated with a branch."                       <>=""
+    --actor             "returns someone workflow runs."                                        <>:Username=""
+    --event             "Returns workflow run triggered by the event you specify."              <>=""
+    --sta|--status      "Returns workflow runs with the check run status."                      <>=""
+    --created           "Returns workflow runs created within the given date-time range."       <>=""
+    --check_suite_id    "Returns workflow runs with the check_suite_id that you specify."       <>=""
+    --exclude_pull_requests  "Not pull requests are omitted from the response "
+    --page              "Page number of the results to fetch."                                  <>="1"
+    --per_page          "Results per page (max 100)"                                            <>="30"
+A
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+
+    local ___gh_error_msg="get githubaction info list fail"
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_curl get /repos/${owner_repo}/actions/artifacts name per_page page'
+    ___x_cmd_gh_tui_app "action.artifact.app.awk"
+
+   ___x_cmd_gh_action_artifact_app_status_handler
+}
+
+___x_cmd_gh_action_artifact_app_status_handler(){
+
+    local artifact_id
+    artifact_id="${___X_CMD_TUI_TABLE_CUR_LINE##*Artifact_ID: }"
+    artifact_id=${artifact_id%%
+Name:*}
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "i")            ___x_cmd_gh_action_artifact_info              --repo "${repo}"   $artifact_id            ;;
+            "d")            ___x_cmd_gh_action_artifact_rm                --repo "${repo}"   $artifact_id            ;;
+            "a")            ___x_cmd_gh_action_artifact_download          --repo "${repo}"   $artifact_id            ;;
+            *)              return
+    esac
+}
+# EndSection
+
+# Section: Info
+# https://docs.github.com/en/rest/actions/artifacts#get-an-artifact
+___x_cmd_gh_action_artifact_info(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1          "artifact id"                           <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"              <>:RepoName
+    --json|-j   "output json data"
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/actions/artifacts/${1##*/}" | ___x_cmd_gh_action_artifact_info____ui_handler "${owner_repo}" "${1##*/}"
+
+}
+
+___x_cmd_gh_action_artifact_info____ui_handler(){
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        local _name=""
+        x jo env . _name=.name id=.id size_in_bytes=.size_in_bytes expired=.expired created_at=.created_at expires_at=.expires_at \
+            gh_resp_msg=.message gh_resp_err=.errors
+        if [ -n "$_name" ]; then
+            ___x_cmd_ui_tf true "Get $1 $id artifact info successfully:" "Name: $_name" "Size_Bytes: $size_in_bytes" "Expired: $expired" \
+                "Created_At: $created_at" "Expires_At: $expires_at"
+        else
+            ___x_cmd_ui_tf false "Couldn't find any data by $* :" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+
+# EndSection
+
+# Section: Remove
+# https://docs.github.com/en/rest/actions/artifacts#delete-an-artifact
+___x_cmd_gh_action_artifact_rm(){
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    #1          "artifact id"                           <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"              <>:RepoName
+    --yes|-y    "Ignore remove prompt interception"
+A
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    [ "$yes" = "true" ]  || ___x_cmd_ui_yesno "Are you sure ${owner_repo} to remove artifact: $(___x_cmd_ui bold red "${1##*/}") ?" || return 1
+    ___x_cmd_gh_curl del  "/repos/${owner_repo}/actions/artifacts/${1##*/}" | (
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf true  "[Success]: Remove ${owner_repo} ${1##*/} artifact"
+            else
+                ___x_cmd_ui_tf false "Remove ${owner_repo} ${1##*/} artifact failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
+
+# Section: Download
+# https://docs.github.com/en/rest/actions/artifacts#download-an-artifact
+___x_cmd_gh_action_artifact_download(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1            "artifact id"                              <>:Number
+    --repo|-r     "<owner_path>/<repo_path>"                 <>:RepoName
+    --output|-o   "Download to specified output folder"      <>=""
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    local gh_output_dir="${___X_CMD_GH_ART}/artifact/${owner_repo}"
+    [ -z "$output" ] || gh_output_dir="$output"
+    local gh_output="${gh_output_dir}/${1##*/}.zip"
+    x mkdirp "$gh_output_dir"
+
+    if ! ___x_cmd_gh_curl download "/repos/${owner_repo}/actions/artifacts/${1##*/}/zip" "${gh_output}"; then
+        [ "$(___x_cmd_gh_resp_code)" != 404 ] || gh:warn "Possible the artifact has been expired. please check the artifact $1 by \`x gh action artifact ls\`"
+        x rmrf "$gh_output"
+        return 1
+    else
+        [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+        ___x_cmd_ui_tf true  "Download ${owner_repo} ${1##*/} artifact successfully:" "Path: $gh_output"
+    fi
+}
+# EndSection

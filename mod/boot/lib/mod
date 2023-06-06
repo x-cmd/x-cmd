@@ -1,0 +1,83 @@
+
+___X_CMD_BOOT_MOD="$___X_CMD_BOOT_DATA/mod"
+
+___x_cmd_boot_mod(){
+    local subcmd="$1"; shift
+    case "$subcmd" in
+        load)       [ ! -f "$___X_CMD_BOOT_MOD" ] || . "$___X_CMD_BOOT_MOD" ;;
+        path)       printf "%s" "$___X_CMD_BOOT_MOD" ;;
+        add|+)      ___x_cmd_boot_mod_add "$@" ;;
+        del|-)      ___x_cmd_boot_mod_del "$@" ;;
+        ask)        ___x_cmd_boot_mod_ask "$@" ;;
+        which)      printf "%s\n" "$___X_CMD_BOOT_MOD" ;;
+        cat)        cat "$___X_CMD_BOOT_MOD" 2>/dev/null ;;
+        ls|*)       ___x_cmd_boot_mod_ls ;;
+    esac
+}
+
+___x_cmd_boot_mod_add()(
+    s="$(cat "$___X_CMD_BOOT_MOD" 2>/dev/null)"
+    {
+        if [ "$s" = "" ]; then
+            s="$(printf "%s\n" "# Do NOT modifiy this file manually for it is auto generated.")"
+            printf "%s\n" "# Do NOT modifiy this file manually for it is auto generated."
+        fi
+        # Intentionally, because "$()" will trim the last \n
+        s="$s
+"
+        for mod in "$@"; do
+            if [ "$s" = "${s#*
+xrc "$mod"
+}" ]; then
+                printf "xrc %s\n" "$mod"
+                printf "Module will be automatically imported during boot: %s\n" "$mod" >&2
+            else
+                printf "Module ALREADY automatically imported during boot: %s\n" "$mod" >&2
+            fi
+        done
+    } >> "$___X_CMD_BOOT_MOD"
+)
+
+___x_cmd_boot_mod_del()(
+    s="$(cat "$___X_CMD_BOOT_MOD" 2>/dev/null)"
+    s="$s
+"
+    d="$s"
+    for mod in "$@"; do
+        d2="${d#*
+xrc "$mod"
+}"
+        [ "$d2" = "$d" ] && continue
+        d1="${d%
+xrc "$mod"
+*}"
+        d="$d1
+$d2"
+    done
+
+    if [ "$d" != "$s" ]; then
+        printf "%s" "$d" > "$___X_CMD_BOOT_MOD"
+    fi
+)
+
+___x_cmd_boot_mod_ask()(
+    for i in "$@"; do
+        if ! ( x boot mod ls | grep "$i" >/dev/null); then
+            xrc ui
+            local answer
+            ___x_cmd_ui 'select' answer "Not found in boot. Automatically import this module during boot: $*" "YES" "NO"
+            if [ "$answer" = 1 ]; then
+                x boot mod add "$i"
+            fi
+        fi
+    done
+)
+
+___x_cmd_boot_mod_ls(){
+    if [ -e "$___X_CMD_BOOT_MOD" ]; then
+        awk '$1~/[A-Za-z0-9_\-]+/{ print $2;  }'<"$___X_CMD_BOOT_MOD"
+    else
+        touch "$___X_CMD_BOOT_MOD"
+        return 0
+    fi
+}

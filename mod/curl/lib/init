@@ -1,0 +1,93 @@
+# Author:       Li Junhao           l@x-cmd.com
+# shellcheck    shell=sh            disable=SC2039,SC1090,SC3043,SC2263
+# License:      GPLv3
+
+___x_cmd___curl___not_secure_request_nc(){
+    printf "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\nConnection: close\r\n\r\n" "$path" "$host" | nc "$host" 80
+}
+
+___x_cmd___curl___not_secure_request_bash()(
+    host="$host" path="$path" bash -c '
+        exec 88<>"/dev/tcp/$host/80"
+        printf "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\nConnection: close\r\n\r\n" "$path" "$host" >&88
+        cat <&88
+        exec 88>&- >&2
+        exec 88<&- >&2
+    '
+)
+
+___X_CMD___CURL_HTTP_NOT_SECURE_REQUEST_HANDLER_R="$(printf "\r")"
+___x_cmd_curl___not_secure_request_handler(){
+    local file="${1:?Provide cache filepath}"
+    local line
+    while read -r line; do
+        line="${line%"${___X_CMD___CURL_HTTP_NOT_SECURE_REQUEST_HANDLER_R}"}"
+        if [ "$line" = "" ]; then
+            break
+        fi
+    done
+    cat >"$file"
+}
+
+# Test: ___x_cmd___curl___not_secure_get gitee.com/ a.txt
+___x_cmd___curl___not_secure_get(){
+    local path="${1:?Provide path}"
+    local file="${2:?Provide cache file}"
+
+    path="${path#http*://}"
+    host="${path%%/*}"
+    local origin_path="$path"
+    path="${path#*/}"
+    if [ "$path" = "$origin_path" ]; then
+        path=""
+    fi
+    path="/$path"
+
+    if command -v bash 1>/dev/null; then
+        ___x_cmd___curl_not_secure_request(){
+            ___x_cmd___curl___not_secure_request_bash | ___x_cmd_curl___not_secure_request_handler "$file"
+        }
+    elif command -v wget >/dev/null; then
+        ___x_cmd___curl_not_secure_request(){
+            wget "http://${host}${path}" -O "$file"
+        }
+    elif command -v nc 1>/dev/null; then
+        ___x_cmd___curl_not_secure_request(){
+           ___x_cmd___curl___not_secure_request_nc | ___x_cmd_curl___not_secure_request_handler "$file"
+        }
+    else
+        printf "Not support without wget, bash or nc." >&2
+        return 1
+    fi
+
+    ___x_cmd___curl_not_secure_request
+}
+
+___x_cmd___curl___download_curl(){
+    xrc os
+    local arch
+    arch="$(___x_cmd_os arch)"
+    name="$(___x_cmd_os name)"
+    if [ "$(___x_cmd_os name)" != "linux" ];then
+        return 1
+    fi
+
+    local url="${1:-"static-build.gitee.io/curl/curl/7.83.1-DEV"}"
+    local app="${2:-"curl.${name}.${arch}"}"
+    local target="$HOME/.x-cmd/.bin/${app%%.*}"
+    local sha
+    case "${arch}" in
+        x86_64 | amd64 | x64)  sha="a29239a3a9c18e5b215f8940de0fc164451cba50d445c7660e82bb7324c0d200";;
+        aarch64|arm64)         sha="4864c203a71f8ce784ad036ad1d36176e3a0108cf68f1d12c039acb9de9580d4";;
+    esac
+    if [ ! -e "${target}/${app}" ];then
+        x mkdirp "$target"
+        ___x_cmd___curl___not_secure_get "http://${url}/${app}.tar.gz" "${target}/${app}.tar.gz" 2>/dev/stdout || return 1
+        local tarsha
+        tarsha="$(x sha256sum "$target"/"$app".tar.gz)"
+        [ "$sha" = "${tarsha%% *}" ] && tar zxvf "${target}/${app}.tar.gz" -C "$target" && return 0
+        x:error "$app sha256 match fail"
+        return 1
+    fi
+    return 0
+}

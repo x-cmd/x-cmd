@@ -1,0 +1,90 @@
+# shellcheck shell=dash
+
+___x_cmd_chat_request(){
+    local type="$1"; shift
+    local system="$1"; shift
+
+    local current_message;
+    current_message="$( printf "%s\n" "$*" | x jo n | x jo t " " )"
+
+    # default loading the last 3 history record as the context
+    local x_=""; ___x_cmd_chat_cur get_ history;
+    local message; message="$(
+        {
+            printf "[\n%s\n" "$system"
+            ___x_cmd_chat_handler___get_history_record "$___X_CMD_CHAT_SESSION_DIR" "${x_:-3}"
+            printf "%s\n]\n" "$current_message"
+        } | x jo n | x jo t " "
+    )"
+
+    [ -z "$___X_CMD_CHAT_CONFIRM_BEFORE_SEND" ] || {
+        printf "%s\n" "$current_message" | x j2y | x bat -l yml
+        x ui yesno "Do your want to send this message?" || return
+    }
+
+    # Handle the output by increasing the index
+    local outputfile="$___X_CMD_CHAT_TMP/output.$$"
+    ___x_cmd_chat_request___api "$outputfile" "$type" "$message" "$current_message"
+
+    case "$___X_CMD_CHAT_OUTPUT" in
+        raw)        cat "$outputfile" ; return ;;
+    esac
+
+    if [ -t 1 ] && ___x_cmd_is_interative; then
+        case "$type" in
+            normal)     ___x_cmd_chat_handler___stream_to_print <"$outputfile" | x md show ;;
+            json)       ___x_cmd_chat_handler___stream_to_print <"$outputfile" | x jo color ;;
+            *)          ___x_cmd_chat_handler___stream_to_print <"$outputfile" ;;
+        esac
+    else
+        # Just Using tail
+        ___x_cmd_chat_handler___stream_to_print <"$outputfile"
+    fi
+}
+
+# 1000 => cluster into a xz file
+___x_cmd_chat_request___api(){(
+    local output="$1"
+    local type="$2"         # Shoud be a quoted json string
+    local message="$3"     # Shoud be a quoted json string
+    shift 3
+    local IFS=" ";  local current_message="$*"
+    local filepath; filepath="$___X_CMD_CHAT_SESSION_DIR/$(x pidid vlseqid ___X_CMD_CHAT_REC).jso"
+
+    x rmrf "$output"    # Using
+    mkfifo "$output"
+    (
+        # shellcheck disable=SC3044
+        [ -z "$BASH_VERSION" ] || shopt -s expand_aliases
+        x ensurefp "$filepath"
+        chat:debug "Sending request $output => $message"
+        local resp=""; resp="$(___x_cmd_chat_request___api_ "$message" | tee "$output" | ___x_cmd_chat_handler___get_response )"
+        chat:debug "Saving => $filepath"
+
+        # TODO: Use pure json instead of yml.
+        {
+            printf "%s\n" '{
+                type: "'"$type"'",
+                current_message: '"${current_message:-"\"\""}"',
+                message: '"${message:-"\"\""}"',
+                response: '"${resp:-"\"\""}"'
+            }' | x jo n
+        } >>"$filepath"
+
+        x rmrf "$output"
+    ) &
+)}
+
+# Using chatgpt api
+# ref: https://platform.openai.com/docs/api-reference/chat/create
+___x_cmd_chat_request___api_(){
+    local message="$1"
+    local apikey;   local proxy;    local maxtoken
+    ___x_cmd_chat_cur apikey:= proxy:= maxtoken:=
+    x openai --request \
+        ${apikey:+"--apikey"}       ${apikey:+"$apikey"}        \
+        ${proxy:+"--proxy"}         ${proxy:+"$proxy"}          \
+        ${maxtoken:+"--maxtoken"}   ${maxtoken:+"$maxtoken"}    \
+        --message "$message"
+
+}

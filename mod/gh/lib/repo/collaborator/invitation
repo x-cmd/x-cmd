@@ -1,0 +1,185 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gh_repo_collaborator_invitation() {
+    param:scope  ___x_cmd_github
+    param:subcmd ___x_cmd_gh_repo_collaborator_invitation    \
+        "ls"            "List invitation for repo or current user"   \
+        "edit|ed"       "Edit repository invitation permission"      \
+        accept          "Accept invitation for user"                 \
+        rm              "Decline invitation for user"                \
+        cancel          "Cancel the invitation by the repository"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_repo_collaborator _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.github.com/en/rest/collaborators/invitations#list-repository-invitations
+# https://docs.github.com/en/rest/collaborators/invitations#list-repository-invitations-for-the-authenticated-user
+# shellcheck disable=2154
+___x_cmd_gh_repo_collaborator_invitation_ls() {
+    param:scope ___x_cmd_github
+    param:dsl '
+options:
+    --repo|-r       "<ownerPath>/<RepoPath> (empty is for current user)"                <>:RepoName=""
+    --per_page      "Results per page"                                                  <>=30
+    --page          "Page number of the results to fetch."                              <>=1
+    --json|-j       "output json data"
+'
+    param:run
+    local _url="/user/repository_invitations"
+    [ -z "$repo" ] || {
+        ___x_cmd_gh_param_init_owner_repo
+        _url="/repos/${owner_repo}/invitations"
+    }
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "$_url"
+    else
+        ___x_cmd_gh_get_multi "$_url" | \
+            x jo 2c             .id  .repository.full_name  .inviter.login  .invitee.login  .permissions .expired | \
+            x csv header --add   ID   Repo                   Inviter         Invitee         Permission   Is_Expired| \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Edit
+# https://docs.github.com/en/rest/collaborators/invitations#update-a-repository-invitation
+___x_cmd_gh_repo_collaborator_invitation_edit() {
+    param:scope ___x_cmd_github
+    param:dsl '
+type:
+    Permissions =   triage read write maintain admin
+options:
+    #1                "Invitation ID"                                                             <>
+    --repo|-r         "<owner_path>/<repo_path>"                                                  <>:RepoName
+    --permissions|-p  "The permissions that the associated user will have on the repository"      <>:Permissions
+    --json|-j         "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl patch  "/repos/$owner_repo/invitations/${1##*/}" -- permissions |  \
+        ___x_cmd_gh_repo_collaborator_invitation____ui_handler Modify "${1##*/}"
+}
+# EndSection
+
+# Section: Accept
+# https://docs.github.com/en/rest/collaborators/invitations#accept-a-repository-invitation
+___x_cmd_gh_repo_collaborator_invitation_accept() {
+    param:scope ___x_cmd_github
+    param:dsl '
+options:
+    #1          "Invitation ids"                                                     <>
+'
+    param:run
+    local __id=
+    for __id in "$@"; do
+    ___x_cmd_gh_curl patch "/user/repository_invitations/${__id##*/}" | (
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "[Success]: Accept ${__id##*/} interception"
+            else
+                ___x_cmd_ui_tf false "Accept ${__id##*/} interception failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
+    done
+}
+# EndSection
+
+# Section: Decline
+# https://docs.github.com/en/rest/collaborators/invitations#decline-a-repository-invitation
+___x_cmd_gh_repo_collaborator_invitation_rm() {
+    param:scope ___x_cmd_github
+    param:dsl '
+options:
+    #1          "Invitation ids"                                                     <>
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+    local __id=""
+    for __id in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure decline interception: $(___x_cmd_ui bold red "$__id") ?" || continue
+        ___x_cmd_gh_curl del "/user/repository_invitations/${__id##*/}" | (
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "[Success]: Decline ${__id##*/} interception"
+            else
+                ___x_cmd_ui_tf false "Decline ${__id##*/} interception failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
+    done
+}
+# EndSection
+
+# Section: Remove
+# https://docs.github.com/en/rest/collaborators/invitations#delete-a-repository-invitation
+___x_cmd_gh_repo_collaborator_invitation_cancel() {
+    param:scope ___x_cmd_github
+    param:dsl '
+options:
+    #1          "Invitation ids"                    <>
+    --repo|-r   "<owner_path>/<repo_path>"          <>:RepoName
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    local __id=
+    for __id in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $owner_repo to remove interception: $(___x_cmd_ui bold red "$__id") ?" || continue
+        ___x_cmd_gh_curl del "/repos/$owner_repo/invitations/${__id##*/}"| (
+                [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+                x jo env . gh_resp_msg=.message gh_resp_err=.errors
+                if ___x_cmd_gh_http_error; then
+                    ___x_cmd_ui_tf  true "[Success]: Remove $__id interception from $owner_repo repo"
+                else
+                    ___x_cmd_ui_tf false "Remove $__id interception from $owner_repo repo failure:" >&2
+                    ___x_cmd_gh____handle_resp
+                    return 1
+                fi
+            )
+    done
+}
+# EndSection
+
+# Section: invitation UI
+___x_cmd_gh_repo_collaborator_invitation____ui_handler(){
+     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Modify)
+                _data=""
+                _inf_msg="$1 $2 invitation to $owner_repo repo successfully"
+                _err_msg="$1 $2 invitation to $owner_repo repo failure"
+                ;;
+        esac
+
+        local _id=""
+        x jo env . _id=.id gh_resp_msg=.message gh_resp_err=.errors \
+            permissions=.permissions expired=.expired
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:"  ${permissions:+"Permission: $permissions"} ${expired:+"Expired: $expired"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

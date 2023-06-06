@@ -1,0 +1,249 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+# Should be like this.
+# gt repo member add el:admin
+# gt repo member remove user-a
+# gt repo member add user-b
+
+# gt repo member +el:admin -user-a +user-b
+___x_cmd_gt_enterprise_member(){
+    param:subcmd ___x_cmd_gt_enterprise_member              \
+        ls              "List member"                       \
+        info            "Show member user info"             \
+        "edit|ed"       "Edit member info"                  \
+        add             "Add member"                        \
+        rm              "Remove member"                     \
+        app             "Interactive UI show repo of user"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_enterprise_member _param_help_doc
+    return 0
+}
+
+# Section: membership app
+___x_cmd_gt_enterprise_member_app(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+
+options:
+    --enterprise|-e    "* enterprise space address"        <>:Address
+    --role             "* role type"                       <>:UserRole="all"
+    --page             "page"                              <>="20"
+    --per_page         "per_page"                          <>="1"
+'
+    param:run
+
+    local ___gt_error_msg="Couldn't find any data by:${enterprise}"
+    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+    local ___X_CMD_TUI_TABLE_CUR_LINE
+    local ___X_CMD_TUI_TABLE_CUR_ITEM
+    local ___X_CMD_GT_TUI_TABLE_REQUSET_DATA='___x_cmd_gt_get_multi "/enterprises/${enterprise##*/}/members" role page per_page'
+    ___x_cmd_gt_tui_app "enterprise.member.app.awk"
+    ___x_cmd_gt_enterprise_member_app_status_handler
+}
+
+___x_cmd_gt_enterprise_member_app_status_handler(){
+    if [ ! -t 1 ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_http_error
+        return
+    fi
+    local login_name
+    login_name="${___X_CMD_TUI_TABLE_CUR_LINE##*NameSpace: }"
+    login_name=${login_name%%
+Name:*}
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "c")            ___x_cmd_gt_enterprise_member_add    --enterprise "${enterprise}"             ;;
+            "u")            ___x_cmd_gt_enterprise_member_edit   --enterprise "${enterprise}"    "${login_name}"         ;;
+            "d")            ___x_cmd_gt_enterprise_member_rm     --enterprise "${enterprise}"    "${login_name}"         ;;
+            *)              return   ;;
+    esac
+}
+# EndSection
+
+# Section: List
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5EnterprisesEnterpriseMembers
+___x_cmd_gt_enterprise_member_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+
+options:
+    --enterprise|-e    "enterprise space address"           <>:Address
+    --role             "role type"                          <>:UserRole="all"
+    --page             "page"                               <>="1"
+    --per_page         "per_page"                           <>="30"
+    --json|-j          "output origin json data"
+'
+    param:run
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_get_multi "/enterprises/${enterprise##*/}/members" role
+    else
+        ___x_cmd_gt_get_multi "/enterprises/${enterprise##*/}/members" role | \
+            x jo 2c             .user.login  .user.name  .remark   .role  .outsourced | \
+            x csv header --add   NameSpace    Name        MarkName  Role   IsOutSourced | \
+            x csv static_tab
+    fi
+}
+
+# EndSection
+
+# Section: Info
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5EnterprisesEnterpriseMembersUsername
+___x_cmd_gt_enterprise_member_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                  "username: user login name"     <>:UserName
+    --enterprise|-e     "enterprise: space address"     <>:Address
+    --json|-j           "output origin json data"
+'
+    param:run
+    local _avt_name="$1"
+    ___x_cmd_gt____transform_avt_name || return
+    ___x_cmd_gt_curl get "/enterprises/${enterprise##*/}/members/${_avt_name}" | \
+        ___x_cmd_gt_enterprise_member____ui_handler Info
+}
+
+# EndSection
+
+# Section: Add
+
+# shellcheck disable=SC2034
+# https://gitee.com/api/v5/swagger#/postV5EnterprisesEnterpriseMembers
+___x_cmd_gt_enterprise_member_add(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                "user login name"                                  <>:UserName
+    --enterprise|-e   "enterprise space address"                         <>:Address
+
+    --role            "user role"                                        <>:EnterpriceAccess=member
+    --email           "member email"                                     <>=""
+    --name            "member real name(mark name)"                      <>=""
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(user login path), received empty' arg:ret:64
+    local _avt_name="$1"
+    ___x_cmd_gt____transform_avt_name || return
+
+    local gen_gt_json=""
+    gen_gt_json="$(param:option2json username=_avt_name -enterprise)"
+    gt:debug "$gen_gt_json"
+    ___x_cmd_gt_curl post "/enterprises/${enterprise##*/}/members" "gen_gt_json" | (
+            [ -z "$___X_CMD_GT_IN_TEST" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "[Success]: Add $_avt_name member on $enterprise"
+            else
+                ___x_cmd_ui_tf false "Add $_avt_name member on $enterprise failure:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
+}
+
+# EndSection
+
+# Section: Remove
+
+# shellcheck disable=SC2181,SC2154,SC2034
+# https://gitee.com/api/v5/swagger#/deleteV5EnterprisesEnterpriseMembersUsername
+___x_cmd_gt_enterprise_member_rm(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                  "user login name"                       <>:UserName
+    --enterprise|-e     "enterprise space address"              <>:Address
+    --yes|-y            "Ignore remove prompt interception"
+'
+    param:run
+
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (user login path), received empty' arg:ret:64
+    local _avt_name=""
+    for _avt_name in "$@"; do
+        ___x_cmd_gt____transform_avt_name || return
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $enterprise to remove user: $(___x_cmd_ui bold red "$_avt_name") ?" || continue
+        ___x_cmd_gt_curl del "/enterprises/${enterprise##*/}/members/${_avt_name##*/}" | (
+            [ -z "$___X_CMD_GT_IN_TEST" ] || { command cat; return; }
+            x jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "[Success]: Remove $_avt_name member on $enterprise"
+            else
+                ___x_cmd_ui_tf false "Remove $_avt_name member on $enterprise failure:" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
+    done
+}
+
+# EndSection
+
+# Section: Edit
+# shellcheck disable=SC2181
+# https://gitee.com/api/v5/swagger#/putV5EnterprisesEnterpriseMembersUsername
+___x_cmd_gt_enterprise_member_edit(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1                      "user login name"                                 <>:UserName
+    --enterprise|-e         "enterprise: space address"                       <>:Address
+    --role                  "user role"                                       <>:EnterpriceAccess=member
+    --name                  "member real name(mark name)"                     <>=""
+    --no_active             "Ban visit enterprise resources"
+    --json|-j               "output origin json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(user login path), received empty' arg:ret:64
+    local _avt_name="$1"
+    ___x_cmd_gt____transform_avt_name || return
+
+    local gen_gt_json=""
+    gen_gt_json="$(param:option2json active=^no_active -enterprise -no_active)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl put "/enterprises/${enterprise##*/}/members/${_avt_name##*/}" "gen_gt_json" | \
+        ___x_cmd_gt_enterprise_member____ui_handler Edit
+}
+# EndSection
+
+# Section: enterprise UI
+___x_cmd_gt_enterprise_member____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        local _url=""
+        case "$1" in
+            Edit)
+                x jo env . _url=.url gt_resp_err=.message gt_resp_err=.error \
+                    role=.role
+                _inf_msg="Modify enterprise $_avt_name member information successfully"
+                _err_msg="Modify $_avt_name member information failure"
+            ;;
+            Info)
+                x jo env . _url=.url gt_resp_err=.message gt_resp_err=.error \
+                    name_space=.user.login mark_name=.remark role=.role is_active=.active is_out_sourced=.outsourced
+                _inf_msg="Enterprise member information"
+                _err_msg="No find any enterprise member data by $_avt_name"
+            ;;
+        esac
+        if [ -n "$_url" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${name_space:+"NameSpace: $name_space"} ${mark_name:+"MarkName: $mark_name"} \
+                ${role:+"Role: $role"} ${IsActive:+"Role: $is_active"} ${is_out_sourced:+"IsOutSourced: $is_out_sourced"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

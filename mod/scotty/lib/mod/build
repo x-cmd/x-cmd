@@ -1,0 +1,69 @@
+# shellcheck shell=sh disable=SC3043,2097,2012,2098,2181
+
+# In the future. We should use docker to build.
+___x_cmd_scotty_mod_build(){(
+    param:void
+
+    local build_advise=1
+    local build_demo=1
+    case "$1" in
+        --advise)   build_demo=;    shift ;;
+        --demo)     build_advise=;  shift ;;
+    esac
+
+    local mod="$1"
+    [ -n "$mod" ] || mod="$(___x_cmd_scotty_mod_name)" || {
+        scotty:error "Cannot detect module name in PWD=$PWD"
+        return 1
+    }
+
+    log:sub:init -i "build-$mod" scotty "building mod=$mod"
+
+    [ -z "$build_advise" ]  || ___x_cmd_scotty_mod_build___advise "$mod"
+    [ -z "$build_demo" ]    || ___x_cmd_scotty_mod_build___demo "$mod"
+)}
+
+xrc advise/latest
+
+___x_cmd_scotty_mod_build___advise(){(
+    local mod="${1:?Provide module name}"
+    scotty:info "generate advise.jso for ${mod}"
+    ___x_cmd_advise_gen_advise "$mod" "$PWD"
+    if [ "$?" = 0 ]; then
+        scotty:info "advise.jso is generated"
+    else
+        local code="$?"
+        scotty:error "Fail to generate jso for ${mod}. Exit Code is $code"
+        # TODO: exit 1 in the future
+        # x:info "Finish scotty build."
+        if [ ! -f "$___X_CMD_ROOT_ADV/$mod/advise.jso" ]; then
+            scotty:error "Finish scotty build but \$___X_CMD_ROOT_ADV/$mod/advise.jso NOT found. Please contact the module owner."
+            # TODO: Will removed in the future.
+            x mkdirp "$___X_CMD_ROOT_ADV/$mod"
+            printf "%s\n%s\n" "{" "}" > "$___X_CMD_ROOT_ADV/$mod/advise.jso"
+            # exit 1
+        fi
+    fi
+)}
+
+___x_cmd_scotty_mod_build___demo(){(
+    local mod="${1:?Provide module name}"
+    local p=adv/demo
+    local demo_dir="${___X_CMD_ROOT_CODE}/demo/$mod"
+    [ -d "$p" ] || {
+        scotty:info "return 0 but demo folder not found. "
+        return 0
+    }
+
+    x rmrf "$demo_dir"; x mkdirp "$demo_dir"
+    local i; for i in "${p}"/*.yml; do
+        name="${i##*/}"
+        name="${name%.yml}"
+        scotty:info "x script apply $i $demo_dir/${name}.speg 2>/dev/null"
+        x rmrf "$demo_dir/${name}.speg"
+        x script apply "$i" "$demo_dir/${name}.speg" 2>/dev/null || N="scotty" M="fail to generate demo for $mod" log:ret:1
+    done
+
+    scotty:info "all demo are generated"
+)}
+

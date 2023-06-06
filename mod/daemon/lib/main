@@ -1,0 +1,131 @@
+# shellcheck shell=dash disable=SC2120,2012
+
+# Must implement TRAP-INTERRUPT for exit.
+# Must implement TRAP-QUIT for force exit.
+
+xrc arg
+x log init daemon
+xrc:mod:lib daemon         id proc
+if ___x_cmd_is_suitable_advise_env; then
+    xrc:mod:lib daemon     advise
+fi
+
+___X_CMD_DAEMON_PROC_FILEPATH="${___X_CMD_ROOT_DATA}/daemon/proc"
+___X_CMD_DAEMON_LOG_FILEPATH="${___X_CMD_ROOT_DATA}/daemon/log"
+
+___X_CMD_DAEMON_FIFO_FILEPATH="${___X_CMD_ROOT_DATA}/daemon/fifo"   # Using cache
+___X_CMD_DAEMON_NAME_FILEPATH="${___X_CMD_ROOT_DATA}/daemon/name"
+
+___x_cmd_daemon___main(){
+    local op="$1"; [ "$#" -eq 0 ] || shift
+    case "$op" in
+        int|interrupt)
+            ___x_cmd_daemon_interrupt "$@" ;;
+
+        ls|start|kill|destroy|proc|run|log|id*)
+            "___x_cmd_daemon_${op}" "$@" ;;
+
+        --clear)
+            x rmrf "$___X_CMD_DAEMON_PROC_FILEPATH" "$___X_CMD_DAEMON_LOG_FILEPATH" "$___X_CMD_DAEMON_NAME_FILEPATH" "$___X_CMD_DAEMON_FIFO_FILEPATH" ;;
+        *)  ___x_cmd_daemon_help ;;
+    esac
+}
+
+___x_cmd_daemon_start(){
+    local ___X_CMD_DEAMON_NAME=""
+    local ___X_CMD_DAEMON_STDIN_FIFO=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --name)    # Using a special name for this.
+                ___X_CMD_DEAMON_NAME="$2"
+                if [ -e "${___X_CMD_DAEMON_NAME_FILEPATH}/${___X_CMD_DEAMON_NAME}" ]; then
+                    daemon:error "Already exists daemon name=$___X_CMD_DEAMON_NAME"
+                    return 64
+                fi
+
+                shift 2
+                ;;
+            # User defined
+            --fifo)
+                ___X_CMD_DAEMON_STDIN_FIFO=1
+                shift 1
+                ;;
+            *)
+                break
+        esac
+    done
+
+    if [ -z "$___X_CMD_DEAMON_NAME" ]; then
+        daemon:error "Please provide daemon name using 'x daemon start --name <name> <cmd> [args ...]'"
+        return 64
+    fi
+
+    if [ -n "$___X_CMD_DAEMON_STDIN_FIFO" ]; then
+        ___X_CMD_DAEMON_STDIN_FIFO="$___X_CMD_DAEMON_FIFO_FILEPATH/$___X_CMD_DEAMON_NAME"
+
+        [ ! -e "$___X_CMD_DAEMON_STDIN_FIFO" ] || M="Wierd. It should be unexisted ==> $___X_CMD_DAEMON_STDIN_FIFO" N=daemon log:ret:64
+        x ensurefp "$___X_CMD_DAEMON_STDIN_FIFO"
+        mkfifo "$___X_CMD_DAEMON_STDIN_FIFO"
+    fi
+
+    # When exit, the xexec.sh will delete the fifo file
+    ___X_CMD_DAEMON_STDIN_FIFO="$___X_CMD_DAEMON_STDIN_FIFO"    \
+    ___x_cmd_daemon_run "${SHELL:-/bin/sh}"                     \
+        "${___X_CMD_ROOT_MOD}/daemon/lib/xexec.sh" "$@"
+}
+
+# How to stop? Must implemented a framework for this job code.
+___x_cmd_daemon_kill(){
+    [ "$#" -ge 1 ] || {
+        x:error "Expecting at least one argument for pid ==> x daemon kill <pid> [signal]"
+        return 64
+    }
+
+    local x_
+    ___x_cmd_daemon_id1_ "$1" || {
+        daemon:error "Failed to get uniq id. [job=$1]"
+        return 1
+    }
+
+    local signal="${2:-KILL}"
+    command kill -s "$signal" "${x_##*.}"
+}
+
+___x_cmd_daemon_interrupt(){
+    ___x_cmd_daemon_kill "$1" INT
+}
+
+# TODO: Consider remove
+___x_cmd_daemon_destroy(){
+    ___x_cmd_daemon_kill "$1" KILL
+}
+
+___x_cmd_daemon_ls(){
+    ___x_cmd_daemon_id | \
+        DAEMON_PROC_FILEPATH="${___X_CMD_DAEMON_PROC_FILEPATH}" \
+        command awk -f "${___X_CMD_ROOT_MOD}/daemon/lib/awk/ls.awk"
+}
+
+___x_cmd_daemon_log(){
+    arg:1:int
+    ___x_cmd_daemon_id1_ "$1" || {
+        daemon:error "Failed to get uniq id. [job=$1]"
+        return 1
+    }
+    local ___X_CMD_DAEMON_LOGFP="${___X_CMD_DAEMON_LOG_FILEPATH}/${x_}"
+    [ -f "$___X_CMD_DAEMON_LOGFP" ] || M="Not found proc log file. [id=$x_]" arg:ret:64
+    < "$___X_CMD_DAEMON_LOGFP" x outerr unpack
+}
+
+# Don't change it unless necessary. It is invoked by dbox.
+___x_cmd_daemon_run(){
+    # Put the Record
+    ___X_CMD_ROOT="${___X_CMD_ROOT}"        \
+    ___X_CMD_VERSION="${___X_CMD_VERSION}"  \
+    nohup "$@" &
+}
+
+___x_cmd_daemon_help(){
+    x help -m daemon "$@" >&2
+    return 1
+}

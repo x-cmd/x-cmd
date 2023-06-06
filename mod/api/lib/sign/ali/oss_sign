@@ -1,0 +1,46 @@
+# shellcheck shell=sh
+# shellcheck disable=SC3043
+___x_cmd_api_header(){
+    local IFS=""
+    local access_key="${secret_id:-"$(x ali config get secret_key)"}"
+    local access_key_id="${secret_id:-"$(x ali config get secret_id)"}"
+
+    if [ -z "${access_key}" ] || [ -z "${access_key_id}" ];then
+        api:error 'Configuration failed, use "x aliyun config" to configure it'
+        return 1
+    fi
+    local verb="${methods}"
+    local date
+    date="$(env LANG=en_US.UTF-8 date -u +"%a, %d %b %Y %H:%M:%S GMT")"
+    local content_type="${content_type:-"application/json"}"
+    # 如果以从STS服务获取的临时访问凭证发送请求时，您还需要将获得的security-token值以x-oss-security-token:security-token的形式加入到签名字符串中
+    local oss_headers="${oss_headers}"
+    if [ -n "${oss_headers}" ];then
+        oss_headers="$( printf "%s" "${oss_headers}" | command awk -v FS=":" -f "$___X_CMD_ROOT_MOD/ali/lib/awk/convert.awk" | sort)
+"
+    else
+        unset oss_headers
+    fi
+    api:debug "${verb}
+${ali_oss_md5}
+${content_type}
+${date}
+${oss_headers}${bucket:+"/${bucket}"}${resource}"
+
+    local signature
+    signature=$( printf "%s\n%s\n%s\n%s\n%s%s" "${verb}" "${ali_oss_md5}" \
+                        "${content_type}" "${date}" "${oss_headers}" \
+                        "${bucket:+"/${bucket}"}${resource}" | x openssl dgst -sha1 -hmac "${access_key}" -binary | x openssl base64)
+    local authorization="OSS ${access_key_id}:${signature}"
+    printf "%s\n" "-H \"Date:${date}\" -H \"Content-Type:${content_type}\" -H \"Authorization:${authorization}\""
+}
+
+___x_cmd_ali_oss_url_gen(){
+    local methods="${1}"
+    local host="${host:-"${bucket:+"${bucket}."}oss-${region_id:-"cn-hangzhou"}.aliyuncs.com"}"
+    local resource="${2}"
+    shift 2
+
+    url="$(x curl gencode "${oss_headers}") ${ali_oss_md5:+"-H Content-MD5:${ali_oss_md5}"} $(___x_cmd_api_header) https://${host}${resource}"
+    param="$(x curl gencode "$@")"
+}

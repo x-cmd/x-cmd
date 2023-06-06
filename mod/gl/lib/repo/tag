@@ -1,0 +1,150 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043,SC2034
+___x_cmd_gl_repo_tag(){
+    param:subcmd ___x_cmd_gl_repo_tag                 \
+        ls          "List repo tag"                  \
+        info        "Show repo tag info"             \
+        create      "Create repo tag"                \
+        rm          "Remove tag"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_repo_tag _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.gitlab.com/ee/api/tags.html#list-project-repository-tags
+# shellcheck disable=SC2154
+___x_cmd_gl_repo_tag_ls(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --repo|-r                    "<owner_path>/<repo_path> or .id=<repo_id>"                                  <>
+    --order_by                   "Return tags ordered by name or updated fields. Default is updated"          <>=""
+    --sort                       "Return tags sorted in asc or desc order. Default is desc"                   <>=""
+    --include_html_description   "Return list of tags matching the search criteria. "                         <>=""
+    --json|-j                    "output json data"
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_repo
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/projects/${owner_repo}/repository/tags" order_by sort
+    else
+        ___x_cmd_gl_curl get "/projects/${owner_repo}/repository/tags" order_by sort | \
+            x jo 2c            .name .commit.short_id .protected .message | \
+            x csv header --add  Name  Commit           Protected  Message | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Info
+# https://docs.gitlab.com/ee/api/tags.html#get-a-single-repository-tag
+___x_cmd_gl_repo_tag_info(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1          "The name of the tag"                                   <>
+    --repo|-r   "<owner_path>/<repo_path> or .id=<repo_id>"             <>
+    --json|-j   "output json data"
+'
+    param:run
+    ___x_cmd_gl_param_init_owner_repo
+    ___x_cmd_gl_curl get "/projects/${owner_repo}/repository/tags/${1}" | _____x_cmd_gl_repo_tag_ui_utils Info
+}
+# EndSection
+
+# Section: Create
+# https://docs.gitlab.com/ee/api/tags.html#create-a-new-tag
+___x_cmd_gl_repo_tag_create(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1          "The name of a tag"                                                         <>
+    --repo|-r   "<owner_path>/<repo_path> or .id=<repo_id>"                                 <>
+    --ref       "Create tag using commit SHA, another tag name, or branch name"             <>
+    --message   "Creates annotated tag"                                                     <>=""
+    --json|-j   "output json data"
+
+'
+    param:run
+
+    ___x_cmd_gl_param_init_owner_repo
+    local tag_name="$1"
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -repo +tag_name)"
+    gl:debug "$gen_gl_json"
+    ___x_cmd_gl_curl post "/projects/$owner_repo/repository/tags" gen_gl_json | _____x_cmd_gl_repo_tag_ui_utils Create
+}
+# EndSection
+
+# Section: Remove
+# https://docs.gitlab.com/ee/api/tags.html#delete-a-tag
+# shellcheck disable=2154
+___x_cmd_gl_repo_tag_rm(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1          "The name of a tag name"                                <>
+    --repo|-r   "<owner_path>/<repo_path> or .id=<repo_id>"             <>
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+
+    if [ $# -eq 0 ];then
+        gl:error "At least one user's spatial address is needed"
+        return 1
+    fi
+
+    ___x_cmd_gl_param_init_owner_repo
+    local tag_name
+    for tag_name in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete member : $(___x_cmd_ui bold red "$tag_name") ?" || continue
+        ___x_cmd_gl_curl del "/projects/$owner_repo/repository/tags/$tag_name" | (
+            x jo env . gl_resp_err=.error gl_resp_msg=.message
+            if  ___x_cmd_gl_http_error; then
+                ___x_cmd_ui_tf true "[Success]: Remove $tag_name tag of $owner_repo"
+            else
+                ___x_cmd_ui_tf false "Remove $tag_name tag of $owner_repo failure:"
+                ___x_cmd_gl____handle_resp
+                return 1
+            fi
+        )
+    done
+}
+# EndSection
+
+# Section: repo tag utils
+_____x_cmd_gl_repo_tag_ui_utils(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gl_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Info)
+                _inf_msg="Getting repo tag information successfully"
+                _err_msg="Getting repo tag information failure"
+                ;;
+            Create)
+                _inf_msg="Create repo tag successfully"
+                _err_msg="Create repo tag failure"
+                ;;
+        esac
+        local name=""
+        x jo env . name=.name gl_resp_err=.error gl_resp_msg=.message \
+            commit=.commit.short_id author_name=.author_name release=.release protected=.protected message=.message
+        if [ -n "$name" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${name:+"Name: $name"} ${commit:+"Commit: $commit"} ${author_name:+"Author_name: $author_name"} \
+                ${release:+"Release: $release"} ${protected:+"Protected: $protected"} ${message:+"Message: $message"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

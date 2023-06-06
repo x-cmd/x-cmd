@@ -1,0 +1,65 @@
+# shellcheck    shell=sh            disable=SC3043,SC1090,SC2155     # xrc
+
+___x_cmd_pkg_addpath(){
+    case "$1" in
+        -h|--help) ___x_cmd_pkg_help addpath ; return 1 ;;
+    esac
+
+    local name="${1:?Provide pkg name}"
+    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
+    local path_dir="${3:-"bin"}"
+    [ -n "$version" ] || return
+    local tmp="${___X_CMD_PKG_ACTIVATE___LIST#*"$name=$version"}"
+
+    if ! [ "$tmp" = "$___X_CMD_PKG_ACTIVATE___LIST" ]; then
+        pkg:debug "$name had been add into path"
+        return 0
+    fi
+
+    if ! ___x_cmd_pkg_addpath___min_default "$name" "$version" "$path_dir"; then
+        pkg:error "Use default add path  failed for $name $version"
+        return 1
+    fi
+
+
+    ___X_CMD_PKG_ACTIVATE___LIST="$___X_CMD_PKG_ACTIVATE___LIST
+$name=$version
+"
+}
+
+___x_cmd_pkg_addpath___min_default(){
+    local name="${1:?Provide pkg name}"
+    local version="${2:?Provide version}"
+    local path_dir="${3:-"bin"}"
+    local osarch="$(___x_cmd_pkg_osarch)"
+    local tgt="$___X_CMD_PKG_POPULATE_PATH/$name/$version"
+    local bin_path
+    local mutiple_bin_path
+
+    if ! mutiple_bin_path="$(___x_cmd_pkg___link "$name" "$version" "$osarch" "path.${path_dir}" )" ; then
+        pkg:error "Get bin path failed for $name $version"
+        return 1
+    fi
+    local file_path
+    while read -r bin_path; do
+            if [ -z "$bin_path" ];then
+                continue
+            fi
+
+        file_path="$tgt/$bin_path"
+        if ! [ -d "$file_path" ] ; then
+            pkg:error "No a bin folder($file_path) for $name $version"
+            return 1
+        fi
+
+        pkg:debug "path add_existed_folder $file_path"
+        ___x_cmd_path_unshift "$file_path" || {
+            pkg:error "Path unshift failed"
+            return 1
+        }
+
+    done <<A
+$mutiple_bin_path
+A
+    pkg:info "Add PATH of $name successfully"
+}

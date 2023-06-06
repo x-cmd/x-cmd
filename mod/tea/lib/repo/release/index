@@ -1,0 +1,253 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_tea_repo_release(){
+    param:subcmd ___x_cmd_tea_repo_release                          \
+        "ls|l"              "list repo release"                     \
+        "create|c"          "create repo release"                   \
+        rm                  "Remove repo release"                   \
+        "edit|ed"           "update release information"            \
+        "info|i"            "Show detailed information of repo"
+    param:subcmd:try
+    param:run
+        # attachment  "Attachment management"         \
+
+
+    ___x_cmd_tea_repo_release _param_help_doc
+    return 1
+}
+
+############################
+# Section 10: Release
+############################
+# https://gitea.com/api/swagger#/repository/repoListReleases
+___x_cmd_tea_repo_release_ls() {
+    param:scope     ___x_cmd_tea
+    param:dsl    '
+options:
+    --repo|-r          "Provide owner name and repo name.(default:the current user repo)"                         <>:RepoName
+    --draft         "filter (exclude / include) drafts, if you dont have repo write access none will show"     <>:bool=""
+    --pre-release   "filter (exclude / include) pre-releases"                                                  <>:bool=""
+    --limit         "Results per page"                                                                         <>:Numbers="30"
+    --page          "Page number of the results to fetch."                                                     <>:Numbers="1"
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_tea_param_init_owner_repo
+
+    # ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json Id=.id Name=.name TagName=.tag_name Branch=.target_commitish Prerelease=.prerelease Url=.html_url -- $@' \
+    #     ___x_cmd_tea_curl get "/repos/${owner_repo}/releases" page limit
+    ___x_cmd_tea_curl get "/repos/${owner_repo}/releases" page limit
+}
+
+# https://gitea.com/api/swagger#/repository/repoGetReleaseByTag
+___x_cmd_tea_repo_get_release_by_tag() {
+    param:scope     ___x_cmd_tea
+    param:dsl    '
+options:
+    #1              "tag name"                                                          <>
+    --repo|-r          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+
+    --json|-j       "output json data"
+'
+    param:run
+    ___x_cmd_tea_param_init_owner_repo
+
+    ___x_cmd_tea_curl get "/repos/${owner_repo}/releases/tags/${1}"
+}
+
+# https://gitea.com/api/swagger#/repository/repoCreateRelease
+___x_cmd_tea_repo_release_create() {
+    param:scope  ___x_cmd_tea
+    param:dsl    '
+options:
+    --name              "Release name"                                                      <>
+    --tag               "Please provide tag name"                                           <>
+    --repo|-r              "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    --body              "Release Description"                                               <>=""
+    --target_commitish  "Default is main"                                                   <>:name="main"
+    --draft             "create a draft release"                                            <>:Bool=""
+    --prerelease        "Is release version"                                                <>:Bool=""
+
+    --json|-j           "output json data"
+'
+    param:run
+    ___x_cmd_tea_param_init_owner_repo
+
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -tag tag_name=tag)"
+    ___x_cmd_tea_curl post "/repos/${owner_repo}/releases" "gen_tea_json" | _____x_cmd_tea_release_ui_utils Creating
+}
+
+# Assume pr and owner_repo are environments
+___x_cmd_tea_repo_release_init_owner_repo_and_release_main(){
+    local release_id=${release##*/}
+    release="${release_id}"
+}
+
+alias ___x_cmd_tea_repo_release_init_owner_repo_and_release="
+    ___x_cmd_tea_repo_release_init_owner_repo_and_release_main || return
+"
+
+# https://gitea.com/api/swagger#/repository/repoEditRelease
+___x_cmd_tea_repo_release_edit() {
+    param:scope  ___x_cmd_tea
+    param:dsl    '
+options:
+    #1                      "Release ID"                                                            <>:number
+    --repo|-r                  "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --tag_name              "The name of the tag."                                                  <>=""
+    --target_commitish      "Is release version"                                                    <>=""
+    --name                  "The name of the release."                                              <>=""
+    --body                  "Text describing the contents of the tag."                              <>=""
+    --draft                 "true makes the release a draft, and false publishes the release."      <>:bool=""
+    --prerelease            "true to identify the release as a prerelease, false to identify the release as a full release."    <>:bool=""
+
+    --json|-j               "output json data"
+'
+    param:run
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_repo_release_init_owner_repo_and_release
+    local gen_tea_json
+    gen_tea_json="$(param:option2json -repo)"
+
+    ___x_cmd_tea_curl patch "/repos/${owner_repo}/releases/${1}" "gen_tea_json" | _____x_cmd_tea_release_ui_utils Edit
+}
+
+# https://gitea.com/api/swagger#/repository/repoDeleteRelease
+___x_cmd_tea_repo_release_rm() {
+    param:scope  ___x_cmd_tea
+    param:dsl    '
+options:
+    #1           "Release ID"                                                            <>:number
+    --repo|-r       "Provide owner name and repo name.(default:the current user repo)"      <>:RepoName
+    --yes|-y     "Ignore remove prompt interception"
+'
+    param:run
+
+    ___x_cmd_tea_param_init_owner_repo
+
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete version  $(___x_cmd_ui bold red "$1") in the $owner_repo ?" || return
+    ___x_cmd_tea_curl delete "/repos/${owner_repo}/releases/$1"| (
+        x jo env . tea_resp_err=.message
+        if ___x_cmd_tea_http_error; then
+            ___x_cmd_ui_tf  true "successfully remove repo release"
+        else
+            ___x_cmd_ui_tf false "delete repo release failure: $1."
+            ___x_cmd_tea____handle_resp
+            return 1
+        fi
+    )
+}
+
+# https://gitea.com/api/swagger#/repository/repoGetRelease
+___x_cmd_tea_repo_release_info() {
+    param:scope     ___x_cmd_tea
+    param:dsl    '
+options:
+    #1        "Release ID"                                                          <>:number
+    --repo|-r    "Provide owner name and repo name.(default:the current user repo)"    <>:RepoName
+    --json|-j "output json"
+'
+    param:run
+    ___x_cmd_tea_param_init_owner_repo
+    ___x_cmd_tea_repo_release_init_owner_repo_and_release
+    ___x_cmd_tea_curl get "/repos/${owner_repo}/releases/${1}" | _____x_cmd_tea_release_ui_utils Info
+}
+
+
+# Section : attachment
+
+___x_cmd_tea_repo_release_attachment(){
+    param:subcmd ___x_cmd_tea_repo_release_attachment    \
+        "create|c"          "upload attachment"                 \
+        rm                  "delete attachment"                 \
+        "ls|l"              "list release's attachment"
+    param:subcmd:try
+    param:run
+
+
+    ___x_cmd_tea_repo_release_attachment _param_help_doc
+    return 1
+}
+
+# https://gitea.com/api/swagger#/repository/repoListReleaseAttachments
+___x_cmd_tea_repo_release_attachment_ls() {
+
+
+    param:scope     ___x_cmd_tea
+    param:dsl    '
+options:
+    #1        "Release ID"                <>:number
+'
+    param:run
+    local release="${1:?release id must be specified}"
+    ___x_cmd_tea_repo_release_init_owner_repo_and_release
+}
+
+# Provide multiple files
+# https://gitea.com/api/swagger#/repository/repoCreateReleaseAttachment
+___x_cmd_tea_repo_release_attachment_create() {
+
+    param:scope     ___x_cmd_tea
+    param:dsl    '
+options:
+    #1        "Release ID"                <>:number
+'
+    param:run
+    local release="${1:?release id must be specified}"
+    ___x_cmd_tea_repo_release_init_owner_repo_and_release
+}
+
+# Delete the file in attachment list
+# https://gitea.com/api/swagger#/repository/repoDeleteReleaseAttachment
+___x_cmd_tea_repo_release_attachment_rm() {
+
+
+    param:scope     ___x_cmd_tea
+    param:dsl    '
+options:
+    #1        "Release ID"                <>:number
+'
+    param:run
+    local release="${1:?release id must be specified}"
+    ___x_cmd_tea_repo_release_init_owner_repo_and_release
+}
+
+# EndSection
+
+
+# Section: release utils
+_____x_cmd_tea_release_ui_utils()(
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_tea_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Creating|Edit)
+            msg="$1 repo release success."
+            error_msg="$1 repo release Fail."
+            ;;
+        Info)
+            msg="Successfully get repo release info."
+            error_msg="Get repo release info failure."
+            ;;
+    esac
+    eval x jo env . id=.id name=.name tag_name=.tag_name    \
+        branch=.target_commitish html_url=.html_url         \
+        author=.author.login tea_resp_err=.message "$data"
+    if [ -n "$id" ]; then
+        ___x_cmd_ui_tf true "$msg" "Id: $id" ${name+"Name: $name"} ${tag_name+"TagName: $tag_name"}  ${branch+"TargetCommitish: $branch"} ${author+"Author: $author"} ${html_url+"Url: $html_url"}
+    else
+        ___x_cmd_ui_tf false "$error_msg"
+        ___x_cmd_tea____handle_resp
+        return 1
+    fi
+)
+# EndSection

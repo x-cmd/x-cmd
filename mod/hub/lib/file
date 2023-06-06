@@ -1,0 +1,252 @@
+# shellcheck shell=dash
+
+# Section(util): normalize_respath
+
+# TODO: Should be review. @el
+___x_cmd_hub_file_normalize_respath(){
+    local respath="${1}"
+    case "$respath" in
+        @me/*|@i/*|@/*)
+            ___X_CMD_WHICH_ONE_RESOURCE_TYPE=me@hub
+            printf "%s" "$respath" ;;
+        *@*)
+            ___X_CMD_WHICH_ONE_RESOURCE_TYPE=hub
+            printf "%s" "$respath" ;;
+        *)
+            ___X_CMD_WHICH_ONE_RESOURCE_TYPE=hub
+            printf "%s" "@me/${respath#/}" ;;
+    esac
+}
+
+# EndSection
+
+___x_cmd_hub_file(){
+    local op="$1"
+
+    case "$op" in
+        -h|--help) shift ; ___x_cmd_hub___help file ; return 1 ;;
+
+        ls|upload|cat|which|rm|upload_dist|la) shift
+            "___x_cmd_hub_file_$op" "$@"                         ;;
+        *) ___x_cmd_hub___util_subcmd_invalid "file" "$@"       ;;
+    esac
+}
+
+# EndSection
+
+# Section(list): ls、 la
+
+___x_cmd_hub_file_ls(){
+    local json
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --json|-j)    json=true; shift ;;
+            --help|-h)    ___x_cmd_hub___help file ls ; return 1;;
+            *) break ;;
+        esac
+    done
+    ___x_cmd_hub_file_list "$@"
+}
+
+___x_cmd_hub_file_la(){
+    local json
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --json|-j)    json=true; shift ;;
+            --help|-h)    ___x_cmd_hub___help file la ; return 1 ;;
+            *) break ;;
+        esac
+    done
+    ___x_cmd_hub_file_list "$1" detail true
+}
+
+# TODO: optimize
+___x_cmd_hub_file_list(){
+    local respath="${1:-@me/}"
+    local type="${2:-""}"
+    local recursive="${3:-""}"
+    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+
+    local res
+    if ! res="$(___x_cmd_hub___util_curl get /api/v0/file res="${respath}" type="${type}" recursive="${recursive}")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to ls file:"
+        return 1
+    fi
+
+    [ -z "$json" ] || { printf "%s\n" "$res"; return 0; }
+    if [ "$type" = "detail" ] ; then
+        #  MD5=.md5 CREATE_AT=.createdAt UPDATE_AT=.updateAt
+        x ui table json PATH=.path SIZE=.size \
+            -- 'printf "%s" "$res"'
+    else
+        local code; code="$(xrc cat awk/lib/core.awk awk/lib/j/json.awk awk/lib/j/jiter.awk )"
+        printf "%s" "$res" | awk "$code"'
+            { jiget_after_tokenize_unquote($0, ".") }'
+    fi
+}
+
+# EndSection
+
+# Section: rm
+
+___x_cmd_hub_file_rm(){
+    local recursive
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --recursive|-r)    recursive=true; shift ;;
+            --help|-h)    ___x_cmd_hub___help file rm ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    local respath="${1:-@me/}" ; respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+    local recursive="${2:-false}"
+
+    local res
+    if ! res="$(___x_cmd_hub___util_curl delete /api/v0/file "res=$respath" "recursive=$recursive")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to rm file, respath $respath, recursive $recursive:"
+        return 1
+    fi
+    ___x_cmd_hub___util_handle_resp true "$res" "Success to rm file, respath $respath, recursive $recursive: "
+}
+
+# EndSection
+
+# Section: which upload cat
+
+___x_cmd_hub_file_which_(){
+    local respath="${1:?Provide respath}"
+    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+
+    local res; res=$(___x_cmd_hub_file_cat "$respath") || return 1
+    local cache_path="${___X_CMD_HUB_CACHE}/file/${respath#/}"
+    x mkdirp "${cache_path%/*}"
+    printf "%s\n" "$res" > "${cache_path}"
+    x_="$cache_path"
+}
+
+___x_cmd_hub_file_which(){
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file which ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    local x_ ; ___x_cmd_hub_file_which_ "$1" || return 1
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_hub_file_cat(){
+
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file cat ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    local respath="${1:?Provide respath}"
+    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+
+    local prefix="${respath%%/*}";
+    local userId;
+    #TODO: optimize to use cache
+    case "$prefix" in
+        @me)    userId="$(x hub account info --json | ( x jo env . id=.id ; printf "%s" "$id" ))" ;;
+        @*)     userId="$(___x_cmd_hub___util_user_id "${prefix#@}")" ;;
+        *)      userId="$(x hub account info --json | ( x jo env . id=.id ; printf "%s" "$id" ))" ;;
+    esac
+
+    [ -n "$userId" ] || return
+    hub:debug "userId: $userId, $prefix => ___x_cmd_http get "https://x-cmd-hub-public.oss-cn-heyuan.aliyuncs.com/${userId}/${respath#*/}""
+    ___x_cmd_http get "https://x-cmd-hub-public.oss-cn-heyuan.aliyuncs.com/${userId}/${respath#*/}" 2>/dev/null || {
+        local res
+        if ! res=$(___x_cmd_hub___util_curl get /api/v0/file/cat "res=${respath}"); then
+            ___x_cmd_hub___util_handle_resp false "$res" "Please check the respath $respath: "
+            return 1
+        fi
+        printf "%s\n" "$res"
+    }
+}
+
+___x_cmd_hub_file_upload(){
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file upload ; return 1 ;;
+            --public|-p)     public=true; shift ;;
+            *) break ;;
+        esac
+    done
+
+    local localfp="${1:?Provide local file}"
+    local respath="${2}"
+
+    # TODO: Should be review to optimize.
+    local res
+    if [ -d "$localfp" ]; then
+        local filename; local remotefp
+        [ -n "$respath" ] || respath="${localfp%/}" && respath="${respath##*/}/"
+
+        local tmpzip="${___X_CMD_ROOT_TMP}/hub/${localfp}.tar.gz"
+        x z "$tmpzip" "$localfp" >/dev/null
+
+        remotefp="$(___x_cmd_hub_file_normalize_respath "${respath%/}")"
+        if res="$(___x_cmd_hub___util_send_archive "$tmpzip" "$remotefp")" ; then
+            ___x_cmd_hub___util_handle_resp true "" "Upload $localfp to $remotefp"
+        else
+            ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload $localfp to $remotefp :"
+            return 1
+        fi
+
+    elif [ -f "$localfp" ]; then
+        local filename ; filename="$(basename "$localfp")"
+        [ -n "$respath" ] || respath="/$filename"
+        local remotefp="$respath"; [ "${respath%/}" = "$respath" ] ||  remotefp="${respath}${filename}"
+        remotefp="$(___x_cmd_hub_file_normalize_respath "$remotefp")"
+        if res="$(___x_cmd_hub___util_send_file "$localfp" "$remotefp")" ; then
+            ___x_cmd_hub___util_handle_resp true "$res" "Upload $localfp to $remotefp:"
+        else
+            ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload $localfp to $remotefp:"
+            return 1
+        fi
+
+        if [ -n "$public" ]; then
+            ___x_cmd_hub_share_add --public "$remotefp"
+        fi
+    else
+        ___x_cmd_ui_tf false "Not a file or dir in local $localfp :" >&2
+        return 1
+    fi
+}
+
+___x_cmd_hub_file_upload_dist(){
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file upload-dist ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    local localfp="${1:?Provide local file}"
+    local respath="${2:?provide respath}"
+
+    x wx pkg "$localfp" ___x_cmd_hub_tmp.wx || {
+        ___x_cmd_ui_tf false "Failed to wx pkg $localfp: " >&2
+        return 1
+    }
+
+    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+
+    local res
+    if ! res=$(___x_cmd_hub___util_send_file ___x_cmd_hub_tmp.wx "$respath"); then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload $localfp to $respath :"
+        rm -rf ___x_cmd_hub_tmp.wx
+        return 1
+    fi
+
+    ___x_cmd_hub___util_handle_resp true "$res" "Success to upload $localfp to $respath :"
+    rm -rf ___x_cmd_hub_tmp.wx
+}
+
+# EndSection

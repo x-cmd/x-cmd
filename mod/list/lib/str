@@ -1,0 +1,609 @@
+# shellcheck shell=sh disable=SC3043
+# shellcheck disable=SC2039
+
+# author:       Li Junhao           l@x-cmd.com
+# maintainer:   Li Junhao
+# license:      GPLv3
+
+
+# Section: main
+
+list_str(){
+    local op="${1:?Provide op}"
+    local O=${op#@}
+    if [ "$O" = "$op" ]; then
+    # without : prefix, to set the blank O
+        O=
+        shift
+    else
+        op="${2}"
+        shift 2
+    fi
+
+    case "$op" in
+        new)                ___list_str_new "$@"   ;;
+        del)                ___list_str_del "$@"   ;;
+        make)               ___x_cmd_list_str_make "$@"   ;;
+        free)               ___list_str_free "$@"  ;;
+
+        get)                ___x_cmd_list_str_get "$@" ;;
+        get_by_value)       ___x_cmd_list_str_get_by_value "$@" ;;
+        get_by_regex)       ___x_cmd_list_str_get_by_regex "$@" ;;
+
+        remove)             ___x_cmd_list_str_remove "$@" ;;
+        remove_by_regex)    ___x_cmd_list_str_remove_by_regex "$@" ;;
+
+        push)               ___x_cmd_list_str_push "$@" ;;
+        pop)                ___x_cmd_list_str_pop "$@" ;;
+        shift)              ___x_cmd_list_str_shift "$@" ;;
+        unshift)            ___x_cmd_list_str_unshift "$@" ;;
+
+        head)               ___x_cmd_list_str_head "$@" ;;
+        tail)               ___x_cmd_list_str_tail "$@" ;;
+        top)                ___x_cmd_list_str_tail "$@" ;;
+
+        map)                ___x_cmd_list_str_map "$@" ;;
+
+        load)               ___x_cmd_list_str_load "$@" ;;
+        load_json)          ___x_cmd_list_str_load_json "$@" ;;
+        dump)               ___x_cmd_list_str_dump "$@" ;;
+        json)               ___x_cmd_list_str_json "$@" ;;
+
+        size)               ___x_cmd_list_str_size "$@" ;;
+
+        is_empty)           ___x_cmd_list_is_empty "$@" ;;
+        has)                ___x_cmd_list_has "$@"  ;;
+
+        -h|--help)          x help -m list; return ;;
+    esac
+}
+
+# EndSection
+
+# Section: Instance Management
+___X_CMD_LIST_STR_INSTANCE=""
+
+___list_str_instance_add(){
+    local O="${1:?Provide instance name}"
+    ___X_CMD_LIST_STR_INSTANCE="$___X_CMD_LIST_STR_INSTANCE@$O-"
+}
+
+___list_str_instance_rm(){
+    local O="${1:?Provide instance name}"
+    ___X_CMD_LIST_STR_INSTANCE="${___X_CMD_LIST_STR_INSTANCE%@$O-*}${___X_CMD_LIST_STR_INSTANCE##*@$O-}"
+}
+
+___list_str_instance_list(){
+    [ -z "$___X_CMD_LIST_STR_INSTANCE" ] && return 0
+    printf "%s" "$___X_CMD_LIST_STR_INSTANCE" | tr "-" "\n"
+}
+
+# EndSection
+
+# Section: Life cycle
+
+___list_str_new(){
+    local O="${O:?list_name}"
+    O="${O#@}"
+    eval "
+function $O {
+    list_str @$O \"\$@\"
+}
+"
+    _____list_str_make "$@"
+}
+
+___list_str_del(){
+    if command -v "$O" 1>/dev/null 2>&1; then
+        ___list_str_free "$@" && unset "$O"
+        return
+    fi
+    printf "%s\n" "No such list instance: $O" >&2
+}
+
+___list_str_free(){
+    local O="${O:?Please provide dict_name for ___list_str_free}"
+    ___list_str_instance_rm "$O"
+    eval "unset ___X_BASH_DICT_$O"
+}
+
+
+# EndSection
+
+
+# My idea is to using tr as less as possible.
+# We preserve the original text by seprating them in
+# Focus on performiation optimization in push, pop, shift, unshift, foreach. At at the other end.
+
+# POC: Pass at all platform
+# > sep=$(printf "\001"); t="$(printf "%s\001%s\001%s" "18" "123" "456")"; echo "${t%%$sep*}"
+# 18
+
+# f(){ IFS="$(printf "\n")"; echo "|$IFS|"; echo "$*"; s="$*"; echo "${#s}"; }; f 1 2 3
+# s size is 5
+
+# \n Using \001
+#
+
+# Preserve
+LIST_SEP="$(printf "\003")"     #
+
+___x_cmd_list_str_make(){
+    local O="${1:?___x_cmd_list_str_name}"
+    eval "$O=0"
+}
+
+___x_cmd_list_str_free(){
+    eval "unset $O"
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_push $(seq 1 3); O=b ___x_cmd_list_str_print
+1
+2
+3
+DOCTEST
+___x_cmd_list_str_print(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O:?___x_cmd_list_str_name}\"")"
+
+    printf "%s" "${data#*${LIST_SEP}}" | tr "${LIST_SEP}" "\n"
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_push $(seq 1 3); O=b ___x_cmd_list_str_get 0
+1
+> O=b ___x_cmd_list_str_size
+3
+DOCTEST
+___x_cmd_list_str_size(){
+    local data
+    data="$(eval printf "%s" "\"\$${O:?___x_cmd_list_str_name}\"")"
+
+    local len
+    len="${data%%${LIST_SEP}*}"
+
+    printf "%s" "${len:-0}"
+
+    # local O="${O:?___x_cmd_list_str_name}"
+    # eval printf "%s" "\${$O%%${LIST_SEP}*}"
+    # eval printf "%s" "\$$O" | cut -d "$LIST_SEP" -f 1
+    # eval "echo ${$O}"
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_push $(seq 10);
+> O=b ___x_cmd_list_str_get 0
+1
+> O=b ___x_cmd_list_str_get 8
+9
+DOCTEST
+___x_cmd_list_str_get(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+
+    local i=${1:?idx}
+    printf "%s" "$data" | tr "\n" "\001" | awk -v RS="${LIST_SEP}" -v idx="$i" \
+    '
+        BEGIN { idx=idx+2; exit_code = 1   }
+        NR==idx {
+            gsub("\001", "\n", $0)
+            printf("%s", $0)
+            exit_code = 0
+            exit 0
+        }
+        END   { exit exit_code  }
+    ' -
+}
+
+
+___x_cmd_list_str_push() {
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+
+    local len
+    len="${data%%${LIST_SEP}*}"
+
+    local t
+    local IFS="$LIST_SEP"    # For $*
+    if [ "${len:-0}" -eq 0 ]; then
+        t="$(printf "%s${LIST_SEP}%s" "$#" "$*")"
+    else
+        data="${data#*${LIST_SEP}}"
+        t="$(printf "%s${LIST_SEP}%s${LIST_SEP}%s" "$((len+$#))" "$data" "$*")"
+    fi
+    eval $O='"$t"'
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 10);
+> O=b ___x_cmd_list_str_get 0
+1
+> O=b ___x_cmd_list_str_get 8
+9
+DOCTEST
+___x_cmd_list_str_unshift() {
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+
+    local len
+    len="${data%%${LIST_SEP}*}"
+
+    local t
+    local IFS="$LIST_SEP"    # For $*
+    if [ "${len:-0}" -eq 0 ]; then
+        t="$(printf "%s${LIST_SEP}%s" "$#" "$*")"
+    else
+        data="${data#*${LIST_SEP}}" # body
+        t="$(printf "%s${LIST_SEP}%s${LIST_SEP}%s" "$((len+$#))" "$*" "$data")"
+    fi
+    eval $O='"$t"'
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 10);
+> O=b ___x_cmd_list_str_head
+1
+DOCTEST
+___x_cmd_list_str_head(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+    local len
+    len="${data%%${LIST_SEP}*}"
+
+    [ "${len:-0}" -eq 0 ] && return 2
+    data="${data#*${LIST_SEP}}"
+    printf "%s" "${data%%${LIST_SEP}*}"
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 10);
+> O=b ___x_cmd_list_str_tail
+10
+DOCTEST
+___x_cmd_list_str_tail(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+    local len
+    len="${data%%${LIST_SEP}*}"
+
+    [ "${len:-0}" -eq 0 ] && return 2
+    printf "%s" "${data##*${LIST_SEP}}"
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 3);
+> O=b ___x_cmd_list_str_map echo
+0 1
+1 2
+2 3
+DOCTEST
+___x_cmd_list_str_map(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+    local len
+    len="${data%%${LIST_SEP}*}"
+    len=${len:-0}
+
+    local body
+    body="${data#*${LIST_SEP}}"
+
+    local f="${1:?function name}"
+
+    local idx=0
+    while [ "$idx" -lt "$len" ]; do
+        "$f" "$idx" "${body%%${LIST_SEP}*}"
+        body="${body#*${LIST_SEP}}"
+        idx=$((idx+1))
+    done
+
+#   I don't know which is better. We shall see in the future in some stress tests.
+#     local line
+#     local i=0
+
+#     ### No...
+#     while read -r line; do
+#         [ "$i" -ne 0 ] && eval "$f" "$i" "$(printf "$line" | tr '\001' '
+# ')"
+#         i=$((i+1))
+#     done <<A
+# $(eval printf "%s" "\$$O" | tr "\n$LIST_SEP" '\001\n' )
+# A
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 10);
+> O=b ___x_cmd_list_str_pop
+10
+> O=b ___x_cmd_list_str_size
+9
+DOCTEST
+___x_cmd_list_str_pop(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+    local len
+    len="${data%%${LIST_SEP}*}"
+    case "${len:-0}" in
+    0)  return 1    ;;
+    1)  printf "%s" "${data#*${LIST_SEP}}"    # body
+        eval $O=0   ;;
+    *)  printf "%s" "${data##*${LIST_SEP}}"
+        local t
+        t="$(printf "%s${LIST_SEP}%s" "$((len-1))" "${data%${LIST_SEP}*}")"
+        eval $O='"$t"'
+        ;;
+    esac
+    return 0
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 10);
+> O=b ___x_cmd_list_str_shift
+1
+> O=b ___x_cmd_list_str_size
+9
+DOCTEST
+___x_cmd_list_str_shift(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+    local len
+    len="${data%%${LIST_SEP}*}"
+    case "${len:-0}" in
+    0)  return 1    ;;
+    1)  printf "%s" "${data#*${LIST_SEP}}"    # body
+        eval $O=0   ;;
+    *)
+        local body
+        body="${data#*${LIST_SEP}}"
+        printf "%s" "${body%%${LIST_SEP}*}"
+
+        body="$( printf "%s${LIST_SEP}%s" "$((len-1))" "${body#*${LIST_SEP}}" )"
+        eval $O="\"\$body\"" ;;
+    esac
+    return 0
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 10);
+> O=b ___x_cmd_list_str_index_of 2
+1
+DOCTEST
+___x_cmd_list_str_index_of(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+
+    eval printf "%s${LIST_SEP}%s" "${1:?Provide value}" "$data" | tr "\n" "\001" | awk -v RS="${LIST_SEP}" -v value="$value" \
+    '
+        BEGIN { exit_code = 1   }
+        NR==1 { value = $0      }
+        NR> 2 {
+            if (value == $0) {
+                print NR-3
+                exit_code = 0
+                exit 0
+            }
+        }
+        END   { exit exit_code  }
+    ' -
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 5);  O=b ___x_cmd_list_str_remove_by_value 3
+> O=b ___x_cmd_list_str_print
+1
+2
+4
+5
+DOCTEST
+___x_cmd_list_str_remove_by_value(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+
+    local s
+    if s="$(printf "%s${LIST_SEP}%s" "${1:?Provide value}" "$data" | tr "\n" "\001" | awk -v RS="${LIST_SEP}" \
+    '
+        BEGIN { exit_code = 1; }
+        NR==1 { value = $0      }
+        NR==2 { num = $0;   result="" }
+        NR> 2 {
+            if (value == $0) {
+                num -= 1
+                exit_code = 0
+            } else {
+                result = result RS $0
+            }
+        }
+        END   {
+            if (exit_code == 0) {
+                result = num result
+                gsub("\001", "\n" result)
+                printf("%s", result)
+            }
+        }
+    ' -)"; then
+
+        eval "$O=\"\$s\""
+    else
+        return 1
+    fi
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 5);  O=b ___x_cmd_list_str_remove 3
+> O=b ___x_cmd_list_str_print
+1
+2
+3
+5
+DOCTEST
+___x_cmd_list_str_remove(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+
+    local len
+    len="${data%%${LIST_SEP}*}"
+    len="${len:-0}"
+
+    local idx=${1:?idx}
+
+    local s
+    if s="$(printf "%s" "$data" | tr "\n" "\001" | awk -v RS="${LIST_SEP}" -v idx="$idx" \
+    '
+        BEGIN { exit_code=1; }
+        NR==1 {
+            len = $0
+            if (idx >= len) exit 1
+            idx += 2
+        }
+        NR> 1 {
+            if (idx == NR) {
+                len -= 1
+                exit_code = 0
+            } else {
+                result = result RS $0
+            }
+        }
+        END   {
+            if (exit_code == 0) {
+                result = len result
+                gsub("\001", "\n" result)
+                printf("%s", result)
+            }
+            exit exit_code
+        }
+    ' -)"; then
+
+        eval "$O=\"\$s\""
+    else
+        return 1
+    fi
+}
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 5);  O=b ___x_cmd_list_str_remove_by_regex [1-3]
+> O=b ___x_cmd_list_str_print
+4
+5
+DOCTEST
+___x_cmd_list_str_remove_by_regex(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+
+    local len
+    len="${data%%${LIST_SEP}*}"
+    len="${len:-0}"
+
+    local s
+    if s="$(printf "%s${LIST_SEP}%s" "${1:?pattern}" "$data" | tr "\n" "\001" | awk -v RS="${LIST_SEP}" -v idx="$idx" \
+    '
+        BEGIN { exit_code=1; }
+        NR==1 {
+            pattern=$0
+        }
+        NR==2 {
+            len = $0
+            if (idx >= len) exit 1
+            idx += 2
+        }
+        NR>=3 {
+            if ($0 ~ pattern) {
+                len -= 1
+                exit_code = 0
+            } else {
+                result = result RS $0
+            }
+        }
+        END   {
+            if (exit_code == 0) {
+                result = len result
+                gsub("\001", "\n" result)
+                printf("%s", result)
+            }
+            exit exit_code
+        }
+    ' -)"; then
+
+        eval "$O=\"\$s\""
+    else
+        return 1
+    fi
+}
+
+___x_cmd_list_str_get_by_value(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+
+    eval printf "%s${LIST_SEP}%s" "${1:?Provide value}" "$data" | tr "\n" "\001" | awk -v RS="${LIST_SEP}" \
+    '
+        BEGIN { exit_code = 1   }
+        NR==1 { pattern = $0      }
+        NR> 2 {
+            if ($0 == pattern) {
+                print NR-3
+                gsub("\001", "\n", $0)
+                print $0
+                exit_code = 0
+                exit 0
+            }
+        }
+        END   { exit exit_code  }
+    ' -
+}
+
+
+: <<'DOCTEST'
+> ___x_cmd_list_str_make b
+> O=b ___x_cmd_list_str_unshift $(seq 10);
+> O=b ___x_cmd_list_str_get_by_regex "^2$"
+1
+2
+DOCTEST
+___x_cmd_list_str_get_by_regex(){
+    local O="${O:?___x_cmd_list_str_name}"
+    local data
+    data="$(eval printf "%s" "\"\$${O}\"")"
+
+    eval printf "%s${LIST_SEP}%s" "${1:?Provide pattern}" "$data" | tr "\n" "\001" | awk -v RS="${LIST_SEP}" \
+    '
+        BEGIN { exit_code = 1   }
+        NR==1 { pattern = $0      }
+        NR> 2 {
+            if (match($0, pattern)) {
+                print NR-3
+                gsub("\001", "\n", $0)
+                print $0
+                exit_code = 0
+                exit 0
+            }
+        }
+        END   { exit exit_code  }
+    ' -
+}
+

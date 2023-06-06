@@ -1,0 +1,82 @@
+# shellcheck    shell=dash
+
+x log init retry
+
+___x_cmd_retry___main(){
+    [ "$#" -gt 0 ] || {
+        ___x_cmd_retry___help
+        return
+    }
+
+    local ___X_CMD_RETRY_MAX_RETRY=2
+    local ___X_CMD_RETRY_INTERVAL=1
+
+    local ___X_CMD_RETRY_LOG_LEVEL
+    local ___X_CMD_LOG_LEVEL_DEFAULT="${___X_CMD_LOG_LEVEL_DEFAULT}"
+    local ___X_CMD_RETRY_LOGCTRL
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)                 shift; break ;;
+            -m|--max)           ___X_CMD_RETRY_MAX_RETRY="${2:?Please provide value after $1}";      shift 2 ;;
+            -i|--interval)      ___X_CMD_RETRY_INTERVAL="${2:?Please provide value after $1}";       shift 2 ;;
+            *)
+                # Standardize.
+                case "$1" in
+                    -h|--help)          ___x_cmd_retry___help;              return  ;;
+                    -5|-4|-3|-2|-1)     ___X_CMD_LOG_LEVEL_DEFAULT=${1#-};  shift   ;;
+                    --quiet)            ___X_CMD_LOG_LEVEL_DEFAULT=5;       shift   ;;
+                    --debug)            ___X_CMD_LOG_LEVEL_DEFAULT=1;       shift   ;;
+                    --log)              ___X_CMD_RETRY_LOGCTRL=${2:?Provide log control string}; shift 2 ;;
+                    *)                  break
+                esac
+        esac
+    done
+
+    ___x_cmd_retry___main_run "$@"
+
+    # if [ -z "$___X_CMD_RETRY_LOG_LEVEL" ]; then         ___x_cmd_retry___main_run "$@"
+    # else
+    #     x log run "retry/$___X_CMD_RETRY_LOG_LEVEL" --  ___x_cmd_retry___main_run "$@"
+    # fi
+}
+
+___x_cmd_retry___main_run(){
+    local x_
+    local ___X_CMD_RETRY_EXITCODE
+    local ___X_CMD_RETRY_ATTEMPT_IDX=0; while true; do
+        [ "$___X_CMD_RETRY_ATTEMPT_IDX" -eq 0 ] || retry:debug "Retry now: $___X_CMD_RETRY_ATTEMPT_IDX/$___X_CMD_RETRY_MAX_RETRY"
+
+        ___X_CMD_RETRY_EXITCODE=0
+        "$@" || ___X_CMD_RETRY_EXITCODE="$?"
+        case "$___X_CMD_RETRY_EXITCODE" in
+            130)
+                ___x_cmd_joinifs_ " " "$@"
+                retry:warn "Interrupted(ExitCode=130) during running: $x_"
+                return 130
+                ;;
+            0)  return 0
+                ;;
+        esac
+
+        ___x_cmd_joinifs_ " " "$@";
+        retry:info "Command exit with code=$___X_CMD_RETRY_EXITCODE]: $x_"
+        if [ "$___X_CMD_RETRY_ATTEMPT_IDX" -ge "$___X_CMD_RETRY_MAX_RETRY" ]; then
+            x:error "Fail after ${___X_CMD_RETRY_MAX_RETRY} retry: $x_"
+            return "$___X_CMD_RETRY_EXITCODE"
+        fi
+
+        ___X_CMD_RETRY_ATTEMPT_IDX=$((___X_CMD_RETRY_ATTEMPT_IDX+1))
+
+        retry:debug "Retry after $___X_CMD_RETRY_INTERVAL second(s)"
+        command sleep "$___X_CMD_RETRY_INTERVAL" || {
+            retry:warn "___x_cmd_retry: Interrupted during sleep: interval=$___X_CMD_RETRY_INTERVAL"
+            return 130
+        }
+    done
+}
+
+# shellcheck disable=2120
+___x_cmd_retry___help(){
+    x help -m retry "$@"
+}

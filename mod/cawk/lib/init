@@ -1,0 +1,70 @@
+
+___x_cmd_cawk_init(){
+    # command gawk
+    # Notice: I could just detect but it involve subshell invoked, the cost of which is not worth it.
+
+    # bsd awk cannot -f -e
+    # busybox awk -f -e cannot works ==> This is very important.
+    # all code using the awk
+
+    if x hascmd gawk; then      ___X_CMD_CAWK_IMPL=gawk
+    # elif x hascmd mawk; then    ___X_CMD_CAWK_IMPL=mawk
+    else
+        # BUG: If the user remove the original awk. The file need update.
+        # AWK inside check the current awk is as what ___X_CMD_CAWK_IMPL told us.
+        [ -f "${___X_CMD_ROOT_DATA}/cawk/current_awk" ] || {
+            x ensurefp "${___X_CMD_ROOT_DATA}/cawk/current_awk"
+            printf "%s=%s\n" ___X_CMD_CAWK_IMPL "$(___x_cmd_cawk_detect)" \
+                >"${___X_CMD_ROOT_DATA}/cawk/current_awk"
+        }
+        . "${___X_CMD_ROOT_DATA}/cawk/current_awk"
+    fi
+    ___x_cmd_cawk___init
+}
+
+___x_cmd_cawk_detect(){
+    local helpmsg;      helpmsg="$(command awk -Wv 2>&1)"
+    case "$helpmsg" in
+        *BusyBox*)      ___X_CMD_CAWK_IMPL=busybox  ;;
+        *mawk*)         ___X_CMD_CAWK_IMPL=mawk     ;;
+        *GNU*|*gawk*)   ___X_CMD_CAWK_IMPL=gawk     ;;
+        *nawk*)         ___X_CMD_CAWK_IMPL=nawk     ;;
+        *)              ___X_CMD_CAWK_IMPL=bsdawk   ;;
+    esac
+    printf "%s\n" "$___X_CMD_CAWK_IMPL"
+}
+
+___x_cmd_cawk___init(){
+    case "$___X_CMD_CAWK_IMPL" in
+        mawk)
+            # Make sure the line input isn't too long
+            ___x_cmd_cawk___run(){
+                command mawk -W interactive \
+                -f "$___X_CMD_ROOT_MOD/cawk/lib/awk/fix_mawk_strtonum.awk" \
+                "$@"
+            }
+            ;;
+        gawk|nawk)
+            ___x_cmd_cawk___run(){
+                # If there is gawk/nawk
+                command "$___X_CMD_CAWK_IMPL" "$@"
+            }
+            ;;
+        "")
+            x:error "Fail to find out awk implementation"
+            ___x_cmd_cawk___run(){
+                command awk "$@"
+            }
+            ;;
+        *)
+            ___x_cmd_cawk___run(){
+                # If there is busybox or bsdawk
+                LC_ALL=C \
+                ___X_CMD_AWK_WCWDITH_WITH_C=1 \
+                command awk "$@"
+            }
+            ;;
+    esac
+}
+
+___x_cmd_cawk_init

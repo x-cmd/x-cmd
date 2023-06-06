@@ -1,0 +1,3 @@
+{
+    print urldecode( $0 )
+}

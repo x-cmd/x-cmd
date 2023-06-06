@@ -1,0 +1,82 @@
+# shellcheck shell=dash
+
+# ___x_cmd_ws___searchpath_(){
+#     local x_
+#     if ___X_CMD_LOCATEFOLDER_MODE=-d ___x_cmd_locatefolder_ . "$1" && [ "$x_" != "$HOME" ]; then
+#         ___X_CMD_WS___SEARCHPATH_=$x_
+#     else
+#         ___X_CMD_WS___SEARCHPATH_=
+#     fi
+# }
+
+___x_cmd_ws___searchpath_(){
+    x_=
+    ___X_CMD_LOCATEFOLDER_MODE=-d ___x_cmd_locatefolder_ . "$1"
+}
+
+
+___x_cmd_ws_execfile(){
+    local x_
+    ___x_cmd_ws___searchpath_ . ".x-cmd" || {
+        printf "Workspace .x-cmd fodler Not found: %s\n" "$PWD" >&2
+        return 1
+    }
+
+    if [ $# -ge 1 ] && [ -f  "$x_/.x-cmd/$1" ]; then
+        ___x_cmd_ws___exe_workspace "$x_/.x-cmd/$1" "$@"
+    elif [ -f  "$x_/.x-cmd/X" ]; then
+        ___x_cmd_ws___exe_workspace "$x_/.x-cmd/X" "$@"
+    else
+        ws:error "[Resource Name=$1] or X file Not found in the workspace: $x_/.x-cmd"
+    fi
+}
+
+# Section : Find And Execute at .x-cmd folder
+
+___x_cmd_ws___exe_workspace(){
+    local filepath="${1:?filepath}"
+    if [ -L "$filepath" ]; then
+        local ___X_CMD_FOLLOWLINK_
+        local x_
+        ___x_cmd_followlink_ "$filepath"
+        ___x_cmd_abspath_ "$___X_CMD_FOLLOWLINK_"
+        filepath="$x_"
+    fi
+
+    shift
+    if [ -x "$filepath" ]; then
+        exec 3>&1
+        local err
+        if err="$("$filepath" "$@" 2>/dev/stdout 1>&3)"; then
+            exec 3<&-
+            printf "%s\n" "$err" >&2
+            return
+        else
+            local code=$?
+            # Bad interpreter
+            if [ $code != 126 ] && [ $code != 127 ] && [ "${err%Permission denied}" = "$err" ]; then
+                ___x_cmd_solo___exec "$filepath" "$@"
+                return
+            fi
+        fi
+    fi
+
+     # workspace
+
+    local x_
+    ___x_cmd_abspath_ "$filepath"
+    local ___X_CMD_WSROOT="${x_%/.x-cmd/*}"
+    export ___X_CMD_WSROOT
+
+    ___x_cmd_solo___exec "$filepath" "$@"
+    local code=$?
+    if [ $code -eq 126 ]; then
+        cat >&2 <<A
+Cannot find out how to execute the file: "$filepath". Please specify the execution engine. For more information, consult 'x help'
+A
+    fi
+    return $code
+
+}
+
+## EndSection

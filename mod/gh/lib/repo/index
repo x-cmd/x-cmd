@@ -1,0 +1,453 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+xrc:mod:lib gh \
+    repo/util \
+    repo/apply/index \
+    repo/collaborator/index \
+    repo/collaborator/invitation \
+    repo/branch/index \
+    repo/webhook/index \
+    repo/pr/index \
+    repo/release/index \
+    repo/release/attachment \
+    repo/label/index \
+    repo/topic/index
+
+___x_cmd_gh_repo(){
+    param:scope  ___x_cmd_github
+    param:subcmd ___x_cmd_gh_repo                               \
+        app             "Interactive UI show repo by owner"     \
+        "browse|b"      "Open Github repo in the web browser"   \
+        ls              "List repo by owner"                    \
+        info            "Show repo detailed information"        \
+        create          "Create repo"                           \
+        "edit|ed"       "Edit repo information"                 \
+        rename          "Rename repo"                           \
+        "cl|clone"      "Clone repo from github"                \
+        fork            "Fork repo from github"                 \
+        download        "Download repo archive from github"     \
+        rm              "Remove repo"                           \
+        tag             "List repo tags"                        \
+        team            "List repository teams"                 \
+        apply           "Manage repo by declare configure"      \
+        collaborator    "Manage repo collaborator"              \
+        pr              "Manage repo pr"                        \
+        hook            "Manage repo webhook"                   \
+        branch          "Manage repo branch"                    \
+        release         "Manage repo release"                   \
+        label           "Manage repo label"                     \
+        topic           "Manage repo topics"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_repo _param_help_doc
+    return 1
+}
+
+# Section: App
+# shellcheck disable=SC2154
+___x_cmd_gh_repo_app() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --type          "type"                                      <>="all"    = all private public
+    --sort          "sort"                                      <>:UserSort="updated"
+    --direction     "direction"                                 <>:Direction="desc"
+    --per_page      "Results per page"                          <>="30"
+    --page          "Page number of the results to fetch."      <>="1"
+'
+    param:run
+
+    local owner_type=user
+    [ -z "$1" ] || {
+        if ! owner_type="$(___x_cmd_gh_owner_type_query "$1")"; then
+            gh:error "No found any onwer type. Please check owner exist $1"
+            return 1
+        fi
+    }
+    "___x_cmd_gh_${owner_type}_repo_app"  --sort "$sort" --direction "$direction" --type "$type"  \
+        --per_page "$per_page" --page "$page" "$1"
+}
+# EndSection
+
+# Section: List
+# shellcheck disable=SC2154
+___x_cmd_gh_repo_ls() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --type          "type"                                      <>="all"    = all private public
+    --sort          "sort"                                      <>:UserSort="updated"
+    --direction     "direction"                                 <>:Direction="desc"
+    --per_page      "Results per page"                          <>="30"
+    --page          "Page number of the results to fetch."      <>="1"
+    --json|-j       "output json data"
+'
+    param:run
+
+    local owner_type=user
+    [ -z "$1" ] || {
+        if ! owner_type="$(___x_cmd_gh_owner_type_query "${1%%/*}")"; then
+            gh:error "No found any onwer type. Please check owner exist $1"
+            return 1
+        fi
+    }
+    "___x_cmd_gh_${owner_type}_repo_ls" --sort "$sort" --direction "$direction" --type "$type" \
+        --per_page "$per_page" --page "$page" ${json:+"--json"} "${1%%/*}"
+}
+# EndSection
+
+# Section: Info
+# https://docs.github.com/en/rest/repos/repos#get-a-repository
+___x_cmd_gh_repo_info() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "<owner_path>/<repo_path>"      <>:RepoName
+    --json|-j       "output json data"
+'
+    param:run
+    local repo="$1"
+    ___x_cmd_gh_param_init_owner_repo
+
+    ___x_cmd_gh_curl get "/repos/${owner_repo}" | ___x_cmd_gh_repo____ui_handler Info
+}
+
+# EndSection
+
+# Section: Create
+# shellcheck disable=SC2034,SC2154
+___x_cmd_gh_repo_create() {
+
+    param:scope     ___x_cmd_github
+    param:dsl       '
+type:
+    access  =   private public
+option:
+    #1                          "repo names"                                                            <>
+
+    --access                    "private,public"                                                        <>:access=private
+    --description               "description"                                                           <>:Repo_Description=""
+    --homepage                  "homepage"                                                              <>=""
+    --team_id                   "the id of the team that will be granted access to this repository"     <>=""
+    --gitignore_template        "The desired language or platform to apply to the .gitignore."          <>:Ignore=""
+    --license_template          "The license keyword of the open source license for this repository."   <>:License=""
+
+    --no_wiki                   "Whether to disable wiki"
+    --no_issues                 "Whether to disable issue"
+    --no_projects               "Whether to disable has_projects"
+    --no_squash_merge           "Whether to allow squash merges for pull requests."
+    --no_merge_commit           "Whether to allow merge commits for pull requests."
+    --no_rebase_merge           "Whether to allow rebase merges for pull requests."
+    --auto_init                 "auto init README"
+    --is_template               "can be used to generate new repositories"
+    --allow_auto_merge          "Whether to allow Auto-merge to be used on pull requests,Default:false"
+    --delete_branch_on_merge    "Whether to delete head branches when pull requests are merged"
+    --json|-j                   "output json data"
+'
+    param:run
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (ownerPath/RepoPath), received empty' arg:ret:64
+    [ -z "$json" ] || local ENFORCE_JSON=1
+    local name=""
+    for name in "$@"; do
+        local owner_type=user
+        [ "${name%%/*}" = "$name" ] || {
+            if ! owner_type="$(___x_cmd_gh_owner_type_query "${name%%/*}")"; then
+                gh:error "No found any onwer type. Please check ${name%%/*} owner exist"
+                return 1
+            fi
+        }
+
+        "___x_cmd_gh_${owner_type}_repo_create" --access "${access}"   ${description:+"--description"} ${description:+"$description"}   ${homepage:+"--homepage"} ${homepage:+"$homepage"}  \
+            ${team_id:+"--team_id"} ${team_id:+"$team_id"}   ${gitignore_template:+"--gitignore_template"} ${gitignore_template:+"$gitignore_template"}   ${license_template:+"--license_template"} ${license_template:+"$license_template"} \
+            ${no_merge_commit:+"--no_merge_commit"}   ${no_rebase_merge:+"--no_rebase_merge"}   ${no_squash_merge:+"--no_squash_merge"}                     \
+            ${no_issue:+"--no_issue"}                 ${no_projects:+"--no_projects"}           ${auto_init:+"--auto_init"}     ${no_wiki:+"--no_wiki"}     \
+            ${allow_auto_merge:+"--allow_auto_merge"} ${is_template:+"--is_template"}           ${delete_branch_on_merge:+"--delete_branch_on_merge"}       \
+            "$name"
+    done
+}
+# EndSection
+
+# Section: Edit
+# https://docs.github.com/en/rest/repos/repos#update-a-repository
+# shellcheck disable=SC2034,2154
+___x_cmd_gh_repo_edit() {
+  param:scope     ___x_cmd_github
+    param:dsl       '
+type:
+    Access  =   private public internal ""
+option:
+    #1                          "<owner_path>/<repo_path>"                                              <>:RepoName
+    --name                      "repo alias"                                                            <>=""
+    --access                    "private,public"                                                        <>:Access=""
+    --default_branch            "Updates the default branch for this repository."                       <>=""
+    --team_id                   "the id of the team that will be granted access to this repository"     <>=""
+    --homepage                  "homepage"                                                              <>=""
+    --description               "description"                                                           <>=""
+
+    --advanced_security         "enable or disable GitHub Advanced Security for this repository."       <>:Status=""
+    --scanning                  "enable or disable secret scanning for this repository"                 <>:Status=""
+    --scanning_push_protection  "enable or disable secret scanning push protection for this repository" <>:Status=""
+    --no_issues                 "Whether to disable issue"
+    --no_projects               "Whether to disable has_projects"
+    --no_wiki                   "Whether to disable wiki"
+    --no_squash_merge           "Whether to allow squash merges for pull requests."
+    --no_merge_commit           "Whether to allow merge commits for pull requests."
+    --no_rebase_merge           "Whether to allow rebase merges for pull requests."
+    --allow_auto_merge          "Whether to allow Auto-merge to be used on pull requests,Default:false"
+    --delete_branch_on_merge    "Whether to delete head branches when pull requests are merged"
+    --allow_forking             "allow private forks."
+    --archived                  "Mark this repository as archived and read-only."
+    --is_template               "can be used to generate new repositories"
+    --yes|-y                    "Ignore access private prompt interception"
+    --json|-j                   "output json data"
+'
+    param:run
+    local repo="$1"
+    ___x_cmd_gh_param_init_owner_repo
+
+    local private=""
+    local visibility=""
+    case "$access" in
+        private)
+            private=true
+            [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to edit $1 repository access to $(___x_cmd_ui bold red "$access") ?${___X_CMD_UNSEENCHAR_NEWLINE}  - Will only authorized users will have access${___X_CMD_UNSEENCHAR_NEWLINE}  - Will loss of all stars and watchers${___X_CMD_UNSEENCHAR_NEWLINE}" || return 1
+            ;;
+        public)         private=false           ;;
+        internal)       visibility=internal     ;;
+    esac
+
+    [ -n "$scanning" ] || unset scanning
+    [ -n "$advanced_security" ] || unset advanced_security
+    [ -n "$scanning_push_protection" ] || unset scanning_push_protection
+    xrc jo
+    local security=""
+    security="$(___x_cmd_jo "{
+            security_and_analysis:{
+                secret_scanning:{
+                    ${scanning+"status: $scanning"}
+                },
+                advanced_security:{
+                    ${advanced_security+"status: $advanced_security"}
+                },
+                secret_scanning_push_protection:{
+                    ${scanning_push_protection+"status: $scanning_push_protection"}
+                }
+            }
+        }"
+    )"
+
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json -repo -access +security "${private:+"+private"}" "${visibility:+"+visibility"}" \
+        has_issues=^no_issues                   has_wiki=^no_wiki                       has_projects=^no_projects \
+        allow_rebase_merge=^no_rebase_merge     allow_squash_merge=^no_squash_merge     allow_merge_commit=^no_merge_commit)"
+    gh:debug "$gen_gh_json"
+
+    printf "%s" "${gen_gh_json}"  | ___x_cmd_gh_curl patch "/repos/${owner_repo}" "@-" | ___x_cmd_gh_repo____ui_handler Edit
+}
+
+
+# EndSection
+
+# Section: Rename
+# shellcheck disable=SC2154
+___x_cmd_gh_repo_rename() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "Repo Rename"                          <>
+    --repo|-r       "<owner_path>/<repo_path>"             <>:RepoName
+    --json|-j       "output origin json data"
+    --yes|-y        "Ignore rename prompt interception"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    local name="${1##*/}"
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to rename repository $(___x_cmd_ui bold red "$owner_repo => ${owner_repo%/*}/${name}") ?" || return 1
+
+    gh:debug "repo rename $name"
+    ___x_cmd_gh_curl patch "/repos/${owner_repo}" -- name | ___x_cmd_gh_repo____ui_handler Edit
+}
+# EndSection
+
+# Section: Remove
+# https://docs.github.com/en/rest/repos/repos#delete-a-repository
+___x_cmd_gh_repo_rm() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1          "<owner_path>/<repo_path>"               <>
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(s) (ownerPath/RepoPath), received empty' arg:ret:64
+    local owner_repo=""
+    local i=""
+    for i in "$@"; do
+        ___x_cmd_gh_param_normalize_repo "$i"
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete repo : $(___x_cmd_ui bold red "$owner_repo") ?" || continue
+        ___x_cmd_gh_curl del "/repos/$owner_repo" | (
+                [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+                x jo env . gh_resp_msg=.message gh_resp_err=.errors
+                if ___x_cmd_gh_http_error; then
+                    ___x_cmd_ui_tf  true "[Success]: Deleting repo $owner_repo"
+                else
+                    ___x_cmd_ui_tf false "Deleting repo $owner_repo failure:" >&2
+                    ___x_cmd_gh____handle_resp
+                    return 1
+                fi
+            )
+    done
+}
+# EndSection
+
+# Section: Browse
+___x_cmd_gh_repo_browse(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1           "<owner_path>/<repo_path>"      <>:RepoName=""
+A
+    param:run
+    local repo="$1"
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='accepts 1 arg (<owner>/<repo>), received empty' arg:ret:64
+    local _endpoint=""; _endpoint=$(___x_cmd_gh___get_web_endpoint)
+    x open "${_endpoint}/${owner_repo}"
+}
+# EndSection
+
+# Section: Download
+# shellcheck disable=2154,SC2034
+___x_cmd_gh_repo_download(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1              "<ownerPath>/<RepoPath> or <ownerPath>/<RepoPath>#<ref>"        <>
+    #2              "output file path"                                              <>=""
+A
+    param:run
+    local repo="$1"
+    local ref=""
+    case "$repo" in
+        *@*)
+            repo="${1%'@'*}"
+            ref="${1##*'@'}"
+            ;;
+        *)
+            x jo env . ref=.default_branch <<A
+            $(___x_cmd_gh_repo_info --json "$repo")
+A
+            if [ -z "$ref" ]; then
+                gh:error "Can not get default branch of repo $repo. Please have check it."
+                return 1
+            fi
+            ;;
+    esac
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='accepts 1 arg (<owner>/<repo>), received empty' arg:ret:64
+
+    local gh_output="$2"
+    local ball_type="tarball"
+    case "$gh_output" in
+        "")             gh_output="./${owner_repo%/*}-${owner_repo##*/}-${ref}.tar.gz"  ;;
+        *.zip)          ball_type="zipball";;
+        *.tar.gz|*.tgz) ;;
+        *)              gh:error "Unsupported output file type $gh_output. Please use tar.gz or zip file type."; return 1;;
+    esac
+
+    if ! ___x_cmd_gh_curl download "/repos/${owner_repo}/${ball_type}/${ref}" "$gh_output"; then
+        [ "$(___x_cmd_gh_resp_code)" != 404 ] || gh:warn "Possible the repository is empty or no exist. Please have check it."
+        x rmrf "$gh_output"
+    fi
+}
+
+# EndSection
+
+# Section: repo Tags ls
+# https://docs.github.com/en/rest/repos/repos#list-repository-tags
+___x_cmd_gh_repo_tag(){
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                              <>:RepoName=""
+    --per_page      "Results per page"                                      <>="30"
+    --page          "Page number of the results to fetch."                  <>="1"
+    --json|-j       "output json data"
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/tags"
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/tags" | \
+            x jo 2c            .name .commit.sha | \
+            x csv header --add  Name  Commit     | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: repo team ls
+# https://docs.github.com/en/rest/repos/repos#list-repository-teams
+# shellcheck disable=SC2034
+___x_cmd_gh_repo_team(){
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                  <>:RepoName=""
+    --per_page      "Results per page"                          <>="30"
+    --page          "Page number of the results to fetch."      <>="1"
+    --json|-j       "output json data"
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/teams"
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/teams" | \
+            x jo 2c            .name .slug .privacy .permission .description | \
+            x csv header --add  Name  Slug  Privacy  Permission  Description | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: repo UI
+___x_cmd_gh_repo____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        local _id=""
+        case "$1" in
+            Info)
+                x jo env . _id=.id url=.html_url gh_resp_msg=.message gh_resp_err=.errors \
+                    full_name=.full_name visibility=.visibility
+                _data="full_name=.full_name visibility=.visibility"
+                _inf_msg="Getting $owner_repo repo information successfully"
+                _err_msg="Getting $owner_repo repo information failure"
+                ;;
+            Creating|Edit)
+                x jo env . _id=.id url=.html_url gh_resp_msg=.message gh_resp_err=.errors \
+                    owner=.owner.login
+                _inf_msg="$1 repo ${owner_repo:-$name} successfully"
+                _err_msg="$1 ${owner_repo:-$name} repo failure"
+                ;;
+        esac
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${full_name:+"Name: $full_name"}  ${owner:+"Repo_Owner: $owner"} ${visibility:+"Visibility: $visibility"} ${url:+"URL: $url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

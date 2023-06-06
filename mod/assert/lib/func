@@ -1,0 +1,72 @@
+# shellcheck shell=dash
+___x_cmd_assert___main_func(){
+    local op="${1:?Must contains an op}"
+    shift
+    local IFS=" "
+    case "$op" in
+        return-*)           ___x_cmd_assert_returnn "${op#return-}" "$@" ;;
+
+        exit-0)             ___x_cmd_assert_exit0 "$@" ;;
+        exit-*)             ___x_cmd_assert_exitn "${op#exit-}" "$@" ;;
+
+        stdout)             ___x_cmd_assert_stdout "$@" ;;
+        stderr)             ___x_cmd_assert_stderr "$@" ;;
+
+        ypart)              ___x_cmd_assert_ypart "$@" ;;
+
+        !)                  ___x_cmd_assert_f "$@" ;;
+        *)                  ___x_cmd_assert_t "$op" "$@" ;;
+    esac
+}
+
+# Section: value true false int float
+
+___x_cmd_assert_t(){                "$@"  || M="${MSG:-"Expect command execution to be true: $*"}" _assert:return 1;  }
+___x_cmd_assert_f(){            !   "$@"  || M="${MSG:-"Expect command execution to be false: $*"}" _assert:return 1;  }
+
+___x_cmd_assert_return0(){           ("$@")  || M="${MSG:-"Expect command return 0: $*"}" _assert:return 1;       }
+___x_cmd_assert_exit0(){             ("$@")  || M="${MSG:-"Expect command execution exist normally: $*"}" _assert:return 1;       }
+___x_cmd_assert_errexit(){      ! ( "$@"; return 0; )   || M="${MSG:-"Expect command execution to be errexit: $*"}" _assert:return 1;       }
+
+___x_cmd_assert_returnn(){
+    local code="${1:?Provide exit code}"; shift
+    { [ "$code" -ge 0 ] && [ "$code" -le 255 ]; } || M="Expect return code 0 to 255" _assert:return 1
+
+    [ "$code" -gt 0 ] || {
+        ___x_cmd_assert_return0 "$@"
+        return
+    }
+
+    if ("$@"); then                       M="${MSG:-"Expect command $*: return $code"}"   _assert:return 1
+    else
+        local errcode=$?
+        [ "$errcode" -eq "$code" ] ||   M="${MSG:-"Expect command return $errcode: $*"}" _assert:return 1
+    fi
+}
+
+___x_cmd_assert_exitn(){
+    local code="${1:?Provide exit code}"; shift
+    { [ "$code" -ge 0 ] && [ "$code" -le 255 ]; } || M="Expect exit1 to exit255" _assert:return 1
+
+    [ "$code" -gt 0 ] || {
+        ___x_cmd_assert_exit0 "$@"
+        return
+    }
+
+    if ("$@" 2>/dev/null); then
+        M="${MSG:-"Expect command execution to be errexit but exit with 0: $*"}" _assert:return 1
+    else
+        local errcode=$?
+        [ "$errcode" -eq "$code" ] || M="${MSG:-"Expect command execution to be errexit with $code but exit with $errcode: $*"}" _assert:return 1
+    fi
+}
+
+### EndSection
+
+# Section: value and grep
+___x_cmd_assert_stdout(){   ___x_cmd_assert_eq "$(cat)" "$("$@")"; }
+___x_cmd_assert_stderr(){   ___x_cmd_assert_eq "$(cat)" "$("$@" 2>/dev/stdout 1>/dev/null)";    }
+
+___x_cmd_assert_grep(){     command grep "$@" 1>/dev/null || M="${MSG:-Grep Failed: grep $@}" _assert:return 1;  }
+
+## EndSection
