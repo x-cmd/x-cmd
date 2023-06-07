@@ -21,10 +21,10 @@ function user_form_data_parse(o, kp, argstr,        i, j, l, _l, _, argarr, arr,
     comp_form_data_desc_width(o, kp, _desc_mw)
     comp_form_model_end(o, kp)
 
-    if ( l < ( tapp_canvas_rowsize_get() - 4)) {
-        ROW_RECALULATE = l + 4 + ((has_select) ? 3 : 0)
-        tapp_canvas_has_changed()
-    }
+    if ( l < ( tapp_canvas_rowsize_get() - 4))  ROW_RECALULATE = l + 4 + ((has_select) ? 3 : 0)
+    else if ((l+4) < ROWS - 1)                  ROW_RECALULATE = l + 4
+    else                                        ROW_RECALULATE = ROWS - 1
+    tapp_canvas_has_changed()
 }
 function tapp_init(){
     ___X_CMD_TUI_FORM_ARGSTR = ENVIRON[ "___X_CMD_TUI_FORM_ARGSTR" ]

@@ -25,7 +25,7 @@ function draw_form(o, kp, x1, x2, y1, y2, opt, \
     x1+=_padding; x2-=_padding; y1+=_padding; y2-=_padding
 
     _draw_body    = draw_form___on_body( o, kp, x1, x2-1, y1, y2, opt )
-    _draw_sel     = draw_form___on_sel( o, kp, x1, x2-1, y1, y2, opt )
+    _draw_sel     = draw_form___on_select( o, kp, x1, x2-1, y1, y2, opt )
     _draw_button  = draw_form___on_button( o, kp, x2, x2, y1, y2, opt )
 
     return _draw_box _draw_body _draw_button _draw_sel
@@ -39,7 +39,7 @@ function draw_form___on_box(o, kp, x1, x2, y1, y2, opt,         _color){
 }
 
 function draw_form___on_body(o, kp, x1, x2, y1, y2, opt, \
-    row, col, _width, _desc_width, lw, rw, r, l, i, s, _start){
+    row, col, _width, _desc_width, lw, rw, r, l, i, s, _start, _end){
     if (! opt_get( opt, "form.body.change" )) return
     _next_line = "\r\n" painter_right( y1 )
     row = x2-x1;  col = y2-y1+1
@@ -53,15 +53,18 @@ function draw_form___on_body(o, kp, x1, x2, y1, y2, opt, \
     opt_set( opt, "form.right.with",    rw )
 
     r = opt_getor( opt, "form.currow", 1 )
-    l = opt_getor( opt, "form.len", 1 )
-    if ((r + row - 1) < l) _start = r
-    else _start = l - row + 1
-    _start = (_start > 0) ? _start : 1
-    opt_set( opt, "draw.body.start", _start )
-    opt_set( opt, "draw.body.end",   _start+row-1 )
+    _start = opt_getor( opt, "form.body.start", 1)
+    l = r - _start + 1
+    if (l > row) _start = r - row + 1
+    else if (l <= 0) _start = r
 
+    _end = _start + row - 1
+    opt_set( opt, "form.body.start", _start )
+    opt_set( opt, "form.body.end",   _end )
+
+    l = opt_getor( opt, "form.len", 1 )
     s = draw_form___on_cell(o, kp, _start, r, lw, rw, opt)
-    for (i=_start+1; i<=_start+row-1 && i<=l; ++i) {
+    for (i=_start+1; i<=_end && i<=l; ++i) {
         s = s _next_line draw_form___on_cell(o, kp, i, r, lw, rw, opt)
     }
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) s
@@ -91,14 +94,15 @@ function draw_form___on_cell(o, kp, i, currow, lw, rw, opt,             val, des
     }
 }
 
-function draw_form___on_sel(o, kp, x1, x2, y1, y2, opt,             lw, r, _start, _end, _len, l, row, i, gkp, _color, _draw_sel_box, _draw_sel_body){
+function draw_form___on_select(o, kp, x1, x2, y1, y2, opt, \
+    lw, r, _start, _end, _len, l, row, i, gkp, _color, _draw_sel_box, _draw_sel_body){
     if (! opt_get( opt, "form.sel.change" )) return
     if (! opt_get( opt, "form.is_ctrl_form_sel" )) return
     lw = opt_get( opt, "form.left.with" )
     y1 = y1 + lw + TH_FORM_PREFIX_WIDTH + TH_FORM_INTERVAL_WIDTH
-    r = opt_getor( opt, "form.currow", 1 )
-    _start = opt_get( opt, "draw.body.start" )
-    _end = opt_get( opt, "draw.body.end" )
+    r  = opt_getor( opt, "form.currow", 1 )
+    _start = opt_get( opt, "form.body.start" )
+    _end   = opt_get( opt, "form.body.end" )
     i = r - _start + 1
     l = (_len = form_arr_data_select_len(o, kp, r)) + 2
     if (l > 5) l = 5
@@ -122,10 +126,10 @@ function draw_form___on_sel(o, kp, x1, x2, y1, y2, opt,             lw, r, _star
     _draw_sel_body = comp_gsel_paint(o, gkp, x1, x2, y1, y2, true, true)
 
     return _draw_sel_box _draw_sel_body
-
 }
 
-function draw_form___on_button( o, kp, x1, x2, y1, y2, opt,             ci, i, l, v, s, _selected, _unselected ){
+function draw_form___on_button( o, kp, x1, x2, y1, y2, opt, \
+    ci, i, l, v, s, _selected, _unselected ){
     if (! opt_get( opt, "form.button.change" )) return
     ci = opt_get( opt, "form.button.cur-id" )
     l  = form_arr_exit_strategy_len(o, kp)

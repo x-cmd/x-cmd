@@ -48,7 +48,9 @@ function comp_table_handle( o, kp, char_value, char_name, char_type,        r, c
         else _has_no_handle = true
     }
     else if (comp_table_ctrl_search_sw_get(o, kp) == true){
-        if (char_name == U8WC_NAME_CARRIAGE_RETURN) comp_table_ctrl_search_sw_toggle(o, kp)
+        if (char_name == U8WC_NAME_UP)                      comp_table_ctrl_search_dec(o, kp)
+        else if (char_name == U8WC_NAME_DOWN)               comp_table_ctrl_search_inc(o, kp)
+        else if (char_name == U8WC_NAME_CARRIAGE_RETURN)    comp_table_ctrl_search_sw_toggle(o, kp)
         else if (comp_table___search_handle(o, kp, char_value, char_name, char_type)) comp_table___search_date( o, kp )
         else _has_no_handle = true
     }
@@ -146,7 +148,15 @@ function comp_table_ctrl_search_sw_toggle(o, kp){
     ctrl_sw_toggle(o, kp SUBSEP "ctrl.search")
     if (comp_table_ctrl_search_sw_get(o, kp))
         comp_lineedit_init(o, kp SUBSEP "search", "", 30)
+}
+function comp_table_ctrl_search_dec(o, kp){
+    r = comp_table_get_focused_row(o, kp)
+    comp_table___search_date(o, kp, r, -1)
+}
 
+function comp_table_ctrl_search_inc(o, kp){
+    r = comp_table_get_focused_row(o, kp)
+    comp_table___search_date(o, kp, r, +1)
 }
 
 function comp_table___search_get(o, kp){    return comp_lineedit_get(o, kp SUBSEP "search");  }
@@ -159,15 +169,19 @@ function comp_table___search_handle(o, kp, char_value, char_name, char_type){
         return true
     }
 }
-function comp_table___search_date(o, kp,        _search, l, c, i){
-    l = comp_table_model_maxrow(o, kp)
+function comp_table___search_date(o, kp, r, step,        _search, l, c, i){
     c = comp_table_get_cur_col(o, kp)
     if ((_search = comp_table___search_get(o, kp)) == "") return
-    for (i=1; i<=l; ++i){
-        if (index(table_arr_get_data(o, kp, i, c), _search) > 0) {
-            ctrl_page_set( o, kp, i )
-            return
-        }
+    step = (step) ? step : 1
+    if (step > 0) {
+        l = comp_table_model_maxrow(o, kp)
+        for (i=r+1; i<=l; i+=step)
+            if (index(table_arr_get_data(o, kp, i, c), _search) > 0)
+                return ctrl_page_set( o, kp, i )
+    } else {
+        for (i=r-1; i>=1; i+=step)
+            if (index(table_arr_get_data(o, kp, i, c), _search) > 0)
+                return ctrl_page_set( o, kp, i )
     }
 }
 # EndSection

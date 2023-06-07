@@ -10,10 +10,9 @@ function comp_form_init(o, kp, exit_strategy, tf){
 
 # Section: ctrl handle
 function comp_form_handle(o, kp, char_value, char_name, char_type,          _has_no_handle, r, v){
+    if ( o[ kp, "TYPE" ] != "form" ) return false
     if (!comp_form_is_ctrl_exit_strategy(o, kp)) {
-        if (comp_form___set_handle( o, kp, char_value, char_name, char_type )) {
-            change_set( o, kp, "form.body" )
-            change_set( o, kp, "form.sel" )
+        if (comp_form___ctrl_lineeditadvise( o, kp, char_value, char_name, char_type )) {
             r = comp_form_get_cur_row(o, kp)
             if (comp_form_data_is_select(o, kp, r) && ctrl_sw_get(o, kp SUBSEP "ctrl.form.sel")){
                 comp_form_data_lineedit_put_sel(o, kp, r)
@@ -43,6 +42,8 @@ function comp_form_handle(o, kp, char_value, char_name, char_type,          _has
                 ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
                 change_set( o, kp, "form.sel" )
             }
+            change_set( o, kp, "form.body" )
+            return true
         }
         else if ((char_name == U8WC_NAME_DOWN) \
                 || (char_name == U8WC_NAME_CARRIAGE_RETURN)){
@@ -58,20 +59,18 @@ function comp_form_handle(o, kp, char_value, char_name, char_type,          _has
                     change_set( o, kp, "form.sel" )
                 }
             }
+            change_set( o, kp, "form.body" )
+            return true
         }
-
-        change_set( o, kp, "form.body" )
     }
-    else if (comp_form_ctrl_exit_strategy(o, kp, char_value, char_name, char_type)) {
+    else if (comp_form___ctrl_exit_strategy(o, kp, char_value, char_name, char_type)) {
         change_set( o, kp, "form.button" )
+        return true
     }
-
-
-    return ( _has_no_handle == true ) ? false : true
+    else return false
 }
 
-
-function comp_form_ctrl_exit_strategy(o, kp, char_value, char_name, char_type){
+function comp_form___ctrl_exit_strategy(o, kp, char_value, char_name, char_type){
     if ((char_name == U8WC_NAME_UP) || (char_name == U8WC_NAME_DOWN))   {
         ctrl_sw_toggle(o, kp SUBSEP "ctrl.exit.strategy")
         change_set( o, kp, "form.body" )
@@ -83,7 +82,7 @@ function comp_form_ctrl_exit_strategy(o, kp, char_value, char_name, char_type){
     return true
 }
 
-function comp_form___set_handle(o, kp, char_value, char_name, char_type,        r){
+function comp_form___ctrl_lineeditadvise(o, kp, char_value, char_name, char_type,        r){
     r = comp_form_get_cur_row(o, kp)
     if (comp_lineeditadvise_handle(o, kp SUBSEP "lineedit" SUBSEP r, char_value, char_name, char_type )){
         comp_form_data_val(o, kp, r, comp_lineeditadvise_get(o, kp SUBSEP "lineedit" SUBSEP r), true)
@@ -113,8 +112,8 @@ function comp_form_data_add(o, kp, var, desc, val,       l){
     return l
 }
 
-function comp_form_get_data_len(o, kp){      return form_arr_get_data_len(o, kp);       }
-function comp_form_get_data_var(o, kp, i){   return form_arr_get_data_var(o, kp, i);    }
+function comp_form_get_data_len(o, kp){                return form_arr_get_data_len(o, kp);                 }
+function comp_form_get_data_var(o, kp, i){             return form_arr_get_data_var(o, kp, i);              }
 function comp_form_data_desc_width(o, kp, v){          return form_arr_data_desc_width(o, kp, v);           }
 function comp_form_data_desc(o, kp, i, v, force_set){  return form_arr_data_desc(o, kp, i, v, force_set);   }
 function comp_form_data_val(o, kp, i, v, force_set){   return form_arr_data_val(o, kp, i, v, force_set);    }
@@ -139,12 +138,12 @@ function comp_form_data_sel_put_lineedit(o, kp, r,      v){
     form_arr_data_val(o, kp, r, v, true)
 }
 
-function comp_form_has_exit_strategy_get(o, kp){    return ctrl_sw_get(o, kp SUBSEP "has.exit.strategy"); }
-function comp_form_has_exit_strategy_toggle(o, kp){ return ctrl_sw_toggle(o, kp SUBSEP "has.exit.strategy"); }
-function comp_form_is_ctrl_exit_strategy(o, kp){    return ctrl_sw_get(o, kp SUBSEP "ctrl.exit.strategy"); }
-function comp_form_get_cur_exit_strategy(o, kp){    return ctrl_num_get(o, kp SUBSEP "ctrl.exit.strategy"); }
-function comp_form_exit_strategy_len(o, kp){        return form_arr_exit_strategy_len(o, kp); }
-function comp_form_exit_strategy_get(o, kp, i){     return form_arr_exit_strategy_get(o, kp, i); }
+function comp_form_has_exit_strategy_get(o, kp){        return ctrl_sw_get(o, kp SUBSEP "has.exit.strategy");       }
+function comp_form_has_exit_strategy_toggle(o, kp){     return ctrl_sw_toggle(o, kp SUBSEP "has.exit.strategy");    }
+function comp_form_is_ctrl_exit_strategy(o, kp){        return ctrl_sw_get(o, kp SUBSEP "ctrl.exit.strategy");      }
+function comp_form_get_cur_exit_strategy(o, kp){        return ctrl_num_get(o, kp SUBSEP "ctrl.exit.strategy");     }
+function comp_form_exit_strategy_len(o, kp){            return form_arr_exit_strategy_len(o, kp);                   }
+function comp_form_exit_strategy_get(o, kp, i){         return form_arr_exit_strategy_get(o, kp, i);                }
 function comp_form_exit_strategy_init(o, kp, str,           l, arr){
     if (str == "") str = "execute,exit"
     l = arr_cut(arr, str, ",")
@@ -166,6 +165,7 @@ function comp_form_model_end(o, kp,         r, i, l){
         }
     }
 }
+
 function comp_form_change_set_all(o, kp){
     change_set( o, kp, "form.box" )
     change_set( o, kp, "form.body" )
@@ -194,6 +194,7 @@ function comp_form_paint(o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padd
         opt_set( opt, "form.edit.advise",   comp_lineeditadvise___get_adv(o, kp SUBSEP "lineedit" SUBSEP r))
         opt_set( opt, "form.edit.cursor",   comp_lineeditadvise___cursor_pos(o, kp SUBSEP "lineedit" SUBSEP r))
         opt_set( opt, "form.edit.start",    comp_lineeditadvise___start_pos(o, kp SUBSEP "lineedit" SUBSEP r))
+        opt_set( opt, "form.body.start",    comp_form___draw_body_start(o, kp))
         if ( change_is(o, kp, "form.sel") ) {
             change_unset(o, kp, "form.sel")
             opt_set( opt, "form.sel.change", true )
@@ -214,8 +215,14 @@ function comp_form_paint(o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padd
         if (_desc_w != lw) comp_form_data_desc_width(o, kp)
         if (_edit_w != rw) comp_lineeditadvise_width(o, kp SUBSEP "lineedit" SUBSEP r, rw)
         if (opt_get( opt, "form.sel.unable" )) ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
+        comp_form___draw_body_start(o, kp, opt_getor( opt, "form.body.start", 1))
     }
     return _res
+}
+
+function comp_form___draw_body_start(o, kp, v){
+    if (v == "")    return model_arr_get(o, kp, "draw.body.start")
+    model_arr_set_key_value(o, kp, "draw.body.start", v)
 }
 
 # EndSection
