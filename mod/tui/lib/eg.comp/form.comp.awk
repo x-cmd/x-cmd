@@ -13,6 +13,7 @@ function user_form_data_parse(o, kp, argstr,        i, j, l, _l, _, argarr, arr,
         }
         else if (arr[4] == "=") {
             has_select = true
+            delete _
             for (j=5; j<=_l; ++j) arr_push(_, arr[j])
             comp_form_data_set_setect_arr(o, kp, i, _)
             comp_form_set_advise_fromarr(o, kp, i, _)

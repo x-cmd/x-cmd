@@ -45,7 +45,7 @@ function arg_typecheck_then_generate_code( option_id, optarg_id, arg_var_name, _
     _ret = assert( optarg_id, arg_var_name, _arg_val )
     if ( _ret == true )                     code_append_assignment( arg_var_name, _arg_val, true )
     else if ( ! is_interactive() )          panic_error( _ret )
-    else                                    code_query_append_by_optionid_optargid( arg_var_name, option_id, optarg_id )
+    else                                    code_query_append_by_optionid_optargid( arg_var_name, option_id, optarg_id, _arg_val )
 }
 
 function handle_arguments_restargv_typecheck( use_ui_form, i, argval, is_dsl_default,           _tmp, _option_id, _optarg_id){
@@ -59,7 +59,7 @@ function handle_arguments_restargv_typecheck( use_ui_form, i, argval, is_dsl_def
             if (is_dsl_default == true)         panic_param_define_error(_ret)
             else                                panic_error( _ret )
         } else {
-            code_query_append_by_optionid_optargid( _X_CMD_PARAM_ARG_ i, _option_id, _optarg_id )
+            code_query_append_by_optionid_optargid( _X_CMD_PARAM_ARG_ i, _option_id, _optarg_id, argval )
             return false
         }
     }
@@ -72,7 +72,7 @@ function handle_arguments_restargv_typecheck( use_ui_form, i, argval, is_dsl_def
         if (is_dsl_default == true)             panic_param_define_error(_ret)
         else                                    panic_error( _ret )
     } else {
-        code_query_append_by_optionid_optargid( _X_CMD_PARAM_ARG_ i, _option_id, _optarg_id )
+        code_query_append_by_optionid_optargid( _X_CMD_PARAM_ARG_ i, _option_id, _optarg_id, argval )
         return false
     }
 }
@@ -133,8 +133,8 @@ function handle_arguments_restargv(         _final_rest_argv_len, _set_arg_namel
 
     # TODO: You should set the default value, if you have no .
     if (QUERY_CODE != ""){
-        QUERY_CODE = "local ___X_CMD_UI_FORM_EXIT_STRATEGY=\"execute|exit\"; local ___X_CMD_UI_FORM_EXIT=; x ui form " substr(QUERY_CODE, 9)
-        QUERY_CODE = QUERY_CODE ";\n[ \"$___X_CMD_UI_FORM_EXIT\" = \"execute\" ] || return;"
+        QUERY_CODE = "local ___X_CMD_TUI_FORM_FINAL_COMMAND=; \nx tui form " substr(QUERY_CODE, 9)
+        QUERY_CODE = QUERY_CODE ";\n[ \"$___X_CMD_TUI_FORM_FINAL_COMMAND\" = \"execute\" ] || return;"
         # debug(QUERY_CODE)
         code_append(QUERY_CODE)
     }

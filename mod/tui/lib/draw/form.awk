@@ -1,6 +1,6 @@
 
 function draw_form_style_init(){
-    # IS_TH_CUSTOM = false
+    IS_TH_CUSTOM = false
     TH_FORM_PREFIX_SELECTED    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_PREFIX_SELECTED" ]     : TH_THEME_COLOR "> " UI_END
     TH_FORM_PREFIX_UNSELECTED  = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_PREFIX_UNSELECTED" ]   : "  "
     TH_FORM_PREFIX_WIDTH       = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_PREFIX_WIDTH" ]        : int(wcswidth_cache(str_remove_esc(TH_FORM_PREFIX_UNSELECTED)))

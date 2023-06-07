@@ -15,13 +15,13 @@ function code_append_assignment(varname, value, is_allow_null) {
     else code_append( varname "=" qu1( value ) ";")
 }
 
-function code_query_append(varname, description, typestr){
+function code_query_append(varname, description, typestr, current_val){
     code_append( "local " varname " >/dev/null 2>&1" )
-    QUERY_CODE=QUERY_CODE " \"--\" \\" "\n" qu(description) " " varname " " "\"\"" " " typestr
+    QUERY_CODE=QUERY_CODE " \"--\" \\" "\n" varname " " qu(description) " " qu(current_val) " " typestr
 }
 
-function code_query_append_by_optionid_optargid( varname, option_id, optarg_id ){
-    code_query_append( varname, option_desc_get( option_id ), oparr_join_quoted(optarg_id) )
+function code_query_append_by_optionid_optargid( varname, option_id, optarg_id, current_val ){
+    code_query_append( varname, option_desc_get( option_id ), oparr_join_quoted(optarg_id), current_val )
 }
 
 # EndSection
@@ -237,12 +237,15 @@ function oparr_join_plain(optarg_id,            _oparr_keyprefix){
 }
 
 
-function oparr_join_quoted( optarg_id , start,             _index, _len, _ret, oparr_keyprefix ){
+function oparr_join_quoted( optarg_id , start,             _index, _len, _ret, oparr_keyprefix, op ){
     oparr_keyprefix = optarg_id SUBSEP OPTARG_OPARR
     _ret = ""
     _len = option_arr[ oparr_keyprefix L ]
-    for ( _index=1; _index<=_len; ++_index ) {
-        _ret = _ret " " str_quote_if_unquoted( option_arr[ oparr_keyprefix, _index ] )
+    op = option_arr[ oparr_keyprefix, 1 ]
+    _ret = " " str_quote_if_unquoted( op )
+    for ( _index=2; _index<=_len; ++_index ) {
+        if (op == "=~") _ret = _ret " " str_quote_if_unquoted( "^" str_unquote_if_quoted( option_arr[ oparr_keyprefix, _index ] ) "$" )
+        else _ret = _ret " " str_quote_if_unquoted( option_arr[ oparr_keyprefix, _index ] )
     }
     return _ret
 }
