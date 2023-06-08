@@ -27,6 +27,5 @@ function draw_lineedit_str_with_cursor(opt,             s, i, b, lv, rv, l, _str
         l = wcwidth_first_char_cache(rv)
         _str = th(_text_style, lv) th( _cursor_style, substr(rv, 1, l) ) th(_text_style, substr(rv, l+1))
     }
-
     return _str
 }
