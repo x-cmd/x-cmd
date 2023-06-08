@@ -5,8 +5,9 @@ function comp_table_init( o, kp ){
     table_arr_init(o, kp)
     ctrl_page_init( o, kp, 1)
     ctrl_num_init( o, kp, 1)
-    ctrl_sw_init( o, kp SUBSEP "ctrl.filter", false )
-    ctrl_sw_init( o, kp SUBSEP "ctrl.search", false )
+    ctrl_sw_init( o, kp SUBSEP "ctrl-filter",   false )
+    ctrl_sw_init( o, kp SUBSEP "ctrl-search",   false )
+    ctrl_sw_init( o, kp SUBSEP "ctrl-multiple", false )
 
     draw_table_cell_highlight( o, kp, 1, 1, true )
     draw_table_row_highlight( o, kp, 1, true )
@@ -18,22 +19,6 @@ function comp_table_init( o, kp ){
 }
 
 # Section: ctrl handle
-function comp_table_set_limit(o, kp, v) {
-    if (v <= 1) return
-    comp_table___multiple_mode(o, kp, true)
-    draw_table_row_selected_limit( o, kp, ((v ~ "^[0-9]+$") ? int(v) : "no-limit") )
-}
-
-function comp_table___multiple_mode(o, kp, v){
-    if ( v == "" )      return o[ kp, "ismultiple" ]
-    o[ kp, "ismultiple" ] = (v == true)
-}
-
-function comp_table_display_column_num(o, kp, v){
-    if (v == "") return o[ kp, "display_num" ]
-    o[ kp, "display_num" ] = v
-}
-
 function comp_table_handle( o, kp, char_value, char_name, char_type,        r, c, _has_no_handle ) {
 
     if ( o[ kp, "TYPE" ] != "table" ) return false
@@ -43,24 +28,24 @@ function comp_table_handle( o, kp, char_value, char_name, char_type,        r, c
     draw_table_col_highlight( o, kp, c, false )
 
     if (comp_table_ctrl_filter_sw_get(o, kp) == true){
-        if (char_name == U8WC_NAME_CARRIAGE_RETURN) comp_table_ctrl_filter_sw_toggle(o, kp)
-        else if (comp_table___slct_handle(o, kp, char_value, char_name, char_type)) ctrl_page_set( o, kp, 1)
+        if (char_name == U8WC_NAME_CARRIAGE_RETURN)                                     comp_table_ctrl_filter_sw_toggle(o, kp)
+        else if (comp_table___slct_handle(o, kp, char_value, char_name, char_type))     ctrl_page_set( o, kp, 1)
         else _has_no_handle = true
     }
     else if (comp_table_ctrl_search_sw_get(o, kp) == true){
-        if (char_name == U8WC_NAME_UP)                      comp_table_ctrl_search_dec(o, kp)
-        else if (char_name == U8WC_NAME_DOWN)               comp_table_ctrl_search_inc(o, kp)
-        else if (char_name == U8WC_NAME_CARRIAGE_RETURN)    comp_table_ctrl_search_sw_toggle(o, kp)
-        else if (comp_table___search_handle(o, kp, char_value, char_name, char_type)) comp_table___search_date( o, kp )
+        if (char_name == U8WC_NAME_UP)                                                  comp_table_ctrl_search_dec(o, kp)
+        else if (char_name == U8WC_NAME_DOWN)                                           comp_table_ctrl_search_inc(o, kp)
+        else if (char_name == U8WC_NAME_CARRIAGE_RETURN)                                comp_table_ctrl_search_sw_toggle(o, kp)
+        else if (comp_table___search_handle(o, kp, char_value, char_name, char_type))   comp_table___search_date( o, kp )
         else _has_no_handle = true
     }
-    else if (char_value == "n")             ctrl_page_next_page(o, kp)
-    else if (char_value == "p")             ctrl_page_prev_page(o, kp)
-    else if ((char_value == "k") || (char_name == U8WC_NAME_UP))    ctrl_page_rdec(o, kp)
-    else if ((char_value == "j") || (char_name == U8WC_NAME_DOWN))  ctrl_page_rinc(o, kp)
-    else if ((char_value == "h") || (char_name == U8WC_NAME_LEFT))  _has_no_handle = 1 - comp_table___handle_left(o, kp )
-    else if ((char_value == "l") || (char_name == U8WC_NAME_RIGHT)) _has_no_handle = 1 - comp_table___handle_right(o, kp )
-    else if (((char_value == " ") || (char_name == U8WC_NAME_HORIZONTAL_TAB)) && comp_table___multiple_mode(o, kp)) {
+    else if ((char_value == "k") || (char_name == U8WC_NAME_UP))                        ctrl_page_rdec(o, kp)
+    else if ((char_value == "j") || (char_name == U8WC_NAME_DOWN))                      ctrl_page_rinc(o, kp)
+    else if ((char_value == "h") || (char_name == U8WC_NAME_LEFT))                      _has_no_handle = 1 - comp_table___handle_left(o, kp )
+    else if ((char_value == "l") || (char_name == U8WC_NAME_RIGHT))                     _has_no_handle = 1 - comp_table___handle_right(o, kp )
+    else if ((char_value == "n") || (char_name == U8WC_NAME_SHIFT_OUT))                 ctrl_page_next_page(o, kp)
+    else if ((char_value == "p") || (char_name == U8WC_NAME_DATA_LINK_ESCAPE))          ctrl_page_prev_page(o, kp)
+    else if (((char_value == " ") || (char_name == U8WC_NAME_HORIZONTAL_TAB)) && comp_table_ctrl_multiple_sw_get(o, kp)) {
         comp_table___row_selected_sw_toggle(o, kp, comp_table_get_cur_row(o, kp))
         ctrl_page_rinc(o, kp)
     }
@@ -99,12 +84,23 @@ function comp_table___row_selected_sw_toggle(o, kp, r){
 
 # EndSection
 
+# Section: limit multiple
+function comp_table_ctrl_multiple_sw_toggle(o, kp){   ctrl_sw_toggle( o, kp SUBSEP "ctrl-multiple");   }
+function comp_table_ctrl_multiple_sw_get(o, kp){      return ctrl_sw_get(o, kp SUBSEP "ctrl-multiple");    }
+function comp_table_set_limit(o, kp, v) {
+    if (v <= 1) return
+    ctrl_sw_init( o, kp SUBSEP "ctrl-multiple", true )
+    draw_table_row_selected_limit( o, kp, ((v ~ "^[0-9]+$") ? int(v) : "no-limit") )
+}
+
+# EndSection
+
 # Section: filter
-function comp_table_ctrl_filter_sw_get(o, kp){  return ctrl_sw_get(o, kp SUBSEP "ctrl.filter"); }
-function comp_table_ctrl_filter_sw_toggle(o, kp){   ctrl_sw_toggle(o, kp SUBSEP "ctrl.filter"); }
-function comp_table___slct_get(o, kp, coli){    return comp_lineedit_get(o, kp SUBSEP "filter" SUBSEP coli);  }
-function comp_table___slct_width(o, kp, coli){  return comp_lineedit_width(o, kp SUBSEP "filter" SUBSEP coli);    }
-function comp_table___slct_cursor_pos(o, kp, coli){  return comp_lineedit___cursor_pos(o, kp SUBSEP "filter" SUBSEP coli);    }
+function comp_table_ctrl_filter_sw_get(o, kp){      return ctrl_sw_get(o, kp SUBSEP "ctrl-filter"); }
+function comp_table_ctrl_filter_sw_toggle(o, kp){   ctrl_sw_toggle(o, kp SUBSEP "ctrl-filter"); }
+function comp_table___slct_get(o, kp, coli){        return comp_lineedit_get(o, kp SUBSEP "filter" SUBSEP coli);  }
+function comp_table___slct_width(o, kp, coli){      return comp_lineedit_width(o, kp SUBSEP "filter" SUBSEP coli);    }
+function comp_table___slct_cursor_pos(o, kp, coli){ return comp_lineedit___cursor_pos(o, kp SUBSEP "filter" SUBSEP coli);    }
 function comp_table___slct_start_pos(o, kp, coli){  return comp_lineedit___start_pos(o, kp SUBSEP "filter" SUBSEP coli);    }
 function comp_table___slct_handle(o, kp, char_value, char_name, char_type,       _kp){
     _kp = kp SUBSEP "filter" SUBSEP comp_table_get_cur_col(o, kp)
@@ -143,25 +139,25 @@ function comp_table___slct_data_maxrow(o, kp, v){
 # EndSection
 
 # Section: search
-function comp_table_ctrl_search_sw_get(o, kp){  return ctrl_sw_get(o, kp SUBSEP "ctrl.search"); }
+function comp_table_ctrl_search_sw_get(o, kp){  return ctrl_sw_get(o, kp SUBSEP "ctrl-search"); }
 function comp_table_ctrl_search_sw_toggle(o, kp){
-    ctrl_sw_toggle(o, kp SUBSEP "ctrl.search")
+    ctrl_sw_toggle(o, kp SUBSEP "ctrl-search")
     if (comp_table_ctrl_search_sw_get(o, kp))
         comp_lineedit_init(o, kp SUBSEP "search", "", 30)
 }
-function comp_table_ctrl_search_dec(o, kp){
+function comp_table_ctrl_search_dec(o, kp,          r){
     r = comp_table_get_focused_row(o, kp)
     comp_table___search_date(o, kp, r, -1)
 }
 
-function comp_table_ctrl_search_inc(o, kp){
+function comp_table_ctrl_search_inc(o, kp,          r){
     r = comp_table_get_focused_row(o, kp)
     comp_table___search_date(o, kp, r, +1)
 }
 
-function comp_table___search_get(o, kp){    return comp_lineedit_get(o, kp SUBSEP "search");  }
-function comp_table___search_width(o, kp){  return comp_lineedit_width(o, kp SUBSEP "search");    }
-function comp_table___search_cursor_pos(o, kp){  return comp_lineedit___cursor_pos(o, kp SUBSEP "search");    }
+function comp_table___search_get(o, kp){        return comp_lineedit_get(o, kp SUBSEP "search");  }
+function comp_table___search_width(o, kp){      return comp_lineedit_width(o, kp SUBSEP "search");    }
+function comp_table___search_cursor_pos(o, kp){ return comp_lineedit___cursor_pos(o, kp SUBSEP "search");    }
 function comp_table___search_start_pos(o, kp){  return comp_lineedit___start_pos(o, kp SUBSEP "search");    }
 function comp_table___search_handle(o, kp, char_value, char_name, char_type){
     if (comp_lineedit_handle(o, kp SUBSEP "search", char_value, char_name, char_type)) {
@@ -174,13 +170,13 @@ function comp_table___search_date(o, kp, r, step,        _search, l, c, i){
     if ((_search = comp_table___search_get(o, kp)) == "") return
     step = (step) ? step : 1
     if (step > 0) {
-        l = comp_table_model_maxrow(o, kp)
+        l = comp_table___slct_data_maxrow(o, kp)
         for (i=r+1; i<=l; i+=step)
-            if (index(table_arr_get_data(o, kp, i, c), _search) > 0)
+            if (index(table_arr_get_data(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i), c), _search) > 0)
                 return ctrl_page_set( o, kp, i )
     } else {
         for (i=r-1; i>=1; i+=step)
-            if (index(table_arr_get_data(o, kp, i, c), _search) > 0)
+            if (index(table_arr_get_data(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i), c), _search) > 0)
                 return ctrl_page_set( o, kp, i )
     }
 }
@@ -292,6 +288,16 @@ function comp_table_get_the_first_unava(o, kp,          i, l){
 
 # EndSection
 
+# Section: paint
+function comp_table_display_column_num(o, kp, v){
+    if (v == "") return o[ kp, "display_num" ]
+    o[ kp, "display_num" ] = v
+}
+
+function comp_table_change_set_all( o, kp  ) {
+    return draw_table_change_set_all( o, kp )
+}
+
 function comp_table_paint( o, kp, x1, x2, y1, y2,       _opt, _slct_change, _body_change, _cur_col, _cur_row, _cur_col_true, _cur_row_true, _filter_enable ) {
 
     _search_change = change_is(o, kp, "table.search")
@@ -303,7 +309,7 @@ function comp_table_paint( o, kp, x1, x2, y1, y2,       _opt, _slct_change, _bod
     _cur_col_true = comp_table_get_cur_col(o, kp)
     _cur_row_true = comp_table_get_cur_row(o, kp)
 
-    opt_set( _opt, "multiple.enable", comp_table___multiple_mode(o, kp) )
+    opt_set( _opt, "multiple.enable", comp_table_ctrl_multiple_sw_get(o, kp) )
     opt_set( _opt, "num.enable",      comp_table_display_column_num(o, kp) )
     opt_set( _opt, "filter.enable",   comp_table_ctrl_filter_sw_get(o, kp) )
     opt_set( _opt, "search.enable",   comp_table_ctrl_search_sw_get(o, kp) )
@@ -339,10 +345,7 @@ function comp_table_paint( o, kp, x1, x2, y1, y2,       _opt, _slct_change, _bod
     return _res
 }
 
-function comp_table_change_set_all( o, kp  ) {
-    return draw_table_change_set_all( o, kp )
-}
-
+# EndSection
 
 function comp_table_inject_statusline_default( statuso, kp ){
     comp_statusline_data_put( statuso, kp, "←↓↑→/hjkl", "Move focus","Press keys to move focus"  )

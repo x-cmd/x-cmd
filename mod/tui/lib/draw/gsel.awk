@@ -11,6 +11,19 @@ function draw_gsel_style_init(){
     TH_GSEL_ITEM_PREFIX_WIDTH       = 0
 }
 
+function draw_gsel_multiple_style_init(){
+    TH_GSEL_ITEM_FOCUSED    =   TH_THEME_COLOR
+    TH_GSEL_ITEM_SELECTED   =   TH_THEME_COLOR
+    TH_GSEL_ITEM_UNSELECTED =   ""
+
+    TH_GSEL_ITEM_FOCUSED_PREFIX     = th(TH_THEME_COLOR, "> ")
+    TH_GSEL_ITEM_UNFOCUSED_PREFIX   = "  "
+    TH_GSEL_ITEM_UNSELECTED_PREFIX  = th(TH_THEME_COLOR, "○ ")
+    TH_GSEL_ITEM_SELECTED_PREFIX    = th(TH_THEME_COLOR, "◉ ")      # "● "
+    TH_GSEL_ITEM_PREFIX_WIDTH = 4
+}
+
+
 function draw_gsel_change_set_all( o, kp ){
     change_set( o, kp, "gsel.title")
     change_set( o, kp, "gsel.body")
@@ -51,18 +64,33 @@ function draw_gsel___on_body( o, kp, x1, x2, y1, y2, opt,        r, w, iw, ps, l
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) _draw_body
 }
 
-function draw_gsel___on_title(o, kp, x1, x2, y1, y2, opt,        v, _opt){
+function draw_gsel___on_title(o, kp, x1, x2, y1, y2, opt,        title_val, v, _opt){
     if ( ! change_is(o, kp, "gsel.title") ) return
     change_unset(o, kp, "gsel.title")
-    v = opt_get( opt, "filter.text" )
-    if (v == "") v = painter_goto_rel(x1, y1) th( TH_GSEL_TITLE, space_restrict_or_pad_utf8( opt_get( opt, "title.text" ), y2-y1+1) )
-    else {
-        opt_set( _opt, "line.text",     v )
-        opt_set( _opt, "line.width",    opt_get( opt, "filter.width" ) )
-        opt_set( _opt, "cursor.pos",    opt_get( opt, "filter.cursor" ) )
-        opt_set( _opt, "start.pos",     opt_get( opt, "filter.start" ) )
-        v = draw_lineedit_paint(x1, x1, y1, y2, _opt)
+    title_val = painter_goto_rel(x1, y1) th( TH_GSEL_TITLE, space_restrict_or_pad_utf8( opt_get( opt, "title.text" ), y2-y1+1) )
+    if (opt_get( opt, "filter.enable" )){
+        v = opt_get( opt, "filter.text" )
+        if (v == "") v = title_val
+        else {
+            opt_set( _opt, "line.text",     v )
+            opt_set( _opt, "line.width",    opt_get( opt, "filter.width" ) )
+            opt_set( _opt, "cursor.pos",    opt_get( opt, "filter.cursor" ) )
+            opt_set( _opt, "start.pos",     opt_get( opt, "filter.start" ) )
+            v = draw_lineedit_paint(x1, x1, y1, y2, _opt)
+        }
     }
+    else if (opt_get( opt, "search.enable" )){
+        v = opt_get( opt, "search.text" )
+        if (v == "") v = title_val
+        else {
+            opt_set( _opt, "line.text",     v )
+            opt_set( _opt, "line.width",    opt_get( opt, "search.width" ) )
+            opt_set( _opt, "cursor.pos",    opt_get( opt, "search.cursor" ) )
+            opt_set( _opt, "start.pos",     opt_get( opt, "search.start" ) )
+            v = draw_lineedit_paint(x1, x1, y1, y2, _opt)
+        }
+    }
+    else v = title_val
     return painter_clear_screen(x1, x2, y1, y2) v
 }
 

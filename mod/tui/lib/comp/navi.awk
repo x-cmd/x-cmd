@@ -27,11 +27,11 @@ function comp_navi_handle( o, kp, char_value, char_name, char_type,             
 
 function comp_navi_sel_sw_toggle( o, kp ){
     change_set( o, kp, "navi.body" )
-    return comp_gsel_filter_sw_toggle( o, navi_arr_data_sel_kp_get( kp, navi_arr_data_trace_col_val( o, kp, comp_navi___cur_col(o, kp) ) ) )
+    return comp_gsel_ctrl_filter_sw_toggle( o, navi_arr_data_sel_kp_get( kp, navi_arr_data_trace_col_val( o, kp, comp_navi___cur_col(o, kp) ) ) )
 }
 
 function ctrl_navi_sel_sw_get( o, kp ) {
-    return comp_gsel_filter_sw_get( o, navi_arr_data_sel_kp_get( kp, navi_arr_data_trace_col_val( o, kp, comp_navi___cur_col(o, kp) ) ) )
+    return comp_gsel_ctrl_filter_sw_get( o, navi_arr_data_sel_kp_get( kp, navi_arr_data_trace_col_val( o, kp, comp_navi___cur_col(o, kp) ) ) )
 }
 
 function comp_navi_get_cur_rootkp( o, kp,           c, r, rootkp, preview_kp ){

@@ -11,9 +11,9 @@ END {
     prefix = jqu(PKG_NAME) SUBSEP handle( EXPR )
 # print table[ prefix ]
 # for (p in table ) print p "      " table[p]
-    if(table[ prefix ] == ""){
-        exit(1)
-    }
+    # if(table[ prefix ] == ""){
+    #     exit(1)
+    # }
 
     if( ( k = table[ prefix ] ) != "{") {
         if( k != "" ) print juq(k)

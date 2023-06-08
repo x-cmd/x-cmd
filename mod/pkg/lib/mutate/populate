@@ -1,36 +1,5 @@
 # shellcheck shell=dash #xrc
 
- ___x_cmd_pkg_remove(){
-    x:trace pkg/remove
-    case "$1" in
-        -h|--help) ___x_cmd_pkg_help remove; return 1 ;;
-    esac
-
-    local name="${1:?Provide pkg name}"
-    local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
-    [ -n "$version" ] || return
-    local osarch="${3:-$(___x_cmd_pkg_osarch)}"
-    local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
-
-    local remove_path="$tgt"
-    local download_file_ext
-    ___x_cmd_pkg___attr "$name" "$version" "$osarch" download_file_ext
-    local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}.${download_file_ext}"
-
-    if [ -e "$ball" ]; then
-        pkg:info "Remove $ball"
-        x rmrf "$ball" || {
-            pkg:error "Remove $ball failed "; return 1
-        }
-    fi
-    if ! [ -d "$remove_path" ];then
-        pkg:warn "This $name $version is no exist."
-    else
-        pkg:info "Uninstalling $name $version"
-        x rmrf "$remove_path"
-    fi
-}
-
 # This is default
 ___x_cmd_pkg_populate___unzip(){
     local name="${1:?Provide pkg name}"
@@ -78,7 +47,6 @@ ___x_cmd_pkg_populate___unzip(){
         return 1
     fi
 
-    pkg:info "Finish unpack $name $version to $tgt"
 }
 
 ___x_cmd_pkg_populate(){
@@ -93,11 +61,6 @@ ___x_cmd_pkg_populate(){
         return 1
     }
 
-    local bin_path
-    bin_path="$(___x_cmd_pkg_xbin_path "$name" "$version" "$osarch" "$tgt")"
-
-    [ ! -x "$bin_path" ] || return 0
-
     ___x_cmd_pkg_populate___unzip "$name" "$version" "$osarch" "$tgt" || {
         pkg:error "unzip $name $version $osarch failed"
         return 1
@@ -105,7 +68,13 @@ ___x_cmd_pkg_populate(){
 
     local script_path
     if ! script_path="$(___x_cmd_pkg___get_script_path "$name" "$version" "$osarch" populate)"; then
-        return 0
+        pkg:error "Cant not get script path"
+        return 1
+    fi
+
+    if [ -z "$script_path" ]; then
+        ___x_cmd_pkg_populate___chmod "$name" "$version" "$osarch" "$tgt"
+        return
     fi
 
     pkg:info "Running $script_path"
@@ -122,4 +91,26 @@ ___x_cmd_pkg_populate(){
             pkg:error "Source $script_path failed" ; return 1
         }
     }
+    ___x_cmd_pkg_populate___chmod "$name" "$version" "$osarch" "$tgt" || return 1
+}
+
+___x_cmd_pkg_populate___chmod(){
+    local name="${1:?Provide pkg name}"
+    local version="${2:?Provide version}"
+    local osarch="${3:-$(___x_cmd_pkg_osarch)}"
+    local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
+    local xbin_list; xbin_list="$( < "$___X_CMD_PKG_RAW_PATH/binmod.txt" awk -v name=$name '{if($0 ~ ".*:"name"$"){print $0}}' )"
+
+    printf "%s\n" "$xbin_list" | while read -r xbin_name; do
+        [ -n "$xbin_name" ] || continue
+        xbin_name="${xbin_name#:*}"
+        xbin_name="${xbin_name%:*}"
+        bin_path="$(___x_cmd_pkg_xbin_path "$xbin_name" "$version")"
+        if ! [ -x "$bin_path" ]; then
+            chmod +x "$bin_path" || {
+                pkg:error "Can't use chmod on $bin_path"
+                return 1
+            }
+        fi
+    done
 }
