@@ -60,9 +60,9 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, j, il, jl, 
         jl = obj[ _key L ]
         for (j=1; j<=jl; ++j){
             _dkp = _key SUBSEP "\""j"\""
-            TABLE_CELL_DEF( data_offset, TABLE_COL_BRANCHNAME,                juq( obj[ _dkp, "\"name\"" ] ) )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_PROTECTED,                 obj[ _dkp, "\"protected\"" ] )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_LASTCOMMIT,                obj[ _dkp, "\"commit\"" SUBSEP "\"sha\"" ] )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_BRANCHNAME,                user_table_juq( obj[ _dkp, "\"name\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_PROTECTED,                 user_table_juq(obj[ _dkp, "\"protected\"" ] ))
+            TABLE_CELL_DEF( data_offset, TABLE_COL_LASTCOMMIT,                user_table_juq( obj[ _dkp, "\"commit\"" SUBSEP "\"sha\"" ] ))
             ++ data_offset
         }
     }
@@ -107,6 +107,12 @@ function tapp_handle_response(fp, content){
     if(table_handle_response(o, TABLE_KP, content)) return
     else if( match( content, "^errexit:")) panic( substr( content, RSTART+RLENGTH) )
 }
+
+function user_table_juq(str){
+    if (str !~ /^".*"$/) return str
+    else return juq(str)
+}
+
 
 # EndSection
 

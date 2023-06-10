@@ -58,10 +58,10 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, j, il, jl, 
         jl = obj[ _key L ]
         for (j=1; j<=jl; ++j){
             _dkp = _key SUBSEP "\""j"\""
-            TABLE_CELL_DEF( data_offset, TABLE_COL_ID,                obj[ _dkp, "\"id\"" ] )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_NAME,              juq( obj[ _dkp, "\"login\"" ] ) )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_URL,               juq( obj[ _dkp, "\"html_url\"" ] ) )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_ROLE,              juq(obj[ _dkp, "\"role_name\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_ID,                user_table_juq(obj[ _dkp, "\"id\"" ] ))
+            TABLE_CELL_DEF( data_offset, TABLE_COL_NAME,              user_table_juq( obj[ _dkp, "\"login\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_URL,               user_table_juq( obj[ _dkp, "\"html_url\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_ROLE,              user_table_juq(obj[ _dkp, "\"role_name\"" ] ) )
             ++ data_offset
         }
     }
@@ -105,6 +105,12 @@ function tapp_handle_response(fp, content){
     if(table_handle_response(o, TABLE_KP, content)) return
     else if( match( content, "^errexit:")) panic( substr( content, RSTART+RLENGTH) )
 }
+
+function user_table_juq(str){
+    if (str !~ /^".*"$/) return str
+    else return juq(str)
+}
+
 
 # EndSection
 

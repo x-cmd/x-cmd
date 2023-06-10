@@ -69,10 +69,10 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, j, il, jl, 
         jl = obj[ _key L ]
         for (j=1; j<=jl; ++j){
             _dkp = _key SUBSEP "\""j"\""
-            TABLE_CELL_DEF( data_offset, TABLE_COL_ID,                      obj[ _dkp, "\"id\"" ] )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_NAME,                 juq( obj[ _dkp, "\"name\"" ] ) )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_PATH,                 juq( obj[ _dkp, "\"path\"" ] ) )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_STATE,                juq( obj[ _dkp, "\"state\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_ID,                   user_table_juq( obj[ _dkp, "\"id\"" ] ))
+            TABLE_CELL_DEF( data_offset, TABLE_COL_NAME,                 user_table_juq(obj[ _dkp, "\"name\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_PATH,                 user_table_juq(obj[ _dkp, "\"path\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_STATE,                user_table_juq(obj[ _dkp, "\"state\"" ] ) )
             ++ data_offset
         }
     }
@@ -264,5 +264,11 @@ function user_paint( x1, x2 ,y1, y2,        is_ctrl_text, _res){
         comp_statusline_set_fullscreen( o, STATUSLINE_KP, x1, x2, y1, y2 )
         paint_screen( comp_statusline_paint(o, STATUSLINE_KP) )
     }
+}
+
+
+function user_table_juq(str){
+    if (str !~ /^".*"$/) return str
+    else return juq(str)
 }
 # EndSection

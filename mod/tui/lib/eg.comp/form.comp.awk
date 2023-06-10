@@ -8,7 +8,7 @@ function user_form_data_parse(o, kp, argstr,        i, j, l, _l, _, argarr, arr,
 
         comp_form_data_add(o, kp, arr[1], arr[2], arr[3])
         if (_l <= 3) continue
-        if (arr[4] == "=~") {
+        if (arr[4] ~ "^=~") {
             for (j=5; j<=_l; ++j) comp_form_data_sel_rule_add(o, kp, i, arr[j])
         }
         else if (arr[4] == "=") {
@@ -67,18 +67,21 @@ function tapp_handle_wchar( value, name, type ){
 function tapp_handle_response(fp){
 }
 
-function tapp_handle_exit( exit_code,       v ){
+function tapp_handle_exit( exit_code,       v, e, i, l, _unset ){
     if (exit_is_with_cmd()){
         if (!comp_form_has_exit_strategy_get(o, FORM_KP)) return
         e = comp_form_exit_strategy_get(o, FORM_KP, comp_form_get_cur_exit_strategy(o, FORM_KP))
         if (e != "execute") return
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_FORM_FINAL_COMMAND", e ) )
+        _unset = "unset ___X_CMD_TUI_FORM_FINAL_COMMAND ;"
         l = comp_form_get_data_len(o, FORM_KP)
         for (i=1; i<=l; ++i){
             var = comp_form_get_data_var(o, FORM_KP, i)
             val = comp_form_data_val(o, FORM_KP, i)
             tapp_send_finalcmd( sh_varset_val( var, val ) )
+            _unset = _unset "\nunset " var " ;"
         }
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_FORM_UNSET", _unset ) )
     }
 }
 

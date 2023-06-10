@@ -57,10 +57,10 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, j, il, jl, 
         for (j=1; j<=jl; ++j){
             _dkp = _key SUBSEP "\""j"\""
 
-            TABLE_CELL_DEF( data_offset, TABLE_COL_NAME,                  juq( obj[ _dkp, "\"name\"" ] ) )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_REPOPATH,              juq( obj[ _dkp, "\"full_name\"" ] ) )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_VISIBILITY,            juq( obj[ _dkp, "\"visibility\"" ] ) )
-            TABLE_CELL_DEF( data_offset, TABLE_COL_DESCRIPTION,           obj[ _dkp, "\"description\"" ] )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_NAME,                  user_table_juq( obj[ _dkp, "\"name\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_REPOPATH,              user_table_juq( obj[ _dkp, "\"full_name\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_VISIBILITY,            user_table_juq( obj[ _dkp, "\"visibility\"" ] ) )
+            TABLE_CELL_DEF( data_offset, TABLE_COL_DESCRIPTION,           user_table_juq(obj[ _dkp, "\"description\"" ] ))
             ++ data_offset
         }
     }
@@ -101,6 +101,11 @@ function tapp_handle_response(fp, content){
     content = cat( fp )
     if(table_handle_response(o, TABLE_KP, content)) return
     else if( match( content, "^errexit:")) panic( substr( content, RSTART+RLENGTH) )
+}
+
+function user_table_juq(str){
+    if (str !~ /^".*"$/) return str
+    else return juq(str)
 }
 
 # EndSection

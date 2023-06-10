@@ -60,12 +60,12 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, l, _key, _q
     l = obj[ _key L ]
     for (i=1; i<=l; ++i){
         _dkp = _key SUBSEP "\""i"\""
-        TABLE_CELL_DEF( data_offset, TABLE_COL_ID,         obj[ _dkp, "\"id\"" ] )
-        TABLE_CELL_DEF( data_offset, TABLE_COL_NAME,       juq( obj[ _dkp, "\"name\"" ] ) )
-        TABLE_CELL_DEF( data_offset, TABLE_COL_CONCLUSION, juq( obj[ _dkp, "\"conclusion\"" ] ) )
-        TABLE_CELL_DEF( data_offset, TABLE_COL_EVENT,      juq( obj[ _dkp, "\"event\"" ] ) )
-        TABLE_CELL_DEF( data_offset, TABLE_COL_BRANCH,     juq( obj[ _dkp, "\"head_branch\"" ] ) )
-        TABLE_CELL_DEF( data_offset, TABLE_COL_CREATE,     juq(  obj[ _dkp, "\"created_at\"" ] ) )
+        TABLE_CELL_DEF( data_offset, TABLE_COL_ID,         user_table_juq( obj[ _dkp, "\"id\"" ] ))
+        TABLE_CELL_DEF( data_offset, TABLE_COL_NAME,       user_table_juq( obj[ _dkp, "\"name\"" ] ) )
+        TABLE_CELL_DEF( data_offset, TABLE_COL_CONCLUSION, user_table_juq( obj[ _dkp, "\"conclusion\"" ] ) )
+        TABLE_CELL_DEF( data_offset, TABLE_COL_EVENT,      user_table_juq( obj[ _dkp, "\"event\"" ] ) )
+        TABLE_CELL_DEF( data_offset, TABLE_COL_BRANCH,     user_table_juq( obj[ _dkp, "\"head_branch\"" ] ) )
+        TABLE_CELL_DEF( data_offset, TABLE_COL_CREATE,     user_table_juq(  obj[ _dkp, "\"created_at\"" ] ) )
         ++ data_offset
     }
 }
@@ -104,6 +104,11 @@ function tapp_handle_response(fp, content){
     content = cat( fp )
     if(table_handle_response(o, TABLE_KP, content)) return
     else if( match( content, "^errexit:")) panic( substr( content, RSTART+RLENGTH) )
+}
+
+function user_table_juq(str){
+    if (str !~ /^".*"$/) return str
+    else return juq(str)
 }
 
 # EndSection

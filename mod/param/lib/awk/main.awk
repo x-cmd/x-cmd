@@ -133,7 +133,7 @@ function handle_arguments_restargv(         _final_rest_argv_len, _set_arg_namel
 
     # TODO: You should set the default value, if you have no .
     if (QUERY_CODE != ""){
-        QUERY_CODE = "local ___X_CMD_TUI_FORM_FINAL_COMMAND=; \nx tui form " substr(QUERY_CODE, 9)
+        QUERY_CODE = "local ___X_CMD_TUI_FORM_FINAL_COMMAND=; local ___X_CMD_TUI_FORM_UNSET=; \nx tui form " substr(QUERY_CODE, 9)
         QUERY_CODE = QUERY_CODE ";\n[ \"$___X_CMD_TUI_FORM_FINAL_COMMAND\" = \"execute\" ] || return;"
         # debug(QUERY_CODE)
         code_append(QUERY_CODE)
