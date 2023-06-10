@@ -2,6 +2,8 @@ function print_helpdoc_init(no_color, websrc_region, theme_color0, theme_color1,
     COMP_HELPDOC_WEBSRC_REGION  = websrc_region
     COMP_HELPDOC_HELP_INDENT_LEN = 4;    COMP_HELPDOC_HELP_INDENT_STR = "    "
     COMP_HELPDOC_DESC_INDENT_LEN = 3;    COMP_HELPDOC_DESC_INDENT_STR = "   "
+    COMP_HELPDOC_TAG_LEFT = "---- "
+    COMP_HELPDOC_TAG_RIGHT = " ----"
     if (no_color != true ) {
         COMP_HELPDOC_UI_TIP_INFO   = UI_FG_GREEN
         COMP_HELPDOC_UI_TIP_NOTE   = UI_FG_CYAN
@@ -156,7 +158,7 @@ function generate_flag_help(obj, kp, arr_group,        _str, l, i, k ){
         k = arr_group[ i ]
         if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
         if (! aobj_len( arr_group, k )) continue
-        _str = _str "\n    -- " juq(k) " --\n" generate_flag_help_unit(obj, kp, arr_group, k)
+        _str = _str "\n    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_flag_help_unit(obj, kp, arr_group, k)
     }
     return _str "\n"
 }
@@ -186,7 +188,7 @@ function generate_option_help( obj, kp, arr_group,           _str, l, i, k ) {
         k = arr_group[ i ]
         if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
         if (! aobj_len( arr_group, k )) continue
-        _str = _str "\n    -- " juq(k) " --\n" generate_option_help_unit( obj, kp, arr_group, k)
+        _str = _str "\n    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_option_help_unit( obj, kp, arr_group, k)
     }
     return _str "\n"
 }
@@ -234,7 +236,7 @@ function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _s
         k = arr_group[ i ]
         if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
         if (! aobj_len( arr_group, k )) continue
-        _str = _str "    -- " juq(k) " --\n" generate_subcmd_help_unit( obj, kp, arr_group, k) "\n"
+        _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_subcmd_help_unit( obj, kp, arr_group, k) "\n"
     }
     _str_footer = generate_subcmd_help_tip( obj, kp )
     if (_str != "") return _str_title _str _str_footer
