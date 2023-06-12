@@ -117,6 +117,7 @@ function comp_form_get_data_var(o, kp, i){             return form_arr_get_data_
 function comp_form_data_desc_width(o, kp, v){          return form_arr_data_desc_width(o, kp, v);           }
 function comp_form_data_desc(o, kp, i, v, force_set){  return form_arr_data_desc(o, kp, i, v, force_set);   }
 function comp_form_data_val(o, kp, i, v, force_set){   return form_arr_data_val(o, kp, i, v, force_set);    }
+function comp_form_data_is_encrypted(o, kp, i, tf){    return form_arr_data_is_encrypted(o, kp, i, tf);     }
 
 function comp_form_data_is_rule(o, kp, i){             return form_arr_data_is_rule(o, kp, i);              }
 function comp_form_data_get_rule_len(o, kp, i){        return form_arr_data_rule_len(o, kp, i);             }

@@ -8,6 +8,7 @@ function user_form_data_parse(o, kp, argstr,        i, j, l, _l, _, argarr, arr,
 
         comp_form_data_add(o, kp, arr[1], arr[2], arr[3])
         if (_l <= 3) continue
+        if (arr[4] ~ "\\*") comp_form_data_is_encrypted(o, kp, i, true)
         if (arr[4] ~ "^=~") {
             for (j=5; j<=_l; ++j) comp_form_data_sel_rule_add(o, kp, i, arr[j])
         }
@@ -29,6 +30,7 @@ function user_form_data_parse(o, kp, argstr,        i, j, l, _l, _, argarr, arr,
 }
 function tapp_init(){
     ___X_CMD_TUI_FORM_ARGSTR = ENVIRON[ "___X_CMD_TUI_FORM_ARGSTR" ]
+    ___X_CMD_TUI_FORM_VAR_PREFIX = ENVIRON[ "___X_CMD_TUI_FORM_VAR_PREFIX" ]
     if (___X_CMD_TUI_FORM_ARGSTR == "") panic("The tui form data is empty")
     comp_form_init(o, FORM_KP, "execute,exit")
     user_form_data_parse(o, FORM_KP, ___X_CMD_TUI_FORM_ARGSTR)
@@ -76,7 +78,7 @@ function tapp_handle_exit( exit_code,       v, e, i, l, _unset ){
         _unset = "unset ___X_CMD_TUI_FORM_FINAL_COMMAND ;"
         l = comp_form_get_data_len(o, FORM_KP)
         for (i=1; i<=l; ++i){
-            var = comp_form_get_data_var(o, FORM_KP, i)
+            var = ___X_CMD_TUI_FORM_VAR_PREFIX comp_form_get_data_var(o, FORM_KP, i)
             val = comp_form_data_val(o, FORM_KP, i)
             tapp_send_finalcmd( sh_varset_val( var, val ) )
             _unset = _unset "\nunset " var " ;"

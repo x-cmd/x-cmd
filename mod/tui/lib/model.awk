@@ -140,6 +140,11 @@ function form_arr_data_val(o, kp, i, v, force_set){
     return model_arr_set_key_value(o, kp, i SUBSEP "val", v)
 }
 
+function form_arr_data_is_encrypted(o, kp, i, tf){
+    if (tf == "")   return model_arr_get(o, kp, i SUBSEP "encrypted")
+    return model_arr_set_key_value(o, kp, i SUBSEP "encrypted", tf)
+}
+
 function form_arr_data_is_match_rule(o, kp, i, v,       j, l){
     l = form_arr_data_rule_len(o, kp, i)
     for (j=1; j<=l; ++j){
