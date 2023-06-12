@@ -1,7 +1,7 @@
 
 function draw_form_style_init(){
     IS_TH_CUSTOM = false
-    TH_FORM_ENCRYPTED_STYLE    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_ENCRYPTED_STYLE" ]     : "***"
+    TH_FORM_ENCRYPTED_STYLE    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_ENCRYPTED_STYLE" ]     : "*"
     TH_FORM_PREFIX_SELECTED    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_PREFIX_SELECTED" ]     : TH_THEME_COLOR "> " UI_END
     TH_FORM_PREFIX_UNSELECTED  = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_PREFIX_UNSELECTED" ]   : "  "
     TH_FORM_PREFIX_WIDTH       = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_PREFIX_WIDTH" ]        : int(wcswidth_cache(str_remove_esc(TH_FORM_PREFIX_UNSELECTED)))
@@ -78,29 +78,22 @@ function draw_form___on_cell(o, kp, i, currow, lw, rw, opt,             val, des
     _is_matched = true
     if (form_arr_data_is_rule(o, kp, i) && (val != "")) _is_matched = form_arr_data_is_match_rule(o, kp, i, val)
     _is_encrypted = form_arr_data_is_encrypted(o, kp, i)
+    if (_is_encrypted && (val != "")) gsub(".", TH_FORM_ENCRYPTED_STYLE, val)
 
     desc = draw_unit_truncate_string( desc, lw )
     if (opt_get( opt, "form.is_ctrl_exit_strategy" ) || (i != currow)) {
-        if (_is_encrypted && (val != "")) val = TH_FORM_ENCRYPTED_STYLE
-        else val = draw_unit_truncate_string( val, rw )
-
+        val = draw_unit_truncate_string( val, rw )
         if (!_is_matched) val = th( TH_FORM_UNMATCHED, val)
         return TH_FORM_PREFIX_UNSELECTED desc TH_FORM_INTERVAL_STYLE val
     }
     else {
-        if (_is_encrypted && (val != "")) {
-            if (_is_matched)    val = TH_FORM_ENCRYPTED_STYLE TH_CURSOR " " UI_END
-            else                val = th( TH_FORM_UNMATCHED, TH_FORM_ENCRYPTED_STYLE TH_ERROR_CURSOR " " )
-        }
-        else {
-            opt_set( _opt, "line.text",     val )
-            opt_set( _opt, "line.width",    rw )
-            opt_set( _opt, "advise.text",   opt_get( opt, "form.edit.advise") )
-            opt_set( _opt, "cursor.pos",    opt_get( opt, "form.edit.cursor" ) )
-            opt_set( _opt, "start.pos",     opt_get( opt, "form.edit.start" ) )
-            opt_set( _opt, "display.error", (!_is_matched) )
-            val = draw_lineeditadvise_str_with_cursor_advise(_opt)
-        }
+        opt_set( _opt, "line.text",     val )
+        opt_set( _opt, "line.width",    rw )
+        opt_set( _opt, "advise.text",   opt_get( opt, "form.edit.advise") )
+        opt_set( _opt, "cursor.pos",    opt_get( opt, "form.edit.cursor" ) )
+        opt_set( _opt, "start.pos",     opt_get( opt, "form.edit.start" ) )
+        opt_set( _opt, "display.error", (!_is_matched) )
+        val = draw_lineeditadvise_str_with_cursor_advise(_opt)
         return TH_FORM_PREFIX_SELECTED desc TH_FORM_INTERVAL_STYLE val
     }
 }
