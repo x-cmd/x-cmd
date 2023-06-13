@@ -13,7 +13,6 @@ function advise_get_ref_and_group(obj, kp,        msg, subcmd_group, option_grou
 
 function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candidate_code, i, j, l, v, _option_id, _cand_key, _cand_l, _cand_kp, _desc, _arr_value, _arr_valuel ) {
     l = aobj_len(obj, kp)
-    gsub("\\\\", "\\\\", curval)
     for (i=1; i<=l; ++i) {
         _option_id = aobj_get(obj, kp SUBSEP i)
         if ( _option_id == "\"#cand\"" ) {
@@ -24,7 +23,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candida
                 v = aobj_get_cand_value( obj, _cand_kp)
                 _desc = ( ZSHVERSION != "" ) ? aobj_get_description(obj, _cand_kp SUBSEP v) : ""
                 if (v ~ "^\"") v = juq(v)
-                if( v !~ curval ) continue
+                if(!index(v, curval)) continue
                 jdict_put( CAND, "CODE", jqu(v), jqu(_desc) )
             }
         }
@@ -34,7 +33,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candida
         _arr_valuel = split( juq( _option_id ), _arr_value, "|" )
         for ( j=1; j<=_arr_valuel; ++j) {
             v =_arr_value[j]
-            if (v !~ "^"curval) continue
+            if (index(v, curval) != 1) continue
             if ( ! aobj_is_multiple(obj, kp SUBSEP _option_id) && (lenv[ _option_id ] != "")) continue
             if (( curval == "" ) && ( v ~ "^-" )) if ( ! aobj_is_subcmd(obj, kp SUBSEP _option_id ) ) continue
             if (( curval == "-" ) && ( v ~ "^--." )) continue
