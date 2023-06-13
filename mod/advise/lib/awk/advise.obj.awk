@@ -53,10 +53,10 @@ function aobj_option_all_set( lenv_table, obj, obj_prefix,  i, l, k ){
     return true
 }
 
-function aobj_get_subcmdid_by_name( obj, obj_prefix, name, _res ){
-    _res = aobj_get_id_by_name( obj, obj_prefix, name )
-    if ( juq(_res) ~ /^[^-]/) return _res
-    if ( aobj_is_subcmd(obj, obj_prefix SUBSEP _res) ) return _res
+function aobj_get_subcmdid_by_id( obj, obj_prefix, id ){
+    if ( aobj_is_option(obj, obj_prefix SUBSEP id) ) return
+    if ( juq(id) ~ /^[^-]/) return id
+    if ( aobj_is_subcmd(obj, obj_prefix SUBSEP id) ) return id
     return
 }
 
@@ -76,6 +76,10 @@ function aobj_is_multiple( obj, kp ){
 
 function aobj_is_subcmd( obj, kp ){
     return (obj[ kp, "\"#subcmd\"" ] == "true" )
+}
+
+function aobj_is_option( obj, kp ){
+    return (obj[ kp, "\"#option\"" ] == "true")
 }
 
 function aobj_istrue( obj, kp ){
