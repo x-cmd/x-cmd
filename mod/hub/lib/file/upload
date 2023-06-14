@@ -1,0 +1,107 @@
+# shellcheck shell=dash
+
+# TODO: support multiple file upload
+# TODO: support upload dir
+___x_cmd_hub_file_upload(){
+    local public; local no_encrypt
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file upload ; return 1 ;;
+            --public|-p)     public=true; shift ;;
+            --no-enrypt)     no_encrypt=true; shift ;;
+            *) break ;;
+        esac
+    done
+
+    local localfp="${1:?Provide local file}"
+    [ -f "$localfp" ] || {  ___x_cmd_ui_tf false "$localfp not a file or diractory " >&2 ; return 1; }
+    local remotefp; remotefp="$(____x_cmd_hub_file___remotefp "$localfp" "${2}")"
+    hub:debug "localfp=$localfp, remotefp=$remotefp"
+
+    if [ -n "$no_encrypt" ] || [ -n "$public" ]; then
+        ___x_cmd_hub_file_upload___no_encrypt_file "$localfp" "$remotefp"
+    else
+        ___x_cmd_hub_file_upload___encrypt_file "$localfp" "$remotefp"
+    fi
+    [ -z "$public" ] || ___x_cmd_hub_share___set --public "$remotefp"
+}
+
+___x_cmd_hub_file_upload___no_encrypt_file(){
+    local localfp="${1:?Provide local file}"
+    local remotefp="${2:?Provide remote file}"
+    hub:debug "Upload file=$localfp to $remotefp"
+    if res="$(___x_cmd_hub___util_send_file "$localfp" "$remotefp")" ; then
+        ___x_cmd_hub___util_handle_resp true "$res" "Upload $localfp to $remotefp:"
+    else
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload $localfp to $remotefp:"
+        return 1
+    fi
+}
+
+___x_cmd_hub_file_upload___encrypt_file(){
+    local localfp="${1:?Provide local file}"
+    local remotefp="${2:?Provide remote file}"
+    local localfp_enc="$localfp.enc"
+    local filekey_path="${localfp}_key"
+    ___x_cmd_hub_file___encrypt_file "$localfp" "$localfp_enc" "$filekey_path" || {
+        ___x_cmd_ui_tf false "Failed to encrypt $localfp to $localfp_enc" >&2
+        x rmrf "$localfp_enc" "$filekey_path"
+        return 1
+    }
+
+    local filekey_enc_path="${filekey_path}.enc"
+
+    # TODO: support use specified public key, return the public key path
+    local x_ ; local key_path
+    ___x_cmd_hub_key___ensure_key_ default public || return 1
+    key_path="$x_"
+
+    ___x_cmd_hub_file___encrypt_filekey "$filekey_path" "$filekey_enc_path" "$key_path" || {
+        ___x_cmd_ui_tf false "Failed to encrypt filekey to $filekey_enc_path" >&2
+        x rmrf "$localfp_enc" "$filekey_path" "$filekey_enc_path"
+        return 1
+    }
+
+    hub:debug "Upload file_enc=$localfp_enc filekey_enc=$filekey_enc_path to $remotefp"
+    if res="$(___x_cmd_hub___util_send_enc_file "$localfp_enc" "$remotefp" "$filekey_enc_path")" ; then
+        ___x_cmd_hub___util_handle_resp true "$res" "Upload $localfp to $remotefp:"
+        x rmrf "$localfp_enc" "$filekey_path" "$filekey_enc_path"
+    else
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload $localfp to $remotefp:"
+        x rmrf "$localfp_enc" "$filekey_path" "$filekey_enc_path"
+        return 1
+    fi
+}
+
+____x_cmd_hub_file___remotefp(){
+    local localfp="${1:?Provide local file}"
+    local respath="${2}"
+
+    local filename ; filename="${localfp##*/}"
+    [ -n "$respath" ] || respath="/$filename"
+    local remotefp="$respath"; [ "${respath%/}" = "$respath" ] || remotefp="${respath}${filename}"
+    ___x_cmd_hub_file_normalize_respath "$remotefp"
+}
+
+___x_cmd_hub___util_send_enc_file() {
+    local localfp="${1:?Provide local file}"
+    local respath="${2:?Provide respath}"
+    local filekey_enc_path="${3:?Provide filekey_enc_path}"
+
+    local token; token="$(___x_cmd_hub___util_get_token)" || return 1
+    local cmd; cmd="x curl -sS \
+        -H 'Encryption-filekey-base64: $(< "$filekey_enc_path" base64)' \
+        -X PUT -o '$___X_CMD_HUB_TMP/resp.$$.out' -w '%{http_code}' \
+        -F 'file=@$localfp' \
+        '$___X_CMD_HUB_SERVICE_URL/api/v0/file/enc?token=${token}&res=${respath}'"
+
+    hub:debug "Exec cmd: $cmd"
+    local http_code; http_code="$(eval "$cmd")" || return 1
+    command cat "$___X_CMD_HUB_TMP/resp.$$.out"
+
+    case "$http_code" in
+        2*) return 0 ;;
+        *)  #hub:error "Failed to upload file, http_code=$http_code" ;
+            return 1 ;;
+    esac
+}

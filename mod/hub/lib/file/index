@@ -1,0 +1,118 @@
+# shellcheck shell=dash
+
+xrc:mod:lib hub file/encrypt file/upload file/download file/list
+
+# Section(util): normalize_respath
+
+# TODO: Should be review. @el
+___x_cmd_hub_file_normalize_respath(){
+    local respath="${1}"
+    case "$respath" in
+        @me/*|@i/*|@/*)
+            ___X_CMD_WHICH_ONE_RESOURCE_TYPE=me@hub
+            printf "%s" "$respath" ;;
+        *@*)
+            ___X_CMD_WHICH_ONE_RESOURCE_TYPE=hub
+            printf "%s" "$respath" ;;
+        *)
+            ___X_CMD_WHICH_ONE_RESOURCE_TYPE=hub
+            printf "%s" "@me/${respath#/}" ;;
+    esac
+}
+
+# EndSection
+
+___x_cmd_hub_file(){
+    local op="$1"
+
+    case "$op" in
+        -h|--help) shift ; ___x_cmd_hub___help file ; return 1 ;;
+
+        ls|upload|cat|which|rm|upload_dist) shift
+            "___x_cmd_hub_file_$op" "$@"                         ;;
+        *) ___x_cmd_hub___util_subcmd_invalid "file" "$@"       ;;
+    esac
+}
+
+# EndSection
+
+# Section: rm
+
+___x_cmd_hub_file_rm(){
+    local recurse
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --recurse|-r)    recurse=true; shift ;;
+            --help|-h)    ___x_cmd_hub___help file rm ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    local respath="${1:-@me/}" ; respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+    local recurse="${recurse:-false}"
+
+    local res
+    if ! res="$(___x_cmd_hub___util_curl delete /api/v0/file "res=$respath" "recurse=$recurse")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to rm file, respath $respath, recursive $recurse:"
+        return 1
+    fi
+    ___x_cmd_hub___util_handle_resp true "$res" "Success to rm file, respath $respath, recursive $recurse: "
+}
+
+# EndSection
+
+# Section: which upload cat
+
+___x_cmd_hub_file_which_(){
+    local respath="${1:?Provide respath}"
+    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+
+    local res; res=$(___x_cmd_hub_file_cat "$respath") || return 1
+    local cache_path="${___X_CMD_HUB_CACHE}/file/${respath#/}"
+    x mkdirp "${cache_path%/*}"
+    printf "%s\n" "$res" > "${cache_path}"
+    x_="$cache_path"
+}
+
+___x_cmd_hub_file_which(){
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file which ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    local x_ ; ___x_cmd_hub_file_which_ "$1" || return 1
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_hub_file_upload_dist(){
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file upload-dist ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    local localfp="${1:?Provide local file}"
+    local respath="${2:?provide respath}"
+
+    x wx pkg "$localfp" ___x_cmd_hub_tmp.wx || {
+        ___x_cmd_ui_tf false "Failed to wx pkg $localfp: " >&2
+        return 1
+    }
+
+    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+
+    local res
+    if ! res=$(___x_cmd_hub___util_send_file ___x_cmd_hub_tmp.wx "$respath"); then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload $localfp to $respath :"
+        rm -rf ___x_cmd_hub_tmp.wx
+        return 1
+    fi
+
+    ___x_cmd_hub___util_handle_resp true "$res" "Success to upload $localfp to $respath :"
+    rm -rf ___x_cmd_hub_tmp.wx
+}
+
+# EndSection

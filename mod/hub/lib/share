@@ -1,11 +1,12 @@
-# shellcheck shell=sh disable=SC3043
+# shellcheck shell=dash
 
 ___x_cmd_hub_share(){
     local op="$1"
     case "$op" in
-        -h|--help) shift ; ___x_cmd_hub___help share ; return 1 ;;
-        add|rm|ls) shift ; "___x_cmd_hub_share_$op" "$@"                       ;;
-        *) ___x_cmd_hub_share_add "$@"                          ;;
+        -h|--help)    shift ; ___x_cmd_hub___help share ; return 1 ;;
+        set|unset|ls) shift ; "___x_cmd_hub_share_$op" "$@"           ;;
+        "")        ___x_cmd_hub___help share ; return 1 ;;
+        *)         ___x_cmd_hub___util_subcmd_invalid "share" "$@" ;;
     esac
 }
 
@@ -17,42 +18,110 @@ ___x_cmd_hub_share_ls(){
     esac
 
     local res
-    if ! res="$(___x_cmd_hub___util_curl get /api/v0/share)" ; then
+    if ! res="$(___x_cmd_hub___util_curl_v2 get /api/v0/share)" ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to list shares : "
         return 1
     fi
 
-    if [ -t 1 ] && [ -z "$json" ] ; then
-        x ui table json PATH=.path IS_PUBLIC=.isPublic LINK_LIMIT=.linkLimit CREATE_AT=.createdAt UPDATE_AT=.updateAt \
-            -- 'printf "%s" "$res"'
-    else
-        printf "%s\n" "$res"
-    fi
+    printf "%s" "$res" | \
+        x jo 2c                .path  .isPublic .userList  .createdAt | \
+        x csv header --add     PATH   IS_PUBLIC USER_LIST  CREATE_AT  | \
+        ___x_cmd_hub___util_st_tab  -      10    100%
 }
 
-___x_cmd_hub_share_add(){
+___x_cmd_hub_share_set(){
+    ___x_cmd_hub_share___set "$@"
+}
+
+___x_cmd_hub_share___set(){
     local public
-    case "$1" in
-        --public|-P)    public=true; shift ;;
-        --help|-h)      ___x_cmd_hub___help share add >&2 ; return 1 ;;
-    esac
+    local user
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --public)       public=true; shift ;;
+            --user)         user="$2"; shift 2 ;;
+            --help|-h)      ___x_cmd_hub___help share add >&2 ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    if [ -z "$user" ] && [ -z "$public" ] ; then
+        ___x_cmd_hub___util_handle_resp false "" "Please provide --user <username> or --public"
+        return 1
+    fi
 
     local respath="${1:?Provide respath}"
     respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
 
-    local res
-    # TODO: should use public false as default
-    res="$(___x_cmd_hub___util_curl put /api/v0/share -- "res=$respath" "isPublic=${public:-true}")" || {
+    if [ -n "$user" ] ; then
+        ___x_cmd_hub_share___handle_filekey "$user" "$respath" || return
+    fi
+
+    local res; res="$(___x_cmd_hub___util_curl_v2 put /api/v0/share "res=$respath" "isPublic=${public:-false}" username="$user")" || {
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to add share:"
         return 1
     }
 
     [ -z "$json" ] || { printf "%s\n" "$res" ; return 0 ; }
     ___x_cmd_hub___util_handle_resp true "" "Success to add share for $respath"
-    # printf "%s" "[$res] " | x yml j2y | x str ml pwrap "  "
 }
 
-___x_cmd_hub_share_rm(){
+___x_cmd_hub_share___handle_filekey(){
+    local user="${1:?Provide user}"
+    local respath="${2:?Provide respath}"
+
+    # step1: download user public key
+    hub:debug "Step1 => Downloading public key for $user"
+    if ! res="$(___x_cmd_hub___util_curl_v2 get /api/v0/key/default type=public "username=$user")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get public key for $user"
+        return
+    fi
+    local pubkey_path="$___X_CMD_HUB_TMP/$user.$$.pubkey"
+    printf "%s" "$res" > "$pubkey_path"
+
+    # step2: ensure your key is loaded
+    hub:debug "Step2 => Ensure your key is loaded"
+    local filekey_path="$___X_CMD_HUB_TMP/filekey.$$"
+    local filekey_enc_path="$filekey_path.enc"
+    local x_ ; local private_key_path
+    ___x_cmd_hub_key___ensure_key_ default private || return 1
+    private_key_path="$x_"
+
+    # step3: download filekey
+    hub:debug "Step3 => Downloading filekey"
+    if ! res="$(___x_cmd_hub___util_curl_v2 get /api/v0/filekey "res=$respath")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get filekey for $respath"
+        return 1
+    fi
+    local filekey_base64="$res"
+
+    # step4: decrypt filekey
+    hub:debug "Step4 => Decrypt filekey"
+    printf "%s" "$filekey_base64" | base64 -d > "$filekey_enc_path"
+    ___x_cmd_hub_file___decrypt_filekey "$filekey_enc_path" "$filekey_path" "$private_key_path" || {
+        ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey_path" >&2
+        x rmrf "$filekey_path" "$filekey_enc_path"
+        return 1
+    }
+
+    # step5: encrypt filekey use user's public key
+    hub:debug "Step5 => Encrypt filekey use user's public key"
+    local filekey_enc="$___X_CMD_HUB_TMP/filekey.$$.$user.enc.base64"
+    ___x_cmd_hub_file___encrypt_filekey "$filekey_path" "$filekey_enc" "$pubkey_path" || {
+        ___x_cmd_ui_tf false "Failed to encrypt filekey to $filekey_enc_path" >&2
+        x rmrf "$pubkey_path" "$filekey_path" "$filekey_enc_path"
+        return 1
+    }
+
+    # step6: upload filekey
+    hub:debug "Step6 => Uploading filekey"
+    if ! res="$(___x_cmd_hub___util_curl_v2 put /api/v0/filekey "res=$respath" "filekey=$(< "$filekey_enc" base64)" "username=$user")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload filekey for $respath"
+        return 1
+    fi
+}
+
+___x_cmd_hub_share_unset(){
     case "$1" in
         --help|-h)    ___x_cmd_hub___help share rm >&2 ; return 1 ;;
     esac
@@ -66,6 +135,5 @@ ___x_cmd_hub_share_rm(){
         return 1
     fi
 
-    [ -z "$json" ] || { printf "%s\n" "$res" ; return 0 ; }
-    ___x_cmd_hub___util_handle_resp true "$res" "Success to rm share for $respath: "
+    ___x_cmd_hub___util_handle_resp true "$res" "Success to rm share for $respath"
 }

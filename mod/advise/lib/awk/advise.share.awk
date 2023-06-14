@@ -76,7 +76,8 @@ function comp_advise_parse_group(o, kp, subcmd_group, option_group, flag_group, 
             k = jqu(substr( s, RLENGTH + 1 ))
             arr_push( flag_group, k )
             comp_advise_push_group_of_obj(flag_group, k, o, kp SUBSEP v)
-        } else if (( s ~ "^-" ) && ( ! aobj_istrue(o, aobj_get_special_value_id(kp SUBSEP v, "subcmd")) )) {
+        }
+        else if (aobj_is_option(o, kp SUBSEP v) || ((s ~ "^-") && (!aobj_is_subcmd(o, kp SUBSEP v)))) {
             if (aobj_get_optargc( o, kp, v ) > 0) comp_advise_push_group_of_value( option_group, ADVISE_NULL_TAG, v)
             else comp_advise_push_group_of_value( flag_group, ADVISE_NULL_TAG, v )
         }

@@ -1,0 +1,50 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_key_load(){
+    local key_path; key_path="$___X_CMD_HUB_KEY_PATH/$(___x_cmd_hub_cur get userid)"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file upload ; return 1 ;;
+            --key_path)      shift ;  key_path="$1" ; shift;;
+            *) break ;;
+        esac
+    done
+
+    local name="${1:-default}"
+    local public_key_path="$key_path/${name}_public.pem"
+    local private_key_path="$key_path/${name}_private.pem"
+    local private_key_enc_path="$key_path/${name}_private.enc.pem"
+
+    if [ -f "$public_key_path" ] || [ -f "$private_key_path" ] ; then
+        hub:error "Key already exists in local, $public_key_path or $private_key_path"
+        return 1
+    fi
+
+    local res; local return_code=0
+    res="$(___x_cmd_hub___util_curl_v2 get "/api/v0/key/$name" type=private)" || return_code="$?"
+    if [ "$return_code" != 0 ]  ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get rsakey for $name"
+        return "$return_code"
+    fi
+    printf "%s" "$res" | base64 -d > "$private_key_enc_path"
+
+    local x_; ___x_cmd_hub___util_read_password_ "- Please input password for decrypt private key: "
+    local password="$x_"
+    hub:debug x openssl enc -d -aes-256-cbc -in "$private_key_enc_path" -out "$private_key_path" -pbkdf2 -pass pass:"$password"
+    x openssl enc -d -aes-256-cbc -in "$private_key_enc_path" -out "$private_key_path" -pbkdf2 -pass pass:"$password" || {
+        hub:error "Failed to decrypt private key"
+        x rmrf "$private_key_path" "$private_key_enc_path" "$public_key_path"
+        return 1
+    }
+    hub:info "Loaded private key => $private_key_path"
+
+    if ! res="$(___x_cmd_hub___util_curl_v2 get "/api/v0/key/$name" type=public)" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get rsakey for $name"
+        return "$1"
+    fi
+    x mkdirp "$key_path"
+    printf "%s" "$res" > "$public_key_path"
+    hub:info "Loaded public key => $public_key_path"
+
+    x rmrf "$private_key_enc_path"
+}

@@ -1,0 +1,46 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_file_cat(){
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file cat ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    local respath="${1:?Provide respath}"; respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+    local res; if ! res=$(___x_cmd_hub___util_curl get /api/v0/file/cat "res=${respath}"); then
+        ___x_cmd_hub___util_handle_resp false "$res" "Please check the respath $respath: "
+        return 1
+    fi
+
+    local filekey_base64; filekey_base64="$(___x_cmd_http resp header encryption-filekey-base64)"
+    [ -n "$filekey_base64" ] || {
+        printf "%s\n" "$res"
+        return
+    }
+
+    local filekey_path="$___X_CMD_HUB_TMP/filekey.$$"
+    local filekey_enc_path="$filekey_path.enc"
+    local x_ ; local key_path
+    ___x_cmd_hub_key___ensure_key_ default private || return 1
+    key_path="$x_"
+
+    printf "%s" "$filekey_base64" | base64 -d > "$filekey_enc_path"
+    ___x_cmd_hub_file___decrypt_filekey "$filekey_enc_path" "$filekey_path" "$key_path" || {
+        ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey_path" >&2
+        x rmrf "$filekey_path" "$filekey_enc_path"
+        return 1
+    }
+
+    local fp="$___X_CMD_HUB_TMP/file.$$"
+    local fp_enc="$fp.enc"
+    printf "%s" "$res" > "$fp_enc"
+    ___x_cmd_hub_file___decrypt_file "$fp_enc" "$fp" "$filekey_path" || {
+        ___x_cmd_ui_tf false "Failed to decrypt $fp_enc to $fp" >&2
+        x rmrf "$fp" "$fp_enc" "$filekey_path" "$filekey_enc_path"
+        return 1
+    }
+    command cat "$fp"
+    x rmrf "$fp" "$fp_enc" "$filekey_path" "$filekey_enc_path"
+}
