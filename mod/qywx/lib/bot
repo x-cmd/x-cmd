@@ -1,16 +1,15 @@
-# shellcheck shell=sh disable=SC2154,SC2120,SC3043,SC2034
+# shellcheck shell=dash disable=SC2016,2034,2154
 
 # reference: https://developer.work.weixin.qq.com/document/path/91770#%E6%96%87%E6%9C%AC%E7%B1%BB%E5%9E%8B
 
 # Section(inner): endpoint, send_json
-
 ___x_cmd_qywx_bot___send_json() {
-    local req_json; req_json="$(cat)"
-    qywx:debug "$(printf "%s" "$req_json" | x jo fmt)"
-    local webhook ; webhook="$(___x_cmd_qywx_webhook)" || return 1
-
-    local res ; res="$(___x_cmd_http post json "$webhook" "$req_json")"
-    printf "%s" "$res"
+    local x_=;  local request="$1";  [ -n "$1" ] || request="$(cat)"
+    request="$( printf "%s\n" "$request" | x jo n | x jo t " " )"
+    ___x_cmd_qywx_cur --get_ webhook
+    [ -n "$x_" ] || return
+    qywx:debug  --webhook "$x_" --request "$request"
+    ___x_cmd_http post json "$x_" "$request"
 }
 # EndSection
 
@@ -53,21 +52,19 @@ A
     param:run
     
     local text="$1"
-    local res
-    mentioned_list=$(___x_cmd_qywx_get___mobiles "${mentioned_list}")
-    mentioned_mobile_list=$(___x_cmd_qywx_get___mobiles "${mentioned_mobile_list}")
-    res="$(___x_cmd_qywx_bot___send_json <<A
+    local res=; res="$(___x_cmd_qywx_bot___send_json '
 {
     "msgtype": "text",
     "text": {
-        "content": "$text",
-        "mentioned_list":[ ${mentioned_list} ],
-        "mentioned_mobile_list":[ ${mentioned_mobile_list} ]
+        "content": '"$( ___x_cmd_qywx_jqu "$text" )"',
+        "mentioned_list":[ '"${mentioned_list}"' ],
+        "mentioned_mobile_list":[ '"${mentioned_mobile_list}"' ]
     }
 }
-A
-)" || return 1
-    _____x_cmd_qywx_ui_utils Text
+'
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent text: $text successfully" "$format"
 }
 
 ___x_cmd_qywx_bot_send_raw() {
@@ -80,11 +77,9 @@ A
     param:run
 
     local raw="${1}"; [ "$raw" != "-" ] || raw="$(cat)"
-    local res ; res="$(___x_cmd_qywx_bot___send_json <<A
-$raw
-A
-)" || return 1
-    _____x_cmd_qywx_ui_utils Raw
+    local res=; res="$(___x_cmd_qywx_bot___send_json "$raw")" || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent message successfully" "$format"
 }
 
 ___x_cmd_qywx_bot_send_markdown() {
@@ -96,17 +91,17 @@ option:
 A
     param:run
     local text="$1"
-    local res
-    res="$(___x_cmd_qywx_bot___send_json <<A
+    local res=; res="$(___x_cmd_qywx_bot___send_json '
 {
     "msgtype": "markdown",
     "markdown": {
-        "content": "$text"
+        "content": '"$( ___x_cmd_qywx_jqu "$text" )"'
     }
 }
-A
-)" || return 1
-    _____x_cmd_qywx_ui_utils Markdown
+'
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent markdown: $text successfully" "$format"
 }
 
 ___x_cmd_qywx_bot_send_image() {
@@ -117,20 +112,20 @@ option:
     --json|-j       "output origin json data"
 A
     param:run
-    local res
-    md5=$(x md5 "$image_path")
-    base64=$(base64 "$image_path")
-    res="$(___x_cmd_qywx_bot___send_json <<A
+    local md5=;     md5="$(x md5 "$image_path")"
+    local base64=;  base64="$(x base64 "$image_path")"
+    local res=;     res="$(___x_cmd_qywx_bot___send_json '
 {
     "msgtype": "image",
     "image": {
-        "base64": "$base64",
-		"md5": "$md5"
+		"md5": '"$md5"',
+        "base64": '"$( ___x_cmd_qywx_jqu "$base64" )"'
     }
 }
-A
-)" || return 1
-    _____x_cmd_qywx_ui_utils  Image
+'
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent image: $image_path successfully" "$format"
 }
 
 ___x_cmd_qywx_bot_send_news() {
@@ -148,26 +143,24 @@ A
     local IFS="
 "
     local title; local description ; local url ; local picurl ; local all
-    local res
     for i in $(param_marg articles); do
         title=$(param_marg_get articles "$i" 1)
         description=$(param_marg_get articles "$i" 2)
         url=$(param_marg_get articles "$i" 3)
         picurl=$(param_marg_get articles "$i" 4)
-        all="$all$(x jo dict "title:$title" "description:$description" "url:$url" "picurl:$picurl")"
+        all="${all}${___X_CMD_UNSEENCHAR_NEWLINE}$(x jo dict "title:$title" "description:$description" "url:$url" "picurl:$picurl")"
     done
-    res="$(___x_cmd_qywx_bot___send_json <<A
+    local res=; res="$(___x_cmd_qywx_bot___send_json '
 {
     "msgtype": "news",
     "news": {
-        "articles" : [          
-               $(printf "%s" "$all" | x jo)
-        ]
+        "articles" : [ '"$all"' ]
     }
 }
-A
-)" || return 1
-    _____x_cmd_qywx_ui_utils  News
+'
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent news: $title successfully" "$format"
 }
 
 
@@ -188,8 +181,9 @@ A
     }
 }
 A
-)"|| return 1
-    _____x_cmd_qywx_ui_utils File
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent file: $media_id successfully" "$format"
 }
 
 
@@ -202,35 +196,20 @@ ___x_cmd_qywx_bot_send_newscard() {
      : #TODO: https://developer.work.weixin.qq.com/document/path/91770#%E5%9B%BE%E6%96%87%E5%B1%95%E7%A4%BA%E6%A8%A1%E7%89%88%E5%8D%A1%E7%89%87
 }
 
-_____x_cmd_qywx_ui_utils(){
-    if  [ -n "$json" ]; then
-        printf "%s\n" "$res"
-        return
-    fi
-    case "$1" in
-        Text)
-            msg="Sent text: $text  successfully"
-            ;;
-        Raw)
-            msg="Sent message  successfully"
-            ;;
-        Markdown)
-            msg="Sent markdown: $text  successfully"
-            ;;
-        Image)
-            msg="Sent image: $image_path  successfully"
-            ;;
-        File)
-            msg="Sent file: $media_id  successfully"
-            ;;
-        News)
-            msg="Sent news: $title  successfully"
-            ;;
+___x_cmd_qywx____ui_utils(){
+    local res="$1"; local msg="$2"; local format="$3"
+    [ -n "$res" ] || return
+    case "$format" in
+        json)   printf "%s\n" "$res" | x jo ; return ;;
+        yml)    printf "%s\n" "$res" | x j2y ; return ;;
+        *) ;;
     esac
-    local statu ; statu="$(printf "%s" "$res" | {  x jo env .errmsg ; echo "$errmsg" ; })"
-    if [ "$statu" = "ok" ]; then
-        ___x_cmd_ui_tf true "$msg"
-    else
-        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$res"
-    fi
+
+    printf "%s" "$res" | x jo env . .errmsg -- '
+        if [ "$errmsg" = "ok" ]; then
+            ___x_cmd_ui_tf true "$msg"
+        else
+            ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg: $res"
+        fi
+    '
 }
