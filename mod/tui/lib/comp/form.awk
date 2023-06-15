@@ -3,7 +3,7 @@ function comp_form_init(o, kp, exit_strategy, tf){
     ctrl_num_init( o, kp SUBSEP "ctrl.form.row", 1 )
     ctrl_sw_init(o, kp SUBSEP "ctrl.form.sel", false)
     ctrl_sw_init(o, kp SUBSEP "ctrl.exit.strategy", tf)
-    ctrl_sw_init(o, kp SUBSEP "has.exit.strategy", false)
+    ctrl_sw_init(o, kp SUBSEP "already.exit.strategy", false)
     comp_form_exit_strategy_init(o, kp, exit_strategy)
     draw_form_style_init()
 }
@@ -45,8 +45,7 @@ function comp_form_handle(o, kp, char_value, char_name, char_type,          _has
             change_set( o, kp, "form.body" )
             return true
         }
-        else if ((char_name == U8WC_NAME_DOWN) \
-                || (char_name == U8WC_NAME_CARRIAGE_RETURN)){
+        else if ((char_name == U8WC_NAME_DOWN) || (char_name == U8WC_NAME_CARRIAGE_RETURN)){
             if (comp_form_get_cur_row(o, kp) == comp_form_get_data_len(o, kp)) {
                 ctrl_sw_toggle(o, kp SUBSEP "ctrl.exit.strategy")
                 change_set( o, kp, "form.button" )
@@ -77,7 +76,7 @@ function comp_form___ctrl_exit_strategy(o, kp, char_value, char_name, char_type)
     }
     else if (char_name == U8WC_NAME_LEFT)                               ctrl_num_rdec(o, kp SUBSEP "ctrl.exit.strategy")
     else if (char_name == U8WC_NAME_RIGHT)                              ctrl_num_rinc(o, kp SUBSEP "ctrl.exit.strategy")
-    else if (char_name == U8WC_NAME_CARRIAGE_RETURN)                    ctrl_sw_toggle(o, kp SUBSEP "has.exit.strategy")
+    else if (char_name == U8WC_NAME_CARRIAGE_RETURN)                    ctrl_sw_toggle(o, kp SUBSEP "already.exit.strategy")
     else return false
     return true
 }
@@ -139,8 +138,8 @@ function comp_form_data_sel_put_lineedit(o, kp, r,      v){
     form_arr_data_val(o, kp, r, v, true)
 }
 
-function comp_form_has_exit_strategy_get(o, kp){        return ctrl_sw_get(o, kp SUBSEP "has.exit.strategy");       }
-function comp_form_has_exit_strategy_toggle(o, kp){     return ctrl_sw_toggle(o, kp SUBSEP "has.exit.strategy");    }
+function comp_form_already_exit_strategy_get(o, kp){    return ctrl_sw_get(o, kp SUBSEP "already.exit.strategy");       }
+function comp_form_already_exit_strategy_toggle(o, kp){ return ctrl_sw_toggle(o, kp SUBSEP "already.exit.strategy");    }
 function comp_form_is_ctrl_exit_strategy(o, kp){        return ctrl_sw_get(o, kp SUBSEP "ctrl.exit.strategy");      }
 function comp_form_get_cur_exit_strategy(o, kp){        return ctrl_num_get(o, kp SUBSEP "ctrl.exit.strategy");     }
 function comp_form_exit_strategy_len(o, kp){            return form_arr_exit_strategy_len(o, kp);                   }

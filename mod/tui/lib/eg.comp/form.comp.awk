@@ -57,10 +57,10 @@ function tapp_handle_clocktick( idx, trigger, row, col ){
 function tapp_handle_wchar( value, name, type ){
     comp_handle_exit( value, name, type )
     if (comp_form_is_ctrl_exit_strategy(o, FORM_KP)) {
-        if (value == "q")                                   exit(0)
+        if (value == "q")                                       exit(0)
     }
     if (comp_form_handle(o, FORM_KP, value, name, type)){
-        if (comp_form_has_exit_strategy_get(o, FORM_KP))    exit_with_elegant("ENTER")
+        if (comp_form_already_exit_strategy_get(o, FORM_KP))    exit_with_elegant("ENTER")
         return true
     }
     return false
@@ -71,7 +71,7 @@ function tapp_handle_response(fp){
 
 function tapp_handle_exit( exit_code,       v, e, i, l, _unset ){
     if (exit_is_with_cmd()){
-        if (!comp_form_has_exit_strategy_get(o, FORM_KP)) return
+        if (!comp_form_already_exit_strategy_get(o, FORM_KP)) return
         e = comp_form_exit_strategy_get(o, FORM_KP, comp_form_get_cur_exit_strategy(o, FORM_KP))
         if (e != "execute") return
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_FORM_FINAL_COMMAND", e ) )

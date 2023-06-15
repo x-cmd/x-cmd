@@ -18,8 +18,8 @@ function table_statusline_normal(o, kp,         l, i, v){
     comp_statusline_data_clear( o, kp )
     comp_statusline_data_put( o, kp, "?", "Open help", "Close help" )
     comp_table_inject_statusline_default( o, kp )
-    comp_statusline_data_put( o, kp, "/", "Filter", "Press '/' to filter items" )
-    comp_statusline_data_put( o, kp, "s", "Search", "Press 's' to search items" )
+    comp_statusline_data_put( o, kp, "/", "Search", "Press 's' to search items" )
+    comp_statusline_data_put( o, kp, "f", "Filter", "Press '/' to filter items" )
     comp_statusline_data_put( o, kp, "q", "Quit", "Press 'q' to quit table" )
     l = o[ kp, "custom" L ]
     for (i=1; i<=l; i++) {
@@ -55,12 +55,12 @@ function table_handle_wchar( o, kp, value, name, type,            _has_no_handle
         if (comp_table_handle( o, kp, value, name, type ))  comp_table_model_end(o, kp)
         else if (name == U8WC_NAME_CARRIAGE_RETURN)         exit_with_elegant("ENTER")
         else if (value == "q")                              exit(0)
-        else if (value == "/"){
+        else if (value == "f"){
             comp_table_ctrl_filter_sw_toggle(o, kp)
             table_change_set_all( o, kp )
             if ( ! comp_table_model_isfulldata(o, kp) )     comp_table_model_fulldata_mode( o, kp, FULLDATA_MODE_ONTHEWAY )
         }
-        else if (value == "s"){
+        else if (value == "/"){
             comp_table_ctrl_search_sw_toggle(o, kp)
             table_change_set_all( o, kp )
             if ( ! comp_table_model_isfulldata(o, kp) )     comp_table_model_fulldata_mode( o, kp, FULLDATA_MODE_ONTHEWAY )
