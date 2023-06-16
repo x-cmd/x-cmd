@@ -1,0 +1,60 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_file_cat(){
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --help|-h|"")    ___x_cmd_hub___help file cat ; return 1 ;;
+            *) break ;;
+        esac
+    done
+
+    local respath="${1:?Provide respath}"; respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+    local res; if ! res=$(NO_AUTH=1 ___x_cmd_hub___util_curl get /api/v0/file/cat "res=${respath}" token="$(___x_cmd_hub_cur get token)"); then
+        ___x_cmd_hub___util_handle_resp false "$res" "Please check the respath $respath: "
+        return 1
+    fi
+
+    local filekey_base64; filekey_base64="$(___x_cmd_http resp header encryption-filekey-base64)"
+    [ -n "$filekey_base64" ] || {
+        printf "%s\n" "$res" | ___x_cmd_hub_file_parse_stream
+        return
+    }
+
+    local filekey_path; local filekey_enc_path ; local username
+    case "$respath" in
+        @me/*)
+                filekey_path="$(___x_cmd_hub___util_user_dir datakey)/${respath#*/}/filekey"
+                filekey_enc_path="${filekey_path}.enc" ;;
+        *)      username="${respath%%/*}"; username="${username#@}"
+                filekey_path="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$username")/datakey/${respath#*/}/filekey"
+                filekey_enc_path="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$username")/sharekey/$(___x_cmd_hub___util_userid)/${respath#*/}/filekey.share.enc" ;;
+    esac || return 1
+    x:info "filekey_path=$filekey_path"
+    x mkdirp "${filekey_path%/*}" "${filekey_enc_path%/*}"
+    local x_ ; local key_path
+    ___x_cmd_hub_keypair___ensure_key_ default private || return 1
+    key_path="$x_"
+
+    printf "%s" "$filekey_base64" | base64 -d > "$filekey_enc_path"
+    ___x_cmd_hub_file___decrypt_filekey "$filekey_enc_path" "$filekey_path" "$key_path" || {
+        ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey_path" >&2
+        return 1
+    }
+
+    local fp; local fp_enc
+    case "$respath" in
+        @me/*)  fp="$(___x_cmd_hub___util_user_dir data)/${respath#*/}"
+                fp_enc="$(___x_cmd_hub___util_user_dir encdata)/${respath#*/}.enc"  ;;
+        *)      fp="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$username")/data/${respath#*/}"
+                fp_enc="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$username")/encdata/${respath#*/}.enc" ;;
+    esac || return 1
+
+    x mkdirp "${fp%/*}" "${fp_enc%/*}"
+
+    printf "%s" "$res" | ___x_cmd_hub_file_parse_stream > "$fp_enc"
+    ___x_cmd_hub_file___decrypt_file "$fp_enc" "$fp" "$filekey_path" || {
+        ___x_cmd_ui_tf false "Failed to decrypt $fp_enc to $fp" >&2
+        return 1
+    }
+    command cat "$fp"
+}

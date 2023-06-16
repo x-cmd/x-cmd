@@ -1,13 +1,30 @@
-# shellcheck shell=sh disable=SC3043
+# shellcheck shell=dash
 
 ___x_cmd_hub___util_user_id(){
-    local res
-    if ! res="$(NO_AUTH=1 ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1")" ; then
+    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1")"
+    local userId; userId="$(printf "%s" "$res" | x jo env . id=.id ; printf "%s\n" "$id")"
+    if [ -z "${userId}" ] ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id for $1"
+        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1"
         return 1
     fi
+    printf "%s" "$userId"
+}
 
-    printf "%s" "$res" | (  x jo env . id=.id ; printf "%s\n" "$id")
+___x_cmd_hub___util_userid(){
+    local x_; ___x_cmd_hub___util_ensure_userid_; printf "%s" "$x_"
+}
+
+___x_cmd_hub___util_ensure_userid_(){
+    local token; token="$(___x_cmd_hub_cur get token)"
+    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token")"
+    local userId; userId="$(printf "%s" "$res" | x jo env . id=.id ; printf "%s\n" "$id")"
+    if [ -z "${userId}" ] ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id"
+        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token"
+        return 1
+    fi
+    x_="$userId"
 }
 
 ___x_cmd_hub___util_handle_resp(){
@@ -23,6 +40,13 @@ ___x_cmd_hub___util_handle_resp(){
 
     if [ -n "$resp" ] ; then  ___x_cmd_ui_tf "$isSuccess" "$msg" "resp: $resp" "$@" >&2
     else                      ___x_cmd_ui_tf "$isSuccess" "$msg"               "$@" >&2  ;fi
+}
+
+___x_cmd_hub___util_user_dir(){
+    local name="${1:?name required}"
+    local x_; ___x_cmd_hub___util_ensure_userid_ || return
+    x mkdirp "$___X_CMD_HUB_DATA/$x_/$name"
+    printf "%s" "$___X_CMD_HUB_DATA/$x_/$name"
 }
 
 ___x_cmd_hub___util_subcmd_invalid(){
@@ -115,7 +139,6 @@ ___x_cmd_hub___util_curl() (
     }
 )
 
-# ___x_cmd_hub___util_curl_v2 get "/api/v0/key/default" type=public
 ___x_cmd_hub___util_curl_v2()(
     local method="${1:?Provide method}"
     local url_path="${2:?Provide url_path}"; shift 2
@@ -286,7 +309,7 @@ ___x_cmd_hub___util_save_token_with_ui(){
         fi
         ___x_cmd_hub_cfg token="${token}"
         ___x_cmd_hub___util_handle_resp true "" "Save token to config file"
-        local x_; ___x_cmd_hub_key___ensure_key_ default private || return 1
+        local x_; ___x_cmd_hub_keypair___ensure_key_ default private || return 1
         hub:info "Login success"
     else
         ___x_cmd_ui_tf false "Failed" >&2

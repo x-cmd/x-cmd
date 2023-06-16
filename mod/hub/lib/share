@@ -76,15 +76,17 @@ ___x_cmd_hub_share___handle_filekey(){
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to get public key for $user"
         return
     fi
-    local pubkey_path="$___X_CMD_HUB_TMP/$user.$$.pubkey"
+    local pubkey_path
+    pubkey_path="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$user")/keypair/default_public.pem" || return 1
     printf "%s" "$res" > "$pubkey_path"
+    hub:info "Downloaded public key for $user to $pubkey_path"
 
     # step2: ensure your key is loaded
     hub:debug "Step2 => Ensure your key is loaded"
-    local filekey_path="$___X_CMD_HUB_TMP/filekey.$$"
-    local filekey_enc_path="$filekey_path.enc"
+    local filekey_path; filekey_path="$(___x_cmd_hub___util_user_dir datakey)/${respath#*/}/filekey" || return 1
+    x mkdirp "${filekey_path%/*}"
     local x_ ; local private_key_path
-    ___x_cmd_hub_key___ensure_key_ default private || return 1
+    ___x_cmd_hub_keypair___ensure_key_ default private || return 1
     private_key_path="$x_"
 
     # step3: download filekey
@@ -97,25 +99,26 @@ ___x_cmd_hub_share___handle_filekey(){
 
     # step4: decrypt filekey
     hub:debug "Step4 => Decrypt filekey"
-    printf "%s" "$filekey_base64" | base64 -d > "$filekey_enc_path"
-    ___x_cmd_hub_file___decrypt_filekey "$filekey_enc_path" "$filekey_path" "$private_key_path" || {
+    printf "%s" "$filekey_base64" | base64 -d > "$filekey_path.enc"
+    ___x_cmd_hub_file___decrypt_filekey "$filekey_path.enc" "$filekey_path" "$private_key_path" || {
         ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey_path" >&2
-        x rmrf "$filekey_path" "$filekey_enc_path"
         return 1
     }
 
     # step5: encrypt filekey use user's public key
     hub:debug "Step5 => Encrypt filekey use user's public key"
-    local filekey_enc="$___X_CMD_HUB_TMP/filekey.$$.$user.enc.base64"
-    ___x_cmd_hub_file___encrypt_filekey "$filekey_path" "$filekey_enc" "$pubkey_path" || {
-        ___x_cmd_ui_tf false "Failed to encrypt filekey to $filekey_enc_path" >&2
-        x rmrf "$pubkey_path" "$filekey_path" "$filekey_enc_path"
+
+    local sharekey_enc_path
+    sharekey_enc_path="$(___x_cmd_hub___util_user_dir sharekey)/$(___x_cmd_hub___util_user_id "$user")/${respath#*/}/filekey.share.enc" || return 1
+    x mkdirp "${sharekey_enc_path%/*}"
+    ___x_cmd_hub_file___encrypt_filekey "$filekey_path" "$sharekey_enc_path" "$pubkey_path" || {
+        ___x_cmd_ui_tf false "Failed to encrypt filekey to $sharekey_enc_path" >&2
         return 1
     }
 
     # step6: upload filekey
     hub:debug "Step6 => Uploading filekey"
-    if ! res="$(___x_cmd_hub___util_curl_v2 put /api/v0/filekey "res=$respath" "filekey=$(< "$filekey_enc" base64)" "username=$user")" ; then
+    if ! res="$(___x_cmd_hub___util_curl_v2 put /api/v0/filekey "res=$respath" "filekey=$(< "$sharekey_enc_path" base64)" "username=$user")" ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload filekey for $respath"
         return 1
     fi
