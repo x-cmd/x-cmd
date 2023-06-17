@@ -1,11 +1,13 @@
 # shellcheck shell=dash
 
+xrc:mod:lib hub util/curl
+
 ___x_cmd_hub___util_user_id(){
-    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1")"
+    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl_v2 get "/api/v0/account/id" "username=$1")"
     local userId; userId="$(printf "%s" "$res" | x jo env . id=.id ; printf "%s\n" "$id")"
     if [ -z "${userId}" ] ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id for $1"
-        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1"
+        x ccmd invalidate ___x_cmd_hub___util_curl_v2 get "/api/v0/account/id" "username=$1"
         return 1
     fi
     printf "%s" "$userId"
@@ -16,12 +18,12 @@ ___x_cmd_hub___util_userid(){
 }
 
 ___x_cmd_hub___util_ensure_userid_(){
-    local token; token="$(___x_cmd_hub_cur get token)"
-    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token")"
+    local token;  token="$(___x_cmd_hub_cur get token)"
+    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl_v2 get "/api/v0/account" "token=$token")"
     local userId; userId="$(printf "%s" "$res" | x jo env . id=.id ; printf "%s\n" "$id")"
     if [ -z "${userId}" ] ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id"
-        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token"
+        x ccmd invalidate ___x_cmd_hub___util_curl_v2 get "/api/v0/account" "token=$token"
         return 1
     fi
     x_="$userId"
@@ -43,17 +45,27 @@ ___x_cmd_hub___util_handle_resp(){
 }
 
 ___x_cmd_hub___util_user_dir(){
-    local name="${1:?name required}"
-    local x_; ___x_cmd_hub___util_ensure_userid_ || return
-    x mkdirp "$___X_CMD_HUB_DATA/$x_/$name"
-    printf "%s" "$___X_CMD_HUB_DATA/$x_/$name"
+    local username="${1:?username required}"
+    local p="${2}"
+
+    case "$username" in
+        -|me)
+            local x_
+            ___x_cmd_hub___util_ensure_userid_ || return
+            res="$___X_CMD_HUB_DATA/$x_/$p" ;;
+        *)  res="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$username")/$p" || return ;;
+    esac
+
+    x mkdirp "$res"
+    printf "%s" "$res"
 }
 
 ___x_cmd_hub___util_subcmd_invalid(){
     local subcmd="${1}"
     local arg="${2}"
-    if [ -z "$arg" ]; then ___x_cmd_ui_tf false "Subcommand required. See 'x hub $subcmd --help|-h':" >&2
-    else                     ___x_cmd_ui_tf false "'$arg' is not a subcommand. See 'x hub $subcmd --help|-h':" >&2 ; fi
+    [ -z "$subcmd" ] || subcmd="$subcmd "
+    if [ -z "$arg" ]; then ___x_cmd_ui_tf false "Subcommand required. See 'x hub $subcmd--help|-h':" >&2
+    else                   ___x_cmd_ui_tf false "'$arg' is not a subcommand. See 'x hub $subcmd--help|-h':" >&2 ; fi
     return 1
 }
 
@@ -81,169 +93,6 @@ ___x_cmd_hub___util_read_password_(){
 }
 
 # Section: encrypt
-
-# from aaa.sh to aaa.sh.enc
-___x_cmd_hub___util_encrypt(){
-    local pass
-    while [ "$#" -gt 0 ]; do
-        case "$1" in
-            --pass|-p) pass="$2"; shift 2 ;;
-            *) break ;;
-        esac
-    done
-
-    x openssl env -aes-256-cbc -salt -pbkdf2 -in "$1" -out "${1}.enc" -pass pass:"$pass"
-}
-
-# from aaa.sh.enc to aaa.sh
-___x_cmd_hub___util_decrypt(){
-    local pass
-    while [ "$#" -gt 0 ]; do
-        case "$1" in
-            --pass|-p) pass="$2"; shift 2 ;;
-            *) break ;;
-        esac
-    done
-
-    x openssl enc -d -aes-256-cbc -pbkdf2 -in "$1" -out "${1%.*}"  -pass pass:"$pass"
-}
-
-# EndSection
-
-# Section: curl
-
-___X_CMD_HUB_SERVICE_URL="https://hub.x-cmd.com"
-___x_cmd_hub___util_curl() (
-    local method="${1:?Provide method}"
-    local url_path="${2:?Provide url_path}"; shift 2
-
-    [ -n "$NO_AUTH" ] || {
-        local token; ___x_cmd_hub_cur token:=
-        [ -n "$token" ] || return 1
-        ___x_cmd_http header put Authorization "$token"
-    }
-
-    hub:debug "Command " "$url_path" "$@"
-    case "$method" in
-        get)              ___x_cmd_http get "$___X_CMD_HUB_SERVICE_URL$url_path" "$@"              ;;
-        post|patch|put)   ___x_cmd_http "$method" json "$___X_CMD_HUB_SERVICE_URL$url_path" "$@"   ;;
-        delete)
-            ___x_cmd_http qs mput "$@"
-            ___x_cmd_http delete "$___X_CMD_HUB_SERVICE_URL$url_path"
-        ;;
-        *)      hub:error "Unknown method: $method" ;;
-    # TODO: Maybe has other way to close the http module log
-    esac 2>/dev/null || {
-        printf "%s\n" "$(___x_cmd_http resp body)"
-        return 1
-    }
-)
-
-___x_cmd_hub___util_curl_v2()(
-    local method="${1:?Provide method}"
-    local url_path="${2:?Provide url_path}"; shift 2
-    local resp_path="$___X_CMD_HUB_TMP/resp.$$.out"
-    x rmrf "$resp_path"
-
-    local header=""
-    [ -n "$NO_AUTH" ] || {
-        local token; ___x_cmd_hub_cur token:=
-        [ -n "$token" ] || return 1
-        header='-H "Authorization: '"$token"'"'
-    }
-
-    hub:debug "Command " "$url_path" "$@"
-    local cmd
-    case "$method" in
-        get)
-            local x_; ___x_cmd_hub___util_curl_handle_query_ "$@"
-            local query; query="$x_"
-            cmd="x curl -sS -X GET -o '$resp_path' -w '%{http_code}' \
-                $header \
-                '$___X_CMD_HUB_SERVICE_URL$url_path$query'" ;;
-        put)
-            local x_; ___x_cmd_hub___util_curl_handle_body_ "$@"
-            local body; body="$x_"
-            cmd="x curl -sS -X PUT -o '$resp_path' -w '%{http_code}' \
-                $header \
-                -H 'Content-Type: application/json' \
-                -d '$body' \
-                '$___X_CMD_HUB_SERVICE_URL$url_path'" ;;
-        *)      hub:error "Unknown method: $method" ;;
-    esac
-
-    hub:debug "Exec cmd: $cmd"
-    local http_code; http_code="$(eval "$cmd")" || return 1
-    command cat "$resp_path"
-
-    case "$http_code" in
-        2*)  return 0 ;;
-        404) return 4 ;;
-        *)   return 1 ;;
-    esac
-)
-
-# "$@" is type=public aa=nnn dd=eee
-___x_cmd_hub___util_curl_handle_query_(){
-    x_=""
-    for arg in "$@"; do
-        x_="${x_}&$arg"
-    done
-    [ -z "$x_" ] || x_="?${x_#&}"
-}
-
-# "$@" is type=public aa=nnn dd=eee
-___x_cmd_hub___util_curl_handle_body_(){
-    x_=""
-    for arg in "$@"; do
-        x_="${x_},\"${arg%%=*}\":\"${arg#*=}\""
-    done
-    [ -z "$x_" ] || x_="{${x_#?}}"
-}
-
-___x_cmd_hub___util_send_reskey() {
-    local key_path="${1:?key_path is required}"
-    local type="${2:?type is required}"
-    local name="${3:?name is required}"
-
-    local token; token="$(___x_cmd_hub___util_get_token)" || return 1
-    local cmd; cmd="x curl -sS \
-        -X POST -o '$___X_CMD_HUB_TMP/resp.$$.out' -w '%{http_code}' \
-        -F 'file=@$key_path' \
-        '$___X_CMD_HUB_SERVICE_URL/api/v0/key?token=${token}&type=${type}&name=${name}'"
-
-    hub:debug "Exec cmd: $cmd"
-    local http_code; http_code="$(eval "$cmd")" || return 1
-    command cat "$___X_CMD_HUB_TMP/resp.$$.out"
-
-    case "$http_code" in
-        2*) return 0 ;;
-        *)  hub:error "Failed to upload file=${key_path}, http_code=$http_code" ; return 1 ;;
-    esac
-}
-
-___x_cmd_hub___util_send_file() {
-    local localfp="${1:?Provide local file}"
-    local respath="${2:?Provide respath}"
-
-    local token; token="$(___x_cmd_hub___util_get_token)" || return 1
-    local cmd; cmd="curl -sS -X PUT \
-        -X PUT -o '$___X_CMD_HUB_TMP/resp.$$.out' -w '%{http_code}' \
-        -F 'file=@$localfp' \
-        '$___X_CMD_HUB_SERVICE_URL/api/v0/file?token=${token}&res=${respath}'"
-    # TODO: when http return error code, curl will not return error code
-
-    hub:debug "Exec cmd: $cmd"
-    local http_code; http_code="$(eval "$cmd")" || return 1
-    command cat "$___X_CMD_HUB_TMP/resp.$$.out"
-
-    case "$http_code" in
-        2*) return 0 ;;
-        *)  hub:error "Failed to upload file=${key_path}, http_code=$http_code" ; return 1 ;;
-    esac
-}
-
-#EndSection
 
 # Section: math ___x_cmd_hub___util_unit_suffixes, ___x_cmd_hub___util_percent
 

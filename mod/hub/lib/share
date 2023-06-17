@@ -10,25 +10,6 @@ ___x_cmd_hub_share(){
     esac
 }
 
-# ___x_cmd_hub_share_ls(){
-#     local json
-#     case "$1" in
-#         --json|-j)    json=true; shift ;;
-#         --help|-h)    ___x_cmd_hub___help share ls ; return 1 ;;
-#     esac
-
-#     local res
-#     if ! res="$(___x_cmd_hub___util_curl_v2 get /api/v0/share)" ; then
-#         ___x_cmd_hub___util_handle_resp false "$res" "Failed to list shares : "
-#         return 1
-#     fi
-
-#     printf "%s" "$res" | \
-#         x jo 2c                .path  .isPublic .userList  .createdAt | \
-#         x csv header --add     PATH   IS_PUBLIC USER_LIST  CREATE_AT  | \
-#         ___x_cmd_hub___util_st_tab  -      10    100%
-# }
-
 ___x_cmd_hub_share_set(){
     ___x_cmd_hub_share___set "$@"
 }
@@ -70,54 +51,32 @@ ___x_cmd_hub_share___handle_filekey(){
     local user="${1:?Provide user}"
     local respath="${2:?Provide respath}"
 
-    # step1: download user public key
-    hub:debug "Step1 => Downloading public key for $user"
-    if ! res="$(___x_cmd_hub___util_curl_v2 get /api/v0/key/default type=public "username=$user")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get public key for $user"
-        return
-    fi
-    local pubkey_path
-    pubkey_path="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$user")/keypair/default_public.pem" || return 1
-    printf "%s" "$res" > "$pubkey_path"
-    hub:info "Downloaded public key for $user to $pubkey_path"
-
-    # step2: ensure your key is loaded
-    hub:debug "Step2 => Ensure your key is loaded"
-    local filekey_path; filekey_path="$(___x_cmd_hub___util_user_dir datakey)/${respath#*/}/filekey" || return 1
-    x mkdirp "${filekey_path%/*}"
-    local x_ ; local private_key_path
-    ___x_cmd_hub_keypair___ensure_key_ default private || return 1
-    private_key_path="$x_"
-
-    # step3: download filekey
-    hub:debug "Step3 => Downloading filekey"
+    # step1: download filekey
+    hub:debug "Step1 => Downloading filekey"
+    local filekey_path; filekey_path="$(___x_cmd_hub___util_user_dir - "datakey/${respath#*/}")/filekey" || return 1
     if ! res="$(___x_cmd_hub___util_curl_v2 get /api/v0/filekey "res=$respath")" ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to get filekey for $respath"
         return 1
     fi
-    local filekey_base64="$res"
 
-    # step4: decrypt filekey
-    hub:debug "Step4 => Decrypt filekey"
-    printf "%s" "$filekey_base64" | base64 -d > "$filekey_path.enc"
-    ___x_cmd_hub_file___decrypt_filekey "$filekey_path.enc" "$filekey_path" "$private_key_path" || {
+    # step2: decrypt filekey
+    hub:debug "Step2 => Decrypt filekey"
+    printf "%s" "$res" | base64 -d | ___x_cmd_hub_file___decrypt_filekey "$___X_CMD_HUB_KEYPAIR" > "$filekey_path" || {
         ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey_path" >&2
         return 1
     }
 
-    # step5: encrypt filekey use user's public key
-    hub:debug "Step5 => Encrypt filekey use user's public key"
-
+    # step3: encrypt filekey use user's public key
+    hub:debug "Step3 => Encrypt filekey use user's public key"
     local sharekey_enc_path
-    sharekey_enc_path="$(___x_cmd_hub___util_user_dir sharekey)/$(___x_cmd_hub___util_user_id "$user")/${respath#*/}/filekey.share.enc" || return 1
-    x mkdirp "${sharekey_enc_path%/*}"
-    ___x_cmd_hub_file___encrypt_filekey "$filekey_path" "$sharekey_enc_path" "$pubkey_path" || {
+    sharekey_enc_path="$(___x_cmd_hub___util_user_dir - "sharekey/$(___x_cmd_hub___util_user_id "$user")/${respath#*/}")/filekey.share.enc" || return 1
+    < "$filekey_path" ___x_cmd_hub_file___encrypt_filekey "$user/default" > "$sharekey_enc_path" || {
         ___x_cmd_ui_tf false "Failed to encrypt filekey to $sharekey_enc_path" >&2
         return 1
     }
 
-    # step6: upload filekey
-    hub:debug "Step6 => Uploading filekey"
+    # step4: upload filekey
+    hub:debug "Step4 => Uploading filekey"
     if ! res="$(___x_cmd_hub___util_curl_v2 put /api/v0/filekey "res=$respath" "filekey=$(< "$sharekey_enc_path" base64)" "username=$user")" ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload filekey for $respath"
         return 1
@@ -133,7 +92,7 @@ ___x_cmd_hub_share_unset(){
     respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
 
     local res
-    if ! res="$(___x_cmd_hub___util_curl delete /api/v0/share "res=$respath")" ; then
+    if ! res="$(___x_cmd_hub___util_curl_v2 delete /api/v0/share "res=$respath")" ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to remove share: "
         return 1
     fi
