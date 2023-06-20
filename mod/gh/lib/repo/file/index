@@ -1,10 +1,10 @@
 # shellcheck shell=dash disable=SC2154
 # shellcheck disable=
 
-# TODO: app(tree api)
 ___x_cmd_gh_repo_file(){
     param:subcmd ___x_cmd_gh_repo_file              \
         ls              "List repo files"           \
+        tree            "List repo file tree"       \
         upload          "Upload file to repo"       \
         download        "Download file from repo"
     param:subcmd:try
@@ -23,50 +23,48 @@ options:
     #1              "repo path parameter"                                                   <>=""
     --repo|-r       "<owner_path>/<repo_path>"                                              <>:RepoName
     --ref           "The name of the commit/branch/tag. Default using default branch"       <>=""
-    --all           "Default limit list 1000 files. Add the flag can list all files"
     --json|-j       "output json data"
 '
     param:run
     ___x_cmd_gh_param_init_owner_repo
     [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
-    if [ -n "$all" ]; then
-        ___x_cmd_gh_repo_file_ls___all "$1"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_curl get "/repos/${owner_repo}/contents/${1}" ref
     else
-        if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-            ___x_cmd_gh_curl get "/repos/${owner_repo}/contents/${1}" ref
-        else
-            ___x_cmd_gh_curl get "/repos/${owner_repo}/contents/${1}" ref | \
-                x jo 2c .name | \
-                x csv static_tab
-        fi
+        ___x_cmd_gh_curl get "/repos/${owner_repo}/contents/${1}" ref | \
+            x jo 2c .name | \
+            x csv static_tab
     fi
 }
 # EndSection
 
-# Section: List All (Tree)
+# Section: Tree
 # https://docs.github.com/en/rest/git/trees#get-a-tree
-___x_cmd_gh_repo_file_ls___all(){
-    local x_=""
-    if [ -z "$1" ]; then
-        # Get root tree sha
+___x_cmd_gh_repo_file_tree(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "the target tree sha"                                                   <>=""
+    --repo|-r       "<owner_path>/<repo_path>"                                              <>:RepoName
+    --recursive     "Returns the objects or subtrees referenced by the tree"
+    --json|-j       "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    local x_="$1"
+    if [ -z "$x_" ]; then
         ___x_cmd_gh_repo_file_ls___get_repo_root_tree_sha_ || return
-    else
-        x_="$(
-            {
-                case "${1}" in
-                    */*)  ___x_cmd_gh_curl get "/repos/${owner_repo}/contents/${1%/*}" ref ;;
-                    *)    ___x_cmd_gh_curl get "/repos/${owner_repo}/contents" ref         ;;
-                esac
-            } | ___x_cmd_gh_repo_file_ls___get_repo_dir_tree_sha "${1##*/}"
-        )"
     fi
     gh:debug "tree sha ==> $x_"
     [ -n "$x_" ] || { gh:error "Can not found repo${1:+" $1"} tree sha"; return 1; }
 
     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
-        ___x_cmd_gh_curl get "/repos/${owner_repo}/git/trees/${x_}"
+        ___x_cmd_gh_curl get "/repos/${owner_repo}/git/trees/${x_}" recursive
     else
-        ___x_cmd_gh_curl get "/repos/${owner_repo}/git/trees/${x_}" | x jo .tree | \
+        ___x_cmd_gh_curl get "/repos/${owner_repo}/git/trees/${x_}" recursive | x jo .tree | \
             x jo 2c             .path | \
             x csv static_tab
     fi
@@ -74,22 +72,7 @@ ___x_cmd_gh_repo_file_ls___all(){
 
 ___x_cmd_gh_repo_file_ls___get_repo_root_tree_sha_(){
     local NO_CACHE=1
-    if [ -z "$ref" ]; then
-        local x_default_branch=""
-        if ! ___x_cmd_gh___get_x_default_branch_; then
-            gh:error "Can not get default branch of repo $owner_repo. Please have check it."
-            return 1
-        fi
-        ref="$x_default_branch"
-    fi
-    x jo env . x_=.object.sha <<A
-        $(___x_cmd_gh_curl get "/repos/${owner_repo}/git/ref/heads/${ref}" 2>/dev/null)
-A
-    [ -z "$x_" ] || return 0
-    x jo env . x_=.object.sha <<A
-        $(___x_cmd_gh_curl get "/repos/${owner_repo}/git/ref/tags/${ref}" 2>/dev/null)
-A
-    [ -n "$x_" ] || x_="$ref"
+    ___x_cmd_gh___get_x_repo_tree_sha_by_branch_tag_ "$ref"
 }
 
 ___x_cmd_gh_repo_file_ls___get_repo_dir_tree_sha(){
