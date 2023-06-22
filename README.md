@@ -20,55 +20,43 @@
   <a href="https://x-cmd.com/">Install</a>
 </p>
 
-Now x-cmd still in alpha version for insdier only. We plan to release our first beta version on June 25th. 
+<p align="center">
+Now x-cmd still in alpha version for insdier only. We plan to release our first beta version on June 25th.
 <br>
-If you like x-cmd, please give us a star ⭐. 
+If you like x-cmd, please give us a star ⭐.
 <br>
 Your support is our biggest motivation.
-
-<br>
-
-## Demo
-
-[x theme](https://www.x-cmd.com/basic/theme) - Use command line prompt theme
+</p>
 
 ![x theme demo gif](https://user-images.githubusercontent.com/40693636/220616378-06eb5edc-5baa-45e2-9486-7f32a5496400.gif)
-
-[x zuz](https://www.x-cmd.com/basic/zuz) - Compress or Decompress file
-
-![x zuz demo gif](https://user-images.githubusercontent.com/40693636/218275404-64affeb0-5e77-4b3b-b46e-cb46642d8da9.gif)
-
-[x tldr](https://www.x-cmd.com/basic/tldr) - Collaborative cheatsheets for console commands
-
-![x tldr demo gif](https://user-images.githubusercontent.com/40693636/218275753-8528af6f-fbde-4563-8ec2-cf911a7660e0.gif)
 
 
 ## Introduction
 
 1. Supports one-click execution of hosted scripts in the posixcompatible shells ([bash](http://tiswww.case.edu/php/chet/bashbashtop.html)/[zsh](https://www.zsh.org/)/[dash](https://manpagesdebian.org/bullseye/dash/dash.1.en.html)/[ash](https://github.comash-shell/ash), with more to be supported in the future), even innon-scratch lightweight container images such as [busybox](https:/busybox.net/) and [alpine](https://www.alpinelinux.org/).
-2. Supports installation of mainstream programming languageruntimes (currently supports [node](https://nodejs.org/en/),[python](https://www.python.org/), [java](https://www.java.comen/), etc.), allowing users to execute hosted scripts with oneclick on environments with x environment.
-3. Enhances the user experience of posix shell with themes, quickpath navigation, and better shell intelligent completion andprompting features to be added in the future.
-4. Provides a range of interactive CLI tools ([github](https:/github.com/), [gitee](https://gitee.com/), with more tool modulesto be released in the next six months).
+2. Supports installation of programming language runtimes (currently supports [node](https://nodejs.org/en/),[python](https://www.python.org/), [java](https://www.java.comen/), etc.), allowing users to execute hosted scripts with oneclick on environments with x environment.
+3. Enhances the user experience of posix shell with themes, quickpath navigation, and better shell intelligent completion and prompting features to be added in the future.
+4. Provides a range of interactive CLI tools ([github](https:/github.com/), [gitee](https://gitee.com/), with more tool modules to be released in the next six months).
 5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 500KB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
-## module write in pure posix shell
+## Module write in pure posix shell
 
-| 模块 | 功能 | 类似项目 |
+| Module | Function | Similar items |
 | --- | --- | --- |
-| theme | 设置shell的主题  | [oh-my-zsh](https://ohmyz.sh/) [oh-my-bash](https://ohmybash.nntoan.com/) |
-| tldr | 可浏览命令的使用案例  | [tldr客户端工具](https://github.com/tldr-pages/tldr) |
-| proxy | 快速配置[apt](https://pkgs.org/download/apt),[pip](https://pypi.org/project/pip/),[npm](https://www.npmjs.com/)等下载源 | 未知 |
-| z/uz | 根据后缀实现多种格式的压缩和解压  | 未知 |
-| pick | 交互式选择 | [percol](https://github.com/mooz/percol) |
-| gh | github交互客户端  | [官方的go版gh](https://cli.github.com/) |
-| gt | gitee交互客户端 | ? |
-| ws | 项目脚本管理 | ? |
-| env | 安装脚本运行/开发环境  | [asdf](https://asdf-vm.com/)/[nvm](https://github.com/nvm-sh/nvm)/[sdkman](https://sdkman.io/)/[pyenv](https://github.com/pyenv/pyenv)/[rbenv](https://github.com/rbenv/rbenv)/... |
-| hub | 脚本发布服务 | ? |
+| theme | Set the theme of the shell  | [oh-my-zsh](https://ohmyz.sh/) /[oh-my-bash](https://ohmybash.nntoan.com/) |
+| tldr | Use cases for browsable commands  | [tldr client tool](https://github.com/tldr-pages/tldr) |
+| proxy |Quickly configure download sources such as [apt](https://pkgs.org/download/apt),[pip](https://pypi.org/project/pip/),[npm](https://www.npmjs.com/) etc. | unknown |
+| z/uz | Compression and decompression of various formats according to the suffix  | unknown |
+| pick | interactive selection | [percol](https://github.com/mooz/percol) |
+| gh | github interactive client  | [Official Github CLI for Go](https://cli.github.com/) |
+| gt | gitee interactive client | ? |
+| ws | Project script management | ? |
+| env | Setup Script Runtime/Development Environment  | [asdf](https://asdf-vm.com/)/[nvm](https://github.com/nvm-sh/nvm)/[sdkman](https://sdkman.io/)/[pyenv](https://github.com/pyenv/pyenv)/[rbenv](https://github.com/rbenv/rbenv)/... |
+| hub | Script Publishing Service | ? |
 
 ## Module empowered by modern command tools
 
-| 模块 | 封装目标 | 功能 |
+| Module | Package target | Function |
 | -- | -- | -- |
 | ssl/openssl | [openssl](https://www.openssl.org/) | Secure cryptographic |
 | p7zip | [7zip](https://www.7-zip.org) | Compression and decompression |

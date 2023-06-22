@@ -20,26 +20,16 @@
   <a href="https://cn.x-cmd.com/">安装</a>
 </p>
 
+<p align="center">
 现在仍处于内测阶段（v0.1.0 版本）。我们计划在6月25日发布首个公测版本。
 <br>
-如果你觉得x-cmd不错，请给我们一个 star ⭐ 
+如果你觉得x-cmd不错，请给我们一个 star ⭐
 <br>
 你的支持是我们不断改进的动力 ~
 
-
-## 先睹为快
-
-[x theme](https://www.x-cmd.com/basic/theme) -  更改使用命令行主题
+</p>
 
 ![x theme demo gif](https://foruda.gitee.com/images/1677067960083339501/19e2472d_9641432.gif "theme.gif")
-
-[x zuz](https://www.x-cmd.com/basic/zuz) - 压缩或解压文件
-
-![x zuz demo gif](https://foruda.gitee.com/images/1676142444494253456/e28beb06_9641432.gif "zuz.gif")
-
-[x tldr](https://www.x-cmd.com/basic/tldr) - 命令行的快捷备忘录
-
-![x tldr demo gif](https://foruda.gitee.com/images/1676142452819542463/2799d158_9641432.gif "tldr.gif")
 
 
 ## 介绍
