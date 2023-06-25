@@ -39,34 +39,34 @@
 4. 提供一系列的交互式cli工具（[github](https://github.com/), [gitee](https://gitee.com/)，更多的工具模块将在最近半年发布）
 5. 极轻极快: 包括全功能模块安装包体积不超过500KB，首启后shell的加载时间一般不超过100ms
 
-## [模块列表](https://x-cmd.com/mod)
+## [模块列表](https://x-cmd.com/mod/)
 
 | 模块 | 功能 | 类似项目 |
 | --- | --- | --- |
-| env | 安装脚本运行/开发环境  | [asdf](https://asdf-vm.com/)/[nvm](https://github.com/nvm-sh/nvm)/[sdkman](https://sdkman.io/)/[pyenv](https://github.com/pyenv/pyenv)/[rbenv](https://github.com/rbenv/rbenv)/... |
-| theme | 设置shell的主题  | [oh-my-zsh](https://ohmyz.sh/) [oh-my-bash](https://ohmybash.nntoan.com/) |
-| tldr | 可浏览命令的使用案例  | [tldr客户端工具](https://github.com/tldr-pages/tldr) |
-| proxy | 快速配置[apt](https://pkgs.org/download/apt),[pip](https://pypi.org/project/pip/),[npm](https://www.npmjs.com/)等下载源 | 未知 |
-| gh | github交互客户端  | [官方的go版gh](https://cli.github.com/) |
-| z/uz | 根据后缀实现多种格式的压缩和解压  | 未知 |
-| pick | 交互式选择 | [fzf]() [percol](https://github.com/mooz/percol) |
-| gt | gitee交互客户端 | ? |
-| ws | 项目脚本管理 | ? |
-| hub | 脚本发布服务 | ? |
+| [env](https://cn-x-cmd.com/mod/env) | 安装脚本运行/开发环境  | [asdf](https://asdf-vm.com/)/[nvm](https://github.com/nvm-sh/nvm)/[sdkman](https://sdkman.io/)/[pyenv](https://github.com/pyenv/pyenv)/[rbenv](https://github.com/rbenv/rbenv)/... |
+| [theme](https://cn-x-cmd.com/mod/theme) | 设置shell的主题  | [oh-my-zsh](https://ohmyz.sh/) [oh-my-bash](https://ohmybash.nntoan.com/) |
+| [tldr](https://cn-x-cmd.com/mod/tldr) | 可浏览命令的使用案例  | [tldr客户端工具](https://github.com/tldr-pages/tldr) |
+| [proxy](https://cn-x-cmd.com/mod/proxy) | 快速配置[apt](https://pkgs.org/download/apt),[pip](https://pypi.org/project/pip/),[npm](https://www.npmjs.com/)等下载源 | 未知 |
+| [gh](https://cn-x-cmd.com/mod/gh) | github交互客户端  | [官方的go版gh](https://cli.github.com/) |
+| [z/uz](https://cn-x-cmd.com/mod/zuz) | 根据后缀实现多种格式的压缩和解压  | 未知 |
+| [pick](https://cn-x-cmd.com/mod/pick) | 交互式选择 | [fzf]() [percol](https://github.com/mooz/percol) |
+| [gt](https://cn-x-cmd.com/mod/gt) | gitee交互客户端 | ? |
+| [ws](https://cn-x-cmd.com/mod/ws) | 项目脚本管理 | ? |
+| [hub](https://cn-x-cmd.com/mod/hub) | 脚本发布服务 | ? |
 
-## [包列表](https://x-cmd.com/pkg)
+## [包列表](https://x-cmd.com/pkg/)
 
 | 包 | 官网 | 功能 |
 | -- | -- | -- |
-| jq/yq | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/)处理 |
-| p7zip | [7zip](https://www.7-zip.org) | 加解压工具 |
-| ffmpeg | [ffmpeg](https://ffmpeg.org/) | 音视频工具工具 |
-| openssl | [openssl](https://www.openssl.org/) | 安全密码学工具 |
-| fd | [fd](https://github.com/sharkdp/fd) | find的高效替代 |
-| rg | [rg](https://github.com/BurntSushi/ripgrep) | grep的高效替代 |
+| [jq](https://cn-x-cmd.com/pkg/jq)/yq | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/)处理 |
+| [p7zip](https://cn-x-cmd.com/pkg/7za) | [7zip](https://www.7-zip.org) | 加解压工具 |
+| [ffmpeg](https://cn-x-cmd.com/pkg/ffmpeg) | [ffmpeg](https://ffmpeg.org/) | 音视频工具工具 |
+| [openssl](https://cn-x-cmd.com/pkg/openssl) | [openssl](https://www.openssl.org/) | 安全密码学工具 |
+| [fd](https://cn-x-cmd.com/pkg/fd) | [fd](https://github.com/sharkdp/fd) | find的高效替代 |
+| [rg](https://cn-x-cmd.com/pkg/rg) | [rg](https://github.com/BurntSushi/ripgrep) | grep的高效替代 |
 | sd | [rg](https://github.com/BurntSushi/ripgrep) | 类sed，但更易上手 |
-| bat | [bat](https://github.com/sharkdp/bat) | cat的rust实现 |
-| nmap | [nmap](https://nmap.org/) | 安全扫描工具 |
-| pandoc | [pandoc](https://pandoc.org/) | 文档格式转换工具 |
-| smartmontools | [smartmontools](https://www.smartmontools.org/) | 硬盘监控工具 |
+| [bat](https://cn-x-cmd.com/pkg/bat) | [bat](https://github.com/sharkdp/bat) | cat的rust实现 |
+| [nmap](https://cn-x-cmd.com/pkg/nmap) | [nmap](https://nmap.org/) | 安全扫描工具 |
+| [pandoc](https://cn-x-cmd.com/pkg/pandoc) | [pandoc](https://pandoc.org/) | 文档格式转换工具 |
+| [smartmontools](https://cn-x-cmd.com/pkg/smartctl) | [smartmontools](https://www.smartmontools.org/) | 硬盘监控工具 |
 |当前共150个| ... |

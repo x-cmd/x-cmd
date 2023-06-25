@@ -31,7 +31,7 @@ Your support is our biggest motivation.
 ![x theme demo gif](https://user-images.githubusercontent.com/40693636/220616378-06eb5edc-5baa-45e2-9486-7f32a5496400.gif)
 
 
-## [Introduction]((https://x-cmd.com))
+## [Introduction](https://x-cmd.com)
 
 1. Supports one-click execution of hosted scripts in the posixcompatible shells ([bash](http://tiswww.case.edu/php/chet/bashbashtop.html)/[zsh](https://www.zsh.org/)/[dash](https://manpagesdebian.org/bullseye/dash/dash.1.en.html)/[ash](https://github.comash-shell/ash), with more to be supported in the future), even innon-scratch lightweight container images such as [busybox](https:/busybox.net/) and [alpine](https://www.alpinelinux.org/).
 2. Supports installation of programming language runtimes (currently supports [node](https://nodejs.org/en/),[python](https://www.python.org/), [java](https://www.java.comen/), etc.), allowing users to execute hosted scripts with oneclick on environments with x environment.
@@ -39,7 +39,7 @@ Your support is our biggest motivation.
 4. Provides a range of interactive CLI tools ([github](https:/github.com/), [gitee](https://gitee.com/), with more tool modules to be released in the next six months).
 5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 500KB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
-## [Module List](https://x-cmd.com/mod)
+## [Module List](https://x-cmd.com/mod/)
 
 | Module | Function | Similar items |
 | --- | --- | --- |
@@ -54,7 +54,7 @@ Your support is our biggest motivation.
 | [env](https://x-cmd.com/mod/env) | Setup Script Runtime/Development Environment  | [asdf](https://asdf-vm.com/)/[nvm](https://github.com/nvm-sh/nvm)/[sdkman](https://sdkman.io/)/[pyenv](https://github.com/pyenv/pyenv)/[rbenv](https://github.com/rbenv/rbenv)/... |
 | [hub](https://x-cmd.com/mod/hub) | Script Publishing Service | ? |
 
-## [Package List](https://x-cmd.com/pkg)
+## [Package List](https://x-cmd.com/pkg/)
 
 | Package | Official Site | Function |
 | -- | -- | -- |
