@@ -178,7 +178,7 @@ ___x_cmd_gh_action_workflow_run() {
 options:
     #1              "workflow <name> or <relative_file_path> or .id=<workflow_id>"           <>
     --repo|-r       "<owner_path>/<repo_path>"                                               <>:RepoName
-    --ref           "The git reference for the workflow."                                    <>="main"
+    --ref           "The git reference for the workflow."                                    <>=""
     --field|-f|m    "Input <key>=<value> parameter in the workflow file"                     <>=""
     --inputs        "Input keys and values parameter in the workflow file (json)(stdin -)"   <>=""
 A
@@ -186,6 +186,7 @@ A
     ___x_cmd_gh_param_init_owner_repo
     [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
 
+    # inputs handler
     if [ -n "$inputs" ]; then
         [ -z "$field_1" ] || {
             gh:error "Only one of --inputs or --field can be passed"
@@ -194,16 +195,28 @@ A
         [ "$inputs" != '-' ] || inputs="$(command cat)"
     fi
 
+    # workflow id handler
     [ -n "$1" ] || M='accepts 1 arg (workflow name or file name or .id=<workflow_id>), received empty' arg:ret:64
     local x_wfid="$1"; shift
     ___x_cmd_gh____transform_x_wfid_
 
+    # field handler
     if [ -n "$field_1" ]; then
         local i=""; local tmp_field=""
         for i in $(param_marg field); do
             [ -z "$(param_marg field "$i")" ] || set -- "$@" "$(param_marg field "$i")"
         done
         inputs="$(x jo dict "$@")"
+    fi
+
+    # ref handler
+    if [ -z "$ref" ]; then
+        local x_default_branch=""
+        if ! ___x_cmd_gh___get_x_default_branch_; then
+            gh:error "Can not get default branch of repo $owner_repo. Please have check it."
+            return 1
+        fi
+        ref="$x_default_branch"
     fi
 
     local gen_gh_json=""
@@ -231,11 +244,10 @@ ___x_cmd_gh____transform_x_wfid_(){
             ;;
         *)
             local _tmp_x_wfid=""
-            _tmp_x_wfid="$(___x_cmd_gh_get_multi "/repos/$owner_repo/actions/workflows" | ___x_cmd_gh____transform_x_wfid_search_id "$x_wfid")"
-            [ -z "$_tmp_x_wfid" ] || x_wfid="$_tmp_x_wfid"
+            _tmp_x_wfid="$(___x_cmd_gh_get_multi "/repos/$owner_repo/actions/workflows" 2>/dev/null | ___x_cmd_gh____transform_x_wfid_search_id "$x_wfid")"
+            [ -n "$_tmp_x_wfid" ] || x_wfid="$_tmp_x_wfid"
             ;;
     esac
-    return 0
 }
 
 ___x_cmd_gh____transform_x_wfid_search_id(){
