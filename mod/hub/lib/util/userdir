@@ -1,0 +1,76 @@
+# shellcheck shell=dash
+
+___x_cmd_hub___util_user_id(){
+    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1")"
+    local userId; userId="$(printf "%s" "$res" | { x jo env . id=.id ; printf "%s\n" "$id";})"
+    if [ -z "${userId}" ] ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id for $1"
+        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1"
+        return 1
+    fi
+    printf "%s" "$userId"
+}
+
+___x_cmd_hub___util_user_name(){
+    local token;  token="$(___x_cmd_hub_cur get token)"
+    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token")"
+    local username; username="$(printf "%s" "$res" | { x jo env . username=.name ; printf "%s\n" "$username" ;})"
+    if [ -z "${name}" ] ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id"
+        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token"
+        return 1
+    fi
+    x_="$name"
+}
+
+___x_cmd_hub___util_userid(){
+    local x_; ___x_cmd_hub___util_ensure_userid_; printf "%s" "$x_"
+}
+
+___x_cmd_hub___util_ensure_userid_(){
+    local token;  token="$(___x_cmd_hub_cur get token)"
+    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token")"
+    local userId; userId="$(printf "%s" "$res" | { x jo env . id=.id ; printf "%s\n" "$id";})"
+    if [ -z "${userId}" ] ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id"
+        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token"
+        return 1
+    fi
+    x_="$userId"
+}
+
+___x_cmd_hub___util_user_dir(){
+    local username="${1:?username required}"
+    local p="${2}"
+
+    case "$username" in
+        -|me)
+            local x_
+            ___x_cmd_hub___util_ensure_userid_ || return
+            res="$___X_CMD_HUB_DATA/$x_/$p" ;;
+        *)  res="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$username")/$p" || return ;;
+    esac
+
+    x mkdirp "$res"
+    printf "%s" "$res"
+}
+
+# <username>:<respath> data        => <user_id>/data/<respath>
+# <username>:<respath> encdata     => <user_id>/enckey/<respath>.enc
+# <username>:<respath> datakey     => <user_id>/datakey/<respath>/filekey
+___x_cmd_hub___util_respath_to_localpath(){
+    local type="${1:?Provide type}"
+    local respath="${2:?Provide respath}"
+    local username="${respath%%":"*}"
+    local res
+
+    case "$type" in
+        data)       res="$(___x_cmd_hub___util_user_dir "$username" data)/${respath#*:}" || return ;;
+        encdata)    res="$(___x_cmd_hub___util_user_dir "$username" encdata)/${respath#*:}.enc" || return ;;
+        datakey)    res="$(___x_cmd_hub___util_user_dir "$username" datakey)/${respath#*:}/filekey" || return;;
+        *)          ___x_cmd_ui_tf false "Unknown type: $type" >&2 ; return 1 ;;
+    esac
+
+    x mkdirp "${res%/*}"
+    printf "%s" "$res"
+}

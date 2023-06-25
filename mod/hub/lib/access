@@ -1,22 +1,25 @@
 # shellcheck shell=dash
 
 ___x_cmd_hub_access(){
+    local X_help_cmd='___x_cmd_hub___help access'
+    help:arg-null:parse
+
     local op="$1"
     case "$op" in
-        -h|--help)    shift ; ___x_cmd_hub___help access ; return 1 ;;
         set|unset)    shift ; "___x_cmd_hub_access_$op" "$@"           ;;
-        "")        ___x_cmd_hub___help access ; return 1 ;;
         *)         ___x_cmd_hub___util_subcmd_invalid "access" "$@" ;;
     esac
 }
 
 ___x_cmd_hub_access_set(){
+    local X_help_cmd='___x_cmd_hub___help access set'
+    help:arg-null:parse
+
     local user; local public
     while [ $# -gt 0 ]; do
         case "$1" in
-            --public)       public="$2"; shift 2 ;;
+            --public)       public=true; shift  ;;
             --user)         user="$2"; shift 2 ;;
-            --help|-h)      ___x_cmd_hub___help access set >&2 ; return 1 ;;
             *) break ;;
         esac
     done
@@ -25,24 +28,18 @@ ___x_cmd_hub_access_set(){
     respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
 
     local x_;
-    case "$public" in
-        public)
-                NO_CACHE=1 ___x_cmd_hub_file_which_ "$respath" || return 1
-                ___x_cmd_hub_file_upload -f "$x_" --public "$respath" || return 1
-                ;;
-        "")
-                NO_CACHE=1 ___x_cmd_hub_file_which_ "$respath" || return 1
-                ___x_cmd_hub_file_upload -f "$x_" "$respath" || return 1
-                ;;
-    esac
 
-    # unset public
-    ___x_cmd_hub_access___set "$@"
+    if [ -n "$public" ] ; then
+        NO_CACHE=1 ___x_cmd_hub_file_which_ "$respath" || return 1
+        ___x_cmd_hub_file_upload -f  --public "$x_" "$respath" || return 1
+    else
+        ___x_cmd_hub_access___set "$@"
+    fi
 }
 
 ___x_cmd_hub_access___set(){
-    local public="${public:""}"
-    local user="${user:""}"
+    local public="${public:-""}"
+    local user="${user:-""}"
     while [ $# -gt 0 ]; do
         case "$1" in
             --public)       public=true; shift ;;
@@ -64,7 +61,7 @@ ___x_cmd_hub_access___set(){
         ___x_cmd_hub_access___handle_filekey "$user" "$respath" || return
     fi
 
-    local res; res="$(___x_cmd_hub___util_curl_v2 put /api/v0/access "res=$respath" "isPublic=${public:-false}" username="$user")" || {
+    local res; res="$(___x_cmd_hub___util_curl put /api/v0/access "res=$respath" "isPublic=${public:-false}" username="$user")" || {
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to set access:"
         return 1
     }
@@ -79,9 +76,9 @@ ___x_cmd_hub_access___handle_filekey(){
 
     # step1: download filekey
     hub:debug "Step1 => Downloading filekey"
-    local filekey_path; filekey_path="$(___x_cmd_hub___util_user_dir - "datakey/${respath#*/}")/filekey" || return 1
+    local filekey_path; filekey_path="$(___x_cmd_hub___util_respath_to_localpath datakey "$respath")" || return 1
     local res;
-    res="$(___x_cmd_hub___util_curl_v2 get /api/v0/filekey "res=$respath")"
+    res="$(___x_cmd_hub___util_curl get /api/v0/filekey "res=$respath")"
     local return_code="$?"
     ! [ "$return_code" = 4 ] || return 0
 
@@ -100,7 +97,7 @@ ___x_cmd_hub_access___handle_filekey(){
     # step3: encrypt filekey use user's public key
     hub:debug "Step3 => Encrypt filekey use user's public key"
     local accesskey_enc_path
-    accesskey_enc_path="$(___x_cmd_hub___util_user_dir - "accesskey/$(___x_cmd_hub___util_user_id "$user")/${respath#*/}")/filekey.access.enc" || return 1
+    accesskey_enc_path="$(___x_cmd_hub___util_user_dir - "accesskey/$(___x_cmd_hub___util_user_id "$user")/${respath#*:}")/filekey.enc" || return 1
     < "$filekey_path" ___x_cmd_hub_file___encrypt_filekey "$user/default" > "$accesskey_enc_path" || {
         ___x_cmd_ui_tf false "Failed to encrypt filekey to $accesskey_enc_path" >&2
         return 1
@@ -108,22 +105,21 @@ ___x_cmd_hub_access___handle_filekey(){
 
     # step4: upload filekey
     hub:debug "Step4 => Uploading filekey"
-    if ! res="$(___x_cmd_hub___util_curl_v2 put /api/v0/filekey "res=$respath" "filekey=$(< "$accesskey_enc_path" base64)" "username=$user")" ; then
+    if ! res="$(___x_cmd_hub___util_curl put /api/v0/filekey "res=$respath" "filekey=$(< "$accesskey_enc_path" base64)" "username=$user")" ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload filekey for $respath"
         return 1
     fi
 }
 
 ___x_cmd_hub_access_unset(){
-    case "$1" in
-        --help|-h)    ___x_cmd_hub___help access rm >&2 ; return 1 ;;
-    esac
+    local X_help_cmd='___x_cmd_hub___help access unset'
+    help:arg-null:parse
 
     local respath="${1:?Provide respath}"
     respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
 
     local res
-    if ! res="$(___x_cmd_hub___util_curl_v2 delete /api/v0/access "res=$respath")" ; then
+    if ! res="$(___x_cmd_hub___util_curl delete /api/v0/access "res=$respath")" ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to remove access: "
         return 1
     fi
