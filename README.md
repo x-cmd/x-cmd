@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-Currently in alpha testing (v0.1.4), please do not use it in production environments. We still plan to iterate forward at a rate of three versions per month in the next three months.
+Currently in alpha testing (v0.1.4), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
 <br>
 If you like x-cmd, please give us a star ⭐.
 <br>
