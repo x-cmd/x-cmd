@@ -10,7 +10,7 @@
 
 <p align="center">
   <a target="_blank" href="https://x-cmd.com/">
-    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/badge/alpha v0.2.0-107fbc.svg">
+    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/badge/alpha v0.1.4-107fbc.svg">
   </a>
 </p>
 
@@ -39,34 +39,34 @@ Your support is our biggest motivation.
 4. Provides a range of interactive CLI tools ([github](https:/github.com/), [gitee](https://gitee.com/), with more tool modules to be released in the next six months).
 5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 500KB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
-## [Module List](https://x-cmd.com/modules)
+## [Module List](https://x-cmd.com/mod)
 
 | Module | Function | Similar items |
 | --- | --- | --- |
-| theme | Set the theme of the shell  | [oh-my-zsh](https://ohmyz.sh/) /[oh-my-bash](https://ohmybash.nntoan.com/) |
-| tldr | Use cases for browsable commands  | [tldr client tool](https://github.com/tldr-pages/tldr) |
-| proxy |Quickly configure download sources such as [apt](https://pkgs.org/download/apt),[pip](https://pypi.org/project/pip/),[npm](https://www.npmjs.com/) etc. | unknown |
-| z/uz | Compression and decompression of various formats according to the suffix  | unknown |
-| pick | interactive selection | [percol](https://github.com/mooz/percol) |
-| gh | github interactive client  | [Official Github CLI for Go](https://cli.github.com/) |
-| gt | gitee interactive client | ? |
-| ws | Project script management | ? |
-| env | Setup Script Runtime/Development Environment  | [asdf](https://asdf-vm.com/)/[nvm](https://github.com/nvm-sh/nvm)/[sdkman](https://sdkman.io/)/[pyenv](https://github.com/pyenv/pyenv)/[rbenv](https://github.com/rbenv/rbenv)/... |
-| hub | Script Publishing Service | ? |
+| [theme](https://x-cmd.com/mod/theme) | Set the theme of the shell  | [oh-my-zsh](https://ohmyz.sh/) /[oh-my-bash](https://ohmybash.nntoan.com/) |
+| [tldr](https://x-cmd.com/mod/tldr) | Use cases for browsable commands  | [tldr client tool](https://github.com/tldr-pages/tldr) |
+| [proxy](https://x-cmd.com/mod/proxy) |Quickly configure download sources such as [apt](https://pkgs.org/download/apt),[pip](https://pypi.org/project/pip/),[npm](https://www.npmjs.com/) etc. | unknown |
+| [z/uz](https://x-cmd.com/mod/zuz) | Compression and decompression of various formats according to the suffix  | unknown |
+| [pick](https://x-cmd.com/mod/pick) | interactive selection | [percol](https://github.com/mooz/percol) |
+| [gh](https://x-cmd.com/mod/gh) | github interactive client  | [Official Github CLI for Go](https://cli.github.com/) |
+| [gt](https://x-cmd.com/mod/gt) | gitee interactive client | ? |
+| [ws](https://x-cmd.com/mod/ws) | Project script management | ? |
+| [env](https://x-cmd.com/mod/env) | Setup Script Runtime/Development Environment  | [asdf](https://asdf-vm.com/)/[nvm](https://github.com/nvm-sh/nvm)/[sdkman](https://sdkman.io/)/[pyenv](https://github.com/pyenv/pyenv)/[rbenv](https://github.com/rbenv/rbenv)/... |
+| [hub](https://x-cmd.com/mod/hub) | Script Publishing Service | ? |
 
-## [Package List](https://x-cmd.com/packages)
+## [Package List](https://x-cmd.com/pkg)
 
 | Package | Official Site | Function |
 | -- | -- | -- |
-| jq/yq | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/) |
-| p7zip | [7zip](https://www.7-zip.org) | Compression and decompression |
-| ffmpeg | [ffmpeg](https://ffmpeg.org/) | Audio and video  |
-| openssl | [openssl](https://www.openssl.org/) | Secure cryptographic |
-| fd | [fd](https://github.com/sharkdp/fd) | Efficient replacement for find|
-| rg | [rg](https://github.com/BurntSushi/ripgrep) | Efficient replacement for grep|
+| [jq](https://x-cmd.com/pkg/jq)/yq | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/) |
+| [p7zip](https://x-cmd.com/pkg/7za) | [7zip](https://www.7-zip.org) | Compression and decompression |
+| [ffmpeg](https://x-cmd.com/pkg/ffmpeg) | [ffmpeg](https://ffmpeg.org/) | Audio and video  |
+| [openssl](https://x-cmd.com/pkg/openssl) | [openssl](https://www.openssl.org/) | Secure cryptographic |
+| [fd](https://x-cmd.com/pkg/fd) | [fd](https://github.com/sharkdp/fd) | Efficient replacement for find|
+| [rg](https://x-cmd.com/pkg/rg) | [rg](https://github.com/BurntSushi/ripgrep) | Efficient replacement for grep|
 | sd | [rg](https://github.com/BurntSushi/ripgrep) | Like sed, but more easy to use |
-| bat | [bat](https://github.com/sharkdp/bat) |Rust implementation of cat|
-| nmap | [nmap](https://nmap.org/) | Security scanning |
-| pandoc | [pandoc](https://pandoc.org/) | Document format conversion |
-| smartmontools | [smartmontools](https://www.smartmontools.org/) | Hard drive monitoring tool   |
+| [bat](https://x-cmd.com/pkg/bat) | [bat](https://github.com/sharkdp/bat) |Rust implementation of cat|
+| [nmap](https://x-cmd.com/pkg/nmap) | [nmap](https://nmap.org/) | Security scanning |
+| [pandoc](https://x-cmd.com/pkg/pandoc) | [pandoc](https://pandoc.org/) | Document format conversion |
+| [smartmontools](https://x-cmd.com/pkg/smartctl) | [smartmontools](https://www.smartmontools.org/) | Hard drive monitoring tool   |
 | 当前共150个 | ... |
