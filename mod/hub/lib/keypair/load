@@ -26,15 +26,25 @@ ___x_cmd_hub_keypair_load(){
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to get rsakey for $name"
         return "$return_code"
     fi
-    printf "%s" "$res" | base64 -d > "$private_key_enc_path"
+    printf "%s" "$res" | x openssl enc -d -A -base64 > "$private_key_enc_path"
 
-    local x_; ___x_cmd_hub___util_read_password_ "- Please input password for decrypt private key: "
-    local password="$x_"
-    hub:debug x openssl enc -d -aes-256-cbc -in "$private_key_enc_path" -out "$private_key_path" -pbkdf2 -pass pass:"$password"
-    x openssl enc -d -aes-256-cbc -in "$private_key_enc_path" -out "$private_key_path" -pbkdf2 -pass pass:"$password" || {
-        hub:error "Failed to decrypt private key"
-        return 1
-    }
+    local password
+    hub:info "Please input password for encrypt private key"
+    while true ; do
+        ___X_CMD_TUI_FORM_FINAL_COMMAND=""
+        x tui form password      "Password"           ""  '=~*'  '^.*$' || return 1
+        [ -n "$___X_CMD_TUI_FORM_FINAL_COMMAND" ] || {
+            hub:info "Canceled"
+            return 1
+        }
+
+        hub:debug x openssl enc -d -aes-256-cbc -in "$private_key_enc_path" -out "$private_key_path" -pbkdf2 -pass pass:"$password"
+        x openssl enc -d -aes-256-cbc -in "$private_key_enc_path" -out "$private_key_path" -pbkdf2 -pass pass:"$password" || {
+            hub:error "Failed to decrypt private key, or password not match, please try again"
+        }
+        break
+    done
+
     hub:info "Loaded private key => $private_key_path"
 
     if ! res="$(___x_cmd_hub___util_curl get "/api/v0/key/$name" type=public)" ; then

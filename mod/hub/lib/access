@@ -33,6 +33,7 @@ ___x_cmd_hub_access_set(){
         NO_CACHE=1 ___x_cmd_hub_file_which_ "$respath" || return 1
         ___x_cmd_hub_file_upload -f  --public "$x_" "$respath" || return 1
     else
+        # TODO: download encdata and push
         ___x_cmd_hub_access___set "$@"
     fi
 }
@@ -44,7 +45,6 @@ ___x_cmd_hub_access___set(){
         case "$1" in
             --public)       public=true; shift ;;
             --user)         user="$2"; shift 2 ;;
-            --help|-h)      ___x_cmd_hub___help access set >&2 ; return 1 ;;
             *) break ;;
         esac
     done
@@ -96,7 +96,8 @@ ___x_cmd_hub_access___handle_filekey(){
 
     # step2: decrypt filekey
     hub:debug "Step2 => Decrypt filekey"
-    printf "%s" "$res" | base64 -d | ___x_cmd_hub_file___decrypt_filekey "$___X_CMD_HUB_KEYPAIR" > "$filekey_path" || {
+    local x_ ; ___x_cmd_hub_keypair___ensure_key_ "$___X_CMD_HUB_KEYPAIR" private || return 1
+    printf "%s" "$res" | ___x_cmd_hub_file___decrypt_filekey "$x_" > "$filekey_path" || {
         ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey_path" >&2
         return 1
     }
@@ -105,14 +106,15 @@ ___x_cmd_hub_access___handle_filekey(){
     hub:debug "Step3 => Encrypt filekey use user's public key"
     local accesskey_enc_path
     accesskey_enc_path="$(___x_cmd_hub___util_user_dir - "accesskey/$(___x_cmd_hub___util_user_id "$user")/${respath#*:}")/filekey.enc" || return 1
-    < "$filekey_path" ___x_cmd_hub_file___encrypt_filekey "$user/default" > "$accesskey_enc_path" || {
+    local x_ ; ___x_cmd_hub_keypair___ensure_key_ default public "$user" || return 1
+    < "$filekey_path" ___x_cmd_hub_file___encrypt_filekey "$x_" > "$accesskey_enc_path" || {
         ___x_cmd_ui_tf false "Failed to encrypt filekey to $accesskey_enc_path" >&2
         return 1
     }
 
     # step4: upload filekey
     hub:debug "Step4 => Uploading filekey"
-    if ! res="$(___x_cmd_hub___util_curl put /api/v0/filekey "res=$respath" "filekey=$(< "$accesskey_enc_path" base64)" "username=$user")" ; then
+    if ! res="$(___x_cmd_hub___util_curl put /api/v0/filekey "res=$respath" "filekey=$(cat "$accesskey_enc_path")" "username=$user")" ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload filekey for $respath"
         return 1
     fi

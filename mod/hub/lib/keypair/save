@@ -13,35 +13,42 @@ ___x_cmd_hub_keypair_save(){
     local name="${1:-"$___X_CMD_HUB_KEYPAIR"}"
     local public_key_path="$key_path/${name}_public.pem"
     local private_key_path="$key_path/${name}_private.pem"
-    local private_key_enc_path="$key_path/${name}_private.enc"
-    hub:debug "public_key_path=$public_key_path private_key_path=$private_key_path private_key_enc_path=$private_key_enc_path"
+    hub:debug "public_key_path=$public_key_path private_key_path=$private_key_path"
 
     if [ ! -f "$public_key_path" ] || [ ! -f "$private_key_path" ] ; then
         hub:error "Key not exists, $public_key_path or $private_key_path"
         return 1
     fi
 
-    local x_; ___x_cmd_hub___util_read_password_ "Please input password for encrypt private key: "
-    local password="$x_"
-    ___x_cmd_hub___util_read_password_ "Please input password again: "
-    if [ "$x_" != "$password" ] ; then
-        hub:error "Password not match"
+    hub:info "Please input password for encrypt private key"
+    local password1; local password2
+    while true ; do
+        ___X_CMD_TUI_FORM_FINAL_COMMAND=""
+        x tui form \
+            password1      "Password"           ""  '=~*'  '^.*$' -- \
+            password2      "Password (again)"   ""  '=~*'  '^.*$' || return 1
+        [ -n "$___X_CMD_TUI_FORM_FINAL_COMMAND" ] || {
+            hub:info "Canceled"
+            return 1
+        }
+        [ "$password1" != "$password2" ] || break
+        hub:error "Password not match, please try again"
+    done
+
+
+    local private_key_enc_base64_path="$key_path/${name}_private.enc.base64"
+    x openssl enc -aes-256-cbc -salt -in "$private_key_path" -out - -pbkdf2 -pass pass:"$password1" |
+        x openssl enc -A -base64 > "$private_key_enc_base64_path"
+    hub:debug x openssl enc -aes-256-cbc -salt -in "$private_key_path" -out - -pbkdf2 -pass pass:"$password1"
+    hub:debug "Encrypted private key => $private_key_enc_base64_path"
+
+    if ! res="$(___x_cmd_hub___util_send_reskey "$private_key_enc_base64_path" private "$name")" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload private key"
         return 1
     fi
-
-    x openssl enc -aes-256-cbc -salt -in "$private_key_path" -out "$private_key_enc_path" -pbkdf2 -pass pass:"$password"
-    hub:debug x openssl enc -aes-256-cbc -salt -in "$private_key_path" -out "$private_key_enc_path" -pbkdf2 -pass pass:"$password"
-    hub:debug "Encrypted private key: $private_key_enc_path"
 
     local res; if ! res="$(___x_cmd_hub___util_send_reskey "$public_key_path" public "$name")" ; then
         ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload public key"
-        return 1
-    fi
-
-    local private_key_enc_base64_path="$key_path/${name}_private.enc.base64"
-    < "$private_key_enc_path" base64 > "$private_key_enc_base64_path"
-    if ! res="$(___x_cmd_hub___util_send_reskey "$private_key_enc_base64_path" private "$name")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to upload private key"
         return 1
     fi
 

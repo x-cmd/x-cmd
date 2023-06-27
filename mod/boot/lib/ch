@@ -1,0 +1,57 @@
+# shellcheck shell=dash
+
+# x boot ch beta  == x boot ch beta bash
+# x boot ch  ==  x boot ch alpha bash
+# x boot ch [version] [sh] [...args]
+
+___x_cmd_boot_ch(){
+    [ $# -ne 0 ] || set -- alpha
+    local version="$1"; shift
+    [ $# -ne 0 ] || set -- bash
+
+    boot:debug --version "$version" --exec "$*"
+    [ -d "$___X_CMD_ROOT/v/$version" ] || {
+        ___x_cmd_boot_ch___install "$version" || return
+    }
+
+    ___X_CMD_ROOT_CODE="" \
+    ___X_CMD_VERSION="$version" "$@"
+}
+
+___x_cmd_boot_ch___install(){
+    local version="$1"
+    local code_dir="$___X_CMD_ROOT/v/$version"
+    x rmrf "$code_dir"
+    case "$version" in
+        latest|alpha|beta)
+                {
+                    local cache="$___X_CMD_ROOT_TMP/$version.tgz"
+                    ___x_cmd_httpget_gitx x-cmd release main "dist/$version.tgz" "$cache" - || return
+                    x mkdirp "$code_dir"
+                    x uz "$cache" "$code_dir" || return
+                } || {
+                    boot:error "Fail to download or unpack $version.tgz from x-cmd/release"
+                    x rmrf "$code_dir"
+                    return 1
+                }
+                ;;
+        x[0-9]|x-cmd/*)
+                local repo="${version%/*}"
+                local branch=main;  [ "$repo" = "$version" ] || branch="${version#*/}"
+                local ___X_CMD_WEBSRC_GITDOMAIN_;   x websrc gitdomain_
+                (
+                    x mkdirp "$code_dir"
+                    x cd "$___X_CMD_ROOT/v"
+                    boot:info git clone "git@$___X_CMD_WEBSRC_GITDOMAIN_:x-cmd/$repo.git" -b "$branch" "$version"
+                    git clone "git@$___X_CMD_WEBSRC_GITDOMAIN_:x-cmd/$repo.git" -b "$branch" "$version"
+                ) || {
+                    boot:error "Fail to git clone x-cmd/$repo $branch"
+                    x rmrf "$code_dir"
+                    return 1
+                }
+                ;;
+
+        *)      M="Version $version does not exist" N=boot log:ret:64 ;;
+    esac
+    boot:info "Success to download x-cmd $version"
+}

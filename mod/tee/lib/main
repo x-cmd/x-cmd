@@ -1,0 +1,44 @@
+# shellcheck shell=dash
+___x_cmd_tee___main(){
+    [ "$#" -gt 0 ] || {
+        x help -m tee
+        return
+    }
+
+    ___x_cmd_tee___exec "$@"
+}
+
+# original tee is tee [-ai] [file ...]
+# our current tee is tee [-ai] [file ...] [-- command [args ...] ]
+
+___x_cmd_tee___exec(){
+    local tee_cmd=tee
+    local i=0
+    local arg; for arg in "$@"; do
+        i=$((i+1))
+        case "$arg" in
+            --)     break ;;
+            *)      tee_cmd="$tee_cmd \"\$$i\"" ;;
+        esac
+    done
+
+    [ $# -gt $i ] || {
+        command tee "$@"
+        return
+    }
+
+    local FIFOFP; FIFOFP="$___X_CMD_ROOT_TMP/tee/$$.$(x date vlid).fifo"
+
+    x ensurefp "$FIFOFP"
+    command mkfifo "$FIFOFP"
+    (
+        eval "$tee_cmd" <"$FIFOFP" &
+    )    # using subshell to suppress the job status output
+
+    shift "$i"
+    "$@" >"$FIFOFP"
+    local errcode=$?
+
+    x rmrf "$FIFOFP"
+    return "$errcode"
+}
