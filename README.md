@@ -10,7 +10,7 @@
 
 <p align="center">
   <a target="_blank" href="https://x-cmd.com/">
-    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/badge/alpha v0.1.4-107fbc.svg">
+    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/badge/alpha v0.1.5-107fbc.svg">
   </a>
 </p>
 
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-Currently in alpha testing (v0.1.4), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
+Currently in alpha testing (v0.1.5), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
 <br>
 If you like x-cmd, please give us a star ⭐.
 <br>

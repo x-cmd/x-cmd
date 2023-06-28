@@ -10,7 +10,7 @@
 
 <p align="center">
   <a target="_blank" href="https://cn.x-cmd.com">
-    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/badge/alpha v0.1.4-107fbc.svg">
+    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/badge/alpha v0.1.5-107fbc.svg">
   </a>
 </p>
 
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-现在处于内测阶段（v0.1.4 版本），请勿用于生产环境。我们计划在未来三个月以每个月3个版本的速度往前迭代。
+现在处于内测阶段（v0.1.5 版本），请勿用于生产环境。我们计划在未来三个月以每个月3个版本的速度往前迭代。
 <br>
 如果你觉得x-cmd不错，请给我们一个 star ⭐
 <br>
