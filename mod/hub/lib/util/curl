@@ -1,80 +1,55 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2030,SC2031
 
 ___X_CMD_HUB_SERVICE_URL="https://hub.x-cmd.com"
-___x_cmd_hub___util_curl_v0()(
-    local method="${1:?Provide method}"
-    local url_path="${2:?Provide url_path}"; shift 2
+___x_cmd_hub___util_curl_header(){
+    local key="${1:?Provide key}"
 
-    local token; token="$(___x_cmd_hub___util_get_token)" || return
-    [ -z "$token" ] || ___x_cmd_http header put Authorization "$token"
-
-    hub:debug "Command " "$url_path" "$@"
-    case "$method" in
-        get)              ___x_cmd_http get "$___X_CMD_HUB_SERVICE_URL$url_path" "$@"              ;;
-        post|patch|put)   ___x_cmd_http "$method" json "$___X_CMD_HUB_SERVICE_URL$url_path" "$@"   ;;
-        delete)
-            ___x_cmd_http qs mput "$@"
-            ___x_cmd_http delete "$___X_CMD_HUB_SERVICE_URL$url_path"
-        ;;
-        *)      hub:error "Unknown method: $method" ;;
-    # TODO: Maybe has other way to close the http module log
-    esac 2>/dev/null || {
-        printf "%s\n" "$(___x_cmd_http resp body)"
-        return 1
-    }
-)
+    < "$___X_CMD_HUB_TMP/header.$$.out" awk -v key="$key" '
+        BEGIN { FS=": "; }
+        $1 == key { print $2; exit 0; }
+    '
+}
 
 ___x_cmd_hub___util_curl()(
     local method="${1:?Provide method}"
     local url_path="${2:?Provide url_path}"; shift 2
-    local resp_path="$___X_CMD_HUB_TMP/resp.$$.out"
-    x rmrf "$resp_path"
 
-    local header=""
+    local json_header="-H 'Content-Type: application/json'"
+    local file=""; local header=""; local body=""
+    local ___X_CMD_HUB_RAW_BODY
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -F) file="$file -F '$2'"; json_header="" ; shift 2 ;;
+            -H) header="$header -H '$2'"; shift 2 ;;
+            --raw-body) body="-d '$2'"; ___X_CMD_HUB_RAW_BODY=true; shift 2 ;;
+            *)  break ;;
+        esac
+    done
+
+    local resp_path="$___X_CMD_HUB_TMP/resp.$$.out"
+    local header_path="$___X_CMD_HUB_TMP/header.$$.out"
+    x rmrf "$resp_path" "$header_path"
+
     local token; token="$(___x_cmd_hub___util_get_token)" || return
-    [ -z "$token" ] || header='-H "Authorization: '"$token"'"'
+    [ -z "$token" ] || header="$header -H 'Authorization: $token'"
 
     hub:debug "Command " "$url_path" "$@"
-    local cmd
+
+    local cmd="x curl -sS"
     case "$method" in
-        get)
-            local x_; ___x_cmd_hub___util_curl_handle_query_ "$@"
-            local query; query="$x_"
-            cmd="x curl -sS -X GET -o '$resp_path' -w '%{http_code}' \
-                $header \
-                '$___X_CMD_HUB_SERVICE_URL$url_path$query'" ;;
-        put)
-            local x_; ___x_cmd_hub___util_curl_handle_body_ "$@"
-            local body; body="$x_"
-            cmd="x curl -sS -X PUT -o '$resp_path' -w '%{http_code}' \
-                $header \
-                -H 'Content-Type: application/json' \
-                -d '$body' \
-                '$___X_CMD_HUB_SERVICE_URL$url_path'" ;;
-        post)
-            local x_; ___x_cmd_hub___util_curl_handle_body_ "$@"
-            local body; body="$x_"
-            cmd="x curl -sS -X POST -o '$resp_path' -w '%{http_code}' \
-                $header \
-                -H 'Content-Type: application/json' \
-                -d '$body' \
-                '$___X_CMD_HUB_SERVICE_URL$url_path'" ;;
-        patch)
-            local x_; ___x_cmd_hub___util_curl_handle_body_ "$@"
-            local body; body="$x_"
-            cmd="x curl -sS -X PATCH -o '$resp_path' -w '%{http_code}' \
-                $header \
-                -H 'Content-Type: application/json' \
-                -d '$body' \
-                '$___X_CMD_HUB_SERVICE_URL$url_path'" ;;
-        delete)
-            local x_; ___x_cmd_hub___util_curl_handle_query_ "$@"
-            local query; query="$x_"
-            cmd="x curl -sS -X DELETE -o '$resp_path' -w '%{http_code}' \
-                $header \
-                '$___X_CMD_HUB_SERVICE_URL$url_path$query'" ;;
+        get)    cmd="$cmd -X GET" ;;
+        put)    cmd="$cmd -X PUT" ;;
+        post)   cmd="$cmd -X POST" ;;
+        patch)  cmd="$cmd -X PATCH" ;;
+        delete) cmd="$cmd -X DELETE" ;;
         *)      hub:error "Unknown method: $method" ;;
     esac
+
+    local query;
+    ___x_cmd_hub___util_curl_handle_query_and_body_ "$@"
+    cmd="$cmd -o '$resp_path' -D '$header_path' -w '%{http_code}' \
+        $header $json_header $body $file \
+        '$___X_CMD_HUB_SERVICE_URL$url_path$query'"
 
     hub:debug "Exec cmd: $cmd"
     local http_code; http_code="$(eval "$cmd")" || return 1
@@ -87,86 +62,20 @@ ___x_cmd_hub___util_curl()(
     esac
 )
 
-# "$@" is type=public aa=nnn dd=eee
-___x_cmd_hub___util_curl_handle_query_(){
-    x_=""
+# "$@" is type=public aa=nnn dd=eee -- type=public aa=nnn dd=eee
+___x_cmd_hub___util_curl_handle_query_and_body_(){
     for arg in "$@"; do
-        x_="${x_}&$arg"
+        shift
+        [ "$arg" != "--" ] || break
+        query="${query}&$arg"
     done
-    [ -z "$x_" ] || x_="?${x_#&}"
-}
+    [ -z "$query" ] || query="?${query#&}"
 
-# "$@" is type=public aa=nnn dd=eee
-___x_cmd_hub___util_curl_handle_body_(){
-    x_=""
+    [ -z "$___X_CMD_HUB_RAW_BODY" ] || return 0
+    body=""
     for arg in "$@"; do
-        x_="${x_},\"${arg%%=*}\":\"${arg#*=}\""
+        shift
+        body="${body},\"${arg%%=*}\":\"${arg#*=}\""
     done
-    [ -z "$x_" ] || x_="{${x_#?}}"
-}
-
-___x_cmd_hub___util_send_reskey() {
-    local key_path="${1:?key_path is required}"
-    local type="${2:?type is required}"
-    local name="${3:?name is required}"
-
-    local token; token="$(___x_cmd_hub___util_get_token)" || return 1
-    local cmd; cmd="x curl -sS \
-        -X POST -o '$___X_CMD_HUB_TMP/resp.$$.out' -w '%{http_code}' \
-        -F 'file=@$key_path' \
-        '$___X_CMD_HUB_SERVICE_URL/api/v0/key?token=${token}&type=${type}&name=${name}'"
-
-    hub:debug "Exec cmd: $cmd"
-    local http_code; http_code="$(eval "$cmd")" || return 1
-    command cat "$___X_CMD_HUB_TMP/resp.$$.out"
-
-    case "$http_code" in
-        2*) return 0 ;;
-        *)  hub:error "Failed to upload file=${key_path}, http_code=$http_code" ; return 1 ;;
-    esac
-}
-
-___x_cmd_hub___util_send_file() {
-    local localfp="${1:?Provide local file}"
-    local respath="${2:?Provide respath}"
-    local force="$3"
-
-    local token; token="$(___x_cmd_hub___util_get_token)" || return 1
-    local cmd; cmd="curl -sS -X PUT \
-        -X PUT -o '$___X_CMD_HUB_TMP/resp.$$.out' -w '%{http_code}' \
-        -F 'file=@$localfp' \
-        '$___X_CMD_HUB_SERVICE_URL/api/v0/file?token=${token}&res=${respath}&${force}'"
-
-    hub:debug "Exec cmd: $cmd"
-    local http_code; http_code="$(eval "$cmd")" || return 1
-    command cat "$___X_CMD_HUB_TMP/resp.$$.out"
-
-    case "$http_code" in
-        2*) return 0 ;;
-        *)  hub:error "Failed to upload file=${key_path}, http_code=$http_code" ; return 1 ;;
-    esac
-}
-
-___x_cmd_hub___util_send_enc_file() {
-    local localfp="${1:?Provide local file}"
-    local respath="${2:?Provide respath}"
-    local filekey_enc_path="${3:?Provide filekey_enc_path}"
-    local force="${4}"
-
-    local token; token="$(___x_cmd_hub___util_get_token)" || return 1
-    local cmd; cmd="x curl -sS \
-        -H 'Encryption-filekey-base64: $(cat "$filekey_enc_path")' \
-        -X PUT -o '$___X_CMD_HUB_TMP/resp.$$.out' -w '%{http_code}' \
-        -F 'file=@$localfp' \
-        '$___X_CMD_HUB_SERVICE_URL/api/v0/file/enc?token=${token}&res=${respath}&${force}'"
-
-    hub:debug "Exec cmd: $cmd"
-    local http_code; http_code="$(eval "$cmd")" || return 1
-    command cat "$___X_CMD_HUB_TMP/resp.$$.out"
-
-    case "$http_code" in
-        2*) return 0 ;;
-        *)  #hub:error "Failed to upload file, http_code=$http_code" ;
-            return 1 ;;
-    esac
+    [ -z "$body" ] || body="-d '{${body#?}}'"
 }

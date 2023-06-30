@@ -1,58 +1,38 @@
 # shellcheck shell=dash
 
 ___x_cmd_hub___util_user_id(){
-    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1")"
-    local userId; userId="$(printf "%s" "$res" | { x jo env . id=.id ; printf "%s\n" "$id";})"
-    if [ -z "${userId}" ] ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id for $1"
-        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1"
+    local res; local user_id;
+
+    res="$(NO_AUTH=1 x ccmd -- \
+        ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1" \
+        PROFILE="$___X_CMD_HUB_LOCAL_PROFILE" \
+        CONFIG="$___X_CMD_HUB_LOCAL_CONFIG"
+    )" || {
+        hub:error "Response => $res"
         return 1
-    fi
-    printf "%s" "$userId"
+    }
+
+    user_id="$(printf "%s" "$res" | { x jo env . id=.id ; printf "%s\n" "$id";})"
+    [ -n "${user_id}" ] || {
+        hub:error "Failed to get user_id from response => $res"
+        return 1
+    }
+    printf "%s" "$user_id"
 }
 
-___x_cmd_hub___util_user_name(){
-    local token;  token="$(___x_cmd_hub_cur get token)" # 50ms
-    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token")" # 20ms
-    local username; username="$(printf "%s" "$res" | { x jo env . username=.name ; printf "%s\n" "$username" ;})" # 20ms
-    if [ -z "${name}" ] ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id"
-        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token"
-        return 1
-    fi
-    x_="$name"
-}
-
-___x_cmd_hub___util_userid(){
-    local x_; ___x_cmd_hub___util_ensure_userid_; printf "%s" "$x_"
-}
-
-___x_cmd_hub___util_ensure_userid_(){
-    local token;  token="$(___x_cmd_hub_cur get token)"
-    local res;    res="$(NO_AUTH=1 x ccmd -- ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token")"
-    local userId; userId="$(printf "%s" "$res" | { x jo env . id=.id ; printf "%s\n" "$id";})"
-    if [ -z "${userId}" ] ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user id"
-        x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account" "token=$token"
-        return 1
-    fi
-    x_="$userId"
+___x_cmd_hub___util_cache_invalidate(){
+    x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=me" \
+        PROFILE="$___X_CMD_HUB_LOCAL_PROFILE" \
+        CONFIG="$___X_CMD_HUB_LOCAL_CONFIG"
 }
 
 ___x_cmd_hub___util_user_dir(){
     local username="${1:?username required}"
     local p="${2}"
-
-    case "$username" in
-        -|me)
-            local x_
-            ___x_cmd_hub___util_ensure_userid_ || return
-            res="$___X_CMD_HUB_DATA/$x_/$p" ;;
-        *)  res="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$username")/$p" || return ;;
-    esac
-
-    x mkdirp "$res"
-    printf "%s" "$res"
+    local dir; dir="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$username")/$p" || return
+    hub:debug "user_dir => $* dir=$dir"
+    x mkdirp "$dir"
+    printf "%s" "$dir"
 }
 
 # <username>:<respath> data        => <user_id>/data/<respath>

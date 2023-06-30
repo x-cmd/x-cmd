@@ -11,11 +11,23 @@ BEGIN{
     KP_FINISH_REASON = S "\"1\"" S "\"choices\"" S "\"1\"" S "\"finish_reason\""
 }
 
+( NR==1 && ($0 ~ "^{")){
+    IS_ERROR_CONTENT=1
+    jiparse_after_tokenize( o_error, $0 )
+}
 ( NR>1 && $0 != "" ){
-    $1 = ""
-    parse( $0 )
-    fflush()
+    if (IS_ERROR_CONTENT==1) jiparse_after_tokenize( o_error, $0 )
+    else {
+        $1 = ""
+        parse( $0 )
+        fflush()
+    }
 }
 
-END{    printf "\n";    }
+END{
+    if (IS_ERROR_CONTENT != 1) printf "\n"
+    else {
+        print log_error("chat", log_mul_msg(jstr(o_error)))
+    }
+}
 

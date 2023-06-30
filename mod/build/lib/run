@@ -1,0 +1,115 @@
+# Author:       Li Junhao       l@x-cmd.com
+# shellcheck    shell=sh        disable=SC3043,SC2154,2031,SC2030
+
+___x_cmd_build_run(){
+    [ $# -gt 1 ] || {
+        build:error "Include at least one system architecture"
+        return 1
+    }
+    ___x_cmd_build_run_main "$@"
+}
+
+___x_cmd_build_run_main(){
+    local owner_repo="${1}"
+    shift
+    build:info "The upload target repo is ${owner_repo}"
+    local x_cmd_build_version="${version:? "app version is null"}"
+    ___x_cmd_build_run_main___repo_tag_create || {
+        build:error "tag create failed"
+        return 1
+    }
+    local release_id
+    release_id="$(___x_cmd_build_run_main___repo_release_create)"
+    [ -n "$release_id" ] || {
+        build:error "release create failed"
+        return 1
+    }
+    build:info  "release id : ${release_id}"
+
+    for filename in "$@"; do
+        ___x_cmd_build_run_main___upload || {
+        pkg:error "upload filename: ${filename} failed"
+    }
+    done
+}
+
+___x_cmd_build_run_main___repo_tag_create()(
+    ___x_cmd_build_run_main___repo_create >/dev/null 2>&1 || {
+        build:error "repo create and clone failed"
+        return 1
+    }
+
+    build:debug "tag create ： ${owner_repo##*/}"
+    cd ./"${owner_repo##*/}" && {
+        [ -f "./README.md" ] || {
+            printf "%s\n%s" "${owner_repo##*/} static binary" "${github_url}" > ./README.md
+            git add .
+            git commit -m "add ${owner_repo##*/}"
+            git push origin main
+        }
+            git tag "${x_cmd_build_version}"
+            git push --tags
+    }
+)
+
+___x_cmd_build_run_main___repo_release_create(){
+    x gh repo release create --tag "${x_cmd_build_version}"  -j --repo "${owner_repo}" | x jo .id
+}
+
+___x_cmd_build_run_main___repo_create(){
+    [ -n "${owner_repo}" ] || {
+        build:error "owner_repo is null. Please assign a value to owner_repo (owner_repo=xxx)."
+        return 1
+    }
+
+    if x gh repo info "${owner_repo}" ;then
+        git clone git@github.com:"${owner_repo}".git
+    else
+        x gh repo create --access public "${owner_repo}" >/dev/null || {
+            build:error "x gh repo create --access public ${owner_repo} fail"
+            return 1
+        }
+        git clone git@github.com:"${owner_repo}".git
+    fi
+}
+
+___x_cmd_build_run_main___upload()(
+    [ -z "${x_cmd_build_path}" ] || {
+        cd "${x_cmd_build_path}" || return 1
+    }
+    [ -f "${filename}" ] || {
+        build:error "${filename} does not exist"
+        return 1
+    }
+    x gh repo release attachment upload --release_id "${release_id}" --repo "${owner_repo}" "${filename}"
+)
+
+___x_cmd_build_run_main___dow_and_uz()(
+    local download_url="${1:? download url is null}"
+    local filename="${2:? filename is null}"
+    local file_uz_dir="${3}"
+    x curl -L "${download_url}" -o "${filename}" || {
+        build:error "download failed ：${download_url} "
+        return 1
+    }
+    x uzr "${filename}" "${file_uz_dir}" || {
+        build:error "unzip ${filename} to ${file_uz_dir} fail"
+    }
+)
+
+___x_cmd_build_run_main___zip()(
+    [ $# -gt 1 ] || {
+        build:error "Provide at least two parameters, representing the compressed format and compressed file path respectively."
+        return 1
+    }
+    local file_format="${1}"
+    local tag_app_dir="${2}"
+    local file_name="${tag_app_dir##*"/"}"
+    if [ -d "${tag_app_dir}" ] || [ -f "${tag_app_dir}" ];then
+        cd "${tag_app_dir%"/"*}" || return 1
+        x z "${file_name}.${file_format}" "${file_name}"
+    else
+        build:error "The target directory or file does not exist : ${tag_app_dir}"
+        return 1
+    fi
+)

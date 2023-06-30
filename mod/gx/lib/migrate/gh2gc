@@ -1,24 +1,23 @@
-# shellcheck shell=dash
+# shellcheck shell=dash  disable=2016
 
 ___x_cmd_gx_migrate_release_gh2gc(){
     local gh_owner_repo="$1"
     local gc_owner_repo="${2:-$gh_owner_repo}"
 
     {
-        x gh repo release ls --repo "${gh_owner_repo}" -j
+        x gh repo release ls --repo "${gh_owner_repo}" -j | x tee "${___X_CMD_ROOT_TMP}/gx/___x_cmd_gx_github_${gh_owner_repo}"
         # x gx gh repo release ls
-        x gcode repo release ls --repo "${gc_owner_repo}" -j
+        x gcode repo release ls --repo "${gc_owner_repo}" -j | x tee "${___X_CMD_ROOT_TMP}/gx/___x_cmd_gx_gitcode_${gc_owner_repo}"
         # x gx gcode repo release
     } | {
         CHECK_PARAM=tag_name RET_FIELD=id ___x_cmd_gx_migrate_release___verify
     } | (
         while read -r release_name && read -r tag_name && read -r release_id && read -r is_exist; do
-            if [ "${release_name}" = null ]; then
-                unset release_name
-            fi
+            [ "${release_name}" = "null" ] || unset release_name
 
             if [ "${is_exist}" = "false" ]; then
-                eval x gcode repo release create --repo "${gc_owner_repo}" "${release_name:+"--name ${release_name}"}" "${tag_name}"
+                gx:debug "x gcode repo release create --repo ${gc_owner_repo} ${release_name:+"--name"} ${release_name:+"${release_name}"} ${tag_name}"
+                x gcode repo release create --repo "${gc_owner_repo}" ${release_name:+"--name"} ${release_name:+"${release_name}"} "${tag_name}"
             fi
 
             ___x_cmd_gx_migrate_release_gh2gc___attachment "${gh_owner_repo}" "${gc_owner_repo}" "${release_id}" "${tag_name}" || {
@@ -36,8 +35,13 @@ ___x_cmd_gx_migrate_release_gh2gc___attachment(){
     local gc_tag_name="$4"
 
     {
-        x gh repo release attachment ls --repo "${gh_owner_repo}" --release_id "${gh_release_id}" --json
-        x gcode repo release attachment ls --repo "${gc_owner_repo}" --tag_name "${gc_tag_name}" --json
+        # x gh repo release attachment ls --repo "${gh_owner_repo}" --release_id "${gh_release_id}" --json
+        < "${___X_CMD_ROOT_TMP}/gx/___x_cmd_gx_github_${gh_owner_repo}" \
+            x jo env '.*' .id .assets -- '[ "$id" != '"${gh_release_id}"' ] || printf "%s\n" "$assets"'
+
+        # x gcode repo release attachment ls --repo "${gc_owner_repo}" --tag_name "${gc_tag_name}" --json
+        < "${___X_CMD_ROOT_TMP}/gx/___x_cmd_gx_gitcode_${gc_owner_repo}" \
+            x jo env '.*' .tag_name assets=.assets.links -- '[ "$tag_name" != '"${gc_tag_name}"' ] || printf "%s\n" "$assets"'
     } | {
         #
         CHECK_PARAM=name RET_FIELD=browser_download_url ___x_cmd_gx_migrate_release___verify attachment

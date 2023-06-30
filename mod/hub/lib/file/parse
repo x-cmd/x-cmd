@@ -28,6 +28,11 @@ ___x_cmd_hub_file_parse_stream(){
         return
     fi
 
+    if [ -n "$keyname" ]; then
+        local filekey_path; filekey_path="$(___x_cmd_hub___util_respath_to_localpath datakey "$respath")"  || return 1
+        ___x_cmd_hub_file___get_filekey_from_header || return 1
+    fi
+
     hub:debug "srctype=$srctype, compress=$compress, keyname=$keyname"
     case "$compress" in
         # 7z)
@@ -37,25 +42,34 @@ ___x_cmd_hub_file_parse_stream(){
         #             "")     ;; # Use the key to decompress the 7z
         #         esac
         #     }
-
-        #     ;;
-        # xz)
-        #     ___x_cmd_hub_file___decrypt_file "$filekey_path" | x xz unzip -  # unzip to dst file
-        #     ;;
-        #     # First you should compress, then you should deciph
-        none) cat ;;
-        aes-256-cbc)
-            # TODO: use no http module
-            local filekey_base64; filekey_base64="$(___x_cmd_http resp header encryption-filekey-base64)"
-            local filekey_path; filekey_path="$(___x_cmd_hub___util_respath_to_localpath datakey "$respath")"  || return 1
-            local x_ ; ___x_cmd_hub_keypair___ensure_key_ "$___X_CMD_HUB_KEYPAIR" private || return 1
-            printf "%s" "$filekey_base64" | ___x_cmd_hub_file___decrypt_filekey "$x_"  > "$filekey_path" || {
-                ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey_path" >&2
-                return 1
-            }
-
-            ___x_cmd_hub_file___decrypt_file "$filekey_path"
-            ;;
-        *)  cat ;;
+        xz) [ -n "$keyname" ] || { cat | ___x_cmd_hub_file___unxz ; return 0; }
+            ___x_cmd_hub_file___decrypt_file "$filekey_path" | ___x_cmd_hub_file___unxz ;;
+        *)  [ -n "$keyname" ] || { cat ; return 0; }
+            ___x_cmd_hub_file___decrypt_file "$filekey_path" ;;
     esac
+}
+
+___x_cmd_hub_file___unxz(){
+    if command -v xz >/dev/null; then
+        command xz -d
+    else
+        x 7za x -si -so -txz
+    fi
+}
+
+___x_cmd_hub_file___xz(){
+    if command -v xz >/dev/null; then
+        command xz
+    else
+        cat
+    fi
+}
+
+___x_cmd_hub_file___get_filekey_from_header(){
+    local x_ ; ___x_cmd_hub_keypair___ensure_key_ "$keyname" private || return 1
+    ___x_cmd_hub___util_curl_header encryption-filekey-base64 | \
+        ___x_cmd_hub_file___decrypt_filekey "$x_"  > "$filekey_path" || {
+        ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey_path" >&2
+        return 1
+    }
 }
