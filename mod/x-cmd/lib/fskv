@@ -1,0 +1,123 @@
+
+
+___X_CMD_FSKV_DEFAULT_FILE=".x-cmd.fskv.default.file"
+___X_CMD_FSKV_ROOT="${___X_CMD_FSKV_ROOT:-""}"
+
+___x_cmd_fskv(){
+    [ $# -gt 0 ] || {
+        return 1
+    }
+
+    case "$op" in
+        :*)
+            local ___X_CMD_FSKV_ROOT="${op#:}"
+        ;;
+    esac
+
+    local op="$1";  shift
+    case "$op" in
+        ls|has|get|root|put)
+            "___x_cmd_fskv_$op" "$@"
+        ;;
+        *)
+            x:error "Unsupprted op ==> $op"
+            return 64
+        ;;
+    esac
+}
+
+___x_cmd_fskv_put(){
+    [ -n "$___X_CMD_FSKV_ROOT" ] || {
+        x:error "FSKV root not set"
+        return 1
+    }
+
+    local k="$1"
+    if [ -f "$___X_CMD_FSKV_ROOT/$k" ]; then
+        printf "%s\n" "$2" > "$___X_CMD_FSKV_ROOT/$k"
+    elif [ -d "$___X_CMD_FSKV_ROOT/$k" ]; then
+        printf "%s\n" "$2" > "$___X_CMD_FSKV_ROOT/$k/$___X_CMD_FSKV_DEFAULT_FILE"
+    else
+        ___x_cmd_fskv_mkdirp "$(dirname "$k")"
+        printf "%s\n" "$2" > "$___X_CMD_FSKV_ROOT/$k"
+    fi
+}
+
+___x_cmd_fskv_get(){
+    [ -n "$___X_CMD_FSKV_ROOT" ] || {
+        x:error "FSKV root not set"
+        return 1
+    }
+
+    local k="$1"
+    if [ -f "$___X_CMD_FSKV_ROOT/$k" ]; then
+        x rat "$___X_CMD_FSKV_ROOT/$k"
+    elif [ -d "$___X_CMD_FSKV_ROOT/$k" ]; then
+        [ -f "$___X_CMD_FSKV_ROOT/$k/$___X_CMD_FSKV_DEFAULT_FILE" ] || return
+        x rat "$___X_CMD_FSKV_ROOT/$k/$___X_CMD_FSKV_DEFAULT_FILE"
+    else
+        return 1
+    fi
+}
+
+___x_cmd_fskv_has(){
+    [ -f "$___X_CMD_FSKV_ROOT/$k" ] || [ -f "$___X_CMD_FSKV_ROOT/$k/$___X_CMD_FSKV_DEFAULT_FILE" ]
+}
+
+___x_cmd_fskv_ls(){
+    [ -n "$___X_CMD_FSKV_ROOT" ] || {
+        x:error "FSKV root not set"
+        return 1
+    }
+
+    [ -n "$1" ] || {
+        x:error "Plese provide fskv key prefix"
+        return 64
+    }
+
+    local oldpwd="$PWD"
+    [ -d "$___X_CMD_FSKV_ROOT/$1" ] || return 0
+    ___x_cmd_inner_cd "$___X_CMD_FSKV_ROOT/$1"
+    for i in *; do
+        [ -f "$i" ] || [ -f "$i/$___X_CMD_FSKV_DEFAULT_FILE" ] || continue
+        printf "%s\n" "$i"
+    done
+    ___x_cmd_inner_cd "$oldpwd"
+}
+
+___x_cmd_fskv_root(){
+    [ -n "$1" ] || {
+        [ -n "$___X_CMD_FSKV_ROOT" ] || return
+        printf "%s\n" "$___X_CMD_FSKV_ROOT"
+        return
+    }
+
+    [ -d "$1" ] || {
+        [ ! -e "$1" ] || {
+            x:error "fail to create folder for already exist non-folder ==> $1"
+            return 1
+        }
+        x mkdirp "$1"
+    }
+
+    ___X_CMD_FSKV_ROOT="$(x abspath "$1")"
+}
+
+___x_cmd_fskv_mkdirp(){
+    local kp="$1"
+    x mkdirp "$___X_CMD_FSKV_ROOT/$kp" 2>/dev/null || {
+        local cur="$___X_CMD_FSKV_ROOT"
+        local IFS=/; for i in $kp; do
+            if [ -d "$cur/$i" ]; then
+                cur="$cur/$i"
+            else
+                command mv "$cur/$i" "$cur/$i.$___X_CMD_FSKV_DEFAULT_FILE"
+                command mkdir "$cur/$i" || return
+                command mv "$cur/$i.$___X_CMD_FSKV_DEFAULT_FILE" "$cur/$i/$___X_CMD_FSKV_DEFAULT_FILE"
+                break
+            fi
+        done
+    }
+    x mkdirp "$___X_CMD_FSKV_ROOT/$kp"
+}
+
