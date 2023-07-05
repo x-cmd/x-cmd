@@ -39,7 +39,7 @@ Your support is our biggest motivation.
 4. Provides a range of interactive CLI tools ([github](https:/github.com/), [gitee](https://gitee.com/), with more tool modules to be released in the next six months).
 5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 500KB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
-## [Module List](https://x-cmd.com/mod/)
+## [Module ==> **80+**](https://x-cmd.com/mod/)
 
 | Module | Function | Similar items |
 | --- | --- | --- |
@@ -54,7 +54,7 @@ Your support is our biggest motivation.
 | [env](https://x-cmd.com/mod/env) | Setup Script Runtime/Development Environment  | [asdf](https://asdf-vm.com/)/[nvm](https://github.com/nvm-sh/nvm)/[sdkman](https://sdkman.io/)/[pyenv](https://github.com/pyenv/pyenv)/[rbenv](https://github.com/rbenv/rbenv)/... |
 | [hub](https://x-cmd.com/mod/hub) | Script Publishing Service | ? |
 
-## [Package List](https://x-cmd.com/pkg/)
+## [Package ==> **150+**](https://x-cmd.com/pkg/)
 
 | Package | Official Site | Function |
 | -- | -- | -- |
@@ -69,4 +69,3 @@ Your support is our biggest motivation.
 | [nmap](https://x-cmd.com/pkg/nmap) | [nmap](https://nmap.org/) | Security scanning |
 | [pandoc](https://x-cmd.com/pkg/pandoc) | [pandoc](https://pandoc.org/) | Document format conversion |
 | [smartmontools](https://x-cmd.com/pkg/smartctl) | [smartmontools](https://www.smartmontools.org/) | Hard drive monitoring tool   |
-| 当前共150个 | ... |
