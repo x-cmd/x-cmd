@@ -69,4 +69,3 @@
 | [nmap](https://cn.x-cmd.com/pkg/nmap) | [nmap](https://nmap.org/) | 安全扫描工具 |
 | [pandoc](https://cn.x-cmd.com/pkg/pandoc) | [pandoc](https://pandoc.org/) | 文档格式转换工具 |
 | [smartmontools](https://cn.x-cmd.com/pkg/smartctl) | [smartmontools](https://www.smartmontools.org/) | 硬盘监控工具 |
-|当前共150个| ... |
