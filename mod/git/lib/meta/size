@@ -1,0 +1,55 @@
+
+___x_cmd_git_meta_size(){
+    case "$1" in
+        -H)     ___x_cmd___git_origin count-objects -vH ;;
+        *)      ___x_cmd___git_origin count-objects -v ;;
+    esac
+}
+
+___x_cmd_git_meta_sizetop(){
+    if ___x_cmd_is_interactive; then
+        ___x_cmd_git_meta_sizetop_ "$@" \
+            | x csv convert --col   \
+            | x csv header --add id,type,rawsize,size,name,offset \
+            | x csv --app
+    else
+        ___x_cmd_git_meta_sizetop_ "$@"
+    fi
+}
+
+___x_cmd_git_meta_sizetop_(){
+    local top="${1:-10}"
+    {
+        ___x_cmd___git_origin verify-pack -v .git/objects/pack/*.idx | sort -k 3 -n -r | head -n "${top}"
+        printf "%s\n" ---
+        ___x_cmd___git_origin rev-list --objects --all
+    } | awk '
+
+(PACK==1){    if (pack[ $1 ] != "")   pack[ $1, "name" ] = $2;  next; }
+($0 == "---") { PACK=1; next; }
+{ add_pack() }
+
+# SHA-1 type size size-in-packfile offset-in-packfile
+function add_pack(){
+    pack[$1] = $1
+    pack[$1, "type"] = $2
+    pack[$1, "size"] = $3
+    pack[$1, "size-in-packfile"] = $4
+    pack[$1, "offset-in-packfile"] = $5
+
+    pack[ pack[ "\001" ] = pack[ "\001" ] + 1 ] = $1
+}
+
+function human( size ){
+    return (size / 1024) "KB"
+}
+
+END {
+    for (i=1; i<=pack[ "\001" ]; ++i) {
+        sha1 = pack[ i ]
+        printf("%s %s %s %s %s %s\n", sha1, pack[sha1, "type"], pack[sha1, "size"], human(pack[sha1, "size"]), pack[sha1, "name"], pack[sha1, "size-in-packfile"])
+    }
+}
+'
+
+}

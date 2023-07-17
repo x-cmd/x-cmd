@@ -30,7 +30,7 @@ fi
 
 [ "$PWD/.x-cmd/git/hook.yml" -ot "${___X_CMD_GITHOOK_GIT_DIR}/.x-cmd/hooks" ] || (
     . $___X_CMD_ROOT_MOD/../X
-    x log :info "Apply githook for modification detetected in $PWD/.x-cmd/git/hook.yml"
+    x log :info "Apply githook for modification detected in $PWD/.x-cmd/git/hook.yml"
     x githook apply "$PWD/.x-cmd/git/hook.yml" "${___X_CMD_GITHOOK_GIT_DIR}/.x-cmd/hooks"
 )
 

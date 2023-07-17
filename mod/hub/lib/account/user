@@ -35,6 +35,28 @@ ___x_cmd_hub_account_rename(){
     ___x_cmd_hub___util_handle_resp true "$res" "Rename successfully:"
 }
 
+___x_cmd_hub_account_delete(){
+    local X_help_cmd='___x_cmd_hub___help account delete'
+    help:arg:parse
+
+    x ui yesno "Are you sure to delete your account? This operation is irreversible" || return 1
+
+    local res
+    if ! res="$(___x_cmd_hub___util_curl delete /api/v0/account)" ; then
+        ___x_cmd_hub___util_handle_resp false "$res" "Failed to delete account:"
+        return 1
+    fi
+
+    ___x_cmd_hub___util_cache_invalidate
+    x rmrf "$(___x_cmd_hub___util_user_dir me)"
+    if ! ___x_cmd_hub_cfg --unset token ; then
+        ___x_cmd_ui_tf false "Failed to unset token use cfgy"
+        return 1
+    fi
+
+    ___x_cmd_hub___util_handle_resp true "$res" "Delete successfully"
+}
+
 ___x_cmd_hub_get_userinfo_by_token(){
     local token="${1}"
     if [ -z "$token" ]; then
@@ -50,10 +72,53 @@ ___x_cmd_hub_get_userinfo_by_token(){
 
     [ -z "$json" ] || { printf "%s\n" "$res" ; return 0; }
     printf "%s" "$res" | (
-        x jo env . name=.name id=.id plan=.plan email=.email
+        x jo env . name=.name id=.id plan=.plan email=.email region=.region
+        ___x_cmd_hub___util_handle_resp true "" "Account info:" "id: $id" "name: $name" "region: $region" # "plan: $plan" "email: $email"
+    )
+}
+
+___x_cmd_hub_account_verify(){
+    local ticket="${1}"
+    local res; local return_code
+    res="$(NO_AUTH=1 ___x_cmd_hub___util_curl get /api/v0/account/verify "ticket=$ticket")"; return_code=$?
+    case "$return_code" in
+        0) ;;
+        4)
+            x ui yesno "Your account is not registered, do you want to register it?" || return 1
+            #TODO: register
+            hub:warn "Not implemented yet, please use 'x hub register' to register"
+            return 1
+            # if ! res="$(NO_AUTH=1 ___x_cmd_hub___util_curl get /api/v0/account/activate "ticket=$ticket")" ; then
+            #     ___x_cmd_hub___util_handle_resp false "$res" "Failed to activate account"
+            #     return 1
+            # fi
+            ;;
+        *)
+            ___x_cmd_hub___util_handle_resp false "$res" "Failed to verify token:"
+            ___x_cmd_hub___util_handle_resp false ""     "Failed to login, please check your token"
+            return 1
+            ;;
+    esac
+
+    printf "%s" "$res" | (
+        x jo env . name=.name id=.id plan=.plan email=.email \
+            region=.region token=.token endpoint=.endpoint \
+            token=.token
         if [ "${name#user_}" != "$name" ] && [ "${#name}" -gt 16 ]; then
             hub:warn "Your account name is not set, please use 'x hub account rename <username>' to set it"
         fi
-        ___x_cmd_hub___util_handle_resp true "" "Account info:" "id: $id" "name: $name" "plan: $plan" "email: $email"
+        ___x_cmd_hub___util_handle_resp true "" "Account info:" \
+            "id: $id" "name: $name"  \
+            "region: $region" # "plan: $plan" "email: $email"
+
+        hub:debug "endpoint => $endpoint"
+        [ "$endpoint" = "$___X_CMD_HUB_SERVICE_URL" ] || {
+            hub:warn "Change endpoint $___X_CMD_HUB_SERVICE_URL => $endpoint"
+            ___x_cmd_hub_cfg --set endpoint="$endpoint"
+        }
+
+        ___x_cmd_hub_cfg token="${token}"
     )
+
+    ___x_cmd_ui_tf true "Login success"
 }

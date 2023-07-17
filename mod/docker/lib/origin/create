@@ -1,0 +1,72 @@
+# shellcheck shell=dash
+
+# shellcheck disable=SC2142,SC2154
+alias docker:create:parse='
+    case "$1" in
+        --init|--rm|-i|--interactive|-P|--publish-all|-t|--tty|-d|--detach|--no-healthcheck|--oom-kill-disable|--privileged|--read-only)
+            parse_token="$1"
+            x cmdstr ___X_CMD_DOCKER_CREATE_OPTS "$1";
+            shift
+            ;;
+
+        -i*|-t*|-P*)
+            local next_token="${1#-?}"
+            parse_token="${1%"$next_token"}"
+            x cmdstr ___X_CMD_DOCKER_CREATE_OPTS "$parse_token";
+            shift 1
+            set -- "-$next_token" "$@"
+            ;;
+
+        -*)
+            parse_token="$1"
+            x cmdstr ___X_CMD_DOCKER_CREATE_OPTS "$1" "$2"
+            shift 2
+            ;;
+
+        *)
+            false
+            ;;
+    esac'
+
+___x_cmd_docker_create___origin(){
+    eval set -- ___x_cmd___docker_origin create "$___X_CMD_DOCKER_CREATE_OPTS" "\"\$@\""
+    "$@"
+}
+
+___x_cmd_docker_create(){
+    local ___X_CMD_DOCKER_CREATE_OPTS="";
+    local parse_token
+    while [ $# -gt 0 ]; do
+        parse_token=""
+        docker:create:parse || break
+    done
+
+    local container="$1";   shift
+    ___x_cmd_docker_create___inner "$container"
+}
+
+___x_cmd_docker_create___inner(){
+    local image="$1";   shift
+    local INJECT_X=
+    case "$image" in
+        x/*)
+            INJECT_X=1
+            image="${image#x/}"
+            ;;
+            # prepare image
+    esac
+
+    local container=""
+    container=$(___x_cmd_docker_create___origin "$image" "$@") || {
+        docker:error "docker run failed"
+        return 1
+    }
+
+    local code=0
+    if [ -n "$INJECT_X" ]; then
+        ___x_cmd_docker_setup "$container" || code=$?
+    fi
+
+    printf "%s\n" "$container"
+    return $code
+}

@@ -11,7 +11,7 @@ function advise_get_ref_and_group(obj, kp,        msg, subcmd_group, option_grou
     return true
 }
 
-function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candidate_code, i, j, l, v, _option_id, _cand_key, _cand_l, _cand_kp, _desc, _arr_value, _arr_valuel ) {
+function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, l, v, _option_id, _cand_key, _cand_l, _cand_kp, _desc, _arr_value, _arr_valuel ) {
     l = aobj_len(obj, kp)
     for (i=1; i<=l; ++i) {
         _option_id = aobj_get(obj, kp SUBSEP i)
@@ -23,7 +23,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candida
                 v = aobj_get_cand_value( obj, _cand_kp)
                 _desc = ( ZSHVERSION != "" ) ? aobj_get_description(obj, _cand_kp SUBSEP v) : ""
                 if (v ~ "^\"") v = juq(v)
-                if(!index(v, curval)) continue
+                if ((curval != "") && (!index(v, curval))) continue
                 jdict_put( CAND, "CODE", jqu(v), jqu(_desc) )
             }
         }
@@ -33,19 +33,18 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        _candida
         _arr_valuel = split( juq( _option_id ), _arr_value, "|" )
         for ( j=1; j<=_arr_valuel; ++j) {
             v =_arr_value[j]
-            if (index(v, curval) != 1) continue
+            if ((curval != "") && (!index(v, curval))) continue
             if ( ! aobj_is_multiple(obj, kp SUBSEP _option_id) && (lenv[ _option_id ] != "")) continue
             if (( curval == "" ) && ( v ~ "^-" )) if ( ! aobj_is_subcmd(obj, kp SUBSEP _option_id ) ) continue
             if (( curval == "-" ) && ( v ~ "^--." )) continue
             jdict_put( CAND, "CODE", jqu(v), jqu(_desc) )
         }
     }
-    return _candidate_code
 }
 
-function advise_complete___generic_value( curval, genv, lenv, obj, kp, _candidate_code,         _exec_val, _regex_id, _regexl, _regex_key, i ){
+function advise_complete___generic_value( curval, genv, lenv, obj, kp,         _exec_val, _regex_id, _regexl, _regex_key, i ){
 
-    _candidate_code = _candidate_code advise_get_candidate_code( curval, genv, lenv, obj, kp )
+    advise_get_candidate_code( curval, genv, lenv, obj, kp )
 
     _exec_val = aobj_get_special_value(obj, kp, "exec")
     if ( _exec_val != "" ) jdict_put( CAND, "EXEC", _exec_val, "null" )
@@ -54,7 +53,7 @@ function advise_complete___generic_value( curval, genv, lenv, obj, kp, _candidat
     _regexl   = aobj_len(obj, _regex_id)
     for ( i=1; i<=_regexl; ++i ) {
         _regex_key = aobj_get(obj, _regex_id SUBSEP i)
-        if (curval ~ "^"juq( _regex_key )"$" ) return advise_complete___generic_value(curval, genv, lenv, obj, _regex_id SUBSEP _regex_key , _candidate_code)
+        if (curval ~ "^"juq( _regex_key )"$" ) return advise_complete___generic_value(curval, genv, lenv, obj, _regex_id SUBSEP _regex_key)
     }
 }
 
@@ -64,22 +63,22 @@ function advise_complete_option_value( curval, genv, lenv, obj, obj_prefix, opti
 }
 
 # Just tell me the arguments
-function advise_complete_argument_value( curval, genv, lenv, obj, obj_prefix, nth, _candidate_code,      _kp ){
+function advise_complete_argument_value( curval, genv, lenv, obj, obj_prefix, nth,      _kp ){
     _kp = obj_prefix SUBSEP "\"#" nth "\""
-    if ( advise_get_ref_and_group(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
+    if ( advise_get_ref_and_group(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp )
 
     _kp = obj_prefix SUBSEP "\"#n\""
-    if ( advise_get_ref_and_group(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp, _candidate_code )
+    if ( advise_get_ref_and_group(obj, _kp) && (aobj_get(obj, _kp) != "")) return advise_complete___generic_value( curval, genv, lenv, obj, _kp )
 
     return advise_complete___generic_value( curval, genv, lenv, obj, obj_prefix )
 }
 
 # Most complicated #1
-function advise_complete_option_name_or_argument_value( curval, genv, lenv, obj, obj_prefix,          _candidate_code, i, k, l, _required_options ){
+function advise_complete_option_name_or_argument_value( curval, genv, lenv, obj, obj_prefix,          i, k, l, _required_options ){
 
-    _candidate_code = advise_get_candidate_code( curval, genv, lenv, obj, obj_prefix )
+    advise_get_candidate_code( curval, genv, lenv, obj, obj_prefix )
     if ( ( curval == "" ) || ( curval ~ /^-/ ) || (aobj_option_all_set( lenv, obj, obj_prefix ))) {
-        advise_complete_argument_value( curval, genv, lenv, obj, obj_prefix, 1, _candidate_code)
+        advise_complete_argument_value( curval, genv, lenv, obj, obj_prefix, 1)
         return true
     }
 

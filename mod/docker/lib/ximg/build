@@ -1,0 +1,195 @@
+
+___X_CMD_DOCKER_XIMG_BUILD_REF=0
+___x_cmd_docker_ximg_build(){
+    local ___X_CMD_DOCKER_XIMG_BUILD_REF="$((___X_CMD_DOCKER_XIMG_BUILD_REF+1))"
+    [ "$___X_CMD_DOCKER_XIMG_BUILD_REF" -lt 5 ] || {
+        docker:error "too many recursive calls ==> $___X_CMD_DOCKER_XIMG_BUILD_REF"
+        return 1
+    }
+
+    local script="$1"
+    local reponame="$2"
+
+    log:sub:init docker "Prepare to build image ==> $script"
+
+    ___x_cmd_docker_ximg_build___normalize_script_reponame
+
+    ___x_cmd_docker_ximg_build___handle_shfile "$script" "$reponame"
+
+    docker:info "end build"
+}
+
+___x_cmd_docker_ximg_build___normalize_script_reponame(){
+    case "$script" in
+        %*)     script="x/${script#\%}"
+    esac
+
+    case "$script" in
+        x/*)
+            script="${script#x/}"
+            if [ -f "$___X_CMD_DOCKER_XIMG_CODEDIR/x/$script" ]; then
+                reponame="${reponame:-x/$script}"
+                script="$___X_CMD_DOCKER_XIMG_CODEDIR/x/$script"
+            elif [ -f "$___X_CMD_DOCKER_XIMG_CODEDIR/x/$script/X" ]; then
+                reponame="${reponame:-x/$script}"
+                script="$___X_CMD_DOCKER_XIMG_CODEDIR/x/$script/X"
+            elif [ ! -f "$script" ]; then       # User defined script path
+                docker:error --method ___x_cmd_docker_ximg___script_ "Cannot locate the script filepath ==> $script"
+                return 1
+            fi
+            ;;
+        *)
+            [ -f "$script" ] || {
+                docker:error --method ___x_cmd_docker_ximg_build___main "Cannot locate the script filepath ==> $script"
+                return 1
+            }
+    esac
+
+    case "$reponame" in
+        *_*|*A*|*B*|*C*|*D*|*E*|*F*|*G*|*H*|*I*|*J*|*K*|*L*|*M*|*N*|*O*|*P*|*Q*|*R*|*S*|*T*|*U*|*V*|*W*|*X*|*Y*|*Z*)
+            docker:warn --name "$reponame" "reponame from script path for it contains uppercase letters or underscore"
+            reponame=
+            ;;
+        *)
+    esac
+}
+
+___x_cmd_docker_ximg_build___handle_shfile(){
+    local script="$1"
+    local reponame="$2"
+
+    docker:info "building ==> $1 ==> $reponame"
+
+    local type=hascode
+    local from=debian:latest
+    local entrypoint=""
+    local fp=/root/X
+
+    local code=""
+    code=$(command awk -f "$___X_CMD_ROOT_MOD/docker/lib/ximg/parsing.awk" <"$script") || {
+        docker:error "fail to parse ==> $script"
+        return 1
+    }
+
+    docker:info --script "$script" -m "$code"
+    eval "$code"
+
+    docker:info "preparing from image ==> $from"
+    case "$from" in
+        x/*|%*)
+            local x_="";    ___x_cmd_docker_ximg_which_   --build-if-unfound "$from" || return;     from="$x_"
+            docker:info "image name of $from ==> $x_"
+            ;;
+    esac
+
+    local md5;  md5="$(x md5 "$script")"
+
+    case "$type" in
+        hascode)            ___x_cmd_docker_ximg_build___exec_full                  "$script" "$md5" "$reponame" "$from" "$fp" "$entrypoint" ;;
+        nocode-entrypoint)  ___x_cmd_docker_ximg_build___exec_justchangeentrypoint  "$script" "$md5" "$reponame" "$from" "$fp" "$entrypoint" ;;
+        nocode)             ___x_cmd_docker_ximg_build___exec_justtag               "$script" "$md5" "$reponame" "$from"
+    esac
+}
+
+___x_cmd_docker_ximg_build___exec_justtag(){
+    local script="$1"
+    local md5="$2"
+    local reponame="$3"
+    local from="$4"
+
+    docker:info --from "$from" --script "$script" --reponame "$reponame" "justtag"
+
+    ___x_cmd_docker_image_exist "$from" || {
+        command docker pull "$from" || N=docker M="fail to pull image ==> $from" log:ret:1
+    }
+
+    [ -z "$reponame" ] || ___x_cmd_docker_ximg_build___retag "$from" "$reponame"  || true
+    ___x_cmd_docker_ximg_build___retag "$from" "x/md5/$md5"
+
+    docker:debug --from "$from" --script "$script" --reponame "$reponame" "finsih justtag"
+}
+
+___x_cmd_docker_ximg_build___exec_justchangeentrypoint(){
+    local script="$1"
+    local md5="$2"
+    local reponame="$3"
+    local from="$4"
+    local fp="$5"
+    local entrypoint="$6"
+
+    docker:info \
+        --md5   "$md5"  --repo "$reponame"   \
+        --fp    "$fp"   --from "$from"       \
+        "creating image"
+    local container; container=$(command docker create -it "$from" "echo" hi) \
+                                                            || N=docker M="docker create failed"                log:ret:1
+
+    docker:info "now commit to new image ==> $entrypoint"
+    local code=0; local imageid; if imageid=$(
+        command docker commit -c "ENTRYPOINT $entrypoint"  "$container" "x/md5/$md5"
+    ); then
+        ___x_cmd_docker_ximg_build___retag "$imageid" "$reponame" || true
+        ___x_cmd_docker_ximg_build___retag "$imageid" "x/md5/$md5"
+    else
+        code=$?;
+        docker:error "fail to commit container ==> $container"
+    fi
+
+    command docker rm "$container"          || N=docker M="fail to rm container   ==> $container"  log:ret:1
+    return "$code"
+}
+
+___x_cmd_docker_ximg_build___exec_full(){
+    local script="$1"
+    local md5="$2"
+    local reponame="$3"
+    local from="$4"
+    local fp="$5"
+    local entrypoint="$6"
+
+    if ___x_cmd_docker_image_exist "x/md5/$md5"; then
+        ___x_cmd_docker_ximg_build___retag "x/md5/$md5" "$reponame"
+        return
+    fi
+
+    docker:info \
+        --md5 "$md5"    --repo "$reponame"   \
+        --fp "$fp"      --from "$from"       \
+        "creating image"
+    local container; container=$(command docker create -it "$from" /bin/sh "$fp") \
+                                                            || N=docker M="docker create failed"                log:ret:1
+
+    command docker cp "$script" "$container:$fp"            || N=docker M="docker copy failed"                  log:ret:1
+    command docker start -i "$container"                    || N=docker M="fail to start container"             log:ret:1
+
+    local code=0
+    local imageid; imageid=$(
+        if [ -z "$entrypoint" ]; then
+            command docker commit                   "$container" "x/md5/$md5"
+        else
+            command docker commit -c "ENTRYPOINT $entrypoint"  "$container" "x/md5/$md5"
+        fi
+    ) || {  code=$?;                                          docker:error "fail to commit container ==> $container";   }
+    imageid="${imageid#*:}"  # should we print the imige id
+
+    ___x_cmd_docker_ximg_build___retag "x/md5/$md5" "$reponame"
+
+    command docker stop "$container"                        || N=docker M="fail to stop container ==> $container"  log:ret:1
+    command docker rm "$container"                          || N=docker M="fail to rm container   ==> $container"  log:ret:1
+    return $code
+}
+
+___x_cmd_docker_ximg_build___retag(){
+    local imagename="$1"
+    local newtag="$2"
+
+    docker:info "tagging $imagename => $newtag"
+
+    [ -n "$newtag" ] || N=docker M="newtag is empty" log:ret:64
+
+    local id=; ! id=$(___x_cmd_docker_image_id "$newtag") ||
+        docker:warn --tag "$newtag" --previous_imageid "$id" "taking the tag name from the image id" # Getting its own image id
+
+    command docker tag "$imagename" "$newtag" || docker:error "fail to tag image ==> |$newtag|"
+    docker:debug "finish tagging $imagename => $newtag"
+}

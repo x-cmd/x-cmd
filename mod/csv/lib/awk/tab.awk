@@ -22,7 +22,6 @@ BEGIN{
         for (i=1; i<=rowl; ++i){
             handle( row[i], row, i )
             STREAM_MODE = seq_canstream( row[i "S"], row[i "P"], row[i "E"] )
-            # print "STREAM_MODE:" STREAM_MODE " i:" i " S:" row[i "S"] " P:" row[i "P"] " E:" row[i "E"]
         }
     }
 }
@@ -48,7 +47,7 @@ function handle_column_by_rule( lineno,        c, i, j, _first, _start, _end, _s
         if (_start < 0 )    _start = c + _start + 1
         if (_end < 0 )      _end = c + _end + 1
         else if (_end > c)  _end = c
-        _res = ((_res == "") ? "" : "," _res) csv_dump_row(data, "", lineno, _start, _sep, _end)
+        _res = ((_res == "") ? "" : _res ",") csv_dump_row(data, "", lineno, _start, _sep, _end)
     }
     printf( "%s\n", _res )
 }

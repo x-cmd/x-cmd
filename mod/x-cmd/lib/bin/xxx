@@ -2,62 +2,50 @@
 # Author:       Li Junhao   l@x-cmd.com             # xrc
 # shellcheck    shell=sh    disable=SC2006,SC2016,SC1091,SC3043
 
-___X_CMD_XBIN__FINDXRC_=
-___x_cmd_xbin___findxrc_(){
-    local IFS="$___X_CMD_UNSEENCHAR_NEWLINE";
-    set - "$PWD/.x-cmd.root" "$HOME/.x-cmd.root" /var/.x-cmd.root /usr/bin/.x-cmd.root
-
-    while [ $# -gt 0 ]; do
-        [ -f "$1/X" ] || {
-            shift; continue
-        }
-        ___X_CMD_XBIN__FINDXRC_="$1/X"
-        return 0
-    done
-
-    return 1
-
-    ___x_cmd_xbin_downloadeval_
-    ( eval "$___X_CMD_XBIN_DOWNLOADEVAL_"; )
-    ___X_CMD_XBIN__FINDXRC_="$HOME/.x-cmd.root/X"
-}
-
-___x_cmd_xbin_download(){
-    ___x_cmd_xbin_downloadeval_
-    eval "$___X_CMD_XBIN_DOWNLOADEVAL_"
-    # ___X_CMD_XBIN__FINDXRC_="$HOME/.x-cmd.root/X"
-}
+# license:      AGPLv3
 
 ___x_cmd_xbin_downloadeval_(){
     if command -v curl 2>/dev/null 1>&2; then
-        ___X_CMD_XBIN_DOWNLOADEVAL_="eval \"\$(curl https://get.x-cmd.com)\""
+        x_="eval \"\$(curl https://get.x-cmd.com)\""
     elif command -v minicurl 2>/dev/null 1>&2; then
-        ___X_CMD_XBIN_DOWNLOADEVAL_="eval \"\$(minicurl https://get.x-cmd.com)\""
+        x_="eval \"\$(minicurl https://get.x-cmd.com)\""
     elif command -v wget 2>/dev/null 1>&2; then
-        ___X_CMD_XBIN_DOWNLOADEVAL_="eval \"\$(wget -qO- https://get.x-cmd.com)\""
+        x_="eval \"\$(wget -qO- https://get.x-cmd.com)\""
     else
         >&2 printf "%s\n" 'Need wget or curl installed first'
         return 1
     fi
 }
 
+___x_cmd_xbin_download(){
+    local x_
+    ___x_cmd_xbin_downloadeval_ || return
+    eval "$x_"
+}
+
 ___x_cmd_xbin_init_(){
-    if ___x_cmd_xbin___findxrc_; then
-        ___X_CMD_XBIN_INIT_=". $___X_CMD_XBIN__FINDXRC_"
+    if [ -f "$HOME/.x-cmd.root/X" ]; then
+        x_='. "$HOME/.x-cmd.root/X"'
+    elif [ -f "/var/x-cmd/v/global/X" ]; then
+        mkdir -p "$HOME/.x-cmd.root/v"
+        ln -s "/var/x-cmd/v/global" "$HOME/.x-cmd.root/v/global"
+        printf "%s\n" '. ${___X_CMD_ROOT:=$HOME/.x-cmd.root}/v/${___X_CMD_VERSION:=global}/X' >"$HOME/.x-cmd.root/X"
+        x_='. "$HOME/.x-cmd.root/X"'
     else
-        ___x_cmd_xbin_downloadeval_
-        ___X_CMD_XBIN_INIT_="$___X_CMD_XBIN_DOWNLOADEVAL_"
+        ___x_cmd_xbin_downloadeval_ || return
     fi
 }
 
 ___x_cmd_xbin_init(){
+    local x_=
     ___x_cmd_xbin_init_ || return
-    printf "%s\n" "$___X_CMD_XBIN_INIT_"
+    printf "%s\n" "$x_"
 }
 
-___x_cmd_xbin_run(){
+___x_cmd_xbin___main_run(){
+    local x_=
     ___x_cmd_xbin_init_ || return 1
-    eval "$___X_CMD_XBIN_INIT_"
+    eval "$x_"
     command -v ___x_cmd_main 1>/dev/null 2>&1 || {
         printf "%s\n" "Setup failure."
         return 1
@@ -66,11 +54,54 @@ ___x_cmd_xbin_run(){
 }
 
 ___x_cmd_xbin___main(){
-    local op="$1";  shift
+    local op="$1";  [ "$#" -eq 0 ] || shift
     case "$op" in
-        init)   ___x_cmd_xbin_init "$@" ;;
-        *)      ___x_cmd_xbin_run "$op" "$@" ;;
+        -h|--help)                  ___x_cmd_xbin___main_help ;;
+        init)                       ___x_cmd_xbin_init "$@" ;;
+        zsh|bash|sh|ash|dash)       XXSH="$op" ___x_cmd_xbin_xxsh "$@" ;;
+        *)                          ___x_cmd_xbin___main_run "$op" "$@" ;;
     esac
+}
+
+___x_cmd_xbin_sh(){
+    local x_=
+    ___x_cmd_xbin_init_ || return 1
+    [ -f "$HOME/.x-cmd.root/X" ] || eval "$x_"
+    "$SHELL" "$@"
+}
+
+___x_cmd_xbin_xxsh(){
+    local x_=
+    ___x_cmd_xbin_init_ || return 1
+    [ -f "$HOME/.x-cmd.root/X" ] || eval "$x_"
+
+    command -v "$XXSH" 1>/dev/null 2>&1 || {
+        printf "%s\n" "Need $XXSH installed first."
+        return 1
+    }
+    # setup shell
+    # curl install xxsh ...
+    command $XXSH "$@"
+}
+
+___x_cmd_xbin___main_help(){
+    printf "%s\n" '
+
+x <init|zsh|bash|ash|dash|sh>
+x <other-subcmd> [args...]
+
+subcmd:
+    init
+            initialize the environment, usage: eval "$(x init)"
+    zsh|bash|ash|dash
+            start the shell with x-cmd environment
+    sh
+            start the shell ($SHELL) with x-cmd environment
+
+    <other-subcmd>
+            start a process with x-cmd environment then running `x <other-subcmd>`
+' >/dev/stderr
+    return 1
 }
 
 ___x_cmd_xbin___main "$@"

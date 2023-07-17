@@ -1,6 +1,8 @@
 # shellcheck shell=zsh
 
 ___x_cmd_advise_run(){
+    [ -n "$___X_CMD_ADVISE_LANGUAGE_UTF8" ] || ___x_cmd_advise_run___get_utf8
+    local _UTF8="$___X_CMD_ADVISE_LANGUAGE_UTF8"
     local COMP_WORDS=("${words[@]:0:$CURRENT}")
     local COMP_CWORD="$(( CURRENT-1 ))"
 
@@ -12,7 +14,7 @@ ___x_cmd_advise_run(){
     # Used in `eval "$candidate_exec"`
     local cur="${COMP_WORDS[CURRENT]}"
 
-    local candidate_arr;        LANG=en_US.UTF-8 candidate_arr=()
+    local candidate_arr;        LANG="$_UTF8" candidate_arr=()
     local candidate_exec
     local _message_str
     local offset
@@ -20,10 +22,16 @@ ___x_cmd_advise_run(){
     eval "$(___x_cmd_advise_get_result_from_awk "$___X_CMD_ADVISE_RUN_FILEPATH_")" 2>/dev/null
 
     local IFS="$___X_CMD_ADVISE_IFS_INIT"
-    local candidate_exec_arr;   LANG=en_US.UTF-8 candidate_exec_arr=()
+    local candidate_exec_arr;   LANG="$_UTF8" candidate_exec_arr=()
     eval "$candidate_exec" 2>/dev/null
 
-    [ -z "$candidate_arr" ] || LANG=en_US.UTF-8 _describe 'commands' candidate_arr
-    [ -z "$candidate_exec_arr" ] || LANG=en_US.UTF-8 _describe 'commands' candidate_exec_arr
-    [ -z "$_message_str" ] || LANG=en_US.UTF-8 _message -r "$_message_str"
+    [ -z "$candidate_arr" ] || LANG="$_UTF8" _describe 'commands' candidate_arr
+    [ -z "$candidate_exec_arr" ] || LANG="$_UTF8" _describe 'commands' candidate_exec_arr
+    [ -z "$_message_str" ] || LANG="$_UTF8" _message -r "$_message_str"
+}
+
+___x_cmd_advise_run___get_utf8(){
+    ___X_CMD_ADVISE_LANGUAGE_UTF8=C.utf8
+    local l=; l="$( locale -a | grep -i -e utf8 -e utf-8 | head -n 1 )" 2>/dev/null 
+    [ -z "$l" ] || ___X_CMD_ADVISE_LANGUAGE_UTF8="$l"
 }

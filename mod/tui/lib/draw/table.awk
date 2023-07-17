@@ -35,7 +35,7 @@ function draw_table( o, kp, x1, x2, y1, y2, opt, \
 
     _draw_box = draw_table___on_box(            o, kp, x1,      x2,     y1, y2, TH_TABLE_BOX )
     x1++; x2--; y1++; y2--
-    x1++; x2--; y1++; y2--
+    y1++; y2--
 
     if ( opt_getor( opt, "filter.enable", false ) ) {
         _draw_filter = draw_table___on_filter(  o, kp, x1,      x1,     y1, y2, opt )
@@ -47,7 +47,7 @@ function draw_table( o, kp, x1, x2, y1, y2, opt, \
 
     _draw_header = draw_table___on_header(      o, kp, x1,      x1,     y1, y2, opt )
     _draw_boby   = draw_table___on_body(        o, kp, x1+1,    x2-2,   y1, y2, opt )
-    _draw_footer = draw_table___on_footer(      o, kp, x2+1,    x2+1,   y1, y2, opt )
+    _draw_footer = draw_table___on_footer(      o, kp, x2,      x2,   y1, y2, opt )
 
     return _draw_box _draw_filter _draw_search _draw_header _draw_boby _draw_footer
 }

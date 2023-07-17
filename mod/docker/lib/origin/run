@@ -1,0 +1,58 @@
+# shellcheck shell=dash
+
+# shellcheck disable=SC2142,SC2154
+alias docker:run:parse='
+    case "$1" in
+        --init|--rm|-i|--interactive|-P|--publish-all|-t|--tty|-d|--detach|--no-healthcheck|--oom-kill-disable|--privileged|--read-only)
+            x cmdstr ___X_CMD_DOCKER_RUN_OPTS "$1";
+            shift
+            ;;
+
+        -i*|-t*|-P*)
+            local next_token="${1#-?}"
+            x cmdstr ___X_CMD_DOCKER_RUN_OPTS "${1%"$next_token"}";
+            shift 1
+            set -- "-$next_token" "$@"
+            ;;
+
+        -*)
+            x cmdstr ___X_CMD_DOCKER_RUN_OPTS "$1" "$2"
+            shift 2
+            ;;
+
+        *)
+            false
+            ;;
+    esac'
+
+___x_cmd_docker_run___origin(){
+    eval set -- ___x_cmd___docker_origin run "$___X_CMD_DOCKER_RUN_OPTS" "\"\$@\""
+    "$@"
+}
+
+___x_cmd_docker_run(){
+    local ___X_CMD_DOCKER_RUN_OPTS="";
+    local INSTALL_X=
+    while [ $# -gt 0 ]; do
+        [ "$1" != -x ] || {
+            INSTALL_X=1
+            shift
+            continue
+        }
+
+        docker:run:parse || break
+    done
+
+    local image="$1";   shift
+    case "$image" in
+        %*)     image="x/${image#\%}"
+    esac
+    case "$image" in
+        x/*)
+                image=$(___x_cmd_docker_ximg which --build-if-unfound "${image}") || return ;;
+    esac
+
+    [ -z "$INSTALL_X" ] || ___x_cmd_docker_setup_prepare run "$image" || return
+
+    ___x_cmd_docker_run___origin "$image" "$@"
+}

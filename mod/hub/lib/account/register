@@ -1,0 +1,66 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_account_register(){
+    if [ -n "$(___x_cmd_hub_cfg --get token)" ]; then
+        if ! x ui yesno "You're already logged. Do you want to logout?" ; then
+            hub:info "Cancelled"
+            return 0
+        fi
+        ___x_cmd_hub_account_logout
+    fi
+
+    local op="$1"
+    local _SELECT
+    case "$op" in
+        *@*)                    ___x_cmd_hub_account_register_email_witharg "$@" ;;
+        wx|weixin)              ___x_cmd_hub_account_register_weixin_qr     "$@" ;;
+        email)                  ___x_cmd_hub_account_register_email         "$@" ;;
+        "")
+                ___x_cmd_ui_select "_SELECT" \
+                    "Register Methods:" \
+                        "Open Browser to x-cmd.com, you can register via GitHub/Gitee/Weixin" \
+                        "Register With Weixin QR" \
+                        "Register With Email Verification"
+
+                case "$_SELECT" in
+                    1)          ___x_cmd_hub_account_register_official_site "$@" ;;
+                    2)          ___x_cmd_hub_account_register_weixin_qr     "$@" ;;
+                    3)          ___x_cmd_hub_account_register_email         "$@" ;;
+                    *)          ;;
+                esac
+                ;;
+        *)  ___x_cmd_hub___help account register ;;
+    esac
+}
+
+___x_cmd_hub_account_register_weixin_qr(){
+    local ticket
+    ticket="$(___x_cmd_hub___util_token_generate)"
+
+    ___x_cmd_hub_qrcode "$(___x_cmd_hub_weixin_register_url "${ticket}")"
+    printf "Please scan the QR code above, then press [Enter] to continue: "
+    ( trap - INT; read -r _  ) || return 1
+
+    ___x_cmd_hub_account_verify "$ticket"
+}
+
+___x_cmd_hub_account_register_official_site(){
+
+    local ticket
+    ticket="$(___x_cmd_hub___util_token_generate)"
+
+    local url; url="https://hub.x-cmd.com/register?ticket=${ticket}"
+    hub:debug "Open url: $url"
+
+    local res
+    if res=$(x open "$url" 2>&1) ; then
+        printf "Please register to hub.x-cmd.com, then press [Enter] to continue: " >&2
+        ( trap - INT; read -r _  ) || return 1
+    else
+        hub:warn "Failed to open url use browser ($res)"
+        printf "Open the url in browser to register: %s\nthen press [Enter] to continue: " "$url" >&2
+        ( trap - INT; read -r _  ) || return 1
+    fi
+
+    ___x_cmd_hub_account_verify "$ticket"
+}

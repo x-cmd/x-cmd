@@ -85,7 +85,7 @@ function table_change_set_all( o, kp ){
     comp_statusline_change_set_all(o, kp SUBSEP "statusline")
 }
 
-function table_paint_necessary_rows(){   return 9; }
+function table_paint_necessary_rows(){   return 6; }
 function table_paint_necessary_cols(data_row){   return 7+length(data_row); }
 function table_paint(o, kp, x1, x2, y1, y2, has_change_canvas,        _res, r ){
     if (has_change_canvas == true) table_change_set_all( o, kp )

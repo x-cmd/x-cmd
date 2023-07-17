@@ -1,0 +1,58 @@
+# shellcheck shell=dash
+
+# shellcheck disable=SC2142,SC2154
+alias docker:exec:parse='
+    case "$1" in
+        -d|--detach|-i|--interactive|-t|--tty|--privileged)
+            parse_token="$1"
+            x cmdstr ___X_CMD_DOCKER_EXEC_OPTS "$1";
+            shift
+            ;;
+
+        -d*|-i*|-t*)
+            local next_token="${1#-?}"
+            parse_token="${1%"$next_token"}"
+            x cmdstr ___X_CMD_DOCKER_EXEC_OPTS "$parse_token";
+            shift
+            set -- "-$next_token" "$@"
+            ;;
+
+        -e|--env|--env-file|--detach-keys|-u|--user|-w|--workdir)
+            parse_token="$1"
+            x cmdstr ___X_CMD_DOCKER_EXEC_OPTS "$1" "$2"
+            shift 2
+            ;;
+
+        *)  false ;;
+    esac'
+
+___x_cmd_docker_exec___origin(){
+    eval set -- ___x_cmd___docker_origin exec "$___X_CMD_DOCKER_EXEC_OPTS" "\"\$@\""
+    "$@"
+}
+
+___x_cmd_docker_exec(){
+    local ___X_CMD_DOCKER_EXEC_OPTS="";
+    local parse_token
+
+    local INSTALL_X=
+    while [ $# -gt 0 ]; do
+        [ "$1" != -x ] || {
+            INSTALL_X=1
+            shift
+            continue
+        }
+
+        parse_token=""
+        docker:exec:parse || break
+    done
+
+    local container="$1";   shift
+    docker:info "Intercept container ==> $container"
+
+    # intercept inside container: ___x_cmd_docker_setup
+    [ -z "$INSTALL_X" ] || ___x_cmd_docker_setup_prepare exec "$container" || return
+
+    local IFS=" "; docker:info "Intercept command args ==> $*"
+    ___x_cmd_docker_exec___origin "$container" "$@"
+}

@@ -181,8 +181,8 @@ function opt_get( arr, k ){
     return arr[ k ]
 }
 
-function opt_getor( arr, k,   default ){
-    return ( arr[ k ] == "" ) ? default : arr[ k ]
+function opt_getor( arr, k,   def ){
+    return ( arr[ k ] == "" ) ? def : arr[ k ]
 }
 # EndSection
 

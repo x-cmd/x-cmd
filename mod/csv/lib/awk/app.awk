@@ -15,8 +15,8 @@ function tapp_init(){
 }
 
 function tapp_canvas_rowsize_recalulate( rows ){
-    if (rows < 11) return false
-    return (ROW_RECALULATE == "") ? 11 : ROW_RECALULATE # rows -1  # Assure the screen size
+    if (rows < 8) return false
+    return (ROW_RECALULATE == "") ? 8 : ROW_RECALULATE # rows -1  # Assure the screen size
 }
 
 function tapp_canvas_colsize_recalulate( cols ){
@@ -25,7 +25,7 @@ function tapp_canvas_colsize_recalulate( cols ){
 }
 
 function tapp_handle_clocktick( idx, trigger, row, col,        v ){
-    user_view(1, row-1, 1, col)
+    user_view(1, row, 1, col)
     # request data
     table_datamodel_refill(o, TABLE_KP )
 }
@@ -83,7 +83,7 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
     }
 
     # if (_width > 0 ) COL_RECALULATE = COLS -2 - _width
-    if( l < (ROWS - 1 - table_paint_necessary_rows())) ROW_RECALULATE = l + table_paint_necessary_rows()
+    if( l < (ROWS - 1 - table_paint_necessary_rows())) ROW_RECALULATE = l + table_paint_necessary_rows() - 1
     else ROW_RECALULATE = ROWS - 1
     tapp_canvas_has_changed()
 }

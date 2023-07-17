@@ -1,18 +1,18 @@
 # Author:       Li Junhao       l@x-cmd.com
 # shellcheck    shell=sh        disable=SC2039,SC1090,SC3043,SC2263,SC2142
 
-# license:      GPLv3
+# license:      AGPLv3
 
 # Section 0: Prepare source 0
 
 ___x_cmd_help_ret(){
-    eval x help -m "${M}" >&2
+    eval x help -m "${M}"
     return 1
 }
 
-alias help:ret:0='___x_cmd_help_ret || return 0 2>/dev/null || exit 0'
-alias help:ret:1='___x_cmd_help_ret || return 1 2>/dev/null || exit 1'
-alias help:ret:64='___x_cmd_help_ret || return 64 2>/dev/null || exit 64'
+alias help:ret:0='___x_cmd_help_ret      || return 0 2>/dev/null || exit 0'
+alias help:ret:1='___x_cmd_help_ret >&2  || return 1 2>/dev/null || exit 1'
+alias help:ret:64='___x_cmd_help_ret >&2 || return 64 2>/dev/null || exit 64'
 
 
 # TODO: figure out whether the following are deprecated
@@ -221,7 +221,7 @@ else
         elif /bin/sh --help 2>&1 | grep BusyBox >/dev/null; then
             printf "%s" ash
         else
-            printf "WARNING: %s\n" "Unknown shell." >&2
+            printf "%s\n" "- W|x: Unknown shell." >&2
         fi
     )"
 fi
@@ -247,7 +247,7 @@ alias panic:return='eval "___x_cmd_panic___loginner && return"'
 alias panic:exit='eval "___x_cmd_panic___loginner && exit"'
 
 ___x_cmd_panic___loginner(){ x log ":${N:-x}" "${L:-error}" "$M"; }
-xrc:mod:lib xrc    functor first line util ldict/posix inner/index shgen
+xrc:mod:lib xrc    functor first line util ldict/posix inner/index shgen exitcode
 # EndSection
 
 # Section 3: main entrance helper: xrc_set_main, which_one, which_one_with_naming
@@ -323,8 +323,8 @@ ___x_cmd_which_one(){
             x:debug "Resource recognized as local file with relative path: $RESOURCE_NAME"
 
             [ -f "$RESOURCE_NAME" ] || {
-                x:warn "Local file not exists: $RESOURCE_NAME"
-                return 1
+                x:warn "Local file not exists ==> $RESOURCE_NAME"
+                return "$x_EX_FILENOTFOUND"
             }
 
             local x_; ___x_cmd_abspath_ "$RESOURCE_NAME" || return  # TODO: Why there must be abspath ?
@@ -363,8 +363,8 @@ ___x_cmd_which_one(){
                 ___X_CMD_WHICH_ONE_RESULT="$TGT"
                 return 0
             fi
-            x:debug "Module not found: $module"
-            return 1
+            x:error --tgt "$TGT" --mod "$module" "Module not found in ___x_cmd_which_one()"
+            return "$x_EX_FILENOTFOUND"
 
             # x:info "Downloading resource=$RESOURCE_NAME to local cache: $TGT"
             # if ___x_cmd_httpget_gitx_official "mod/$module" "$TGT"; then
@@ -404,11 +404,11 @@ ___x_cmd_xrc_source_file(){
     while [ $# -ne 0 ]; do
         ___X_CMD_LOCAL_XRCPATH="$1";   shift
 
-        if ! ___X_CMD_NO_LOCAL=1 ___x_cmd_which_one_with_naming "$___X_CMD_LOCAL_XRCPATH"; then
-            printf "ERROR: Interrupted because resource not found. %s \n" "$___X_CMD_LOCAL_XRCPATH" >&2
-            printf "%s\n" "return 1"
-            return 1
-        fi
+        ___X_CMD_NO_LOCAL=1 ___x_cmd_which_one_with_naming "$___X_CMD_LOCAL_XRCPATH" || {
+            local code=$?
+            x:error "resource not found. ___x_cmd_xrc_source_file() abort ==> $___X_CMD_LOCAL_XRCPATH"
+            return "$code"
+        }
 
         # Ask whether using http or outside resource.
         if [ "$___X_CMD_WHICH_ONE_RESOURCE_TYPE" = http ] && [ -z "$NOWARN" ]; then
@@ -545,8 +545,15 @@ xrc httpget
 xrc:mod x-cmd/latest
 xrc:mod args/latest     # TODO: args is not necessary
 
+
+alias xd="x docker"     # xdk is x-box command, xdo is also occupied ... so we can only use xd
+# alias xdx="x docker x"     # xdk is x-box command, xdo is also occupied ... so we can only use xd
+alias xdb="x dbox"
+
 alias xws="x ws"
-alias s="x ws"
+alias ws="x ws"
+alias s=""      # occupied
+alias xgi="x git"
 
 if [ -n "$ZSH_VERSION" ]; then
     alias -- +=___x_cmd_xrc_import
@@ -560,6 +567,10 @@ if ___x_cmd_is_suitable_advise_env; then
     x:debug "Using module advise for completion."
     command -v ___x_cmd_advise >/dev/null || xrc advise/latest
     ___x_cmd_advise init xrc
+    ___x_cmd_advise init xws "$___X_CMD_ROOT_ADV/ws/advise.jso" s
+    ___x_cmd_advise init xd  "$___X_CMD_ROOT_ADV/docker/advise.jso"
+    ___x_cmd_advise init xdb "$___X_CMD_ROOT_ADV/dbox/advise.jso"
+    ___x_cmd_advise init xgi "$___X_CMD_ROOT_ADV/git/advise.jso"
 fi
 
 # EndSection
@@ -580,6 +591,22 @@ if ___x_cmd_is_interactive_tty; then
     xrc:mod boot/latest
     ___x_cmd_boot_rc  load
     ___x_cmd_boot_mod load
+fi
+
+if [ -n "$ZSH_VERSION" ]; then
+    if ___x_cmd_is_interactive; then
+        trap '
+        case "$0" in
+            zsh)        return 130 ;;
+            -zsh)       return 130 ;;
+            _zsh*)      return 130 ;;
+            */zsh)      return 130 ;;
+            */zsh.exe)  return 130 ;;
+        esac
+        ' INT              # Experimental, change the zsh default behavior.
+    else
+        trap -- ':' INT
+    fi
 fi
 
 alias ,='x chat'

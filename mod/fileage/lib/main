@@ -1,4 +1,4 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2030,SC2031
 
 # Default: modifiled
 # Cannot work for folder: The modified time attribute of folder keep updating.
@@ -11,100 +11,58 @@
 # x fileage -lt lm -m LICENSE
 
 ___x_cmd_fileage___main(){
-    if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then x help -m fileage; return ;
-    fi
+    case "$1" in
+        --help|-h)              x help -m fileage;             return 1;;
+        --stat)         shift;  ___x_cmd_fileage_stat "$@";    return  ;;
+        --in)           shift;  ___x_cmd_fileage___in "$@";    return  ;;
+    esac
 
+    ___x_cmd_fileage___exec "$@"
+}
 
+___x_cmd_fileage___in(){
     local current=""; current="$(date +%s)"
+    local date="$1"
+    [ -n "$date" ] || { x log :fileage error -h 'x fileage --in <human_time_unit e.g 1d> <file_path>' "Provide human time unit"; return 64; }
+    shift 1
+    local x_="";   x humantime tosec_ "$date"
 
-    if [ "$1" = --in ]; then
-        local date="$2"
-        [ -n "$date" ] || { x log :fileage error -h 'x fileage --in <human_time_unit e.g 1d> <file_path>' "Provide human time unit"; return 64; }
-        shift 2
-        local ___X_CMD_HUMANTIME_TOSEC_
-        x humantime tosec_ "$date"
+    local ts=""
+    ___x_cmd_fileage_stat "$@" | while read -r ts; do
+        [ -n "$ts" ] || {
+            x log :fileage error "Get fileage failure. Please check the file exists. TS=$ts"
+            local IFS=" "; x log :fileage error "filelist ==> $*"
+            return 1
+        }
+        [ "$((current - ts))" -le "$x_" ] || return 1
+    done
+}
 
-        ___x_cmd_fileage_stat "$@" | while read -r ts; do
-            [ -n "$ts" ] || {
-                x log :fileage error "Get fileage failure. Please check the file exists. TS=$ts"
-                local IFS=" "; x log :fileage error "filelist ==> $*"
-                return 1
-            }
-            if [ "$((current - ts))" -ge "$___X_CMD_HUMANTIME_TOSEC_" ]; then
-                return 1
-            fi
-        done
-        return 0
-    fi
-
-    local human=""
-    if [ "$1" = -H ]; then
-        shift; human=1
-    fi
-
+___x_cmd_fileage___exec(){
+    local current="";   current="$(date +%s)"
+    local human="";     [ "$1" != -H ] || { shift;  human=1; }
     ___x_cmd_fileage_stat "$@" | while read -r ts; do
         [ -n "$ts" ] || {
             x log :fileage error "Get fileage failure. Please check the file exists. TS=$ts";
             local IFS=" "; x log :fileage error "filelist ==> $*"
             return 1
         }
-        if [ -z "$human" ]; then  printf "%s\n" "$((current - ts))"
+        if [ -z "$human" ]; then
+            printf "%s\n" "$((current - ts))"
         else
-            local ___X_CMD_HUMANTIME_SEC_
-            x humantime sec_ "$((current - ts))"
-            printf "%s\n" "$___X_CMD_HUMANTIME_SEC_"
+            local x_="";   x humantime sec_ "$((current - ts))"
+            printf "%s\n" "$x_"
         fi
     done
 }
 
+# deprecated
 ___x_cmd_fileage_(){
     if ___x_cmd_fileage_stat_ "$@"; then
         local current; current="$(date +%s)"
-        ___X_CMD_FILEAGE_="$((current - ___X_CMD_FILEAGE_STAT_))"
+        x_="$((current - x_))"
     else
-        ___X_CMD_FILEAGE_=
+        x_=
         return 1
     fi
-}
-
-___x_cmd_fileage_stat_(){
-    # Reference: https://linux.die.net/man/1/stat
-    if stat -c "%Y" /bin/sh 2>/dev/null 1>&2; then
-        ___x_cmd_fileage_stat_(){
-            local param="%Y"
-            case "$1" in
-                -m) shift ;;
-                # https://unix.stackexchange.com/questions/24441/get-file-created-creation-time
-                -c) param="%Y"; shift ;;  # created time using modified time
-                -a) param="%X"; shift ;;
-            esac
-
-            ___X_CMD_FILEAGE_STAT_=
-            [ -f "$1" ] || return 1
-            ___X_CMD_FILEAGE_STAT_="$(stat -c "$param" "$@")"
-        }
-    elif stat -f "%m" /bin/sh 2>/dev/null 1>&2; then
-        ___x_cmd_fileage_stat_(){
-            local param="%m"
-            case "$1" in
-                -m) shift ;;
-                -c) param="%c"; shift ;;
-                -a) param="%a"; shift ;;
-            esac
-
-            ___X_CMD_FILEAGE_STAT_=
-            [ -f "$1" ] || return 1
-            ___X_CMD_FILEAGE_STAT_="$(stat -f "$param" "$@")"
-        }
-    else
-        return 1
-    fi
-
-    ___x_cmd_fileage_stat_ "$@"
-}
-
-___x_cmd_fileage_stat(){
-    local ___X_CMD_FILEAGE_STAT_
-    ___x_cmd_fileage_stat_ "$@"
-    printf "%s\n" "$___X_CMD_FILEAGE_STAT_"
 }
