@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-Currently in alpha testing (v0.1.6), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
+Currently in alpha testing (v0.1.7), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
 <br>
 If you like x-cmd, please give us a star ⭐.
 <br>
@@ -58,13 +58,13 @@ Your support is our biggest motivation.
 
 | Package | Official Site | Function |
 | -- | -- | -- |
-| [jq](https://x-cmd.com/pkg/jq)/yq | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/) |
+| [jq](https://x-cmd.com/pkg/jq)/[yq](https://x-cmd.com/pkg/yq) | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/) |
 | [p7zip](https://x-cmd.com/pkg/7za) | [7zip](https://www.7-zip.org) | Compression and decompression |
 | [ffmpeg](https://x-cmd.com/pkg/ffmpeg) | [ffmpeg](https://ffmpeg.org/) | Audio and video  |
 | [openssl](https://x-cmd.com/pkg/openssl) | [openssl](https://www.openssl.org/) | Secure cryptographic |
 | [fd](https://x-cmd.com/pkg/fd) | [fd](https://github.com/sharkdp/fd) | Efficient replacement for find|
 | [rg](https://x-cmd.com/pkg/rg) | [rg](https://github.com/BurntSushi/ripgrep) | Efficient replacement for grep|
-| sd | [rg](https://github.com/BurntSushi/ripgrep) | Like sed, but more easy to use |
+| [sd](https://x-cmd.com/pkg/sd) | [rg](https://github.com/BurntSushi/ripgrep) | Like sed, but more easy to use |
 | [bat](https://x-cmd.com/pkg/bat) | [bat](https://github.com/sharkdp/bat) |Rust implementation of cat|
 | [nmap](https://x-cmd.com/pkg/nmap) | [nmap](https://nmap.org/) | Security scanning |
 | [pandoc](https://x-cmd.com/pkg/pandoc) | [pandoc](https://pandoc.org/) | Document format conversion |

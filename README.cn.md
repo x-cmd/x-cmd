@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-现在处于内测阶段（v0.1.6 版本），请勿用于生产环境。我们计划在未来三个月以每个月3个版本的速度往前迭代。
+现在处于内测阶段（v0.1.7 版本），请勿用于生产环境。我们计划在未来三个月以每个月3个版本的速度往前迭代。
 <br>
 如果你觉得x-cmd不错，请给我们一个 star ⭐
 <br>
@@ -58,13 +58,13 @@
 
 | 包 | 官网 | 功能 |
 | -- | -- | -- |
-| [jq](https://cn.x-cmd.com/pkg/jq)/yq | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/)处理 |
+| [jq](https://cn.x-cmd.com/pkg/jq)/[yq](https://cn.x-cmd.com/pkg/yq) | [jq](https://stedolan.github.io/jq/)/[yq](https://github.com/mikefarah/yq) | [json](https://www.json.org/json-en.html)/[yml](https://yaml.org/)处理 |
 | [p7zip](https://cn.x-cmd.com/pkg/7za) | [7zip](https://www.7-zip.org) | 加解压工具 |
 | [ffmpeg](https://cn.x-cmd.com/pkg/ffmpeg) | [ffmpeg](https://ffmpeg.org/) | 音视频工具工具 |
 | [openssl](https://cn.x-cmd.com/pkg/openssl) | [openssl](https://www.openssl.org/) | 安全密码学工具 |
 | [fd](https://cn.x-cmd.com/pkg/fd) | [fd](https://github.com/sharkdp/fd) | find的高效替代 |
 | [rg](https://cn.x-cmd.com/pkg/rg) | [rg](https://github.com/BurntSushi/ripgrep) | grep的高效替代 |
-| sd | [rg](https://github.com/BurntSushi/ripgrep) | 类sed，但更易上手 |
+| [sd](https://cn.x-cmd.com/pkg/sd) | [rg](https://github.com/BurntSushi/ripgrep) | 类sed，但更易上手 |
 | [bat](https://cn.x-cmd.com/pkg/bat) | [bat](https://github.com/sharkdp/bat) | cat的rust实现 |
 | [nmap](https://cn.x-cmd.com/pkg/nmap) | [nmap](https://nmap.org/) | 安全扫描工具 |
 | [pandoc](https://cn.x-cmd.com/pkg/pandoc) | [pandoc](https://pandoc.org/) | 文档格式转换工具 |
