@@ -37,7 +37,7 @@ Your support is our biggest motivation.
 2. Supports installation of programming language runtimes (currently supports [node](https://nodejs.org/en/),[python](https://www.python.org/), [java](https://www.java.comen/), etc.), allowing users to execute hosted scripts with oneclick on environments with x environment.
 3. Enhances the user experience of posix shell with themes, quickpath navigation, and better shell intelligent completion and prompting features to be added in the future.
 4. Provides a range of interactive CLI tools ([github](https:/github.com/), [gitee](https://gitee.com/), with more tool modules to be released in the next six months).
-5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 500KB, and the shell loadingtime after initial startup generally does not exceed 100ms.
+5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 800KB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
 ## [Module ==> **80+**](https://x-cmd.com/mod/)
 
