@@ -3,19 +3,38 @@
 # ls app, default app
 ___x_cmd_pkg_ls(){
     case "$1" in
-        i|installed)      shift;  ___x_cmd_pkg_ls_installed "$@" ;;
-        a|activated)      shift;  ___x_cmd_pkg_ls_activated "$@" ;;
+        p|populated)      shift;  ___x_cmd_pkg_ls_populated "$@" ;;
+        d|downloaded)     shift;  ___x_cmd_pkg_ls_downloaded "$@" ;;
         A|all)            shift;  ___x_cmd_pkg_ls_all "$@" ;;
         xbin)             shift;  ___x_cmd_pkg_ls_xbin "$@" ;;
         -h|--help)
-            ___x_cmd_pkg_help ls "$@"
-            return 1
+            M='pkg ls ' help:ret:0
             ;;
         *)                ___x_cmd_pkg_ls___installed "$@" ;;
     esac
 }
 
+___x_cmd_pkg_ls_downloaded(){
+    local X_help_cmd='___x_cmd_pkg_help ls d'
+    help:arg:parse
+    [ -d "$___X_CMD_PKG_DOWNLOAD_PATH" ] || return 0
+    [ "$(x ls "$___X_CMD_PKG_DOWNLOAD_PATH" | wc -l )" -gt 0 ] || return 0
+
+    if [ "$#" -gt 0 ]; then
+        [ -d "$___X_CMD_PKG_DOWNLOAD_PATH/$1" ] || {
+            pkg:error "Not found $1 in your download path"
+            return 1
+        }
+        x ls "$___X_CMD_PKG_DOWNLOAD_PATH/$1"
+    else
+        x ls "$___X_CMD_PKG_DOWNLOAD_PATH"
+    fi
+}
+
+
 ___x_cmd_pkg_ls_xbin(){
+    local X_help_cmd='___x_cmd_pkg_help ls xbin'
+    help:arg:parse
     <"$___X_CMD_PKG_RAW_PATH/binmod.txt" awk -v FS=":" '{ if($2 != ""){ print $2 }}'
 }
 
@@ -23,14 +42,17 @@ ___x_cmd_pkg_ls_xbin(){
 # TODO: efficiency defect
 ___x_cmd_pkg_ls___installed()(
     [ -d "$___X_CMD_PKG_POPULATE_PATH" ] || return 0
-    [ "$(ls "$___X_CMD_PKG_POPULATE_PATH" | wc -l )" -gt 0 ] || return 0
+    [ "$(x ls "$___X_CMD_PKG_POPULATE_PATH" | wc -l )" -gt 0 ] || return 0
     local osarch
     local locate_list
     osarch="$(___x_cmd_pkg_osarch)"
-    locate_list="$(___x_cmd_pkg_ll)"
+    locate_list="$(___x_cmd_pkg_ll_inner)"
     (
         x cd "$___X_CMD_PKG_POPULATE_PATH" || return
         for i in */*; do
+            case "$i" in
+                *bash-preexec*) continue;;
+            esac
             printf "%s\n" "$i";
         done
     ) | awk -v FS="/" \
@@ -45,7 +67,9 @@ ___x_cmd_pkg_ls___installed()(
         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.ls.awk"
 )
 
-___x_cmd_pkg_ls_installed(){
+___x_cmd_pkg_ls_populated(){
+    local X_help_cmd='___x_cmd_pkg_help ls i'
+    help:arg:parse
     local name="$1"
     if  [ -n "$name" ]; then
         ___x_cmd_pkg_ls___installed | awk -v name="$name" '
@@ -61,28 +85,31 @@ ___x_cmd_pkg_ls_installed(){
 }
 
 # Invoked pkg ls activated: check environment variable...
-___x_cmd_pkg_ls_activated(){
-    [ -n "$___X_CMD_PKG_ACTIVATE___LIST" ] || return
-    local _line
-    local osarch
-    local locate_list
-    osarch="$(___x_cmd_pkg_osarch)"
-    locate_list="$(___x_cmd_pkg_ll)"
-    awk -v FS="=" \
-        -v OSARCH="$osarch" \
-        -v LOCAL_LIST="$locate_list" \
-        -v PKG_RAWPATH="$___X_CMD_PKG_RAW_PATH" \
-        -v TH_THEME_COLOR="\\033[${___X_CMD_THEME_COLOR_CODE}m" \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk" \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.ls.awk" <<A
-${___X_CMD_PKG_ACTIVATE___LIST}
-A
-}
+# ___x_cmd_pkg_ls_activated(){
+#     [ -n "$___X_CMD_PKG_ACTIVATE___LIST" ] || return
+#     local _line
+#     local osarch
+#     local locate_list
+#     osarch="$(___x_cmd_pkg_osarch)"
+#     locate_list="$(___x_cmd_pkg_ll)"
+#     command awk -v FS="=" \
+#         -v OSARCH="$osarch" \
+#         -v LOCAL_LIST="$locate_list" \
+#         -v PKG_RAWPATH="$___X_CMD_PKG_RAW_PATH" \
+#         -v TH_THEME_COLOR="\\033[${___X_CMD_THEME_COLOR_CODE}m" \
+#         -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+#         -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk" \
+#         -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
+#         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
+#         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.ls.awk" <<A
+# ${___X_CMD_PKG_ACTIVATE___LIST}
+# A
+# }
 
 ___x_cmd_pkg_ls_all(){
+    local X_help_cmd='___x_cmd_pkg_help ls all'
+    help:arg:parse
+
     if ! [ -d "$___X_CMD_PKG_RAW_PATH" ]; then return 0; fi
     local pkg_name="${1:?Provide package name}"
     local osarch="${___X_CMD_PKG_OSARCH:-$(___x_cmd_pkg_osarch)}"
@@ -117,6 +144,9 @@ ___x_cmd_pkg_ls___all_candidate()(
         esac
         x cd "$___X_CMD_PKG_RAW_PATH/$dir" || continue
         for candidate in *; do
+            case "$candidate" in
+                bash-preexec) continue ;;
+            esac
             printf "%s\n" $candidate
         done
     done

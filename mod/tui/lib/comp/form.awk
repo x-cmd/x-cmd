@@ -37,26 +37,18 @@ function comp_form_handle(o, kp, char_value, char_name, char_type,          _has
         }
         else if (char_name == U8WC_NAME_UP){
             ctrl_num_rdec(o, kp SUBSEP "ctrl.form.row")
-            r = comp_form_get_cur_row(o, kp)
-            if (comp_form_data_is_select(o, kp, r)) {
-                ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
-                change_set( o, kp, "form.sel" )
-            }
+            comp_form___ctrl_sel( o, kp )
             change_set( o, kp, "form.body" )
             return true
         }
         else if ((char_name == U8WC_NAME_DOWN) || (char_name == U8WC_NAME_CARRIAGE_RETURN)){
             if (comp_form_get_cur_row(o, kp) == comp_form_get_data_len(o, kp)) {
-                ctrl_sw_toggle(o, kp SUBSEP "ctrl.exit.strategy")
+                comp_form_exit_strategy_toggle(o, kp)
                 change_set( o, kp, "form.button" )
             }
             else {
                 ctrl_num_inc(o, kp SUBSEP "ctrl.form.row")
-                r = comp_form_get_cur_row(o, kp)
-                if (comp_form_data_is_select(o, kp, r)) {
-                    ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
-                    change_set( o, kp, "form.sel" )
-                }
+                comp_form___ctrl_sel( o, kp )
             }
             change_set( o, kp, "form.body" )
             return true
@@ -70,13 +62,15 @@ function comp_form_handle(o, kp, char_value, char_name, char_type,          _has
 }
 
 function comp_form___ctrl_exit_strategy(o, kp, char_value, char_name, char_type){
+
     if ((char_name == U8WC_NAME_UP) || (char_name == U8WC_NAME_DOWN))   {
-        ctrl_sw_toggle(o, kp SUBSEP "ctrl.exit.strategy")
+        comp_form_exit_strategy_toggle(o, kp)
+        comp_form___ctrl_sel(o, kp, true)
         change_set( o, kp, "form.body" )
     }
-    else if (char_name == U8WC_NAME_LEFT)                               ctrl_num_rdec(o, kp SUBSEP "ctrl.exit.strategy")
-    else if (char_name == U8WC_NAME_RIGHT)                              ctrl_num_rinc(o, kp SUBSEP "ctrl.exit.strategy")
-    else if (char_name == U8WC_NAME_CARRIAGE_RETURN)                    ctrl_sw_toggle(o, kp SUBSEP "already.exit.strategy")
+    else if (char_name == U8WC_NAME_LEFT)                               comp_form_exit_strategy_rdec(o, kp)
+    else if (char_name == U8WC_NAME_RIGHT)                              comp_form_exit_strategy_rinc(o, kp)
+    else if (char_name == U8WC_NAME_CARRIAGE_RETURN)                    comp_form_already_exit_strategy_toggle(o, kp)
     else return false
     return true
 }
@@ -88,6 +82,13 @@ function comp_form___ctrl_lineeditadvise(o, kp, char_value, char_name, char_type
         return true
     }
     return false
+}
+
+function comp_form___ctrl_sel(o, kp, v,        r){
+    r = comp_form_get_cur_row(o, kp)
+    if (comp_form_is_ctrl_exit_strategy(o, kp) || (! comp_form_data_is_select(o, kp, r))) return
+    (v == "") ? ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel") : ctrl_sw_set(o, kp SUBSEP "ctrl.form.sel", v)
+    change_set( o, kp, "form.sel" )
 }
 
 # EndSection
@@ -142,6 +143,9 @@ function comp_form_already_exit_strategy_get(o, kp){    return ctrl_sw_get(o, kp
 function comp_form_already_exit_strategy_toggle(o, kp){ return ctrl_sw_toggle(o, kp SUBSEP "already.exit.strategy");    }
 function comp_form_is_ctrl_exit_strategy(o, kp){        return ctrl_sw_get(o, kp SUBSEP "ctrl.exit.strategy");      }
 function comp_form_get_cur_exit_strategy(o, kp){        return ctrl_num_get(o, kp SUBSEP "ctrl.exit.strategy");     }
+function comp_form_exit_strategy_toggle(o, kp){         return ctrl_sw_toggle(o, kp SUBSEP "ctrl.exit.strategy");     }
+function comp_form_exit_strategy_rdec(o, kp){           return ctrl_num_rdec(o, kp SUBSEP "ctrl.exit.strategy");     }
+function comp_form_exit_strategy_rinc(o, kp){           return ctrl_num_rinc(o, kp SUBSEP "ctrl.exit.strategy");     }
 function comp_form_exit_strategy_len(o, kp){            return form_arr_exit_strategy_len(o, kp);                   }
 function comp_form_exit_strategy_get(o, kp, i){         return form_arr_exit_strategy_get(o, kp, i);                }
 function comp_form_exit_strategy_init(o, kp, str,           l, arr){
@@ -161,9 +165,9 @@ function comp_form_model_end(o, kp,         r, i, l){
     for (i=1; i<=l; ++i){
         if (comp_form_data_is_select(o, kp, i)) {
             comp_gsel_init(o, kp SUBSEP i SUBSEP "comp.gsel")
-            if (i == r) ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
         }
     }
+    comp_form___ctrl_sel(o, kp, true)
 }
 
 function comp_form_change_set_all(o, kp){

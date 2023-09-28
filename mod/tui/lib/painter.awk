@@ -78,10 +78,14 @@ function painter_box_arc( x1, x2, y1, y2, color ){
         draw_corner( x1, x2, y1, y2, color, "╭", "╮", "╰", "╯" )
 }
 
-
 function painter_clear_screen(x1,x2,y1,y2){
     # clear the data
     return painter_goto_rel(x1, y1) space_screen(x2-x1+1, y2-y1+1, "\r\n" painter_right( y1 ))
+}
+
+function painter_clear_allline(x1,x2){
+    # clear the data
+    return UI_CURSOR_RESTORE painter_down(x1) "\r" space_screen(x2-x1+1, COLS, "\r\n")
 }
 
 # EndSection

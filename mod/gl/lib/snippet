@@ -1,0 +1,234 @@
+# shellcheck shell=sh disable=SC3043
+# https://docs.gitlab.com/ee/api/snippets.html#get-user-agent-details
+# Section: index
+___x_cmd_gl_snippet(){
+    param:subcmd ___x_cmd_gl_snippet                                  \
+        "list|ls"       "List all snippets for a user"                \
+        get             "Get a single snippet"                        \
+        "file|f"        "Returns the raw file content as plain text"  \
+        add             "Create a new snippet"                        \
+        "edit|ed"       "Update an existing snippet"                  \
+        rm              "Delete an existing snippet"                  \
+        "public|p"      "List all public snippets"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_snippet _param_help_doc
+
+    return 1
+}
+# EndSection
+# Section: list
+___x_cmd_gl_snippet_list(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --created_after              "Return snippets created after the given time"              <>
+    --created_before             "Return snippets created before the given time"             <>
+
+    --page                       "target page"                                               <>:Per_page="1"
+    --per_page                   "per page data number"                                      <>:Numbers="30"
+    --json|-j                    "output raw JSON data"
+'
+    param:run
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/snippets"
+    else
+        ___x_cmd_gl_curl get "/snippets"    | \
+            x ja jl2c           .id .title .file_name .description  | \
+            x csv header --add   ID  TITLE  FILE_NAME DESCRIPTION   | \
+            x csv static_tab
+    fi
+
+}
+# EndSection
+# Section: add
+___x_cmd_gl_snippet_add(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --title                                "Title of a snippet"                   <>
+    --file_path                            "File path of the snippet file"        <>
+    --file_content                         "Content of the snippet file"          <>
+    --visibility                           "Snippet’s visibility"                 <>=private   = private internal public
+
+    --file_name                            "Name of a snippet file"
+    --content                              "Content of a snippet"
+    --description                          "Description of a snippet"
+    --files                                "An array of snippet files"
+    --json|-j                              "output raw JSON data"
+'
+    param:run
+
+    local file_json
+    file_json="$(x jo dict "content:$file_content"  "file_path:$file_path")"
+
+    local gen_gl_json
+    gen_gl_json="$(echo "" | ___x_cmd_gl_snippet_gen_json | x jo)"
+    gl:debug "$gen_gl_json"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl post "/snippets" "gen_gl_json"
+    else
+        ___x_cmd_gl_curl post "/snippets" "gen_gl_json"    | \
+            x ja jl2c           .id .title .description  .file_name  | \
+            x csv header --add   ID  TITLE  DESSCRIPTION  FILE_NAME  | \
+            x csv static_tab
+    fi
+}
+# EndSection
+# Section: get
+___x_cmd_gl_snippet_get(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "ID of snippet to retrieve"              <>
+
+    --json|-j       "output raw JSON data"
+'
+    param:run
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/snippets/${1}"
+    else
+        ___x_cmd_gl_curl get "/snippets/${1}"    | \
+            x ja jl2c           .id .visibility .title .description       | \
+            x csv header --add   ID  VISIBILITY  TITLE DESCRIPTION        | \
+            x csv static_tab
+    fi
+}
+
+# EndSection
+# Section: file
+___x_cmd_gl_snippet_file(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "ID of snippet to retrieve"                      <>
+    --ref           "Reference to a tag, branch or commit"           <>
+    --file_path     "URL-encoded path to the file"                   <>
+
+    --json|-j       "output raw JSON data"
+'
+    param:run
+
+    ___x_cmd_gl_curl get "/snippets/${1}/files/${ref}/${file_path}/raw" | (
+        if ! ___x_cmd_gl_http_error; then
+            ___x_cmd_ui_tf false "Get snippets failure:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        else
+            "$(cat)"
+        fi
+    )
+}
+# EndSection
+# Section: edit
+___x_cmd_gl_snippet_edit(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                                     "ID of snippet to update"                <>
+    --files_action                         "Type of action to perform on the file"  <>    = create update delete move
+
+    --title                                "Title of a snippet"
+    --file_content                         "Content of the snippet file"
+    --file_path                            "File path of the snippet file"
+    --visibility                           "Snippet’s visibility"
+    --files_previous_path                  "Previous path of the snippet file"
+    --file_name                            "Name of a snippet file"
+    --content                              "Content of a snippet"
+    --description                          "Description of a snippet"
+    --files                                "An array of snippet files"
+    --json|-j                              "output raw JSON data"
+'
+    param:run
+
+    local file_json
+    file_json="$(x jo dict "content:$file_content"  "file_path:$file_path" "previous_path:$previous_path" "action:$files_action")"
+
+    local gen_gl_json
+    gen_gl_json="$(echo "" | ___x_cmd_gl_snippet_gen_json | x jo)"
+    gl:debug "$gen_gl_json"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl put "/snippets/${1}"
+    else
+        local error=
+        ___x_cmd_gl_curl put "/snippets/${1}" | x jo env .error
+        if  [ -z "$error" ]; then
+            ___x_cmd_ui_tf  true "[Success]: Update snippet Success "
+        else
+            ___x_cmd_ui_tf false "Update snippets failure: $error"
+            return 1
+        fi
+    fi
+}
+# EndSection
+# Section: rm
+___x_cmd_gl_snippet_rm(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "ID of snippet to delete"              <>:Number
+
+    --json|-j       "output raw JSON data"
+'
+    param:run
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove the snippet(ID: ${1}) ?" || return
+    ___x_cmd_gl_curl del "/snippets/${1}" | (
+        x jo env . gl_resp_err=.error gl_resp_msg=.message
+        if ___x_cmd_gl_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Remove repo hook $1 on $repo"
+        else
+            ___x_cmd_ui_tf false "Remove repo hook $1 on $repo failure:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+# Section: public
+___x_cmd_gl_snippet_public(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --created_after              "Return snippets created after the given time"
+    --created_before             "Return snippets created before the given time"
+
+    --page                       "target page"                                                                   <>:Per_page="1"
+    --per_page                   "per page data number"                                                          <>:Numbers="30"
+    --json|-j                    "output raw JSON data"
+'
+    param:run
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/snippets/public"
+    else
+        ___x_cmd_gl_curl get "/snippets/public"    | \
+            x jo 2c             .id .title .file_name     | \
+            x csv header --add   ID  TITLE  FILE_NAME     | \
+            x csv static_tab
+    fi
+}
+# EndSection
+# Section: util
+___x_cmd_gl_snippet_gen_json(){
+    command awk -v file_name="$file_name" -v content="$contetn" -v des="$description" \
+    -v vis="$visibility" -v file_json="$file_json" -v title="$title" '
+    END{
+    print "{"
+    if(title != "") print "title: " title
+    if(file_name != "") print "file_name: " file_name
+    if(content != "") print "content: " content
+    if(des != "") print "description: " des
+    if(vis != "") print "visibility: " vis
+    print "files: ["
+    print file_json
+    print "]"
+    print "}"
+    }
+'
+}
+# EndSection

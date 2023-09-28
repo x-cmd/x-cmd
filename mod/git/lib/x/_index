@@ -1,0 +1,93 @@
+___x_cmd_git_x(){
+    [ $# -gt 0 ] || set -- -h
+
+    local op="$1";  shift
+    case "$op" in
+        -h|--help)  ___x_cmd_git_x_help; return ;;
+        init|commit)
+                    "___x_cmd_git_x_${op}" "$@" ;;
+    esac
+}
+
+___x_cmd_git_x_init(){
+    local branch
+    for branch in commit issue server apply; do
+       ___x_cmd_git_x___create_if_unexisted $branch
+    done
+}
+
+___x_cmd_git_x___create_if_unexisted(){
+    local branch=$1
+    local b; b=$(x git meta branch)
+    command git checkout "x-cmd/$branch" || {
+        command git checkout --orphan "x-cmd/$branch"
+        command git rm -rf .
+        x touch .x-cmd/.gitignore
+        command git add .
+        command git commit --allow-empty -m "init $branch"
+        git push origin "x-cmd/$branch"
+    }
+    command git checkout "$b"
+}
+
+___x_cmd_git_x_commit(){
+    # using ai to generate the message
+    ___x_cmd_git_x___create_if_unexisted commit
+
+    local filepath=".x-cmd.temp.commit.info"
+
+    # timestamp hash date iso
+    command git log --pretty=format:"%ct %H %as %cI" >"$filepath"
+
+    local b; b=$(x git meta branch)
+
+    # command git log | command awk '$1=="commmit"{ print $2; }' >.x-cmd.temp.commit.info
+    command git checkout x-cmd/commit
+    x mkdirp "data/$date"
+    local ts
+    local hash
+    local date
+    local iso
+    while read -r ts hash date iso ; do
+        x mkdirp "data/$date"
+
+        git:info --time "$iso" "try to generate info for commit ==> $hash"
+        local file="data/$date/$hash"
+        ! ___x_cmd_git_x_commit___filenotempty "$file" || {
+            git:warn "skip because already exists ==> $file"
+            continue
+        }
+
+        ___x_cmd_git_x_commit___cmd || {
+            ___x_cmd_git_x_commit___sleep || return ;   ___x_cmd_git_x_commit___cmd
+        } || {
+            ___x_cmd_git_x_commit___sleep || return ;   ___x_cmd_git_x_commit___cmd
+        } || {
+            git:error "Fail 3 times in a row. Skip." # Exit.
+            # break # ...
+        }
+    done <"$filepath"
+
+    command git checkout "$b"
+}
+
+___x_cmd_git_x_commit___cmd(){
+    command git show "$hash" | x coco diffmsg >"$file"
+    ___x_cmd_git_x_commit___filenotempty "$file"
+}
+
+___x_cmd_git_x_commit___filenotempty(){
+    local file="$1"
+    [ -f "$file" ] || return 1
+    case "$(cat "$file")" in
+        ""|"$___X_CMD_UNSEENCHAR_NEWLINE")      return 1
+    esac
+}
+
+___x_cmd_git_x_commit___sleep(){
+    git:warn "retry after 30s"
+    command sleep 30 || {
+        git:error "Interrupt during waiting retry"
+        return 130
+    }
+}

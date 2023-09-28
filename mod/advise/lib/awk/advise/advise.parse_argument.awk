@@ -49,11 +49,39 @@ function parse_args_to_env___option( obj, obj_prefix, args, argl, optarg_id, arg
     return arg_idx
 }
 
-function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv_table, i, j, k, _arg_id, _subcmdid, _optarg_id, _arg_arrl, _optargc, _rest_argc, rest_argc_max, rest_argc_min, argl, arg ){
+# check obj_prefix kp args argl
+function parse_trim_args( obj, kp, args, id,          v, k, i, j, l, n, nl, _, num, argl, tf ){
+    if ( (tf = args[ id, "fixed" ]) != "" ) return tf
+    v = args[ id ]
+    l = aobj_len(obj, kp)
+    for (i=1; i<=l; ++i){
+        k = aobj_get(obj, kp SUBSEP i)
+        if ( ! aobj_is_nospace(obj, kp SUBSEP k) ) continue
+        CAND[ kp, k, "IS_NOSPACE" ] = true
+        nl = split(juq(k), _, "|")
+        for (n=1; n<=nl; ++n){
+            if (match(v, "^" _[n])) {
+                CAND[ kp, k, "PREFIX" ] = _[n]
+                CAND[ "NOSPACE_NUM" ] ++
+                args[ id ] = substr(v, 1, RLENGTH)
+                argl = args[ L ] = args[ L ] + 1
+                num = id + 1
+                for (j=argl; j>num; --j) args[ j ] = args[ j - 1 ]
+                args[ num ] = substr(v, RLENGTH+1)
+                return ( args[ id, "fixed" ] = true )
+            }
+        }
+    }
+    return ( args[ id, "fixed" ] = false )
+}
 
+function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv_table, i, j, k, _arg_id, _subcmdid, _optarg_id, _arg_arrl, _optargc, _rest_argc, rest_argc_max, argl, arg ){
+
+    # TODO: subcmd nospace
     if (! advise_get_ref_and_group(obj, obj_prefix)) return false
+    parse_trim_args(obj, obj_prefix, args, (i = 1))
     argl = args[ L ]
-    i = 1;
+    CAND[ "KEYPATH" ] = obj_prefix
     while ( i<argl ) {
         arg = args[ i ];    i++
         _arg_id = aobj_get_id_by_name( obj, obj_prefix, arg )
@@ -63,7 +91,9 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
                 return advise_panic("All required options should be set")
             }
             obj_prefix = obj_prefix SUBSEP _subcmdid
+            CAND[ "KEYPATH" ] = obj_prefix
             if (! advise_get_ref_and_group(obj, obj_prefix)) return false
+            if ( parse_trim_args(obj, obj_prefix, args, i) ) argl = args[ L ]
             delete lenv_table
             continue
         }
@@ -71,13 +101,12 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
         if (aobj_is_option( obj, obj_prefix SUBSEP _arg_id ) || (arg ~ /^--/)) {
             j = parse_args_to_env___option( obj, obj_prefix, args, argl, _arg_id, i, genv_table, lenv_table )
             if (j > argl) return true       # Not Running at all
-            else if (j !=0) { i = j; continue }
+            else if (j != 0) { i = j; continue; }
             else { i = i - 1; break; }
         } else if (arg ~ /^-/) {
             j = parse_args_to_env___option( obj, obj_prefix, args, argl, _arg_id, i, genv_table, lenv_table )
-
-            if (j > argl) return true           # Not Running at all
-            else if (j != 0) { i = j; continue }
+            if (j > argl) return true       # Not Running at all
+            else if (j != 0) { i = j; continue; }
 
             _arg_arrl = split(arg, _arg_arr, "")
             for (j=2; j<=_arg_arrl; ++j) {
@@ -106,29 +135,18 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
     }
     # handle it into argument
 
-    CAND[ "OFFSET" ] = i
+    CAND[ "OFFSET" ] = i - CAND[ "NOSPACE_NUM" ]
+    CAND[ "NOSPACE_NUM" ] = 0
 
-    for (j=1; i+j-1 < argl; ++j) {
-        rest_arg[ j ] = args[ i+j-1 ]
-    }
+    for (j=1; i+j-1 < argl; ++j) rest_arg[ j ] = args[ i+j-1 ]
     _rest_argc = j - 1
 
-    if (_rest_argc == 0) {
-        return advise_complete_option_name_or_argument_value( args[ argl ], genv_table, lenv_table, obj, obj_prefix )
-    }
+    if (_rest_argc == 0) return advise_complete_option_name_or_argument_value( args[ argl ], genv_table, lenv_table, obj, obj_prefix )
 
-    rest_argc_min = aobj_get_minimum_rest_argc( obj, obj_prefix )
     rest_argc_max = aobj_get_maximum_rest_argc( obj, obj_prefix )
+    if (_rest_argc >= rest_argc_max)  return
 
-    if (_rest_argc == rest_argc_max) {
-        # No Advise
-    } else if (_rest_argc > rest_argc_max) {
-        # No Advise. Show it is wrong.
-    } else {
-        advise_complete_argument_value( args[ argl ], genv_table, lenv_table, obj, obj_prefix, _rest_argc+1 )
-    }
-
-    return true
+    return advise_complete_argument_value( args[ argl ], genv_table, lenv_table, obj, obj_prefix, _rest_argc+1 )
 
 }
 # EndSection

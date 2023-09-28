@@ -141,7 +141,7 @@ function ystr_value( o, kp, indent,     v, _v ){
 
     ystr___cmt_print_val_0( o, kp, indent )
 
-    if (match(v, "^\"[A-Za-z0-9 _-]+\"$")) v = substr(v, 2, length(v)-2)
+    if (match(v, "^\"[A-Za-z0-9 _]+\"$")) v = substr(v, 2, length(v)-2)
     ystr___cmt_print_val_1( o, kp, v )
 }
 

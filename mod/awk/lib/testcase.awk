@@ -6,7 +6,7 @@ END{
 }
 
 function testcase_panic( errmsg ){
-    print( errmsg ) > "/dev/stderr"
+    log_error( "testcase", errmsg )
     exit(1)
     return 0
 }

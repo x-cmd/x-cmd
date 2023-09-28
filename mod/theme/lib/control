@@ -1,0 +1,128 @@
+# shellcheck shell=dash disable=SC1091,SC2034,SC2154
+
+xrc:mod:lib theme       style/_index
+___x_cmd_theme_control_use_default(){
+    [ ! -f "${___X_CMD_ROOT_CFG}/theme/default" ] || . "${___X_CMD_ROOT_CFG}/theme/default"
+}
+
+# Section: try or use theme
+___x_cmd_theme_control_use(){
+    local X_help_cmd=; X_help_cmd='x help -m theme use' help:arg:parse
+    ___x_cmd_theme_control_try_main --save "$@"
+}
+
+___x_cmd_theme_control_try(){
+    local X_help_cmd=; X_help_cmd='x help -m theme try' help:arg:parse
+    ___x_cmd_theme_control_try_main "$@"
+}
+
+___x_cmd_theme_control_try_main(){
+    local termtype=default
+    local save=
+    case "$1" in
+        --save)   save=1; shift ;;
+    esac
+
+    case "$1" in
+        --vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole|--default)
+            termtype="${1#--}"
+            shift
+            ;;
+        --*)
+            N=theme M="Unknown subcmd ==> $1" log:ret:64
+            ;;
+    esac
+
+    local name="${1:-l}"
+    [ -z "$2" ] || {
+        if [ "$name" != "random" ]; then    name="$name/$2"
+        else                                name="random,$2"
+        fi
+    }
+
+    eval export ___X_CMD_THEME_NAME_"$termtype"="$name"
+    ___x_cmd_theme_feature_reload
+    ___x_cmd_theme_control_try_inner || return
+
+    # use theme
+    [ -z "$save" ] || {
+        ___x_cmd_theme_control___rcfile_modify "$termtype" "$name" \
+        && x boot rc add "x-theme" "xrc theme && ___x_cmd_theme_reload"
+    }
+}
+
+___x_cmd_theme_control_try_inner(){
+    xrc:mod:lib     theme       widget/_index       theme/mini/_index
+
+    eval local name=\"\$___X_CMD_THEME_NAME_"${___X_CMD_THEME_TERM_VENDOR}"\" 2>/dev/null
+
+    name="${name:-$___X_CMD_THEME_NAME_default}"
+    [ -n "$name" ] || return
+
+    # TODO: Using hub ...
+    local x_file=
+    ___x_cmd_theme_which___getfile_ "$name" || N=theme M="Not found theme '$name' file" log:ret:64
+    ___x_cmd_theme_load_format "$x_file" || return
+}
+# EndSection
+
+___x_cmd_theme_control_unuse(){
+    local X_help_cmd=; X_help_cmd='x help -m theme unuse' help:arg:parse
+    local termtype=default
+    [ $# -ne 0 ] || set -- --default
+
+    case "$1" in
+        --vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole|--default)
+            ___x_cmd_theme_control_untry "$1"
+            ___x_cmd_theme_control___rcfile_modify "${1#--}" ""
+            # x boot rc del x-theme
+            # TODO: off featurn transient
+            theme:info "Unuse the theme ${1:+"and ZSH plugin "}successfully. ${___X_CMD_UNSEENCHAR_033}[1;33mNow you can restart your terminal.${___X_CMD_UNSEENCHAR_033}[0m"
+            ;;
+
+        all)
+            x boot rc del "x-theme"
+            x boot rc del "x-zsh-plugin"
+            ;;
+        *)
+            theme:error -h 'x theme unset [all]' "Invalid argument"
+            return 1
+            ;;
+    esac
+}
+
+___x_cmd_theme_control_untry(){
+    local X_help_cmd=; X_help_cmd='x help -m theme untry' help:arg:parse
+    local termtype=default
+    case "$1" in
+        --vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole|--default)
+            termtype="${1#--}"
+            shift
+            ;;
+    esac
+
+    eval export ___X_CMD_THEME_NAME_"$termtype"=
+    local x_=; x_="$(grep "export ___X_CMD_THEME_NAME_default=" < "${___X_CMD_ROOT_CFG}/theme/default")"
+    eval "$x_"
+    ___x_cmd_theme_control_try_inner
+}
+
+___x_cmd_theme_control___rcfile_modify(){(
+    local termtype="$1"
+    local name="$2"
+
+    x touch "${___X_CMD_ROOT_CFG}/theme/default"
+    ___X_CMD_THEME_DISABLE=1
+    . "${___X_CMD_ROOT_CFG}/theme/default"
+
+    eval export ___X_CMD_THEME_NAME_"$termtype"="$name"
+
+    >"${___X_CMD_ROOT_CFG}/theme/default" \
+    printf "%s\n" \
+        "export ___X_CMD_THEME_NAME_default=${___X_CMD_THEME_NAME_default}"  \
+        "export ___X_CMD_THEME_NAME_vscode=${___X_CMD_THEME_NAME_vscode}"    \
+        "export ___X_CMD_THEME_NAME_gnome=${___X_CMD_THEME_NAME_gnome}"      \
+        "export ___X_CMD_THEME_NAME_iterm=${___X_CMD_THEME_NAME_iterm}"      \
+        "export ___X_CMD_THEME_NAME_apple=${___X_CMD_THEME_NAME_apple}"      \
+        "[ -n \"\$___X_CMD_THEME_DISABLE\" ] || ___x_cmd_theme_control_try_inner"
+)}

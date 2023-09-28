@@ -1,6 +1,5 @@
-function user_request_data( rootkp,            list, kp, i, j, k, l, _pages, _system, _cmd, _pl, _sl, _cl, _pv, _sv, _cv, arr, _){
+function user_request_data( o, kp, rootkp,            list, i, j, k, l, _pages, _system, _cmd, _pl, _sl, _cl, _pv, _sv, _cv, arr, _){
     list =  TLDR_APP_DATA
-    kp = TLDR_KP
     l = split(list, arr, "\n")
     for (i=1; i<=l; ++i){
         split(arr[i], _, "/")
@@ -22,7 +21,7 @@ function user_request_data( rootkp,            list, kp, i, j, k, l, _pages, _sy
             comp_navi_data_init( o, kp, _pv "/" _sv )
             for (k=1; k<=_cl; ++k){
                 _cv = _cmd[ _pv, _sv, k ]
-                comp_navi_data_add_kv( o, kp, _pv "/" _sv, _cv, "", _pv "/" _sv "/" _cv)
+                comp_navi_data_add_kv( o, kp, _pv "/" _sv, _cv, "preview", _pv "/" _sv "/" _cv)
             }
             comp_navi_data_end( o, kp, _pv "/" _sv )
         }

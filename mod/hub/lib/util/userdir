@@ -1,53 +1,47 @@
 # shellcheck shell=dash
 
-___x_cmd_hub___util_user_id(){
-    local res; local user_id;
+# $___X_CMD_HUB_DATA
+# └── <username>
+#     ├── accesskey
+#     ├── data
+#     ├── datakey
+#     ├── encdata
+#     └── keypair
+# example:
+#    ___x_cmd_hub_u_userdir <username> data => $___X_CMD_HUB_DATA/<username>/data
+___x_cmd_hub_u_userdir(){
+    local username="$1"
+    [ -n "$username" ] || M='Provide username' N=hub log:ret:64
+    local p="$2"
+    local dir;
 
-    res="$(NO_AUTH=1 x ccmd -- \
-        ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=$1" \
-        PROFILE="$___X_CMD_HUB_LOCAL_PROFILE" \
-        CONFIG="$___X_CMD_HUB_LOCAL_CONFIG"
-    )" || {
-        hub:error "Response => $res"
-        return 1
-    }
+    if [ "$username" = "me" ]; then
+        dir="$___X_CMD_HUB_DATA/me-${___X_CMD_HUB_LOCAL_PROFILE:-"X"}/$p"
+    else
+        dir="$___X_CMD_HUB_DATA/${username}/$p" || return
+    fi
 
-    user_id="$(printf "%s" "$res" | { x jo env . id=.id ; printf "%s\n" "$id";})"
-    [ -n "${user_id}" ] || {
-        hub:error "Failed to get user_id from response => $res"
-        return 1
-    }
-    printf "%s" "$user_id"
-}
-
-___x_cmd_hub___util_cache_invalidate(){
-    x ccmd invalidate ___x_cmd_hub___util_curl get "/api/v0/account/id" "username=me" \
-        PROFILE="$___X_CMD_HUB_LOCAL_PROFILE" \
-        CONFIG="$___X_CMD_HUB_LOCAL_CONFIG" 2>/dev/null
-}
-
-___x_cmd_hub___util_user_dir(){
-    local username="${1:?username required}"
-    local p="${2}"
-    local dir; dir="$___X_CMD_HUB_DATA/$(___x_cmd_hub___util_user_id "$username")/$p" || return
     hub:debug "user_dir => $* dir=$dir"
     x mkdirp "$dir"
     printf "%s" "$dir"
 }
 
-# <username>:<respath> data        => <user_id>/data/<respath>
-# <username>:<respath> encdata     => <user_id>/enckey/<respath>.enc
-# <username>:<respath> datakey     => <user_id>/datakey/<respath>/filekey
-___x_cmd_hub___util_respath_to_localpath(){
-    local type="${1:?Provide type}"
-    local respath="${2:?Provide respath}"
-    local username="${respath%%":"*}"
+# <username>:<remotefp> data        => <username>/data/<remotefp>
+# <username>:<remotefp> encdata     => <username>/enckey/<remotefp>.enc
+# <username>:<remotefp> datakey     => <username>/datakey/<remotefp>/filekey
+___x_cmd_hub_u_remote2localfp(){
+    local type="$1"
+    local remotefp="$2"
+    [ -n "$type" ]     || M='Provide type'     N=hub log:ret:64
+    [ -n "$remotefp" ] || M='Provide remotefp' N=hub log:ret:64
+
+    local username="${remotefp%%":"*}"
     local res
 
     case "$type" in
-        data)       res="$(___x_cmd_hub___util_user_dir "$username" data)/${respath#*:}" || return ;;
-        encdata)    res="$(___x_cmd_hub___util_user_dir "$username" encdata)/${respath#*:}.enc" || return ;;
-        datakey)    res="$(___x_cmd_hub___util_user_dir "$username" datakey)/${respath#*:}/filekey" || return;;
+        data)       res="$(___x_cmd_hub_u_userdir "$username" data)/${remotefp#*:}" || return ;;
+        encdata)    res="$(___x_cmd_hub_u_userdir "$username" encdata)/${remotefp#*:}.enc" || return ;;
+        datakey)    res="$(___x_cmd_hub_u_userdir "$username" datakey)/${remotefp#*:}/filekey" || return;;
         *)          ___x_cmd_ui_tf false "Unknown type=$type" >&2 ; return 1 ;;
     esac
 

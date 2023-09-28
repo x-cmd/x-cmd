@@ -14,20 +14,29 @@ ___x_cmd_hub_file_link(){
         esac
     done
 
-    local url="${1:?Provide url}"
-    local remotefp="${2:?Provide path}"
-    remotefp="$(___x_cmd_hub_file_normalize_respath "$remotefp")"
+    local url="$1"       ; [ -n "$url" ]      || M='Provide url'              N=hub log:ret:64
+    local remotefp="$2"  ; [ -n "$remotefp" ] || M='Provide remote file path' N=hub log:ret:64
+    remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
 
     hub:debug "Upload url=$url to $remotefp"
 
-    local enc_localfp; enc_localfp="$(___x_cmd_hub___util_respath_to_localpath encdata "$remotefp")" || return 1
-    printf "%s\n\n%s" "srctype: link" "$url" > "$enc_localfp"
+    ___x_cmd_hub_u_curl get "/api/v0/file/upload/url?res=$(x url encode "$remotefp")&force=${force}" | {
+        local oss_url; local msg
+        x jo env . oss_url=.url .msg
+        [ -n "$oss_url" ] || {
+            ___x_cmd_hub_u_handle_resp false "Failed to put $url to $remotefp:"
+            return 1
+        }
 
-    if res="$(___x_cmd_hub___util_curl put /api/v0/file -F "file=@$enc_localfp" "res=${remotefp}" "force=${force}")" ; then
-        ___x_cmd_hub___util_handle_resp true "$res" "link $url to $remotefp:"
-        [ -z "$public" ] || ___x_cmd_hub_access___set --public "$remotefp"
-    else
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to link $url to $remotefp:"
-        return 1
-    fi
+        hub:debug "Upload $oss_url"
+        printf "%s\n\n%s" "srctype: link" "$url" \
+            | x curl -X PUT -sSL "$oss_url"  -H "Content-Type: application/octet-stream" --data-binary @- || {
+            ___x_cmd_ui_tf false "Failed to put $url to $remotefp" >&2
+            return 1
+        }
+
+        ___x_cmd_hub_u_handle_resp true "Upload $url to $remotefp:"
+    }
+
+    [ -z "$public" ] || ___x_cmd_hub_access___set_public "$remotefp"
 }

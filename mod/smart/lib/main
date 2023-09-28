@@ -1,12 +1,78 @@
 # shellcheck shell=dash
 ___x_cmd_smart___main(){
-    [ "$#" -gt 0 ] || {
-        x smartctl --help
-        return
-    }
+    [ "$#" -gt 0 ] ||   set -- --app
 
     local op="$1"; shift
     case "$op" in
-        *) x smartctl "$op" $@ ;;
+        --app)          ___x_cmd_smart___app ;;
+        --help|-h)      x smartctl -h ;;
+        *)              x smartctl "$op" "$@" ;;
+    esac
+}
+
+___x_cmd_smart___app(){
+    if ! ___x_cmd_is_interactive; then
+        x smart -h
+        return 64
+    else
+        command cat >/dev/tty <<A
+X-CMD module smart is a shallow wrapper of package smartctl.
+We provide a simple guiding tui. ${___X_CMD_UNSEENCHAR_033}[7;1mCtrl-C${___X_CMD_UNSEENCHAR_033}[0m to interupt.
+If you want to know more, use \`${___X_CMD_UNSEENCHAR_033}[33;1mx smart -h${___X_CMD_UNSEENCHAR_033}[0m\`
+A
+        x ui sep >/dev/tty
+
+        local disk=
+        x tty update
+        ___x_cmd_smart___list_disk | \
+        x pick --col "$COLUMNS" --ask "Pick the disk you want to view SMART information: " | \
+        while read -r disk; do
+            local x_=""; ___x_cmd_smart___info_disk_ "$disk"
+            x:info --command "$x_" "showing SMART for disk ==> $disk"
+            x ui sep >/dev/tty
+
+            eval "$x_" || return
+        done
+    fi
+}
+
+___x_cmd_smart___list_disk(){
+    case "$(x os name)" in
+        darwin)
+            command diskutil list | command awk '($1 ~ "^/dev/"){
+                print $1
+            }'
+            ;;
+
+        win)
+            command df | command awk 'match($1, ":"){
+                print substr($1, 1, RSTART)
+            }'
+            ;;
+
+        linux)
+            command df | command awk '($1 ~ "^/dev/"){
+                print $1
+            }'
+            ;;
+    esac
+}
+
+___x_cmd_smart___info_disk_(){
+    local disk="$1"
+    case "$(x os name)" in
+        darwin)
+            x_="x smart -a \"$disk\""
+            ;;
+
+        win)
+            x_="x smart -a \"$disk\""
+            ;;
+
+        linux)
+            if [ "$(id -u "$USER")" -eq 0 ]; then   x_="x smart -a \"$disk\""
+            else                                x_="x sudo smart -a \"$disk\""
+            fi
+            ;;
     esac
 }

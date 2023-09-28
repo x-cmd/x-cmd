@@ -178,7 +178,7 @@ function csv_tostr( o, kp, seqstr, col_seqstr,       \
         _col_end = o[ kp L L ]
         _col_step = 1
     } else {
-        seq_init(seqstr, seqarr, "col")
+        seq_init(col_seqstr, seqarr, "col")
         _col_start = seqarr[ "col" "S" ]
         _col_step  = seqarr[ "col" "P" ]
         _col_end   = seqarr[ "col" "E" ]

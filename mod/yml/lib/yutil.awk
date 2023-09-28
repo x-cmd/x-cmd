@@ -1,9 +1,9 @@
-function panic( s ){
+function yml_panic( s ){
     print s >"/dev/stderr"
-    PANIC_EXIT = 1
+    YML_PANIC_EXIT = 1
     exit(1)
 }
-END{    if (PANIC_EXIT != 0) exit( PANIC_EXIT );    }
+END{    if (YML_PANIC_EXIT != 0) exit( YML_PANIC_EXIT );    }
 
 function yml_trim_ending_space_colon( s ){  return (match( s, "[ ]+:$")) ? substr(s, length(s) - RLENGTH): s;  }
 
@@ -70,7 +70,10 @@ BEGIN{
 }
 
 function yml_parse_special_value( o, k, r ){
-    if (r == "") return "null"
+    if (r == "") {
+        yml_obj_unset_yval(o, k)
+        return "null"
+    }
 
     if (r ~ "^" RE_Y_VALUE_OCT "$") {
         yml_obj_set_yval( o, k, r )
@@ -108,11 +111,16 @@ function yml_parse_special_value( o, k, r ){
         return "null"
     }
 
-    return jqu(r)
+    yml_obj_unset_yval(o, k)
+    return (r ~ "^\"") ? r : jqu(r)
 }
 
 function yml_obj_set_yval( o, k, v ){
     o[ "ORIG" k ] = v
+}
+
+function yml_obj_unset_yval( o, k ){
+    delete o[ "ORIG" k ]
 }
 
 function yml_obj_get_yval( o, k ){
@@ -123,3 +131,22 @@ function yml_obj_get_yval_or_val( o, k,  a ){
     if (( a = o[ "ORIG" k ]) != "") return a
     return o[ k ]
 }
+
+
+function yml_parse_trim_value(o, k,     v){
+    v = o[ k ]
+    if (v == "[") return yml_parse_trim_list(o, k)
+    if (v == "{") return yml_parse_trim_dict(o, k)
+    o[ k ] = yml_parse_special_value(o, k, v)
+}
+
+function yml_parse_trim_list(o, k,     i, l){
+    l = o[ k L ]
+    for (i=1; i<=l; ++i) yml_parse_trim_value(o, k SUBSEP "\""i"\"")
+}
+
+function yml_parse_trim_dict(o, k,     i, l){
+    l = o[ k L ]
+    for (i=1; i<=l; ++i) yml_parse_trim_value(o, k SUBSEP o[k, i])
+}
+

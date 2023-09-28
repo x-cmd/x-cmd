@@ -14,7 +14,7 @@ function r( k1, k2, k3, k4, k5, k6, k7, k8, k9 ){   return O[ KP S kp( k1, k2, k
 function d( current_level, value ) {  return ( ( current_level != D ) || ( (value != "") && (value != O[D]) ) ) ? 0 : 1; }
 
 function juq( str ){
-    # if (str !~ /^".*"$/) return str         # TODO: remove in the future
+    if (str !~ /^".*"$/) return str         # TODO: remove in the future
 
     str = substr( str, 2, length(str)-2 )
     gsub( /\\\\/, "\001", str )
@@ -71,35 +71,35 @@ function ___kp_glob_pattern( k1, k2, k3, k4, k5, k6, k7, k8, k9,    _ret ){
     return _ret
 }
 
-function p(kp,   i, l){
-    l = O[ kp L ]
+function p(keypath,   i, l){
+    l = O[ keypath L ]
     for (i=1; i<=l; ++i) {
         if (i!=1)   print "\n"
-        _p_value( O,  kp S "\"" i "\"")
+        _p_value( O,  keypath S "\"" i "\"")
     }
 }
 
-function _p_value(O, kp,     _t, _klist, i, _ret){
-    _t = O[ kp ]
-    if (_t == "{")           _p_dict(O, kp)
-    else if (_t == "[")      _p_list(O, kp)
+function _p_value(O, keypath,     _t, _klist, i, _ret){
+    _t = O[ keypath ]
+    if (_t == "{")           _p_dict(O, keypath)
+    else if (_t == "[")      _p_list(O, keypath)
     else                        print _t
 }
 
-function _p_dict(O, kp,     _klist, l, i, _key){
-    print "{";  l = O[ kp L ]
+function _p_dict(O, keypath,     _klist, l, i, _key){
+    print "{";  l = O[ keypath L ]
     for (i=1; i<=l; i++){
         if (i!=1) print ",";
-        _key = O[ kp S "\""  i "\"" ]; print _key;  print ":"; _p_value( O, kp S _key )
+        _key = O[ keypath S "\""  i "\"" ]; print _key;  print ":"; _p_value( O, keypath S _key )
     }
     print "}"
 }
 
-function _p_list(O, kp,     l, i, _ret){
-    print "[";  l = O[ kp L ]
+function _p_list(O, keypath,     l, i, _ret){
+    print "[";  l = O[ keypath L ]
     for (i=1; i<=l; i++){
         if (i!=1) print ",";
-        _p_value( O, kp S "\""  i "\"" )
+        _p_value( O, keypath S "\""  i "\"" )
     }
     print "]"
 }

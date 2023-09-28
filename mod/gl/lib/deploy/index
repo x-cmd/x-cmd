@@ -1,0 +1,169 @@
+# shellcheck shell=sh disable=SC3043,SC2154
+#https://docs.gitlab.com/ee/api/deployments.html
+# https://docs.gitlab.com/ee/user/project/deploy_keys/#permissions
+# Section: index
+___x_cmd_gl_deploy(){
+    param:scope         ___x_cmd_gl
+    param:subcmd ___x_cmd_gl_deploy                                  \
+        "list|ls"       "List project deployments"                   \
+        get             "Get a specific deployment"                  \
+        add             "Create a deployment"                        \
+        "edit|ed"       "Update a deployment"                        \
+        rm              "Delete a specific deployment"               \
+        key             "Deploy key management"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_deploy _param_help_doc
+
+    return 1
+}
+# EndSection
+# Section: list
+___x_cmd_gl_deploy_list(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"          <>
+
+    --order_by        "Return deployments ordered(Default is id)"                <>=id   = id iid create_at update_at finished_at ref
+    --sort            "Return deployments sorted(Default is asc)"                <>=asc  = asc desc
+    --updated_after   "Return deployments updated after the specified date"      <>:datetime=""
+    --updated_before  "Return deployments updated before the specified date"     <>:datetime=""
+    --finished_after  "Return deployments finished after the specified date"     <>:datetime=""
+    --finished_before "Return deployments finished before the specified date"    <>:datetime=""
+    --status          "The status to filter deployments by"                      <> = created running success failed canceled blocked
+    --environment     "The name of the environment to filter deployments by"     <>=""
+
+    --json|-j         "output origin json data"
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gl___url_path_encode 2>/dev/null)
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/projects/$encode_path/deployments"
+    else
+        ___x_cmd_gl_curl get "/projects/$encode_path/deployments" | \
+            x jo 2c              .id  .ref .status | \
+            x csv header --add   ID   ref  STATUS | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: get
+___x_cmd_gl_deploy_get(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"          <>
+    --deployment_id   "The ID of the deployment"                                 <>:Number
+
+    --json|-j         "output origin json data"
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gl___url_path_encode 2>/dev/null)
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/projects/$encode_path/deployments/${deployment_id}"
+    else
+        ___x_cmd_gl_curl get "/projects/$encode_path/deployments/${deployment_id}" | \
+            x ja jl2c              .id  .ref .deployable.status | \
+            x csv header --add   ID   ref  DEPLOYABLE_STATUS | \
+            x csv static_tab
+    fi
+
+}
+# EndSection
+
+# Section: add
+___x_cmd_gl_deploy_add(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"            <>
+    --environment     "The name of the environment to create the deployment for"   <>
+    --sha             "The SHA of the commit that is deployed"                     <>
+    --ref             "The name of the branch or tag that is deployed"             <>
+    --tag             "A boolean that indicates if the deployed ref is a tag"      <>:bool   = true false
+    --status          "The status of the deployment that is created"               <> = running success failed canceled
+
+    --json|-j       "output origin json data"
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gl___url_path_encode 2>/dev/null)
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -json)"
+    gl:debug "$gen_gl_json"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl post "/projects/$encode_path/deployments" "gen_gl_json"
+    else
+        ___x_cmd_gl_curl post "/projects/$encode_path/deployments" "gen_gl_json" | \
+            x ja jl2c              .id  .ref .status    | \
+            x csv header --add    ID    ref    STATUS   | \
+            x csv static_tab
+    fi
+
+}
+# EndSection
+
+# Section: edit
+___x_cmd_gl_deploy_edit(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"          <>
+    --deployment_id   "The ID of the deployment"                                 <>:Number
+    --status          "The status of the deployment that is created"             <>   = running success failed canceled
+
+    --json|-j         "output origin json data"
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gl___url_path_encode 2>/dev/null)
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -json -deployment_id)"
+    gl:debug "$gen_gl_json"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl put "/projects/$encode_path/deployments/${deployment_id}" "gen_gl_json"
+    else
+        ___x_cmd_gl_curl put "/projects/$encode_path/deployments/${deployment_id}" "gen_gl_json" | \
+            x ja jl2c              .id  .ref .status    | \
+            x csv header --add    ID    ref    STATUS   | \
+            x csv static_tab
+    fi
+
+}
+# EndSection
+
+# Section: rm
+___x_cmd_gl_deploy_rm(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"            <>
+    --deployment_id   "The ID of the deployment"                                   <>:Number
+    --yes|-y          "Ignore remove prompt interception"
+
+    --json|-j         "output origin json data"
+'
+    param:run
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove the hook $1 in the $owner_repo ?" || return
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gl___url_path_encode 2>/dev/null)
+    ___x_cmd_gl_curl del "/projects/$encode_path/deployments" | (
+        x jo env . gl_resp_err=.error gl_resp_msg=.message
+        if ___x_cmd_gl_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Delete deployment success: deployment_id  $1"
+        else
+            ___x_cmd_ui_tf false " [failure] Delete deployment failure: deployment_id  $1"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

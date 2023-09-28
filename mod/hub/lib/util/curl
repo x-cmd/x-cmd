@@ -1,7 +1,8 @@
 # shellcheck shell=dash disable=SC2030,SC2031
 
-___x_cmd_hub___util_curl_header(){
-    local key="${1:?Provide key}"
+___x_cmd_hub_u_curl_header(){
+    local key="$1"
+    [ -n "$key" ] || M='Provide key' N=hub log:ret:64
 
     < "$___X_CMD_HUB_TMP/header.$$.out" awk -v key="$key" '
         BEGIN { FS=": "; }
@@ -9,18 +10,30 @@ ___x_cmd_hub___util_curl_header(){
     '
 }
 
-___x_cmd_hub___util_curl()(
-    local method="${1:?Provide method}"
-    local url_path="${2:?Provide url_path}"; shift 2
+___x_cmd_hub_u_curl_resp_code(){
+    < "$___X_CMD_HUB_TMP/header.$$.out" command awk '($1 ~ "HTTP/(1.*|2)$" && $3 != "Connection" && $4 != "established" && $2 != "302") {
+        print  int($2);
+        exit(0)
+    }'
+}
+
+# example:
+#   ___x_cmd_hub_u_curl get /api/v0/file/cat "res=${remotefp}"
+#   ___x_cmd_hub_u_curl post /api/v0/file/cat "res=${remotefp}" -F "file=@$file"
+#   ___x_cmd_hub_u_curl post /api/v0/file/cat "res=${remotefp}" -F "file=@$file" -H "Content-Type: application/octet-stream"
+___x_cmd_hub_u_curl()(
+    local method="$1"
+    local url_path="$2"; shift 2
+    [ -n "$method" ]   || M='Provide token' N=hub log:ret:64
+    [ -n "$url_path" ] || M='Provide url_path' N=hub log:ret:64
 
     local json_header="-H 'Content-Type: application/json'"
-    local file=""; local header=""; local body=""
+    local file=""; local header=""
     local ___X_CMD_HUB_RAW_BODY
     while [ $# -gt 0 ]; do
         case "$1" in
             -F) file="$file -F '$2'"; json_header="" ; shift 2 ;;
             -H) header="$header -H '$2'"; shift 2 ;;
-            --raw-body) body="-d '$2'"; ___X_CMD_HUB_RAW_BODY=true; shift 2 ;;
             *)  break ;;
         esac
     done
@@ -29,14 +42,14 @@ ___x_cmd_hub___util_curl()(
     local header_path="$___X_CMD_HUB_TMP/header.$$.out"
     x rmrf "$resp_path" "$header_path"
 
-    local token; token="$(___x_cmd_hub___util_get_token)" || return
+    local token; token="$(___x_cmd_hub_u_get_token)" || return
     [ -z "$token" ] || header="$header -H 'Authorization: $token'"
 
     hub:debug "Command " "$url_path" "$@"
 
     local cmd="x curl -sSL"
     case "$method" in
-        get)    cmd="$cmd -X GET" ;;
+        get)    cmd="$cmd -X GET -G" ;;
         put)    cmd="$cmd -X PUT" ;;
         post)   cmd="$cmd -X POST" ;;
         patch)  cmd="$cmd -X PATCH" ;;
@@ -44,37 +57,20 @@ ___x_cmd_hub___util_curl()(
         *)      hub:error "Unknown method: $method" ;;
     esac
 
-    local query;
-    ___x_cmd_hub___util_curl_handle_query_and_body_ "$@"
-    cmd="$cmd -o '$resp_path' -D '$header_path' -w '%{http_code}' \
-        $header $json_header $body $file \
-        '$___X_CMD_HUB_SERVICE_URL$url_path$query'"
+    cmd="$cmd -D '$header_path' \
+        $header $json_header $(x curl gencode "$@") $file \
+        '$___X_CMD_HUB_SERVICE_URL$url_path'"
 
     hub:debug "Exec cmd: $cmd"
-    local http_code; http_code="$(eval "$cmd")" || return 1
-    command cat "$resp_path"
-
-    case "$http_code" in
-        2*)  return 0 ;;
-        404) return 4 ;;
-        *)   return 1 ;;
-    esac
+    eval "$cmd"
+    ___x_cmd_hub_u_curl_resp_http_check
 )
 
-# "$@" is type=public aa=nnn dd=eee -- type=public aa=nnn dd=eee
-___x_cmd_hub___util_curl_handle_query_and_body_(){
-    for arg in "$@"; do
-        shift
-        [ "$arg" != "--" ] || break
-        query="${query}&$arg"
-    done
-    [ -z "$query" ] || query="?${query#&}"
-
-    [ -z "$___X_CMD_HUB_RAW_BODY" ] || return 0
-    body=""
-    for arg in "$@"; do
-        shift
-        body="${body},\"${arg%%=*}\":\"${arg#*=}\""
-    done
-    [ -z "$body" ] || body="-d '{${body#?}}'"
+___x_cmd_hub_u_curl_resp_http_check(){
+    local http_resp_code
+    http_resp_code="$(___x_cmd_hub_u_curl_resp_code)"
+    case "$http_resp_code" in
+        2*)  return 0 ;;
+        *)   return 1 ;;
+    esac
 }

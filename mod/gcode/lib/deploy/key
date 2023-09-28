@@ -1,0 +1,165 @@
+# shellcheck shell=sh disable=SC3043
+
+# Section: index
+___x_cmd_gcode_deploy_key(){
+    param:subcmd ___x_cmd_gcode_deploy_key                         \
+        "list|ls"       "List project deploy keys"                   \
+        get             "Get a single key"                           \
+        add            "Add deploy key"                              \
+        "edit|ed"       "Update deploy key"                          \
+        rm              "Delete deploy key"                          \
+        enable          "Enable a deploy key"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_deploy_key _param_help_doc
+
+    return 1
+}
+# EndSection
+# Section: list
+___x_cmd_gcode_deploy_key_list(){
+param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"          <>:Number
+
+    --json|-j          "output origin json data"
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gcode___url_path_encode 2>/dev/null)
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gcode_curl get "/projects/$encode_path/deploy_keys"
+    else
+        ___x_cmd_gcode_curl get "/projects/$encode_path/deploy_keys" | \
+            x jo 2c              .id  .title .can_push | \
+            x csv header --add   ID   TITLE  CAN_PUSH  | \
+            x csv static_tab
+    fi
+}
+# EndSection
+# Section: get
+___x_cmd_gcode_deploy_key_get(){
+param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"          <>:Number
+    --key_id          "The ID of the deploy key"                                 <>:Number
+
+    --json|-j          "output origin json data"
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gcode___url_path_encode 2>/dev/null)
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gcode_curl get "/projects/$encode_path/deploy_keys/${key_id}"
+    else
+        ___x_cmd_gcode_curl get "/projects/$encode_path/deploy_keys/${key_id}" | \
+            x ja  jl2c              .id  .title .can_push | \
+            x csv header --add   ID   TITLE  CAN_PUSH  | \
+            x csv static_tab
+    fi
+}
+# EndSection
+# Section: add
+___x_cmd_gcode_deploy_key_add(){
+param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"          <>:Number
+    --key             "New deploy key"                                           <>
+    --title           "New deploy key’s title"                                   <>
+    --can_push        "Can deploy key push to the project’s repository"          <>:bool=""  = true false
+    --expires_at      "expires datetime"                                         <>:datetime=""
+
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gcode___url_path_encode 2>/dev/null)
+    ___x_cmd_gcode_curl post "/projects/$encode_path/deploy_keys"| (
+        x jo env . gcode_resp_err=.error gl_resp_msg=.message
+        if ___x_cmd_gcode_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Add deployment success"
+        else
+            ___x_cmd_ui_tf false " [failure] Add deployment failure"
+            ___x_cmd_gcode____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+# Section: edit
+___x_cmd_gcode_deploy_key_edit(){
+param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"          <>:Number
+    --key_id          "The ID of the deploy key"                                 <>
+    --title           "New deploy key’s title"                                   <>=""
+    --can_push        "Can deploy key push to the project’s repository"          <>:bool=""  = true false
+
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gcode___url_path_encode 2>/dev/null)
+    ___x_cmd_gcode_curl put "/projects/$encode_path/deploy_keys/${key_id}"| (
+        x jo env . gcode_resp_err=.error gl_resp_msg=.message
+        if ___x_cmd_gcode_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Update deployment success"
+        else
+            ___x_cmd_ui_tf false " [failure] Update deployment failure"
+            ___x_cmd_gcode____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+# Section: rm
+___x_cmd_gcode_deploy_key_rm(){
+param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"          <>:Number
+    --key_id          "The ID of the deploy key"                                 <>
+
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gcode___url_path_encode 2>/dev/null)
+    ___x_cmd_gcode_curl del "/projects/$encode_path/deploy_keys/${key_id}"| (
+        x jo env . gcode_resp_err=.error gl_resp_msg=.message
+        if ___x_cmd_gcode_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Remove deployment success"
+        else
+            ___x_cmd_ui_tf false " [failure] Remove deployment failure"
+            ___x_cmd_gcode____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+# Section: enable
+___x_cmd_gcode_deploy_key_enable(){
+param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                "The ID or URL-encoded path of the project owned"          <>
+    --key_id          "The ID of the deploy key"                                 <>:Number
+'
+    param:run
+    local encode_path
+    encode_path=$(printf "%s" "$1" | ___x_cmd_gcode___url_path_encode 2>/dev/null)
+    ___x_cmd_gcode_curl post "/projects/$encode_path/deploy_keys/${key_id}/enable"| (
+        x jo env .id .title
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf  true "[Success]: Enable deployment success. ID: $id TITLE: $title "
+        else
+            ___x_cmd_ui_tf false " [failure] Remove deployment failure"
+            ___x_cmd_gcode____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

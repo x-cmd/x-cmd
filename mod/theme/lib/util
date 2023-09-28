@@ -1,0 +1,171 @@
+# shellcheck shell=dash disable=SC2120,SC2034
+
+___X_CMD_THEME_PKG_VERSION="v0.0.2"
+___X_CMD_THEME_PKG_PATH="${___X_CMD_ROOT_SHARED}/theme"
+___X_CMD_THEME_PKG_TAR_NAME="${___X_CMD_THEME_PKG_VERSION}.tar.xz"
+___X_CMD_THEME_DATA_PATH="${___X_CMD_ROOT_DATA}/theme/ext/${___X_CMD_THEME_PKG_VERSION}"
+___X_CMD_THEME_EXT_ROOT="${___X_CMD_THEME_DATA_PATH}/src"
+
+# Section: font
+___x_cmd_theme_control_font() {
+    local X_help_cmd=;  X_help_cmd='x help -m theme font' help:arg:parse
+
+    local _font_dir=;   local _font_name='Fira Code Retina Nerd Font Complete.ttf'
+    if x os name darwin: ; then
+        _font_dir="$HOME/Library/Fonts"
+    else
+        _font_dir="$HOME/.local/share/fonts"
+    fi
+    if [ -f "$_font_dir/$_font_name" ]; then
+        theme:info "Font already installed to $_font_dir"
+    else
+        local cache="${___X_CMD_THEME_PKG_PATH}/nerdfont.tgz"
+        ___x_cmd_theme___pkg_unzip font "font/nerdfont.tgz" "$cache" "$_font_dir" || return
+
+        if command -v fc-cache >/dev/null 2>&1; then
+            theme:info "Resetting font cache, this may take a moment..."
+            command fc-cache -f "$_font_dir"
+        fi
+    fi
+}
+# EndSection
+
+# Section: get file
+___x_cmd_theme_which___getfile_(){
+    x_file=""
+    local name="$1";    local theme="${name%/*}";   local scheme=;  local x_dir=
+    case "$theme" in
+        l|el|mini|ide)  x_dir="$___X_CMD_ROOT_MOD/theme/lib/theme/$theme" ;;
+        *)              [ -d "$___X_CMD_THEME_DATA_PATH" ] \
+                            || ___x_cmd_theme___pkg_unzip style "dist/$___X_CMD_THEME_PKG_TAR_NAME" "${___X_CMD_THEME_PKG_PATH}/${___X_CMD_THEME_PKG_TAR_NAME}" "$___X_CMD_THEME_DATA_PATH" || return ;;
+    esac
+
+    case "$name" in
+        classify.yml)   x_file="$___X_CMD_THEME_DATA_PATH/classify.yml"     ;;
+        random*)        ___x_cmd_theme_which___random_theme_ "$@" || return   ;;
+        */*/*)          x_file="$___X_CMD_THEME_DATA_PATH/src/$name"        ;;
+        */*)            scheme="${name#*/}" ;;
+    esac
+    [ -f "$x_file" ] || {
+        [ -d "$x_dir" ] || ___x_cmd_theme_which___getdir_ "$theme" || return
+        x_file="${x_dir}/${scheme:-1}"
+        [ -f "$x_file" ]
+    }
+}
+
+___x_cmd_theme_which___getdir_(){
+    for x_dir in "$___X_CMD_THEME_DATA_PATH/src/"*; do
+        x_dir="${x_dir}/$1"
+        [ -d "$x_dir" ] || continue
+        return
+    done 2>/dev/null
+    x_dir=""
+    return 1
+}
+
+# TODO: optimization use $RANDOM
+___x_cmd_theme_which___random_theme_(){
+    local ___X_CMD_THEME_RANDOM_SCOPE="$___X_CMD_THEME_RANDOM_SCOPE"
+    case "$1" in
+        random,*)  ___X_CMD_THEME_RANDOM_SCOPE="${1#*,}" ;;
+    esac
+
+    local name; name="$(
+        {
+            if [ -n "$___X_CMD_THEME_RANDOM_SCOPE" ]; then
+                printf "%s\n" "$___X_CMD_THEME_RANDOM_SCOPE" | sed 's/,/\n/g'
+            else
+                ___x_cmd_theme_ls___all_pipe_main || return
+            fi
+        } | command awk '($0 != ""){ arr[++i] = $0; }END{ srand(); print arr[ int(1 + rand() * i ) ]; }'
+    )"
+    { [ -n "$name" ] && [ "$name" != random ]; } || return
+    theme:info "random theme '$name'"
+    ___x_cmd_theme_which___getfile_ "$name"
+}
+
+___x_cmd_theme_which___emoji_getfile_(){
+    [ -d "$___X_CMD_THEME_DATA_PATH" ] || \
+        ___x_cmd_theme___pkg_unzip style "dist/$___X_CMD_THEME_PKG_TAR_NAME" "${___X_CMD_THEME_PKG_PATH}/${___X_CMD_THEME_PKG_TAR_NAME}" "$___X_CMD_THEME_DATA_PATH" || return
+    x_file="$___X_CMD_THEME_DATA_PATH/emoji-topic/$1"
+}
+# EndSection
+
+# Section: theme pkg
+___x_cmd_theme___pkg_unzip(){(
+    local bgname="$1"; shift
+    bgsingleton_name="bg.theme.$bgname" x bgsingleton run --wait ___x_cmd_theme___pkg_unzip_unit "$@"
+)}
+___x_cmd_theme___pkg_unzip_unit(){
+    local isupdate=;    [ "$1" != --update ] || { isupdate=1; shift; }
+    local suburl="$1";  local cache="$2";   local extract_path="$3"
+
+    { [ -z "$isupdate" ] && [ -f "$cache" ] ; } || ___x_cmd_theme___pkg_download "$suburl" "$cache" || return
+    x rmrf "$extract_path"
+    x uz "$cache" "$extract_path" || {
+        theme:error "Fail to extract $cache"
+        x rmrf "$cache" "$extract_path"
+        return 1
+    }
+}
+
+xrc websrc; ___x_cmd_websrc load
+___x_cmd_theme___pkg_download(){
+    local suburl="$1"
+    local cache="$2"
+    local x_url=
+    if [ -n "$___X_CMD_THEME_DEV_MOD" ]; then
+        theme:warn "Download form github x-cmd-theme/release"
+        x_url="https://raw.githubusercontent.com/x-cmd-theme/release/main/${suburl}"
+    elif [ "$___X_CMD_WEBSRC_REGION" != cn ]; then
+        x_url="https://raw.githubusercontent.com/x-cmd/theme/main/${suburl}"
+    else
+        x_url="https://gitcode.net/x-cmd/theme/-/raw/main/${suburl}"
+    fi
+
+    x ensurefp "${cache}.tmp"
+    theme:info --url "$x_url" "Download ${cache}"
+    x curl -L -sS --speed-time 5 --speed-limit 100 "$x_url" --output "${cache}.tmp" || {
+        theme:error "Fail to download ${cache}"
+        return 1
+    }
+    x rmrf "${cache}"
+    x mv "${cache}.tmp" "${cache}"
+}
+# EndSection
+
+# Section: Timestamp minus
+___x_cmd_theme_epocsminus_(){
+    local a="$1";   ___x_cmd_theme_epocsminus_1000_ "$a";   a="$x_"
+    local b="$2";   ___x_cmd_theme_epocsminus_1000_ "$b";   b="$x_"
+    local res=$((a - b))
+    res="000${res}"
+    b="${res%???}"
+    a="${res#"${b}"}"
+    x_="${b}.${a}"
+    ___x_cmd_theme_epocsminus_trim0_ "$x_"
+    [ "$x_" = "${x_#.}" ] || x_="0${x_}"
+}
+
+___x_cmd_theme_epocsminus_1000_(){
+    case "$1" in
+        *.*)
+                local a="${1#*.}000"
+                a="${a%"${a#???}"}"
+                x_="${1%.*}${a}"
+                ;;
+        *)      x_="${1}000" ;;
+    esac
+    ___x_cmd_theme_epocsminus_trim0_ "$x_"
+}
+
+___x_cmd_theme_epocsminus_trim0_(){
+    local a="$1"
+    local b="${a#0}"
+    while [ "$a" != "$b" ]; do
+        a="$b"
+        b="${a#0}"
+    done
+    x_="$b"
+}
+# EndSection

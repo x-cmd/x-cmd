@@ -132,7 +132,7 @@ function yml_parse_value___vbar_plus( o, kp, least_indent,        a, i, l ){
 # Section: anchor and value
 
 function yml_parse_value___alias( o, kp, least_indent,          _anchor_name, _cmt, _ref_kp ){
-    if ((_ref_kp = o[ L L L L L _anchor_name ]) == "") panic("Refering undefined alias[" _anchor_name "]: " Y_BUF)
+    if ((_ref_kp = o[ L L L L L _anchor_name ]) == "") yml_panic("Refering undefined alias[" _anchor_name "]: " Y_BUF)
 
     y_buf_squeeze( RLENGTH )
     _cmt = yml_parse_value___appending_oneblankline_or_multicomment( least_indent )

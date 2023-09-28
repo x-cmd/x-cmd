@@ -3,50 +3,66 @@
 xrc:mod:lib hub keypair/ls keypair/rm keypair/save keypair/load keypair/gen
 
 ___x_cmd_hub_keypair(){
-    local op
-    while [ $# -gt 0 ] ; do
-        op="$1"; shift
-        case "$op" in
-            --help|-h|"")    ___x_cmd_hub___help key ; return 1 ;;
-            gen|save|load|ls|rm)
-                "___x_cmd_hub_keypair_$op" "$@" ; return ;;
-            *) ___x_cmd_hub___util_subcmd_invalid "key" "$@";  return ;;
-        esac
-    done
+    local X_help_cmd='___x_cmd_hub___help keypair'
+    help:arg-null:parse
+
+    local keydir; keydir="$(___x_cmd_hub_u_userdir me keypair)" || return 1
+    local ___X_CMD_HUB_PUBLIC_KEY_PATH="$keydir/${___X_CMD_HUB_KEYPAIR_NAME}_public.pem"
+    local ___X_CMD_HUB_PRIVATE_KEY_PATH="$keydir/${___X_CMD_HUB_KEYPAIR_NAME}_private.pem"
+    hub:debug "___X_CMD_HUB_PUBLIC_KEY_PATH=$___X_CMD_HUB_PUBLIC_KEY_PATH ___X_CMD_HUB_PRIVATE_KEY_PATH=$___X_CMD_HUB_PRIVATE_KEY_PATH"
+
+    local op="$1"; shift
+    case "$op" in
+        gen|save|load|ls|rm|get_key_path_)
+            "___x_cmd_hub_keypair_$op" "$@" ; return ;;
+        *) ___x_cmd_hub_u_subcmd_invalid "key" "$@";  return ;;
+    esac
 }
 
-___x_cmd_hub_keypair___ensure_key_(){
-    local keyname="${1:?keyname is required}"
-    # TODO: keytype encrypt type
-    local keytype="${2:?keytype is required}"
-    local username="${3:-me}"
+___x_cmd_hub_keypair_get_key_path_(){
+    local keyname="$1"; [ -n "$keyname" ] || M='Provide key name' N=hub log:ret:64
+    local keytype="$2"; [ -n "$keytype" ] || M='Provide key type' N=hub log:ret:64
 
-    local key_path; key_path="$(___x_cmd_hub___util_user_dir "$username" keypair)/${keyname}_${keytype}.pem"
-    [ "$username" = "me" ] || {
-        if ! ___x_cmd_hub___util_curl get "/api/v0/key/$keyname" type="$keytype" "username=$username" > "$key_path" ; then
-            ___x_cmd_hub___util_handle_resp false "$(cat "$key_path")" "Failed to get public key for $username"
-            x rmrf "$key_path"
-            return 1
-        fi
-        hub:debug "Downloaded public key for $key_path to $key_path"
-    }
+    x_="$(___x_cmd_hub_u_userdir me keypair)/${keyname}_${keytype}.pem"
+    [ -f "$x_" ] || ___x_cmd_hub_keypair___ensure "$keyname"
+}
 
-    x_="$key_path"
-    if [ -f "$x_" ] ; then
-        hub:debug "Found key=$key_path"
-        return 0
-    fi
+___x_cmd_hub_keypair___ensure(){
+    local keyname="$1"
+    [ -n "$keyname" ] || M='Provide key name' N=hub log:ret:64
 
     hub:info "No public key '$keyname', try to load from server"
-    ___x_cmd_hub_keypair_load "$keyname"
+    NO_LOG=1 ___x_cmd_hub_keypair_load "$keyname" || {
+        case "$(___x_cmd_hub_u_curl_resp_code)" in
+            404)
+                hub:info "No public key '$keyname' found at server, try to generate"
+                ___x_cmd_hub_keypair_gen "$keyname"
+                ;;
+            2*)  return 0 ;;
+            *)  hub:error "Failed to load public key"
+                return 1 ;;
+        esac
+    }
+}
 
-    case "$?" in
-        4)  ;; # no key found
-        0)  return 0 ;;
-        *)  hub:error "Failed to load public key"
-            return 1 ;;
-    esac
+___x_cmd_hub_keypair___download_pubkey_list(){
+    local user_list="$1"
+    [ -n "$user_list" ] || M='Provide user_list' N=hub log:ret:64
 
-    hub:info "No public key '$keyname' found at server, try to generate"
-    ___x_cmd_hub_keypair_gen "$keyname"
+    user_list="$(printf "%s" "{name:[${user_list}]}" | x jo fmt)"
+    ___x_cmd_hub_u_curl post /api/v0/key/get/pubkey/list user_list | (
+        x jo env .\* .msg .username .key -- '___x_cmd_hub_keypair___single_pubkey_to_file "${username}" "${key}"'
+        ___x_cmd_hub_u_curl_resp_http_check || {
+            ___x_cmd_hub_u_handle_resp false "Failed to get public key list"
+            return 1
+        }
+    )
+}
+
+___x_cmd_hub_keypair___single_pubkey_to_file(){
+    local username="$1"; [ -n "$username" ] || M='Provide username'   N=hub log:ret:64
+    local pubkey="$2";   [ -n "$pubkey" ]   || M='Provide pubkey'     N=hub log:ret:64
+
+    local key_path; key_path="$(___x_cmd_hub_u_userdir "$username" keypair)/default_public.pem"
+    printf "%s" "${pubkey}" > "${key_path}"
 }

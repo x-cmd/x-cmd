@@ -1,7 +1,8 @@
 
 function handle( varname, param,    t ){
-    t = sprintf("%s %s=%s", param, varname, ("\"$" varname "\"") )
-    return sprintf("${%s+%s}", varname, t )
+    param = sprintf("${%s+%s} ", varname, shqu(param) )
+    t = sprintf("%s=%s", varname, ("\"$" varname "\"") )
+    return param sprintf("${%s+%s}", varname, t )
 }
 
 {
@@ -20,6 +21,13 @@ function handle( varname, param,    t ){
             break
         }
 
+        if ( match(arg[i], /^[^:]+:/) ) {
+            name = substr( arg[i], 1, RLENGTH-1 )
+            value = substr( arg[i], RLENGTH + 1 )
+            if (value == "")    code = code " " handle(name, "-H")
+            else                code = code " -H " shqu(sprintf("%s:%s", name, value))
+            continue
+        }
 
         if ( match(arg[i], /^[^=]+==/) ) {
             name = substr( arg[i], 1, RLENGTH-2 )
@@ -31,13 +39,6 @@ function handle( varname, param,    t ){
 
         if (arg[i] ~ /^(https|http):/) { code = code " " shqu(arg[i]); continue; }
 
-        if ( match(arg[i], /^[^:]+:/) ) {
-            name = substr( arg[i], 1, RLENGTH-1 )
-            value = substr( arg[i], RLENGTH + 1 )
-            if (value == "")    code = code " " handle(name, "-H")
-            else                code = code " -H " shqu(sprintf("%s:%s", name, value))
-            continue
-        }
 
         if ( match(arg[i], /^[^=]+=/) ) {
             name = substr( arg[i], 1, RLENGTH-1 )

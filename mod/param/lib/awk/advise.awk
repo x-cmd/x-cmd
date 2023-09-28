@@ -108,12 +108,14 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
         AJADD( "}" );
     }
 
-    for (i=1; i <= flag_len() && _option_id = flag_get( i ); ++i) {
+    for (i=1; i <= flag_len(); ++i) {
+        _option_id = flag_get( i )
         AJADD(","); AJADD( swrap(get_option_key_by_id(_option_id)) ); AJADD(":");
         AJADD("{"); AJADD( swrap("#desc") ); AJADD(":"); AJADD( swrap(option_desc_get( _option_id )) ); AJADD("}")
     }
 
-    for (i=1; i <= restopt_len() && _option_id = restopt_get( i ); ++i) {
+    for (i=1; i <= restopt_len(); ++i) {
+        _option_id = restopt_get( i )
         AJADD(",");
         if ( match(_option_id, "^#([0-9]+|n)\\|") ) {
             AJADD( swrap( substr(_option_id, RSTART+RLENGTH) ) ); AJADD( ":" );
@@ -137,7 +139,7 @@ function generate_advise_json(){
     CDADD( " A=" ADVISE_JSON )
 
     gsub("\"", "\\\"", CODE)
-    CODE = sprintf("( set -o errexit; %s printf \\\"%%s\\\" \\\"\\$A\\\"; )", CODE  )
+    CODE = sprintf("( set -o errexit; %s printf \\\"%%s\\n\\\" \\\"\\$A\\\"; )", CODE  )
     CODE = "eval \"" CODE "\""
     # debug(CODE)
     printf("%s", CODE)

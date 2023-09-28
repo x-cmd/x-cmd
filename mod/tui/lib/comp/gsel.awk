@@ -15,13 +15,15 @@ function comp_gsel_init( o, kp, title, filter_sw, search_sw ) {
     comp_lineedit_init(o, kp SUBSEP "search")
     comp_gsel_style_init()
     draw_gsel_change_set_all( o, kp )
+
+    ctrl_sw_init( o, kp SUBSEP "ctrl-loop", true )
 }
 
 function comp_gsel_handle( o, kp, char_value, char_name, char_type,             _has_no_handle ) {
     if ( o[ kp, "TYPE" ] != "gsel" ) return false
     if (comp_gsel_ctrl_filter_sw_get(o, kp) == true) {
-        if (char_name == U8WC_NAME_UP)                                          ctrl_page_rdec(o, kp)
-        else if (char_name == U8WC_NAME_DOWN)                                   ctrl_page_rinc(o, kp)
+        if (char_name == U8WC_NAME_UP)                                          comp_gsel_ctrl_page_dec(o, kp)
+        else if (char_name == U8WC_NAME_DOWN)                                   comp_gsel_ctrl_page_inc(o, kp)
         else if (char_name == U8WC_NAME_LEFT)                                   ctrl_page_prev_col(o, kp)
         else if (char_name == U8WC_NAME_RIGHT)                                  ctrl_page_next_col(o, kp)
         else if (char_name == U8WC_NAME_SHIFT_OUT)                              ctrl_page_next_page(o, kp)
@@ -54,8 +56,8 @@ function comp_gsel_handle( o, kp, char_value, char_name, char_type,             
         }
         else _has_no_handle = true
     }
-    else if ((char_value == "k") || (char_name == U8WC_NAME_UP))                ctrl_page_rdec(o, kp)
-    else if ((char_value == "j") || (char_name == U8WC_NAME_DOWN))              ctrl_page_rinc(o, kp)
+    else if ((char_value == "k") || (char_name == U8WC_NAME_UP))                comp_gsel_ctrl_page_dec(o, kp)
+    else if ((char_value == "j") || (char_name == U8WC_NAME_DOWN))              comp_gsel_ctrl_page_inc(o, kp)
     else if ((char_value == "h") || (char_name == U8WC_NAME_LEFT))              ctrl_page_prev_col(o, kp)
     else if ((char_value == "l") || (char_name == U8WC_NAME_RIGHT))             ctrl_page_next_col(o, kp)
     else if ((char_value == "n") || (char_name == U8WC_NAME_SHIFT_OUT))         ctrl_page_next_page(o, kp)
@@ -70,6 +72,16 @@ function comp_gsel_handle( o, kp, char_value, char_name, char_type,             
     change_set( o, kp, "gsel.body")
     change_set( o, kp, "gsel.foot")
     return true
+}
+
+function comp_gsel_ctrl_loop_sw_set(o, kp, tf){     ctrl_sw_init( o, kp SUBSEP "ctrl-loop", tf);               }
+function comp_gsel_ctrl_page_inc(O, kp){
+    if (ctrl_sw_get(o, kp SUBSEP "ctrl-loop"))      return ctrl_page_rinc(o, kp)
+    return ctrl_page_inc(o, kp)
+}
+function comp_gsel_ctrl_page_dec(O, kp){
+    if (ctrl_sw_get(o, kp SUBSEP "ctrl-loop"))      return ctrl_page_rdec(o, kp)
+    return ctrl_page_dec(o, kp)
 }
 
 # Section: limit multiple
@@ -142,7 +154,7 @@ function comp_gsel___slct_data(o, kp,          s, l, i, _viewl ){
         if ((s != "") && ( index(comp_gsel_data_get( o, kp, i ), s) <=0 )) continue
         model_arr_set_key_value(o, kp, "view-row" SUBSEP (++_viewl), i)
     }
-    comp_gsel___slct_data_maxrow( o, kp, _viewl )
+    comp_gsel___slct_data_maxrow( o, kp, _viewl + 0 )
 }
 
 function comp_gsel___slct_data_maxrow(o, kp, v){
@@ -242,7 +254,7 @@ function comp_gsel_item_width( o, kp, w ){
     if ( w == "" )      return model_arr_get(o, kp, "width")
     change_set(o, kp, "gsel.body")
     change_set(o, kp, "gsel.foot")
-    return model_arr_set_key_value(o, kp, "width", w);
+    return model_arr_set_key_value(o, kp, "width", w)
 }
 
 function comp_gsel_data_len( o, kp ) {        return model_arr_data_len( o, kp );       }

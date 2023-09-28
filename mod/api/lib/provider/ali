@@ -1,15 +1,16 @@
 # shellcheck shell=sh
-# shellcheck disable=SC3043,2034
+# shellcheck disable=SC3043,2034,2294,2154
 ___x_cmd_api_ali(){
     local ali_header="${___x_api_ali_header:-"${___X_CMD_API_TMP}/.____x_cmd_ali_curl_header"}"
-    local op="$1"; shift
+    local op="${1}"
+    local method
+    method="$( printf "%s" "${2}" | tr '[:lower:]' '[:upper:]')"
+    shift 2
     case "${op}" in
-        oss)
-            ___x_cmd_api_ali_oss "$@"
-            ;;
-        ecs|mongodb|vpc)
-            ___x_cmd_api_ali_ecs "${op}" "$@"
-            ;;
+        oss)    ___x_cmd_api_ali_oss    "${method}" "$@";;
+        lambda) ___x_cmd_api_ali_lambda "${method}" "$@";;
+        ecs|mongodb|vpc|alidns|actiontrail|redis|resourcecenter)
+            ___x_cmd_api_ali_ecs "${op}" "${method}" "$@";;
         *)
             _____x_cmd_api_help ali
             return 1
@@ -17,94 +18,119 @@ ___x_cmd_api_ali(){
     esac
 }
 
-___x_cmd_api_ali_oss(){
-    local op="$1"; shift
-    case "${op}" in
-        get)
-            ___x_cmd_api_ali_oss_req GET "$@"
-        ;;
-        post)
-            ___x_cmd_api_ali_oss_req POST "$@"
-        ;;
-        put)
-            ___x_cmd_api_ali_oss_req PUT "$@"
-        ;;
-        del)
-            ___x_cmd_api_ali_oss_req DELETE "$@"
-        ;;
-        head)
-            ___x_cmd_api_ali_oss_req HEAD "$@"
-        ;;
-        ""|-h|--help)
-            _____x_cmd_api_help ali
-            return 1
-            ;;
-    esac
-}
-
-___x_cmd_api_ali_oss_req(){
-    local url
-    local param
-    local method="$1"; shift
-    ___x_cmd_ali_oss_url_gen "${method}" "$@"  || {
-        api:error "ali oss ${method} sing fail"
-        return 1
-    }
-    api:debug   "x curl -D  ${ali_header}  -X  ${method}  -s  $url   ${param}"
-    eval         x curl -D "${ali_header}" -X "${method}" -s "$url" "${param}"
-}
-
+# Section ecs req
 ___x_cmd_api_ali_ecs(){
     local version
     local host
-    case "${1}" in
-        ecs)
-            version="2014-05-26"
-            host="${___x_api_ali_host:-"https://ecs.aliyuncs.com"}"
-        ;;
-        mongodb)
-            version="2015-12-01"
-            host="${___x_api_ali_host:-"https://mongodb.aliyuncs.com"}"
-        ;;
-        vpc)
-            version="2016-04-28"
-            host="${___x_api_ali_host:-"https://vpc.aliyuncs.com"}"
-        ;;
-    esac
+    local method="${2}"
 
-    local op="$2"
-    shift 2
+    local url=
+    local _x_post_param=
+    ___x_cmd_api_ali_ecs_util_ "$@" || return 1
+    ___x_cmd_api_ali_ecs_req "${method}"
+}
+
+___x_cmd_api_ali_ecs_util_(){
+    local op="${1}"; shift
     case "${op}" in
-        get)
-            ___x_cmd_api_ali_ecs_req GET "$@"
-        ;;
-        post)
-            ___x_cmd_api_ali_ecs_req POST "$@"
-        ;;
-        ""|-h|--help)
+        ecs) version="2014-05-26" ;;
+        mongodb) version="2015-12-01" ;;
+        vpc) version="2016-04-28" ;;
+        alidns) version="2015-01-09" ;;
+        resourcecenter) version="2022-12-01" ;;
+        actiontrail)
+            version="2020-07-06"
+            op="actiontrail.${RegionId}"
+            ;;
+        redis)
+            version="2015-01-01"
+            op="r-kvstore"
+            ;;
+        *)
             _____x_cmd_api_help ali
             return 1
             ;;
     esac
+    host="${___x_api_ali_host:-"https://${op}.aliyuncs.com"}"
+
+    ____x_cmd_sign_ali ecs "$@" || {
+        api:error "ali ${op} ${method} sing fail"
+        return 1
+    }
 }
 
 ___x_cmd_api_ali_ecs_req(){
-    local url
-    local param
     local method="$1"; shift
-    ___x_cmd_ali_ecs_url_gen "${method}" "$@"  || {
-        api:error "ali oss ${method} sing fail"
-        return 1
-    }
-
     case "${method}" in
         POST)
-            api:debug  "x curl -D  ${ali_header}  -X POST -s -H  Content-Type:application/x-www-form-urlencoded   $param       $url "
-            eval        x curl -D "${ali_header}" -X POST -s -H "Content-Type:application/x-www-form-urlencoded" "${param}" "\"$url\""
+            api:debug  "x curl -D  ${ali_header}  -X POST -s -H  Content-Type:application/x-www-form-urlencoded   $_x_post_param       $_x_url "
+            eval        x curl -D "${ali_header}" -X POST -s -H "Content-Type:application/x-www-form-urlencoded" "${_x_post_param}" "\"$_x_url\""
         ;;
         GET)
-            api:debug   "x curl -D  ${ali_header}  -X GET -s  $url"
-                         x curl -D "${ali_header}" -X GET -s "$url"
+            api:debug   "x curl -D  ${ali_header}  -X GET -s  $_x_url"
+                         x curl -D "${ali_header}" -X GET -s "$_x_url"
         ;;
     esac
 }
+# EndSection
+
+# Section oss req
+___x_cmd_api_ali_oss(){
+    local url
+    local _x_post_param
+    local method="$1"
+    local resource="$2"
+    local host="${host:-"${bucket:+"${bucket}."}oss-${region_id:-"cn-hangzhou"}.aliyuncs.com"}"
+    shift 2
+    ____x_cmd_sign_ali oss "${method}" "${resource}" "$@"  || {
+        api:error "ali oss ${method} sing fail"
+        return 1
+    }
+    case "${method}" in
+        POST|PUT)
+            api:debug   \'x curl -D  "${ali_header}"  -X  "${method}"  -s   ${gen_ali_data:+"-d"}   ${gen_ali_data:+"\'${gen_ali_data}\'"}   "${_x_url}"\'
+            eval          x curl -D  "${ali_header}"  -X  "${method}"  -s  "${gen_ali_data:+"-d"}" "${gen_ali_data:+"\'${gen_ali_data}\'"}"  "${_x_url}"
+        ;;
+        GET|DELETE)
+            api:debug   \'x curl -D  "${ali_header}"  -X  "${method}"  -s -G "${gen_ali_json}"  "${_x_url}"\'
+            eval          x curl -D  "${ali_header}"  -X  "${method}"  -s -G "${gen_ali_json}"  "${_x_url}"
+        ;;
+        HEAD)
+            api:debug   \'x curl -D  "${ali_header}" --head -s -G "${gen_ali_json}"  "${_x_url}"\'
+            eval          x curl -D  "${ali_header}" --head -s -G "${gen_ali_json}"  "${_x_url}"
+        ;;
+    esac
+}
+# EndSection
+
+# Section lambda req
+___x_cmd_api_ali_lambda(){
+    local url
+    local _x_post_param
+    local account_id
+    local method="$1"; shift
+    local version="2021-04-06"
+    account_id="$(x ali --cfg get account_id 2>/dev/null)"
+    [ -n "${account_id}" ] || {
+        ali:error "Get account_id failed, please use 'x ali --cfg set --account_id <account_id>' to set up the configuration."
+        return 1
+    }
+    local host="${___x_api_ali_host:-"${account_id}.${RegionId}.fc.aliyuncs.com"}"
+    ____x_cmd_sign_ali lambda "${method}" "$@"  || {
+        api:error "ali lambda ${method} sing fail"
+        return 1
+    }
+
+    local _curl_header="$(x curl gencode "${lambda_headers}" Content-Type:application/json)"
+    case "${method}" in
+        POST|PUT)
+            api:debug  "x curl -D  ${ali_header}  -X  ${method}   ${_curl_header}   ${gen_ali_json:+"-d"}   ${gen_ali_json:+"\'${gen_ali_json}\'"}   $_x_url"
+            eval        x curl -D "${ali_header}" -X "${method}" "${_curl_header}" "${gen_ali_json:+"-d"}" "${gen_ali_json:+"\'${gen_ali_json}\'"}" "$_x_url"
+        ;;
+        GET|DELETE)
+            api:debug   "x curl -D  ${ali_header}  -X  ${method}  -s  $_x_url"
+            eval         x curl -D "${ali_header}" -X "${method}" -s "$_x_url"
+        ;;
+    esac
+}
+# EndSection

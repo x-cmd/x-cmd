@@ -1,0 +1,174 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043,SC2034
+# http://www.localhost:4000/13.7/ee/api/project_level_variables.html.html
+
+___x_cmd_gcode_group_variable(){
+    param:subcmd ___x_cmd_gcode_group_variable            \
+        ls          "List groups variable"         \
+        info        "Show groups variable info"    \
+        create      "Create groups variable"       \
+        "edit|ed"   "Update groups variable"       \
+        rm          "Remove variable"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_group_variable _param_help_doc
+    return 1
+}
+# Section: variable ls
+# http://www.localhost:4000/13.7/ee/api/group_level_variables#list-group-variables
+___x_cmd_gcode_group_variable_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --group|-g      "<group_path> or .id=<group_id>"                                                          <>
+    --per_page      "Results per page"                                                                        <>=""
+    --page          "Page number of the results to fetch."                                                    <>=""
+    --json|-j       "output json data"
+'
+    param:run
+    [ -n "$group" ] || M='accepts option --group (<group_path> or .id=<group_id>), received empty' arg:ret:64
+    local _avt_group="$group"
+    ___x_cmd_gcode____transform_avt_group || return
+     if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gcode_get_multi "/groups/$_avt_group/variables" query user_ids
+    else
+        ___x_cmd_gcode_get_multi "/groups/$_avt_group/variables" query user_ids | \
+            x jo 2c             .key  .value .variable_type .environment_scope | \
+            x csv header --add   Key   Value  Variable_Type  Environment_Scope | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: info
+# http://www.localhost:4000/13.7/ee/api/group_level_variables#show-variable-details
+___x_cmd_gcode_group_variable_info(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1          "The key of a variable"                                                                     <>
+    --groups    "The ID of a group or URL-encoded path of the group owned by the authenticated user"        <>
+    --json|-j   "output json data"
+'
+    param:run
+
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -groups)"
+    gcode:debug "$gen_gcode_json"
+
+    ___x_cmd_gcode_curl get "/groups/$groups/variables/$1" | _____x_cmd_gcode_group_variable_ui_utils Info
+}
+# EndSection
+
+# Section: create && edit
+# http://www.localhost:4000/13.7/ee/api/group_level_variables#create-variable
+___x_cmd_gcode_group_variable_create(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --groups              "The ID of a group or URL-encoded path of the group owned by the authenticated user"      <>
+    --key                 "The key of a variable."                                                                  <>
+    --value               "The value of a variable."                                                                <>
+    --variable_type       "The value of a variable."                                                                <>="env_var"    = env_var file
+    --protected           "Whether the variable is protected."                                                      <>:bool="false"
+    --masked              "Whether the variable is masked."                                                         <>:bool="false"
+    --environment_scope   "The environment_scope of the variable."                                                  <>
+    --json|-j             "output json data"
+'
+    param:run
+
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -groups)"
+    gcode:debug "$gen_gcode_json"
+
+    ___x_cmd_gcode_curl post "/groups/$groups/variables" "gen_gcode_json" | _____x_cmd_gcode_group_variable_ui_utils Create
+}
+
+# http://www.localhost:4000/13.7/ee/api/group_level_variables#update-variable
+___x_cmd_gcode_group_variable_edit(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1                    "The key of a variable"                                                                   <>
+    --groups              "The ID of a group or URL-encoded path of the group owned by the authenticated user"      <>
+    --value               "The value of a variable."                                                                <>
+    --variable_type       "The type of a variable."                                                                 <>="env_var"    = env_var file
+    --protected           "Whether the variable is protected."                                                      <>:bool="false"
+    --masked              "Whether the variable is masked."                                                         <>:bool="false"
+    --environment_scope   "The environment_scope of the variable."                                                  <>
+    --raw                 "Whether the variable is expandable"                                                      <>
+    --json|-j             "output json data"
+'
+    param:run
+
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json -groups)"
+    gcode:debug "$gen_gcode_json"
+
+    ___x_cmd_gcode_curl put "/groups/$groups/variables/$1" "gen_gcode_json" | _____x_cmd_gcode_group_variable_ui_utils Edit
+}
+# EndSection
+
+# Section: rm
+# http://www.localhost:4000/13.7/ee/api/group_level_variables#remove-variable
+___x_cmd_gcode_group_variable_rm(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1          "The key of a variable"                                                                   <>
+    --groups    "The ID of a group or URL-encoded path of the group owned by the authenticated user"      <>
+
+    --yes|-y    "Ignore remove prompt interception"
+'
+    param:run
+
+    local key_name
+    for key_name in "$@"; do
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete variable : $(___x_cmd_ui bold red "$key_name") ?" || continue
+        ___x_cmd_gcode_curl del "/groups/$groups/variables/$key_name" | (
+            x jo env . error=.
+            if  ___x_cmd_gcode_http_error; then
+                ___x_cmd_ui_tf true "[Success]: Remove variable $key_name"
+            else
+                ___x_cmd_ui_tf false "Remove variable $key_name failure"
+                return 1
+            fi
+        )
+    done
+}
+# EndSection
+
+# Section: groups variable utils
+_____x_cmd_gcode_group_variable_ui_utils(){
+
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gcode_http_error
+        return
+    fi
+    (
+        local _key=""
+        x jo env . _key=.key gcode_resp_err=.error gcode_resp_msg=.message \
+            value=.value variable_type=.variable_type environment_scope=.environment_scope
+        case "$1" in
+            Info)
+                _inf_msg="Getting groups variable information successfully"
+                _err_msg="Getting groups variable information failure"
+                ;;
+            Create|Edit)
+                _inf_msg="$1 groups variable successfully"
+                _err_msg="$1 groups variable failure"
+                ;;
+        esac
+        if [ -n "$Key" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${Key+"Key: $Key"} ${value+"Value: $value"} ${variable_type+"Variable_type: $variable_type"} \
+                ${environment_scope+"Environment_scope: $environment_scope"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:"
+            ___x_cmd_gcode____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

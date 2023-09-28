@@ -20,7 +20,7 @@ BEGIN{
     o[ SUBSEP Q2_1 ] = "{"
     o[L] = 1
 
-    PANIC_EXIT = 0
+    ADVISE_PANIC_EXIT = 0
 }
 
 function is_value_null(v){  return ( (v == "") || (v == "null") );   }
@@ -44,7 +44,7 @@ function get_mod_desc_of_advise_file(o, kp, filepath,       _, c, RS_OLD, _last_
     close( filepath )
     if (c == -1) {
         log_error( "advise", "Failed to generate x advise jso, not found such filepath - " filepath )
-        PANIC_EXIT = 1
+        ADVISE_PANIC_EXIT = 1
         exit(1)
     }
 
@@ -65,7 +65,7 @@ function handle(o, mod, filepath,           _, _q2_mod, _mod_kp, _name_kp, n, d,
 
 !COMPLETE_BLACKLIST[$0]{ handle(o, $0, comp_advise_get_ref_adv_jso_filepath("x-advise://" $0) );  }
 END{
-    if (PANIC_EXIT != 0) exit(PANIC_EXIT)
+    if (ADVISE_PANIC_EXIT != 0) exit(ADVISE_PANIC_EXIT)
 
     basepath = ENVIRON[ "BASEFILE" ]
     jiparse2leaf_fromfile( obj, "", basepath)

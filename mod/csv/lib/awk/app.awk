@@ -1,7 +1,7 @@
 function TABLE_ADD( name ){    return table_add(o, TABLE_KP, name);  }
-function TABLE_LAYOUT( colid, min, max ){   return table_layout( o, TABLE_KP, colid, min, max );   }
-function TABLE_CELL_DEF( rowid, colid, val ){ table_cell_def( o, TABLE_KP, rowid, colid, val ); }
-function TABLE_STATUSLINE_ADD( v, s, l ){   table_statusline_add(o, TABLE_KP, v, s, l);}
+function TABLE_LAYOUT( colid, min, max ){       table_layout( o, TABLE_KP, colid, min, max );   }
+function TABLE_CELL_DEF( rowid, colid, val ){   table_cell_def( o, TABLE_KP, rowid, colid, val ); }
+function TABLE_STATUSLINE_ADD( v, s, l ){       table_statusline_add(o, TABLE_KP, v, s, l);}
 
 BEGIN{
     ___X_CMD_CSV_APP_WIDTH = ENVIRON[ "___X_CMD_CSV_APP_WIDTH" ]
@@ -71,15 +71,16 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
             else TABLE_CELL_DEF( i-1, j, _cell )
 
             if (CSV_WIDTH[j, "CUSTOM_WIDTH"]) continue
-            w = wcswidth_cache( _cell )
+            w = wcswidth_cache( draw_text_first_line(_cell) )
             if (CSV_WIDTH[j, "width"] < w) CSV_WIDTH[j, "width"] = w
         }
     }
+
+    _width = int(_width * 0.3)
     for (i=1; i<=c; ++i) {
         w = CSV_WIDTH[i, "width"] + 1
-        if (w > _width) w = _width
-        TABLE_LAYOUT( i, w )
-        _width -= w
+        if (w > _width) TABLE_LAYOUT( i, _width, w )
+        else TABLE_LAYOUT( i, w )
     }
 
     # if (_width > 0 ) COL_RECALULATE = COLS -2 - _width

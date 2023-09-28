@@ -2,14 +2,15 @@ BEGIN {
     T_LIST = "["
     T_DICT = "{"
 
-    JO_WORDS  = "null|false|true"
+    JO_WORDS  = "null|false|true|NULL|TRUE|FALSE"
     JO_SYMBOL = ":|,|\\]|\\[|\\{|\\}"
 
     JO_RE_STR0 = "(\\\\[ ])*[^ \t\v\n:,\\[\\]\\}\\{]+"  "((\\\\[ ])[^ \t\v\n:,\\[\\]\\}\\{]*)*"
 
     JO_TOKEN = re( RE_STR2 ) RE_OR re( RE_STR1 ) RE_OR JO_SYMBOL RE_OR re( JO_RE_STR0 )
     # JO_TOKEN = JO_SYMBOL RE_OR re( RE_STR2 ) RE_OR re( RE_STR1 ) RE_OR re( RE_STR0 )
-    JO_TOKEN = JO_TOKEN RE_OR re( RE_NUM ) RE_OR JO_WORDS
+    # JO_TOKEN = re( RE_NUM ) RE_OR JO_WORDS RE_OR JO_TOKEN
+    JO_TOKEN = JO_WORDS RE_OR JO_TOKEN
 
     JO_RE_NEWLINE_TRIM_SPACE = "[ \r\n\t\v]+"
 

@@ -7,8 +7,24 @@ ___x_cmd_hub_access(){
     local op="$1"
     case "$op" in
         set|unset)    shift ; "___x_cmd_hub_access_$op" "$@"           ;;
-        *)         ___x_cmd_hub___util_subcmd_invalid "access" "$@" ;;
+        *)         ___x_cmd_hub_u_subcmd_invalid "access" "$@" ;;
     esac
+}
+
+___x_cmd_hub_access_unset(){
+    local X_help_cmd='___x_cmd_hub___help access unset'
+    help:arg-null:parse
+
+    local remotefp="$1"; [ -n "$remotefp" ] || M='Provide resource path' N=hub log:ret:64
+    remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
+
+    local resp
+    resp="$(___x_cmd_hub_u_curl delete "/api/v0/access?res=$remotefp")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to remove access: "
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Success to rm access for $remotefp"
 }
 
 ___x_cmd_hub_access_set(){
@@ -16,6 +32,7 @@ ___x_cmd_hub_access_set(){
     help:arg-null:parse
 
     local user; local public
+    #  TODO: while
     while [ $# -gt 0 ]; do
         case "$1" in
             --public)       public=true; shift  ;;
@@ -24,114 +41,128 @@ ___x_cmd_hub_access_set(){
         esac
     done
 
-    local respath="${1:?Provide respath}"
-    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
-
-    local x_;
+    local remotefp="$1"
+    [ -n "$remotefp" ] || M='Provide resource path' N=hub log:ret:64
+    remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
 
     if [ -n "$public" ] ; then
-        NO_CACHE=1 ___x_cmd_hub_file_which_ "$respath" || return 1
-        ___x_cmd_hub_file_put -f --public "$x_" "$respath" || return 1
+        local x_=;
+        NO_CACHE=1 ___x_cmd_hub_file_which_ "$remotefp" || return 1
+        ___x_cmd_hub_file_put -f --public "$x_" "$remotefp" || return 1
     else
-        # TODO: download encdata and push
-        ___x_cmd_hub_access___set "$@"
+        ___x_cmd_hub_access___set_muti_user "${user}" "${remotefp}" || return 1
     fi
 }
 
-___x_cmd_hub_access___set(){
-    local public="${public:-""}"
-    local user="${user:-""}"
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --public)       public=true; shift ;;
-            --user)         user="$2"; shift 2 ;;
-            *) break ;;
-        esac
-    done
+___x_cmd_hub_access___set_muti_user(){
+    local x_=""
+    local user="$1"
+    local remotefp="$2"
+    [ -n "$remotefp" ] || M='Provide resource path' N=hub log:ret:64
 
-    if [ -z "$user" ] && [ -z "$public" ] ; then
-        ___x_cmd_hub___util_handle_resp false "" "Please provide --user <username> or --public"
+    if [ -z "$user" ];then
+        ___x_cmd_ui_tf false "Please provide --user <username> or --public" >&2
         return 1
     fi
+    hub:debug "Step1 => Download and decrypt the file key."
+    x_=; ___x_cmd_hub_access___decrypt_filekey_ "${remotefp}" || return 1
+    [ -n "${x_}" ] || {
+        ___x_cmd_hub_access___set_user "${user}" "${remotefp}"
+        return 0
+    }
 
-    local respath="${1:?Provide respath}"
-    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+    hub:debug "Step2 => Encrypt filekey use user's public key."
+    local filekey_path="${x_}"
+    x_=; ___x_cmd_hub_access___authorized_filekey_ "${user}" "${remotefp}" "${filekey_path}" || return 1
 
-    local u;
-    if [ -n "$user" ] ; then
-        local user_list="${user},"
-        while [ -n "$user_list" ] ; do
-            u="${user_list%%,*}"
-            ___x_cmd_hub_access___handle_filekey "$u" "$respath" || return
-            hub:info "Setting access for $respath to $u"
-            user_list="${user_list#*,}"
-        done
-    fi
+    hub:debug "Step3 => Uploading filekey"
+    local filekey_date="${x_}"
+    ___x_cmd_hub_access___upload_filekey "${filekey_date}" "${remotefp}" || return 1
 
-    local res; res="$(___x_cmd_hub___util_curl put /api/v0/access -- "res=$respath" "isPublic=${public:-false}" username="$user")" || {
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to set access:"
+    hub:debug "Step4 => Update access"
+    ___x_cmd_hub_access___set_user "${user}" "${remotefp}"
+}
+
+___x_cmd_hub_access___decrypt_filekey_(){
+    local remotefp="$1"
+    [ -n "$remotefp" ] || M='Provide resource path' N=hub log:ret:64
+
+    local res="$remotefp"
+    # TODO res?
+    resp="$(___x_cmd_hub_u_curl get /api/v0/filekey res==)"|| {
+        if [ "$?" = 4 ];then
+            hub:debug "No encrypted filekey for $remotefp"
+            return 0
+        fi
+
+        ___x_cmd_hub_u_handle_resp false  "Failed to get filekey for $remotefp"
         return 1
     }
 
-    [ -z "$json" ] || { printf "%s\n" "$res" ; return 0 ; }
-    ___x_cmd_hub___util_handle_resp true "" "Success to set access for $respath"
-}
-
-___x_cmd_hub_access___handle_filekey(){
-    local user="${1:?Provide user}"
-    local respath="${2:?Provide respath}"
-
-    # step1: download filekey
-    hub:debug "Step1 => Downloading filekey"
-    local filekey_path; filekey_path="$(___x_cmd_hub___util_respath_to_localpath datakey "$respath")" || return 1
-    local res;
-    res="$(___x_cmd_hub___util_curl get /api/v0/filekey "res=$respath")"
-    local return_code="$?"
-    ! [ "$return_code" = 4 ] || return 0
-
-    if ! [ "$return_code" = 0 ] ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get filekey for $respath"
-        return 1
-    fi
-
-    # step2: decrypt filekey
-    hub:debug "Step2 => Decrypt filekey"
-    local x_ ; ___x_cmd_hub_keypair___ensure_key_ "$___X_CMD_HUB_KEYPAIR" private || return 1
-    printf "%s" "$res" | ___x_cmd_hub_file___decrypt_filekey "$x_" > "$filekey_path" || {
+    local filekey_path
+    filekey_path="$(___x_cmd_hub_u_remote2localfp datakey "$remotefp")" || return 1
+    x_=; ___x_cmd_hub_keypair get_key_path_ "$___X_CMD_HUB_KEYPAIR_NAME" private || return 1
+    printf "%s" "$resp" | ___x_cmd_hub_file___decrypt_filekey "$x_" > "$filekey_path" || {
         ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey_path" >&2
         return 1
     }
-
-    # step3: encrypt filekey use user's public key
-    hub:debug "Step3 => Encrypt filekey use user's public key"
-    local accesskey_enc_path
-    accesskey_enc_path="$(___x_cmd_hub___util_user_dir me "accesskey/$(___x_cmd_hub___util_user_id "$user")/${respath#*:}")/filekey.enc" || return 1
-    ___x_cmd_hub_keypair___ensure_key_ default public "$user" || return 1
-    < "$filekey_path" ___x_cmd_hub_file___encrypt_filekey "$x_" > "$accesskey_enc_path" || {
-        ___x_cmd_ui_tf false "Failed to encrypt filekey to $accesskey_enc_path" >&2
-        return 1
-    }
-
-    # step4: put filekey
-    hub:debug "Step4 => Uploading filekey"
-    if ! res="$(___x_cmd_hub___util_curl put /api/v0/filekey -- "res=$respath" "filekey=$(cat "$accesskey_enc_path")" "username=$user")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to put filekey for $respath"
-        return 1
-    fi
+    x_="$filekey_path"
 }
 
-___x_cmd_hub_access_unset(){
-    local X_help_cmd='___x_cmd_hub___help access unset'
-    help:arg-null:parse
+___x_cmd_hub_access___authorized_filekey_(){
+    local user_list="$1"   ; [ -n "$user_list"    ] || M='Provide user_list'     N=hub log:ret:64
+    local remotefp="$2"    ; [ -n "$remotefp"     ] || M='Provide resource path' N=hub log:ret:64
+    local filekey_path="$3"; [ -n "$filekey_path" ] || M='Provide filekey path'  N=hub log:ret:64
 
-    local respath="${1:?Provide respath}"
-    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+    ___x_cmd_hub_keypair___download_pubkey_list "$user_list" || return 1
 
-    local res
-    if ! res="$(___x_cmd_hub___util_curl delete /api/v0/access "res=$respath")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to remove access: "
+    x_=""
+    user_list="${user_list},"
+
+    local username; local key_path; local enc_filekey
+    while [ -n "${user_list%%,*}" ] ; do
+        username="${user_list%%,*}"
+        key_path="$___X_CMD_HUB_DATA/$username/keypair/default_public.pem"
+
+        enc_filekey="$(< "$filekey_path" ___x_cmd_hub_file___encrypt_filekey "$key_path")" || {
+            ___x_cmd_ui_tf false "Failed to encrypt filekey to $enc_filekey" >&2
+            return 1
+        }
+
+        x_="${x_}{username:${username},filekey:${enc_filekey}},"
+        user_list="${user_list#*,}"
+    done
+    x_="[${x_}]"
+}
+
+___x_cmd_hub_access___upload_filekey(){
+    local filekey_date="$1"; [ -n "$filekey_date" ] || M='Provide filekey date'  N=hub log:ret:64
+    local remotefp="$2"    ; [ -n "$remotefp"     ] || M='Provide resource path' N=hub log:ret:64
+
+    filekey_date="$(printf "%s" "${filekey_date}" | x jo fmt)"
+    local resp
+    resp="$(___x_cmd_hub_u_curl put "/api/v0/filekey/share?res=${remotefp}" filekey_date)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to put filekey for $remotefp"
         return 1
-    fi
+    }
+}
 
-    ___x_cmd_hub___util_handle_resp true "$res" "Success to rm access for $respath"
+___x_cmd_hub_access___set_user(){
+    local user="$1"     ; [ -n "$user" ]     || M='Provide user'          N=hub log:ret:64
+    local remotefp="$2" ; [ -n "$remotefp" ] || M='Provide resource path' N=hub log:ret:64
+
+    local resp; resp="$(___x_cmd_hub_u_curl put /api/v0/access -- "res=${remotefp}" "username=${user}")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to set access:"
+        return 1
+    }
+    hub:debug "resp => $resp"
+    ___x_cmd_hub_u_handle_resp true "Success to set access for $remotefp"
+}
+
+___x_cmd_hub_access___set_public(){
+    local remotefp="$1" ; [ -n "$remotefp" ] || M='Provide remote file path' N=hub log:ret:64
+    local resp; resp="$(___x_cmd_hub_u_curl put /api/v0/access -- "res=${remotefp}" "isPublic=true")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to set access:"
+        return 1
+    }
 }

@@ -1,0 +1,96 @@
+# shellcheck shell=bash disable=SC1090
+
+___X_CMD_REPLHOOK=
+___x_cmd_replhook_enable(){
+    # TODO: What if I want to reload again ?
+    [ -z "$___X_CMD_REPLHOOK" ] || return "$___X_CMD_REPLHOOK"
+
+    if x hascmd precmd && x hascmd preexec; then
+        ___X_CMD_REPLHOOK=1
+        return 1
+    fi
+
+    case "$___X_CMD_SHELL" in
+        bash)
+            xrc pkg
+            ___x_cmd_pkg___is_support bash-preexec || {
+                x:error "Not found candidate => bash-preexec, please use \`x pkg update\`"
+                return 1
+            }
+
+            ___x_cmd_replhook___load_bash_preexec || {
+                x:error "Failed to load bash-preexec"
+                ___X_CMD_REPLHOOK=1
+                return 1
+            }
+
+            xrc:mod:lib x-cmd   replhook/preexec.bash
+            ___X_CMD_REPLHOOK=0
+            ;;
+        zsh)
+            xrc:mod:lib x-cmd   replhook/preexec.zsh
+            ___X_CMD_REPLHOOK=0
+            ;;
+        *)
+            x:debug "Unsupported $___X_CMD_SHELL"
+            ___X_CMD_REPLHOOK=1
+            ;;
+    esac
+
+    return "$___X_CMD_REPLHOOK"
+}
+
+___x_cmd_replhook___load_bash_preexec(){
+    if ! [ -d "$___X_CMD_PKG_POPULATE_PATH/bash-preexec" ]; then
+        x pkg download bash-preexec || return
+        x pkg populate bash-preexec || return
+    fi
+    . "$(x pkg xbin path bash-preexec)" || return
+}
+
+___x_cmd_replhook_trapint_init(){
+
+    ___x_cmd_replhook_debug_inside_trapc(){ return 1; };
+    ___x_cmd_replhook_trapint_init___trapint(){
+        ___X_CMD_REPLHOOK_EXIT_PRECMD=1
+        ___X_CMD_REPLHOOK_CAPTURE_INTERRUPT=1
+        return 130
+    }
+
+    ___x_cmd_replhook_trapint_init___precmd(){
+        [ -z "$___X_CMD_REPLHOOK_EXIT_PRECMD" ] || {
+            ___X_CMD_REPLHOOK_EXIT_PRECMD=
+            return 130
+        }
+
+        ___X_CMD_REPLHOOK_TRAPINT_OLD="$(trap)"
+        ___X_CMD_REPLHOOK_CAPTURE_INTERRUPT=
+        ___X_CMD_REPLHOOK_EXIT_PRECMD=
+        if [ -n "$ZSH_VERSION" ]; then
+            trap '___x_cmd_replhook_trapint_init___trapint || return 130' INT;
+        else
+            trap '___x_cmd_replhook_debug_inside_trapc(){ return 0; }; ___x_cmd_replhook_trapint_init___trapint; ___x_cmd_replhook_debug_inside_trapc(){ return 1; }' INT;
+        fi
+    }
+
+    ___x_cmd_replhook_trapint_init___preexec(){
+        if ___x_cmd_replhook_debug_inside_trapc; then
+            ___X_CMD_REPLHOOK_CAPTURE_INTERRUPT=1
+            return
+        fi
+
+        if [ -z "$___X_CMD_REPLHOOK_TRAPINT_OLD" ]; then
+            trap - INT
+        else
+            eval "$___X_CMD_REPLHOOK_TRAPINT_OLD"
+        fi
+    }
+
+    ___x_cmd_replhook_precmd_add    ___x_cmd_replhook_trapint_init___precmd
+    ___x_cmd_replhook_preexec_add   ___x_cmd_replhook_trapint_init___preexec
+}
+
+if [ -n "$ZSH_VERSION" ]; then
+    ___x_cmd_replhook_enable
+    ___x_cmd_replhook_trapint_init
+fi

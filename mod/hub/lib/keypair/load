@@ -1,36 +1,41 @@
 # shellcheck shell=dash
 
 ___x_cmd_hub_keypair_load(){
-    local key_path; key_path="$(___x_cmd_hub___util_user_dir me keypair)" || return 1
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --help|-h|"")    ___x_cmd_hub___help file put ; return 1 ;;
-            --key-path)      shift ;  key_path="$1" ; shift;;
-            *) break ;;
-        esac
-    done
+    local X_help_cmd='___x_cmd_hub___help keypair load'
+    help:arg:parse
 
-    local name="${1:-"$___X_CMD_HUB_KEYPAIR"}"
-    local public_key_path="$key_path/${name}_public.pem"
-    local private_key_path="$key_path/${name}_private.pem"
-    local private_key_enc_path="$key_path/${name}_private.enc.pem"
+    local ___X_CMD_HUB_PRIKEY_ENC_PATH="$___X_CMD_HUB_PRIVATE_KEY_PATH.enc"
+    ___x_cmd_hub_keypair___download || return 1
+    ___x_cmd_hub_keypair___decrypt_private_key "$___X_CMD_HUB_PRIKEY_ENC_PATH" "$___X_CMD_HUB_PRIVATE_KEY_PATH" || return 1
+}
 
-    # if [ -f "$public_key_path" ] || [ -f "$private_key_path" ] ; then
-    #     hub:error "Key already exists in local, $public_key_path or $private_key_path"
-    #     return 1
-    # fi
+# TODO: download once curl request
+___x_cmd_hub_keypair___download(){
+    # Download private key
+    local resp;
+    resp="$(___x_cmd_hub_u_curl get "/api/v0/key/$___X_CMD_HUB_KEYPAIR_NAME" type==private)" || {
+        [ -n "$NO_LOG" ] || ___x_cmd_hub_u_handle_resp false "Failed to get rsakey for $___X_CMD_HUB_KEYPAIR_NAME"
+        return 1
+    }
+    printf "%s" "$resp" | x openssl enc -d -A -base64 > "$___X_CMD_HUB_PRIKEY_ENC_PATH"
 
-    local res; local return_code=0
-    res="$(___x_cmd_hub___util_curl get "/api/v0/key/$name" type=private)" || return_code="$?"
-    if [ "$return_code" != 0 ]  ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get rsakey for $name"
-        return "$return_code"
-    fi
-    printf "%s" "$res" | x openssl enc -d -A -base64 > "$private_key_enc_path"
+    # Download public key
+    resp="$(___x_cmd_hub_u_curl get "/api/v0/key/$___X_CMD_HUB_KEYPAIR_NAME" type==public)" || {
+        [ -n "$NO_LOG" ] || ___x_cmd_hub_u_handle_resp false "Failed to get rsakey for $___X_CMD_HUB_KEYPAIR_NAME"
+        return 1
+    }
+    printf "%s" "$resp" > "$___X_CMD_HUB_PUBLIC_KEY_PATH"
+}
 
-    local password
+___x_cmd_hub_keypair___decrypt_private_key(){
     hub:info "Please input password for encrypt private key"
+    local password
     while true ; do
+        if ! ___x_cmd_is_interactive_tty || [ ! -t 1 ]; then
+            hub:error "Password required, but not in interactive tty"
+            return 1
+        fi
+
         ___X_CMD_TUI_FORM_FINAL_COMMAND=""
         x tui form password      "Password"           ""  '=~*'  '^.*$' || return 1
         [ -n "$___X_CMD_TUI_FORM_FINAL_COMMAND" ] || {
@@ -38,20 +43,10 @@ ___x_cmd_hub_keypair_load(){
             return 1
         }
 
-        hub:debug x openssl enc -d -aes-256-cbc -in "$private_key_enc_path" -out "$private_key_path" -pbkdf2 -pass pass:"$password"
-        x openssl enc -d -aes-256-cbc -in "$private_key_enc_path" -out "$private_key_path" -pbkdf2 -pass pass:"$password" || {
+        hub:debug "x openssl enc -d -aes-256-cbc -in $___X_CMD_HUB_PRIKEY_ENC_PATH -out $___X_CMD_HUB_PRIVATE_KEY_PATH -pbkdf2 -pass pass:$password"
+        x openssl enc -d -aes-256-cbc -in "$___X_CMD_HUB_PRIKEY_ENC_PATH" -out "$___X_CMD_HUB_PRIVATE_KEY_PATH" -pbkdf2 -pass "pass:$password" || {
             hub:error "Failed to decrypt private key, or password not match, please try again"
         }
         break
     done
-
-    hub:debug "Loaded private key => $private_key_path"
-
-    if ! res="$(___x_cmd_hub___util_curl get "/api/v0/key/$name" type=public)" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get rsakey for $name"
-        return "$1"
-    fi
-    x mkdirp "$key_path"
-    printf "%s" "$res" > "$public_key_path"
-    hub:debug "Loaded public key => $public_key_path"
 }

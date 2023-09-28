@@ -24,51 +24,60 @@
 # }
 
 ___x_cmd_pkg___which_p7zip()(
-    ___x_cmd_mkdirp "$___X_CMD_PKG_RAW_PATH"
     local file_path="$___X_CMD_PKG_BASE_PATH/$___X_CMD_PKG_VERSION.tar.gz"
     local file_hash_path="$___X_CMD_PKG_BASE_PATH/${___X_CMD_PKG_VERSION}_hash.txt"
-    ___x_cmd_httpget_gitx x-cmd pkg main "dist/${___X_CMD_PKG_VERSION}_hash.txt" "$file_hash_path" "${1:-86400}" || {
+    local tmp_file_path="$___X_CMD_PKG_SHARED/$___X_CMD_PKG_VERSION.tar.gz"
+    local tmp_file_hash_path="$___X_CMD_PKG_SHARED/${___X_CMD_PKG_VERSION}_hash.txt"
+    ___x_cmd_httpget_gitx x-cmd pkg main "dist/${___X_CMD_PKG_VERSION}_hash.txt" "$tmp_file_hash_path" "-" || {
         pkg:warn "Please check your network status; Or use 'x websrc set cn' and open a new session to run 'x pkg update'"
         return 1
     }
-    if ! ___x_cmd_httpget_gitx x-cmd pkg main "dist/$___X_CMD_PKG_VERSION.tar.gz" "$file_path" "${1:-86400}"; then # 1-day
-        if [ ! -f "$file_path" ]; then
-            pkg:error "Unaviable $___X_CMD_PKG_VERSION.tar.gz. Unable to fetch $___X_CMD_PKG_VERSION.tar.gz."
-            return 1
-        fi
-        local hash_value
-        hash_value="$( < "$file_hash_path"  awk '{print $1}')"
-        local file_hash
-        file_hash="$(sha512sum "$file_path")"
+    ___x_cmd_httpget_gitx x-cmd pkg main "dist/$___X_CMD_PKG_VERSION.tar.gz" "$tmp_file_path" || { # 1-day
+        pkg:error "Download $___X_CMD_PKG_VERSION.tar.gz failed"
+        return 1
+    }
 
-        [ "$hash_value" = "$file_hash" ] || {
-            pkg:warn "File corrupted; Please check your network status; Or use 'x websrc set cn' and open a new session to run 'x pkg update' "
-        }
+
+    local hash_value
+    local file_hash
+    hash_value="$( < "$tmp_file_hash_path"  command awk '{print $1}')"
+    file_hash="$(x sha512 "$tmp_file_path")"
+
+
+    [ "$hash_value" = "$file_hash" ] || {
+        pkg:error "File corrupted; Please check your network status; Or use 'x websrc set cn' and open a new session to run 'x pkg update' "
+        x rmrf "$tmp_file_path" "$tmp_file_hash_path"
+        return 1
+    }
+
+
+    x rmrf "$___X_CMD_PKG_BASE_PATH/$___X_CMD_PKG_VERSION.tar.gz" && x rmrf "$___X_CMD_PKG_RAW_PATH" && x rmrf "$file_hash_path"
+
+    x cp "$tmp_file_path" "$___X_CMD_PKG_BASE_PATH/$___X_CMD_PKG_VERSION.tar.gz" && x rmrf "$tmp_file_path"
+    x cp "$tmp_file_hash_path" "$file_hash_path" && x rmrf "$tmp_file_path" "$tmp_file_hash_path"
+
+    ___x_cmd_mkdirp "$___X_CMD_PKG_RAW_PATH"
+    pkg:debug "Deflate the $___X_CMD_PKG_VERSION.tar.gz"
+    if ! ( x cd "${file_path%/*}" && x cp "$___X_CMD_PKG_VERSION.tar.gz" raw/"$___X_CMD_PKG_VERSION.tar.gz" && x cd raw && x uz "$___X_CMD_PKG_VERSION.tar.gz" 1>/dev/null && x rmrf "$___X_CMD_PKG_VERSION.tar.gz" ); then
+        pkg:error "Deflation failure."
+        return 1
     fi
-
-    if [ "$___X_CMD_HTTPGET_AGE" = 0 ]; then
-        ___x_cmd_mkdirp "$___X_CMD_PKG_RAW_PATH"
-        pkg:debug "Deflate the $___X_CMD_PKG_VERSION.tar.gz"
-        if ! ( x cd "${file_path%/*}" && x cp "$___X_CMD_PKG_VERSION.tar.gz" raw/"$___X_CMD_PKG_VERSION.tar.gz" && x cd raw && x uz "$___X_CMD_PKG_VERSION.tar.gz" 1>/dev/null && x rmrf "$___X_CMD_PKG_VERSION.tar.gz" ); then
-            pkg:error "Deflation failure."
-            x rmrf "$file_path"
-        fi
-    fi
-
 )
 
 
 ___x_cmd_pkg_update(){
     case "$1" in
         -h|--help)
-            ___x_cmd_pkg_help update #"$@"
-            return 1
+            M='pkg update' help:ret:0
             ;;
     esac
     local file_hash_path="$___X_CMD_PKG_BASE_PATH/${___X_CMD_PKG_VERSION}_hash.txt"
-    x rmrf "$___X_CMD_PKG_BASE_PATH/$___X_CMD_PKG_VERSION.tar.gz" && x rmrf "$___X_CMD_PKG_RAW_PATH" && x rmrf "$file_hash_path"
-    ___x_cmd_pkg___which_p7zip - || return # Force Update
-    pkg:info "Update the $___X_CMD_PKG_VERSION.tar.gz"
+    # x rmrf "$___X_CMD_PKG_BASE_PATH/$___X_CMD_PKG_VERSION.tar.gz" && x rmrf "$___X_CMD_PKG_RAW_PATH" && x rmrf "$file_hash_path"
+    ___x_cmd_pkg___which_p7zip || {
+        pkg:error "Update the $___X_CMD_PKG_VERSION.tar.gz failed"
+        return 1 # Force Update
+    }
+    pkg:info "Update the $___X_CMD_PKG_VERSION.tar.gz success"
 }
 
 ___x_cmd_pkg_help(){

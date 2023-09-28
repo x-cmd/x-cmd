@@ -1,4 +1,4 @@
-# shellcheck shell=dash #xrc
+# shellcheck shell=dash disable=SC2034,1090 #xrc
 
 # This is default
 ___x_cmd_pkg_populate___unzip(){
@@ -15,7 +15,7 @@ ___x_cmd_pkg_populate___unzip(){
         local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}_${os}_${arch}.${download_file_ext}"
     fi
     [ -f "$ball" ] || {
-        pkg:error "Cant found zip package: $name $version"
+        pkg:error "Can't found zip package: $name $version"
         return 1
     }
 
@@ -28,13 +28,13 @@ ___x_cmd_pkg_populate___unzip(){
             pkg:error "Fail to unzip $ball" ; return 1
         }
         x rmrf "$tgt"
-        mkdir -p "$tgt"
+        x mkdirp "$tgt"
         pkg:debug "Moving $unpack_dir to $tgt"
         x mv -f "$unpack_dir"/*/* "$tgt"
         x rmrf "$unpack_dir"
     elif [ "$unpack" = "none" ]; then
         local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name"
-        mkdir -p "$tgt"
+        x mkdirp "$tgt"
         pkg:debug "Moving $ball to $tgt"
         x mv -f "$ball"/* "$tgt"
     elif [ "$unpack" = "file" ]; then
@@ -50,10 +50,8 @@ ___x_cmd_pkg_populate___unzip(){
 }
 
 ___x_cmd_pkg_populate(){
-
-    case "$1" in
-        -h|--help) ___x_cmd_pkg_help populate; return 1 ;;
-    esac
+    local X_help_cmd='___x_cmd_pkg_help populate'
+    help:arg:parse
 
     local name="${1:?Provide pkg name}"
     local osarch="${3:-$(___x_cmd_pkg_osarch)}"
@@ -66,40 +64,45 @@ ___x_cmd_pkg_populate(){
         return 1
     }
 
+    local os="${osarch%/*}";  local arch="${osarch#*/}"
+    ( bgsingleton_name="${name}_${version}_${os}_${arch}" x bgsingleton run --wait ___x_cmd_pkg_populate___inner_ )
+    [ -d "$tgt" ]
+}
+___x_cmd_pkg_populate___inner_(){
     ___x_cmd_pkg_populate___unzip "$name" "$version" "$osarch" "$tgt" || {
         pkg:error "unzip $name $version $osarch failed"
+        x rmrf "$tgt"
         return 1
     }
 
     local script_path
     if ! script_path="$(___x_cmd_pkg___get_script_path "$name" "$version" "$osarch" populate)"; then
-        pkg:error "Cant not get script path"
+        pkg:error "Can't get script path"
+        x rmrf "$tgt"
         return 1
     fi
 
-    if [ -z "$script_path" ]; then
-        ___x_cmd_pkg_populate___chmod "$name" "$version" "$osarch" "$tgt"
-        return
+    if [ -n "$script_path" ]; then
+        pkg:info "Running $script_path"
+        pkg:debug --name "$name"  --version "$version"  --osarch "$osarch" --script_path "$script_path"
+
+        local ___X_CMD_PKG___META_NAME="$name"
+        local ___X_CMD_PKG___META_VERSION="$version"
+        local ___X_CMD_PKG___META_OS="${osarch%%/*}"
+        local ___X_CMD_PKG___META_ARCH="${osarch##*/}"
+        local ___X_CMD_PKG___META_TGT="$tgt"
+        {
+            {
+                trap 'printf "\r\n"; pkg:error "populate interrupted script"; return 130' INT
+                . "$script_path"
+            } || {
+                x rmrf "$tgt"
+                pkg:error "Source $script_path failed"
+                return 1
+            }
+        }
     fi
 
-    pkg:info "Running $script_path"
-    pkg:debug --name "$name"  --version "$version"  --osarch "$osarch" --script_path "$script_path"
-
-    local ___X_CMD_PKG___META_NAME="$name"
-    local ___X_CMD_PKG___META_VERSION="$version"
-    local ___X_CMD_PKG___META_OS="${osarch%%/*}"
-    local ___X_CMD_PKG___META_ARCH="${osarch##*/}"
-    local ___X_CMD_PKG___META_TGT="$tgt"
-    {
-        (
-            trap 'printf "\r\n"; pkg:error "populate interrupted"; return' INT
-            . "$script_path"
-        ) || {
-            x rmrf "$tgt"
-            pkg:error "Source $script_path failed"
-            return 1
-        }
-    }
     ___x_cmd_pkg_populate___chmod "$name" "$version" "$osarch" "$tgt" || return 1
 }
 
@@ -108,18 +111,21 @@ ___x_cmd_pkg_populate___chmod(){
     local version="${2:?Provide version}"
     local osarch="${3:-$(___x_cmd_pkg_osarch)}"
     local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
-    local xbin_list; xbin_list="$( < "$___X_CMD_PKG_RAW_PATH/binmod.txt" awk -v name=$name '{if($0 ~ ".*:"name"$"){print $0}}' )"
+    local bin_path
 
-    printf "%s\n" "$xbin_list" | while read -r xbin_name; do
+    local xbin_name; while read -r xbin_name; do
         [ -n "$xbin_name" ] || continue
-        xbin_name="${xbin_name#:*}"
+        [ "${xbin_name##*:}" = "$name" ] || continue
+        xbin_name="${xbin_name#*:}"
         xbin_name="${xbin_name%:*}"
+
         bin_path="$(___x_cmd_pkg_xbin_path "$xbin_name" "$version" "$osarch")"
         if  [ -f "$bin_path" ]; then
             chmod +x "$bin_path" || {
                 pkg:error "Can't use chmod on $bin_path"
+                x rmrf "$tgt"
                 return 1
             }
         fi
-    done
+    done < "$___X_CMD_PKG_RAW_PATH/binmod.txt"
 }

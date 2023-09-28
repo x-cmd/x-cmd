@@ -1,0 +1,153 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043,SC2034,SC2154
+# http://www.localhost:4000/13.7/ee/api/labels.html
+___x_cmd_gcode_repo_label(){
+    param:subcmd ___x_cmd_gcode_repo_label          \
+        ls              "List repo label"           \
+        create          "Create repo label"         \
+        get             "Get a single label"        \
+        rm              "Delete a label"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gcode_repo_label _param_help_doc
+
+    return 1
+}
+# Section: label ls
+# http://www.localhost:4000/13.7/ee/api/labels.html#list-labels
+___x_cmd_gcode_repo_label_ls(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --repo|-r                   "<owner_path>/<repo_path> or .id=<repo_id>"                                  <>
+    --search                    "Keyword to filter labels by."                                               <>=""
+    --with_counts               "Whether or not to include issue and merge request counts."                  <>:bool="false"
+    --include_ancestor_groups   "Return list of labels matching the search criteria. "                       <>:bool="true"
+
+    --json|-j                   "output json data"
+'
+    param:run
+
+    ___x_cmd_gcode_param_init_owner_repo
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gcode_get_multi "/projects/$owner_repo/labels" search
+    else
+        ___x_cmd_gcode_get_multi "/projects/$owner_repo/labels" search | \
+            x jo 2c             .id .name .description .priority  | \
+            x csv header --add   ID  Name  Description  Priority  | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: label create
+# http://www.localhost:4000/13.7/ee/api/labels.html#create-a-new-label
+___x_cmd_gcode_repo_label_create(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1              "The name of a label"                                                                               <>
+    --repo|-r       "<owner_path>/<repo_path> or .id=<repo_id>"                                                         <>
+    --color         "The color of the label given in 6-digit hex notation with leading # sign."                         <>
+    --description   "The description of the label"                                                                      <>=""
+    --priority      "The priority of the label. Must be greater or equal than zero or null to remove the priority."                                                    <>:Number=""
+
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gcode_param_init_owner_repo
+    local name="$1"
+    local gen_gcode_json
+    gen_gcode_json="$(param:option2json +name -repo)"
+    gcode:debug "$gen_gcode_json"
+
+    ___x_cmd_gcode_curl post "/projects/$owner_repo/labels" "gen_gcode_json" | _____x_cmd_gcode_repo_label_ui_utils Create
+}
+# EndSection
+
+# Section: label get
+___x_cmd_gcode_repo_label_get(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --repo|-r                             "<owner_path>/<repo_path> or .id=<repo_id>"                                          <>
+    --label_id                            "The ID or title of a project’s label"                                               <>
+    --include_ancestor_groups             "Include ancestor groups. Defaults to true."                                         <>:bool="true" = true false
+
+    --json|-j                             "output json data"
+'
+    param:run
+
+    ___x_cmd_gcode_param_init_owner_repo
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gcode_curl get "/projects/${owner_repo}/labels/${label_id}" include_ancestor_groups
+    else
+        ___x_cmd_gcode_curl get "/projects/${owner_repo}/labels/${label_id}" include_ancestor_groups | \
+            x ja jl2c             .id .name .description .priority  | \
+            x csv header --add   ID  Name  Description  Priority  | \
+            x csv static_tab
+    fi
+}
+
+# EndSection
+
+# Section: label rm
+___x_cmd_gcode_repo_label_rm(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    --repo|-r                             "<owner_path>/<repo_path> or .id=<repo_id>"                                          <>
+    --label_id                            "The ID or title of a project’s label"                                               <>
+
+    --yes|-y                              "Ignore remove prompt interception"
+'
+    param:run
+
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete label : $(___x_cmd_ui bold red "$label_id") ?"
+    ___x_cmd_gcode_param_init_owner_repo
+
+    ___x_cmd_gcode_curl del "/projects/${owner_repo}/labels/${label_id}" | (
+            x jo env . gcode_resp_err=.error gcode_resp_msg=.message
+            if  ___x_cmd_gcode_http_error; then
+                ___x_cmd_ui_tf true "[Success]: Remove $label_id tag of $owner_repo"
+            else
+                ___x_cmd_ui_tf false "Remove $label_id tag of $owner_repo failure:"
+                ___x_cmd_gcode____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
+
+
+
+# Section: repo label utils
+_____x_cmd_gcode_repo_label_ui_utils()(
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gcode_http_error
+        return
+    fi
+
+    local data
+    local msg
+    local error_msg
+    case "$1" in
+        Create)
+            data="name=.name release=.release description=.description priority=.priority"
+            msg="Create repo label successfully"
+            error_msg="Failed to Create repo label"
+            ;;
+    esac
+    eval x jo env . id=.id gcode_resp_err=.error gcode_resp_err=.message "$data"
+    if [ -n "$id" ]; then
+        ___x_cmd_ui_tf true "$msg" "Id: $id" ${name+"Name: $name"} ${description+"Description: $description"} ${priority+"Priority: $priority"}
+    else
+        ___x_cmd_ui_tf false "$error_msg"
+        ___x_cmd_gcode____handle_resp
+        return 1
+    fi
+)
+# EndSection

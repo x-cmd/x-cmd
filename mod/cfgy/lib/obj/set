@@ -1,4 +1,4 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=1090,2154
 
 ___x_cmd_cfgy_obj_set(){
     local X_help_cmd="${X_help_cmd:-x help -m cfgy obj --set}";
@@ -28,8 +28,7 @@ ___x_cmd_cfgy_obj___set(){
 
     local profile="$1"; shift
 
-    local x_
-    ___x_cmd_cfgy_inner_get_profile_idx_ "$___X_CMD_CFGY_OBJ_PREFIX" "$profile"
+    local x_=; ___x_cmd_cfgy_inner_get_profile_idx_ "$___X_CMD_CFGY_OBJ_PREFIX" "$profile"
 
     while [ $# -gt 0 ]; do
         X_cfgy_varname="${1%%=*}" cfgy:check:varname
@@ -52,32 +51,27 @@ ___x_cmd_cfgy_obj___fset(){
     }
 
     local profile="$1"
-    local fp="$2"
+    local config="$2"
     shift 2
 
-    [ -f "$fp" ] || printf "%s\n" "profile: []" >"$fp"
+    [ -f "$config" ] || ___x_cmd_cfgy_obj_clear "$config"
 
-    local i; for i in "$@"; do
+    local x_=;  ___x_cmd_cfgy_obj___loadinner_ --local "$config" || return
+    . "$x_" || return
+
+    x_=;    ___x_cmd_cfgy_inner_get_profile_idx_ "$___X_CMD_CFGY_OBJ_PREFIX" "$profile"
+    local op=;  local i; for i in "$@"; do
         X_cfgy_varname="${i%%=*}" cfgy:check:varname
+        eval "[ \"\$${___X_CMD_CFGY_OBJ_PREFIX}_${x_}_${i%%=*}\" != \"${i#*=}\" ] || continue"
+        op="${op}_1_profile_${x_}_${i}${___X_CMD_UNSEENCHAR_NEWLINE}"
     done
 
-    local data; data="$(
-        <"$fp" ___x_cmd_cfgy___yml2json_and_tokenize | (
-        local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
-        profile="$profile" op="$*" command awk              \
-            -v prefix="$___X_CMD_CFGY_OBJ_PREFIX"           \
-            -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk"        \
-            -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"          \
-            -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"      \
-            -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk"     \
-            -f "$___X_CMD_ROOT_MOD/cfgy/lib/awk/set.awk"
-    ))" || {
-        cfgy:error "Fail to set config"
-        return 1
-    }
-    printf "%s\n" "$data" | ___x_cmd_cfgy___json2yml >"$fp"
-}
+    [ -n "$op" ] || return 0
+    op="_1_profile_${x_}_name=${profile}${___X_CMD_UNSEENCHAR_NEWLINE}${op}"
 
+    cfgy:debug --m:op "$op" fset
+    ___x_cmd_envy_set "$config" "$op"
+}
 
 ___x_cmd_cfgy_obj_unset(){
     local X_help_cmd="${X_help_cmd:-x help -m cfgy obj --set}";

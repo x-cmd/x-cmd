@@ -1,80 +1,89 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=2120
 
-# Section: current and download
+## Section: version、update and download
 
-___x_cmd_tldr_current_or_update_(){
-    x_tldr_version="${___X_CMD_TLDR_VERSION:-"$(___x_cmd_tldr_version)"}"
-    if [ -n "$x_tldr_version" ]; then
-        ___X_CMD_TLDR_VERSION="$x_tldr_version"
-    elif ___x_cmd_tldr_update; then
-        x_tldr_version="$___X_CMD_TLDR_VERSION"
-    else
-        ___X_CMD_TLDR_VERSION=
-        tldr:error "Fail to show version for tldr pages"
-        return 1
-    fi
-}
-
-___x_cmd_tldr_current_or_update(){
-    local x_tldr_version
-    ___x_cmd_tldr_current_or_update_
-    [ -n "$x_tldr_version" ] || return 1
-    printf "%s\n" "$x_tldr_version"
-}
-
-___x_cmd_tldr_version___from_yml(){
-    arg:init tldr
-    [ -f "$1" ] || M="Please provide the tldr version index yml" arg:ret:64
-    < "$1" awk '
-($2 !~ /v[0-9]+\.[0-9]+(\.[0-9])?/) { exit(1); }
-{print($2); exit(0);}
-'
-}
-
+___X_CMD_TLDR_LANG_VERSION="v0.0.1"
 ___x_cmd_tldr_version(){
-    local index="$___X_CMD_TLDR_TMP_DATA/index.yml"
-    [ -f "$index" ] || return 1
+    ___x_cmd_tldr_version_pages_ "$@" || return
+    printf "paegs:\t%s\n" "$___X_CMD_TLDR_PAGES_VERSION"
+    printf "lang:\t%s\n" "$___X_CMD_TLDR_LANG_VERSION"
+}
 
-    ___x_cmd_tldr_version___from_yml "$index" || {
-        tldr:error --version "$(awk '{print $2; exit(1); }' <"$index")" "Latest version in index.yml is invalid"
+___x_cmd_tldr_version_pages_(){
+    [ -n "$___X_CMD_TLDR_PAGES_VERSION" ] || {
+        local x_;   ___x_cmd_tldr_version_pages___from_yml_ || return
+        ___X_CMD_TLDR_PAGES_VERSION="$x_"
+    }
+}
+
+___x_cmd_tldr_version_pages___from_yml_(){
+    local index="$___X_CMD_TLDR_TMP_DATA/index.yml"
+    { [ -f "$index" ] && [ "$1" != --update ]; } || \
+        bgsingleton_name="bg.tldr.index" x bgsingleton run --wait ___x_cmd_tldr_download index.yml "$index" || return
+    read -r x_ < "$index"
+    x_="${x_#* }"
+    [ -n "$x_" ] || {
+        tldr:error "Latest version in index.yml is invalid"
         return 1
     }
 }
 
 ___x_cmd_tldr_update(){
-    ___x_cmd___tldr_download index.yml "$___X_CMD_TLDR_TMP_DATA/index.yml" - || return
-    ___X_CMD_TLDR_VERSION="$(___x_cmd_tldr_version)"
-    ___x_cmd___tldr_download_pages "$___X_CMD_TLDR_VERSION" pages
+    local lang="${1:-$___X_CMD_TLDR_LANG_PREFERED}"
+    local x_;   ___x_cmd_tldr_version_pages___from_yml_ --update    || return
+    ___x_cmd_tldr_download_unzip_pages "$x_" "$lang" --update       || return
+    ___x_cmd_tldr_download_unzip_lang "$___X_CMD_TLDR_LANG_VERSION" --update
 }
 
-___x_cmd___tldr_download_pages(){
-    arg:init tldr
-    [ -n "$1" ] || M="Please provide the tldr version" arg:ret:64
-    [ -n "$2" ] || M="Please provide the tldr pages" arg:ret:64
+___x_cmd_tldr_lang_perpare(){
+    [ -d "${___X_CMD_TLDR_TMP_DATA}/lang/${___X_CMD_TLDR_LANG_VERSION}" ] || \
+        bgsingleton_name="bg.tldr.lang" x bgsingleton run --wait ___x_cmd_tldr_download_unzip_lang "$___X_CMD_TLDR_LANG_VERSION" || return
+}
 
+___x_cmd_tldr_pages_prepare(){
+    local lang="${1:-en}"
+    ___x_cmd_tldr_version_pages_ || return
+    [ -d "${___X_CMD_TLDR_TMP_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.${lang}" ] || \
+        bgsingleton_name="bg.tldr.pages.${lang}" x bgsingleton run --wait ___x_cmd_tldr_download_unzip_pages "$___X_CMD_TLDR_PAGES_VERSION" "$lang" || return
+}
+
+___x_cmd_tldr_download_unzip_lang(){
     local version="$1"
-    local page_lang="$2"
-    local data_path="$___X_CMD_TLDR_TMP_DATA/$version/$page_lang"
-    local tgz_path="$___X_CMD_TLDR_TMP_CACHE/$version/$page_lang.tgz"
-    x mkdirp "$data_path"
-
-    ___x_cmd___tldr_download "$version/$page_lang.tgz" "$tgz_path" "0" || {
-        x rmrf "$data_path"
-        return 1
+    local tgz_path="${___X_CMD_TLDR_TMP_CACHE}/lang/${version}.tar.xz"
+    { [ -f "$tgz_path" ] && [ "$2" != --update ]; } || {
+        ___x_cmd_tldr_download "lang/${version}.tar.xz" "$tgz_path" || return
     }
-    ! x uz "$tgz_path" "$data_path" || tldr:info "Version already UPDATED to $version"
+
+    local data_path="${___X_CMD_TLDR_TMP_DATA}/lang/${version}"
+    x rmrf "$data_path";    x mkdirp "$data_path"
+    ! x uz "$tgz_path" "$data_path" || tldr:info "The lang/${version} already UPDATED"
 }
 
-___x_cmd___tldr_download(){
+___x_cmd_tldr_download_unzip_pages(){
+    local version="$1";     local lang="$2"
+    local tgz_path="${___X_CMD_TLDR_TMP_CACHE}/${version}/pages.${lang}.tgz"
+
+    { [ -f "$tgz_path" ] && [ "$3" != --update ]; } || {
+        local page_lang="pages"; [ "$lang" = en ] || page_lang="pages.${lang}"
+        ___x_cmd_tldr_download "$version/$page_lang.tgz" "$tgz_path" || return
+    }
+
+    local data_path="${___X_CMD_TLDR_TMP_DATA}/${version}/pages.${lang}"
+    x rmrf "$data_path";    x mkdirp "$data_path"
+    ! x uz "$tgz_path" "$data_path" || tldr:info "The pages.${lang} version already UPDATED to $version"
+}
+
+___x_cmd_tldr_download(){
     arg:1:nonempty
-    local src="$1"
-    local dst="${2:-$1}"
-    local expiration="${3:-"1"}"
+    local src="$1";     local dst="${2:-$1}"
     tldr:info "Download tldr $src from x-cmd/tldr"
-    ___x_cmd_httpget_gitx x-cmd tldr main "dist/$src" "$dst" "$expiration" || {
+    ___x_cmd_httpget_gitx x-cmd tldr main "dist/$src" "${dst}.tmp" - || {
         tldr:error "Fail to download $src from x-cmd/tldr"
+        x rmrf "${dst}.tmp"
         return 1
     }
+    x rmrf "${dst}"
+    x mv "${dst}.tmp" "${dst}"
 }
 
 ## EndSection

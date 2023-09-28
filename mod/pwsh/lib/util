@@ -1,0 +1,63 @@
+# shellcheck shell=dash disable=SC2142
+
+# winget source remove winget; winget source add winget https://mirrors.ustc.edu.cn/winget-source
+# winget source reset winget
+___x_cmd_pwsh_admin(){
+    # https://github.com/lukesampson/psutils/blob/master/sudo.ps1
+    # https://learn.microsoft.com/en-us/windows/wsl/filesystems#share-environment-variables-between-windows-and-wsl-with-wslenv
+
+    local cmd="$*"; # [ -n "$cmd" ] || cmd="$(cat)"
+    pwsh:debug -c "$cmd" admin
+    WSLENV="${WSLENV}:admin_file/p" \
+    admin_file="$___X_CMD_ROOT_MOD/pwsh/lib/admin.ps1" \
+    ___x_cmd_pwsh_bin -noprofile -ExecutionPolicy unrestricted -Command "& \$env:admin_file '$cmd';exit \$lastexitcode"
+}
+
+___x_cmd_pwsh___exec(){
+    local mode="$1";    shift
+    pwsh:debug -c "$*" --mode "$mode" exec
+    ___x_cmd_pwsh___exec_to_result <<A
+$@ | Out-File -Encoding UTF8 -FilePath "result"
+A
+}
+
+___x_cmd_pwsh___exec_admin(){
+    local mode="$1";    shift
+    pwsh:debug -c "$*" --mode "$mode" admin
+    ___x_cmd_pwsh_admin "$* | Out-File -Encoding UTF8 -FilePath \"result\""
+}
+
+___x_cmd_pwsh___exec_to_result(){(
+    local TgtDir="$___X_CMD_ROOT_DATA/pwsh/$$/"
+    x mkdirp "$TgtDir"
+    x rmrf result
+    ___x_cmd_inner_cd "$TgtDir"
+    ___x_cmd_pwsh_bin > /dev/null
+    [ -f "result" ] || return 1
+    sed -i '1 s/^\xef\xbb\xbf//' result
+    cat result
+)}
+
+
+alias pwsh:arg:null='
+[ "$#" -gt 0 ] || {
+    set -- --app
+    { ___x_cmd_is_interactive && [ -t 1 ]; } || set -- --csv
+}
+'
+
+alias pwsh:output:mode='
+case "$1" in
+    -l|--list)  x_output_mode=list; shift; continue ;;
+    -j|--json)  x_output_mode=json; x_output="| ConvertTo-Json"; shift; continue ;;
+    -c|--csv)   x_output_mode=csv;  x_output="| ConvertTo-Csv -NoTypeInformation"; shift; continue ;;
+    --app)      x_output_mode=app;  x_output="| ConvertTo-Csv -NoTypeInformation"; shift; continue ;;
+esac
+'
+
+alias pwsh:output:mode:all='
+pwsh:output:mode
+case "$1" in
+    *)          N=pwsh M="Unsupported option => $1" log:ret:64  ;;
+esac
+'

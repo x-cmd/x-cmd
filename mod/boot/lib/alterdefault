@@ -1,23 +1,52 @@
-(
 
-answer=
-if [ -f "$___X_CMD_ROOT/X" ]; then
-    a=$(cat "$___X_CMD_ROOT/X")
-    a="${a##*:=}"; a="${a%\}/X*}"
+___x_cmd_boot_alterdefault___parse_default_version(){
+    local line
+    while read -r line; do
+        case "$line" in
+            ___X_CMD_VERSION_DEFAULT=*)
+                x_="${line#*=}"
+                return 0
+                ;;
+            *)
+                ;;
+        esac
+    done
+    return 1
+}
 
-    if [ "$a" = "$___X_CMD_VERSION" ]; then
-        x:warn "Current version is already $___X_CMD_VERSION"
-        return 0
+___x_cmd_boot_alterdefault(){
+    local version="$1"
+    local root="${2:-$___X_CMD_ROOT}"
+
+    command chmod 700 "$root"   # Make sure the directory is only accessable for the current user ...
+
+    if [ -f "$root/X" ]; then
+        x_=;
+        if ___x_cmd_boot_alterdefault___parse_default_version <"$root/X"; then
+            if [ "$x_" = "$version" ]; then
+                x:warn "Current version is already $version"
+                return 0
+            fi
+
+            ___x_cmd_is_interactive || return 1
+            x ui yesno "Current Default Version is $x_. Alter it to $version ?" || return 1
+        fi
     fi
 
-    if ___x_cmd_is_interactive_tty; then
-        x ui select id,answer "Current Default Version is $a. Alter it to $___X_CMD_VERSION ?" YES NO
-        [ "$answer" = YES ] || exit 1
-    else
-        exit 1
-    fi
-fi
+    boot:info "update the $root/X"
 
->"$___X_CMD_ROOT/X" printf "%s\n" ". \"\${___X_CMD_ROOT:=\$HOME${___X_CMD_ROOT#"$HOME"}}/v/\${___X_CMD_VERSION:=${___X_CMD_VERSION}}/X\""
+    >"$root/X" printf "%s\n%s\n" \
+    "___X_CMD_VERSION_DEFAULT=${version}"'
+    if [ -n "$___X_CMD_ROOT" ] && [ ! -w "$___X_CMD_ROOT" ]; then
+        printf "%s\n" \
+            "- folder defined ___X_CMD_ROOT specified is not writable." \
+            "  ___X_CMD_ROOT: $___X_CMD_ROOT" \
+            "  ___X_CMD_VERSION: $___X_CMD_VERSION" \
+            "  ___X_CMD_ROOT_CODE: $___X_CMD_ROOT_CODE" >&2
+        ___X_CMD_ROOT=
+        ___X_CMD_VERSION=
+        ___X_CMD_ROOT_CODE=
+    fi' \
+    ". \"\${___X_CMD_ROOT:=$root}/v/\${___X_CMD_VERSION:=\${___X_CMD_VERSION_DEFAULT}}/X\""
 
-)
+}

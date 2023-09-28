@@ -9,7 +9,7 @@ function str_escape_special_char(s){
     return s
 }
 
-function comp_advise_parse_candidate_arr( arr,      s, i, l, _, v, d, _cand_exec, _cand_msg, _ui_warn, _ui_end ){
+function comp_advise_parse_candidate_arr( arr,      s, i, l, _, v, d, _cand_exec, _cand_msg, _ui_warn, _ui_end, kp ){
     _ui_warn = "\033[33;1m"
     _ui_end  = "\033[0m"
     if( ADVISE_NO_COLOR == true ) _ui_warn = _ui_end = ""
@@ -18,14 +18,31 @@ function comp_advise_parse_candidate_arr( arr,      s, i, l, _, v, d, _cand_exec
     s = "offset=" arr[ "OFFSET" ] "\n"
     if ((l = arr[ "EXEC" L ]) > 0) {
         for (i=1; i<=l; ++i){
-            s = s "candidate_exec=\"" juq(arr[ "EXEC", i ]) "\";\n"
+            s = s "candidate_exec=" qu1(juq(arr[ "EXEC", i ])) ";\n"
         }
     }
+    kp = CAND[ "KEYPATH" ]
+    if ( CAND[ kp, "IS_NOSPACE" ] == true ) {
+        s = s "candidate_prefix=" qu1(CAND[ kp, "PREFIX" ]) ";\n"
+    }
+
     if ((l = arr[ "CODE" L ]) > 0) {
         s = s "candidate_arr=(\n"
         for (i=1; i<=l; ++i){
             v = arr[ "CODE", i ]
             d = arr[ "CODE", v ]
+            v = juq(v)
+            gsub(" ", "\\ ", v)
+            if (d != "\"\"") s = s qu1( str_escape_special_char(v) ":" juq(d) ) "\n"
+            else s = s qu1( str_escape_special_char(v) ) "\n"
+        }
+        s = s ")\n"
+    }
+    if ((l = arr[ "NOSPACE" L ]) > 0) {
+        s = s "candidate_nospace_arr=(\n"
+        for (i=1; i<=l; ++i){
+            v = arr[ "NOSPACE", i ]
+            d = arr[ "NOSPACE", v ]
             v = juq(v)
             gsub(" ", "\\ ", v)
             if (d != "\"\"") s = s qu1( str_escape_special_char(v) ":" juq(d) ) "\n"

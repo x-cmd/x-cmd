@@ -1,124 +1,135 @@
-# shellcheck shell=sh disable=SC3043,SC2120
+# shellcheck shell=dash
 
-___x_cmd_hub_account_info(){
+___x_cmd_hub_account_info() {
+    local X_help_cmd='___x_cmd_hub___help account info'
+    help:arg:parse
+
     local json
     while [ $# -gt 0 ]; do
         case "$1" in
-            -j|--json) json=true ;;
-            *) break ;;
+        -j | --json) json=true ;;
+        *) break ;;
         esac
         shift
     done
 
-    local token; token="$(___x_cmd_hub___util_get_token)" || return
-
     # TODO: to show what platform is binded
-    ___x_cmd_hub_get_userinfo_by_token "$token"
+    ___x_cmd_hub_get_userinfo
 }
 
-___x_cmd_hub_account_rename(){
+___x_cmd_hub_account_rename() {
     local X_help_cmd='___x_cmd_hub___help account rename'
     help:arg-null:parse
 
-    local new_username="${1}"
-    if [ -z "$new_username" ]; then
+    local new_name="$1"
+    if [ -z "$new_name" ]; then
         ___x_cmd_ui_tf false "New username is empty, please provide a new username" >&2
         ___x_cmd_hub___help account rename
         return 1
     fi
 
-    local res
-    if ! res="$(___x_cmd_hub___util_curl patch /api/v0/account -- "username=$new_username")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to rename account:"
+    local resp; resp="$(___x_cmd_hub_u_curl patch /api/v0/account -- "name=$new_name")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to rename account:"
         return 1
-    fi
-    ___x_cmd_hub___util_handle_resp true "$res" "Rename successfully:"
+    }
+    printf "%s" "$resp" | {
+        local name
+        x jo env . .name
+        ___x_cmd_hub_u_handle_resp true "Rename successfully => $name"
+    }
 }
 
-___x_cmd_hub_account_delete(){
+___x_cmd_hub_account_delete() {
     local X_help_cmd='___x_cmd_hub___help account delete'
     help:arg:parse
 
     x ui yesno "Are you sure to delete your account? This operation is irreversible" || return 1
 
-    local res
-    if ! res="$(___x_cmd_hub___util_curl delete /api/v0/account)" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to delete account:"
-        return 1
-    fi
+    local user_dir
+    user_dir="$(___x_cmd_hub_u_userdir me)"
 
-    ___x_cmd_hub___util_cache_invalidate
-    x rmrf "$(___x_cmd_hub___util_user_dir me)"
-    if ! ___x_cmd_hub_cfg --unset token ; then
+    local resp
+    resp="$(___x_cmd_hub_u_curl delete /api/v0/account)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to delete account:"
+        return 1
+    }
+
+    x rmrf "$user_dir"
+    if ! ___x_cmd_hub_cfg --unset token; then
         ___x_cmd_ui_tf false "Failed to unset token use cfgy"
         return 1
     fi
 
-    ___x_cmd_hub___util_handle_resp true "$res" "Delete successfully"
+    ___x_cmd_hub_u_handle_resp true "Delete successfully"
 }
 
-___x_cmd_hub_get_userinfo_by_token(){
-    local token="${1}"
-    if [ -z "$token" ]; then
-        ___x_cmd_ui_tf false "Token is empty, please 'x hub login' first:" >&2
+___x_cmd_hub_get_userinfo() {
+    local resp; resp="$(___x_cmd_hub_u_curl get /api/v0/account/detail)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to get user info:"
         return 1
-    fi
+    }
 
-    local res
-    if ! res="$(NO_AUTH=1 ___x_cmd_hub___util_curl get /api/v0/account "token=$token")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to get user info:"
-        return 1
-    fi
+    [ -z "$json" ] || {
+        printf "%s\n" "$resp"
+        return 0
+    }
+    printf "%s" "$resp" | (
+        x jo env . .name .id plan=.plan.name expire=.plan.expireAt .email .region dataUsage=.billing.dataUsage \
+            dataLimit=.plan.dataLimit
 
-    [ -z "$json" ] || { printf "%s\n" "$res" ; return 0; }
-    printf "%s" "$res" | (
-        x jo env . name=.name id=.id plan=.plan email=.email region=.region
-        ___x_cmd_hub___util_handle_resp true "" "Account info:" "id: $id" "name: $name" "region: $region" # "plan: $plan" "email: $email"
+        percent="$(___x_cmd_hub_u_percent "$dataUsage" "$dataLimit")"
+        dataUsage="$(___x_cmd_hub_u_unit_suffixes "$dataUsage")"
+        dataLimit="$(___x_cmd_hub_u_unit_suffixes "$dataLimit")"
+
+        ___x_cmd_hub_u_handle_resp true "Account info:" \
+            "name: $name" \
+            "region: $region" \
+            ${email:+"email: $email"} \
+            "plan: $plan" \
+            "used: $dataUsage" \
+            "limit: $dataLimit" \
+            "percent: $percent"  \
+            ${expire:+"expire: $expire"}
     )
 }
 
-___x_cmd_hub_account_verify(){
-    local ticket="${1}"
-    local res; local return_code
-    res="$(NO_AUTH=1 ___x_cmd_hub___util_curl get /api/v0/account/verify "ticket=$ticket")"; return_code=$?
-    case "$return_code" in
-        0) ;;
-        4)
-            x ui yesno "Your account is not registered, do you want to register it?" || return 1
-            #TODO: register
-            hub:warn "Not implemented yet, please use 'x hub register' to register"
-            return 1
-            # if ! res="$(NO_AUTH=1 ___x_cmd_hub___util_curl get /api/v0/account/activate "ticket=$ticket")" ; then
-            #     ___x_cmd_hub___util_handle_resp false "$res" "Failed to activate account"
-            #     return 1
-            # fi
-            ;;
-        *)
-            ___x_cmd_hub___util_handle_resp false "$res" "Failed to verify token:"
-            ___x_cmd_hub___util_handle_resp false ""     "Failed to login, please check your token"
-            return 1
-            ;;
-    esac
+# "free" "pro"
+___x_cmd_hub_account_upgrade(){
+    local X_help_cmd='___x_cmd_hub___help account upgrade'
+    help:arg:parse
 
-    printf "%s" "$res" | (
-        x jo env . name=.name id=.id plan=.plan email=.email \
-            region=.region token=.token endpoint=.endpoint \
-            token=.token
-        if [ "${name#user_}" != "$name" ] && [ "${#name}" -gt 16 ]; then
-            hub:warn "Your account name is not set, please use 'x hub account rename <username>' to set it"
-        fi
-        ___x_cmd_hub___util_handle_resp true "" "Account info:" \
-            "id: $id" "name: $name"  \
-            "region: $region" # "plan: $plan" "email: $email"
+    local plan="$1"
+    if [ -z "$plan" ] ; then
+        x ui yesno "Upgrade account plan to pro?" || return 1
+        plan="pro"
+    fi
 
-        hub:debug "endpoint => $endpoint"
-        [ "$endpoint" = "$___X_CMD_HUB_SERVICE_URL" ] || {
-            hub:warn "Change endpoint $___X_CMD_HUB_SERVICE_URL => $endpoint"
-            ___x_cmd_hub_cfg --set endpoint="$endpoint"
+    ___x_cmd_hub_u_curl post /api/v0/payment -- "plan=$plan" | {
+        local url; local id; local msg
+        x jo env . url=.codeUrl .id .msg
+        [ -n "$url" ] || {
+            ___x_cmd_hub_u_handle_resp false "Failed to upgrade account plan:"
+            return 1
         }
 
-        ___x_cmd_hub_cfg token="${token}"
-    )
+        ___x_cmd_hub_qrcode "$url" || return 1
+        x ui yesno "Please scan the QR code above to pay, then press [Yes] to continue: " || return 1
 
-    ___x_cmd_ui_tf true "Login success"
+        ___x_cmd_hub_u_curl get "/api/v0/payment/$id" | {
+            local pay_status
+            x jo env . .msg pay_status=.status
+            [ "$pay_status" = "success" ] || {
+                ___x_cmd_hub_u_handle_resp false "Failed to upgrade account plan:"
+                return 1
+            }
+
+            [ -z "$msg" ] || {
+                ___x_cmd_hub_u_handle_resp false "Failed to upgrade account plan:"
+                return 1
+            }
+
+            ___x_cmd_hub_u_handle_resp true "Upgrade plan successfully, plan => $plan"
+        }
+
+    }
 }

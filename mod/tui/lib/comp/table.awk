@@ -16,6 +16,7 @@ function comp_table_init( o, kp ){
     comp_textbox_init(o, kp SUBSEP "footer-textbox")
     draw_table_init( o, kp )
     comp_table_display_column_num( o, kp, true )
+    layout_avg_init( o, kp )
 }
 
 # Section: ctrl handle
@@ -222,7 +223,8 @@ function comp_table_head_add(o, kp, title){
 
 function comp_table_layout_avg_ele_add(o, kp, colid, min, max){
     comp_lineedit_init(o, kp SUBSEP "filter" SUBSEP colid, "", max)
-    return layout_avg_ele_add( o, kp, colid, min, max )
+    layout_avg_ele_add( o, kp, colid, min, max )
+    ctrl_num_set_max(o, kp, layout_avg_get_len(o, kp))
 }
 
 function comp_table_get_head_title(o, kp, i){
@@ -338,7 +340,6 @@ function comp_table_paint( o, kp, x1, x2, y1, y2,       _opt, _slct_change, _bod
 
     if ( _body_change ) {
         comp_table___pagesize_row( o, kp, opt_get( _opt, "pagesize.row" ))
-        comp_table___pagesize_col( o, kp, opt_get( _opt, "pagesize.col" ))
         comp_table_unava(o, kp, opt_get( _opt, "unava.row" ))
     }
 
@@ -355,9 +356,4 @@ function comp_table_inject_statusline_default( statuso, kp ){
 function comp_table___pagesize_row(o, kp, v){
     if (v == "")  return ctrl_page_pagesize_get(o, kp)
     else          ctrl_page_pagesize_set(o, kp, v)
-}
-
-function comp_table___pagesize_col(o, kp, v){
-    if (v == "")  return ctrl_num_get_max(o, kp)
-    else          ctrl_num_set_max(o, kp, v)
 }

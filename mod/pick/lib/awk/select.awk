@@ -6,8 +6,12 @@ function user_request_selected_data(){
 function tapp_init(){
     PICK_KP = "pick_kp"
     user_request_selected_data()
-    pick_init( o, PICK_KP, true, \
-        PICK_SELECT_TITLE, PICK_ROW, PICK_COL, PICK_WIDTH, PICK_LIMIT )
+    PICK_SIZE[ "ROW" ] = PICK_ROW
+    PICK_SIZE[ "COL" ] = PICK_COL
+    PICK_SIZE[ "WIDTH" ] = PICK_WIDTH
+    PICK_SIZE[ "LIMIT" ] = PICK_LIMIT
+    PICK_SIZE[ "TITLE" ] = PICK_SELECT_TITLE
+    pick_init( o, PICK_KP, true, PICK_SIZE )
 }
 
 # EndSection
@@ -15,9 +19,10 @@ function tapp_init(){
 # Section: user ctrl
 
 function tapp_canvas_rowsize_recalulate( rows,      r ){
-    if (rows < 10) return false # Assure the screen size
-    r = 30
-    return (rows <= r) ? rows - 3 : r
+    if (rows < 4) return false # Assure the screen size
+    r = 15
+    r = (rows <= r) ? rows - 1 : r
+    return (ROW_RECALULATE == "") ? r : ROW_RECALULATE
 }
 
 function tapp_canvas_colsize_recalulate( cols ){
@@ -38,7 +43,7 @@ function tapp_handle_response(fp,       _content, arr){
     _content = cat(fp)
     if( _content == "" ) panic("list data is empty")
     arr_cut(arr, _content, "\n")
-    pick_data_set( o, PICK_KP, arr )
+    pick_data_set( o, PICK_KP, arr, PICK_SIZE )
 }
 
 function tapp_handle_exit( exit_code ){
@@ -52,9 +57,7 @@ function tapp_handle_exit( exit_code ){
 # Section: user view
 
 function user_view(x1, x2, y1, y2,      _res){
-    _res = pick_paint_auto( o, PICK_KP, x1, x2, y1, y2, \
-        PICK_ROW, PICK_COL, PICK_WIDTH )
-
+    _res = pick_paint_auto( o, PICK_KP, x1, x2, y1, y2, PICK_SIZE)
     paint_screen( _res )
 }
 

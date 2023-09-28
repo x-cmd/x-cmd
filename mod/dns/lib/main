@@ -1,0 +1,116 @@
+# shellcheck shell=dash
+
+x log init dns
+
+___x_cmd_dns___main(){
+    [ "$#" -gt 0 ] || set -- current
+
+    local op="$1"; shift
+    case "$op" in
+        current|set|ls|gencsvcmd)
+            "___x_cmd_dns_$op" "$@" ;;
+        -h|--help)       x help -m dns "$@" >&2;     return 1 ;;
+        *)
+            N=dns M="No such command ==> $op" log:ret:64
+    esac
+}
+
+___x_cmd_dns_help(){
+    x help -m dns "$@"  >&2
+    return 1
+}
+
+___x_cmd_dns_current(){
+    local x_
+    x os name_
+    case "$x_" in
+        darwin)
+            scutil --dns | command awk -f "$___X_CMD_ROOT_MOD/dns/lib/awk/scutil.awk"
+            ;;
+        linux)
+            local i=0
+            while read -r line; do
+                case "$line" in
+                    nameserver*)
+                        printf "%s: %s\n" $i "${line#nameserver}"
+                        i=$((i+1))
+                        ;;
+                esac
+            done </etc/resolv.conf
+            ;;
+        *)
+            dns:error "Unsupported os ==> $x_"
+            return 1
+            ;;
+    esac
+}
+
+___x_cmd_dns_set(){
+    x:warn "Unimplmented. We will try to implement this function in the future"
+    x:info "Please visit https://x-cmd.com/dns. We will provide information about setting dns on specific os with our best effort."
+    return 0
+}
+
+# Make it ito csv
+___x_cmd_dns_ls(){
+    [ $# -gt 0 ] || set -- --csv
+    case "$1" in
+        --json|--yml|--csv)
+            "___x_cmd_dns_ls_${1#--}" ;;
+        *)
+            N=dns M="No such option ==> $1" log:ret:64
+    esac
+}
+
+___x_cmd_dns_ls_yml(){
+    local url=
+    case "$(x websrc gitdomain)" in
+        github.com)     url=https://raw.githubusercontent.com/x-cmd/dns/main/data/X.yml   ;;
+        gitee.com)      url=https://gitee.com/x-cmd/dns/raw/main/data/X.yml    ;;
+    esac
+
+    [ -n "$url" ] || return 1
+
+    x httpget "$url"
+}
+
+___x_cmd_dns_ls_json(){
+
+    local url=
+    case "$(x websrc gitdomain)" in
+        github.com)     url=https://raw.githubusercontent.com/x-cmd/dns/main/data/X.json   ;;
+        gitee.com)      url=https://gitee.com/x-cmd/dns/raw/main/data/X.json    ;;
+    esac
+
+    [ -n "$url" ] || return 1
+
+    x httpget "$url"
+}
+
+___x_cmd_dns_ls_csv(){
+    if [ -t 1 ]; then
+        local csvcmd
+        csvcmd="$( ___x_cmd_dns_ls_json | ___x_cmd_dns_gencsvcmd)"
+        eval "___x_cmd_dns_ls_json  $csvcmd" | x csv awk  '
+            END{
+            for(i=2; i<=CNF; i=i+3){
+                a = cval(i+1)
+                b = cval(i+2)
+                if(a != "null") {a= juq(a); gsub("\"","",a)}
+                if(b != "null") {b= juq(b); gsub("\"","",b)}
+                if(cval(i) !="") printf("%s %s %s\n", cval(i), a,  b)
+                }
+            }' | \
+            x csv convert --col                                     | \
+            x csv header --add  url ipv4 ipv6                       | \
+            x csv app
+    else
+        local csvcmd
+        csvcmd="$(___x_cmd_dns_json | ___x_cmd_dns_gencsvcmd )"
+        eval "___x_cmd_dns_ls_json  $csvcmd"
+    fi
+}
+
+___x_cmd_dns_gencsvcmd(){
+    x ja -f "$___X_CMD_ROOT_MOD/dns/lib/awk/gen_2csv_cmd.awk"
+}

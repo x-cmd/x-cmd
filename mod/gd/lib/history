@@ -2,11 +2,12 @@
 
 ___x_cmd_gd_history(){
     local X_help_cmd="x help -m gd -H"
-    local op="$1"; [ "$#" -le 0 ] || shift
+    [ "$#" -gt 0 ] || set -- --ls
+    local op="$1"; shift
     case "$op" in
-        --ls|-l)        ___x_cmd_gd_history___list "$@"         ;;
+        --ls|-l)        ___x_cmd_gd_history___list --rev "$@"   ;;
         --clear|-c)     ___x_cmd_gd_history___clear "$@"        ;;
-        --first|--head|--load|--trim|--maxnum|--rm)
+        --first|--head|--trim|--maxnum|--rm)
                         "___x_cmd_gd_history___${op#--}" "$@"   ;;
         --help|-h)      help:show:ret:0  ;;
         *)              help:show:ret:64 ;;
@@ -15,87 +16,92 @@ ___x_cmd_gd_history(){
 
 ___x_cmd_gd_history___clear(){
     # very less used
-    ___X_CMD_GD_HISTORY=
-    [ "$1" != -f ] || x rmrf "$___X_CMD_GD_DATA/history"
+    x rmrf "$___X_CMD_GD_DATA/history" "$___X_CMD_GD_DATA/history.reverse"
 }
 
 ___x_cmd_gd_history___rm(){
     local l_tmp=; local r_tmp=; local x_
-    local history_new="${___X_CMD_GD_HISTORY}${___X_CMD_UNSEENCHAR_NEWLINE}"
+    local list="$( ___x_cmd_gd_history___list )"
+    local list_new="${list}${___X_CMD_UNSEENCHAR_NEWLINE}"
     while [ "$#" -ne 0 ]; do
         x_=""; x abspath_ "$1"; shift
-        l_tmp="${history_new%%"${x_}${___X_CMD_UNSEENCHAR_NEWLINE}"*}"
-        if [ "$l_tmp" != "$history_new" ]; then
-            r_tmp="${history_new#*"${x_}${___X_CMD_UNSEENCHAR_NEWLINE}"}"
-            history_new="${l_tmp}${r_tmp}"
+        l_tmp="${list_new%%"${x_}${___X_CMD_UNSEENCHAR_NEWLINE}"*}"
+        if [ "$l_tmp" != "$list_new" ]; then
+            r_tmp="${list_new#*"${x_}${___X_CMD_UNSEENCHAR_NEWLINE}"}"
+            list_new="${l_tmp}${r_tmp}"
         fi
     done
-    history_new="${history_new%%"$___X_CMD_UNSEENCHAR_NEWLINE"}"
-    if [ "$history_new" != "$___X_CMD_GD_HISTORY" ]; then
-        ___X_CMD_GD_HISTORY="$history_new"
-        ___x_cmd_gd_history___trim
+    list_new="${list_new%"$___X_CMD_UNSEENCHAR_NEWLINE"}"
+    if [ "$list_new" != "$list" ]; then
+        printf "%s\n" "$list_new" > "$___X_CMD_GD_DATA/history"
     fi
 }
 
 ___x_cmd_gd_history___head(){
-    printf "%s\n" "$___X_CMD_GD_HISTORY" | ___x_cmd_gd_util___head "$1"
+    ___x_cmd_gd_history___list --rev | ___x_cmd_gd_util___head "$1"
 }
 
 ___x_cmd_gd_history___list(){
-    printf "%s\n" "$___X_CMD_GD_HISTORY"
+    ___x_cmd_gd_history___trim || return 0
+    [ "$1" = --rev ] || {
+        x rat "$___X_CMD_GD_DATA/history"
+        return
+    }
+    x rat "$___X_CMD_GD_DATA/history.reverse"
 }
 
 ___x_cmd_gd_history___trim(){
-    ___X_CMD_GD_HISTORY="$(___x_cmd_gd_history___head "$1" | ___x_cmd_gd_util___uniq)"
-    ___x_cmd_gd_history___list | ___x_cmd_gd_util___reverse > "$___X_CMD_GD_DATA/history"
+    [ -f "$___X_CMD_GD_DATA/history" ] || return
+    < "$___X_CMD_GD_DATA/history" ___x_cmd_gd_util___reverse | ___x_cmd_gd_util___uniq | ___x_cmd_gd_util___head "$1" > "$___X_CMD_GD_DATA/history.reverse"
+    < "$___X_CMD_GD_DATA/history.reverse" ___x_cmd_gd_util___reverse > "$___X_CMD_GD_DATA/history"
 }
 
 ___x_cmd_gd_history___top(){
     local dirpath="$1"
     [ -d "$dirpath" ] || return
     [ -f "$___X_CMD_GD_DATA/history" ] || x touch "$___X_CMD_GD_DATA/history"
-    ___X_CMD_GD_HISTORY="${dirpath}${___X_CMD_GD_HISTORY:+
-}${___X_CMD_GD_HISTORY}"
-    ___x_cmd_gd_history___trim
+    printf "%s\n" "$dirpath" >> "$___X_CMD_GD_DATA/history"
+}
+
+___x_cmd_gd_history___ps1(){
+    [ ! -f "$___X_CMD_GD_DATA/history" ] || {
+        local lastpath=; while read -r l; do
+            lastpath="$l"
+        done < "$___X_CMD_GD_DATA/history"
+        [ "$lastpath" != "$PWD" ] || return 0
+    }
+    ___x_cmd_gd_history___top "$PWD"
 }
 
 ___x_cmd_gd_history___first(){
-    local target="${___X_CMD_GD_HISTORY#*
-*
-}"
-    [ "$target" != "$___X_CMD_GD_HISTORY" ] || M='Not such directory' N=gd log:ret:1
-    target="${target%%
-*}"
+    local i=0; local target=
+    while read -r target; do
+        i=$((i+1))
+        [ "$i" -lt 3 ] || break
+    done <<A
+$( ___x_cmd_gd_history___list --rev )
+A
+    [ "$i" -eq 3 ] || M='Not such directory' N=gd log:ret:1
     ___x_cmd_gd_origin "$target"
 }
 
 ___x_cmd_gd_history___firstmatch(){
     local p="${1}"
-    # using the first match
-    local target; target="$(awk "FNR <= 1" <<A
-$(___x_cmd_gd_history___list | command grep -e "$p")
+    local target=; read -r target <<A
+$( ___x_cmd_gd_history___list --rev | command grep -e "$p" )
 A
-)"
-    [ -d "$target" ] || return
+    [ -d "$target" ] || M='Not such directory' N=gd log:ret:1
     ___x_cmd_gd_origin "$target"
-}
 
-___x_cmd_gd_history___load(){
-    local dict_file="$___X_CMD_GD_DATA/dict"
-    [ ! -f "$dict_file" ] || ___x_cmd_gd_util___dict_inner load dict "$dict_file"
-
-    [ -f "$___X_CMD_GD_DATA/history" ] || return 0
-    ___X_CMD_GD_HISTORY="$(
-        < "$___X_CMD_GD_DATA/history" ___x_cmd_gd_util___uniq | ___x_cmd_gd_util___reverse
-    )"
 }
 
 ___x_cmd_gd_history___maxnum(){
     case "$1" in
-        [0-9]*)     ___x_cmd_gd_util___dict_set dict maxnum "$1" ;;
-        *)          local x_=; ___x_cmd_gd_history___maxnum_get_
+        "")         local x_=; ___x_cmd_gd_history___maxnum_get_
                     printf "%s\n" "$x_"
                     ;;
+        *[!0-9]*)   N=gd M="Max num accepts only one integer arguments. Now get '$*'" log:ret:64 ;;
+        *)          ___x_cmd_gd_util___dict_set dict maxnum "$1" ;;
     esac
 }
 

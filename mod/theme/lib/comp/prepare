@@ -1,0 +1,161 @@
+# shellcheck shell=dash disable=2034
+___x_cmd_theme_comp_prepare(){
+    local comp
+    local x_
+    while [ $# -gt 0 ]; do
+        comp="$1";  shift
+        case "$comp" in
+            msg|username|date|\
+            time_hms|time_h12ms|time_hm|time_h12m|\
+            host|host_full|cwd|cwd1|cwd2|cwd_full|\
+            git_branch|git_changed|git_changed_parse|\
+            exectime|exitcode|exitok)
+                "___x_cmd_theme_comp_${comp}"
+                ;;
+
+            *)
+                theme:error "Unknown component ==> $comp"
+                ;;
+        esac
+    done
+}
+
+alias theme:comp=___x_cmd_theme_comp_prepare
+
+___x_cmd_theme_comp_msg(){
+    ___x_cmd_theme_comp_message
+}
+
+alias theme:comp:git:branch=___x_cmd_theme_comp_git_branch
+alias theme:comp:git:changed=___x_cmd_theme_comp_git_changed
+
+___x_cmd_theme_comp_git_branch(){
+    x_git_branch="$(___x_cmd_theme_git_get_friendly_ref)"
+}
+
+___x_cmd_theme_comp_git_changed(){
+    x_git_changed="$(command git status --porcelain --ignore-submodules=dirty 2>/dev/null)"
+    [ -n "$x_git_changed" ]
+}
+
+___x_cmd_theme_comp_git_changed_parse(){
+    local tmp="$x_git_changed"
+    local l=;   local f2=;  local staging=; local working=
+    while true; do
+        l="${tmp%%"${___X_CMD_UNSEENCHAR_NEWLINE}"*}"
+        tmp="${tmp#*"${l}${___X_CMD_UNSEENCHAR_NEWLINE}"}"
+        f2="${l%"${l#??}"}"
+        staging="${f2%?}"
+        working="${f2#?}"
+        ___x_cmd_theme_comp_git_changed_parse_inner "$staging" staging || break
+        ___x_cmd_theme_comp_git_changed_parse_inner "$working" working || break
+
+        [ "$l" != "$tmp" ] || break
+    done
+}
+
+___x_cmd_theme_comp_git_changed_parse_inner(){
+    case "$1" in
+        M|T|A|D|R|C|U)
+                eval "x_git_changed_${2}_${1}=\$(( x_git_changed_${2}_${1} + 1))"
+                ;;
+        \?)     eval "x_git_changed_${2}_untracked=\$(( x_git_changed_${2}_untracked + 1))" ;;
+        !)      eval "x_git_changed_${2}_ignored=\$(( x_git_changed_${2}_ignored + 1))" ;;
+        ' ')    return 0 ;;
+        *)      return 1 ;;
+    esac
+}
+
+# In the future, we should use gd domain to make it shorter
+___x_cmd_theme_comp_cwd(){
+    if [ "${PWD#"$HOME"}" != "$PWD" ]; then
+        x_cwd="~""${PWD##"${HOME}"}"
+    else
+        x_cwd="$PWD"
+    fi
+}
+
+___x_cmd_theme_comp_cwd1(){
+    x_cwd1="${PWD##*/}"
+}
+
+___x_cmd_theme_comp_cwd2(){
+   case "$PWD" in
+        */*)        x_cwd2="${PWD#"${PWD%/*/*}"/}" ;;
+        *)          x_cwd2="${PWD##*/}" ;;
+   esac
+}
+
+___x_cmd_theme_comp_cwd3(){
+   case "$PWD" in
+        */*/*)      x_cwd3="${PWD#"${PWD%/*/*/*}"/}" ;;
+        */*)        x_cwd3="${PWD#"${PWD%/*/*}"/}" ;;
+        *)          x_cwd3="${PWD##*/}" ;;
+   esac
+}
+
+___x_cmd_theme_comp_cwd_full(){
+    x_cwd_full="$PWD"
+}
+
+___x_cmd_theme_comp_host(){
+    x_host="${HOSTNAME:-${HOST%.local}}"
+
+    local l6o="${x_host#??????}"
+    x_host_6="${x_host%"$l6o"}"
+}
+
+___x_cmd_theme_comp_exitcode(){
+    x_exitcode="$___X_CMD_THEME_EXIT_STATUS"
+}
+
+___x_cmd_theme_comp_exitok(){
+    if [ "${___X_CMD_THEME_EXIT_STATUS}" -eq 0 ]; then
+        x_exitok=1
+    else
+        x_exitok=
+    fi
+}
+
+# shellcheck disable=SC3006,SC2079,2154
+___x_cmd_theme_comp_exectime(){
+    x_exectime=""
+    [ -n "$x_exectime_end" ] || return
+
+    if [ -n "$ZSH_VERSION" ]; then
+        x_exectime=$(( x_exectime_end - x_exectime_start ))
+        if (( x_exectime < 60 )); then
+            local -F 2 _text=$((x_exectime))
+            x_exectime="${_text}s"
+        else
+            local -i _init_time=$((x_exectime))
+            local _text="$((_init_time % 60))s"
+            if (( _init_time >= 60 )); then
+                _text="$((_init_time / 60 % 60))m $_text"
+                if (( _init_time >= 3600 )); then
+                    _text="$((_init_time / 3600 % 24))h $_text"
+                    if (( _init_time >= 86400 )); then
+                        _text="$((_init_time / 86400))d $_text"
+                    fi
+                fi
+            fi
+            x_exectime="$_text"
+        fi
+
+    elif [ -n "$BASH_VERSION" ]; then
+        ___x_cmd_theme_epocsminus_ "$x_exectime_end" "${x_exectime_start}"
+        x_exectime="${x_}s"
+    fi
+}
+
+# if [ "$___X_CMD_SHELL" = dash ]; then
+#     xrc:mod:lib theme   comp/prepare_dash
+# else
+#     xrc:mod:lib theme   comp/prepare_major
+# fi
+
+case "$___X_CMD_SHELL" in
+    zsh)    xrc:mod:lib theme   comp/prepare_zsh    ;;
+    dash)   xrc:mod:lib theme   comp/prepare_dash   ;;
+    *)      xrc:mod:lib theme   comp/prepare_major  ;;
+esac

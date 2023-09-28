@@ -1,0 +1,44 @@
+# shellcheck shell=dash
+___x_cmd_zhipu_sign() {
+    local apikey="$1";  [ -n "$apikey" ] || N=zhipu M="Please provide apikey value"   log:ret:64
+
+    local header='{"alg":"HS256","sign_type":"SIGN","typ":"JWT"}'
+    local current_time; current_time=$(date +%s)
+    local invalid_time; invalid_time="$((current_time + 600))"
+    invalid_time="${invalid_time}000"
+    current_time="${current_time}000"
+
+    local date='{"apikey":"'${apikey%%.*}'","exp":'${invalid_time}',"timestamp":'"${current_time}"'}'
+    header="$(printf "%s" "${header}" | x openssl base64 -A | sed 's/+/-/g; s/\//_/g; s/=*$//')"
+    date="$(printf "%s" "${date}" | x openssl base64 -A | sed 's/+/-/g; s/\//_/g; s/=*$//')"
+
+    local secret; secret="$( printf "%s" "${header}.${date}" |
+        x openssl dgst -sha256 -hmac "${apikey##*.}" -binary |
+        x openssl base64 -A |
+        sed 's/+/-/g; s/\//_/g; s/=*$//'
+    )"
+
+    printf "%s" "${header}.${date}.${secret}"
+}
+
+___x_cmd_zhipu_curl() {
+    local op="$1"
+    local _api_url="$2"
+    shift 2
+    local content="Content-Type: application/json"
+    local apikey; ___x_cmd_zhipu_cur apikey:=
+    local token; token="$(___x_cmd_zhipu_sign "$apikey")"
+    local authorization="Authorization: Bearer ${token}"
+
+    local ___X_CMD_GH_SHOW_HTTP_CODE=1
+    case "$op" in
+    get)
+      x curl -X GET -H "${content}" -H "${authorization}" -s "${_api_url}" "$(x curl gencode "$@")"
+      ;;
+    post)
+      zhipu:info "x curl -X POST -H ${content} -H ${authorization} ${_api_url} $*"
+      eval x curl -X POST "$(x curl gencode "${content}" "${authorization}")" "${_api_url}" "$(x curl gencode "$@")"
+      ;;
+    esac
+}
+

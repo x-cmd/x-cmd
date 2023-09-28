@@ -1,37 +1,91 @@
 # shellcheck shell=dash
 
 xrc ls/latest
+xrc fsiter
 ## Section: locate document: lsname, ls, exact
 ___x_cmd_tldr_listname(){
-    ___x_cmd_tldr_list "$@" | awk -v FS=/ '{ print substr($2, 1, length($2)-3); }' | sort | uniq
+    local l;    ___x_cmd_tldr_list "$@" | while read -r l; do
+        case "$l" in
+            *".md")
+                    l="${l#*/}"
+                    l="${l%".md"}"
+                ;;
+        esac
+        printf "%s\n" "$l"
+    done | sort | uniq
 }
 
-___x_cmd_tldr_list()(
-    local x_tldr_version; ___x_cmd_tldr_current_or_update_ || return
-    if cd "$___X_CMD_TLDR_TMP_DATA/$x_tldr_version/pages" 2>/dev/null; then
-        local cmd="${1}"
-        case "$cmd" in
-            "")     ___x_cmd_ls_bin ls */* ;;
-            */*)    ___x_cmd_ls_bin ls *"$cmd"* ;;
-            *)      ___x_cmd_ls_bin ls */"$cmd"* ;;
-        esac
-    fi 2>/dev/null
-)
+___x_cmd_tldr_list(){
+    ___x_cmd_tldr_version_pages_ || return
+    ___x_cmd_tldr_pages_prepare || return
 
-___x_cmd_tldr_exact()(
-    local x_tldr_version; ___x_cmd_tldr_current_or_update_ || return
-    if cd "$___X_CMD_TLDR_TMP_DATA/$x_tldr_version" 2>/dev/null; then
-        local cmd="$1"; local pages="$2"
-        for i in *; do
-            [ -z "$pages" ] || [ "$i" = "$pages" ] || continue
-            case "$cmd" in
-                "")     ___x_cmd_ls_bin "$i"/*/*     ;;
-                */*/*)  ___x_cmd_ls_bin "$cmd"*
-                        return ;;
-                */*)    ___x_cmd_ls_bin "$i/$cmd"*    ;;
-                *)      ___x_cmd_ls_bin "$i"/*/"$cmd"*   ;;
-            esac
-        done
-    fi 2>/dev/null
-)
+    local cmd="${1}"
+    ___x_cmd_tldr_list___inner "$cmd" "${___X_CMD_TLDR_TMP_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.en"
+    ___x_cmd_tldr_list___inner "$cmd" "${___X_CMD_TLDR_TMP_DATA}/lang/${___X_CMD_TLDR_LANG_VERSION}"
+}
+
+___x_cmd_tldr_list___inner(){
+    local cmd="${1}"
+    local dirpath="${2}/"
+    local i; for i in "${dirpath}"*/* ; do
+        i="${i#"${dirpath}"}"
+        [ -n "$cmd" ] || {
+            printf "%s\n" "$i"
+            continue
+        }
+
+        case "$cmd" in
+            "")  printf "%s\n" "$i" ;;
+            */*)
+                case "$i" in
+                    *"${cmd}"*)     printf "%s\n" "$i" ;;
+                esac
+                ;;
+            *)
+                case "$i" in
+                    *"/${cmd}"*)    printf "%s\n" "$i" ;;
+                esac
+                ;;
+        esac
+    done
+}
+
+
+___x_cmd_tldr_exact___getfile_pages_(){
+    ___x_cmd_tldr_version_pages_ || return
+    local dirpath="$___X_CMD_TLDR_TMP_DATA/$___X_CMD_TLDR_PAGES_VERSION";   [ -d "$dirpath" ] || return
+    local x_=;  local i=;   local prefix="${dirpath}/";  x_file=
+    [ "$1" != --full ] || { prefix=""; shift; }
+
+    local cmd="$1"; local pages="$2";
+    for i in "$dirpath"/*; do
+        [ -z "$pages" ] || [ "${i##*/}" = "$pages" ] || continue
+        case "$cmd" in
+            */*/*)  ___x_cmd_fsiter___list_iter_ "${dirpath}/${cmd}*" "$prefix"
+                    x_file="${x_%"${___X_CMD_UNSEENCHAR_NEWLINE}"}"
+                    [ -f "${prefix}${x_file}" ]
+                    return
+                    ;;
+            "")     ___x_cmd_fsiter___list_iter_ "${i}/*/*" "$prefix";          x_file="${x_file}${x_}" ;;
+            */*)    ___x_cmd_fsiter___list_iter_ "${i}/${cmd}*" "$prefix";      x_file="${x_file}${x_}" ;;
+            *)      ___x_cmd_fsiter___list_iter_ "${i}/*/${cmd}*" "$prefix";    x_file="${x_file}${x_}" ;;
+        esac
+    done
+    x_file="${x_file%"${___X_CMD_UNSEENCHAR_NEWLINE}"}"
+}
+
+___x_cmd_tldr_exact___getfile_lang_(){
+    local lang="${1%%/*}";  local demo="${1#*/}"
+    ___x_cmd_tldr_lang_perpare || return
+    local dir="${___X_CMD_TLDR_TMP_DATA}/lang/${___X_CMD_TLDR_LANG_VERSION}/$lang"
+    [ -d "$dir" ] || return
+
+    demo="${demo%%.*}"
+    tldr:debug "lang[$lang] demo[$demo]"
+    for x_file in "$dir"/*; do
+        [ "$x_file" = "${x_file#"${dir}/${demo}"}" ] || return 0
+    done
+    x_file=""
+    return 1
+}
 # EndSection

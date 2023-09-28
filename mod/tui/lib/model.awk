@@ -5,7 +5,7 @@ function model_arr_init( o, kp ){
     o[ kp L ] = 0
 }
 
-function model_arr_add( o, kp, val ) {
+function model_arr_add( o, kp, val,     l ) {
     kp = kp SUBSEP "data-arr"
     l = o[ kp, "data" L ] = o[ kp, "data" L ] + 1
     o[ kp, "data", l ] = val

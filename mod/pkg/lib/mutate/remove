@@ -1,24 +1,25 @@
-# shellcheck    shell=dash     # xrc
+# shellcheck    shell=dash disable=SC2034    # xrc
  ___x_cmd_pkg_remove(){
     x:trace pkg/remove
 
-    case "$1" in
-        -h|--help)
-            ___x_cmd_pkg_help remove
-            return 1
-            ;;
-    esac
+    local X_help_cmd='___x_cmd_pkg_help remove'
+    help:arg:parse
 
-    local name="${1:?Provide pkg name}"
+    local name="${1}"
+    [ -n "$name" ] || {
+        return 0
+    }
     local version="${2:-$(___x_cmd_pkg_default_version "$name")}"
     [ -n "$version" ] || return
     local osarch="${3:-$(___x_cmd_pkg_osarch)}"
     local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
+    local tgt_folder=${tgt%/*}
     local os="${osarch%/*}";  local arch="${osarch#*/}"
     local install_path="$tgt"
     local download_file_ext
     ___x_cmd_pkg___attr "$name" "$version" "$osarch" download_file_ext
     local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}_${os}_${arch}.$download_file_ext"
+    ___x_cmd_pkg_remove_detect "$name" "$version" || return 1
 
 
     if [ -f "$ball" ]; then
@@ -30,7 +31,33 @@
     if ! [ -d "$install_path" ];then
         pkg:warn "This $name $version is no exist in local."
     else
-        pkg:info "Remove $name $version"
         x rmrf "$install_path"
+        if [ -z "$(x ls -A "$tgt_folder" 2>/dev/null)" ]; then
+            x rmrf "$tgt_folder"
+        fi
+        pkg:info "Remove $name $version"
     fi
 }
+
+___x_cmd_pkg_remove_detect(){
+    xrc ui
+    local name="${1}"
+    local version="${2}"
+    local env_name
+    local version_and_srcipt
+    local env_version
+
+    local line; while read -r line; do
+        [ -n "$line" ] || continue
+        env_name="${line%%=*}"
+        version_and_srcipt="${line#"$env_name"=}"
+        env_version="${version_and_srcipt%%=*}"
+
+        if [ "$env_name" = "$name" ] && [ "$env_version" = "$version" ]; then
+            ___x_cmd_ui_yesno "You are using $(___x_cmd_ui bold red "$name $version") in your environment; Do you still want to remove  $(___x_cmd_ui bold red "$name $version") ?" || return
+            x env unuse "$name" "$version"
+        fi
+
+    done <"$___X_CMD_ENV_VERSION_CONFIG_PATH"
+}
+

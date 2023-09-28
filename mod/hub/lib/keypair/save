@@ -1,28 +1,22 @@
 # shellcheck shell=dash
 
 ___x_cmd_hub_keypair_save(){
-    local key_path; key_path="$(___x_cmd_hub___util_user_dir me keypair)" || return 1
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --help|-h|"")    ___x_cmd_hub___help key generate ; return 1 ;;
-            --key-path)      shift ;  key_path="$1" ; shift;;
-            *) break ;;
-        esac
-    done
+    local X_help_cmd='___x_cmd_hub___help keypair save'
+    help:arg:parse
 
-    local name="${1:-"$___X_CMD_HUB_KEYPAIR"}"
-    local public_key_path="$key_path/${name}_public.pem"
-    local private_key_path="$key_path/${name}_private.pem"
-    hub:debug "public_key_path=$public_key_path private_key_path=$private_key_path"
-
-    if [ ! -f "$public_key_path" ] || [ ! -f "$private_key_path" ] ; then
-        hub:error "Key not exists, $public_key_path or $private_key_path"
+    if [ ! -f "$___X_CMD_HUB_PUBLIC_KEY_PATH" ] || [ ! -f "$___X_CMD_HUB_PRIVATE_KEY_PATH" ] ; then
+        hub:error "Key not exists, $___X_CMD_HUB_PUBLIC_KEY_PATH or $___X_CMD_HUB_PRIVATE_KEY_PATH"
         return 1
     fi
 
     hub:info "Please input password for encrypt private key"
     local password1; local password2
     while true ; do
+        if ! ___x_cmd_is_interactive_tty || [ ! -t 1 ]; then
+            hub:error "Password required, but not in interactive tty"
+            return 1
+        fi
+
         ___X_CMD_TUI_FORM_FINAL_COMMAND=""
         x tui form \
             password1      "Password"           ""  '=~*'  '^.*$' -- \
@@ -36,21 +30,21 @@ ___x_cmd_hub_keypair_save(){
     done
 
 
-    local private_key_enc_base64_path="$key_path/${name}_private.enc.base64"
-    x openssl enc -aes-256-cbc -salt -in "$private_key_path" -out - -pbkdf2 -pass pass:"$password1" |
-        x openssl enc -A -base64 > "$private_key_enc_base64_path"
+    local private_key_enc_base64_path="$___X_CMD_HUB_PRIVATE_KEY_PATH.enc.base64"
+    x openssl enc -aes-256-cbc -salt -in "$___X_CMD_HUB_PRIVATE_KEY_PATH" -out - -pbkdf2 -pass pass:"$password1" \
+        | x openssl enc -A -base64 > "$private_key_enc_base64_path"
     hub:debug "Encrypted private key => $private_key_enc_base64_path"
 
-    local res;
-    if ! res="$(___x_cmd_hub___util_curl post /api/v0/key -F "file=@$private_key_enc_base64_path" "type=private" "name=${name}")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to put private key"
+    local resp;
+    resp="$(___x_cmd_hub_u_curl post "/api/v0/key?type=private&name=${___X_CMD_HUB_KEYPAIR_NAME}" -F "file=@$private_key_enc_base64_path" )" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to put private key"
         return 1
-    fi
+    }
 
-    if ! res="$(___x_cmd_hub___util_curl post /api/v0/key -F "file=@$public_key_path" "type=public" "name=${name}")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to put public key"
+    resp="$(___x_cmd_hub_u_curl post "/api/v0/key?type=public&name=${___X_CMD_HUB_KEYPAIR_NAME}" -F "file=@$___X_CMD_HUB_PUBLIC_KEY_PATH" )" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to put public key"
         return 1
-    fi
+    }
 
     hub:info "Key saved"
 }

@@ -227,12 +227,14 @@ function user_helpdoc_paint( x1, x2, y1, y2, is_ctrl_help,      rootkp, w, _res)
     return _res
 }
 
-function user_paint( x1, x2, y1, y2 ){
+function user_paint( x1, x2, y1, y2,        w ){
+    if ((y2 - y2) < 110) w = 42
+    else w = 45
     if (! comp_statusline_isfullscreen(o, STATUSLINE_KP)) {
         ctrl_help = ctrl_sw_get(o, APPKP)
         paint_screen( comp_statusline_paint( o, STATUSLINE_KP, x1, x1, y1, y2 ) )
-        paint_screen( comp_navi_paint( o, NAVI_KP, x1+1, x2, y1, y1+42, ctrl_help ) )
-        paint_screen( user_helpdoc_paint( x1+1, x2, y1+43, y2, ctrl_help ) )
+        paint_screen( comp_navi_paint( o, NAVI_KP, x1+1, x2, y1, y1+w, ctrl_help ) )
+        paint_screen( user_helpdoc_paint( x1+1, x2, y1+w+1, y2, ctrl_help ) )
     } else {
         comp_statusline_set_fullscreen( o, STATUSLINE_KP, x1, x2, y1, y2 )
         paint_screen( comp_statusline_paint(o, STATUSLINE_KP) )

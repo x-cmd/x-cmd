@@ -1,0 +1,207 @@
+# shellcheck shell=sh
+# shellcheck disable=SC3043,2034,2154
+____x_cmd_sign_ali(){
+    local op="${1}"
+    local method="${2}"
+    shift 2
+    local host="${host}"
+    local date
+    case "${op}" in
+        ecs)
+            method="${method}&%2F&"
+            local signature_method="HMAC-SHA1"
+            local signature_version="1.0"
+            date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            local format="${format:-"json"}"
+            ;;
+        lambda)
+            local url="${1}" ; shift
+            local signature_method="ACS3-HMAC-SHA256"
+            date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            ;;
+        oss)
+            local url="${1}" ; shift
+            date="$(env LANG=en_US.UTF-8 date -u +"%a, %d %b %Y %H:%M:%S GMT")"
+            local content_type="${content_type:-"application/json"}"
+            ;;
+    esac
+    local _x_sign_data=;
+    _x_post_param=;
+    ___x_cmd_sign_header_  "${op}" "$@" || return 1
+
+    local sign_data="${_x_sign_data}"
+    local param_url="${_x_param_url}"
+    local _x=;
+    ___x_cmd_sign_url_"${op}"_ "${host}" "${sign_data}"
+    _x_url="${_x}"
+}
+
+# Section header
+___x_cmd_sign_header_(){
+    local access_key_id="${access_key_id:-"$(x ali --cfg get access_key_id )"}"
+    local access_key_secret="${access_key_secret:-"$(x ali --cfg get access_key_secret)"}"
+
+    local op="${1}";shift
+
+    [ "${op}" = "oss" ] || {
+        local signature_nonce
+        signature_nonce="$(x openssl rand -hex 20)"
+
+        local version="${version}"
+        local action="${action}"
+        if [ -z "${version}" ] || [ -z "${action}" ];then
+            api:error "version or action is null"
+            return 1
+        fi
+    }
+
+    case "${op}" in
+        ecs)
+            local public_param="Format=${format}
+Version=${version}
+AccessKeyId=${access_key_id}
+SignatureMethod=${signature_method}
+Timestamp=${date}
+Action=${action}
+SignatureNonce=${signature_nonce}
+SignatureVersion=${signature_version}"
+            ;;
+        lambda)
+            local header="host:$host
+x-acs-action:${action}
+x-acs-date:${date}
+x-acs-signature-nonce:${signature_nonce}
+x-acs-version:${version}
+${ali_lambda_header}"
+            ;;
+    esac
+    _x_sign_data=; _x_param_url=; ___x_cmd_sign_param_"${op}"_  "$@"
+}
+# EndSection
+
+# Section ecs
+___x_cmd_sign_param_ecs_(){
+    local param_url
+     eval "$( printf "%s\n%s\n" "${public_param}" "$@" | sort | {
+        x cawk -m url,sh -v _x_cut="=" -v method="$method" -v op="ecs"  -f "$___X_CMD_ROOT_MOD/api/lib/sign/awk/url_param.awk"
+    })"
+
+    local signature
+    signature="$(printf "%s" "$param_url" | {
+        x openssl dgst -sha1 -hmac "${access_key_secret}&" -binary
+    } | {
+        x openssl base64
+    })"
+
+    eval "$( (  local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
+                printf "%s\n%s\n%s\n" "${public_param}" "--X--" "$@") | {
+                    x cawk  -m url,sh -v _x_cut="=" -v method="$method" -v signature="$signature"   \
+                    -f "$___X_CMD_ROOT_MOD/api/lib/sign/awk/url_param.awk"
+    })"
+    _x_sign_data="${param_url}&Signature=${signature}"
+}
+
+___x_cmd_sign_url_ecs_(){
+    local host="${1}"
+    local sign_data="${2}"
+    _x="${host}?${sign_data}"
+}
+# EndSection
+
+# Section oss
+___x_cmd_sign_param_oss_(){
+    local oss_headers
+    local ali_json_data
+    eval "$(printf "%s" "${gen_ali_json}" | x cawk -v method="$method" -m j/json,j/jiter -f "$___X_CMD_ROOT_MOD/api/lib/sign/awk/oss_header_data.awk")" || return 1
+    gen_ali_json="${ali_json_data}"
+    local signature
+    local ali_oss_md5
+    if [ -n "$_file_path" ]; then
+        ali_oss_md5=$(x openssl md5 --binary "$_file_path" | x openssl base64)
+    else
+        ali_oss_md5=$(printf "%s" "${gen_ali_json}" | x openssl md5 --binary | x openssl base64)
+    fi
+
+    # local oss_headers="${oss_headers}"
+    if [ -n "${oss_headers}" ];then
+        oss_headers="$( printf "%s" "${oss_headers}" | command awk -v FS=":" -f "$___X_CMD_ROOT_MOD/ali/lib/awk/convert.awk" | sort)
+"
+    else
+        unset oss_headers
+    fi
+
+    signature=$(    printf "%s\n%s\n%s\n%s\n%s%s" "${method}" "${ali_oss_md5}" \
+                    "${content_type}" "${date}" "${oss_headers}" \
+                    "${bucket:+"/${bucket}"}${url}" | x openssl dgst -sha1 -hmac "${access_key_secret}" -binary | x openssl base64)
+
+# Content-MD5:${ali_oss_md5}
+    _x_sign_data="${oss_headers}
+Date:${date}
+Content-Type:${content_type}
+Content-MD5:${ali_oss_md5}
+Authorization:OSS ${access_key_id}:${signature}"
+}
+
+___x_cmd_sign_url_oss_(){
+    local host="${1}"
+    local sign_data="${2}"
+    local url="${url}"
+    local header
+    header="$(x curl gencode "${sign_data}")"
+    if [ -n "${_file_path}" ];then
+        _x="${header} -T ${_file_path} https://${host}${url}"
+    else
+        _x="${header} https://${host}${url}"
+    fi
+}
+# EndSection
+
+# Section lambda
+___x_cmd_sign_param_lambda_(){
+    local param_url
+    eval "$(
+        {
+            local IFS
+            IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
+            printf "%s\n" "$*"
+        } | sort | {
+            x cawk -m url,sh -v _x_cut="=" -f "$___X_CMD_ROOT_MOD/api/lib/sign/awk/url_param.awk"
+    })"
+
+    local payload_hash
+    payload_hash=$(printf "%s" "${gen_ali_json}" | x sha256 )
+
+    local canonical_headers
+    local signed_headers
+
+    eval "$(printf "%s\n%s\n" "${header}" "x-acs-content-sha256:${payload_hash}" | sort \
+                | x cawk -m sh -f "${___X_CMD_ROOT_MOD}/api/lib/sign/awk/header.awk")"
+
+    local string_to_sign
+    string_to_sign="$( printf "%s\n%s\n%s\n%s\n%s\n%s" "$method" "$url" "$param_url" "$canonical_headers" "$signed_headers" "$payload_hash" | x sha256)"
+    api:debug "string_to_sign:${signature_method} $string_to_sign"
+
+    local signature
+    signature="$(printf "%s\n%s" "${signature_method}" "$string_to_sign" | x openssl sha256 -hex -hmac "${access_key_secret}")"
+    signature="${signature##*"(stdin)= "}"
+
+    _x_sign_data="${canonical_headers}
+Authorization:${signature_method} Credential=${access_key_id},SignedHeaders=${signed_headers},Signature=${signature}"
+
+    _x_param_url="${param_url}"
+
+}
+
+___x_cmd_sign_url_lambda_(){
+    local host="${1}"
+    local sign_data="${2}"
+    local url="${url}"
+    local header
+    header="$(x curl gencode "${sign_data}")"
+    if [ -n "${param_url}" ];then
+        _x="${header} \"https://${host}${url}?${param_url}\""
+    else
+        _x="${header} https://${host}${url}"
+    fi
+}
+# EndSection

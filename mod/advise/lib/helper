@@ -4,43 +4,62 @@
 ___x_cmd_advise__ls(){ local IFS="$___X_CMD_ADVISE_IFS_INIT"; candidate_exec_arr=( $(x ls "$@") ); }
 
 ___x_cmd_advise__dir(){
-    if [ -n "$ZSH_VERSION" ]; then
-        _path_files -/
-    elif command -v _filedir >/dev/null 2>&1; then
-        _filedir -d
-    else
-        local localdir="${1:-${cur:-""}}"
-        ___x_cmd_advise_set_nospace
-        COMPREPLY=( $( compgen -S "/" -d "$localdir" 2>/dev/null) )
+    if [ -z "$candidate_prefix" ]; then
+        if [ -n "$ZSH_VERSION" ]; then
+            _path_files -/
+            return
+        elif command -v _filedir >/dev/null 2>&1; then
+            _filedir -d
+            return
+        fi
     fi
+    local localdir="${1:-${cur:-""}}"
+    local IFS="$___X_CMD_ADVISE_IFS_INIT"
+    candidate_nospace_arr=( $( ___x_cmd_advise_exec___list_filepath_ "$localdir" -d 2>/dev/null ) )
 }
 
-# TODO: same as _files
 ___x_cmd_advise__file(){
-    if [ -n "$ZSH_VERSION" ]; then
-        _files
-    elif command -v _filedir >/dev/null 2>&1; then
-        _filedir
-    else
-        local localdir="${1:-${cur:-""}}"
-        ___x_cmd_advise_set_nospace
-        COMPREPLY=( $(compgen -f "$localdir" 2>/dev/null) )
+    if [ -z "$candidate_prefix" ]; then
+        if [ -n "$ZSH_VERSION" ]; then
+            _files
+            return
+        elif command -v _filedir >/dev/null 2>&1; then
+            _filedir
+            return
+        fi
     fi
+    local localdir="${1:-${cur:-""}}"
+    local IFS="$___X_CMD_ADVISE_IFS_INIT"
+    candidate_nospace_arr=( $( ___x_cmd_advise_exec___list_filepath_ "$localdir" 2>/dev/null ) )
 }
 
-___x_cmd_advise_set_nospace(){
-    if [ -n "$ZSH_VERSION" ]; then
-        # TODO: ZSH complete no add space
-        zstyle ':completion:*' add-space false
-        # zstyle ':completion:*' insert-tab false
-    elif command -v compopt >/dev/null 2>&1; then
-        compopt -o nospace
+___x_cmd_advise_exec___list_filepath_(){
+    local cur="$1"
+    local localdir="${cur%/*}"
+    if [ "$localdir" != "$cur" ]; then
+        command find "$localdir" -maxdepth 1 | ___x_cmd_advise_exec___list_filepath_inner_ "$@"
+        return
     fi
+    x ls | ___x_cmd_advise_exec___list_filepath_inner_ "$@"
 }
+
+___x_cmd_advise_exec___list_filepath_inner_(){
+    local cur="$1"
+    local folder=; [ "$2" != -d ] || folder=1
+    local l; while read -r l; do
+        [[ "$l" == $cur* ]] || continue
+        if [ -d "$l" ]; then
+            l="$l/"
+        else
+            [ -z "$folder" ] || continue
+        fi
+        printf "%s\n" "$l"
+    done
+}
+
 # 1/10
 ___x_cmd_advise__seq(){
-    local cur="${cur:-""}"
-    candidate_exec_arr=( $(awk -v range="$1" -v cur="$cur" '
+    candidate_exec_arr=( $( command awk -v range="$1" -v cur="${cur:-"0"}" '
 function inside(num, start, end, step){
     if ( (num < start) || (num > end) ) return 0
     if ( ( num - start ) % step == 0 ) return 1
@@ -48,33 +67,18 @@ function inside(num, start, end, step){
 }
 
 BEGIN{
-
-    arr_len = split(range, arr, /\//)
-    start = arr[1]
-    end = arr[2]
-    step = arr[3]
-    if (step == "") step = 1
-
-    num = (end - start + 1) / step
-    if (num < 16) {
-        for (i=start; i<=end; i=i+step) print i
-        exit(0)
-    }
-
-    if (cur !~ /[0-9]+/) {
-        exit(0)
-    }
-
+    if ((cur != "") && (cur !~ /^[0-9]+$/)) exit(0)
+    split(range, arr, /\//)
+    start = int(arr[1]); end = int(arr[2]); step = int(arr[3]); cur = int(cur)
+    if (step == 0) step = 1
     if (inside(cur, start, end, step) == 1) print cur
-
     cur = cur * 10
     for (i=0; i<=9; ++i) {
         newnum = cur + i
         if (inside(newnum, start, end, step) == 1) print newnum
     }
 }
-' <<A
-A
+'
     ))
 
 }
@@ -101,7 +105,7 @@ ___x_cmd_advise__comp_from_x(){
     local x_=; ___x_cmd_advise___get_mod_advise_jso_ "$module"
     [ -f "$x_" ] || return 1
 
-    [ "$___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST" != "${___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST#*${___X_CMD_UNSEENCHAR_NEWLINE}${module}${___X_CMD_UNSEENCHAR_NEWLINE}}" ] || \
+    [ "$___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST" != "${___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST#*"${___X_CMD_UNSEENCHAR_NEWLINE}${module}${___X_CMD_UNSEENCHAR_NEWLINE}"}" ] || \
     xrc "$module" # 2>/dev/null
     candidate_exec=
     eval "$(___x_cmd_advise_get_result_from_awk "$x_")" 2>/dev/null

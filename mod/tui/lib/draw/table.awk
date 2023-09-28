@@ -53,7 +53,7 @@ function draw_table( o, kp, x1, x2, y1, y2, opt, \
 }
 
 # Section: paint table body
-function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row, _selected_w, _viewcoll, _unavailable_row, _start, _end, i, l, ri, j, w, c, _str, col, _num_w){
+function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row, _selected_w, _lc, _rc, _unavailable_row, _start, _end, i, l, ri, j, w, c, _str, col, _num_w){
     if ( ! change_is(o, kp, "table.body") ) return
     change_unset(o, kp, "table.body")
 
@@ -66,11 +66,11 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row,
     if (opt_getor( opt, "num.enable", false )) _num_w = length( l ) + 1
     if (opt_getor( opt, "multiple.enable", false )) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
     _num_w = _num_w + _selected_w
-    layout_avg_cal(o, kp, col = col-_num_w)
-    _viewcoll = layout_avg_get_len(o, kp)
+    layout_avg_cal(o, kp, col = col-_num_w, opt_get( opt, "cur.col" ) )
+    _lc = layout_avg_get_left_col(o, kp)
+    _rc = layout_avg_get_right_col(o, kp)
 
     opt_set( opt, "pagesize.row", row )
-    opt_set( opt, "pagesize.col", _viewcoll )
 
     _start = draw_unit_page_begin( opt_get( opt, "cur.row" ), row )
     _end   = draw_unit_page_end( opt_get( opt, "cur.row" ), row, l )
@@ -84,7 +84,7 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row,
             _str = _str draw_table___on_null_data( o, kp, ri, col )
         } else {
             c = _num_w
-            for (j=1; j<=_viewcoll; ++j) {
+            for (j=_lc; j<=_rc; ++j) {
                 w = layout_avg_get_size(o, kp, j)
                 _str = _str "\r" painter_right( y1+c ) draw_table___on_cell(o, kp, i, j, w)
                 c += w
@@ -137,21 +137,23 @@ function draw_table___on_box( o, kp, x1, x2, y1, y2, color,       s ){
     return s
 }
 
-function draw_table___on_header(o, kp, x1, x2, y1, y2, opt,               _num_w, _space_w, _selected_w, s, l, i, w, v, icon_w, c ){
+function draw_table___on_header(o, kp, x1, x2, y1, y2, opt,               _num_w, _space_w, _selected_w, s, _cur_col, _lc, _rc, i, w, v, icon_w, c ){
     if ( ! change_is(o, kp, "table.head") ) return
     change_unset(o, kp, "table.head")
     if (opt_getor( opt, "multiple.enable", false )) _selected_w = TH_TABLE_NUM_PREFIX_WIDTH
     if (opt_getor( opt, "num.enable", false )) _num_w = length( opt_get( opt, "data.maxrow" ) ) + 1
     c = _space_w = _num_w + _selected_w
-    layout_avg_cal(o, kp, y2-y1+1-_space_w)
-    l = layout_avg_get_len(o, kp)
+    _cur_col = opt_get( opt, "cur.col" )
+    layout_avg_cal(o, kp, y2-y1+1-_space_w, _cur_col)
+    _lc = layout_avg_get_left_col(o, kp)
+    _rc = layout_avg_get_right_col(o, kp)
 
     s = TH_TABLE_HEADER_ITEM_NORMAL space_rep(_space_w)
-    for (i=1; i<=l; ++i){
+    for (i=_lc; i<=_rc; ++i){
         w = layout_avg_get_size(o, kp, i)
         v = table_arr_head_get(o, kp, layout_avg_get_item(o, kp, i))
-        gsub("\n.*$", "", v)
-        if ( i != opt_get( opt, "cur.col" ) ) v = th( TH_TABLE_HEADER_ITEM_NORMAL, space_restrict_or_pad_utf8(v, w) )
+        v = draw_text_first_line(v)
+        if ( i != _cur_col ) v = th( TH_TABLE_HEADER_ITEM_NORMAL, space_restrict_or_pad_utf8(v, w) )
         else {
             icon_w = wcswidth_cache(TH_TABLE_ICON)
             v = wcstruncate_cache(v, w - icon_w)

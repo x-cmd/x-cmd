@@ -1,0 +1,98 @@
+# shellcheck shell=dash disable=SC2034,SC2154
+___x_cmd_gddy_domain_customer(){
+    param:subcmd ___x_cmd_gddy_domain_customer                            \
+        info          "Retrieve details for the specified Domain"         \
+        privacy       "privacy management"                                \
+        transferin    "Domain transfer management from outside"           \
+        transferout   "Domain transfer management from the platform"
+
+    param:subcmd:try
+    param:run
+}
+
+___x_cmd_gddy_domain_customer_info(){
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    --customerid        "The Customer identifier"                                                      <>
+    --request_id        "A client provided identifier for tracking this request"                       <>=""
+    --domain            "Domain name whose details are to be retrieved"                                <>
+    --includes          "Optional details to be included in the response"                              <>   =   actions contacts dnssecRecords registryStatusCodes
+
+'
+    param:run
+    [ -z "$request_id" ]  ||   header="${header} -H 'X-Request-Id: ${request_id}' "
+
+    ___x_cmd_gddy_curl get "/v2/customers/${customerid}/domains/ssd?includes=${includes}" | ___x_cmd_gddy_domain_customer___handle_ui info
+}
+
+___x_cmd_gddy_domain_customer_privacy(){
+    param:subcmd ___x_cmd_gddy_domain_customer_privacy                                                  \
+        get         "Retrieve privacy email forwarding settings showing where emails are delivered"     \
+        update      "Update privacy email forwarding settings to determine how emails are delivered"
+    param:subcmd:try
+    param:run
+}
+
+___x_cmd_gddy_domain_customer_privacy_get(){
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    --customerid        "The Customer identifier"                                                      <>
+    --request_id        "A client provided identifier for tracking this request"                       <>=""
+    --domain            "Domain name whose details are to be retrieved"                                <>
+'
+    param:run
+    [ -z "$request_id" ]  ||   header="${header} -H 'X-Request-Id: ${request_id}' "
+    ___x_cmd_gddy_curl get "/v2/customers/${customerid}/domains/${request_id}/privacy/forwarding" | ___x_cmd_gddy_domain_customer___handle_ui privacy_get
+}
+
+___x_cmd_gddy_domain_customer_privacy_update(){
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    --customerid        "The Customer identifier"                                                      <>
+    --request_id        "A client provided identifier for tracking this request"                       <>=""
+    --domain            "Domain name whose details are to be retrieved"                                <>
+    --privateemailtype  "The private email type"                                                       <>   = DEFAULT  RANDOM
+    --forwardingemail   "The email that it forwards to"                                                <>
+    --emailpreference   "The email forwarding preference for the domain"                               <>   = EMAIL_FILTER EMAIL_SEND_ALL EMAIL_SEND_NONE
+'
+    param:run
+
+    local gen_gddy_json=""
+    gen_gddy_json="$(param:option2json -request_id -customerid -domain)"
+    gddy:debug "$gen_gddy_json"
+
+    [ -z "$request_id" ]  ||   header="${header} -H 'X-Request-Id: ${request_id}' "
+    ___x_cmd_gddy_curl patch "/v2/customers/${customerid}/domains/${request_id}/privacy/forwarding"  "$gen_gddy_json"
+
+    if ! ___x_cmd_gddy_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Updated privacy email forwarding setting successful"
+    else
+        ___x_cmd_ui_tf false "Updated privacy email forwarding setting failure" >&2
+    fi
+}
+
+
+___x_cmd_gddy_domain_customer_privacy___handle_ui(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gddy_http_error
+        return
+    fi
+    if ___x_cmd_gddy_http_error; then
+        case "$1" in
+            privacy_get)
+                x ja jl2c .privateEmail .forwardingEmail .emailPreference | \
+                x csv header --add  PrivateEmail    ForwardingEmail  EmailPreference | \
+                x csv static_tab
+                ;;
+            info)
+                x ja jl2c .domainId .domain .status .expiresAt |\
+                x csv header --add  DomainId  Domain  Status ExpireAt | \
+                x csv static_tab
+                ;;
+        esac
+    fi
+}

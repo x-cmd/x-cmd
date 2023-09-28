@@ -1,16 +1,63 @@
 # shellcheck shell=sh
-# shellcheck disable=SC3043
+# shellcheck disable=SC3043,2154
 ___x_cmd_api_aws(){
     local op="$1"; shift
     local param
     local url
     local aws_header="${___X_CMD_API_TMP}/.____x_cmd_aws_curl_header"
     case "${op}" in
-        oss)
-            category=oss
-            ___x_cmd_api_aws  "$@"
+        s3|ec2|lambda|dns|domain|redis|price|cloudtrail)
+            ___x_cmd_api_aws_ec2 "${op}" "$@"
             ;;
-        get|post|put|patch)
+        *)
+            _____x_cmd_api_help aws
+            return 1
+            ;;
+    esac
+}
+
+___x_cmd_api_aws_ec2(){
+    local service="${1}"
+    local host
+    case "${1}" in
+        s3)
+            host="${___x_api_aws_host:-"${bucket:+"${bucket}."}s3.${region:-"us-east-1"}.amazonaws.com"}"
+        ;;
+        ec2)
+            local version="2016-11-15"
+        ;;
+        lambda)
+            service="lambda"
+        ;;
+        domain)
+            service="route53domains"
+        ;;
+        dns)
+            service="route53"
+            host="${___x_api_aws_host:-"route53.amazonaws.com"}"
+        ;;
+        redis)
+            service="memorydb"
+            host="${___x_api_aws_host:-"memory-db.${region:-"us-east-1"}.amazonaws.com"}"
+        ;;
+        price)
+            service="pricing"
+            host="${___x_api_aws_host:-"api.pricing.${region:-"us-east-1"}.amazonaws.com"}"
+        ;;
+        cloudtrail)
+            service="cloudtrail"
+        ;;
+        *)
+            _____x_cmd_api_help ali
+            return 1
+        ;;
+    esac
+
+    local op="$2"
+    shift 2
+    case "${op}" in
+        get|post|put|del)
+            [ -n "$category" ] || local category="ec2"
             ___x_cmd_api_aws_"${op}" "$@"
             ;;
         ""|-h|--help)
@@ -20,29 +67,23 @@ ___x_cmd_api_aws(){
     esac
 }
 
-___x_cmd_api_aws_oss_sign(){
-    :
-}
-
 ___x_cmd_api_aws_get(){
     ___x_cmd_aws_"${category}"_url_gen GET "$@"
     api:debug   "x curl -D  ${aws_header}  -X GET -s $url"
-    eval "$( printf "%s" "x curl -D ${aws_header} -X GET ${url}" )"
+    eval "$( printf "%s" "x curl -D ${aws_header} -X GET -s ${url}" )"
 }
 
 ___x_cmd_api_aws_post(){
     ___x_cmd_aws_"${category}"_url_gen POST "$@"
-    api:debug  "eval x curl -D ${aws_header} -X POST -s ${param} ${url}"
-    eval x curl -D "${aws_header}" -X POST -s "${param}" "${url}"
-
+    api:debug  "x curl -D ${aws_header} -X POST -s ${param} ${gen_aws_json:+"-d"} ${gen_aws_json:+"\'${gen_aws_json}\'"} ${url}"
+    eval x curl -D "${aws_header}" -X POST -s "${param}" "${gen_aws_json:+"-d"}" "${gen_aws_json:+"\'${gen_aws_json}\'"}" "${url}"
+    # x curl -D "${aws_header}" -X POST -s "${param}" "${gen_aws_json:+"-d"}" "${gen_aws_json:+"${gen_aws_json}"}" "${url}"
 }
 
 ___x_cmd_api_aws_put(){
     ___x_cmd_aws_"${category}"_url_gen PUT "$@"
-    if [ "${category}" = "oss" ];then
-        eval x curl -D "${aws_header}" -X PUT -s "${param}" "$url"
-        return
-    fi
+    api:debug  "x curl -D ${aws_header} -X PUT -s ${param} ${gen_aws_json:+"-d"} ${gen_aws_json:+"\'${gen_aws_json}\'"} ${url}"
+    eval x curl -D "${aws_header}" -X PUT -s "${param}" "${gen_aws_json:+"-d"}" "${gen_aws_json:+"\'${gen_aws_json}\'"}" "${url}"
 }
 
 ___x_cmd_api_aws_patch(){
@@ -50,6 +91,7 @@ ___x_cmd_api_aws_patch(){
 }
 
 ___x_cmd_api_aws_del(){
-    :
+    ___x_cmd_aws_"${category}"_url_gen DELETE "$@"
+    api:debug   "x curl -D  ${aws_header}  -X DELETE -s $url"
+    eval "$( printf "%s" "x curl -D ${aws_header} -X DELETE -s ${url}" )"
 }
-

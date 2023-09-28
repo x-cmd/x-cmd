@@ -22,7 +22,7 @@ function yml_parse_json__dict_key(          r ){
             y_buf_squeeze( RLENGTH )
             return jqu(yml_unquote1(r))
         } else {
-            panic("Expecting a whole single quote stirng: " Y_BUF)
+            yml_panic("Expecting a whole single quote stirng: " Y_BUF)
         }
     }
 
@@ -32,7 +32,7 @@ function yml_parse_json__dict_key(          r ){
             y_buf_squeeze( RLENGTH )
             return jqu(yml_u_uq2(r))
         } else {
-            panic("Expecting a whole double quote stirng: " Y_BUF)
+            yml_panic("Expecting a whole double quote stirng: " Y_BUF)
         }
     }
 
@@ -41,7 +41,7 @@ function yml_parse_json__dict_key(          r ){
         y_buf_squeeze( RLENGTH-1 )
         return jqu(yml_u_trim_both(r))
     }
-    panic(" Expecting key but get: " Y_BUF)
+    yml_panic(" Expecting key but get: " Y_BUF)
 }
 
 function yml_parse_json__dict( o, kp,   c, k ){
@@ -147,7 +147,7 @@ function yml_parse_json_value___strx(  _regex_brack_left, _regex_str,     r, _re
         return r
     }
     
-    panic("yml_parse_value___strx(): Cannot found match: " _regex_brack_left)
+    yml_panic("yml_parse_value___strx(): Cannot found match: " _regex_brack_left)
 }
 
 function yml_parse_json__value_ml( o, kp, _nl, _res, _sep ){

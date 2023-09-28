@@ -1,0 +1,110 @@
+# shellcheck shell=dash disable=SC2034
+
+___x_cmd_gddy_abuse(){
+    param:subcmd ___x_cmd_gddy_abuse                                              \
+        ls        "List all abuse tickets ids that match user provided filtes"    \
+        add       "Ctreate a new abuse ticket"                                    \
+        get       "Return the abuse ticket data for a given ticket id"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gddy_abuse _param_help_doc
+    return 1
+}
+
+___x_cmd_gddy_abuse_ls(){
+    param:dsl    '
+options:
+    --type                              "The type of abuse"                                                                    <>=""           = A_RECORD CHILD_ABUSE CONTENT FRAUD_WIRE IP_BLOCK MALWARE NETWORK_ABUSE PHISHING SPAM
+    --closed                            "Is this abuse ticket closed?"                                                         <>="false"      = true false
+    --sourcedomainorip                  "The domain name or ip address the abuse originated from"                              <>=""
+    --target                            "The brand/company the abuse is targeting. ie: brand name/bank name"                   <>=""
+    --createdstart                      "The earliest abuse ticket creation date to pull abuse tickets for (iso-datetime)"     <>=""
+    --createdend                        "The latest abuse ticket creation date to pull abuse tickets for (iso-datetime)"       <>=""
+    --limit                             "Number of abuse ticket numbers to return (integer-positive)"                          <>=100
+    --offset                            "The earliest result set record number to pull abuse tickets for (integer-positive)"   <>=0
+
+    --json|-j                           "output raw JSON data"
+'
+    param:run
+    local cmd=
+    [ -z "$type" ] || cmd="${cmd}type=${type}&"
+    [ -z "$closed" ] || cmd="${cmd}closed=${closed}&"
+    [ -z "$sourceDomainOrIp" ] || cmd="${cmd}sourceDomainOrIp=${sourceDomainOrIp}&"
+    [ -z "$target" ] || cmd="${cmd}target=${target}&"
+    [ -z "$createdStart" ] || cmd="${cmd}createdStart=${createdStart}&"
+    [ -z "$createdEnd" ] || cmd="${cmd}createdEnd=${createdEnd}&"
+    [ -z "$limit" ] || cmd="${cmd}limit=${limit}&"
+    [ -z "$offset" ] || cmd="${cmd}offset=${offset}"
+
+
+    ___x_cmd_gddy_curl get "/v2/abuse/tickets?${cmd}"  |  ___x_cmd_gddy_abuse___handle_ui ls
+}
+
+___x_cmd_gddy_abuse_add(){
+        param:dsl    '
+options:
+    --info                        "Additional information that may assist the abuse investigator"                             <>=""
+    --infourl                     "Reporter URL if housing additional information that may assist the abuse investigator"     <>=""
+    --source                      "The URL or IP where live abuse content is located at"                                      <>
+    --target                      "The brand/company the abuse is targeting"                                                  <>=""
+    --intentional                 "Do you believe this is intentional abuse by the domain holder?"                            <>="false"   = true false
+    --proxy                       "The Proxy information required to view the abuse being reported"                           <>=""
+    --type                        "The type of abuse being reported"                                                          <> = A_RECORD CHILD_ABUSE CONTENT FRAUD_WIRE IP_BLOCK MALWARE NETWORK_ABUSE PHISHING SPAM
+
+    --json|-j                     "output raw JSON data"
+'
+    param:run
+
+    local gen_gddy_json=""
+    gen_gddy_json="$(param:option2json)"
+    gddy:debug "$gen_gddy_json"
+
+    ___x_cmd_gddy_curl post "/v2/abuse/tickets" "$gen_gddy_json"
+}
+
+
+___x_cmd_gddy_abuse_get(){
+        param:dsl    '
+options:
+    #1                        "A unique abuse ticket identifier"                                          <>
+'
+    param:run
+
+    ___x_cmd_gddy_curl get "/v2/abuse/tickets/${1}"
+
+}
+
+___x_cmd_gddy_abuse___handle_ui(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gddy_http_error
+        return
+    fi
+    if ___x_cmd_gddy_http_error; then
+        case "$1" in
+
+            add)
+                x ja jl2c .email   .externalId .nameFirst .nameLast .password | \
+                x csv header --add  Email    ExternalId  NameFirst Password | \
+                x csv static_tab
+                ;;
+
+            get)
+                x ja jl2c .email   .customerId .email .externalId .marketId .nameFirst .nameLast .shopperId | \
+                x csv header --add  CustomerId   Email  ExternalId MarketId NameFirst NameLast ShopperId | \
+                x csv static_tab
+                ;;
+            update|set)
+                x ja jl2c  .customerId .shopperId | \
+                x csv header --add  CustomerId  ShopperId  | \
+                x csv static_tab
+                ;;
+            info)
+                x ja jl2c .billingState |\
+                x csv header --add  BillingState | \
+                x csv static_tab
+                ;;
+        esac
+    fi
+}

@@ -37,3 +37,7 @@ function draw_corner( x1, x2, y1, y2, color,        ul, ur, dl, dr ) {
             painter_goto_rel(x2, y2) th(color, dr)
 }
 
+function draw_text_first_line( s,     i ){
+    if ( (i = index(s, "\n")) <=0 ) return s
+    return substr( s, 1, i-1 )
+}

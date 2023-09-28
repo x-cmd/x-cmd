@@ -1,19 +1,26 @@
-function re_isint( str ){
-    return str ~ "^"RE_NUM"$"
+function re_positive_int( str ){
+    return str ~ "^[+]?(0|[1-9][0-9]*)$"
 }
 
-function pick_init( o, kp, filter_sw, title, row, col, width, limit ){
+function pick_init( o, kp, filter_sw, obj,          title, row, col, width, limit ){
+    row = obj[ "ROW" ] ; col = obj[ "COL" ] ; width = obj[ "WIDTH" ] ; title = obj[ "TITLE" ] ; limit = obj[ "LIMIT" ]
+
     if (limit != "no-limit") {
-        if (!re_isint(limit) || limit < 1) limit = 1
+        if (!re_positive_int(limit) || limit < 1) limit = 1
     }
 
-    if ((!re_isint(row))    || (row < 5) )      panic("pick row must be a number greater than or equal to 5")
-    if ((!re_isint(col))    || (col < 1) )      panic("pick col must be a number greater than or equal to 1")
-    if ((!re_isint(width))  || (width < 5) )    panic("pick width must be a number greater than or equal to 5")
+    if ((!re_positive_int(row)) || (row < 5) )          panic("The pick row must be a positive integer greater than or equal to 5")
+    if ((!re_positive_int(col)) || (col < 1) )          panic("The pick col must be a positive integer greater than or equal to 1")
+
+    if ( width ~ "^"RE_NUM_PERCENTAGE"$" )              width = int(tapp_canvas_colsize_get() * width / 100)
+    else if (width == "-")                              { width = 5; obj[ "WIDTH_ADAPTIVE" ] = 1; }
+    else if ((!re_positive_int(width)) || (width < 5) ) panic("The pick width must be a positive integer greater than or equal to 5")
 
     comp_gsel_init(o, kp, title, filter_sw)
     comp_gsel_item_width(o, kp, width)
     comp_gsel_set_limit( o, kp, limit )
+
+    obj[ "ROW" ] = row ; obj[ "COL" ] = col ; obj[ "WIDTH" ] = width ; obj[ "TITLE" ] = title ; obj[ "LIMIT" ] = limit
 }
 
 function pick_handle( o, kp, value, name, type ){
@@ -26,7 +33,16 @@ function pick_handle( o, kp, value, name, type ){
     return false
 }
 
-function pick_data_set( o, kp, arr ){
+function pick_data_set( o, kp, arr, obj,        i, l, w, max_w ){
+    if (obj[ "WIDTH_ADAPTIVE" ] == 1) {
+        l = arr[L]
+        for (i=1; i<=l; ++i){
+            w = wcswidth_cache( arr[i] )
+            if (max_w < w) max_w = w
+        }
+        comp_gsel_item_width(o, kp, (obj[ "WIDTH" ] = max_w))
+        obj[ "WIDTH_ADAPTIVE" ] = 0
+    }
     comp_gsel_data_cp( o, kp, arr )
 }
 
@@ -34,14 +50,26 @@ function pick_change_set_all( o, kp ){
     comp_gsel_change_set_all( o, kp )
 }
 
-function pick_paint_auto(o, kp, x1, x2, y1, y2, row, col, width,            r, c, w){
+function pick_paint_auto(o, kp, x1, x2, y1, y2, obj,        row, col, width, r, c, w){
+    row = obj[ "ROW" ]
+    col = obj[ "COL" ]
+    width = obj[ "WIDTH" ]
     r = x2 - x1 + 1
     c = y2 - y1 + 1
     w = width * col
 
-    if (width > c)  comp_gsel_item_width( o, GSEL_KP, width = c )
+    if (width > c)  comp_gsel_item_width( o, GSEL_KP, ( obj[ "WIDTH" ] = width = c ) )
     if (w > c)      w = width * int(c/width)
-    if (row > r)    row = r
+    if (row > r) {
+        if (row < ROWS-1) {
+            obj[ "ROW" ] = ROW_RECALULATE = row
+        } else {
+            obj[ "ROW" ] = ROW_RECALULATE = row = ROWS - 1
+        }
+        tapp_canvas_has_changed()
+        return
+    }
+
     return pick_paint( o, kp, x1, x1 + row - 1, y1, y1 + w - 1)
 }
 

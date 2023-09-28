@@ -1,0 +1,131 @@
+# shellcheck shell=dash
+
+___x_cmd_gl_user_ssh(){
+    param:scope     ___x_cmd_gl
+    param:subcmd ___x_cmd_gl_user_ssh                                                             \
+        add                       "Creates a new key owned by the authenticated user"             \
+        "list|ls"                 "Get a list of the authenticated user’s SSH keys"               \
+        get                       "Get a list of a specified user’s SSH keys by name or id"       \
+        "single|s"                "Get a single key"                                              \
+        rm                        "Deletes key owned by the authenticated user"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_user_ssh _param_help_doc
+    return 1
+}
+
+___x_cmd_gl_user_ssh_list(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+
+    --json|-j       "output origin json data"
+'
+    param:run
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/user/keys"
+    else
+        ___x_cmd_gl_curl get "/user/keys" | \
+            x jo 2c              .id .title .key .expires_at | \
+            x csv header --add   ID  TITLE  KEY  EXPIRES_AT | \
+            x csv static_tab
+    fi
+}
+
+___x_cmd_gl_user_ssh_get(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "id or username"                                  <>
+
+    --json|-j       "output origin json data"
+'
+    param:run
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/users/${1}/keys"
+    else
+        ___x_cmd_gl_curl get "/users/${1}/keys" | \
+            x jo 2c             .id .title .key .expires_at | \
+            x csv header --add   ID  Email  KEY  EXPIRES_AT | \
+            x csv static_tab
+    fi
+}
+
+___x_cmd_gl_user_ssh_single(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "key id of SSH"                                  <>
+
+    --json|-j       "output origin json data"
+'
+    param:run
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "/user/keys/${1}"
+    else
+        ___x_cmd_gl_curl get "/user/keys/${1}" | \
+            x ja  jl2c             .id .title .created_at  | \
+            x csv header --add   ID  TITLE  CREATE_AT | \
+            x csv static_tab
+    fi
+}
+
+___x_cmd_gl_user_ssh_add(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --title         "New SSH key’s title"                                                <>
+    --key           "New SSH key"                                                        <>
+    --expires_at    "Expiration date of the SSH key(YYYY-MM-DDTHH:MM:SSZ)"               <>=""
+    --usage_type    "Scope of usage for the SSH key"                                     <>="auth_and_signing"    = auth signing auth_and_signing
+
+    --json|-j       "output origin json data"
+'
+    param:run
+    local gen_gl_json
+    gen_gl_json="$(param:option2json -json)"
+    gl:debug "$gen_gl_json"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl post "/user/keys" "gen_gl_json"
+        return
+    fi
+
+    ___x_cmd_gl_curl post "/user/keys" "gen_gl_json" | (
+
+        if ! ___x_cmd_gl_http_error; then
+            x jo env .message
+            ___x_cmd_ui_tf false "Add ssh key failure: $message"
+            ___x_cmd_gl____handle_resp
+            return 1
+        else
+            ___x_cmd_ui_tf  true "[Success]: Add a new SShH key: title=$title"
+        fi
+    )
+}
+
+___x_cmd_gl_user_ssh_rm(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "SSH key ID"                                    <>
+    --yes|-y        "Ignore remove prompt interception"
+
+
+    --json|-j       "output origin json data"
+'
+    param:run
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove the hook $1 in the $owner_repo ?" || return
+
+    ___x_cmd_gl_curl del "/user/keys/${1}" | (
+        x jo env . gl_resp_err=.error gl_resp_msg=.message
+        if ___x_cmd_gl_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Delete SSH key: $1"
+        else
+            ___x_cmd_ui_tf false " [failure] Delete SSH key: $1 failure:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}

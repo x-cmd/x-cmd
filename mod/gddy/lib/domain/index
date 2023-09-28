@@ -1,0 +1,146 @@
+# shellcheck shell=dash disable=SC2034,SC2154
+xrc:mod:lib gddy \
+domain/customer domain/action domain/dns domain/notification domain/transferin domain/transferout
+
+___x_cmd_gddy_domain(){
+    param:subcmd ___x_cmd_gddy_domain                                                                       \
+        agreement     "Retrieve the legal agreement(s) required to purchase the specified TLD and add-ons"  \
+        available     "Determine whether or not the specified domain is available for purchase"             \
+        tld           "Retrieves a list of TLDs supported and enabled for sale"                             \
+        info          "Retrieve details for the specified Domain"                                           \
+        dns           "DNS management"                                                                      \
+        action        "Actions management"                                                                  \
+        notification  "Notifications management"                                                            \
+        customer      "Management customer's domain"                                                        \
+        ls            "Retrieve a list of Domains for the specified shopper"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gddy_domain _param_help_doc
+    return 1
+}
+
+
+___x_cmd_gddy_domain_ls(){
+    local _limit=
+    local _marker=
+    local _includes=
+    local _modifiedDate=
+
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    --shopper_id          "Shopper ID whose domains are to be retrieved"                                                  <>
+    --statuses            "Only include results with status value in any of "                                             <>="ACTIVE"    =  ACTIVE AWAITING_CLAIM_ACK  AWAITING_DOCUMENT_AFTER_TRANSFER  AWAITING_DOCUMENT_AFTER_UPDATE_ACCOUNT AWAITING_DOCUMENT_UPLOAD  AWAITING_FAILED_TRANSFER_WHOIS_PRIVACY
+    --statusGroups        "Only include results with status value in any of the specified groups"                         <>="INACTIVE"  = INACTIVE PRE_REGISTRATION REDEMPTION RENEWABLE VERIFICATION_ICANN VISIBLE
+    --includes            "Optional details to be included in the response"                                               <>=""  = authCode contacts nameServers
+    --modifiedDate        "Only include results that have been modified since the specified date"                         <>=""
+    --limit               "Maximum number of domains to return"                                                           <>=""
+    --marker              "Marker Domain to use as the offset in results"                                                 <>=""
+
+    --json|-j      "output raw JSON data"
+'
+    param:run
+    [ -z "$shopper_id" ] || local header="-H 'X-Shopper-Id: $shopper_id'"
+    [ -z "$limit" ] ||  _limit="&${_limit}=${limit}"
+    [ -z "$marker" ] ||  _marker="&${_marker}=${marker}"
+    [ -z "$includes" ] ||  _includes="&${_includes}=${includes}"
+    [ -z "$marker" ] ||  _marker="&${_marker}=${marker}"
+    [ -z "$marker" ] ||  _modifiedDate="&${_modifiedDate}=${modifiedDate}"
+
+    ___x_cmd_gddy_curl get "/v1/domains?statuses=${statuses}&Groups=${statusGroups}${_limit}${_marker}${_includes}${__modifiedDate}"
+}
+
+___x_cmd_gddy_domain_agreement(){
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    --market_id           "Unique identifier of the Market used to retrieve/translate Legal Agreements"     <>="en-US"  = da-DK de-AT de-CH de-DE el-GR en-AE en-AU en-CA en-GB en-HK en-IE en-IL en-IN en-MY en-NZ en-PH en-PK en-SG en-US en-ZA es-AR es-CL es-CO es-ES es-MX es-PE es-US es-VE fi-FI fr-BE fr-CA fr-CH fr-FR hi-IN id-ID it-CH it-IT ja-JP ko-KR mr-IN nb-NO nl-BE nl-NL pl-PL pt-BR pt-PT ru-RU sv-SE ta-IN th-TH tr-TR uk-UA vi-VN zh-HK zh-SG zh-TW
+    --tlds                "list of TLDs whose legal agreements are to be retrieved"                         <>
+    --privacy             "Whether or not privacy has been requested"                                       <>=true
+    --fortransfer         "Whether or not domain tranfer has been requested"                                <>
+
+    --json|-j      "output raw JSON data"
+'
+    param:run
+    [ -z "$market_id" ] || local header="-H 'X-Market-Id: $market_id'"
+    ___x_cmd_gddy_curl get "/v1/domains/agreements?tlds=${tlds}&privacy=${privacy}&forTransfer=${fortransfer}"
+ }
+
+ ___x_cmd_gddy_domain_available(){
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    --domain       "Domain name whose availability is to be checked"                    <>
+    --checktype    "Optimize for time"                                                  <>=FAST    = FAST FULL fast full
+
+    --json|-j      "output raw JSON data"
+'
+    param:run
+    local gen_gddy_json=
+    gen_gddy_json="$(___x_cmd_gddy_genlist "$domain")"
+
+    ___x_cmd_gddy_curl post "/v1/domains/available?checkType=${checktype}" "$gen_gddy_json" | ___x_cmd_gddy_domain___handle_ui available
+}
+
+___x_cmd_gddy_domain_tld(){
+    param:void
+    ___x_cmd_gddy_curl get "/v1/domains/tlds"  | ___x_cmd_gddy_domain___handle_ui tld
+}
+
+___x_cmd_gddy_domain_info(){
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    --shopper_id     "Shopper ID expected to own the specified domain"                    <>=""
+    --domain         "Domain name whose details are to be retrieved"                      <>
+    --json|-j      "output raw JSON data"
+'
+    param:run
+    [ -z "$id" ] || local header="-H 'X-Shopper-Id: $id'"
+    ___x_cmd_gddy_curl get "/v1/domains/${domain}"  | ___x_cmd_gddy_domain___handle_ui info
+ }
+
+
+___x_cmd_gddy_domain___handle_ui(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+            cat
+            ___x_cmd_gddy_http_error
+            return
+    fi
+
+    if  ___x_cmd_gddy_http_error; then
+        case "$1" in
+
+            get)
+                x jo 2c .agreementKey .content .title .url | \
+                x csv header --add  AgreementKey  Content Title Url | \
+                x csv static_tab
+                ;;
+
+            available)
+                x jo  .domains | x jo 2c .available .currency .definitive  .domain .period .price | \
+                x csv header --add  Available   Currency  Definitive Domain Period Price | \
+                x csv static_tab
+                ;;
+            tld)
+                x jo 2c  .name .type | \
+                x csv header --add  Name  Type  | \
+                x csv static_tab
+                ;;
+            info)
+                x ja jl2c .authCode .contactAdmin.email .contactBilling.email .renewDeadline  |\
+                x csv header --add  AuthCode Admin_email Billing_email  RenewDeadline | \
+                x csv static_tab
+                ;;
+        esac
+    else
+        cat
+        ___x_cmd_gddy_http_error
+    fi
+
+
+}
+
+
+

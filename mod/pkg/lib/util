@@ -8,7 +8,7 @@ ___x_cmd_pkg___attr(){
 
 ___x_cmd_pkg___attr_code(){
     local QUERY="${4:?Provide pat}"
-    ___x_cmd_pkg___all_info "$@" | awk \
+    ___x_cmd_pkg___all_info "$@" | command awk \
         -v QUERY="$QUERY" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk" \
@@ -25,7 +25,7 @@ ___x_cmd_pkg___attr_code(){
 ___x_cmd_pkg___get_script_path(){
     local script="${4:?Provide sciprt}"
 
-    ___x_cmd_pkg___all_info --non-version "$@" | awk \
+    ___x_cmd_pkg___all_info --non-version "$@" | command awk \
         -v SCRIPT="$script" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
@@ -37,10 +37,19 @@ ___x_cmd_pkg___get_script_path(){
 # EndSection
 
 # Section: osarch
-___x_cmd_pkg_osarch(){
+___x_cmd_pkg_osarch_(){
+    x_=
     if [ -z "$___X_CMD_PKG_OSARCH" ]; then
-        ___X_CMD_PKG_OSARCH="$(___x_cmd_os name)/$(___x_cmd_os arch)"
+        ___X_CMD_PKG_OSARCH="$(___x_cmd_os name)/$(___x_cmd_os arch)" || return 1
+        [ -n "$___X_CMD_PKG_OSARCH" ] || return 1
     fi
+
+    x_="$___X_CMD_PKG_OSARCH"
+}
+
+___x_cmd_pkg_osarch(){
+    local x_=
+    ___x_cmd_pkg_osarch_ || return
     printf "%s\n" "$___X_CMD_PKG_OSARCH"
 }
 # EndSection
@@ -48,7 +57,7 @@ ___x_cmd_pkg_osarch(){
 # Section: get raw text from all.7z
 ___x_cmd_pkg_locate(){
     local tgt="${1:?Provide name}"
-    ___x_cmd_pkg_ll | awk -v FS=/ -v RS="\t" -v tgt="$tgt" '$2==tgt{ TGT=1; print $0 }END{ if(TGT>0){exit(0);}else{exit(1)}}'
+    ___x_cmd_pkg_ll_inner | command awk -v FS=/ -v RS="\t" -v tgt="$tgt" '$2==tgt{ TGT=1; print $0 }END{ if(TGT>0){exit(0);}else{exit(1)}}'
 }
 
 # Default, China
@@ -56,7 +65,6 @@ ___x_cmd_pkg___all_info(){
     case "$1" in
         --non-version) local version_json=--non-version; shift ;;
     esac
-
     if [ -n "$1" ]; then
         local name="$1"
     else
@@ -85,7 +93,7 @@ ___x_cmd_pkg___all_info(){
 ___x_cmd_pkg___list(){
     local expr="${4:?Provide EXPR, like bin, url.cn}"
 
-    ___x_cmd_pkg___all_info "$@" | awk \
+    ___x_cmd_pkg___all_info "$@" | command awk \
         -v EXPR="$expr" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
@@ -108,8 +116,9 @@ ___x_cmd_pkg_default_version(){
     local name="${1:?Provide pkg name}"
     local osarch="${2:-$(___x_cmd_pkg_osarch)}"
 
-    ___x_cmd_pkg___which_p7zip 86400 || return
-    ___x_cmd_pkg___all_info --non-version "$name" "" "$osarch" | awk \
+    # ___x_cmd_pkg___which_p7zip 86400 || return
+    [ -f "$___X_CMD_PKG_BASE_PATH/$___X_CMD_PKG_VERSION.tar.gz" ] || ___x_cmd_pkg_update
+    ___x_cmd_pkg___all_info --non-version "$name" "" "$osarch" | command awk \
         -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
         -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
@@ -121,7 +130,7 @@ ___x_cmd_pkg_default_version(){
 ___x_cmd_pkg___link(){
     local expr="${4:?Provide EXPR, like bin}"
 
-    ___x_cmd_pkg___all_info  --non-version "$@" | awk \
+    ___x_cmd_pkg___all_info  --non-version "$@" | command awk \
         -v EXPR="$expr" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
@@ -134,7 +143,7 @@ ___x_cmd_pkg___link(){
 ___x_cmd_pkg___get_linkenv(){
     local expr="${4:?Provide EXPR, like path}"
 
-    ___x_cmd_pkg___all_info --non-version "$@" | awk \
+    ___x_cmd_pkg___all_info --non-version "$@" | command awk \
         -v EXPR="$expr" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
@@ -143,3 +152,12 @@ ___x_cmd_pkg___get_linkenv(){
         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk" \
         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.link_content.awk"
 }
+
+___x_cmd_pkg___is_support(){
+    [ "$#" -eq 1 ] || return
+    local i; for i in "$___X_CMD_PKG_RAW_PATH/"*; do
+        [ ! -d "$i/$1" ] || return 0
+    done
+    return 1
+}
+

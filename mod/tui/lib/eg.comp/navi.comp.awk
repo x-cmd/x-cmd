@@ -46,15 +46,18 @@ function navi_statusline_add( o, kp, v, s, l ){
 # EndSection
 
 # Section: navi ctrl
-function tapp_canvas_rowsize_recalulate( rows,          r ){
+function tapp_canvas_rowsize_recalulate( rows,          r, all_r ){
     if (rows < 10)  return false # Assure the screen size
+    all_r = rows - 1
+    if (TAPP_CANVAS_FULLSCREEN == 1) return all_r
+
     r = 30
-    return (rows <= r) ? rows - 3 : r
+    return (rows <= r) ? all_r : r
 }
 
 function tapp_canvas_colsize_recalulate( cols ){
     if (cols < 30) return false
-    return cols -2
+    return cols - 2
 }
 
 # use user_paint and user_request_data

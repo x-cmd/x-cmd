@@ -67,6 +67,7 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, j, il, jl, 
     for (i=1; i<=il; ++i){
         _key = SUBSEP "\"1\"" SUBSEP "\"workflows\""
         jl = obj[ _key L ]
+        if (jl <= 0) panic("Not found workflows data")
         for (j=1; j<=jl; ++j){
             _dkp = _key SUBSEP "\""j"\""
             TABLE_CELL_DEF( data_offset, TABLE_COL_ID,                   user_table_juq( obj[ _dkp, "\"id\"" ] ))

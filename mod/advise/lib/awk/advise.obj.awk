@@ -22,7 +22,7 @@ function aobj_cal_rest_argc_maxmin( obj, obj_prefix,       i, j, k, l, _min, _ma
             continue
         }
 
-        if (k ~ "^#[a-z]") continue
+        if (k ~ "^#[a-zA-z]") continue
 
         _arrl = split(k, _arr, "|")
         for (j=1; j<=_arrl; ++j) NAME_ID[ obj_prefix, _arr[j] ] = jqu(k)
@@ -80,6 +80,10 @@ function aobj_is_subcmd( obj, kp ){
 
 function aobj_is_option( obj, kp ){
     return (obj[ kp, "\"#option\"" ] == "true")
+}
+
+function aobj_is_nospace( obj, kp ){
+    return (obj[ kp, "\"#nospace\"" ] == "true")
 }
 
 function aobj_istrue( obj, kp ){

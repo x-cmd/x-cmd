@@ -7,15 +7,17 @@ xrc:mod:lib gcode \
     repo/member \
     repo/tag \
     repo/mr \
+    repo/hook \
     repo/branch/index \
     repo/branch/protection \
     repo/release/index \
     repo/release/attachment \
-    repo/apply/index
+    repo/apply/index    \
+    repo/label
 
 ___x_cmd_gcode_repo(){
     param:scope         ___x_cmd_gcode
-    param:subcmd        ___x_cmd_gcode_repo            \
+    param:subcmd        ___x_cmd_gcode_repo                          \
         ls                      "List repo of owner"                 \
         info                    "Show detailed information of repo"  \
         create                  "Create repo"                        \
@@ -27,7 +29,11 @@ ___x_cmd_gcode_repo(){
         tag                     "repo tag management"                \
         branch                  "repo branch management"             \
         "member|collaborator"   "repo member management"             \
-        release                 "repo release management"
+        release                 "repo release management"            \
+        rename                  "repo rename"                        \
+        hook                    "repo hook management"               \
+        export                  "export repo csv data"               \
+        label                   "repo label management"
     param:subcmd:try
     param:run
 
@@ -59,6 +65,31 @@ options:
     "___x_cmd_gcode_${owner_type}_repo_ls" ${visibility:+"--visibility"} ${visibility:+"$visibility"} \
         --per_page "$per_page" --page "$page" ${owned:+"--owned"} ${json:+"--json"} "${1}"
 }
+# EndSection
+
+___x_cmd_gcode_repo_export(){
+    param:scope     ___x_cmd_gcode
+    param:dsl       '
+options:
+    #1              "user path (default the authenticated user)"    <>=""
+    --visibility    "visibility"                                    <>=""       = private public internal ""
+    --owned         "owned"
+'
+    param:run
+    local _url=""
+    if [ -n "$1" ]; then
+        _url="/users/$1/projects"
+    else
+        _url="/projects"
+        owned=true
+    fi
+
+    local csv_word
+    csv_word="$(___x_cmd_gcode_get_multi "$_url" visibility owned | ___x_cmd_gcode_tocsv)"
+    eval "___x_cmd_gcode_get_multi $_url visibility owned $csv_word"
+
+}
+
 # EndSection
 
 # Section: Create
@@ -188,6 +219,7 @@ options:
     -p|--path           "Custom repository name for the repo."                              <>=""
     --ci_config_path    "The path to CI configuration file."                                <>=""
     --json|-j           "output json data"
+    --yes|-y            "Ignore remove prompt interception"
 
     --avatar                                        "Image file for avatar of the repo."                                                                                                         <>:mixed=""
     --import_url                                    "URL the repository was imported from."                                                                                                         <>=""
@@ -249,6 +281,9 @@ options:
     --snippets_enabled                              "(Deprecated) Enable snippets for this project. Use instead. snippets_access_level"
 '
     param:run
+    if [ -n "$name" ] || [ -n "$p" ]; then
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to change the $(___x_cmd_ui bold red "name or path") of your repo to: $(___x_cmd_ui bold red "$name " "$p") ?" || return 0
+    fi
     local repo="$1"
     ___x_cmd_gcode_param_init_owner_repo
     local gen_gcode_json=""
@@ -349,5 +384,36 @@ ___x_cmd_gcode_repo_ui_utils(){
             return 1
         fi
     )
+}
+# EndSection
+# Section: rename
+___x_cmd_gcode_repo_rename(){
+param:scope     ___x_cmd_gcode
+    param:dsl       '
+option:
+    #1              "New repo names"                <>
+    --repo|-r       "<owner_path>/<repo_path>"      <>:RepoPath
+    --yes|-y        "Ignore rename prompt interception"
+'
+    param:run
+    ___x_cmd_gcode_param_init_owner_repo
+    local name="${1##*/}"
+    local p="$name"
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to rename repository $(___x_cmd_ui bold red "$repo => ${repo%/*}/${name}") ?" || return 1
+
+    local repo="${repo}"
+    local gen_gcode_json=
+    gen_gcode_json="$(param:option2json -repo -json -yes +name path=p)"
+    gcode:debug "$gen_gcode_json"
+    ___x_cmd_gcode_curl put "/projects/$owner_repo" "gen_gcode_json" | (
+                x jo env . gcode_resp_err=.error gl_resp_msg=.message
+                if ___x_cmd_gcode_http_error; then
+                    ___x_cmd_ui_tf  true "[Success]: Rename repo ${1}"
+                else
+                    ___x_cmd_ui_tf false "Rename repo ${1} failure:"
+                    ___x_cmd_gcode____handle_resp
+                    return 1
+                fi
+            )
 }
 # EndSection

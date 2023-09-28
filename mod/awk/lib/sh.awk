@@ -1,7 +1,6 @@
 
 function shqu( s ){
-    gsub(/\\/, "\\\001\\", s)
-    gsub("\001", "", s)
+    gsub(/\\/, "&\\", s)
     gsub(/\$/, "\\$", s)
     gsub("\"", "\\\"", s)
     return "\"" s "\""

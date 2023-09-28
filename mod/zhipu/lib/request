@@ -1,0 +1,43 @@
+# shellcheck shell=dash
+
+# Using zhipu api
+# ref: https://open.bigmodel.cn/doc/api#auth
+# ref: https://open.bigmodel.cn/doc/api#chatglm_std
+
+___x_cmd_zhipu_request(){
+    local message=;  local apikey=;   local model=
+    # Default value
+    ___x_cmd_zhipu_cur apikey:= model:= 2>/dev/null
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --message)      message="$2";   [ $# -ge 2 ] || N=zhipu M="Please provide message value"  log:ret:64; shift 2 ;;
+            --apikey)       apikey="$2";    [ $# -ge 2 ] || N=zhipu M="Please provide apikey value"   log:ret:64; shift 2 ;;
+            --model)        model="$2";     [ $# -ge 2 ] || N=zhipu M="Please provide model value"    log:ret:64; shift 2 ;;
+            *)              break;
+        esac
+    done
+
+    if [ -z "$apikey" ]; then
+        zhipu:error "Please setting up your apikey first ==> 'x zhipu --cfg apikey=<your apikey>'"
+        return 1
+    fi
+
+    # TODO: Need to json quote the content
+    # LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+    local data='{
+        "prompt": '"$message"',
+        "top_p": 0.7,
+        "temperature": 0.9
+    }'
+    local model="${model:-chatglm_std}"
+    local invoke_method="sse-invoke"
+    local token=; token="$(___x_cmd_zhipu_sign "$apikey")"
+    zhipu:debug --model "$model" --invoke_method "$invoke_method" --token "$token" --data "$data"
+
+    x curl -X POST \
+        -sS "https://open.bigmodel.cn/api/paas/v3/model-api/${model}/${invoke_method}"  \
+        -N -H "Accept: text/event-stream"   \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $token"   \
+        -d "$data"
+}

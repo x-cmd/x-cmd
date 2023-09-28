@@ -1,6 +1,7 @@
 function draw_gsel_style_init(){
     TH_GSEL_TITLE           =   UI_TEXT_DIM
     TH_GSEL_ITEM_FOCUSED    =   UI_TEXT_REV TH_THEME_COLOR
+    TH_GSEL_ITEM_UNFOCUSED  =   ""
     TH_GSEL_ITEM_UNSELECTED =   ""
     TH_GSEL_ITEM_SELECTED   =   ""
 
@@ -47,7 +48,7 @@ function draw_gsel___on_body( o, kp, x1, x2, y1, y2, opt,        r, w, iw, ps, l
     r = x2-x1+1
     w = y2-y1+1
     l = opt_get( opt, "data.maxrow" )
-    iw = (( (iw = opt_get( opt, "item.width" )) != "" ) ? iw : w )
+    iw = int(( (iw = opt_get( opt, "item.width" )) != "" ) ? iw : w )
     if ( iw > w ) iw = w
     ps = int( w / iw ) * r
     opt_set( opt, "pagesize", ps )
@@ -60,7 +61,6 @@ function draw_gsel___on_body( o, kp, x1, x2, y1, y2, opt,        r, w, iw, ps, l
             ( (i%r != 0) ? "\r\n" : "\r" painter_up(r-1) ) \
             painter_right( y1 + int( (i % ps) / r ) * iw )
     }
-
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) _draw_body
 }
 
@@ -115,7 +115,7 @@ function draw_gsel___on_cell( o, kp, i, w, opt,         v, ri){
     else v = TH_GSEL_ITEM_UNSELECTED_PREFIX th( TH_GSEL_ITEM_UNSELECTED, v )
 
     if (i == opt_get( opt, "cur.cell" )) v = TH_GSEL_ITEM_FOCUSED_PREFIX th( TH_GSEL_ITEM_FOCUSED, v )
-    else v = TH_GSEL_ITEM_UNFOCUSED_PREFIX v
+    else v = TH_GSEL_ITEM_UNFOCUSED_PREFIX th( TH_GSEL_ITEM_UNFOCUSED, v )
     return v
 }
 

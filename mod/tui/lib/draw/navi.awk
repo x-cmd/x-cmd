@@ -17,7 +17,7 @@ function draw_navi_paint( o, kp, x1, x2, y1, y2, is_dim, opt,       _draw_clear,
 
     _draw_clear = painter_clear_screen(x1, x2, y1, y2)
     _draw_box = draw_navi___paint_box( o, kp, x1, x2, y1, y2 )
-    x1++; x2--; y1+=2; y2-=2
+    x1++; x2--; y1+=1; y2-=1
 
     _draw_sel = draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt )
     w = o[ kp, "view.body", "width" ]
@@ -30,7 +30,7 @@ function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, 
     _width = y2-y1+1
     navi_arr_data_maxview_width( o, kp, int(_width/3))
     l = opt_get( opt, "cur.col" )
-    draw_navi_layout_init( o, kp, _width, l)
+    draw_navi_layout_init( o, kp, _width, l, opt)
 
     _start = o[ kp, "viewcol.begin" ]
     for (i=_start; i<=l; ++i) {
@@ -40,7 +40,7 @@ function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, 
             break
         } else {
             w = navi_arr_data_view_width( o, kp, _rootkp )
-            s = s draw_navi___paint_body_sel( o, kp, _rootkp, x1, x2, y1+c, y1+c+w-2, (i != l), opt)
+            s = s draw_navi___paint_body_sel( o, kp, _rootkp, x1, x2, y1+c, y1+c+w-1, (i != l), opt)
             c += w
         }
     }
@@ -49,7 +49,8 @@ function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, 
 }
 
 function draw_navi___paint_body_sel(o, kp, rootkp, x1, x2, y1, y2, is_dim, opt,        s){
-    s = painter_vline_ends( x1-1, x2+1, y2 ); y2--
+    # if (!draw_navi_curcol_preview_is_null(opt) || is_dim) s = painter_vline_ends( x1-1, x2+1, y2 ); y2--
+    if (draw_navi_curcol_should_preview(opt) || is_dim) s = painter_vline_ends( x1-1, x2+1, y2 ); y2--
     return s draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, ((draw_navi___paint_is_dim(o, kp)) ? true : is_dim), false, opt )
 }
 
@@ -78,12 +79,8 @@ function draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, is_dim, is_previe
     gkp = navi_arr_data_sel_kp_get( kp, rootkp )
     draw_gsel_change_set_all( o, gkp )
     if (is_dim == true) {
-        if (is_preview != true) TH_GSEL_ITEM_FOCUSED_PREFIX = ">"
-        else TH_GSEL_ITEM_FOCUSED_PREFIX = " "
-        TH_GSEL_ITEM_UNSELECTED = UI_TEXT_DIM
-        TH_GSEL_ITEM_UNFOCUSED_PREFIX = " "
-        TH_GSEL_ITEM_PREFIX_WIDTH = 1
-        TH_GSEL_ITEM_FOCUSED = UI_TEXT_ITALIC UI_TEXT_BOLD
+        TH_GSEL_ITEM_UNFOCUSED = UI_TEXT_DIM
+        TH_GSEL_ITEM_FOCUSED = UI_TEXT_BOLD
     }
 
     _no_title = true
@@ -129,8 +126,9 @@ function draw_navi_unava(o, kp, v, force_set){
     else o[ kp, "unava" ] = v
 }
 
-function draw_navi_layout_init( o, kp, w, l,       i, _colw, _viewcol_begin ){
-    w -= navi_arr_data_maxview_width(o, kp)
+function draw_navi_layout_init( o, kp, w, l, opt,       i, _colw, _viewcol_begin ){
+    # if (!draw_navi_curcol_preview_is_null(opt)) w -= navi_arr_data_maxview_width(o, kp)
+    if (draw_navi_curcol_should_preview(opt)) w -= navi_arr_data_maxview_width(o, kp)
     for (i=l; i>=1; --i){
         _colw = navi_arr_data_view_width( o, kp, navi_arr_data_trace_col_val(o, kp, i) )
         w -= _colw
@@ -138,4 +136,13 @@ function draw_navi_layout_init( o, kp, w, l,       i, _colw, _viewcol_begin ){
         _viewcol_begin = i
     }
     o[ kp, "viewcol.begin" ] = _viewcol_begin
+}
+
+function draw_navi_curcol_preview_is_null(opt){
+    return ( opt_get( opt, "cur.col.preview" ) == "null" )
+}
+
+function draw_navi_curcol_should_preview(opt,       _p){
+    _p = opt_get( opt, "cur.col.preview" )
+    return (( _p == "preview" ) || ( _p == "{"))
 }

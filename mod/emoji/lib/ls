@@ -1,0 +1,137 @@
+# shellcheck shell=dash disable=SC2034
+# cache
+___x_cmd_emoji_ls(){
+    local X_help_cmd='___x_cmd_emoji_help ls'
+    help:arg:parse
+    local group=
+    local subgroup=
+    local datamode=
+    local emoji_arg=
+
+    [ -f "$___X_CMD_EMOJI_ART" ] || {
+        ___x_cmd_emoji_update
+    }
+    # datamode=json
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --group)    shift; ___x_cmd_emoji_group "$@"; return ;;
+            --all)      shift; ___x_cmd_emoji_all; return ;;
+
+            --json)     shift; datamode=json;    ;;
+            --csv)      shift; datamode=csv;    ;;
+            --app)      shift; datamode=app;    ;;
+            --table)    shift; datamode=table;  ;;
+
+            --*)        emoji:error "Your arg is wrong ====>" "'$1'" " Use 'x emoji ls --help' to watch help doc"; return 1;;
+            *)          if [ -z "$group" ] && [ -z "$subgroup" ]; then
+                            group="$1"; shift; emoji_arg="1"
+                        elif [ -n "$group" ] && [ -z "$subgroup" ]; then
+                            subgroup="$1"; shift; emoji_arg="2"
+                        else
+                            shift;
+                        fi
+                        ;;
+        esac
+    done
+    if [ -z "$group" ] && [ -z "$group" ]; then
+        emoji_arg="0"
+    fi
+    [ -n "$datamode" ] || {
+        if ___x_cmd_is_interactive && [ -t 1 ]; then
+            datamode=app
+        else
+            datamode=json
+        fi
+    }
+
+    emoji:debug --group "$group"  --subgroup "$subgroup"
+    case "$datamode" in
+        json)   ___x_cmd_emoji_ls_json "$group" "$subgroup" ;;
+        csv)    ___x_cmd_emoji_ls_csv "$group" "$subgroup";;
+        app)    ___x_cmd_emoji_ls_app "$group" "$subgroup";;
+        table)  ___x_cmd_emoji_ls_table "$group" "$subgroup";;
+    esac
+
+}
+
+___x_cmd_emoji_all(){
+    < "${___X_CMD_EMOJI_ART}"  command awk '
+    $0 ~ "^[^#]"{
+        gsub(";","",$0)
+        print $0
+    }'
+}
+
+___x_cmd_emoji_group(){
+    local name="$1"
+    < "${___X_CMD_EMOJI_ART}"  awk -v name="$name"  \
+        -f "$___X_CMD_ROOT_MOD/emoji/lib/awk/display.awk"
+}
+
+xrc str
+xrc awk
+___x_cmd_emoji_ls___cache(){
+    local cache="$1"; shift
+    emoji:debug "cache => $cache"
+    x ensurefp "$cache"
+    x ccmd 30d "$cache" -- "$@"
+    # if [ -f "$cache" ] && x fileage --in 30d "$cache"; then
+    #     emoji:debug "cat cache"
+    #     cat "$cache"
+    # else
+    #     x ensurefp "$cache"
+    #     x rmrf "$cache"
+    #     emoji:debug "update cache => $*"
+    #     "$@" | command tee "$cache"
+    # fi
+}
+
+___x_cmd_emoji_ls_json(){
+    local group="$1"
+    local subgroup="$2"
+    local cache=
+    ___x_cmd_str_md5 "-$*-" | {
+        read -r cache
+        cache="$___X_CMD_EMOJI_CACHE/json-$cache"
+        ___x_cmd_emoji_ls___cache "$cache" < "${___X_CMD_EMOJI_ART}" ___x_cmd_awk_inner -v group="$group" -v subgroup="$subgroup" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+            -f "$___X_CMD_ROOT_MOD/emoji/lib/awk/tojson.awk"
+    }
+}
+
+___x_cmd_emoji_ls_csv(){
+    local num=; local cache=; local json_cache=
+    ___x_cmd_str_md5 "-$*-" | {
+        read -r num
+        cache="$___X_CMD_EMOJI_CACHE/csv-$num"
+        json_cache="$___X_CMD_EMOJI_CACHE/json-$num"
+        [ "$cache" -nt "${json_cache}" ] || x rmrf "$cache"
+        ___x_cmd_emoji_ls___cache "$cache" ___x_cmd_emoji_ls_csv___inner "$@"
+    }
+}
+
+___x_cmd_emoji_ls_csv___inner(){
+    ___x_cmd_emoji_ls_json "$@" | x ja jl2c .desc .emoji .subgroup .group .unicode .status .version
+}
+
+___x_cmd_emoji_ls_table(){
+    local num=; local cache=; local json_cache=
+    ___x_cmd_str_md5 "-$*-" | {
+        read -r num
+        cache="$___X_CMD_EMOJI_CACHE/tbl-$num"
+        json_cache="$___X_CMD_EMOJI_CACHE/json-$num"
+        [ "$cache" -nt "${json_cache}" ] || x rmrf "$cache"
+        ___x_cmd_emoji_ls___cache "$cache" ___x_cmd_emoji_ls_table___inner "$@"
+    }
+}
+___x_cmd_emoji_ls_table___inner(){
+    ___x_cmd_emoji_ls_csv "$@" | \
+    x csv header --add "Desc,emoji,Subgroup,Group,Unicode,Status,Version" | \
+    x csv static_tab
+}
+
+___x_cmd_emoji_ls_app(){
+    x csv --app --header "Desc,emoji,Subgroup,Group,Unicode,Status,Version" --width "55,12,23,18,20,20,7" \
+        ___x_cmd_emoji_ls_csv "$@"
+}
+

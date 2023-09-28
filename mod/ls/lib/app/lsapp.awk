@@ -52,7 +52,7 @@ function user_data_add( o, kp, rootkp, str,          _, name, l, i, _kp ){
     _kp = rootkp "/" name
     if (_[1] ~ "^d") comp_navi_data_add_kv( o, kp, rootkp, TH_THEME_COLOR name, "{", _kp )
     else {
-        comp_navi_data_add_kv( o, kp, rootkp, name, "info", _kp )
+        comp_navi_data_add_kv( o, kp, rootkp, name, "preview", _kp )
         o[ kp, _kp, "name" ]    = name
         o[ kp, _kp, "mode" ]    = _[1]
         o[ kp, _kp, "owner" ]   = _[3]

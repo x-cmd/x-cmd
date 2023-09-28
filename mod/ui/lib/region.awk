@@ -25,8 +25,7 @@ BEGIN{
 function output(text,
     line, line_arr, line_arr_len, return_text, i, blank_line){
 
-    return_text = "" UI_LINEWRAP_DISABLE
-
+    return_text = UI_LINEWRAP_DISABLE
 
     line_arr_len = split(text, line_arr, "\n")
     OUTPUT_LINE_COUNT = 0
@@ -41,9 +40,7 @@ function output(text,
         return_text = return_text cal_empty_line(LAST_OUTPUT_LINE_COUNT - OUTPUT_LINE_COUNT, KNOWN_WIDTH)
     }
 
-    return_text = return_text UI_LINEWRAP_ENABLE
-
-    return return_text
+    return return_text UI_LINEWRAP_ENABLE
 }
 
 BEGIN {
@@ -80,7 +77,7 @@ function end(){
     ALREAD_END = 1
     printf("%s", UI_CURSOR_RESTORE \
         UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
-        UI_CURSOR_NORMAL UI_CURSOR_SHOW) > "/dev/stderr"
+        UI_CURSOR_NORMAL UI_CURSOR_SHOW UI_LINEWRAP_ENABLE) > "/dev/stderr"
     # printf( "%s", cal_empty_line(OUTPUT_LINE_COUNT, KNOWN_WIDTH)) > "/dev/stderr"
     # printf(UI_CURSOR_RESTORE) > "/dev/stderr"
 }

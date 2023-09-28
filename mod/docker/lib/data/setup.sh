@@ -43,8 +43,8 @@ ___x_cmd_docker_setup___set_startup(){
 }
 
 ___x_cmd_docker_setup___init(){
+    eval "$(x init)"
     x websrc set "$___X_CMD_WEBSRC_REGION"
-    x pkg update
     ___x_cmd_docker_setup___set_startup
 }
 

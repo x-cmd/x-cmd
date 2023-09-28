@@ -7,6 +7,7 @@ function comp_navi_init( o, kp ){
     change_set(o, kp, "navi.footer")
     change_set(o, kp, "navi.body")
     comp_navi_unava(o, kp, -1)
+    ctrl_sw_init( o, kp SUBSEP "ctrl-rowloop", true )
 }
 
 # Section: ctrl, handle, data modification
@@ -25,6 +26,14 @@ function comp_navi_handle( o, kp, char_value, char_name, char_type,             
     return true
 }
 
+function comp_navi_ctrl_rowloop_sw_set(o, kp, tf){
+    ctrl_sw_init( o, kp SUBSEP "ctrl-rowloop", tf)
+}
+
+function comp_navi_ctrl_rowloop_sw_get(o, kp){
+    return ctrl_sw_get( o, kp SUBSEP "ctrl-rowloop")
+}
+
 function comp_navi_sel_sw_toggle( o, kp ){
     change_set( o, kp, "navi.body" )
     return comp_gsel_ctrl_filter_sw_toggle( o, navi_arr_data_sel_kp_get( kp, navi_arr_data_trace_col_val( o, kp, comp_navi___cur_col(o, kp) ) ) )
@@ -34,10 +43,18 @@ function ctrl_navi_sel_sw_get( o, kp ) {
     return comp_gsel_ctrl_filter_sw_get( o, navi_arr_data_sel_kp_get( kp, navi_arr_data_trace_col_val( o, kp, comp_navi___cur_col(o, kp) ) ) )
 }
 
-function comp_navi_get_cur_rootkp( o, kp,           c, r, rootkp, preview_kp ){
+function comp_navi_get_cur_rootkp( o, kp,           c, r, rootkp ){
     if ((r = comp_navi___col_row_get( o, kp, c = comp_navi___cur_col(o, kp) )) == "" )   return
     rootkp = navi_arr_data_trace_col_val( o, kp, c )
     return comp_navi_data_preview_kp( o, kp, rootkp, r)
+}
+
+function comp_navi_get_col_rootkp( o, kp, c,          i, r, rootkp ){
+    for (i=1; i<=c; ++i){
+        if ((r = comp_gsel_get_cur_cell( o, navi_arr_data_sel_kp_get( kp, rootkp ) )) == "" ) return
+        rootkp = comp_navi_data_preview_kp( o, kp, rootkp, r)
+    }
+    return rootkp
 }
 
 function comp_navi_get_cur_preview_type( o, kp ){
@@ -93,9 +110,11 @@ function comp_navi___handle_sel( o, kp, char_value, char_name, char_type,       
     return true
 }
 
-function comp_navi___sel_data_add( o, kp, rootkp, val ){
-    comp_gsel_init( o, navi_arr_data_sel_kp_get( kp, rootkp ), "", false )
-    comp_gsel_data_add( o, navi_arr_data_sel_kp_get( kp, rootkp ), val)
+function comp_navi___sel_data_add( o, kp, rootkp, val,      _kp ){
+    _kp = navi_arr_data_sel_kp_get( kp, rootkp )
+    comp_gsel_init( o, _kp, "", false )
+    comp_gsel_ctrl_loop_sw_set(o, _kp, comp_navi_ctrl_rowloop_sw_get(o, kp))
+    comp_gsel_data_add( o, _Kp, val)
 }
 
 # EndSection
@@ -106,8 +125,10 @@ function comp_navi___sel_data_add( o, kp, rootkp, val ){
 # previewdata 是 { 或者 preview 的类型
 
 # TODO: demo: ls expolorer
-function comp_navi_data_init( o, kp, rootkp ){
-    comp_gsel_init( o, navi_arr_data_sel_kp_get( kp, rootkp ), "", false )
+function comp_navi_data_init( o, kp, rootkp,        _kp ){
+    _kp = navi_arr_data_sel_kp_get( kp, rootkp )
+    comp_gsel_init( o, _kp, "", false )
+    comp_gsel_ctrl_loop_sw_set(o, _kp, comp_navi_ctrl_rowloop_sw_get(o, kp))
     comp_navi_data_available( o, kp, rootkp, true )
 }
 function comp_navi_data_end( o, kp, rootkp ){
@@ -148,6 +169,7 @@ function comp_navi_change_set_all( o, kp ){
 function comp_navi_paint( o, kp, x1, x2, y1, y2, is_dim,        _opt, c ){
     opt_set( _opt, "cur.col",       (c = comp_navi___cur_col(o, kp)) )
     opt_set( _opt, "cur.col.row",   comp_navi___col_row_get(o, kp, c) )
+    opt_set( _opt, "cur.col.preview", comp_navi_get_col_preview_type(o, kp, c) )
     opt_set( _opt, "cur.rootkp",    comp_navi_get_cur_rootkp(o, kp) )
     opt_set( _opt, "cur.preview_kp",comp_navi_get_cur_rootkp(o, kp) )
     opt_set( _opt, "sel.sw",        ctrl_navi_sel_sw_get(o, kp) )

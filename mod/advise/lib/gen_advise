@@ -40,6 +40,11 @@ ___x_cmd_advise_gen_advise__exec()(
 )
 
 ___x_cmd_advise_gen_advise__parse_adv_data(){
+    local build_dev=
+    case "$1" in
+        --dev) build_dev=1; shift ;;
+    esac
+
     local mod_name="$1"
     local mod_path="$2"
     [ -n "$mod_name" ] || M="Please provide mod name" arg:ret:64
@@ -59,14 +64,25 @@ ___x_cmd_advise_gen_advise__parse_adv_data(){
         case "$datafile" in
             *.yml)
                     advise:debug "Generate $mod_name data/${tagfile%.yml*}.jso from adv/data/$tagfile"
-                    < "$datafile" x scotty yml y2j | ___x_cmd_advise_gen_advise__merge_awk > "$res_data/${tagfile%.yml*}.jso"
+                    < "$datafile" x scotty yml y2j | ___x_cmd_advise_gen_advise__merge_awk "$build_dev" > "$res_data/${tagfile%.yml*}.jso"
                     ;;
-            *)      x cp "$datafile" "$res_data/$tagfile" ;;
+            *)      [ -n "$build_dev" ] || {
+                        advise:warn "Not supported in normal mode ==> $datafile"
+                        continue
+                    }
+                    command cp "$datafile" "$res_data/$tagfile"
+                    ;;
         esac
     done
 }
 
 ___x_cmd_advise_gen_advise__merge_awk(){
+    local X_CMD_ADVISE_FILTER_FIELD=
+    [ -n "$1" ] || X_CMD_ADVISE_FILTER_FIELD="case
+web
+abstract"
+
+    X_CMD_ADVISE_FILTER_FIELD="$X_CMD_ADVISE_FILTER_FIELD" \
     command awk \
     -v X_CMD_ADVISE_ERREXIT="$___X_CMD_ADVISE_GEN_ADV_ERREXIT" \
     -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk"    \
@@ -78,6 +94,11 @@ ___x_cmd_advise_gen_advise__merge_awk(){
 
 ___x_cmd_advise_gen_advise(){
     arg:init advise
+    local build_dev=
+    case "$1" in
+        --dev) build_dev=1; shift ;;
+    esac
+
     local mod_name="$1"
     local mod_path="$2"
     [ -n "$mod_name" ] || M="Please provide mod name" arg:ret:64
@@ -92,7 +113,7 @@ ___x_cmd_advise_gen_advise(){
     x rmrf "$resource";     x mkdirp "$resource"
 
     # parse adv/data dir
-    ___x_cmd_advise_gen_advise__parse_adv_data "$mod_name" "$mod_path"
+    ___x_cmd_advise_gen_advise__parse_adv_data ${build_dev:+"--dev"} "$mod_name" "$mod_path"
 
     # parse adv/index.yml
     < "$index_yml" x scotty yml y2j | {
@@ -113,7 +134,7 @@ ___x_cmd_advise_gen_advise(){
                 [ "$?" = 0 ] || printf "%s\n" "$___X_CMD_ADVISE_GEN_ADV_ERREXIT"
             else printf "%s\n" "{}"    ; fi
         }
-    } | ___x_cmd_advise_gen_advise__merge_awk > "$resource/advise.jso"
+    } | ___x_cmd_advise_gen_advise__merge_awk "$build_dev" > "$resource/advise.jso"
     local exit_code="$?"
 
     if [ "$exit_code" -eq 0 ]; then
@@ -140,13 +161,13 @@ ___x_cmd_advise___install_xcmd_dir_()(
     local dir="${2:-$PWD}"
     [ -n "$name" ] || M='Provide command name' N=advise log:ret:64
     [ -d "$dir" ] || M='Provide x-cmd-advise directory' N=advise log:ret:64
-    cd "$dir" || return
+    x cd "$dir" || return
 
     local folder="${3:-"$___X_CMD_ADVISE_MAN_XCMD_FOLDER"}/$name";
     x rmrf "$folder"
     x mkdirp "$folder"
     ____x_cmd_advise___install_y2j advise.yml > "$folder/advise.t.jso" || return
-    [ ! -f advise.util ] || x cp advise.util "$folder"
+    [ ! -f advise.util ] || command cp advise.util "$folder"
 
     find _ lib data -type f -name '*advise.yml' 2>/dev/null | while read -r line; do
         dst="$folder/${line%.yml}.t.jso"

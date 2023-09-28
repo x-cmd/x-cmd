@@ -59,11 +59,11 @@ function ___tapp_displaymode_alter(){
 # Section: exit and panic
 
 BEGIN{
-    PANIC_EXIT = 0
+    TUI_PANIC_EXIT = 0
 }
 function panic( s ){
-    PANIC_EXIT = 1
-    PANIC_TEXT = s
+    TUI_PANIC_EXIT = 1
+    TUI_PANIC_TEXT = s
     exit(1)
 }
 
@@ -83,11 +83,11 @@ END{
             "\r" painter_down(CANVAS_ROWSIZE) UI_LINE_CLEAR) >"/dev/stderr"
     }
 
-    printf("%s", UI_CURSOR_NORMAL UI_CURSOR_SHOW) >"/dev/stderr"
-    tapp_handle_exit( PANIC_EXIT )
-    if (PANIC_TEXT != "") log_error("tui", PANIC_TEXT)
-    tapp_send_finalcmd( "___X_CMD_TUI_APP_TMP_EXITCODE='" PANIC_EXIT "'" )
-    exit( PANIC_EXIT );
+    printf("%s", UI_CURSOR_NORMAL UI_CURSOR_SHOW UI_LINEWRAP_ENABLE) >"/dev/stderr"
+    tapp_handle_exit( TUI_PANIC_EXIT )
+    if (TUI_PANIC_TEXT != "") log_error("tui", TUI_PANIC_TEXT)
+    tapp_send_finalcmd( "___X_CMD_TUI_APP_TMP_EXITCODE='" TUI_PANIC_EXIT "'" )
+    exit( TUI_PANIC_EXIT );
 }
 # EndSection
 

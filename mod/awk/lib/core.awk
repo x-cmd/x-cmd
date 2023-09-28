@@ -101,7 +101,7 @@ function exit_msg( code, msg ){
 # Section: var ==> shell var generate
 function var_quote1(str){
     # gsub("\\", "\\\\", str) # This is wrong in case: # print str_quote1("h'a\\\'")
-    gsub(/\\/, "\\\\", str)
+    gsub(/\\/, "&\\", str)
     gsub(/'/, "\\'", str)
     return "'" str "'"
 }
@@ -113,8 +113,6 @@ function var_set(name, value){
 
 # Section: json
 function juq( str ){
-    # if (str !~ /^".*"$/) return str         # TODO: remove in the future
-
     str = substr( str, 2, length(str)-2 )
     gsub( /\\\\/, "\001", str )
     gsub( /\\"/, "\"", str )
@@ -129,8 +127,6 @@ function juq( str ){
 }
 
 function juq1( str ){
-    # if (str !~ /^".*"$/) return str         # TODO: remove in the future
-
     str = substr( str, 2, length(str)-2 )
     gsub( /\\\\/, "\001", str )
     gsub( /\\'/, "'", str )
@@ -144,8 +140,6 @@ function juq1( str ){
 }
 
 function jqu( str ){
-    # if (str ~ /^".*"$/) return str
-
     gsub( "\\\\", "&\\", str )
     gsub( "\"", "\\\"", str )
     gsub( "\n", "\\n", str )
@@ -546,7 +540,7 @@ function arr_uniq( arr,         l, i, j ) {
 
 # Add Code
 function str_escape(s) {
-    gsub(/\\/, "\\\\", s)   # Must place first line
+    gsub( "\\\\", "&\\", s )
     gsub(/\b/, "\\b", s)
     gsub(/\t/, "\\t", s)
     gsub(/\n/, "\\n", s)
@@ -557,32 +551,28 @@ function str_escape(s) {
     return "\"" s "\""
 }
 
-# print str_quote1("h'a\\\'")
 function str_quote1(str){
-    # gsub("\\", "\\\\", str) # This is wrong in case: # print str_quote1("h'a\\\'")
-    gsub(/\\/, "\\\\", str)
+    gsub(/\\/, "&\\", str)
     gsub(/'/, "\\'", str)
     return "'" str "'"
 }
 
 function str_unquote1(str){
-    gsub(/\\\\/, "\001\001", str)
+    gsub(/\\\\/, "\\", str)
     gsub(/\\'/, "'", str)
-    gsub("\001\001", "\\\\", str)
     return substr(str, 2, length(str)-2)
 }
 
 
 function str_quote2(str){
-    gsub(/\\/, "\\\\", str)
+    gsub(/\\/, "&\\", str)
     gsub(/"/, "\\\"", str)
     return "\"" str "\""
 }
 
 function str_unquote2(str){
-    gsub(/\\\\/, "\001\001", str)
-    gsub(/\\"/, /"/, str)
-    gsub("\001\001", "\\\\", str)
+    gsub(/\\\\/, "\\", str)
+    gsub(/\\"/, "\"", str)
     return substr(str, 2, length(str)-2)
 }
 

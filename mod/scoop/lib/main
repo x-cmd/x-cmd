@@ -1,0 +1,95 @@
+# shellcheck shell=dash disable=SC2034,2153
+
+
+___x_cmd_scoop___main(){
+    local X_help_cmd=; X_help_cmd='x help -m scoop' help:arg:parse
+    x os name win: || x os release | grep -q "WSL" || N=scoop M='scoop is only available on Windows' log:ret:1
+    x hascmd scoop || ___x_cmd_scoop_path_add___scoop || return
+
+    local op="$1";
+    [ "$#" -gt 0 ] || {
+        scoop help
+        return 1
+    }
+    shift ;
+    case "$op" in
+        # official command
+        alias|bucket|cache|cat|checkup|cleanup| \
+        create|depends|download|export|hold|home|import| \
+        info|install|list|prefix|reset|shim|status | \
+        unhold|uninstall|update|virustotal|which|help)
+            ___x_cmd_scoop___bin "$op" "$@"
+            ;;
+        search)   ___x_cmd_scoop_search "$@"
+            ;;
+        aria2)    ___x_cmd_scoop_aria2 "$@"
+            ;;
+        config)   ___x_cmd_scoop_config "$@"
+            ;;
+        *)       N=scoop M="Unsupported subcmd => $1" log:ret:64  ;;
+    esac
+}
+
+___x_cmd_scoop___bin(){
+    command scoop "$@"
+}
+
+___x_cmd_scoop_path_add___scoop(){
+    local userprofile
+    userprofile="$(x pwsh "echo \$env:USERPROFILE"|sed 's/^\([A-Z]\):/\L\1/' )"
+    userprofile="$(x pwsh path win_to_linux "$userprofile" )"
+
+    if [ -d "/mnt" ]; then
+        local scoop_path="/mnt/$userprofile/scoop/shims"
+        local scoop_global="/mnt/c/ProgramData/scoop"
+    else
+        local scoop_path="$userprofile/scoop/shims"
+        local scoop_global="c/ProgramData/scoop"
+    fi
+
+    for i in "$SCOOP" "$SCOOP_GLOBAL" "$scoop_path" "$scoop_global" ; do
+        [ -d "$i" ] || continue
+        x path add_existed_folder "$i"
+        break
+    done
+
+    [ -d "$i" ] || ___x_cmd_scoop___install || return 1
+    x path add_existed_folder "$scoop_path"
+}
+
+___x_cmd_scoop_config(){
+    # https://zs.fyi/archives/scoop-guidebook.html
+    local op="${1}"
+    [ -n "$op" ] || {
+        scoop:error "Please choose aria2 or provide scoop proxy config"
+        return 1
+    }
+    shift;
+    case "$op" in
+        proxy)
+                ___x_cmd_scoop___bin config proxy "$@"
+                ;;
+        cn)
+                scoop:info "适合中国大陆用户使用的 Scoop buckets 代理镜像库。From https://github.com/lzwme/scoop-proxy-cn"
+                x scoop bucket add spc https://ghproxy.com/https://github.com/lzwme/scoop-proxy-cn || return
+                scoop:info "Install app usage: x scoop install spc/<app_name>"
+                ;;
+        *)
+                ___x_cmd_scoop___bin config "$@"
+                ;;
+    esac
+}
+
+___x_cmd_scoop_aria2(){
+    [ -n "$1" ] || {
+        scoop:error Please choose open or close
+        return 1
+    }
+    local op="${1}" ; shift
+
+    case "$op" in
+        open)             scoop config aria2-enabled true               ;;
+        close)            scoop config aria2-enabled false              ;;
+        *)                N=scoop M="Unsupported subcmd => $1" log:ret:64  ;;
+    esac
+}

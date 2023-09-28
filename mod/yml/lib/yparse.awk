@@ -86,11 +86,11 @@ function yml_parse_list( o, kp, least_indent,       c,  _kpn, _ind, _cmt ){
         }
         
         if ( (_ind = yml_current_indent( )) < least_indent )  break
-        else if (_ind > least_indent)                               panic(sprintf("yml_parse_list() Expect indent equal to %s: %s", least_indent, Y_BUF))
+        else if (_ind > least_indent)                               yml_panic(sprintf("yml_parse_list() Expect indent equal to %s: %s", least_indent, Y_BUF))
         
         
         y_buf_squeeze()
-        # if (Y_BUF !~ /(^-[ ])|(^-$)/)  panic(sprintf("Execpt - but get: %s", Y_BUF))
+        # if (Y_BUF !~ /(^-[ ])|(^-$)/)  yml_panic(sprintf("Execpt - but get: %s", Y_BUF))
         if (Y_BUF !~ /(^-[ ])|(^-$)/)   break
     }
     return true
@@ -123,7 +123,7 @@ function yml_parse_dict( o, kp, least_indent,       _ind, k, c, _cmt ){
         
         if (k == "") {
             if (c == 0)     return false
-            else            panic(sprintf("Expect ':': %s", Y_BUF))
+            else            yml_panic(sprintf("Expect ':': %s", Y_BUF))
         } 
         
         o[ kp , (++c) ] = k
@@ -131,7 +131,7 @@ function yml_parse_dict( o, kp, least_indent,       _ind, k, c, _cmt ){
         _kpn = kp SUBSEP k
 
         # COULD-SHUTDOWN
-        # if (Y_BUF ~ "^([ ]+- )|([ ]*[^\"':][^:]*:[ |$])") panic("yml_parse_dict() Block sequence entries are not allowed in this context: " k ":" Y_BUF)
+        # if (Y_BUF ~ "^([ ]+- )|([ ]*[^\"':][^:]*:[ |$])") yml_panic("yml_parse_dict() Block sequence entries are not allowed in this context: " k ":" Y_BUF)
 
         y_cmt_set_for_key( o, _kpn, _cmt )
 
@@ -145,7 +145,7 @@ function yml_parse_dict( o, kp, least_indent,       _ind, k, c, _cmt ){
         }
         
         if ( (_ind = yml_current_indent( )) < least_indent)   break
-        else if (_ind > least_indent)                               panic( sprintf("yml_parse_dict() Expect indent equal to %s: %s", least_indent, Y_BUF) )
+        else if (_ind > least_indent)                               yml_panic( sprintf("yml_parse_dict() Expect indent equal to %s: %s", least_indent, Y_BUF) )
 
         y_buf_squeeze()
     }
@@ -171,7 +171,7 @@ function yml_parse_value___strx( least_indent,   _regex_brack_left, _regex_str, 
     r = yml_u_trim_both(Y_BUF)
     y_buf_next()
     for (  ; Y_ARR_IDX <= Y_ARR_NUM; y_buf_next() ) {
-        if ( yml_current_indent( ) < least_indent ) panic("Expect indent equal to " least_indent "in line[" Y_ARR_IDX "/" Y_ARR_NUM "] but get:|" Y_BUF )
+        if ( yml_current_indent( ) < least_indent ) yml_panic("Expect indent equal to " least_indent "in line[" Y_ARR_IDX "/" Y_ARR_NUM "] but get:|" Y_BUF )
         
         if (! match(Y_BUF, "^" _regex_str)){
             r = r " " yml_u_trim_both( Y_BUF )
@@ -184,7 +184,7 @@ function yml_parse_value___strx( least_indent,   _regex_brack_left, _regex_str, 
         return r
     }
     
-    panic("yml_parse_value___strx(): Cannot found match: " _regex_brack_left)
+    yml_panic("yml_parse_value___strx(): Cannot found match: " _regex_brack_left)
 }
 
 function yml_parse_value( o, kp, least_indent, _is_dict,      v, s, _cmt, _blank, _ind, _should_be_list, _anchor_name, _tag_name ){
@@ -320,7 +320,7 @@ function yml_parse_root( o,   c, k, _cmt, _is_hyphen3, _is_blank ){
             y_buf_next()
         }
         if (Y_ARR_IDX <= Y_ARR_NUM) {
-            if (Y_BUF !~ Y_RE_END_HYPHEN_PAT)           panic("Expecting --- but get: |" Y_BUF "|")
+            if (Y_BUF !~ Y_RE_END_HYPHEN_PAT)           yml_panic("Expecting --- but get: |" Y_BUF "|")
             y_buf_squeeze(RLENGTH)
             y_buf_next()
         }

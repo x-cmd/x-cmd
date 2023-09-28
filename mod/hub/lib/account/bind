@@ -1,71 +1,71 @@
-# shellcheck shell=sh disable=SC3043
+# shellcheck shell=dash
 
 ___x_cmd_hub_account_bind(){
-    case "$1" in
-        wx|weixin)              ___x_cmd_hub_account_bind_weixin   "$@" ;;
-        email)                  ___x_cmd_hub_account_bind_email    "$@" ;;
-        tg|telegram)            ___x_cmd_hub_account_bind_telegram "$@" ;;
-        gh|github)              ___x_cmd_hub_account_bind_github   "$@" ;;
-        gt|gitee)               ___x_cmd_hub_account_bind_gitee    "$@" ;;
-        *)  ___x_cmd_hub___help account bind ; return 1 ;;
+    local X_help_cmd='___x_cmd_hub___help bind'
+    help:arg-null:parse
+
+    local op="$1"; [ $# -eq 0 ] || shift
+    case "$op" in
+        email)      ___x_cmd_hub_account_bind_email      "$@" ;;
+        *)          ___x_cmd_hub_u_subcmd_invalid bind   "$@" ;;
     esac
-
-    ___x_cmd_hub_account_bind_"$1" "$@"
 }
 
-___x_cmd_hub_account_bind_weixin(){
-    local token
-    token="$(___x_cmd_hub___util_get_token)"
+# TODO: avoid use subshell
+___x_cmd_hub_account_bind_email()(
+    local X_help_cmd='___x_cmd_hub___help bind email'
+    help:arg:parse
 
-    ___x_cmd_hub_qrcode "$(___x_cmd_hub_weixin_bind_url "${token}")"
-    printf "Please scan the QR code above, then press [Enter] to continue: "
-    ( trap - INT; read -r _  ) || return 1
-
-    # TODO: A way to confirm bind is successful.
-    ___x_cmd_hub_account_verify "$token"
-}
-
-___x_cmd_hub_account_bind_email_witharg(){
-    local email="${1:?Provide email}"
-
-    local res
-    if ! res="$(___x_cmd_hub___util_curl post /api/v0/account/email/bind -- "email=$email")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to bind with email $email:"
+    local token ; token="$(___x_cmd_hub_cur --get token)"
+    if [ -z "$token" ]; then
+        ___x_cmd_ui_tf false "Please login first, use 'x hub login'"
         return 1
     fi
-    hub:debug "Login with email: $email, res: $res"
-    printf "%s" "Please check your email $email to approve, then press [Enter] to continue: " >&2
-    ( trap - INT; read -r _  ) || return 1
 
-    # TODO: A way to confirm bind is successful.
-    ___x_cmd_hub_account_verify "$token"
-}
-
-___x_cmd_hub_account_bind_email(){
-    local email="${1}"
+    local email="$1"
     if [ -z "$email" ]; then
-        printf "%s" "Email: "
-        read -r email
+        if ! ___x_cmd_is_interactive_tty || [ ! -t 1 ]; then
+            hub:error "Email required, but not in interactive tty"
+            return 1
+        fi
+
+        ___X_CMD_TUI_FORM_FINAL_COMMAND=""
+        x tui form email      "Email"           ""  '=~'  '^.*@.*$' || return 1
+        [ -n "$___X_CMD_TUI_FORM_FINAL_COMMAND" ] || {
+            hub:info "Canceled"
+            return 1
+        }
     fi
-    ___x_cmd_hub_account_bind_email_witharg "$email"
+    ___x_cmd_hub_account_bind_email___witharg "$email"
+)
+
+___x_cmd_hub_account_bind_email___witharg(){
+    local email="$1"
+    [ -n "$email" ] || M='Provide email' N=hub log:ret:64
+
+    # Send email
+    local resp
+    resp="$(___x_cmd_hub_u_curl post /api/v0/account/email/bind -- "email=$email")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to bind with email $email:"
+        return 1
+    }
+    hub:debug "Bind with $email, resp => $resp"
+    x ui yesno "Please check your email $email to approve, then press [Yes] to continue: " || return 1
+
+    # Check email is binded
+    ___x_cmd_hub_u_curl get /api/v0/account | {
+        local remote_email; local msg
+        x jo env . remote_email=.email .msg
+        [ -n "$remote_email" ] || {
+            ___x_cmd_hub_u_handle_resp false "Failed to get user info:"
+            return 1
+        }
+
+        if [ "$email" != "$remote_email" ]; then
+            ___x_cmd_hub_u_handle_resp false "$email" "Failed to bind with email $email:"
+            return 1
+        fi
+
+        ___x_cmd_hub_u_handle_resp true "Successfully bind with email $remote_email"
+    }
 }
-
-# TODO: telegram bind is not working, to use browser to login
-___x_cmd_hub_account_bind_telegram(){
-    local token
-    token="$(___x_cmd_hub___util_get_token)" || return
-
-    printf "Open the url in browser to login: https://hub.x-cmd.com/s/tb/%s\nthen press [Enter] to continue: " "${token}"
-    ( trap - INT; read -r _  ) || return 1
-
-    ___x_cmd_hub_account_verify "$token"
-}
-
-___x_cmd_hub_account_bind_github(){
-    : # TODO
-}
-
-___x_cmd_hub_account_bind_gitee(){
-    : # TODO
-}
-

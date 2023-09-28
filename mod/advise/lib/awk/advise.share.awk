@@ -99,17 +99,27 @@ function comp_advise_remove_dev_tag_of_arr_group(o, kp, arr_group,          i, j
 
 # EndSection
 
-# Section: advise filepath
+## Section: advise ref filepath
 
-function comp_advise_get_ref(obj, kp,        r, filepath, _){
+function comp_advise_get_ref(obj, kp,        r, msg, i, l){
     while ( (r = jref_get(obj, kp) ) != false ) {
-        filepath = comp_advise_get_ref_adv_jso_filepath( juq(r) )
-        jref_rm(obj, kp)
-        jiparse2leaf_fromfile( _, kp, filepath )
-        if ( cat_is_filenotfound() ) return "Not found such advise jso file - " filepath
-        cp_cover(obj, kp, _, kp)
-        delete _
+        if (r == "[") {
+            l = obj[ kp, "\"$ref\"" L ]
+            for (i=1; i<=l; ++i)
+                if ((msg = comp_advise_get_ref_inner(obj, kp, juq(obj[ kp, "\"$ref\"", "\""i"\"" ]))) != true) return msg
+            continue
+        }
+        if ((msg = comp_advise_get_ref_inner(obj, kp, juq(r))) != true) return msg
     }
+    return true
+}
+
+function comp_advise_get_ref_inner(obj, kp, filepath,       _){
+    filepath = comp_advise_get_ref_adv_jso_filepath( filepath )
+    jref_rm(obj, kp)
+    jiparse2leaf_fromfile( _, kp, filepath )
+    if ( cat_is_filenotfound() ) return "Not found such advise jso file - " filepath
+    cp_cover(obj, kp, _, kp)
     return true
 }
 

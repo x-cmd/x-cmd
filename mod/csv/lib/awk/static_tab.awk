@@ -1,17 +1,22 @@
-function printf_item(v, w, sep,       item, s){
+function parse_item(v, w, sep,       item, s){
     item = wcstruncate(v, w)
-    s = return_space_str(w)
-    if (v == item) printf("%s%s", wcstruncate(item s, w), sep)
-    else printf("%s%s%s", wcstruncate(item, w-1), "…", sep)
+    s = space_str(w)
+    if (v == item)  return wcstruncate(item s, w) sep
+    else            return wcstruncate(item, w-1) "…" sep
 }
 
-function return_space_str(w,       s){
+function output(s){
+    printf UI_LINEWRAP_DISABLE > "/dev/stderr"
+    print s
+    printf UI_LINEWRAP_ENABLE > "/dev/stderr"
+}
+
+function space_str(w,       s){
     if ( (s = SPACE_STR[ w ]) != "" ) return s
     return SPACE_STR[ w ] = str_rep( " ", w )
 }
 
 BEGIN{
-    printf UI_LINEWRAP_DISABLE "\r" > "/dev/stderr"
     PROPORTION = ENVIRON[ "PROPORTION" ]
     COLUMNS = ENVIRON[ "COLUMNS" ]
     SEP = "   "
@@ -25,18 +30,16 @@ BEGIN{
         o[ L ] = CSV_IRECORD_CURSOR
 
         if (IS_STREAM == false) continue
+        _return_text = ""
         for (i=1; i<=CUSTOM_LEN; ++i)
-            printf_item( o[ S CSV_IRECORD_CURSOR, i ], arr[ i, "width" ], SEP)
-        printf("\n")
+            _return_text = _return_text parse_item( o[ S CSV_IRECORD_CURSOR, i ], arr[ i, "width" ], SEP)
+        output( _return_text )
     }
     csv_irecord_fini()
 }
 
 END{
-    if (IS_STREAM == true) {
-        printf UI_LINEWRAP_ENABLE "\r" > "/dev/stderr"
-        exit 0
-    }
+    if (IS_STREAM == true) exit(0)
 
     l = o[ L ]
     c = ( CUSTOM_LEN != "" ) ? CUSTOM_LEN : o[ L L ]
@@ -49,10 +52,9 @@ END{
     }
 
     for (i=1; i<=l; ++i){
+        _return_text = ""
         for (j=1; j<=c; ++j)
-            printf_item(o[ S i, j ], arr[ j, "width" ], SEP)
-        printf("\n")
+            _return_text = _return_text parse_item(o[ S i, j ], arr[ j, "width" ], SEP)
+        output( _return_text )
     }
-
-    printf UI_LINEWRAP_ENABLE "\r" > "/dev/stderr"
 }

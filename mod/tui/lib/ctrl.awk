@@ -127,23 +127,20 @@ function ctrl_num_get_min(o, kp){   return o[ kp, "ctrl-num", "min" ];     }
 
 # Section: ctrl sw
 function ctrl_sw_init( o, kp, val, num ) {
-    kp = kp SUBSEP "ctrl-sw" SUBSEP
     if (num <= 1) num = 1
-    ctrl_num_init( o, kp, 0, int(num), int(val))
-    # o[ kp, "val" ] = (bool != true) ? false : true
+    ctrl_num_init( o, kp SUBSEP "ctrl-sw" SUBSEP, 0, int(num), int(val))
 }
 
 function ctrl_sw_toggle( o, kp ) {
-    kp = kp SUBSEP "ctrl-sw" SUBSEP
-    return ctrl_num_rinc( o, kp )
-    # o[ kp, "val" ] = 1 - o[ kp, "val" ]
-    # return o[ kp, "val" ]
+    return ctrl_num_rinc( o, kp SUBSEP "ctrl-sw" SUBSEP )
 }
 
 function ctrl_sw_get( o, kp ) {
-    kp = kp SUBSEP "ctrl-sw" SUBSEP
-    return ctrl_num_get( o, kp )
-    # return o[ kp, "val" ]
+    return ctrl_num_get( o, kp SUBSEP "ctrl-sw" SUBSEP )
+}
+
+function ctrl_sw_set( o, kp, v ) {
+    return ctrl_num_set( o, kp SUBSEP "ctrl-sw" SUBSEP, v )
 }
 
 # EndSection

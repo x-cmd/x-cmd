@@ -7,6 +7,7 @@ function tapp_init(){
     LSENV_KP = "ls_kp"
     navi_init(o, LSENV_KP)
     navi_statusline_init( o, LSENV_KP )
+    comp_textbox_init(o, "CUSTOM_FILEINFO_KP")
 }
 
 # EndSection
@@ -29,19 +30,22 @@ function tapp_handle_response(fp,       _content, _rootkp, l, i, arr){
         l = split(_content, arr, "\n")
         _rootkp = substr( arr[1], RLENGTH+1 )
         comp_navi_data_init( o, LSENV_KP, _rootkp )
-        for (i=2; i<=l; ++i) user_data_add( o, LSENV_KP, _rootkp, arr[i] )
+        for (i=2; i<=l; ++i) {
+            if(arr[i] ~ "^homepage|^license|^desc") continue
+            user_data_add( o, LSENV_KP, _rootkp, arr[i] )
+        }
         comp_navi_data_end( o, LSENV_KP, _rootkp )
     }
 }
 
 function user_data_add( o, kp, rootkp, str,         preview, _, v) {
-    split( str, _, " ")
+    split( str, _, "\003\004")
     v = _[1]
     if (_[2] == "") preview = "{"
     else {
-        jqparse_dict0(_[2], o, kp SUBSEP rootkp SUBSEP v SUBSEP "info")
-        jdict_put(o, kp SUBSEP rootkp SUBSEP v SUBSEP "info", "\"version\"", v )
-        preview = ""
+        jqparse_dict0(_[2], o, kp SUBSEP rootkp " " v SUBSEP "info")
+        jdict_put(o, kp SUBSEP rootkp " " v SUBSEP "info", "\"version\"", v)
+        preview = "preview"
     }
     comp_navi_data_add_kv( o, kp, rootkp, v, preview, rootkp " " v )
 }
@@ -74,7 +78,7 @@ function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        _kp,
     if ( ! change_is(o, kp, "navi.preview") ) return
     change_unset(o, kp, "navi.preview")
     _kp = kp S rootkp S "info"
-    if ((l = o[ _kp L]) == 0) return
+    if ((l = o[ _kp L ]) == 0) return
     for(i=1; i<=l; i++) {
         key = o[ _kp, i ]
         value = o[ _kp, key ]

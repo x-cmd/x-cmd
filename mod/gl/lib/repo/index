@@ -6,15 +6,18 @@ xrc:mod:lib gl \
     repo/member \
     repo/tag \
     repo/mr \
+    repo/hook \
+    repo/label \
     repo/branch/index \
     repo/branch/protection \
     repo/release/index \
     repo/release/attachment \
-    repo/apply/index
+    repo/apply/index  \
+    repo/label
 
 ___x_cmd_gl_repo(){
     param:scope         ___x_cmd_gl
-    param:subcmd ___x_cmd_gl_repo                            \
+    param:subcmd ___x_cmd_gl_repo                                    \
         ls                      "List repo of owner"                 \
         info                    "Show detailed information of repo"  \
         create                  "Create repo"                        \
@@ -26,7 +29,11 @@ ___x_cmd_gl_repo(){
         tag                     "repo tag management"                \
         branch                  "repo branch management"             \
         "member|collaborator"   "repo member management"             \
-        release                 "repo release management"
+        release                 "repo release management"            \
+        rename                  "repo rename"                        \
+        export                  "export repo csv data"               \
+        hook                    "repo hook management"               \
+        label                   "repo label management"
     param:subcmd:try
     param:run
 
@@ -40,11 +47,11 @@ ___x_cmd_gl_repo_ls(){
     param:dsl       '
 options:
     #1              "owner path (default is current user)"          <>=""
-    --visibility    "visibility"                                    <>=""       = private public internal ""
-    --owned         "owned"
-    --page          "page"                                          <>:Per_page="1"
-    --per_page      "per_page"                                      <>:Numbers="30"
-    --json|-j       "output json data"
+    --visibility    "repo visibility"                               <>=""       = private public internal ""
+    --owned         "User-owned"
+    --page          "target page"                                   <>:Per_page="1"
+    --per_page      "per page data number"                          <>:Numbers="30"
+    --json|-j       "output raw JSON data"
 '
     param:run
 
@@ -60,77 +67,102 @@ options:
 }
 # EndSection
 
+# Section: export
+___x_cmd_gl_repo_export(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "user path (default the authenticated user)"    <>=""
+    --visibility    "repo visibility"                               <>=""       = private public internal ""
+    --owned         "User-owned"
+'
+    param:run
+    local _url=""
+    if [ -n "$1" ]; then
+        _url="/users/$1/projects"
+    else
+        _url="/projects"
+        owned=true
+    fi
+
+    local csv_word
+    csv_word="$(___x_cmd_gl_get_multi "$_url" visibility owned | ___x_cmd_gl_tocsv)"
+    eval "___x_cmd_gl_get_multi $_url visibility owned $csv_word"
+}
+
+# EndSection
+
 # Section: Create
 # https://docs.gitlab.com/ee/api/projects.html#create-project
 ___x_cmd_gl_repo_create(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 option:
-    #1                                                  "repo names"                                                                        <>:RepoName
-    -p|--path                                           "repo path"                                                                         <>=""
-    --group|-g                                          "<group_path> or .id=<group_id>"                                                       <>=""
-    --visibility                                        "See project visibility level."                                                     <>="private" = private internal public
-    --default_branch                                    "The default branch name."                                                          <>=""
-    --tag_list                                          "The list of tags for a project"                                                    <>=""
-    --description                                       "Short project description."                                                        <>=""
-    --ci_config_path                                    "The path to CI configuration file."                                                <>=""
+    #1                                                  "repo names"                                                                       <>:RepoName
+    -p|--path                                           "repo path"                                                                        <>=""
+    --group|-g                                          "<group_path> or .id=<group_id>"                                                   <>=""
+    --visibility                                        "See project visibility level"                                                     <>="private" = private internal public
+    --default_branch                                    "The default branch name"                                                          <>=""
+    --tag_list                                          "The list of tags for a project"                                                   <>=""
+    --description                                       "Short project description"                                                        <>=""
+    --ci_config_path                                    "The path to CI configuration file"                                                <>=""
     --initialize_with_readme                            "Whether to create a Git repository with just a README.md file"
-    --json|-j                                           "output json data"
+    --json|-j                                           "output raw JSON data"
 
-    --topics                                            "The list of topics for a project"                                                  <>:Array=""
-    --avatar                                            "Image file for avatar of the project."                                             <>=""
-    --import_url                                        "URL to import repository from."                                                    <>=""
-    --merge_method                                      "Set the merge method used."                                                        <>=""
-    --build_timeout                                     "The maximum amount of time, in seconds, that a job can run."                       <>:Number=""
-    --squash_option                                     "One of never, always, default_on, or default_off."                                 <>=""
-    --template_name                                     "When used without use_custom_template, name of a built-in project template."       <>=""
-    --wiki_access_level                                 "wiki access level"                                                                 <>=""
-    --build_git_strategy                                "The Git strategy. Defaults to fetch."                                              <>=""
-    --repository_storage                                "Which storage shard the repository is on."                                         <>=""
-    --pages_access_level                                "Pages access level"                                                                <>=""
-    --issues_access_level                               "Issues access level"                                                               <>=""
-    --builds_access_level                               "One of disabled, private, or enabled."                                             <>=""
-    --template_project_id                               "When used with use_custom_template, project ID of a custom project template."      <>:Number=""
-    --forking_access_level                              "One of disabled, private, or enabled."                                             <>=""
-    --snippets_access_level                             "Snippets access level"                                                             <>=""
-    --analytics_access_level                            "One of disabled, private or enabled"                                               <>=""
-    --approvals_before_merge                            "How many approvers should approve merge requests by default"                       <>:Number=""
-    --operations_access_level                           "Operations access level"                                                           <>=""
-    --repository_access_level                           "Repository access level"                                                           <>=""
-    --requirements_access_level                         "Requirements access level"                                                         <>=""
-    --auto_devops_deploy_strategy                       "Auto Deploy strategy"                                                              <>=""
-    --merge_requests_access_level                       "Merge requests access level"                                                       <>=""
-    --container_registry_access_level                   "Set visibility of container registry, for this project"                            <>=""
-    --group_with_project_templates_id                   "specifies ID of group from which all the custom project templates are sourced."    <>:Number=""
-    --security_and_compliance_access_level              "Security and compliance access level."                                             <>=""
-    --container_expiration_policy_attributes            "Update the image cleanup policy for this project. "                                <>=""
-    --external_authorization_classification_label       "The classification label for the project."                                         <>=""
-    --mirror                                            "Enables pull mirroring in a project."
-    --lfs_enabled                                       "Enable LFS."
-    --jobs_enabled                                      "Enable jobs for this project."
-    --wiki_enabled                                      "Enable wiki for this project. Use wiki_access_level instead."
-    --public_builds                                     "If true, jobs can be viewed by non-project members."
-    --issues_enabled                                    "Enable issues for this project."
-    --emails_disabled                                   "Disable email notifications."
-    --snippets_enabled                                  "Enable snippets for this project. "
-    --packages_enabled                                  "Enable or disable packages repository feature."
-    --auto_devops_enabled                               "Enable Auto DevOps for this project."
-    --use_custom_template                               "Use either custom instance or group project template."
-    --merge_trains_enabled                              "Enable or disable merge trains."
-    --mirror_trigger_builds                             "Pull mirroring triggers builds."
-    --shared_runners_enabled                            "Enable shared runners for this project."
-    --request_access_enabled                            "Allow users to request member access."
-    --merge_requests_enabled                            "Enable merge requests for this project."
-    --merge_pipelines_enabled                           "Enable or disable merge pipelines."
-    --container_registry_enabled                        "Enable container registry for this project."
-    --autoclose_referenced_issues                       "Set whether auto-closing referenced issues on default branch."
-    --auto_cancel_pending_pipelines                     "Auto-cancel pending pipelines."
-    --allow_merge_on_skipped_pipeline                   "Set whether or not merge requests can be merged with skipped jobs."
-    --remove_source_branch_after_merge                  "Enable Delete source branch option by default for all new merge requests."
-    --resolve_outdated_diff_discussions                 "Automatically resolve merge request diffs discussions on lines changed with a push."
-    --printing_merge_request_link_enabled               "Show link to create/view merge request when pushing from the command line."
-    --only_allow_merge_if_pipeline_succeeds             "Set whether merge requests can only be merged with successful pipelines."
-    --only_allow_merge_if_all_discussions_are_resolved  "Set whether merge requests can only be merged when all the discussions are resolved."
+    --topics                                            "The list of topics for a project"                                                 <>:Array=""
+    --avatar                                            "Image file for avatar of the project"                                             <>=""
+    --import_url                                        "URL to import repository from"                                                    <>=""
+    --merge_method                                      "Set the merge method used"                                                        <>=""
+    --build_timeout                                     "The maximum amount of time, in seconds, that a job can run"                       <>:Number=""
+    --squash_option                                     "One of never, always, default_on, or default_off"                                 <>=""
+    --template_name                                     "When used without use_custom_template, name of a built-in project template"       <>=""
+    --wiki_access_level                                 "wiki access level"                                                                <>=""
+    --build_git_strategy                                "The Git strategy. Defaults to fetch"                                              <>=""
+    --repository_storage                                "Which storage shard the repository is on"                                         <>=""
+    --pages_access_level                                "Pages access level"                                                               <>=""
+    --issues_access_level                               "Issues access level"                                                              <>=""
+    --builds_access_level                               "builds access level"                                                              <>=""  = disabled private enabled
+    --template_project_id                               "When used with use_custom_template, project ID of a custom project template"      <>:Number=""
+    --forking_access_level                              "forking_access_level"                                                             <>=""  = disabled private enabled
+    --snippets_access_level                             "Snippets access level"                                                            <>=""
+    --analytics_access_level                            "analytics access level"                                                           <>=""  = disabled private enabled
+    --approvals_before_merge                            "How many approvers should approve merge requests by default"                      <>:Number=""
+    --operations_access_level                           "Operations access level"                                                          <>=""
+    --repository_access_level                           "Repository access level"                                                          <>=""
+    --requirements_access_level                         "Requirements access level"                                                        <>=""
+    --auto_devops_deploy_strategy                       "Auto Deploy strategy"                                                             <>=""
+    --merge_requests_access_level                       "Merge requests access level"                                                      <>=""
+    --container_registry_access_level                   "Set visibility of container registry, for this project"                           <>=""
+    --group_with_project_templates_id                   "specifies ID of group from which all the custom project templates are sourced"    <>:Number=""
+    --security_and_compliance_access_level              "Security and compliance access level"                                             <>=""
+    --container_expiration_policy_attributes            "Update the image cleanup policy for this project"                                 <>=""
+    --external_authorization_classification_label       "The classification label for the project"                                         <>=""
+    --mirror                                            "Enables pull mirroring in a project"
+    --lfs_enabled                                       "Enable LFS"
+    --jobs_enabled                                      "Enable jobs for this project"
+    --wiki_enabled                                      "Enable wiki for this project. Use wiki_access_level instead"
+    --public_builds                                     "If true, jobs can be viewed by non-project members"
+    --issues_enabled                                    "Enable issues for this project"
+    --emails_disabled                                   "Disable email notifications"
+    --snippets_enabled                                  "Enable snippets for this project"
+    --packages_enabled                                  "Enable or disable packages repository feature"
+    --auto_devops_enabled                               "Enable Auto DevOps for this project"
+    --use_custom_template                               "Use either custom instance or group project template"
+    --merge_trains_enabled                              "Enable or disable merge trains"
+    --mirror_trigger_builds                             "Pull mirroring triggers builds"
+    --shared_runners_enabled                            "Enable shared runners for this project"
+    --request_access_enabled                            "Allow users to request member access"
+    --merge_requests_enabled                            "Enable merge requests for this project"
+    --merge_pipelines_enabled                           "Enable or disable merge pipelines"
+    --container_registry_enabled                        "Enable container registry for this project"
+    --autoclose_referenced_issues                       "Set whether auto-closing referenced issues on default branch"
+    --auto_cancel_pending_pipelines                     "Auto-cancel pending pipelines"
+    --allow_merge_on_skipped_pipeline                   "Set whether or not merge requests can be merged with skipped jobs"
+    --remove_source_branch_after_merge                  "Enable Delete source branch option by default for all new merge requests"
+    --resolve_outdated_diff_discussions                 "Automatically resolve merge request diffs discussions on lines changed with a push"
+    --printing_merge_request_link_enabled               "Show link to create/view merge request when pushing from the command line"
+    --only_allow_merge_if_pipeline_succeeds             "Set whether merge requests can only be merged with successful pipelines"
+    --only_allow_merge_if_all_discussions_are_resolved  "Set whether merge requests can only be merged when all the discussions are resolved"
 '
     param:run
     [ -n "$1" ] || M='accepts args (<repos>), received empty' arg:ret:64
@@ -176,81 +208,85 @@ ___x_cmd_gl_repo_edit(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-    #1                  "<owner>/<repo> or .id=<repo_id>"                                   <>:RepoName
-    --visibility        "See repo visibility level."                                        <>="" = private internal public
-    --tag_list          "The list of tags for a repo"                                       <>=""
-    --description       "Short repo description."                                           <>=""
-    --default_branch    "The default branch name."                                          <>=""
-    --name              "The name of the repo"                                              <>=""
-    -p|--path           "Custom repository name for the repo."                              <>=""
-    --ci_config_path    "The path to CI configuration file."                                <>=""
-    --json|-j           "output json data"
+    #1                  "<owner>/<repo> or .id=<repo_id>"                                  <>:RepoName
+    --visibility        "See repo visibility level"                                        <>="" = private internal public
+    --tag_list          "The list of tags for a repo"                                      <>=""
+    --description       "Short repo description"                                           <>=""
+    --default_branch    "The default branch name"                                          <>=""
+    --name              "The name of the repo"                                             <>=""
+    -p|--path           "Custom repository name for the repo"                              <>=""
+    --ci_config_path    "The path to CI configuration file"                                <>=""
+    --json|-j           "output raw JSON data"
+    --yes|-y            "Ignore remove prompt interception"
 
-    --avatar                                        "Image file for avatar of the repo."                                                                                                         <>:mixed=""
-    --import_url                                    "URL the repository was imported from."                                                                                                         <>=""
-    --build_timeout                                 "The maximum amount of time, in seconds, that a job can run."                                                                                   <>:Number=""
-    --issues_enabled                                "Set the merge method used."                                                                                                                    <>=""
-    --mirror_user_id                                "User responsible for all the activity surrounding a pull mirror event. (administrators only)"                                                  <>:Number=""
-    --build_git_strategy                            "The Git strategy. Defaults to fetch"                                                                                                           <>=""
-    --repository_storage                            "Which storage shard the repository is on. (administrators only)"                                                                               <>=""
-    --ci_default_git_depth                          "Default number of revisions for shallow cloning."                                                                                              <>:Number=""
-    --approvals_before_merge                        "How many approvers should approve merge request by default. "                                                                                  <>:Number=""
-    --merge_requests_template                       "Default description for merge requests. Description is parsed with gl Flavored Markdown."                                                   <>=""
-    --wiki_access_level                             "One of disabled, private, or enabled"                                                                                                          <>=""
-    --pages_access_level                            "One of disabled, private, enabled, or public."                                                                                                 <>=""
-    --issues_access_level                           "One of disabled, private, or enabled"                                                                                                          <>=""
-    --builds_access_level                           "One of disabled, private, or enabled."                                                                                                         <>=""
-    --forking_access_level                          "The classification label for the repo."                                                                                                     <>=""
-    --snippets_access_level                         "One of disabled, private, or enabled"                                                                                                          <>=""
-    --analytics_access_level                        "One of disabled, private or enabled"                                                                                                           <>=""
-    --operations_access_level                       "One of disabled, private, or enabled"                                                                                                          <>=""
-    --repository_access_level                       "One of disabled, private, or enabled"                                                                                                          <>=""
-    --requirements_access_level                     "One of disabled, private, enabled or public"                                                                                                   <>=""
-    --merge_requests_access_level                   "One of disabled, private, or enabled"                                                                                                          <>=""
-    --container_registry_access_level               "Set visibility of container registry, for this repo, to one of , or . disabled private enabled"                                             <>=""
-    --security_and_compliance_access_level          "Security and compliance access level. One of disabled, private, or enabled"                                                                    <>=""
-    --auto_devops_deploy_strategy                   "Auto Deploy strategy (continuous, manual, or timed_incremental) "                                                                              <>=""
-    --auto_cancel_pending_pipelines                 "Auto-cancel pending pipelines. This isnt a boolean, but enabled/disabled. "                                                                    <>=""
-    --container_expiration_policy_attributes        "Update the image cleanup policy for this project. Accepts: (string), (integer), (string), (string), (string), (string), (boolean). "           <>:hash=""
-    --external_authorization_classification_label   "The classification label for the project."                                                                                                     <>=""
-    --squash_commit_template                        "Template used to create squash commit message in merge requests"                                                                               <>=""
-    --squash_option                                 "One of never, always, default_on, or default_off"                                                                                              <>=""
-    --suggestion_commit_message                     "The commit message used to apply merge request suggestions."                                                                                   <>=""
-    --topics                                        "The list of topics for the project. This replaces any existing topics that are already added to the project. (Introduced in gcode 14.0.)."     <>:array=""
+    --avatar                                        "Image file for avatar of the repo"                                                                                                            <>:mixed=""
+    --import_url                                    "URL the repository was imported from"                                                                                                         <>=""
+    --build_timeout                                 "The maximum amount of time, in seconds, that a job can run"                                                                                   <>:Number=""
+    --issues_enabled                                "Set the merge method used"                                                                                                                    <>=""
+    --mirror_user_id                                "User responsible for all the activity surrounding a pull mirror event. (administrators only)"                                                 <>:Number=""
+    --build_git_strategy                            "The Git strategy. Defaults to fetch"                                                                                                          <>=""
+    --repository_storage                            "Which storage shard the repository is on. (administrators only)"                                                                              <>=""
+    --ci_default_git_depth                          "Default number of revisions for shallow cloning"                                                                                              <>:Number=""
+    --approvals_before_merge                        "How many approvers should approve merge request by default"                                                                                   <>:Number=""
+    --merge_requests_template                       "Default description for merge requests. Description is parsed with gl Flavored Markdown"                                                      <>=""
+    --wiki_access_level                             "wiki access level"                                                                                                                            <>=""  = disabled private enabled
+    --pages_access_level                            "pages access level"                                                                                                                           <>=""  = disabled private enabled public
+    --issues_access_level                           "issues access level"                                                                                                                          <>=""  = disabled private enabled
+    --builds_access_level                           "builds access level"                                                                                                                          <>=""  = disabled private enabled
+    --forking_access_level                          "The classification label for the repo"                                                                                                        <>=""
+    --snippets_access_level                         "snippets access level"                                                                                                                        <>=""  = disabled private enabled
+    --analytics_access_level                        "analytics access level"                                                                                                                       <>=""  = disabled private enabled
+    --operations_access_level                       "operations access level"                                                                                                                      <>=""  = disabled private enabled
+    --repository_access_level                       "repository access level"                                                                                                                      <>=""  = disabled private enabled
+    --requirements_access_level                     "requirements access level"                                                                                                                    <>=""  = disabled private enabled public
+    --merge_requests_access_level                   "merge requests access leveld"                                                                                                                 <>=""  = disabled private enabled
+    --container_registry_access_level               "Set visibility of container registry, for this repo, to one of , or"                                                                          <>=""  = disabled private enabled
+    --security_and_compliance_access_level          "Security and compliance access level"                                                                                                         <>=""  = disabled private enabled
+    --auto_devops_deploy_strategy                   "Auto Deploy strategy (continuous, manual, or timed_incremental)"                                                                              <>=""
+    --auto_cancel_pending_pipelines                 "Auto-cancel pending pipelines. This isnt a boolean, but enabled/disabled"                                                                     <>=""
+    --container_expiration_policy_attributes        "Update the image cleanup policy for this project. Accepts: (string), (integer), (string), (string), (string), (string), (boolean)"            <>:hash=""
+    --external_authorization_classification_label   "The classification label for the project"                                                                                                     <>=""
+    --squash_commit_template                        "Template used to create squash commit message in merge requests"                                                                              <>=""
+    --squash_option                                 "One of never, always, default_on, or default_off"                                                                                             <>=""
+    --suggestion_commit_message                     "The commit message used to apply merge request suggestions"                                                                                   <>=""
+    --topics                                        "The list of topics for the project. This replaces any existing topics that are already added to the project. (Introduced in gcode 14.0.)"     <>:array=""
     --wiki_enabled                                  "(Deprecated) Enable wiki for this project. Use instead. wiki_access_level"
     --mirror_trigger_builds                         "mirror_trigger_builds"
-    --allow_merge_on_skipped_pipeline               "Set whether or not merge requests can be merged with skipped jobs."
-    --autoclose_referenced_issues                   "Set whether auto-closing referenced issues on default branch "
-    --auto_devops_enabled                           "Enable Auto DevOps for this project. "
-    --ci_forward_deployment_enabled                 "When a new deployment job starts, skip older deployment jobs that are still pending."
-    --ci_separated_caches                           "Set whether or not caches should be separated by branch protection status."
-    --container_registry_enabled                    "(Deprecated) Enable container registry for this project. Use instead."
-    --emails_disabled                               "Disable email notifications.."
-    --merge_pipelines_enabled                       "Enable or disable merge pipelines.."
-    --merge_requests_enabled                        "(Deprecated) Enable merge requests for this project. Use instead."
-    --merge_trains_enabled                          "Enable or disable merge trains.."
-    --mirror_overwrites_diverged_branches           "Pull mirror overwrites diverged branches."
+    --allow_merge_on_skipped_pipeline               "Set whether or not merge requests can be merged with skipped jobs"
+    --autoclose_referenced_issues                   "Set whether auto-closing referenced issues on default branch"
+    --auto_devops_enabled                           "Enable Auto DevOps for this project"
+    --ci_forward_deployment_enabled                 "When a new deployment job starts, skip older deployment jobs that are still pending"
+    --ci_separated_caches                           "Set whether or not caches should be separated by branch protection status"
+    --container_registry_enabled                    "(Deprecated) Enable container registry for this project. Use instead"
+    --emails_disabled                               "Disable email notifications"
+    --merge_pipelines_enabled                       "Enable or disable merge pipelines"
+    --merge_requests_enabled                        "(Deprecated) Enable merge requests for this project. Use instead"
+    --merge_trains_enabled                          "Enable or disable merge trains"
+    --mirror_overwrites_diverged_branches           "Pull mirror overwrites diverged branches"
     --mirror                                        "Enables pull mirroring in a project"
     --mr_default_target_self                        "For forked projects, target merge requests to this project. If false, the target will be the upstream project"
-    --only_allow_merge_if_pipeline_succeeds         "Set whether merge requests can only be merged with successful jobs."
-    --only_mirror_protected_branches                "Only mirror protected branches."
-    --packages_enabled                              "Enable or disable packages repository feature."
-    --printing_merge_request_link_enabled           "Show link to create/view merge request when pushing from the command line."
+    --only_allow_merge_if_pipeline_succeeds         "Set whether merge requests can only be merged with successful jobs"
+    --only_mirror_protected_branches                "Only mirror protected branches"
+    --packages_enabled                              "Enable or disable packages repository feature"
+    --printing_merge_request_link_enabled           "Show link to create/view merge request when pushing from the command line"
     --public_builds                                 "If true, jobs can be viewed by non-project members"
-    --remove_source_branch_after_merge              "Enable option by default for all new merge requests.Delete source branch "
-    --request_access_enabled                        "Allow users to request member access."
-    --resolve_outdated_diff_discussions             "Automatically resolve merge request diffs discussions on lines changed with a push."
-    --restrict_user_defined_variables               "Allow only users with the Maintainer role to pass user-defined variables when triggering a pipeline."
-    --service_desk_enabled                          "Enable or disable Service Desk feature."
-    --shared_runners_enabled                        "Enable shared runners for this project."
+    --remove_source_branch_after_merge              "Enable option by default for all new merge requests.Delete source branch"
+    --request_access_enabled                        "Allow users to request member access"
+    --resolve_outdated_diff_discussions             "Automatically resolve merge request diffs discussions on lines changed with a push"
+    --restrict_user_defined_variables               "Allow only users with the Maintainer role to pass user-defined variables when triggering a pipeline"
+    --service_desk_enabled                          "Enable or disable Service Desk feature"
+    --shared_runners_enabled                        "Enable shared runners for this project"
     --snippets_enabled                              "(Deprecated) Enable snippets for this project. Use instead. snippets_access_level"
 '
     param:run
+    if [ -n "$name" ] || [ -n "$p" ]; then
+        [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to change the $(___x_cmd_ui bold red "name or path") of your repo to: $(___x_cmd_ui bold red "$name " "$p") ?" || return 0
+    fi
     local repo="$1"
     ___x_cmd_gl_param_init_owner_repo
     local gen_gl_json
     gen_gl_json="$(param:option2json)"
-    gl:debug "$gen_gcode_json"
+    gl:debug "$gen_gl_json"
     ___x_cmd_gl_curl put "/projects/$owner_repo" "gen_gl_json" | ___x_cmd_gl_repo_ui_utils Update
 }
 # EndSection
@@ -261,11 +297,11 @@ ___x_cmd_gl_repo_info(){
     param:scope     ___x_cmd_gl
     param:dsl       '
 options:
-    #1                          "<owner>/<repo> or .id=<repo_id>"                                   <>:RepoName
-    --license                   "Include project license data."
-    --statistics                "Include project statistics. Only available to Reporter or higher level role members."
+    #1                          "<owner>/<repo> or .id=<repo_id>"                                                           <>:RepoName
+    --license                   "Include project license data"
+    --statistics                "Include project statistics. Only available to Reporter or higher level role members"
     --with_custom_attributes    "Include custom attributes in response. (administrator only)"
-    --json|-j                   "output json data"
+    --json|-j                   "output raw JSON data"
 '
     param:run
 
@@ -343,5 +379,37 @@ ___x_cmd_gl_repo_ui_utils(){
             return 1
         fi
     )
+}
+# EndSection
+# Section: rename
+___x_cmd_gl_repo_rename(){
+param:scope     ___x_cmd_gl
+    param:dsl       '
+option:
+    #1              "New repo names"                <>
+    --repo|-r       "<owner_path>/<repo_path>"      <>:RepoPath
+    --yes|-y        "Ignore rename prompt interception"
+'
+    param:run
+    ___x_cmd_gl_param_init_owner_repo
+    local name="${1##*/}"
+    local p="$name"
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to rename repository $(___x_cmd_ui bold red "$repo => ${repo%/*}/${name}") ?" || return 1
+
+    local repo="${repo}"
+
+    local gen_gl_json=
+    gen_gl_json="$(param:option2json -repo -json -yes +name path=p)"
+    gl:debug "$gen_gl_json"
+    ___x_cmd_gl_curl put "/projects/$owner_repo" "gen_gl_json" | (
+                x jo env . gl_resp_err=.error gl_resp_msg=.message
+                if ___x_cmd_gl_http_error; then
+                    ___x_cmd_ui_tf  true "[Success]: Rename repo ${1}"
+                else
+                    ___x_cmd_ui_tf false "Rename repo ${1} failure:"
+                    ___x_cmd_gl____handle_resp
+                    return 1
+                fi
+            )
 }
 # EndSection

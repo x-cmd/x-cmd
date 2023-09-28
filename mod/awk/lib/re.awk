@@ -62,6 +62,7 @@ BEGIN{
 
     RE_NUMBER = "^[-+]?[0-9]+$"
     RE_NUM = "[-+]?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?"
+    RE_NUM_PERCENTAGE = "(0|[1-9][0-9]*)([.][0-9]+)?%"
     RE_REDUNDANT = "([ \t]*[\n]+)+"
 
     # RE_TRIM = re_or( "^" RE_SPACE, RE_SPACE "$" )
@@ -84,16 +85,17 @@ BEGIN {
 
     RE_033 = "\033\\[([0-9]+;)*[0-9]+m"
 
-    RE_IP_A = re_range(0, 127)   "([.]" re_range(0, 255) "){3}"
-    RE_IP_B = re_range(128, 191) "([.]" re_range(0, 255) "){3}"
-    RE_IP_C = re_range(192, 223) "([.]" re_range(0, 255) "){3}"
-    RE_IP_D = re_range(224, 239) "([.]" re_range(0, 255) "){3}"
-    RE_IP_E = re_range(240, 247) "([.]" re_range(0, 255) "){3}"
-    RE_IP   =   re_range(0, 255) "([.]" re_range(0, 255) "){3}"
+    RE_IP_A = re_range(0, 127)   re_interval_expression( "([.]" re_range(0, 255) ")", 3 )
+    RE_IP_B = re_range(128, 191) re_interval_expression( "([.]" re_range(0, 255) ")", 3 )
+    RE_IP_C = re_range(192, 223) re_interval_expression( "([.]" re_range(0, 255) ")", 3 )
+    RE_IP_D = re_range(224, 239) re_interval_expression( "([.]" re_range(0, 255) ")", 3 )
+    RE_IP_E = re_range(240, 247) re_interval_expression( "([.]" re_range(0, 255) ")", 3 )
+    RE_IP   =   re_range(0, 255) re_interval_expression( "([.]" re_range(0, 255) ")", 3 )
 
     RE_IP_SUBNET = ""
 
-    RE_URL_BODY     =   "[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[.][a-z]{2,6}(/[-A-Za-z0-9+&@#/%?=~_|]*)?"
+    RE_URL_BODY = "[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[.]" re_interval_expression( "[a-z]", 2, 6 ) "(/[-A-Za-z0-9+&@#/%?=~_|]*)?"
+
     RE_URL          =   "([a-zA-Z0-9]+://)?" RE_URL_BODY
     RE_URL_HTTP     =   "(http)://"          RE_URL_BODY
     RE_URL_HTTPX    =   "(httpS?)://"        RE_URL_BODY
@@ -104,9 +106,7 @@ BEGIN{
     # /"[^"\\\001-\037]*((\\[^u\001-\037]|\\u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])[^"\\\001-\037]*)*"|-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?|null|false|true|[ \t\n\r]+|./
     # RE_STR2_ORGINAL = "\"[^\"\\\\\001-\037]*((\\\\[^u\001-\037]|\\\\u[0-9a-fA-F]{4})[^\"\\\\\001-\037]*)*\""
 
-    RE_QUOTE_CONTROL_OR_UNICODE = re( "\\\\[^u\001-\037]" RE_OR "\\\\u[0-9a-fA-F]{4}" )
-
-    if(! RE_INTERVAL_EXPRESSIONS_SUPPORTED ) RE_QUOTE_CONTROL_OR_UNICODE = re( "\\\\[^u\001-\037]" RE_OR "\\\\u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]" )
+    RE_QUOTE_CONTROL_OR_UNICODE = re( "\\\\[^u\001-\037]" RE_OR "\\\\u" re_interval_expression( "[0-9a-fA-F]", 4 ) )
 
     RE_NOQUOTE1 = "[^'\\\\\001-\037]*"
     RE_STR1 = "'"  RE_NOQUOTE1 re( RE_QUOTE_CONTROL_OR_UNICODE RE_NOQUOTE1, "*")  "'"
@@ -179,13 +179,29 @@ function re_range2pattern( start, end,      l, _res, _rest_0, _rest_9, _start_a,
     if ( _end_rest == _rest_9 ) _mid_end += 1
     else                        _res =  ((_res == "") ? "" : _res "|")  sprintf("(%s)", _end_a      re_range2pattern( _rest_0, _end_rest  ) )
 
-    if (_mid_start == _mid_end) _res =  ((_res == "") ? "" : _res "|")  ( (l==2) ?  sprintf("(%s[0-9])",       _mid_start)          : sprintf("(%s[0-9]{%s})",      _mid_start, (l-1)) )
-    if (_mid_start <  _mid_end) _res =  ((_res == "") ? "" : _res "|")  ( (l==2) ?  sprintf("([%s-%s][0-9])",  _mid_start, _mid_end) : sprintf("([%s-%s][0-9]{%s})", _mid_start, _mid_end, (l-1)) )
+    if (_mid_start == _mid_end) _res =  ((_res == "") ? "" : _res "|")  ( (l==2) ?  sprintf("(%s[0-9])",       _mid_start)          : sprintf("(%s%s)",      _mid_start, re_interval_expression("[0-9]", l-1)) )
+    if (_mid_start <  _mid_end) _res =  ((_res == "") ? "" : _res "|")  ( (l==2) ?  sprintf("([%s-%s][0-9])",  _mid_start, _mid_end) : sprintf("([%s-%s]%s)", _mid_start, _mid_end, re_interval_expression("[0-9]", l-1)) )
     return "(" _res ")"
 }
 
 function re_wmatch( val, regex ){
     return match( val, "^" regex "$" )
+}
+
+function re_interval_expression( r, n, m,       i, s ){
+    if( RE_INTERVAL_EXPRESSIONS_SUPPORTED ) {
+        if ( m == "" ) return "(" r "{" n "})"
+        return "(" r "{" n "," m "})"
+    }
+
+    if ( m == "" ) return re_interval_expression_( r, n )
+    for (i=m; i>=n; --i) s = ((s != "") ? s "|" : "") re_interval_expression_( r, i )
+    return "(" s ")"
+}
+
+function re_interval_expression_( r, n,     i, s ) {
+    for (i=1; i<=n; ++i) s = s r
+    return "(" s ")"
 }
 
 BEGIN{
@@ -211,9 +227,9 @@ BEGIN{
     RE_NS_HEX_DIGIT = "[0-9A-Fa-f]"
     RE_NS_WORD_CHAR = "[0-9A-Za-z-]"
 
-    RE_NS_URI_CHAR = "(%[0-9A-Fa-f]{2})|" RE_NS_WORD_CHAR "|[#;/?:@&=+$,_.!~*'\\(\\)\\[\\]]"
-
-    RE_NS_TAG_CHAR = "(%[0-9A-Fa-f]{2})|" RE_NS_WORD_CHAR "|[#;/?:@&=+$_.~*']"
+    # RE_NS_URI_CHAR = "(%[0-9A-Fa-f]{2})|" RE_NS_WORD_CHAR "|[#;/?:@&=+$,_.!~*'\\(\\)\\[\\]]"
+    RE_NS_URI_CHAR = "(%" re_interval_expression(RE_NS_HEX_DIGIT, 2) ")|" RE_NS_WORD_CHAR "|[#;/?:@&=+$,_.!~*'\\(\\)\\[\\]]"
+    RE_NS_TAG_CHAR = "(%" re_interval_expression(RE_NS_HEX_DIGIT, 2) ")|" RE_NS_WORD_CHAR "|[#;/?:@&=+$_.~*']"
 
     RE_NB_SINGLE_QUOTED_CHAR = "(('')|[^" RE_NB_JSON_CONTENT_NEG "'])"
     RE_NB_SINGLE_QUOTED_STR = "('" RE_NB_SINGLE_QUOTED_CHAR "')"

@@ -1,0 +1,95 @@
+# shellcheck shell=dash disable=SC2034
+
+x log init choco
+xrc:mod:lib     choco       install app ls
+
+___x_cmd_choco___main(){
+    local X_help_cmd=; X_help_cmd='x help -m choco' help:arg:parse
+    x os name win: || x os release | grep -q "WSL" || N=choco M='choco is only available on Windows' log:ret:1
+
+    [ "$#" -gt 0 ] || set --app
+
+    local op="$1"; shift
+    case "$op" in
+        # official command
+        install|uninstall)
+            ___x_cmd_choco___bin_admin "$op" "$@"
+            ;;
+        # list|search|info|pin|outdated|upgrade)
+        #     ___x_cmd_choco___bin "$op" "$@"
+        #     ;;
+        admin)
+            ___x_cmd_choco___bin_admin "$@"
+            ;;
+        proxy)
+            ___x_cmd_choco_proxy "$@"
+            ;;
+        --app)
+            ;;
+        *)  ___x_cmd_choco___bin "$op" "$@"
+            ;;
+    esac
+}
+
+
+
+___x_cmd_choco___bin(){
+    if x hascmd choco.exe; then
+        ___x_cmd_choco___bin(){
+            command choco.exe "$@"
+        }
+    else
+        local filepath=
+        [ -x "$ChocolateyInstall/bin/choco.exe" ] || {
+            ___x_cmd_choco___install || return
+            filepath="$ChocolateyInstall/bin/choco.exe"
+        }
+
+        [ -x "$filepath" ] || N=choco M='Failed to install choco' log:ret:1
+        choco:info "Chocolatey ==> $filepath"
+        x path add_existed_folder "$ChocolateyInstall"
+        x path uniq
+        eval '___x_cmd_choco___bin(){
+                [ -x '\'''"$filepath"''\'' ] || N=choco M="Not found chocolatey" log:ret:1
+                '\'''"$filepath"''\'' "$@"
+            }
+        '
+    fi
+
+    ___x_cmd_choco___bin "$@"
+}
+
+___x_cmd_choco___bin_admin(){
+    x pwsh admin choco "$@"
+}
+
+___x_cmd_choco_proxy(){
+    # https://docs.chocolatey.org/en-us/guides/usage/proxy-settings-for-chocolatey#explicit-proxy-settings
+    local proxy=; local proxyUser=; local proxyPassword=; local proxyBypassList=; local proxyBypassOnLocal=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --proxy)                proxy="$2"; shift 2 ;;
+            --proxyUser)            proxyUser="$2"; shift 2 ;;
+            --proxyPassword)        proxyPassword="$2"; shift 2 ;;
+            --proxyBypassList)      proxyBypassList="$2"; shift 2 ;;
+            --proxyBypassOnLocal)   proxyBypassOnLocal="$2"; shift 2 ;;
+
+            -h|--help)  x help -m choco proxy; return ;;
+            *)          N=choco M="Unsupported option => $1" log:ret:64 ;;
+        esac
+    done
+
+    [ -z "$proxy" ]              || ___x_cmd_choco_proxy_unit 'proxy' "$proxy"
+    [ -z "$proxyUser" ]          || ___x_cmd_choco_proxy_unit 'proxyUser' "$proxyUser"
+    [ -z "$proxyPassword" ]      || ___x_cmd_choco_proxy_unit 'proxyPassword' "$proxyPassword"
+    [ -z "$proxyBypassList" ]    || ___x_cmd_choco_proxy_unit 'proxyBypassList' "$proxyBypassList"
+    [ -z "$proxyBypassOnLocal" ] || ___x_cmd_choco_proxy_unit 'proxyBypassOnLocal' "$proxyBypassOnLocal"
+}
+
+___x_cmd_choco_proxy_unit(){
+    local name="$1"
+    local value="$2"
+    choco:info "--$name" "$value" proxy
+    ___x_cmd_choco___bin_admin config set --name="$name" --value "$value"
+}
+

@@ -77,7 +77,7 @@ function comp_lineeditadvise___has_advise(o, kp){
 }
 
 function comp_lineeditadvise___get_adv(o, kp, rv,           adv, _completed_val){
-    comp_lineeditadvise___load_advise(o, kp, rv)
+    if (! comp_lineeditadvise___load_advise(o, kp, rv)) return
     if (o[ kp, "advise", "candidate.data" L ] > 0) adv = o[ kp, "advise", "candidate.data", 1 ]
     _completed_val = o[ kp, "advise", "candidate.data", "completed.val" ]
     return substr(adv, length(_completed_val)+1)
@@ -92,6 +92,7 @@ function comp_lineeditadvise___load_advise(o, kp, rv,       s, i){
     if ((rv == "") || (rv ~ "^ ")){
         if ( ! comp_lineeditadvise___has_advise(o, kp) ) return
         comp_lineeditadvise___get_advise(o, kp)
+        return true
     }
 }
 
@@ -100,7 +101,7 @@ function comp_lineeditadvise___get_advise(o, kp,   s, i, fp, obj, _content, _, g
     i = comp_lineeditadvise___cursor_pos(o, kp)
     kp = kp SUBSEP "advise"
     argstr = o[ kp, "adv.argstr" ] substr(s, 1, i)
-    gsub("\\\\", "\\\\", argstr)
+    gsub("\\\\", "&\\", argstr)
     if (o[ kp, "adv.last.argstr" ] == argstr) return
     o[ kp, "adv.last.argstr" ] = argstr
     if (o[ kp, "adv.type" ] == COMP_LINEEDITADVISE_ADV_FILE) {
@@ -118,7 +119,7 @@ function comp_lineeditadvise___get_advise_fromarr(o, kp, argstr,            _, l
     for (i=1; i<=l; ++i) {
         v = o[ kp, "data", i ]
         if ( v !~ "^" argstr ) continue
-        o[ kp, "candidate.data" L ] = _l = o[ kp, "candidate.data", L ] + 1
+        o[ kp, "candidate.data" L ] = _l = o[ kp, "candidate.data" L ] + 1
         o[ kp, "candidate.data", _l ] = v
     }
 }

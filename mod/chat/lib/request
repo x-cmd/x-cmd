@@ -1,18 +1,29 @@
 # shellcheck shell=dash
 
 ___x_cmd_chat_request(){
+    case "$1" in
+        --with-type-prompt-file)        shift 1; ___x_cmd_chat_request___type_prompt_file "$@"; return ;;
+        --with-type-prompt-lineno-file) shift 1; ___x_cmd_chat_request___type_prompt_lineno_file "$@"; return ;;
+
+        --with-type-prompt)             shift 1; ___x_cmd_chat_request___type_prompt "$@"; return ;;
+        --with-type-prompt-lineno)      shift 1; ___x_cmd_chat_request___type_prompt_lineno "$@"; return ;;
+    esac
+
     local type="$1"; shift
     local system="$1"; shift
 
     local current_message;
     current_message="$( printf "%s\n" "$*" | x jo n | x jo t " " )"
 
-    # default loading the last 3 history record as the context
-    local x_=""; ___x_cmd_chat_cur get_ history;
+    local cur_ai=;                  local cur_history=
+    ___x_cmd_chat_cur cur_history:=history cur_ai:=ai 2>/dev/null
+    cur_ai="${cur_ai:-openai}";     cur_history="${cur_history:-"${___X_CMD_CHAT_CFG_DATA_CURRENT_history:-0}"}"
+    chat:debug --ai "$cur_ai" --history "$cur_history"
+
     local message; message="$(
         {
             printf "[\n%s\n" "$system"
-            ___x_cmd_chat_handler___get_history_record "$___X_CMD_CHAT_SESSION_DIR" "${x_:-3}"
+            x "$cur_ai" handler get_history_record "$___X_CMD_CHAT_SESSION_DIR/$cur_ai" "$cur_history"
             printf "%s\n]\n" "$current_message"
         } | x jo n | x jo t " "
     )"
@@ -24,7 +35,7 @@ ___x_cmd_chat_request(){
 
     # Handle the output by increasing the index
     local outputfile="$___X_CMD_CHAT_TMP/output.$$"
-    ___x_cmd_chat_request___api "$outputfile" "$type" "$message" "$current_message"
+    ___x_cmd_chat_request___api "$cur_ai" "$outputfile" "$type" "$message" "$current_message"
 
     case "$___X_CMD_CHAT_OUTPUT" in
         raw)        cat "$outputfile" ; return ;;
@@ -32,24 +43,25 @@ ___x_cmd_chat_request(){
 
     if [ -t 1 ] && ___x_cmd_is_interactive; then
         case "$type" in
-            normal)     ___x_cmd_chat_handler___stream_to_print <"$outputfile" | x md show ;;
-            json)       ___x_cmd_chat_handler___stream_to_print <"$outputfile" | x jo color ;;
-            *)          ___x_cmd_chat_handler___stream_to_print <"$outputfile" ;;
+            normal)     x "$cur_ai" handler stream_output <"$outputfile" | x md show ;;
+            json)       x "$cur_ai" handler stream_output <"$outputfile" | x jo color ;;
+            *)          x "$cur_ai" handler stream_output <"$outputfile" ;;
         esac
     else
         # Just Using tail
-        ___x_cmd_chat_handler___stream_to_print <"$outputfile"
+        x "$cur_ai" handler stream_output <"$outputfile"
     fi
 }
 
 # 1000 => cluster into a xz file
 ___x_cmd_chat_request___api(){(
-    local output="$1"
-    local type="$2"
-    local message="$3"     # Shoud be a quoted json string
-    shift 3
+    local cur_ai="$1"
+    local output="$2"
+    local type="$3"
+    local message="$4"     # Shoud be a quoted json string
+    shift 4
     local IFS=" ";  local current_message="$*"
-    local filepath; filepath="$___X_CMD_CHAT_SESSION_DIR/$(x pidid vlseqid ___X_CMD_CHAT_REC).jso"
+    local filepath; filepath="${___X_CMD_CHAT_SESSION_DIR}/${cur_ai}/$(x pidid vlseqid ___X_CMD_CHAT_REC).jso"
 
     x rmrf "$output"    # Using
     mkfifo "$output"
@@ -58,7 +70,7 @@ ___x_cmd_chat_request___api(){(
         [ -z "$BASH_VERSION" ] || shopt -s expand_aliases
         x ensurefp "$filepath"
         chat:debug "Sending request $output => $message"
-        local resp=""; resp="$(___x_cmd_chat_request___api_ "$message" | tee "$output" | ___x_cmd_chat_handler___get_response )" || return
+        local resp=""; resp="$(___x_cmd_chat_request___api_ "$cur_ai" "$message" | tee "$output" | x "$cur_ai" handler get_response )" || return
         chat:debug "Saving => $filepath"
 
         # TODO: Use pure json instead of yml.
@@ -78,13 +90,86 @@ ___x_cmd_chat_request___api(){(
 # Using chatgpt api
 # ref: https://platform.openai.com/docs/api-reference/chat/create
 ___x_cmd_chat_request___api_(){
-    local message="$1"
-    local apikey;   local proxy;    local maxtoken
-    ___x_cmd_chat_cur apikey:= proxy:= maxtoken:=
-    x openai --request \
-        ${apikey:+"--apikey"}       ${apikey:+"$apikey"}        \
-        ${proxy:+"--proxy"}         ${proxy:+"$proxy"}          \
-        ${maxtoken:+"--maxtoken"}   ${maxtoken:+"$maxtoken"}    \
-        --message "$message"
+    local cur_ai="$1"
+    local message="$2"
+    case "$cur_ai" in
+        openai)
+            local proxy=;   ___x_cmd_chat_cur proxy:= 2>/dev/null
+            x openai --request \
+                ${proxy:+"--proxy"} ${proxy:+"$proxy"}  \
+                --message "$message"
+            ;;
+        zhipu)
+            x zhipu --request --message "$message"
+            ;;
+    esac
+}
 
+
+___x_cmd_chat_request___type_prompt(){
+    if [ $# -eq 2 ]; then
+        if [ -t 0 ]; then   x ted
+        else                cat
+        fi | ___x_cmd_chat_request___type_prompt_file "$@"
+    else
+        (
+            shift 2
+            local IFS=" "
+            printf "%s\n" "$*"
+        ) | ___x_cmd_chat_request___type_prompt_file "$1" "$2"
+    fi
+}
+
+___x_cmd_chat_request___type_prompt_lineno(){
+    if [ $# -eq 2 ]; then
+        if [ -t 0 ]; then   x ted
+        else                cat
+        fi | ___x_cmd_chat_request___type_prompt_lineno_file "$@"
+    else
+        (
+            shift 2
+            local IFS=" "
+            printf "%s\n" "$*"
+        ) | ___x_cmd_chat_request___type_prompt_lineno_file "$1" "$2"
+    fi
+}
+
+___x_cmd_chat_request___type_prompt_file(){
+    local type="$1"
+    local prompt="$2";  shift 2
+
+    local user_message;
+    if [ -n "$1" ]; then    user_message="$(command cat "$1")"
+    else                    user_message="$(command cat)"
+    fi
+    [ -n "$user_message" ] || return
+    user_message="${prompt}${user_message}"
+
+    local msg; msg='{
+        role: user,
+        content: '$(___x_cmd_chat_jqu "$user_message")'
+    }'
+
+    local ___X_CMD_CHAT_CFG_DATA_CURRENT_history=0
+    ___x_cmd_chat_request "${type}" "" "$msg"
+}
+
+___x_cmd_chat_request___type_prompt_lineno_file(){
+    local type="$1"
+    local prompt="$2";  shift 2
+
+    local user_message;
+    if [ -n "$1" ]; then    user_message="$(command cat -n "$1")"
+    else                    user_message="$(command cat -n)"
+    fi
+    [ -n "$user_message" ] || return
+    user_message="${prompt}${user_message}"
+
+    local msg; msg='{
+        role: user,
+        content: '$(___x_cmd_chat_jqu "$user_message")'
+    }'
+
+    local ___X_CMD_CHAT_CFG_DATA_CURRENT_history=0
+    ___x_cmd_chat_request "${type}" "" "$msg"
 }

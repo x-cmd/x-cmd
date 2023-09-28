@@ -60,7 +60,7 @@ function assert(optarg_id, arg_name, arg_val,
             return "Arg: [" arg_name "] value is [" arg_val "]\nIs not an integer."
         }
 
-        if ( 2 <= len = oparr_len( optarg_id )){
+        if ( 2 <= (len = oparr_len( optarg_id ))){
             for (idx=2; idx<=len; ++idx) {
                 val = oparr_get( optarg_id, idx )
                 val = str_unquote_if_quoted( val )

@@ -1,6 +1,9 @@
-# shellcheck shell=sh disable=SC3043
+# shellcheck shell=dash
 
 ___x_cmd_hub_account_login(){
+    local X_help_cmd='___x_cmd_hub___help account login'
+    help:arg:parse
+
     if [ -n "$(___x_cmd_hub_cfg --get token)" ]; then
         if ! x ui yesno "You're already logged. Do you want to re-authenticate?" ; then
             hub:info "Cancelled"
@@ -9,102 +12,160 @@ ___x_cmd_hub_account_login(){
         ___x_cmd_hub_account_logout
     fi
 
-    local op="$1"
+    local login_type
+    local ___X_CMD_HUB_LOGIN_EXPIRE="30d"
+    local ___X_CMD_HUB_LOGIN_REGION=cn
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --expire)    ___X_CMD_HUB_LOGIN_EXPIRE="$2"  ; shift 2 ;;
+            --region)    ___X_CMD_HUB_LOGIN_REGION="$2"  ; shift 2 ;;
+            *) break ;;
+        esac
+    done
+
+    login_type="$1"
+
+    # ___X_CMD_TUI_FORM_FINAL_COMMAND=""
+    # x tui form \
+    #     login_type    "Login type"       wechat  =   wechat wechat_website github email  -- \
+    #     ___X_CMD_HUB_LOGIN_EXPIRE   "Expire time"      1h      =   1h 1d 1w 1m 1y -- \
+    #     ___X_CMD_HUB_LOGIN_REGION        "Region"           cn      =   cn world
+
+    # [ -n "$___X_CMD_TUI_FORM_FINAL_COMMAND" ] || {
+    #     hub:info "Canceled"
+    #     return 1
+    # }
+
     local _SELECT
-    case "$op" in
-        *@*)                    ___x_cmd_hub_account_login_email_witharg "$@" ;;
-        wx|weixin)              ___x_cmd_hub_account_login_weixin_qr     "$@" ;;
-        email)                  ___x_cmd_hub_account_login_email         "$@" ;;
-        tg|telegram)            ___x_cmd_hub_account_login_telegram_qr        ;;
-        "")
-                ___x_cmd_ui_select "_SELECT" \
-                    "Login Methods:" \
-                        "Open Browser to x-cmd.com, you can login via GitHub/Gitee/Weixin" \
-                        "Login With Weixin QR" \
-                        "Login With Email Verification"
+    if [ -z "$login_type" ]; then
+        ___x_cmd_ui_select "_SELECT" \
+            "Login Methods:" \
+                "Open Browser to hub.x-cmd.com, you can login via GitHub/WeChat" \
+                "Login With WeChat QR" \
+                "Login With WeChat via website" \
+                "Login With GitHub via website" \
+                "Login With Email Verification"
 
-                        #TODO: unstable
-                        # "Login With Telegram" \
-                        # "Login With OneTime Password"    # SMS, Telegram, Email, Weixin
+                #TODO: unstable
+                # "Login With Telegram" \
+                # "Login With OneTime Password"    # SMS, Telegram, Email, WeChat
 
-                case "$_SELECT" in
-                    1)          ___x_cmd_hub_account_login_official_site "$@" ;;
-                    2)          ___x_cmd_hub_account_login_weixin_qr     "$@" ;;
-                    3)          ___x_cmd_hub_account_login_email         "$@" ;;
-                    4)          ___x_cmd_hub_account_login_telegram      "$@" ;;
-                    *)          ;;
-                esac
-                ;;
-        *)  ___x_cmd_hub___help account login ;;
+        case "$_SELECT" in
+            1)  login_type=website ;;
+            2)  login_type=wxqr   ;;
+            3)  login_type=wechat ;;
+            4)  login_type=github ;;
+            5)  login_type=email  ;;
+            *)  hub:info "Canceled" ; return 1 ;;
+        esac
+    fi
+
+    case "$login_type" in
+        website)   ___x_cmd_hub_account_login_website    ""       ;;
+        wxqr)      ___x_cmd_hub_account_login_wechat_qr           ;;
+        wechat)    ___x_cmd_hub_account_login_website    wechat   ;;
+        github)    ___x_cmd_hub_account_login_website    github   ;;
+        email)     ___x_cmd_hub_account_login_email      "$@"     ;;
+        *)         hub:error "Unknown login type: $login_type" ;;
     esac
 }
 
-# TODO: move to website login
-___x_cmd_hub_account_login_telegram(){
+___x_cmd_hub_account_login_website(){
+    local login_type="$1"
     local ticket
-    ticket="$(___x_cmd_hub___util_token_generate)"
+    ticket="$(___x_cmd_hub_u_ticket_generate)"
 
-    printf "Open the url in browser to login: https://hub.x-cmd.com/s/tl/%s\nthen press [Enter] to continue: " "${ticket}"
-    ( trap - INT; read -r _  ) || return 1
-
-    ___x_cmd_hub_account_verify "$ticket"
-}
-
-___x_cmd_hub_account_login_weixin_qr(){
-    local ticket
-    ticket="$(___x_cmd_hub___util_token_generate)"
-
-    ___x_cmd_hub_qrcode "$(___x_cmd_hub_weixin_login_url "${ticket}")"
-    printf "Please scan the QR code above, then press [Enter] to continue: "
-    ( trap - INT; read -r _  ) || return 1
-
-    ___x_cmd_hub_account_verify "$ticket"
-}
-
-___x_cmd_hub_account_login_official_site(){
-
-    local ticket
-    ticket="$(___x_cmd_hub___util_token_generate)"
-
-    local url; url="https://hub.x-cmd.com/login?ticket=${ticket}"
+    local url; url="https://hub.x-cmd.com/login?ticket=${ticket}&type=${login_type}&expire=${___X_CMD_HUB_LOGIN_EXPIRE}&region=${___X_CMD_HUB_LOGIN_REGION}"
     hub:debug "Open url: $url"
 
-    # TODO: use tui
-    local res
-    if res=$(x open "$url" 2>&1) ; then
-        printf "Please login to hub.x-cmd.com, then press [Enter] to continue: " >&2
-        ( trap - INT; read -r _  ) || return 1
+    local msg
+    if msg=$(x open "$url" 2>&1) ; then
+        x ui yesno "Please login to hub.x-cmd.com, then press [Yes] to continue: " || return 1
     else
-        hub:warn "Failed to open url use browser ($res)"
-        printf "Open the url in browser to login: %s\nthen press [Enter] to continue: " "$url" >&2
-        ( trap - INT; read -r _  ) || return 1
+        hub:warn "Failed to open url use browser ($msg)"
+        x ui yesno "Open the url in browser to login: %s\nthen press [Yes] to continue: " "$url" || return 1
     fi
 
-    ___x_cmd_hub_account_verify "$ticket"
+    ___x_cmd_hub_account___verify "$ticket"
+}
+
+___x_cmd_hub_account_login_wechat_qr(){
+    local ticket; ticket="$(___x_cmd_hub_u_ticket_generate)" || return 1
+    ___x_cmd_hub_qrcode "$(___x_cmd_hub_wechat_url login "$ticket")"
+    x ui yesno "Please scan the QR code above, then press [Yes] to continue: " || return 1
+    ___x_cmd_hub_account___verify "$ticket"
 }
 
 ___x_cmd_hub_account_login_email_witharg(){
-    local email="${1:?Provide email}"
-    local ticket
-    ticket="$(___x_cmd_hub___util_token_generate)"
+    local email="$1"; [ -n "$email" ]  || M='Provide email'       N=hub log:ret:64
 
-    local res
-    if ! res="$(NO_AUTH=1 ___x_cmd_hub___util_curl post /api/v0/account/email/login -- "tokenToActivate=$ticket" "email=$email")" ; then
-        ___x_cmd_hub___util_handle_resp false "$res" "Failed to login with email $email:"
+    local resp
+    resp="$(NO_AUTH=1 ___x_cmd_hub_u_curl post /api/v0/account/email/login -- "email=$email")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to login with email $email:"
         return 1
-    fi
-    hub:debug "Login with email: $email, res: $res"
-    printf "%s" "Please check your email $email to approve, then press [Enter] to continue: " >&2
-    ( trap - INT; read -r _  ) || return 1
+    }
 
-    ___x_cmd_hub_account_verify "$ticket"
+    hub:debug "Login with email -> $email, resp -> $resp"
+    local ticket; ticket="$(printf "%s" "$resp" | x jo env . .ticket -- 'printf "%s" "$ticket"')"
+    x ui yesno "Please check your email $email to approve, then press [Yes] to continue: " || return 1
+
+    ___x_cmd_hub_account___verify "$ticket"
 }
 
 ___x_cmd_hub_account_login_email(){
-    local email="${1}"
+    local email="$1"
     if [ -z "$email" ]; then
-        printf "%s" "Email: "
-        read -r email
+        if ! ___x_cmd_is_interactive_tty || [ ! -t 1 ]; then
+            hub:error "Email required, but not in interactive tty"
+            return 1
+        fi
+
+        ___X_CMD_TUI_FORM_FINAL_COMMAND=""
+        x tui form email      "Email"           ""  '=~'  '^.*@.*$' || return 1
+        [ -n "$___X_CMD_TUI_FORM_FINAL_COMMAND" ] || {
+            hub:info "Canceled"
+            return 1
+        }
     fi
     ___x_cmd_hub_account_login_email_witharg "$email"
+}
+
+# TODO: refactor
+___x_cmd_hub_account___verify() {
+    local ticket="$1" ; [ -n "$ticket" ]     || M='Please provide ticket' N=hub log:ret:64
+
+    local endpoint
+    endpoint="$(NO_AUTH=1 ___x_cmd_hub_u_curl get /api/v0/account/ticket/endpoint ticket== | {
+        local msg; local resp
+        x jo env . resp=.endpoint .msg
+        if [ -z "$resp" ]; then
+            ___x_cmd_hub_u_handle_resp false "Failed to get endpoint:"
+            return 1
+        fi
+        printf "%s" "$resp"
+    })" || return 1
+
+    ___X_CMD_HUB_SERVICE_URL="$endpoint"
+    ___x_cmd_hub_cfg --set endpoint="$endpoint"
+
+    NO_AUTH=1 ___x_cmd_hub_u_curl get /api/v0/account/verify ticket== | {
+        local name ; local id; local plan ; local email ; local token; local msg
+        x jo env . .name .plan .email \
+            .region .token .endpoint \
+            .token .msg
+
+        [ -n "$token" ] || {
+            ___x_cmd_hub_u_handle_resp false "Failed to verify token:"
+            ___x_cmd_ui_tf false "Failed to login, please check your token" >&2
+            return 1
+        }
+
+        ___x_cmd_hub_u_handle_resp true "Account info:" \
+            "name: $name" \
+            "region: $___X_CMD_HUB_LOGIN_REGION" ${email:+"email: $email"}
+
+        ___x_cmd_hub_cfg token="${token}"
+    }
+
+    ___x_cmd_ui_tf true "Login success"
 }

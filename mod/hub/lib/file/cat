@@ -4,18 +4,28 @@ ___x_cmd_hub_file_cat(){
     local X_help_cmd='___x_cmd_hub___help file cat'
     help:arg-null:parse
 
-    local respath="${1:?Provide respath}"
-    respath="$(___x_cmd_hub_file_normalize_respath "$respath")"
+    local remotefp="$1"
+    [ -n "$remotefp" ] || M='Provide resource path' N=hub log:ret:64
+    remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
 
-    local fp_enc; fp_enc="$(___x_cmd_hub___util_respath_to_localpath encdata "$respath")" || return 1
-    if ! NO_AUTH=1 ___x_cmd_hub___util_curl get /api/v0/file/cat "res=${respath}" > "$fp_enc"; then
-        ___x_cmd_hub___util_handle_resp false "$(cat "$fp_enc")" "Please check the respath $respath: "
-        x rmrf "$fp_enc"
-        return 1
-    fi
+    # TODO: wait curl module to fix
+    local res="$remotefp"
+    NO_AUTH=1 ___x_cmd_hub_u_curl get /api/v0/file/download/url res== | {
 
-    < "$fp_enc" ___x_cmd_hub_file_parse_stream || {
-        ___x_cmd_ui_tf false "Failed to decrypt $fp_enc" >&2
-        return 1
+        local url; local msg
+        x jo env . .url .msg
+        [ -n "$url" ] || {
+            ___x_cmd_hub_u_handle_resp false "Please check the remotefp $remotefp: "
+            return 1
+        }
+
+        hub:debug "Downloading $url"
+        local ___X_CMD_HUB_CAT_FILEKEY
+        ___X_CMD_HUB_CAT_FILEKEY="$(___x_cmd_hub_u_curl_header encryption-filekey-base64)"
+
+        x curl -sSL "$url" | ___x_cmd_hub_file_parse_stream "$remotefp" || {
+            ___x_cmd_ui_tf false "Failed to decrypt file" >&2
+            return 1
+        }
     }
 }

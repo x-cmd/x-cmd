@@ -1,0 +1,85 @@
+# shellcheck shell=dash disable=SC2120,SC2016
+___x_cmd_pwsh_path(){
+    x os name win: || x os release | grep -q "WSL" || N=pwsh M='pwsh path is only available on Windows' log:ret:1
+    [ $# -gt 0 ] || set -- ls
+
+    local op="$1";      shift
+    case "$op" in
+        add_pwsh|win_to_linux|win_to_linux_|linux_to_win|linux_to_win_)
+            ___x_cmd_pwsh_path___"$op" "$@"
+            ;;
+        import|import2wsl)
+            ___x_cmd_pwsh_path_import2wsl
+            ;;
+        ls)
+            ___x_cmd_pwsh_path_"$op" "$@"
+            ;;
+        *)
+            N=pwsh M="Unsupport subcmd ==> $op" log:ret:64
+            ;;
+    esac
+}
+
+___x_cmd_pwsh_path_import2wsl(){
+    local IFS=;
+    local e; while read -r e; do
+        PATH="$PATH:$e"
+    done <<A
+$(___x_cmd_pwsh_path_ls)
+A
+
+    x path uniq
+}
+
+___x_cmd_pwsh_path_ls(){
+    local pre=; [ ! -d /mnt ] || pre="/mnt"
+    ___x_cmd_pwsh_path_cmd | command awk -F : -v pre="$pre" '
+(state==1){
+    if ($0~"^----------") exit ;
+    printf("%s/%s", pre, $1)
+    printf("%s\n", $2)
+
+    next
+}
+
+($0~"^----------"){
+    state=1
+}
+'
+}
+
+___x_cmd_pwsh_path_cmd(){
+    x pwsh "echo '----------'; \$env:Path -split ';' | ForEach-Object { \$_ -replace '\\\\', '/' }; echo '----------';" | sed 's/^\(.\)/\L\1/'
+}
+
+___x_cmd_pwsh_path___add_pwsh(){
+    local x_=;
+    ___x_cmd_pwsh_path___win_to_linux_ "$(x pwsh -Command 'Write-Output $PSHome')" || return
+    x path add_existed_folder "$x_"
+}
+
+
+___x_cmd_pwsh_path___win_to_linux_(){
+    x_="$( ___x_cmd_pwsh_path___win_to_linux "$1" )"
+}
+
+___x_cmd_pwsh_path___linux_to_win_(){
+    x_="$( ___x_cmd_pwsh_path___linux_to_win "$1" )"
+}
+
+___x_cmd_pwsh_path___win_to_linux(){
+    local win_path=
+    win_path="$(printf "%s" "$1" | command sed 's/\\/\\\\/g' )"
+    [ -n "$win_path" ] || return 1
+    if [ -d /mnt ]; then
+        x pwsh -Command "wsl wslpath -u $win_path"
+    else
+        x pwsh -Command "wsl wslpath -u $win_path" | sed 's/^\/mnt//'
+    fi
+}
+
+___x_cmd_pwsh_path___linux_to_win(){
+    WSLENV="${WSLENV}:linux_path/p" \
+    linux_path="$1" \
+    x pwsh -Command 'Write-Output $env:linux_path' | sed 's/\r$//g'
+}
