@@ -83,14 +83,15 @@ function tapp_handle_exit( exit_code,       rootkp, _ ){
 # EndSection
 
 # Section: user view
-function user_paint_theme_preview( x1, x2, y1, y2, rootkp,         _draw_clear, _res, _, fp, style ){
+function user_paint_theme_preview( x1, x2, y1, y2, rootkp,         _id, _draw_clear, _res, _, fp, style ){
     _draw_clear = painter_clear_allline( x1, x2 )
     if (split(rootkp, _, "/") < 3) return
     fp = THEME_STYLE_PREVIEW_PATH "/" _[2] "/" _[3]
     if ((style = THEME_STYLE_PREVIEW[ fp ]) == "") {
         style = cat(fp)
-        gsub(/^[ \t\b\v\n]+/, "", style)
-        gsub(/[ \t\b\v\n]+$/, "", style)
+        _id = index(style, "demo-stop")
+        style = substr( style, 1, _id + 9 )
+        style = str_trim(style)
         THEME_STYLE_PREVIEW[ fp ] = style
     }
     _res = painter_goto_rel(x1, y1) "\r" style
@@ -107,11 +108,15 @@ function user_paint_custom_component( o, kp, x1, x2, y1, y2,      rootkp, c, i )
     return user_paint_theme_preview( x1, x2, y1, y2, rootkp )
 }
 
+function user_paint_status( o, kp, x1, x2, y1, y2 ){
+    return
+}
+
 function user_paint( x1, x2, y1, y2,            kp, _res ){
     kp = APPKP
     if (! comp_statusline_isfullscreen(o, kp SUBSEP "statusline")) {
         # _res = comp_statusline_paint( o, kp SUBSEP "statusline", x1, x1, y1, y2 )
-        _res = _res comp_navi_paint( o, kp, x1, x1+1+THEME_NAVI_ROW, y1, y2)
+        _res = comp_navi_paint( o, kp, x1, x1+1+THEME_NAVI_ROW, y1, y2)
         _res = _res user_paint_custom_component( o, kp, x1+2+THEME_NAVI_ROW, x2, y1, y2 )
         paint_screen( _res )
     } else {

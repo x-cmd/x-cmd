@@ -14,7 +14,10 @@ END{
         log_error("jo", "The value is not a list")
         exit(1)
     }
-    for(i=1; i<=l; ++i) printf sprintf("%s" sep, juq(o[ _kp SUBSEP "\""i"\""] ))
+    for(i=1; i<=l; ++i) {
+            if (o[ _kp SUBSEP "\""i"\""] ~ "^\"") printf sprintf("%s" sep, juq(o[ _kp SUBSEP "\""i"\""] ))
+            else printf sprintf("%s" sep, o[ _kp SUBSEP "\""i"\""] )
+    }
 }
 
 

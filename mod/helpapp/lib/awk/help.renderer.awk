@@ -151,7 +151,6 @@ function generate_flag_help_unit( obj, kp, arr, arr_kp,        i, v, l, _str, _m
 }
 
 function generate_flag_help(obj, kp, arr_group,        _str, l, i, k ){
-    _str = generate_title("FLAGS:")
     if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = _str "\n" generate_flag_help_unit(obj, kp, arr_group, ADVISE_NULL_TAG )
     l = arr_group[ L ]
     for (i=1; i<=l; ++i){
@@ -160,7 +159,8 @@ function generate_flag_help(obj, kp, arr_group,        _str, l, i, k ){
         if (! aobj_len( arr_group, k )) continue
         _str = _str "\n    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_flag_help_unit(obj, kp, arr_group, k)
     }
-    return _str "\n"
+    if (_str == "") return
+    return generate_title("FLAGS:") _str "\n"
 }
 
 function generate_option_help_unit( obj, kp, arr, arr_kp,         i, v, l, _str, _max_len, _text_arr, _option_after ){
@@ -181,7 +181,6 @@ function generate_option_help_unit( obj, kp, arr, arr_kp,         i, v, l, _str,
 }
 
 function generate_option_help( obj, kp, arr_group,           _str, l, i, k ) {
-    _str = generate_title("OPTIONS:")
     if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = _str "\n" generate_option_help_unit( obj, kp, arr_group, ADVISE_NULL_TAG)
     l = arr_group[ L ]
     for (i=1; i<=l; ++i){
@@ -190,7 +189,8 @@ function generate_option_help( obj, kp, arr_group,           _str, l, i, k ) {
         if (! aobj_len( arr_group, k )) continue
         _str = _str "\n    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_option_help_unit( obj, kp, arr_group, k)
     }
-    return _str "\n"
+    if (_str == "") return
+    return generate_title("OPTIONS:") _str "\n"
 }
 
 function generate_rest_argument_help( obj, kp, arr,         i, v, l, _str, _max_len, _text_arr, _option_after ){
@@ -242,20 +242,19 @@ function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _s
     if (_str != "") return _str_title _str _str_footer
 }
 
-function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, key){
+function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
     if ( obj[ kp, "\"#subcmd_help_tip\"" ] != "true" ) return
     _res = "CMD "
-    if (match( kp, SUBSEP SUBSEP )) {
-        key = substr(kp, 1, RSTART)
-        kp = substr( kp, RSTART+1)
-    }
+    if (kp ~ "^DATA") _id = 3
+    else _id = 2
     l = split( kp, arr, SUBSEP )
-    if ((_name = juq(obj[ key SUBSEP arr[2], jqu("#name"), 1 ])) != "") {
+    kp = substr( kp, 1, index(kp, arr[ _id ])-1)
+    if ((_name = juq(obj[ kp arr[ _id ], jqu("#name"), 1 ])) != "") {
         gsub( "\\|.*$", "", _name )
         if ( _name != "x" ) _res = "x " _name " "
         else _res = "x "
     }
-    for (i=3; i<=l; ++i){
+    for (i=_id+1; i<=l; ++i){
         k = juq(arr[i])
         gsub( "\\|.*$", "", k )
         _res = _res k " "
