@@ -1,0 +1,218 @@
+# shellcheck shell=dash
+
+___x_cmd_gh_repo_tag(){
+    param:subcmd ___x_cmd_gh_repo_tag               \
+        ls         "List repo tags"                 \
+        info       "Show repo tag information"      \
+        ref        "Output ref tag SHA by tag name" \
+        create     "Create repo tag"                \
+        rm         "Remove repo tag"
+    param:subcmd:try
+    param:run
+
+    # Compatible with older version
+    ___x_cmd_gh_repo_tag_ls "$@"
+}
+
+# Section: List
+# https://docs.github.com/en/rest/repos/repos#list-repository-tags
+# https://docs.github.com/en/rest/git/refs#list-matching-references
+___x_cmd_gh_repo_tag_ls(){
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                              <>:RepoName=""
+    --per_page      "Results per page"                                      <>="30"
+    --page          "Page number of the results to fetch."                  <>="1"
+    --tag_sha       "output refs tag SHA. default output commit SHA"
+    --json|-j       "output json data"
+A
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    local _url="/repos/${owner_repo}/tags"
+    [ -z "$tag_sha" ] || _url="/repos/${owner_repo}/git/refs/tags"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gh_get_multi "$_url"
+    elif [ -n "$tag_sha" ]; then
+        ___x_cmd_gh_get_multi "$_url" | \
+            x jo 2c            .ref        .object.sha | \
+            x csv header --add  Reference  Tag_SHA     | \
+            x csv static_tab
+    else
+        ___x_cmd_gh_get_multi "$_url" | \
+            x jo 2c            .name .commit.sha | \
+            x csv header --add  Name  Commit_SHA | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Info
+# https://docs.github.com/en/rest/git/tags#get-a-tag
+# https://docs.github.com/en/rest/git/refs#get-a-reference
+___x_cmd_gh_repo_tag_info(){
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1              "tag name e.g (v0.0.1) or .sha=<tag_sha>"   <>
+    --repo|-r       "<owner_path>/<repo_path>"                  <>:RepoName=""
+    --json|-j       "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    local _sha=""
+    case "${1}" in
+        .sha=*)
+            _sha="${1#*'.sha='}"
+            ;;
+        *)
+            x jo env . _sha=.object.sha <<A
+        $(___x_cmd_gh_curl get "/repos/${owner_repo}/git/ref/tags/${1}")
+A
+        ;;
+    esac
+
+    [ -n "$_sha" ] || M="Not found $1 tag on $owner_repo" arg:ret:64
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/git/tags/${_sha}" | ___x_cmd_gh_tag_____ui_handler Info
+}
+# EndSection
+
+# Section: Ref
+___x_cmd_gh_repo_tag_ref(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "tag name e.g (v0.0.1)"         <>
+    --repo|-r       "<owner_path>/<repo_path>"      <>:RepoName
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/git/ref/tags/$1" | ___x_cmd_gh_tag_____ui_handler Ref
+}
+# EndSection
+
+# Section: Create
+# https://docs.github.com/en/rest/git/tags#create-a-tag-object
+# shellcheck disable=SC2034
+___x_cmd_gh_repo_tag_create(){
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1              "tag name e.g (v0.0.1)"                                         <>
+    --repo|-r       "<owner_path>/<repo_path>"                                      <>:RepoName
+    --type          "The type of the object tagging"                                <>="commit" = commit tree blob
+    --object        "The SHA of the git object this is tagging"                     <>
+    --message       "The tag message"                                               <>
+    --name          "The name of the author of the tag"                             <>
+    --email         "The email of the author of the tag"                            <>
+    --date          "When this object was tagged. format YYYY-MM-DDTHH:MM:SSZ"      <>=""
+    --json|-j       "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    local tag="$1"
+    local tagger=""
+    tagger="$(x jo "{ ${name:+"name:'$name'"},${email:+"email:'$email'"},${date:+"date:'$date'"} }")"
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json +tagger +tag -repo -name -email -date)"
+    gh:debug "$gen_gh_json"
+
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/git/tags" "gen_gh_json"  | \
+        ___x_cmd_gh_repo_tag_create___ref_handle |
+        ___x_cmd_gh_tag_____ui_handler Create
+}
+
+# shellcheck disable=SC2034
+___x_cmd_gh_repo_tag_create___ref_handle(){
+    (
+        local sha=""
+        x jo env . sha=.sha tag=.tag gh_resp_msg=.message gh_resp_err=.errors
+        if [ -n "$sha" ]; then
+            local ref="refs/tags/${tag}"
+            ___x_cmd_gh_curl post "/repos/${owner_repo}/git/refs" -- sha ref
+        else
+            x jo "{ ${gh_resp_msg:+"message:'$gh_resp_msg'"},${gh_resp_err:+"errors:'$gh_resp_err'"} }"
+        fi
+    )
+}
+# EndSection
+
+# Section: Remove
+# shellcheck disable=SC2154
+___x_cmd_gh_repo_tag_rm(){
+param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    #1          "tag name e.g (v0.0.1)"                 <>
+    --repo|-r   "<owner_path>/<repo_path>"              <>:RepoName
+    --yes|-y    "Ignore remove prompt interception"
+A
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete tag $(___x_cmd_ui bold red "$1") on $owner_repo repo ?" || return
+    ___x_cmd_gh_curl del "/repos/${owner_repo}/git/refs/tags/${1}" | (
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "[Success]: Remove ${owner_repo} ${1} tag"
+            else
+                ___x_cmd_ui_tf false "Remove ${owner_repo} ${1} tag failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
+
+# Section: tag UI
+___x_cmd_gh_tag_____ui_handler(){
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        local node_id=""
+        case "$1" in
+            Info)
+                x jo env . node_id=.node_id _tag_sha=.sha _tag=.tag _message=.message _type=.object.type _type_sha=.object.sha \
+                    _name=.tagger.name _email=.tagger.email _data=.tagger.date \
+                    gh_resp_msg=.message gh_resp_err=.errors
+                _inf_msg="Getting repo $owner_repo tag information successfully:"
+                _err_msg="Getting repo $owner_repo tag information failure:"
+                ;;
+            Ref)
+                local _tag_sha=""
+                x jo env . _tag_sha=.object.sha gh_resp_msg=.message gh_resp_err=.errors
+                [ -z "$_tag_sha" ] || { printf "%s" "$_tag_sha"; return 0; }
+                _err_msg="Failed to get repo tag SHA ref:"
+                ;;
+            Create)
+                x jo env . node_id=.node_id gh_resp_msg=.message gh_resp_err=.errors
+                _inf_msg="[OK]: Created $owner_repo repo tag $tag"
+                _err_msg="[FAIL] Create $owner_repo repo tag $tag:"
+                ;;
+        esac
+        if [ -n "$node_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}" ${_tag:+"Tag: $_tag"} ${_tag_sha:+"Tag_SHA: $_tag_sha"} ${_type_sha:+"${_type}_SHA: $_type_sha"} \
+                ${_name:+"Tagger_Name: $_name"} ${_email:+"Tagger_Email: $_email"} ${_data:+"Tagger_Data: $_data"} ${_message:+"Message: |"}
+            [ -z "$_message" ] || x str ml wrap "$_message" '      '
+        else
+            ___x_cmd_ui_tf false "${_err_msg}" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

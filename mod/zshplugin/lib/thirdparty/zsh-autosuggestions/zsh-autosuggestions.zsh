@@ -3,7 +3,7 @@
 # v0.7.0
 # Copyright (c) 2013 Thiago de Arruda
 # Copyright (c) 2016-2021 Eric Freese
-# 
+#
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation
 # files (the "Software"), to deal in the Software without
@@ -12,10 +12,10 @@
 # copies of the Software, and to permit persons to whom the
 # Software is furnished to do so, subject to the following
 # conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be
 # included in all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 # EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
 # OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -749,9 +749,21 @@ _zsh_autosuggest_fetch_suggestion() {
 		# Ensure the suggestion matches the prefix
 		[[ "$suggestion" != "$1"* ]] && unset suggestion
 
+		# X-CMD: If the $suggestion contains emoji, we need to abandon the suggestion
+		___x_cmd_zshplugin_autosuggest_escape_emoji_bug
+
 		# Break once we've found a valid suggestion
 		[[ -n "$suggestion" ]] && break
 	done
+}
+
+___x_cmd_zshplugin_autosuggest_escape_emoji_bug(){
+	if 	[[ "$suggestion" = *[🇦🇨-🇿🇼]* ]] || \
+		[[ "$suggestion" = *[🏴󠁧󠁢󠁥󠁮󠁧󠁿-🏴󠁧󠁢󠁷󠁬󠁳󠁿]* ]] || \
+		[[ "$suggestion" = *🏳* ]]; then
+
+		suggestion=""
+	fi
 }
 
 #--------------------------------------------------------------------#

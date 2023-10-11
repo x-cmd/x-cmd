@@ -93,7 +93,7 @@ function generate_help_for_namedoot_cal_maxlen_desc( obj, kp, _text_arr,        
     return (_max_len <= COMP_HELPDOC_LEFT_W) ? _max_len : COMP_HELPDOC_LEFT_W
 }
 
-function generate_optarg_rule_string_inner(obj, kp, tag,          _str, _dafault, _regexl, _candl, i, _cand_id_arr, _kl, _k_id, _k_id_arr){
+function generate_optarg_rule_string_inner(obj, kp, tag,          _str, _dafault, _regexl, _candl, i, _cand_id_arr){
     _default = aobj_get_default(obj, kp)
     if (_default != "" ) _str = _str " [default: " aobj_uq(_default) "]"
 
@@ -114,11 +114,8 @@ function generate_optarg_rule_string_inner(obj, kp, tag,          _str, _dafault
         if ( ( tag == "ARGS" ) || ( _candl < 6 ) ){
             for (i=2; i<=_candl; ++i ) _str = _str ", " aobj_get_cand_value(obj, _cand_id SUBSEP "\""i"\"")
         } else{
-            for (i=2; i<=3; ++i ) _str = _str ", " aobj_get_cand_value(obj, _cand_id SUBSEP "\""i"\"")
-            _kl = split( _cand_id, _cand_id_arr, SUBSEP )
-            _k_id = juq(_cand_id_arr[ _kl - 2 ])
-            split( _k_id, _k_id_arr, "|" )
-            _str = _str " ...(Type '--help " _k_id_arr[1] "' for more candidate information)"
+            for (i=2; i<=5; ++i ) _str = _str ", " aobj_get_cand_value(obj, _cand_id SUBSEP "\""i"\"")
+            _str = _str " ..."
         }
         _str = _str "]"
     }
@@ -151,16 +148,16 @@ function generate_flag_help_unit( obj, kp, arr, arr_kp,        i, v, l, _str, _m
 }
 
 function generate_flag_help(obj, kp, arr_group,        _str, l, i, k ){
-    if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = _str "\n" generate_flag_help_unit(obj, kp, arr_group, ADVISE_NULL_TAG )
+    if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = generate_flag_help_unit(obj, kp, arr_group, ADVISE_NULL_TAG ) "\n"
     l = arr_group[ L ]
     for (i=1; i<=l; ++i){
         k = arr_group[ i ]
         if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
         if (! aobj_len( arr_group, k )) continue
-        _str = _str "\n    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_flag_help_unit(obj, kp, arr_group, k)
+        _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_flag_help_unit(obj, kp, arr_group, k) "\n"
     }
     if (_str == "") return
-    return generate_title("FLAGS:") _str "\n"
+    return generate_title("FLAGS:") "\n" _str
 }
 
 function generate_option_help_unit( obj, kp, arr, arr_kp,         i, v, l, _str, _max_len, _text_arr, _option_after ){
@@ -181,16 +178,16 @@ function generate_option_help_unit( obj, kp, arr, arr_kp,         i, v, l, _str,
 }
 
 function generate_option_help( obj, kp, arr_group,           _str, l, i, k ) {
-    if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = _str "\n" generate_option_help_unit( obj, kp, arr_group, ADVISE_NULL_TAG)
+    if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = generate_option_help_unit( obj, kp, arr_group, ADVISE_NULL_TAG)
     l = arr_group[ L ]
     for (i=1; i<=l; ++i){
         k = arr_group[ i ]
         if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
         if (! aobj_len( arr_group, k )) continue
-        _str = _str "\n    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_option_help_unit( obj, kp, arr_group, k)
+        _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_option_help_unit( obj, kp, arr_group, k) "\n"
     }
     if (_str == "") return
-    return generate_title("OPTIONS:") _str "\n"
+    return generate_title("OPTIONS:") "\n" _str
 }
 
 function generate_rest_argument_help( obj, kp, arr,         i, v, l, _str, _max_len, _text_arr, _option_after ){
@@ -207,8 +204,8 @@ function generate_rest_argument_help( obj, kp, arr,         i, v, l, _str, _max_
         _str = _str comp_helpdoc_unit_line( th_interval(COMP_HELPDOC_UI_THEME) _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
             th_interval(COMP_HELPDOC_UI_DESC) _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
     }
-    if (_str != "") _str = generate_title("ARGS:") "\n" _str "\n"
-    return _str
+    if (_str == "") return
+    return generate_title("ARGS:") "\n" _str "\n"
 }
 
 function generate_subcmd_help_unit( obj, kp, arr, arr_kp,        i, v, l, _str, _max_len, _option_after, _text_arr) {
@@ -239,7 +236,7 @@ function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _s
         _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_subcmd_help_unit( obj, kp, arr_group, k) "\n"
     }
     _str_footer = generate_subcmd_help_tip( obj, kp )
-    if (_str != "") return _str_title _str _str_footer
+    if (_str != "") return _str_title _str _str_footer "\n"
 }
 
 function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
@@ -260,8 +257,8 @@ function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
         _res = _res k " "
     }
     _res = _res "<SUBCOMMAND> --help"
-    if (COMP_HELPDOC_WEBSRC_REGION == "\"cn\"") return "运行 '"_res"' 以获取有关命令的更多信息\n\n"
-    return "Run '"_res"' for more information on a command\n\n"
+    if (COMP_HELPDOC_WEBSRC_REGION == "\"cn\"") return "运行 '"_res"' 以获取有关命令的更多信息\n"
+    return "Run '"_res"' for more information on a command\n"
 }
 
 function generate_name_help( obj, kp,       n, d, _str){
@@ -333,9 +330,7 @@ function generate_other_help_unit(obj, kp,      l, i, k, v, _str, _kp_language){
 function generate_other_help(obj, kp,       l, i, k, v, _str){
     if (aobj_is_null( obj, kp)) return
     th_interval_init(COMP_HELPDOC_UI_THEME)
-    _str = generate_title("SEE ALSO:") "\n"
-    _str = _str generate_other_help_unit(obj, kp)
-    return _str
+    return generate_title("SEE ALSO:") "\n" generate_other_help_unit(obj, kp)
 }
 
 function generate_tip_help_unit( arr, kp, color, title,            l, i, _str, v){
@@ -367,8 +362,8 @@ function help_get_ref(obj, kp,        msg){
 function print_helpdoc( obj, kp, width,        _res, i, j, l, v, s, _has_tip, _has_name, _has_description, _has_synopsis, _has_tldr, _has_other, TIP, RESTOPT, OPTION_GROUP, SUBCMD_GROUP, FLAG_GROUP ){
     if (width < 50) return "The current width is not enough to display the help document!"
     COMP_HELPDOC_WIDTH = width
-    COMP_HELPDOC_LEFT_W = int(width/5)
-    if (COMP_HELPDOC_LEFT_W > 30) COMP_HELPDOC_LEFT_W = 30
+    COMP_HELPDOC_LEFT_W = int(width/5) * 3
+    # if (COMP_HELPDOC_LEFT_W > 30) COMP_HELPDOC_LEFT_W = 30
     help_get_ref(obj, kp)
     l = aobj_len( obj, kp )
     for (i=1; i<=l; ++i) {

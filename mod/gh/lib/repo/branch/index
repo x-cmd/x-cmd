@@ -1,13 +1,17 @@
 # shellcheck shell=sh disable=SC2039,3043,SC2154
 ___x_cmd_gh_repo_branch(){
+    param:scope  ___x_cmd_github
     param:subcmd ___x_cmd_gh_repo_branch                   \
-        --app           "Interactive UI show team of user" \
-        ls              "list repo branch"                 \
+        --app           "Interactive UI show repo branch"  \
+        ls              "List repo branch"                 \
         info            "Get repo branch info"             \
+        ref             "Output repo branch ref SHA"       \
+        create          "Create new branch"                \
         rename          "Rename the repo branch"           \
         default         "Set default branch"               \
-        protection      "protection branch management"     \
-        export          "Export csv data of repo branch"
+        export          "Export csv data of repo branch"   \
+        rm              "Remove repo branch"               \
+        protection      "protection branch management"
     param:subcmd:try
     param:run
 
@@ -101,21 +105,75 @@ options:
 
 # EndSection
 
+# Section: Ref
+___x_cmd_gh_repo_branch_ref(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "branch name"                   <>:Branch
+    --repo|-r       "<owner_path>/<repo_path>"      <>:RepoName
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/git/ref/heads/$1" | ___x_cmd_gh_branch____ui_handler Getting
+}
+
+# EndSection
+
+# Section: Create
+# https://docs.github.com/en/rest/git/refs#create-a-reference
+___x_cmd_gh_repo_branch_create(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "branch name"                               <>:Branch
+    --repo|-r       "<owner_path>/<repo_path>"                  <>:RepoName
+    --refs          "source branch name or .sha=<ref_SHA>"      <>
+    --json|-j       "output json data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    local ref="refs/heads/${1}"
+    local sha=""
+    case "${refs}" in
+        .sha=*)
+            sha="${refs#*'.sha='}"
+            ;;
+        *)
+            x jo env . sha=.object.sha <<A
+        $(___x_cmd_gh_curl get "/repos/${owner_repo}/git/ref/heads/${refs}")
+A
+        ;;
+    esac
+    [ -n "$sha" ] || M="Not found $1 branch ref sha on $owner_repo" arg:ret:64
+    gh:debug "ref => $ref . sha => $sha"
+
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/git/refs" -- ref sha | ___x_cmd_gh_branch____ui_handler Create
+}
+# EndSection
+
 # Section: Rename
 # https://docs.github.com/en/rest/branches/branches#rename-a-branch
 ___x_cmd_gh_repo_branch_rename(){
     param:scope     ___x_cmd_github
     param:dsl       '
 options:
-    #1              "branch name"                       <>:Branch
-    --repo|-r       "<owner_path>/<repo_path>"          <>:RepoName
-    --new_name      "branch new name"                   <>
+    #1              "branch new name"                      <>:Branch
+    --repo|-r       "<owner_path>/<repo_path>"             <>:RepoName
+    --branch        "base branch name"                     <>:Branch
     --json|-j       "output json data"
+    --yes|-y        "Ignore rename prompt interception"
 '
     param:run
-
     ___x_cmd_gh_param_init_owner_repo
-    ___x_cmd_gh_curl post "/repos/${owner_repo}/branches/$1/rename" -- new_name | ___x_cmd_gh_branch____ui_handler Rename
+    local new_name="$1"
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to rename $owner_repo repository branch $(___x_cmd_ui bold red "$branch => $new_name") ?" || return 1
+
+    gh:debug "repo $owner_repo branch $branch rename to $name"
+    ___x_cmd_gh_curl post "/repos/${owner_repo}/branches/$branch/rename" -- new_name | ___x_cmd_gh_branch____ui_handler Rename
 }
 # EndSection
 
@@ -123,19 +181,118 @@ options:
 ___x_cmd_gh_repo_branch_default(){
     param:dsl       '
 options:
-    #1          "branch name"                       <>
+    #1          "branch name"                       <>:Branch
     --repo|-r   "<owner_path>/<repo_path>"          <>:RepoName
     --json|-j   "output json data"
 
 '
     param:run
 
-    # TODO:source data
+    # TODO: source data
     ___x_cmd_gh_repo_edit -j --default_branch "$1" "$repo" | ___x_cmd_gh_branch____ui_handler Default
 }
 # EndSection
 
+# Section: Remove
+___x_cmd_gh_repo_branch_rm(){
+param:scope     ___x_cmd_github
+    param:dsl       <<A
+options:
+    #1          "branch name"                           <>:Branch
+    --repo|-r   "<owner_path>/<repo_path>"              <>:RepoName
+    --yes|-y    "Ignore remove prompt interception"
+A
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to delete branch $(___x_cmd_ui bold red "$1") on $owner_repo repo ?" || return
+    ___x_cmd_gh_curl del "/repos/${owner_repo}/git/refs/heads/${1}" | (
+            [ -z "$___X_CMD_GH_IN_TEST" ] || { command cat; return; }
+            x jo env . gh_resp_msg=.message gh_resp_err=.errors
+            if ___x_cmd_gh_http_error; then
+                ___x_cmd_ui_tf  true "[Success]: Remove ${owner_repo} ${1} branch"
+            else
+                ___x_cmd_ui_tf false "Remove ${owner_repo} ${1} branch failure:" >&2
+                ___x_cmd_gh____handle_resp
+                return 1
+            fi
+        )
+}
+# EndSection
+
+# Section: Export
+# https://docs.github.com/en/rest/branches/branches#list-branches
+___x_cmd_gh_repo_branch_export(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                      <>:RepoName
+    --per_page      "Results per page"                              <>=""
+    --page          "Page number of the results to fetch."          <>=""
+    --protected     "returns only protected branches."
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+
+    local csv_word=
+    csv_word="$(___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected | ___x_cmd_gx_tocsv)"
+    eval "___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected  $csv_word"
+}
+# EndSection
+
+# Section: branch UI
+___x_cmd_gh_branch____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        local _name=""; local _sha=""
+        case "$1" in
+            Info)
+                x jo env . _name=.name  protected=.protected _sha=.commit.sha url=._links.html \
+                    gh_resp_msg=.message gh_resp_err=.errors
+                _inf_msg="Getting repo ${owner_repo} branch info successfully"
+                _err_msg="Getting repo ${owner_repo} branch info failure"
+                ;;
+            Rename)
+                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors
+                [ -z "$_name" ] || {
+                    ___x_cmd_ui_tf true "[OK]: ${owner_repo} branch renamed from $branch to $new_name successfully"
+                    return 0
+                }
+                _err_msg="${owner_repo} branch rename from $branch to $new_name failed"
+                ;;
+            Default)
+                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors
+                _inf_msg="Successfully set repo default branch"
+                _err_msg="Failed to set repo default branch"
+                ;;
+            Getting|Create)
+                x jo env . _sha=.object.sha ref=.ref type=.object.type \
+                    gh_resp_msg=.message gh_resp_err=.errors
+                _inf_msg="$1 ${owner_repo} branch ref successfully"
+                _err_msg="$1 ${owner_repo} branch ref failure"
+                ;;
+        esac
+        if [ -n "$_name" ] || [ -n "$_sha" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" ${_name:+"Name: $_name"} ${protected:+"Protected: $protected"}  ${ref:+"Ref: $ref"} \
+                ${type:+"Type: $type"}  ${_sha:+"SHA: $_sha"} ${url:+"Url: $url"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
 ___x_cmd_gh_repo_branch_protection(){
+    param:scope  ___x_cmd_github
     param:subcmd ___x_cmd_gh_repo_branch_protection         \
         ls              "protection branch list"            \
         info            "protection branch info"            \
@@ -143,7 +300,6 @@ ___x_cmd_gh_repo_branch_protection(){
         unset           "Remove branch protection"
     param:subcmd:try
     param:run
-
 
     ___x_cmd_gh_repo_branch_protection _param_help_doc
     return 1
@@ -275,65 +431,5 @@ options:
             return 1
         fi
     )
-}
-# EndSection
-
-# Section: branch UI
-___x_cmd_gh_branch____ui_handler(){
-    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
-        cat
-        ___x_cmd_gh_http_error
-        return
-    fi
-    (
-        local _name=""
-        case "$1" in
-            Info)
-                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors \
-                    Protected=.protected sha=.commit.sha url=._links.html
-                _inf_msg="get repo ${owner_repo} branch info success"
-                _err_msg="get repo ${owner_repo} branch info fail"
-                ;;
-            Rename)
-                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors
-                _inf_msg="branch renamed from $branch to $new_name successfully"
-                _err_msg="${owner_repo} branch rename from $branch to $new_name failed"
-                ;;
-            Default)
-                x jo env . _name=.name gh_resp_msg=.message gh_resp_err=.errors
-                _inf_msg="Successfully set repo default branch"
-                _err_msg="Failed to set repo default branch"
-                ;;
-        esac
-        if [ -n "$_name" ]; then
-            ___x_cmd_ui_tf  true "${_inf_msg}:" ${_name:+"Name: $_name"} ${Protected:+"Protected: $Protected"}  ${sha:+"LastCommit: $sha"} ${url:+"Url: $url"}
-        else
-            ___x_cmd_ui_tf false "${_err_msg}:" >&2
-            ___x_cmd_gh____handle_resp
-            return 1
-        fi
-    )
-}
-# EndSection
-
-# Section: export
-# https://docs.github.com/en/rest/branches/branches#list-branches
-___x_cmd_gh_repo_branch_export(){
-    param:scope     ___x_cmd_github
-    param:dsl       '
-options:
-    --repo|-r       "<owner_path>/<repo_path>"                      <>:RepoName
-    --per_page      "Results per page"                              <>=""
-    --page          "Page number of the results to fetch."          <>=""
-    --protected     "returns only protected branches."
-'
-    param:run
-
-    ___x_cmd_gh_param_init_owner_repo
-    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
-
-    local csv_word=
-    csv_word="$(___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected | ___x_cmd_gh_tocsv)"
-    eval "___x_cmd_gh_get_multi "/repos/${owner_repo}/branches" protected  $csv_word"
 }
 # EndSection

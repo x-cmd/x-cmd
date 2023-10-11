@@ -312,7 +312,7 @@ BEGIN{
 
 # This is for cawk ...
 function filepath_adjustifwin( fp ){
-    if ( (IS_OS_WIN == 1) && (fp ~ "^/[A-Za-z]") ) return substr(fp, 2, 1) ":/" substr(fp, 3)
+    if ( (IS_OS_WIN == 1) && match(fp, "^/[^/]") ) return substr(fp, 2, RLENGTH-1) ":/" substr(fp, RSTART+RLENGTH)
     return fp
 }
 

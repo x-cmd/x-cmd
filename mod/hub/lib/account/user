@@ -5,13 +5,9 @@ ___x_cmd_hub_account_info() {
     help:arg:parse
 
     local json
-    while [ $# -gt 0 ]; do
-        case "$1" in
-        -j | --json) json=true ;;
-        *) break ;;
-        esac
-        shift
-    done
+    case "$1" in
+        -j | --json) shift; json=true ;;
+    esac
 
     # TODO: to show what platform is binded
     ___x_cmd_hub_get_userinfo
@@ -98,13 +94,21 @@ ___x_cmd_hub_account_upgrade(){
     local X_help_cmd='___x_cmd_hub___help account upgrade'
     help:arg:parse
 
-    local plan="$1"
+    local plan; local type="wechat"
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --plan)     plan=true; shift ;;
+            --type)     type="$2"; shift 2 ;;
+            *) break ;;
+        esac
+    done
+
     if [ -z "$plan" ] ; then
         x ui yesno "Upgrade account plan to pro?" || return 1
         plan="pro"
     fi
 
-    ___x_cmd_hub_u_curl post /api/v0/payment -- "plan=$plan" | {
+    ___x_cmd_hub_u_curl post /api/v0/payment -- plan type | {
         local url; local id; local msg
         x jo env . url=.codeUrl .id .msg
         [ -n "$url" ] || {
@@ -112,18 +116,18 @@ ___x_cmd_hub_account_upgrade(){
             return 1
         }
 
-        ___x_cmd_hub_qrcode "$url" || return 1
-        x ui yesno "Please scan the QR code above to pay, then press [Yes] to continue: " || return 1
+        if [ "$type" = "wechat" ]; then
+            ___x_cmd_hub_qrcode "$url" || return 1
+            x ui yesno "Please scan the QR code above to pay, then press [Yes] to continue: " || return 1
+        else
+            printf "URL: %s\n" "$url"
+            x ui yesno "Please open the url below to pay, then press [Yes] to continue: " || return 1
+        fi
 
         ___x_cmd_hub_u_curl get "/api/v0/payment/$id" | {
             local pay_status
             x jo env . .msg pay_status=.status
             [ "$pay_status" = "success" ] || {
-                ___x_cmd_hub_u_handle_resp false "Failed to upgrade account plan:"
-                return 1
-            }
-
-            [ -z "$msg" ] || {
                 ___x_cmd_hub_u_handle_resp false "Failed to upgrade account plan:"
                 return 1
             }
