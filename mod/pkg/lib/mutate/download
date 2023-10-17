@@ -1,4 +1,4 @@
-# shellcheck    shell=dash disable=SC2034
+# shellcheck    shell=dash disable=SC2034,SC1090
 
 # TODO: Multiple thread
 # TODO: Download Manager and more strategy
@@ -13,8 +13,14 @@ ___x_cmd_pkg_download(){
             return
             ;;
     esac
+    ___x_cmd_pkg___download "$@"
+}
 
-    local name="${1:?Provide pkg name}"
+
+___x_cmd_pkg___download(){
+
+    local name="${1}"
+    [ -n "$name" ] || M='Provide a package name' N=pkg log:ret:1
     local osarch="${3:-$(___x_cmd_pkg_osarch)}"
     local version="${2:-$(___x_cmd_pkg_default_version "$name" "$osarch")}" || return
     [ -n "$version" ] || {
@@ -25,6 +31,10 @@ ___x_cmd_pkg_download(){
 
     local download_file_ext; local md5 ; local sha1 ; local sha256; local sha512 ; local unpack
     ___x_cmd_pkg___attr "$name" "$version" "$osarch" "md5,sha1,sha256,sha512,download_file_ext,unpack"
+    [ -n "$unpack" ] || {
+        pkg:debug "Skip download"
+        return 0
+    }
     local os="${osarch%/*}";  local arch="${osarch#*/}"
     if [ "$unpack" = "none" ] && [ -z "$download_file_ext" ]; then
         local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$name.${os}.${arch}"
@@ -53,6 +63,7 @@ ___x_cmd_pkg_download___inner_(){
     fi
 
     local url_list; url_list="$(___x_cmd_pkg___list "$name" "$version" "$osarch" "url.${___X_CMD_WEBSRC_REGION:-internet}" )" || return
+
     if [ -z "$url_list" ]; then
         pkg:error "Not found url for $name $version"
         pkg:error "Please use 'x pkg ll' or 'x pkg ls all <candidate>' to check available candidate and version"
@@ -95,7 +106,8 @@ A
 }
 
 ___x_cmd_pkg_download___check_hashsum(){
-    local filepath="${1:?Please priovide filepath}"
+    local filepath="${1}"
+    [ -n "$filepath" ] || M='Please priovide filepath' N=pkg log:ret:1
     local sha
     [ -z "$2" ]  ||   sha="$(___x_cmd_md5       "$filepath")"
     [ -z "$3" ]  ||   sha="$(___x_cmd_sha1      "$filepath")"
@@ -111,17 +123,22 @@ ___x_cmd_pkg_download___check_hashsum(){
 
 
 ___x_cmd_pkg___appoint(){
-    local yml_file="${1:?Provide a folder path}"
+    local yml_file="${1}"
+    [ -n "$yml_file" ] || M='Provide a folder path' N=pkg log:ret:1
     local meta_input="$yml_file/meta.yml"; local meta_output="$yml_file/meta.tt.json"
     local version_intput="$yml_file/version.yml"; local version_output="$yml_file/version.tt.json"
     local name="${yml_file##*/}"
+    local CUSTOMIZE_PKG_PATH
+    local CUSTOMIZE_PKG_NAME
+
+    CUSTOMIZE_PKG_NAME="$name"
+    CUSTOMIZE_PKG_PATH="tmp/$name"
 
     x ccmd --convert "$meta_input" "$meta_output" eval  "___x_cmd_pkg___appoint_handle_data \"\$meta_input\" \"\$meta_output\""
     x ccmd --convert "$version_intput" "$version_output" eval  "___x_cmd_pkg___appoint_handle_data \"\$version_intput\" \"\$version_output\""
 
     ___x_cmd_pkg___tmp_move "$yml_file" "$meta_output" "$version_output"
-
-    ___x_cmd_pkg_download "$name" || return
+    ___x_cmd_pkg___download "$name" || return
     ___x_cmd_pkg_populate "$name" || return
     pkg:info "Download and populate $name successfully"
 }
@@ -129,9 +146,13 @@ ___x_cmd_pkg___appoint(){
 ___x_cmd_pkg___appoint_handle_data(){
     local input="${1:? Provide a file path}"
     local output="${2:? Provide a file path}"
-    pkg:debug INPUT_PATH="$input" OUTPUT_PATH="$output"
+    pkg:debug INPUT_PATH="$input" OUTPUT_PATH="${output}"
 
-    < "$input"  x y2j | x ja t "\t" > "$output"
+    if [ "${input}" = "version.sh" ]; then
+        . "${input}" > "${output}"
+    else
+        < "${input}"  x y2j | x ja t "\t" > "${output}"
+    fi
 }
 
 
@@ -140,12 +161,13 @@ ___x_cmd_pkg___tmp_move(){
     local name="${yml_file##*/}"
     local meta_j_path="$2"
     local version_j_path="$3"
-    x mkdirp "$___X_CMD_PKG_RAW_PATH/tmp/$name"
-    x cp "$meta_j_path" "$___X_CMD_PKG_RAW_PATH/tmp/$name"
-    x cp "$version_j_path" "$___X_CMD_PKG_RAW_PATH/tmp/$name"
+    x mkdirp "$___X_CMD_PKG_METADATA_PATH/tmp/$name"
+    x cp "$meta_j_path" "$___X_CMD_PKG_METADATA_PATH/tmp/$name"
+    x cp "$version_j_path" "$___X_CMD_PKG_METADATA_PATH/tmp/$name"
 
-    x mkdirp "$___X_CMD_PKG_RAW_PATH/tmp/$name/.x-cmd"
-    ! [ -d "$yml_file/.x-cmd" ] || x cp "$yml_file/.x-cmd/"* "$___X_CMD_PKG_RAW_PATH/tmp/$name/.x-cmd"
+    x mkdirp "$___X_CMD_PKG_METADATA_PATH/tmp/$name/.x-cmd"
+    ! [ -d "$yml_file/.x-cmd" ] || x cp "$yml_file/.x-cmd/"* "$___X_CMD_PKG_METADATA_PATH/tmp/$name/.x-cmd"
     x rmrf "$meta_j_path" "$version_j_path"
 
 }
+

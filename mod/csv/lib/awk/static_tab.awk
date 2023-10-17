@@ -1,8 +1,14 @@
-function parse_item(v, w, sep,       item, s){
+function parse_item(v, w, sep,       item, s, _res){
     item = wcstruncate(v, w)
     s = space_str(w)
     if (v == item)  return wcstruncate(item s, w) sep
-    else            return wcstruncate(item, w-1) "…" sep
+    else{
+        _res = wcstruncate(item, w-1)
+        sub("^" _res, "", item)
+        _res = _res "…"
+        if (wcswidth(item) == 2) _res = _res " "
+        return _res sep
+    }
 }
 
 function output(s){

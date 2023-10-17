@@ -360,7 +360,7 @@ function help_get_ref(obj, kp,        msg){
 }
 
 function print_helpdoc( obj, kp, width,        _res, i, j, l, v, s, _has_tip, _has_name, _has_description, _has_synopsis, _has_tldr, _has_other, TIP, RESTOPT, OPTION_GROUP, SUBCMD_GROUP, FLAG_GROUP ){
-    if (width < 50) return "The current width is not enough to display the help document!"
+    if (width < 50) return "The current width is not enough to display the help document!\n"
     COMP_HELPDOC_WIDTH = width
     COMP_HELPDOC_LEFT_W = int(width/5) * 3
     # if (COMP_HELPDOC_LEFT_W > 30) COMP_HELPDOC_LEFT_W = 30

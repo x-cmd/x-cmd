@@ -11,7 +11,7 @@ function advise_get_ref_and_group(obj, kp,        msg, subcmd_group, option_grou
     return true
 }
 
-function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k, l, v, _option_id, _cand_key, _cand_l, _cand_kp, _desc, _arr_value, _arr_valuel ) {
+function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k, l, v, _option_id, _cand_key, _cand_l, _cand_kp, _is_cand_nospace, _desc, _arr_value, _arr_valuel ) {
     l = aobj_len(obj, kp)
     for (i=1; i<=l; ++i) {
         _option_id = aobj_get(obj, kp SUBSEP i)
@@ -22,13 +22,24 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k,
                 _cand_kp = _cand_key SUBSEP "\""j"\""
                 v = aobj_get_cand_value( obj, _cand_kp)
                 _cand_kp = _cand_kp SUBSEP v
+                _is_cand_nospace = aobj_is_nospace(obj, _cand_kp)
                 _desc = ( ZSHVERSION != "" ) ? aobj_get_description(obj, _cand_kp) : ""
                 if (v ~ "^\"") v = juq(v)
                 _arr_valuel = split( v, _arr_value, "|" )
-                for (k=1; k<=_arr_valuel; ++k){
+                for (k=1; k<=_arr_valuel; ++k) {
                     v = _arr_value[k]
-                    if ((curval != "") && (!index(v, curval))) continue
-                    if (aobj_is_nospace(obj, _cand_kp)) {
+                    if (curval != "") {
+                        if ((_is_cand_nospace) && (curval ~ "^" v)) {
+                            _keypath = CAND[ "KEYPATH" ]
+                            CAND[ _keypath, "fixed" ] = true
+                            CAND[ _keypath, "IS_NOSPACE" ] = true
+                            CAND[ _keypath, "PREFIX" ] = v
+                            advise_complete___generic_value( substr( curval, length(v)+1 ), genv, lenv, obj, _cand_kp )
+                            continue
+                        }
+                        else if (index(v, curval) != 1) continue
+                    }
+                    if (_is_cand_nospace) {
                         jdict_put( CAND, "NOSPACE", jqu(v), jqu(_desc) )
                         continue
                     }
