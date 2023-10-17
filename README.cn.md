@@ -28,7 +28,7 @@
 你的支持是我们不断改进的动力 ~
 </p>
 
-![x theme demo gif](https://foruda.gitee.com/images/1677067960083339501/19e2472d_9641432.gif "theme.gif")
+![x theme demo gif](https://foruda.gitee.com/images/1697537978077286221/090576a2_11092596.gif "theme.gif")
 
 
 ## [介绍](https://x-cmd.com)
