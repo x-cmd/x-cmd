@@ -21,9 +21,9 @@
 </p>
 
 <p align="center">
-现在处于内测阶段（v0.1.7 版本），请勿用于生产环境。我们计划在未来三个月以每个月3个版本的速度往前迭代。
+现在处于内测阶段（v0.1.12 版本），请勿用于生产环境。我们计划在未来三个月以每个月3个版本的速度往前迭代。
 <br>
-如果你觉得x-cmd不错，请给我们一个 star ⭐
+如果你觉得 x-cmd 不错，请给我们一个 star ⭐
 <br>
 你的支持是我们不断改进的动力 ~
 </p>
@@ -33,11 +33,11 @@
 
 ## [介绍](https://x-cmd.com)
 
-1. 可在主流posix shell([bash](http://tiswww.case.edu/php/chet/bash/bashtop.html)/[zsh](https://www.zsh.org/)/[dash](https://manpages.debian.org/bullseye/dash/dash.1.en.html)/[ash](https://github.com/ash-shell/ash)，更多将在后续支持)系统环境下(即便在非scratch轻量容器镜像内，如[busybox](https://busybox.net/)，[alpine](https://www.alpinelinux.org/)等镜像)，一键运行托管脚本
+1. 可在主流posix shell([bash](http://tiswww.case.edu/php/chet/bash/bashtop.html)/[zsh](https://www.zsh.org/)/[dash](https://manpages.debian.org/bullseye/dash/dash.1.en.html)/[ash](https://github.com/ash-shell/ash)，更多将在后续支持)系统环境下(即便在非 scratch 轻量容器镜像内，如[busybox](https://busybox.net/)，[alpine](https://www.alpinelinux.org/)等镜像)，一键运行托管脚本
 2. 可安装主流开发语言运行时（现支持[node](https://nodejs.org/en/)，[python](https://www.python.org/)，[java](https://www.java.com/en/)等等），在此之上，可让用户在装有x环境下的环境上一键运行托管脚本
-3. 增强posix shell的用户体验：主题，路径快速跳转，后面会加入更好的shell智能补全和提示功能
-4. 提供一系列的交互式cli工具（[github](https://github.com/), [gitee](https://gitee.com/)，更多的工具模块将在最近半年发布）
-5. 极轻极快: 包括全功能模块安装包体积不超过800KB，首启后shell的加载时间一般不超过100ms
+3. 增强 posix shell 的用户体验：主题，路径快速跳转，后面会加入更好的shell智能补全和提示功能
+4. 提供一系列的交互式 cli 工具（[github](https://github.com/), [gitee](https://gitee.com/)，更多的工具模块将在最近半年发布）
+5. 极轻极快: 包括全功能模块安装包体积不超过800KB，首启后 shell 的加载时间一般不超过100ms
 
 ## [模块 -- **80+**](https://x-cmd.com/mod/)
 
