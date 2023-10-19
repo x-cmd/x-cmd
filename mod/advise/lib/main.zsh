@@ -6,10 +6,8 @@ ___x_cmd_advise_run(){
     local COMP_WORDS=("${words[@]:0:$CURRENT}")
     local COMP_CWORD="$(( CURRENT-1 ))"
 
-    [ -z "$___X_CMD_ADVISE_RUN_CMD_FOLDER" ] && ___X_CMD_ADVISE_RUN_CMD_FOLDER="$___X_CMD_ADVISE_TMPDIR"
     local name="${1:-${COMP_WORDS[1]}}"
-    local ___X_CMD_ADVISE_RUN_FILEPATH_;  ___x_cmd_advise_run_filepath_ "$name" || return 1
-    [ "$___X_CMD_ADVISE_RUN_CMD_FOLDER" != "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" ] || ___x_cmd_advise___load_xcmd_advise_util_file "$name"
+    local x_=;  ___x_cmd_advise_run_filepath_ "$___X_CMD_ADVISE_RUN_CMD" "$name" || return
 
     # Used in `eval "$candidate_exec"`
     local cur="${COMP_WORDS[CURRENT]}"
@@ -19,7 +17,7 @@ ___x_cmd_advise_run(){
     local candidate_exec=; local _message_str=; local ___X_CMD_ADVISE_RUN_SET_NOSPACE=; local candidate_prefix=
     local offset
     setopt aliases
-    eval "$(___x_cmd_advise_get_result_from_awk "$___X_CMD_ADVISE_RUN_FILEPATH_")" 2>/dev/null
+    eval "$(___x_cmd_advise_get_result_from_awk "$x_")" 2>/dev/null
 
     cur="${cur#"$candidate_prefix"}"
     local IFS="$___X_CMD_ADVISE_IFS_INIT"

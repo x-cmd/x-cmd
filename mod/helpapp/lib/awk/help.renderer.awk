@@ -227,16 +227,16 @@ function generate_subcmd_help_unit( obj, kp, arr, arr_kp,        i, v, l, _str, 
 
 function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _str_footer, l, i, k) {
     _str_title = generate_title("SUBCOMMANDS:") "\n"
-    if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = _str generate_subcmd_help_unit( obj, kp, arr_group, ADVISE_NULL_TAG) "\n"
+    if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = _str generate_subcmd_help_unit( obj, kp, arr_group, ADVISE_NULL_TAG)
     l = arr_group[ L ]
     for (i=1; i<=l; ++i){
         k = arr_group[ i ]
         if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
         if (! aobj_len( arr_group, k )) continue
-        _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_subcmd_help_unit( obj, kp, arr_group, k) "\n"
+        _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_subcmd_help_unit( obj, kp, arr_group, k)
     }
     _str_footer = generate_subcmd_help_tip( obj, kp )
-    if (_str != "") return _str_title _str _str_footer "\n"
+    if (_str != "") return _str_title _str _str_footer
 }
 
 function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
@@ -257,8 +257,8 @@ function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
         _res = _res k " "
     }
     _res = _res "<SUBCOMMAND> --help"
-    if (COMP_HELPDOC_WEBSRC_REGION == "\"cn\"") return "运行 '"_res"' 以获取有关命令的更多信息\n"
-    return "Run '"_res"' for more information on a command\n"
+    if (COMP_HELPDOC_WEBSRC_REGION == "\"cn\"") return "\n运行 '"_res"' 以获取有关命令的更多信息\n"
+    return "\nRun '"_res"' for more information on a command\n"
 }
 
 function generate_name_help( obj, kp,       n, d, _str){

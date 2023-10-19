@@ -4,7 +4,7 @@ function advise_panic(msg){
 }
 
 function str_escape_special_char(s){
-    gsub(":", "\\:", s)
+    if (ZSHVERSION != "") gsub(":", "\\:", s)
     # if (ZSHVERSION == "") gsub(" ", "\\\\ ", s)
     return s
 }

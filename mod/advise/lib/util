@@ -2,17 +2,17 @@
 ___X_CMD_ADVISE_IFS_INIT="$___X_CMD_UNSEENCHAR_NEWLINE"
 ___x_cmd_advise_completer() {
     # Interesting ... Passing
-    ___X_CMD_ADVISE_RUN_CMD_FOLDER="" ___x_cmd_advise_run ""
+    ___x_cmd_advise_run ""
 }
 
+# TODO:
 ___x_cmd_advise_update(){
     local func="$1"
     arg:init advise
     [ -n "$func" ] || M="Provide function name" arg:ret:64
-    local tmp_filepath="$___X_CMD_ADVISE_TMPDIR/$func"
-
-    if [ -f "$tmp_filepath" ] && [ -z "$(find "$tmp_filepath" -mtime -1)" ]; then
-        x rmrf "$tmp_filepath"
+    local x_=; ___x_cmd_advise_which_ "$1"
+    if [ -f "$x_" ] && [ -z "$(find "$x_" -mtime -1)" ]; then
+        x rmrf "$x_"
         ___x_cmd_advise_init "$func"
     fi
 }
@@ -33,8 +33,8 @@ ___x_cmd_advise_init(){
             command cp "$op" "$filepath"
         }
     else
-        local x_=; ___x_cmd_advise___get_mod_advise_jso_ "$func"
-        [ -f "$x_" ] || N=advise M="Not found advise jso file of $func. [filepath=${op:-"$x_"}]" log:ret:64
+        local x_=; ___x_cmd_advise___get_mod_advise_jso_ "$func" \
+            || N=advise M="advise init not found advise jso file of $func. [filepath=${op:-"$x_"}]" log:ret:64
 
         [ "$___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST" != "${___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST#*"${___X_CMD_UNSEENCHAR_NEWLINE}${func}${___X_CMD_UNSEENCHAR_NEWLINE}"}" ] || \
         xrc "$func"
@@ -50,7 +50,7 @@ ___x_cmd_advise_init(){
         comp_word="$alias_name"
         comp_func="___x_cmd_advise_completer_$alias_name"
         eval "$comp_func(){
-            ___X_CMD_ADVISE_RUN_CMD_FOLDER= ___x_cmd_advise_run $func
+            ___x_cmd_advise_run \"${func}\"
         }"
     fi
 
@@ -63,6 +63,17 @@ ___x_cmd_advise_load_complete(){
     elif [[ "$BASH_VERSION" =~ (^3.*|^4.[0-3]) ]]; then complete -o nospace -F "$comp_func" "$@"
     else                                                complete -o nospace -o nosort -F "$comp_func" "$@"
     fi
+}
+
+___x_cmd_advise_run_filepath_(){
+    case "$1" in
+        x-cmd)
+            ___x_cmd_advise_man_which___xcmd_ "$2" || return
+            ___x_cmd_advise___load_xcmd_advise_util_file "$2" || return
+            ;;
+        *)  ___x_cmd_advise_which_ "$2" || return
+            ;;
+    esac
 }
 
 ___x_cmd_advise_get_result_from_awk(){
@@ -112,21 +123,6 @@ ___x_cmd_advise_get_result_from_awk_(){
         -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.complete.awk" \
         -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.parse_argument.awk" \
         -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.main.awk"
-}
-
-___x_cmd_advise_run_filepath_(){
-    case "$1" in
-        /*) ___X_CMD_ADVISE_RUN_FILEPATH_="$1" ;;
-        -)  ___X_CMD_ADVISE_RUN_FILEPATH_=/dev/stdin ;;
-        *)  for file in "$1" "$1/advise.t.jso" "$1/advise.json"; do
-                ___X_CMD_ADVISE_RUN_FILEPATH_="$___X_CMD_ADVISE_RUN_CMD_FOLDER/$file"
-                [ ! -f "$___X_CMD_ADVISE_RUN_FILEPATH_" ] || return 0
-            done
-            ___X_CMD_ADVISE_RUN_FILEPATH_="$(___x_cmd_advise_man_which x-cmd "$1")"
-            ;;
-    esac
-    [ ! -f "$___X_CMD_ADVISE_RUN_FILEPATH_" ] || return 0
-    return 1
 }
 
 if [ -n "$BASH_VERSION" ]; then
@@ -185,32 +181,35 @@ fi
 
 ___x_cmd_advise_ls(){
     local X_help_cmd; X_help_cmd='x help -m advise ls' help:arg:parse
-    [ ! -d "$___X_CMD_ADVISE_TMPDIR" ] || ls "$___X_CMD_ADVISE_TMPDIR"
+    [ ! -d "$___X_CMD_ADVISE_TMPDIR" ] || x fsiter "$___X_CMD_ADVISE_TMPDIR"
 }
 
 ___x_cmd_advise_rm(){
     case "$1" in
         -h|--help)      M="advise rm" help:ret:0 ;;
         "")             x rmrf "$___X_CMD_ADVISE_TMPDIR" ;;
-        *)              local filepath="$___X_CMD_ADVISE_TMPDIR/$1"
-                        [ -f "$filepath" ] || return 1
-                        x rmrf "$filepath"
+        *)              local x_=; ___x_cmd_advise_which_ "$1" || return
+                        x rmrf "$x_"
     esac
+}
+
+___x_cmd_advise_which_(){
+    [ -d "$___X_CMD_ADVISE_TMPDIR" ] || return
+    x_="$___X_CMD_ADVISE_TMPDIR/$1"
+    [ -f "$x_" ]
 }
 
 ___x_cmd_advise_which(){
     case "$1" in
         -h|--help)      M="advise which" help:ret:0 ;;
-        "")             printf "%s" "$___X_CMD_ADVISE_TMPDIR" ;;
-        *)              local filepath="$___X_CMD_ADVISE_TMPDIR/$1"
-                        [ -f "$filepath" ] || return 1
-                        printf "%s" "$filepath"
+        "")             printf "%s\n" "$___X_CMD_ADVISE_TMPDIR" ;;
+        *)              local x_=; ___x_cmd_advise_which_ "$1" || return
+                        printf "%s\n" "$x_"
     esac
 }
 
 ___x_cmd_advise_cat(){
     local X_help_cmd; X_help_cmd='x help -m advise cat' help:arg-null:parse
-    local filepath="$___X_CMD_ADVISE_TMPDIR/$1"
-    [ -f "$filepath" ] || return 1
-    < "$filepath" x jo
+    local x_=; ___x_cmd_advise_which_ "$1" || return
+    < "$x_" x jo
 }
