@@ -28,7 +28,7 @@ If you like x-cmd, please give us a star ⭐.
 Your support is our biggest motivation.
 </p>
 
-![x theme demo gif](https://user-images.githubusercontent.com/112856271/275797515-4c9d6fb5-1435-428d-a919-17bd9417ce3a.gif)
+![x theme demo gif](https://user-images.githubusercontent.com/112856271/276805596-08998349-eda3-4107-93ff-61daade67032.gif)
 
 
 ## [Introduction](https://x-cmd.com)
