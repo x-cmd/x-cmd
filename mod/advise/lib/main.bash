@@ -30,7 +30,7 @@ ___x_cmd_advise_run(){
     local IFS="$___X_CMD_ADVISE_IFS_INIT"
     local old_cur="$cur"
     cur="${cur#"$candidate_prefix"}"
-    [ -z "$candidate_exec" ] || eval "$candidate_exec" 2>/dev/null
+    [ -z "$candidate_exec" ] || eval "$candidate_exec" 2>/dev/null 1>&2
     [ -z "$candidate_exec_arr" ] || candidate_arr+=( "${candidate_exec_arr[@]}" )
     COMPREPLY+=( $( ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_arr[@]}" ) )
     [ -z "$candidate_nospace_arr" ] || COMPREPLY+=( $( ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_nospace_arr[@]}" ) )
@@ -41,9 +41,9 @@ ___x_cmd_advise_run___compgen_wordlist(){
     local cur="$1"; shift
     local i=; for i in "$@"; do
         [ -n "$i" ] || continue
-        [ -z "$candidate_prefix" ] || i="${candidate_prefix}${i}"
         [ -n "$___X_CMD_ADVISE_RUN_SET_NOSPACE" ] || i="${i} "
         [[ "$i" == $cur* ]] ||continue
+        [ -z "$candidate_prefix" ] || i="${candidate_prefix}${i}"
         printf "%s\n" "${i}"
     done | uniq 2>/dev/null
 }

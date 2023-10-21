@@ -21,7 +21,7 @@ END{
 
         size = O[_kp S key S "\"info\"" S "\"size\"" S "\""os"/"arch"\"" ]
         if (size != "")jdict_put(O, _kp S key S "\"info\"", "\"size\"" , size)
-        else jdict_put(O, _kp S key S "\"info\"", "\"size\"" ,  "\"Unknow\"")
+        else jdict_put(O, _kp S key S "\"info\"", "\"size\"" ,  "\"Unknown\"")
 
         license = O[_kp S "\"license\""]
         if (license != "") jdict_put(O, _kp S key S "\"info\"", "\"license\"" , license)

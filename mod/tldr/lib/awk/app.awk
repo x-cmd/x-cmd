@@ -1,8 +1,11 @@
+function user_request_selected_data(){
+    tapp_request("data:request")
+}
+
 function user_request_data( o, kp, rootkp,            list, i, j, k, l, _pages, _system, _cmd, _pl, _sl, _cl, _pv, _sv, _cv, arr, _){
-    list =  TLDR_APP_DATA
-    l = split(list, arr, "\n")
+    if ( ( l = TLDR_APP_DATA_ARR[L] ) <= 0 ) return
     for (i=1; i<=l; ++i){
-        split(arr[i], _, "/")
+        split(TLDR_APP_DATA_ARR[i], _, "/")
         jdict_put(_pages, "", _[1], true)
         jdict_put(_system, _[1], _[2], true)
         jdict_put(_cmd, _[1] S _[2], _[3], true)
@@ -32,8 +35,8 @@ function user_request_data( o, kp, rootkp,            list, i, j, k, l, _pages, 
 
 # Section: user model
 function tapp_init(){
+    user_request_selected_data()
     TLDR_APP_BASEPATH = ENVIRON[ "___X_CMD_TLDR_APP_BASEPATH" ]
-    TLDR_APP_DATA = ENVIRON[ "___X_CMD_TLDR_APP_DATA" ]
     TLDR_KP = "ls_kp"
     navi_init(o, TLDR_KP)
 
@@ -55,15 +58,20 @@ function tapp_handle_wchar( value, name, type ){
     if ( navi_handle_wchar( o, TLDR_KP, value, name, type ) ) return
 }
 
-function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr){
+function tapp_handle_response(fp,       _content){
     _content = cat(fp)
-    if( match( _content, "^errexit:")) panic(substr(_content, RSTART+RLENGTH))
+    if( _content == "" )                    panic("list data is empty")
+    else if( match( _content, "^errexit:")) panic(substr(_content, RSTART+RLENGTH))
+    else arr_cut(TLDR_APP_DATA_ARR, _content, "\n")
+
+    draw_navi_change_set_all( o, kp )
 }
 
 function tapp_handle_exit( exit_code,       p, v ){
     if (exit_is_with_cmd()){
+        # debug( qu1(comp_navi_get_cur_rootkp(o, TLDR_KP) ) )
         if ((FINALCMD == "ENTER") && (! comp_navi_cur_preview_type_is_sel( o, TLDR_KP )))
-            tapp_send_finalcmd( "___x_cmd_tldr_cat " comp_navi_get_cur_rootkp(o, TLDR_KP) )
+            tapp_send_finalcmd( "___x_cmd_tldr_cat " qu1( comp_navi_get_cur_rootkp(o, TLDR_KP) ) )
     }
 }
 

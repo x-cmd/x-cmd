@@ -22,7 +22,7 @@ ___x_cmd_advise_run(){
     cur="${cur#"$candidate_prefix"}"
     local IFS="$___X_CMD_ADVISE_IFS_INIT"
     local candidate_exec_arr;       LANG="$_UTF8" candidate_exec_arr=()
-    eval "$candidate_exec" 2>/dev/null
+    eval "$candidate_exec" 2>/dev/null 1>&2
 
     [ -z "$_message_str" ]       || LANG="$_UTF8" _message -r "$_message_str"
     [ -z "$candidate_arr" ]      || LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_arr

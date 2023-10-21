@@ -1,0 +1,71 @@
+# shellcheck shell=dash disable=2154
+xrc ui
+___x_cmd_install_run(){
+    local X_help_cmd='x help -m install run';   help:arg-null:parse
+
+    local i; for i in "$@"; do
+        ___x_cmd_install_run___inner "$i" || return
+    done
+}
+
+___x_cmd_install___update_installer_(){
+    local installer
+    installer="$(x os release | head -n 1)"
+    if [ "$installer" = "Ubuntu" ]; then
+        x_="sudo apt update"
+    elif [ "$installer" = "arch"  ]; then
+        x_="sudo pacman -Sy"
+    elif [ "$installer" = "fedora" ]; then
+
+        if x hascmd dnf; then
+            x_="sudo dnf check-update"
+        else
+            x_="sudo yum check-update"
+        fi
+    else
+        x_="Update your installer"
+    fi
+
+}
+
+___x_cmd_install_run___inner(){
+    local software="$1"
+    local cmd=; local num=0
+    local l; while read -r l; do
+        [ "$l" != "$___X_CMD_UNSEENCHAR_003" ] || {
+            [ -z "$cmd" ] || {
+                eval "local cmd_$num=\$cmd"
+                printf "%s\n" "$cmd"
+            }
+            num=$(( num + 1 ))
+            cmd=
+            printf "\033[33m%s\033[0m:" "$num"
+            continue
+        }
+        cmd="${cmd}${___X_CMD_UNSEENCHAR_NEWLINE}  ${l}"
+    done << A
+$(___X_CMD_INSTALL_IS_RUN=1 ___x_cmd_install_cat "$software")
+A
+    [ "$num" -gt 0 ] || N=install M="Not found software[$software]" log:ret:1
+    eval "local cmd_$num=\$cmd"
+    printf "%s\n" "$cmd"
+
+    local item_num=1
+    if [ "$num" -gt 1 ]; then
+        printf "\033[33m%s\033[0m" "Input item num: " >&2
+        < /dev/tty read -r item_num || return
+    fi
+
+    eval "local item_cmd=\"\$cmd_$item_num\""
+    install:debug --item_num "$item_num" -c "$item_cmd"
+    [ -n "$item_cmd" ] || N=install M="Please provide a correct number" log:ret:1
+    x ui yesno "Whether to execute the following code: $(___x_cmd_ui bold cyan "$item_cmd" )" || return
+    eval "$item_cmd" || {
+        install:error "Execute failed"
+        local x_=; ___x_cmd_install___update_installer_
+        install:warn "Perhaps you need to use \`$(___x_cmd_ui bold cyan "$x_")\` firstly"
+        return 1
+    }
+    # install:info "Download software[$software] successfully"
+}
+

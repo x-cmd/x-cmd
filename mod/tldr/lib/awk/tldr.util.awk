@@ -32,7 +32,7 @@ function handle_desc(desc, title_len){
 function handle_cmd(cmd,     _res, _max_len, _i, l, _key_len, _cmd_text){
     _res = COMP_TLDR_SPACE_LINE
     l = cmd[ L ]
-    for (_i=1; _i<l; _i++) {
+    for (_i=1; _i<=l; _i++) {
         _cmd_text = cmd[ _i, "text" ]
         while (match(_cmd_text, "\\{\\{[^\\{]+\\}}"))
             cmd[ _i, "text" ] = _cmd_text = substr(_cmd_text,1,RSTART-1) \
@@ -54,7 +54,7 @@ function handle_short_cmd(cmd, max_len,
     th_interval_init(COMP_TLDR_CMD_KEY_SEP)
     th_interval_init(COMP_TLDR_CMD_KEY_COLOR)
     th_interval_init(COMP_TLDR_CMD_INFO_COLOR)
-    for (i=1; i<l; i++) {
+    for (i=1; i<=l; i++) {
         _cmd_key_style  = th_interval(COMP_TLDR_CMD_KEY_COLOR)
         _cmd_info_style = th_interval(COMP_TLDR_CMD_INFO_COLOR)
         _cmd_info = cmd[ i, "info" ]
@@ -73,7 +73,7 @@ function handle_short_cmd(cmd, max_len,
 function handle_long_cmd(cmd,
     _res, _cmd_info, _cmd_text, _cmd_info_style, _cmd_text_style, i, l, _cmd_len){
     l = cmd[ L ]
-    for (i=1; i<l; i++) {
+    for (i=1; i<=l; i++) {
         _cmd_text = cmd[ i, "text" ]; _cmd_text_style = COMP_TLDR_CMD_KEY_COLOR_LONG
         _cmd_info = cmd[ i, "info" ]; _cmd_info_style = COMP_TLDR_CMD_INFO_COLOR_LONG
         _cmd_len  = strlen_without_color(cmd[ i, "text" ])
