@@ -21,9 +21,11 @@ function get_install_cmd(O,          j, k, len, key,  rule_len, rule_key,arr, ar
                 split(ARG , arg, "/")
                 cmd = juq(O[ kp S "\""key"\"" S "\"cmd\"" ])
                 reference = juq(O[ kp S "\""key"\"" S "\"reference\"" ])
-                if( (arr[1] == arg[1]) && (arr[2] == arg[2]))   print_install_cmd_style(cmd, reference, install_name)
+                if( ((arr[1] == arg[1])||(arr[1] == "" )) && (arr[2] == arg[2]))   print_install_cmd_style(cmd, reference, install_name)
                 else if ( (arr[1] == arg[1]) && (arg[2] == "")) print_install_cmd_style(cmd, reference, install_name)
+                else if ( (arr[1] == "") && (arr[2] == arg[2])) print_install_cmd_style(cmd, reference, install_name)
                 else if ( (arg[1] == "") && (arr[2] == arg[2])) print_install_cmd_style(cmd, reference, install_name)
+                else if ( (arr[1] == "") && (arg[2] == "") ) print_install_cmd_style(cmd, reference, install_name)
             }
         }
     }

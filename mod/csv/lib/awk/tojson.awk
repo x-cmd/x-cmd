@@ -13,7 +13,7 @@ BEGIN{
             _kv = jqu( data[ S 1, i ] ) ": " _value
             _ret = (_ret == "") ? _kv : _ret ", " _kv
         }
-        printf ( (format == "json") ? _ret "}" : _ret "}\n")
+        printf ( "%s", (format == "json") ? _ret "}" : _ret "}\n")
     csv_irecord_fini()
     }
     printf "\n"
