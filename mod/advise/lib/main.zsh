@@ -11,9 +11,8 @@ ___x_cmd_advise_run(){
 
     # Used in `eval "$candidate_exec"`
     local cur="${COMP_WORDS[CURRENT]}"
-
-    local candidate_arr;            LANG="$_UTF8" candidate_arr=()
-    local candidate_nospace_arr;    LANG="$_UTF8" candidate_nospace_arr=()
+    local candidate_arr;            LC_ALL="$_UTF8" LANG="$_UTF8" candidate_arr=()
+    local candidate_nospace_arr;    LC_ALL="$_UTF8" LANG="$_UTF8" candidate_nospace_arr=()
     local candidate_exec=; local _message_str=; local ___X_CMD_ADVISE_RUN_SET_NOSPACE=; local candidate_prefix=
     local offset
     setopt aliases
@@ -21,13 +20,13 @@ ___x_cmd_advise_run(){
 
     cur="${cur#"$candidate_prefix"}"
     local IFS="$___X_CMD_ADVISE_IFS_INIT"
-    local candidate_exec_arr;       LANG="$_UTF8" candidate_exec_arr=()
+    local candidate_exec_arr;       LC_ALL="$_UTF8" LANG="$_UTF8" candidate_exec_arr=()
     eval "$candidate_exec" 2>/dev/null 1>&2
 
-    [ -z "$_message_str" ]       || LANG="$_UTF8" _message -r "$_message_str"
-    [ -z "$candidate_arr" ]      || LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_arr
-    [ -z "$candidate_exec_arr" ] || LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_exec_arr
-    [ -z "$candidate_nospace_arr" ] || LANG="$_UTF8" ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___describe 'commands' candidate_nospace_arr
+    [ -z "$_message_str" ]          || LC_ALL="$_UTF8" LANG="$_UTF8" _message -r "$_message_str"
+    [ -z "$candidate_arr" ]         || LC_ALL="$_UTF8" LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_arr
+    [ -z "$candidate_exec_arr" ]    || LC_ALL="$_UTF8" LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_exec_arr
+    [ -z "$candidate_nospace_arr" ] || LC_ALL="$_UTF8" LANG="$_UTF8" ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___describe 'commands' candidate_nospace_arr
 }
 
 ___x_cmd_advise_run___describe(){

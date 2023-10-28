@@ -45,7 +45,6 @@ function envy_gen_code( var, perfix, local, override, backup,           i, l, v,
                 _res_backup = _res_backup sprintf("  printf %s %s\n", "\"  export %s\\n\"", name"=\"$x_\"")
             } else {
                 _res_backup = _res_backup sprintf("  printf %s %s\n", "\"  ___x_cmd_unexport %s\\n\"", name)
-                _res_backup = _res_backup sprintf("  printf %s %s\n", "\"  %s\\n\"", name"=\"$x_\"")
             }
         }
         if (local == "enable")  _res_local = _res_local "  local " name "\n"

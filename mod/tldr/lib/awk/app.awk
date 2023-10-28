@@ -17,6 +17,11 @@ function user_request_data( o, kp, rootkp,            list, i, j, k, l, _pages, 
         comp_navi_data_add_kv( o, kp, "", _pv, "{", _pv, 13)
         _sl = _system[ _pv L ]
         comp_navi_data_init( o, kp, _pv )
+        _sv = _system[ _pv, 1 ]
+        if ( _sv == "android" ) {
+            jdict_rm(_system, _pv, _sv)
+            jdict_put(_system, _pv, _sv)
+        }
         for (j=1; j<=_sl; ++j){
             _sv = _system[ _pv, j ]
             comp_navi_data_add_kv( o, kp, _pv, _sv, "{", _pv "/" _sv, 10)
