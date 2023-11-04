@@ -187,7 +187,7 @@ function generate_option_help( obj, kp, arr_group,           _str, l, i, k ) {
         _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_option_help_unit( obj, kp, arr_group, k) "\n"
     }
     if (_str == "") return
-    return generate_title("OPTIONS:") "\n" _str
+    return generate_title("OPTIONS:") "\n" _str "\n"
 }
 
 function generate_rest_argument_help( obj, kp, arr,         i, v, l, _str, _max_len, _text_arr, _option_after ){
@@ -236,7 +236,7 @@ function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _s
         _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_subcmd_help_unit( obj, kp, arr_group, k)
     }
     _str_footer = generate_subcmd_help_tip( obj, kp )
-    if (_str != "") return _str_title _str _str_footer
+    if (_str != "") return _str_title _str "\n" _str_footer
 }
 
 function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
@@ -257,8 +257,8 @@ function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
         _res = _res k " "
     }
     _res = _res "<SUBCOMMAND> --help"
-    if (COMP_HELPDOC_WEBSRC_REGION == "\"cn\"") return "\n运行 '"_res"' 以获取有关命令的更多信息\n"
-    return "\nRun '"_res"' for more information on a command\n"
+    if (COMP_HELPDOC_WEBSRC_REGION == "\"cn\"") return "运行 '"_res"' 以获取有关命令的更多信息\n\n"
+    return "Run '"_res"' for more information on a command\n\n"
 }
 
 function generate_name_help( obj, kp,       n, d, _str){
@@ -276,7 +276,7 @@ function generate_name_help( obj, kp,       n, d, _str){
 
 function generate_desc_help(obj, kp,        _str, d){
     if (aobj_is_null( obj, kp)) return
-    _str =generate_title("DESCRIPTON:") "\n"
+    _str = generate_title("DESCRIPTON:") "\n"
     d = obj[ kp ]
     if ( d == "{" ) d = aobj_get_value_with_local_language(obj, kp, COMP_HELPDOC_WEBSRC_REGION)
     _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line(aobj_uq(d), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
@@ -394,5 +394,6 @@ function print_helpdoc( obj, kp, width,        _res, i, j, l, v, s, _has_tip, _h
     if (SUBCMD_GROUP[ ADVISE_HAS_TAG ])             _res = _res generate_subcmd_help( obj, kp, SUBCMD_GROUP )
     if ( _has_tldr == true )                        _res = _res generate_tldr_help( obj, kp SUBSEP "\"#tldr\"")
     if ( _has_other == true )                       _res = _res generate_other_help( obj, kp SUBSEP "\"#other\"")
+    gsub("\n+$", "\n", _res)
     return _res
 }

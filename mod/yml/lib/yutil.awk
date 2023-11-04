@@ -1,5 +1,5 @@
 function yml_panic( s ){
-    print s >"/dev/stderr"
+    log_error("yml", s)
     YML_PANIC_EXIT = 1
     exit(1)
 }

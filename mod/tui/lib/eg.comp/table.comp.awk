@@ -1,7 +1,7 @@
 # Section: table init
 function table_init(o, kp){
-    table_datamodel_request_page_count()
     table_datamodel_request_page(o, kp, 1)
+    table_datamodel_request_page_count()
     comp_table_init(o, kp)
     # comp_table_model_fulldata_mode( o, kp, FULLDATA_MODE_ONTHEWAY )
 }

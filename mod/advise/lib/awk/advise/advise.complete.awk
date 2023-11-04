@@ -69,8 +69,9 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k,
 function advise_complete___generic_value( curval, genv, lenv, obj, kp,         _exec_val, _regex_id, _regexl, _regex_key, i ){
     advise_get_candidate_code( curval, genv, lenv, obj, kp )
 
-    _exec_val = aobj_get_special_value(obj, kp, "exec")
-    if ( _exec_val != "" ) jdict_put( CAND, "EXEC", _exec_val, "null" )
+    if ( (_exec_val = aobj_get_special_value(obj, kp, "exec")) != "" )                  jdict_put( CAND, "EXEC", _exec_val, "null" )
+    if ( (_exec_val = aobj_get_special_value(obj, kp, "exec:stdout")) != "" )           jdict_put( CAND, "EXEC_STDOUT", _exec_val, "null" )
+    if ( (_exec_val = aobj_get_special_value(obj, kp, "exec:stdout:nospace")) != "" )   jdict_put( CAND, "EXEC_STDOUT_NOSPACE", _exec_val, "null" )
 
     _regex_id = aobj_get_special_value_id( kp, "regex" )
     _regexl   = aobj_len(obj, _regex_id)

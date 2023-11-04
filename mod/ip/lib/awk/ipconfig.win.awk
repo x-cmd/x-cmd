@@ -18,3 +18,7 @@ $1=="IPv4"{
     prop[ "inet" ] = arr[ 2 ]
     next
 }
+
+END{
+    handle()
+}

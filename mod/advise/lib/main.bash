@@ -25,15 +25,18 @@ ___x_cmd_advise_run(){
 
     local candidate_arr; local candidate_exec_arr; local candidate_nospace_arr;
     local candidate_exec=; local offset=; local ___X_CMD_ADVISE_RUN_SET_NOSPACE=; local candidate_prefix=
+    local candidate_exec_stdout=;   local candidate_exec_stdout_nospace=
     eval "$(___x_cmd_advise_get_result_from_awk "$x_")" 2>/dev/null
 
     local IFS="$___X_CMD_ADVISE_IFS_INIT"
     local old_cur="$cur"
     cur="${cur#"$candidate_prefix"}"
-    [ -z "$candidate_exec" ] || eval "$candidate_exec" 2>/dev/null 1>&2
-    [ -z "$candidate_exec_arr" ] || candidate_arr+=( "${candidate_exec_arr[@]}" )
-    COMPREPLY+=( $( ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_arr[@]}" ) )
-    [ -z "$candidate_nospace_arr" ] || COMPREPLY+=( $( ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_nospace_arr[@]}" ) )
+    [ -z "$candidate_exec" ]                || eval "$candidate_exec" 2>/dev/null 1>&2
+    [ -z "$candidate_exec_stdout" ]         || ___x_cmd_advise_exec___stdout
+    [ -z "$candidate_exec_stdout_nospace" ] || ___x_cmd_advise_exec___stdout_nospace
+    [ -z "${candidate_exec_arr[*]}" ]       || candidate_arr+=( "${candidate_exec_arr[@]}" )
+    [ -z "${candidate_arr[*]}" ]            || COMPREPLY+=( $( ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_arr[@]}" ) )
+    [ -z "${candidate_nospace_arr[*]}" ]    || COMPREPLY+=( $( ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_nospace_arr[@]}" ) )
     ___x_cmd_advise___ltrim_bash_completions "$old_cur" "@" ":" "="
 }
 
@@ -42,20 +45,10 @@ ___x_cmd_advise_run___compgen_wordlist(){
     local i=; for i in "$@"; do
         [ -n "$i" ] || continue
         [ -n "$___X_CMD_ADVISE_RUN_SET_NOSPACE" ] || i="${i} "
-        [[ "$i" == $cur* ]] ||continue
+        [[ "$i" == $cur* ]] || continue
         [ -z "$candidate_prefix" ] || i="${candidate_prefix}${i}"
         printf "%s\n" "${i}"
     done | uniq 2>/dev/null
 }
-
-    # COMPREPLY+=( $( ___x_cmd_advise_run___compgen -W "${candidate_arr[*]}" -- "$cur" ) )
-    # [ -z "$candidate_nospace_arr" ] || COMPREPLY+=( $( ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___compgen -W "${candidate_nospace_arr[*]}" -- "$cur" ) )
-# ___x_cmd_advise_run___compgen(){
-#     if [ -z "$___X_CMD_ADVISE_RUN_SET_NOSPACE" ]; then
-#         compgen -S " " ${candidate_prefix:+"-P"} ${candidate_prefix:+"$candidate_prefix"} "$@"
-#         return
-#     fi
-#     compgen ${candidate_prefix:+"-P"} ${candidate_prefix:+"$candidate_prefix"} "$@"
-# }
 
 

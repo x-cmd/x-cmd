@@ -295,7 +295,7 @@ function wcwidth(_wchar,    _result, _rl, _rs)
 #                                     ---
 
 BEGIN {
-    ___X_CMD_AWK_WCWDITH_WITH_C = ENVIRON[ "___X_CMD_AWK_WCWDITH_WITH_C" ]
+    ___X_CMD_AWK_WCWDITH_WITH_C = ( ENVIRON[ "LC_ALL" ] == "C" )
     # Silence "defined but never called directly" warnings generated when using
     # GAWK's linter.
     if (0) {

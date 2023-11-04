@@ -16,11 +16,15 @@ function comp_advise_parse_candidate_arr( arr,      s, i, l, _, v, d, _cand_exec
 
     if ((_cand_msg = arr[ "MESSAGE" ]) != "") return "_message_str='" _ui_warn "[ADVISE PANIC]: " juq(_cand_msg) _ui_end "'"
     s = "offset=" arr[ "OFFSET" ] "\n"
-    if ((l = arr[ "EXEC" L ]) > 0) {
-        for (i=1; i<=l; ++i){
-            s = s "candidate_exec=" qu1(juq(arr[ "EXEC", i ])) ";\n"
-        }
-    }
+    l = arr[ "EXEC" L ]
+    for (i=1; i<=l; ++i)    s = s "candidate_exec=" qu1(juq(arr[ "EXEC", i ])) ";\n"
+
+    l = arr[ "EXEC_STDOUT" L ]
+    for (i=1; i<=l; ++i)    s = s "candidate_exec_stdout=" qu1(juq(arr[ "EXEC_STDOUT", i ])) ";\n"
+
+    l = arr[ "EXEC_STDOUT_NOSPACE" L ]
+    for (i=1; i<=l; ++i)    s = s "candidate_exec_stdout_nospace=" qu1(juq(arr[ "EXEC_STDOUT_NOSPACE", i ])) ";\n"
+
     kp = CAND[ "KEYPATH" ]
     if ( CAND[ kp, "IS_NOSPACE" ] == true ) {
         s = s "candidate_prefix=" qu1(CAND[ kp, "PREFIX" ]) ";\n"
