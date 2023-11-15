@@ -2,15 +2,12 @@
 
 # This is default
 ___x_cmd_pkg_populate___unzip(){
-    local name="${1}"
-    [ -n "$name" ] || M='Provide a package name' N=pkg log:ret:1
-    local version="${2}"
-    [ -n "$version" ] || M='Provide version' N=pkg log:ret:1
-    local osarch="${3:-$(___x_cmd_pkg_osarch)}"
-    local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
+    local name="${1}";      [ -n "$name" ] || M='Provide a package name' N=pkg log:ret:1
+    local version="${2}";   [ -n "$version" ] || M='Provide version' N=pkg log:ret:1
+    local osarch="${3}";    [ -n "$osarch" ] || M='Provide osarch' N=pkg log:ret:1
+    local tgt="${4}";       [ -n "$tgt" ] || M='Provide tgt dir' N=pkg log:ret:1
     local os="${osarch%/*}";  local arch="${osarch#*/}"
-    local download_file_ext unpack
-    ___x_cmd_pkg___attr "$name" "$version" "$osarch" "download_file_ext,unpack"
+
     [ -n "$unpack" ] || {
         pkg:debug "Skip unzip"
         return 0
@@ -47,6 +44,8 @@ ___x_cmd_pkg_populate___unzip(){
         x uz "$ball" "$tgt"  || {
             pkg:error "Fail to unzip $ball"; return 1
         }
+    elif [ "$unpack" = "stationary" ]; then
+        return 0
     else
         pkg:error "Yml of $name lacks of unpack key"
         return 1
@@ -61,7 +60,10 @@ ___x_cmd_pkg_populate(){
     [ -n "$name" ] || M='Provide a package name' N=pkg log:ret:1
     local osarch="${3:-$(___x_cmd_pkg_osarch)}"
     local version="${2:-$(___x_cmd_pkg_default_version "$name" "$osarch")}"
-    local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
+    local download_file_ext=; local  unpack=; local sphere_version=
+    ___x_cmd_pkg___attr "$name" "$version" "$osarch" "download_file_ext,unpack,sphere_version"
+    sphere_version="${sphere_version:-"X"}"
+    local tgt="${4:-"$___X_CMD_PKG_ROOT_SPHERE/$sphere_version/populate/$name/$version"}"
 
     [ -n "$version" ] || {
         pkg:error "Not found candidate: $name or version;"
@@ -69,6 +71,7 @@ ___x_cmd_pkg_populate(){
         return 1
     }
 
+    ! [ -d "$tgt" ] || return 0
     local os="${osarch%/*}";  local arch="${osarch#*/}"
     ( bgsingleton_name="${name}_${version}_${os}_${arch}" x bgsingleton run --wait ___x_cmd_pkg_populate___inner_ "$name" "$version" "$osarch" "$tgt" )
     [ -d "$tgt" ]
@@ -97,6 +100,8 @@ ___x_cmd_pkg_populate___inner_(){
         local ___X_CMD_PKG___META_OS="${osarch%%/*}"
         local ___X_CMD_PKG___META_ARCH="${osarch##*/}"
         local ___X_CMD_PKG___META_TGT="$tgt"
+        local ___X_CMD_PKG___META_SPHERE_VERSION="$sphere_version"
+        local ___X_CMD_PKG___META_DEPENDENCY_PATH="$___X_CMD_PKG_ROOT_SPHERE/$sphere_version/dependency"
         {
             {
                 trap 'printf "\r\n"; pkg:error "populate interrupted script"; return 130' INT
@@ -109,24 +114,22 @@ ___x_cmd_pkg_populate___inner_(){
         }
     fi
 
-    ___x_cmd_pkg_populate___chmod "$name" "$version" "$osarch" "$tgt" || return 1
+    ___x_cmd_pkg_populate___chmod_ "$name" "$version" "$osarch" "$tgt" || return 1
+
 }
 
-___x_cmd_pkg_populate___chmod(){
-    local name="${1}"
-    [ -n "$name" ] || M='Provide a package name' N=pkg log:ret:1
-    local version="${2:?Provide version}"
-    [ -n "$version" ] || M='Provide version' N=pkg log:ret:1
-    local osarch="${3:-$(___x_cmd_pkg_osarch)}"
-    local tgt="${4:-"$___X_CMD_PKG_POPULATE_PATH/$name/$version"}"
-    local bin_path
+___x_cmd_pkg_populate___chmod_(){
+    local name="${1}";      [ -n "$name" ] || M='Provide a package name' N=pkg log:ret:1
+    local version="${2}";   [ -n "$version" ] || M='Provide version' N=pkg log:ret:1
+    local osarch="${3}";    [ -n "$osarch" ] || M='Provide osarch' N=pkg log:ret:1
+    local tgt="${4}";       [ -n "$tgt" ] || M='Provide tgt dir' N=pkg log:ret:1
 
-    local xbin_name; while read -r xbin_name; do
+    local bin_path; local xbin_name;
+    while read -r xbin_name; do
         [ -n "$xbin_name" ] || continue
         [ "${xbin_name##*:}" = "$name" ] || continue
         xbin_name="${xbin_name#*:}"
         xbin_name="${xbin_name%:*}"
-
         bin_path="$(___x_cmd_pkg_xbin_path "$xbin_name" "$version" "$osarch")"
         if  [ -f "$bin_path" ]; then
             chmod +x "$bin_path" || {

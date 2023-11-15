@@ -23,7 +23,7 @@ ___x_cmd_advise_run(){
     local cur="${COMP_WORDS[COMP_CWORD]}"
     COMP_WORDS=("${COMP_WORDS[@]:0:$((COMP_CWORD+1))}")
 
-    local candidate_arr; local candidate_exec_arr; local candidate_nospace_arr;
+    local candidate_arr=(); local candidate_exec_arr=(); local candidate_nospace_arr=();
     local candidate_exec=; local offset=; local ___X_CMD_ADVISE_RUN_SET_NOSPACE=; local candidate_prefix=
     local candidate_exec_stdout=;   local candidate_exec_stdout_nospace=
     eval "$(___x_cmd_advise_get_result_from_awk "$x_")" 2>/dev/null
@@ -34,8 +34,15 @@ ___x_cmd_advise_run(){
     [ -z "$candidate_exec" ]                || eval "$candidate_exec" 2>/dev/null 1>&2
     [ -z "$candidate_exec_stdout" ]         || ___x_cmd_advise_exec___stdout
     [ -z "$candidate_exec_stdout_nospace" ] || ___x_cmd_advise_exec___stdout_nospace
+
     [ -z "${candidate_exec_arr[*]}" ]       || candidate_arr+=( "${candidate_exec_arr[@]}" )
+
+    local maxitem="${___X_CMD_ADVISE_MAX_ITEM:-0}"
+    COMPREPLY=( "${COMPREPLY[@]:0:$maxitem}" )
+    maxitem="$(( maxitem - ${#COMPREPLY[@]} ))"
     [ -z "${candidate_arr[*]}" ]            || COMPREPLY+=( $( ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_arr[@]}" ) )
+
+    maxitem="$(( maxitem - ${#COMPREPLY[@]} ))"
     [ -z "${candidate_nospace_arr[*]}" ]    || COMPREPLY+=( $( ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_nospace_arr[@]}" ) )
     ___x_cmd_advise___ltrim_bash_completions "$old_cur" "@" ":" "="
 }
@@ -43,12 +50,13 @@ ___x_cmd_advise_run(){
 ___x_cmd_advise_run___compgen_wordlist(){
     local cur="$1"; shift
     local i=; for i in "$@"; do
+        [ "$maxitem" -gt 0 ] || break
         [ -n "$i" ] || continue
         [ -n "$___X_CMD_ADVISE_RUN_SET_NOSPACE" ] || i="${i} "
         [[ "$i" == $cur* ]] || continue
         [ -z "$candidate_prefix" ] || i="${candidate_prefix}${i}"
         printf "%s\n" "${i}"
+        maxitem=$(( maxitem - 1 ))
     done | uniq 2>/dev/null
 }
-
 

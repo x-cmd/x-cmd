@@ -1,5 +1,4 @@
 BEGIN{
-    IS_TH_NO_COLOR = ENVIRON[ "NO_COLOR" ]
     if (IS_TH_NO_COLOR != 1) {
         IS_TH_CUSTOM            = ENVIRON[ "___X_CMD_TUI_IS_TH_CUSTOM" ]
         TH_THEME_COLOR          = ENVIRON[ "___X_CMD_THEME_COLOR_CODE" ]

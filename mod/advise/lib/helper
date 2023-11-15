@@ -34,10 +34,12 @@ ___x_cmd_advise__file(){
 }
 
 ___x_cmd_advise_exec___stdout(){
+    local cur="$cur"
     local IFS="$___X_CMD_ADVISE_IFS_INIT";
     candidate_exec_arr+=( $(
         eval "${1:-"$candidate_exec_stdout"}" 2>/dev/null | while read -r i; do
             [ -n "$i" ] || continue
+            [ -z "$cur" ] || [ "${i}" != "${i#*"${cur}"}" ] || continue
             [ -z "$ZSH_VERSION" ] || i="${i/:/\\:}"
             printf "%s\n" "$i"
         done
@@ -45,10 +47,12 @@ ___x_cmd_advise_exec___stdout(){
 }
 
 ___x_cmd_advise_exec___stdout_nospace(){
+    local cur="$cur"
     local IFS="$___X_CMD_ADVISE_IFS_INIT";
     candidate_nospace_arr+=( $(
         eval "${1:-"$candidate_exec_stdout_nospace"}" 2>/dev/null | while read -r i; do
             [ -n "$i" ] || continue
+            [ -z "$cur" ] || [ "${i}" != "${i#*"${cur}"}" ] || continue
             [ -z "$ZSH_VERSION" ] || i="${i/:/\\:}"
             printf "%s\n" "$i"
         done
@@ -56,24 +60,42 @@ ___x_cmd_advise_exec___stdout_nospace(){
 }
 
 ___x_cmd_advise_exec___list_filepath_(){
-    if [ -z "$1" ]; then
-        command ls
-    elif [[ ${1-} == \~* && $1 != */* ]]; then
-        compgen -P '~' -u -- "${1#\~}"
-    else
-        compgen -f -- "${1-}"
-    fi | ___x_cmd_advise_exec___list_filepath_inner_ "$@"
+    {
+        if [ -z "$1" ]; then
+            command ls
+        elif command -v compgen 2>/dev/null 1>&2; then
+            if [[ ${1-} == \~* && $1 != */* ]]; then
+                compgen -P '~' -u -- "${1#\~}"
+            else
+                compgen -f -- "${1-}"
+            fi
+        else
+            local cur="${1#\\}"; local dir=; local name=; local l
+            case "$cur" in
+                */)     dir="${cur}";;
+                */*)    dir="${cur%/*}/"; name="${cur##*/}" ;;
+                *)      name="$cur" ;;
+            esac
+            (
+                [ -z "$dir" ] || eval "cd ${dir} 2>/dev/null;"
+                command ls ${name:+"-a"}
+            ) | while read -r l; do
+                [[ "${l}" == "$name"* ]] || continue
+                printf "%s\n" "${dir}${l}"
+            done
+        fi
+    } | ___x_cmd_advise_exec___list_filepath_inner_ "$@"
 }
 
 ___x_cmd_advise_exec___list_filepath_inner_(){
     local cur="$1"
-    local tilde=; [[ ${cur-} != \~* ]] || tilde=1
+    local extend=; eval "[ ${cur-} = '${cur-}' ]" || extend=1
     local folder=; [ "$2" != -d ] || folder=1
     local l; while read -r l; do
         [ -n "$l" ] || continue
         if [ -d "$l" ]; then
             l="${l}/"
-        elif [ -n "$tilde" ] && eval "[ -d $l ]"; then
+        elif [ -n "$extend" ] && eval "[ -d $l ]"; then
             l="${l}/"
         elif [ -n "$folder" ]; then
             continue

@@ -68,18 +68,17 @@ function panic( s ){
 }
 
 function ___tapp_exit_screen_recover(){
-    if (___TAPP_DISPLAYMODE_ == "")     ___tapp_displaymode_normal_clean()
-    else                                ___tapp_displaymode_full_clean()
+    if (___TAPP_DISPLAYMODE_ != "")     ___tapp_displaymode_full_clean()
 }
 
 END{
     if (sw_clear_on_exit == true) {
         ___tapp_exit_screen_recover()
-        printf("%s", UI_SCREEN_RESTORE UI_CURSOR_RESTORE \
+        printf("%s", UI_CURSOR_RESTORE \
             space_screen(CANVAS_ROWSIZE+1, COLS) "\r" painter_up(CANVAS_ROWSIZE) \
             UI_CURSOR_RESTORE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR) >"/dev/stderr"
     } else {
-        printf("%s", UI_SCREEN_RESTORE UI_CURSOR_RESTORE \
+        printf("%s", UI_CURSOR_RESTORE \
             "\r" painter_down(CANVAS_ROWSIZE) UI_LINE_CLEAR) >"/dev/stderr"
     }
 

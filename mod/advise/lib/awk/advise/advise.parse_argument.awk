@@ -45,6 +45,7 @@ function parse_args_to_env___option( obj, obj_prefix, args, argl, optarg_id, arg
             return ++arg_idx # Not Running at all .. # TODO
         }
         env_table_set( optarg_id, obj_prefix SUBSEP optarg_id SUBSEP k, args[ arg_idx++ ], genv_table, lenv_table )
+        if ( parse_trim_args( obj, obj_prefix, args, arg_idx ) ) argl = args[ L ]
     }
     return arg_idx
 }
@@ -100,11 +101,13 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
 
         if (aobj_is_option( obj, obj_prefix SUBSEP _arg_id ) || (arg ~ /^--/)) {
             j = parse_args_to_env___option( obj, obj_prefix, args, argl, _arg_id, i, genv_table, lenv_table )
+            argl = args[ L ]
             if (j > argl) return true       # Not Running at all
             else if (j != 0) { i = j; continue; }
             else { i = i - 1; break; }
         } else if (arg ~ /^-/) {
             j = parse_args_to_env___option( obj, obj_prefix, args, argl, _arg_id, i, genv_table, lenv_table )
+            argl = args[ L ]
             if (j > argl) return true       # Not Running at all
             else if (j != 0) { i = j; continue; }
 

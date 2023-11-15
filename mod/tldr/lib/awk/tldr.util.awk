@@ -116,13 +116,19 @@ function comp_tldr_parse_of_mdfile_unit(item, cmd,      _res, l ){
 
 # EndSection
 
-function comp_tldr_init_of_mdfile(col, no_color){
+function comp_tldr_parse_ignorelang(arr, str, sep,      _, i, l ){
+    l = split(str, _, sep)
+    for (i=1; i<=l; ++i) arr[ _[i] ] = 1
+    arr[ L ] = l
+}
+
+function comp_tldr_init_of_mdfile(col, no_color, no_background){
     COMP_TLDR_COL = col
     COMP_TLDR_NEWLINE = UI_END "\n"
     TH_TLDR_CMD_KEY_SEP_LEFT  = SUBSEP "TH_TLDR_CMD_KEY_SEP_LEFT" SUBSEP
     TH_TLDR_CMD_KEY_SEP_RIGHT = SUBSEP "TH_TLDR_CMD_KEY_SEP_RIGHT" SUBSEP
     if (no_color != 1) {
-        COMP_TLDR_BACKGROUND = UI_BG_BLACK
+        if (no_background != 1) COMP_TLDR_BACKGROUND = UI_BG_BLACK
         COMP_TLDR_TILTE = UI_TEXT_BOLD UI_FG_GREEN COMP_TLDR_BACKGROUND
         COMP_TLDR_DESC  = UI_TEXT_BOLD UI_FG_YELLOW COMP_TLDR_BACKGROUND
 
@@ -141,9 +147,9 @@ function comp_tldr_init_of_mdfile(col, no_color){
     COMP_TLDR_SPACE_LINE = th(COMP_TLDR_BACKGROUND, space_rep(COMP_TLDR_COL)) "\n"
 }
 
-function comp_tldr_paint_of_file_content(content, width, no_color,      r, i, l, _, cmd, _res){
+function comp_tldr_paint_of_file_content(content, width, no_color, no_background,      r, i, l, _, cmd, _res){
     if (width < 50) return "The current width is not enough to display the tldr document!"
-    comp_tldr_init_of_mdfile(width, no_color)
+    comp_tldr_init_of_mdfile(width, no_color, no_background)
 
     l = split(content, _, "\n")
     for (i=1; i<=l; ++i) _res = _res comp_tldr_parse_of_mdfile_unit(_[i], cmd)

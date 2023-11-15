@@ -2,30 +2,25 @@ function user_request_selected_data(){
     tapp_request("data:request")
 }
 
-function user_request_data( o, kp, rootkp,            list, i, j, k, l, _pages, _system, _cmd, _pl, _sl, _cl, _pv, _sv, _cv, arr, _){
+function user_request_data( o, kp, rootkp,            list, i, j, k, l, system_list, _pages, _system, _cmd, _pl, _sl, _cl, _pv, _sv, _cv, arr, _){
     if ( ( l = TLDR_APP_DATA_ARR[L] ) <= 0 ) return
     for (i=1; i<=l; ++i){
         split(TLDR_APP_DATA_ARR[i], _, "/")
         jdict_put(_pages, "", _[1], true)
-        jdict_put(_system, _[1], _[2], true)
         jdict_put(_cmd, _[1] S _[2], _[3], true)
     }
     l = _pages[ L ]
+    system_list = "common,linux,osx,windows,android,sunos,openbsd,freebsd,netbsd"
+    _sl = split(system_list, _system, ",")
     comp_navi_data_init( o, kp )
     for (i=1; i<=l; ++i){
         _pv = _pages[ "", i ]
         comp_navi_data_add_kv( o, kp, "", _pv, "{", _pv, 13)
-        _sl = _system[ _pv L ]
         comp_navi_data_init( o, kp, _pv )
-        _sv = _system[ _pv, 1 ]
-        if ( _sv == "android" ) {
-            jdict_rm(_system, _pv, _sv)
-            jdict_put(_system, _pv, _sv)
-        }
         for (j=1; j<=_sl; ++j){
-            _sv = _system[ _pv, j ]
+            _sv = _system[j]
+            if ((_cl = _cmd[ _pv, _sv L ]) <= 0) continue
             comp_navi_data_add_kv( o, kp, _pv, _sv, "{", _pv "/" _sv, 10)
-            _cl = _cmd[ _pv, _sv L ]
             comp_navi_data_init( o, kp, _pv "/" _sv )
             for (k=1; k<=_cl; ++k){
                 _cv = _cmd[ _pv, _sv, k ]
@@ -42,12 +37,13 @@ function user_request_data( o, kp, rootkp,            list, i, j, k, l, _pages, 
 function tapp_init(){
     user_request_selected_data()
     TLDR_APP_BASEPATH = ENVIRON[ "___X_CMD_TLDR_APP_BASEPATH" ]
+    TLDR_NO_BACKGROUND = ENVIRON[ "NO_BACKGROUND" ]
+    comp_tldr_parse_ignorelang( TLDR_IGNORELANG_ARR, ENVIRON[ "___X_CMD_TLDR_LANG_IGNORE" ], "," )
     TLDR_KP = "ls_kp"
     navi_init(o, TLDR_KP)
 
     TLDR_DOC_KP = TLDR_KP SUBSEP "tldr.doc"
-    comp_textbox_init(o, TLDR_DOC_KP, "scrollable")
-
+    comp_textbox_init( o, TLDR_DOC_KP, "scrollable" )
     navi_statusline_init( o, TLDR_KP )
 }
 
@@ -83,15 +79,22 @@ function tapp_handle_exit( exit_code,       p, v ){
 # EndSection
 
 # Section: user view
-function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, _filepath, _content ){
+function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, _filepath, _content, _lang ){
     if ( ! change_is(o, kp, "navi.preview") ) return
     change_unset(o, kp, "navi.preview")
     _filepath = rootkp
     if (_filepath == "") return
-    if ((_content = o[ kp, TLDR_DOC_KP, "content", _filepath ]) == "")
-        o[ TLDR_DOC_KP, "content", _filepath ] = _content = cat(TLDR_APP_BASEPATH "/" _filepath)
-
-    s = comp_tldr_paint_of_file_content( _content, y2-y1, IS_TH_NO_COLOR)
+    _lang = substr(_filepath, 7, index( _filepath, "/" ) - 7)
+    if ( TLDR_IGNORELANG_ARR[_lang] ) {
+        s = UI_END "The current tldr app does not support displaying this document.\n"UI_END"You can use `" \
+            th(TH_THEME_COLOR,  "x tldr "_filepath) \
+            "` to view the document."
+    }
+    else {
+        if ((_content = o[ kp, TLDR_DOC_KP, "content", _filepath ]) == "")
+            o[ TLDR_DOC_KP, "content", _filepath ] = _content = cat(TLDR_APP_BASEPATH "/" _filepath)
+        s = comp_tldr_paint_of_file_content( _content, y2-y1, IS_TH_NO_COLOR, TLDR_NO_BACKGROUND)
+    }
     comp_textbox_put(o, TLDR_DOC_KP, s)
     return comp_textbox_paint(o, TLDR_DOC_KP, x1, x2, y1, y2)
 }
