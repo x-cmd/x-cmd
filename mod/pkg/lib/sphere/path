@@ -1,0 +1,87 @@
+# shellcheck shell=dash disable=2034
+
+___x_cmd_pkg_addpath(){
+    local X_help_cmd='___x_cmd_pkg_help addpath';   help:arg-null:parse
+
+    sphere:parse:args
+    ___x_cmd_pkg_sphere_path --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" add "$name" "$version" "$osarch"
+}
+
+___x_cmd_pkg_rmpath(){
+    local X_help_cmd='___x_cmd_pkg_help rmpath';   help:arg-null:parse
+
+    sphere:parse:args
+    ___x_cmd_pkg_sphere_path --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" rm "$name" "$version" "$osarch"
+}
+
+
+
+# ___x_cmd_pkg_sphere_path --sphere X add <pkg name> <version> <osarch>
+___x_cmd_pkg_sphere_path(){
+    sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+
+    local op="$1"; shift
+    local name="$1";        [ -n "$name" ] || N=pkg M="Provide a package name" log:ret:1
+    local version="$2";     [ -n "$version" ] || N=pkg M="Not found $name version" log:ret:1
+    local osarch="$3";      [ -n "$osarch" ] || N=pkg M="Not found osarch value" log:ret:1
+    local x_treename=; ___x_cmd_pkg_treename_ "$name" "$version" "$osarch" || return
+    local tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$name/$version"
+
+    case "$op" in
+        add|rm) ___x_cmd_pkg_sphere_path___"$op" "$name" "$version" "$osarch" "$tgt" ;;
+        *)      N=pkg M="sphere path no such option '$op'" log:ret:1 ;;
+    esac
+}
+
+___x_cmd_pkg_sphere_path___add(){
+    local name="$1";    local version="$2";     local osarch="$3";  local tgt="$4"
+
+    [ -d "$tgt" ] || N=pkg M="Not found directory $tgt" log:ret:1
+    local bin_path=;    local abs_bin_path=
+    while read -r bin_path; do
+        [ -n "$bin_path" ] || continue
+
+        if [ "$bin_path" = "." ]; then
+            abs_bin_path="$tgt"
+        else
+            abs_bin_path="$tgt/$bin_path"
+        fi
+
+        ___x_cmd_path_add_existed_folder "$abs_bin_path" || N=pkg M="Unshift $name $version path failed" log:ret:1
+    done <<A
+$( ___x_cmd_pkg___list "$name" "$version" "$osarch" "path.bin" )
+A
+
+    ! [ -d "$tgt/lib" ] || LIBPATH="$(___x_cmd_path_obj_add_existed_folder "$LIBPATH" "$tgt/lib")"
+    ! [ -d "$tgt/man" ] || MANPATH="$(___x_cmd_path_obj_add_existed_folder "$MANPATH" "$tgt/man")"
+    pkg:info "Add PATH of $name $version successfully"
+}
+
+___x_cmd_pkg_sphere_path___rm(){
+    local name="$1";    local version="$2";     local osarch="$3";  local tgt="$4"
+
+    [ -d "$tgt" ] || {
+        pkg:warn "Not found directory $tgt"
+        return 0
+    }
+
+    local bin_path=
+    while read -r bin_path; do
+        [ -n "$bin_path" ] || continue
+
+        if [ "$bin_path" = "." ]; then
+            bin_path="$tgt"
+        else
+            bin_path="$tgt/$bin_path"
+        fi
+
+        ___x_cmd_path_rm "$bin_path" || N=pkg M="Remove $name $version path failed" log:ret:1
+    done <<A
+$( ___x_cmd_pkg___list "$name" "$version" "$osarch" "path.bin" )
+A
+
+    ! [ -d "$tgt/lib" ] || LIBPATH="$(___x_cmd_path_obj_rm "$LIBPATH" "$tgt/lib")"
+    ! [ -d "$tgt/man" ] || MANPATH="$(___x_cmd_path_obj_rm "$MANPATH" "$tgt/man")"
+    pkg:info "Remove PATH of $name $version successfully"
+}

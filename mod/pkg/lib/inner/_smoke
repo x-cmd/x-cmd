@@ -1,7 +1,9 @@
 # shellcheck    shell=dash disable=SC2010
-___x_cmd_pkg__smoke() (
+___x_cmd_pkg__smoke()(
+    ___x_cmd_pkg_osarch_ || return
     local candidate; candidate="$1"
     local version="${2:-$(___x_cmd_pkg_default_version "$candidate")}"
+    local sphere_name="X"
 
     pkg:info "Smoke testing candidate=$candidate version=$version"
 
@@ -12,11 +14,16 @@ ___x_cmd_pkg__smoke() (
     fi
 
     pkg:info "Step2 => Checking the install path of $candidate $version"
-    local bin_path=; local bin_name=; local cur= local tgt=; local sphere_version=
-    ___x_cmd_pkg___attr "$candidate" "$version" "$osarch" "sphere_version"
-    sphere_version="${sphere_version:-"X"}"
-    tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_version/populate/$candidate/$version"
-    ___x_cmd_pkg___list_all_bin_path "$candidate" "$version" "" "$tgt"| while read -r bin_path; do
+    local bin_path=; local bin_name=; local cur=; local tgt=;
+    local x_treename=; ___x_cmd_pkg_treename_ "$candidate" "$version" "$___X_CMD_PKG_OSARCH" || return
+    tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$candidate/$version"
+    ___x_cmd_pkg_sphere_link___list_all_bin_path "$candidate" "$version" "$___X_CMD_PKG_OSARCH" "$tgt"| while read -r bin_path; do
+        [ -n "$bin_path" ] || continue
+        [ -f "$bin_path" ] || {
+            pkg:error "Not found $bin_path for $candidate $version bin link"
+            return 1
+        }
+
         bin_name="${bin_path##*/}"
         unset -f "$bin_name" 2>/dev/null || true
         unalias "$bin_name" 2>/dev/null || true
@@ -26,7 +33,7 @@ ___x_cmd_pkg__smoke() (
             return 12
         fi
 
-        local expected_prefix="$___X_CMD_PKG_POPULATE_PATH/$candidate"
+        local expected_prefix="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$candidate"
         if [  "${cur#"$expected_prefix"}" = "$cur" ] || ! ( printf "%s" "$cur" | grep -q "$version") ; then
             pkg:error "Smoke FAIL. $candidate $version is not installed in $expected_prefix or $cur does not contain $version"
             return 12

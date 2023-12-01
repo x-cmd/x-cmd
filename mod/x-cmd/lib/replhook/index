@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC1090
+# shellcheck shell=bash disable=SC1090,2317
 
 ___X_CMD_REPLHOOK=
 ___x_cmd_replhook_enable(){
@@ -42,18 +42,24 @@ ___x_cmd_replhook_enable(){
 
 ___x_cmd_replhook___load_bash_preexec(){
     # Notice: "x pkg xbin path bash-preexec" will result in efficiency loss.
-    local _file="$___X_CMD_PKG_POPULATE_PATH/bash-preexec/0.5.0/bash-preexec.sh"
+    ___x_cmd_pkg_osarch_ || return
+
+    local x_treename=; ___x_cmd_pkg_treename_get_form_tree_ "$___X_CMD_PKG_OSARCH" || return
+    local _file="$___X_CMD_PKG_ROOT_SPHERE/X/$x_treename/bash-preexec/0.5.0/bash-preexec.sh"
     [ -f "$_file" ] || {
-        x pkg download bash-preexec "0.5.0" || return
-        x pkg populate bash-preexec "0.5.0" || return
+        ___x_cmd_pkg_migrate --safelist bash-preexec "0.5.0" "$___X_CMD_PKG_OSARCH" X || return
     }
 
-    [ -f "$_file" ] || return
+    [ -f "$_file" ] || {
+        x:debug "Not found bash_preexec.sh"
+        ___x_cmd_pkg_safelist rm bash-preexec "0.5.0" "$___X_CMD_PKG_OSARCH" X
+        return 1
+    }
     . "$_file"
 }
 
 ___x_cmd_replhook_trapint_init(){
-
+    ___X_CMD_REPLHOOK_PREEXEC_DONE=1
     ___x_cmd_replhook_debug_inside_trapc(){ return 1; };
     ___x_cmd_replhook_trapint_init___trapint(){
         ___X_CMD_REPLHOOK_EXIT_PRECMD=1
@@ -67,14 +73,22 @@ ___x_cmd_replhook_trapint_init(){
             return 130
         }
 
-        ___X_CMD_REPLHOOK_TRAPINT_OLD="$(trap)"
         ___X_CMD_REPLHOOK_CAPTURE_INTERRUPT=
         ___X_CMD_REPLHOOK_EXIT_PRECMD=
-        if [ -n "$ZSH_VERSION" ]; then
-            trap '___x_cmd_replhook_trapint_init___trapint || return 130' INT;
-        else
+        if [ -z "$ZSH_VERSION" ]; then
+            [ -z "$___X_CMD_REPLHOOK_PREEXEC_DONE" ] || ___X_CMD_REPLHOOK_TRAPINT_OLD="$(trap)"
             trap '___x_cmd_replhook_debug_inside_trapc(){ return 0; }; ___x_cmd_replhook_trapint_init___trapint; ___x_cmd_replhook_debug_inside_trapc(){ return 1; }' INT;
+        else
+            [ -z "$___X_CMD_REPLHOOK_PREEXEC_DONE" ] || {
+                ___X_CMD_REPLHOOK_TRAPINT_OLD=; trap | {
+                    local l; while read -r l; do
+                        ___X_CMD_REPLHOOK_TRAPINT_OLD="${___X_CMD_REPLHOOK_TRAPINT_OLD}${l}${___X_CMD_UNSEENCHAR_NEWLINE}"
+                    done
+                }
+            }
+            trap '___x_cmd_replhook_trapint_init___trapint || return 130' INT;
         fi
+        ___X_CMD_REPLHOOK_PREEXEC_DONE=
     }
 
     ___x_cmd_replhook_trapint_init___preexec(){
@@ -83,6 +97,7 @@ ___x_cmd_replhook_trapint_init(){
             return
         fi
 
+        ___X_CMD_REPLHOOK_PREEXEC_DONE=1
         if [ -z "$___X_CMD_REPLHOOK_TRAPINT_OLD" ]; then
             trap - INT
         else

@@ -20,14 +20,18 @@ ___x_cmd_pkg_xbin_path(){
 
     local osarch="${3:-$(___x_cmd_pkg_osarch)}"
     local version="${2:-$(___x_cmd_pkg_default_version "${pkg_name}" "${osarch}")}"
-    local sphere_version=
-    ___x_cmd_pkg___attr "$pkg_name" "$version" "$osarch" "sphere_version"
-    sphere_version="${sphere_version:-"X"}"
-    local tgt="${4:-"$___X_CMD_PKG_ROOT_SPHERE/$sphere_version/populate/$pkg_name/$version"}"
+    local sphere_name=; local tree=
+    ___x_cmd_pkg___attr "$pkg_name" "$version" "$osarch" "sphere_name,tree" || return
+    sphere_name="${sphere_name:-"X"}"
+    local tgt="$4"
+    [ -n "$tgt" ] || {
+        local x_treename=; ___x_cmd_pkg_treename_get_form_tree_ "$osarch" "$tree" || return
+        tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$pkg_name/$version"
+    }
 
     [ -n "$version" ] || return
 
-    pkg:debug "{ INSTALL_PATH: $tgt }"
+    pkg:debug "INSTALL_PATH => $tgt"
 
     ___x_cmd_pkg___all_info --non-version "$pkg_name" "$version" "$osarch"  | awk \
         -v INSTALL_PATH="$tgt" \
@@ -49,27 +53,17 @@ ___x_cmd_pkg_xbin_init(){
     local version="${2:-$(___x_cmd_pkg_default_version "${pkg_name}")}"
     [ -n "$version" ] || return
     local bin_path
-    local install_path="$___X_CMD_PKG_POPULATE_PATH/$pkg_name/$version"
     bin_path="$(___x_cmd_pkg_xbin_path "$bin_mod_name" "$version")"
     pkg:debug --bin_mod_name "$bin_mod_name" --package "$pkg_name" --version "$version" --binpath "$bin_path" xbin_init
 
     [ -f "$bin_path" ] || {
-        [ ! -d "$install_path" ] || x rmrf "$install_path"
-        ___x_cmd_pkg___download "$pkg_name" "$version" || {
-            pkg:error Download "$pkg_name" "$version" failure
-            return 1
-        }
-        ___x_cmd_pkg_populate "$pkg_name" "$version" || {
-            pkg:error populate "$pkg_name" "$version" failure
-            return 1
-        }
+        ___x_cmd_pkg_download "$pkg_name" "$version" || return
+        ___x_cmd_pkg_populate "$pkg_name" "$version" || return
     }
-    if [ -f "$bin_path" ]; then
-        if ! chmod +x "$bin_path"; then
-            pkg:error "chmod: $bin_path - Operation not permitted "
-            return 1
-        fi
-    fi
+
+    [ -f "$bin_path" ] || N=pkg M="Not found $pkg_name $version bin path" log:ret:1
+    command chmod +x "$bin_path" || N=pkg M="chmod $bin_path - Operation not permitted" log:ret:1
+
     [ "${bin_mod_name}" = "${bin_mod_name#*-}" ] || {
         bin_mod_name="${bin_mod_name%-*}_${bin_mod_name#*-}"
     }
@@ -83,6 +77,7 @@ ___x_cmd_pkg_xbin_init(){
             $bin_mod_path_name=\"$bin_path\"
         fi
     "
+    ___x_cmd_pkg_safelist add "${pkg_name}" "${version}"
 }
 
 ___x_cmd_pkg___get_binmod_name(){

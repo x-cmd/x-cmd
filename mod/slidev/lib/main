@@ -1,0 +1,152 @@
+# shellcheck shell=dash
+
+x log init slidev
+
+___x_cmd_slidev___main(){
+    [ "$#" -gt 0 ] ||   set -- -h
+
+    local op="$1"
+    case "$op" in
+        build|export|run|dev)   shift; "___x_cmd_slidev_${op}"  "$@" ;;
+        combine|com)            shift; ___x_cmd_slidev_combine  "$@" ;;
+        -h|--help)              ___x_cmd_slidev___help               ;;
+        *)                      ___x_cmd_slidev_run             "$@" ;;
+    esac
+}
+
+# Section: init
+___X_CMD_SLIDEV_RUN_INSTANCE="$___X_CMD_ROOT_DATA/slidev/run"
+
+___x_cmd_slidev___init(){
+    [ ! -f "$directory/.x-cmd/done" ] || return 0
+
+    local directory="$1"
+
+    [ -f "${directory}/package.json" ] || printf "%s" \
+'{
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@slidev/cli": "^0.44.0",
+    "@slidev/theme-default": "^0.21.2",
+    "@slidev/theme-seriph": "^0.21.3",
+    "playwright-chromium": "^1.40.0"
+  }
+}
+' > "${directory}/package.json"
+
+    # https://bun.sh/docs/install/cache
+    x bun install --cwd "$directory" --backend hardlink || {
+        slidev:error "bun install failed"
+        return 1
+    }
+    x touch "$directory/.x-cmd/.slidev/done"
+}
+
+# shellcheck disable=SC2120
+# x_ is run instance dir absolute path
+# $@ is delete symbol links files
+___x_cmd_slidev___init_run_instance_dir_(){
+    x_="$___X_CMD_SLIDEV_RUN_INSTANCE/$$"
+    slidev:debug "rootdata dir ==> $x_"
+    x mkdirp "$x_"
+
+    # link all files to the directory, all files, excluding node_modules
+    local fd=""
+    x fsiter . | while read -r fd; do
+        case "${fd}" in
+            node_modules|dist|*.pdf)
+                ;;
+            *)
+                command ln -f -s "$PWD/$fd" "$x_/$fd" || \
+                    {
+                        slidev:error "Fail to link ==> $PWD/$fd"
+                        return 1
+                    }
+                ;;
+        esac
+    done
+    ___x_cmd_slidev___init "$x_" || return
+    [ $# -eq 0 ] || x rmrf "$@"
+}
+# EndSection
+
+# Section: run
+___x_cmd_slidev_run(){
+    ___x_cmd_slidev___check_enter_file "$@" || return
+    local x_=""; ___x_cmd_slidev___init_run_instance_dir_ || return
+    x bun run --cwd "$x_" slidev "$@"
+}
+# EndSection
+
+# Section: dev
+___x_cmd_slidev_dev(){
+    ___x_cmd_slidev___check_enter_file "$@" || return
+    ___x_cmd_slidev___init "$PWD" || return
+    x bun run --cwd "$PWD" slidev "$@"
+}
+# EndSection
+
+# TODO: current slidev version the `--output` not work
+# Section: build
+___x_cmd_slidev_build(){
+    ___x_cmd_slidev___check_enter_file "$@" || return
+    local x_=""; ___x_cmd_slidev___init_run_instance_dir_ || return
+    x bun run --cwd "$x_" slidev build "$@" || return
+    [ -d "${x_}/dist" ] || return
+    x rmrf "./dist"
+    x mv "${x_}/dist" "./dist"
+}
+# EndSection
+
+# Section: export
+# x slidev export --output index.pdf index.md
+# x slidev export --output images --format png index.md
+___x_cmd_slidev_export(){
+    ___x_cmd_slidev___check_enter_file "$@" || return
+    local x_=""; ___x_cmd_slidev___init_run_instance_dir_ || return
+
+    local _output=""; _output="$(
+        x bun run --cwd "$x_" slidev export "$@" | command awk '$0 ~ "✓ exported to" { print $4; }'
+    )"
+    slidev:debug "output ==> $_output"
+    [ -n "$_output" ] || {
+        slidev:error "Export file failed"
+        return 1
+    }
+    x cp -r "${x_}/${_output#*'./'}" "${_output}"
+    slidev:info "export ==> $_output"
+}
+# EndSection
+
+# Section: combine
+___x_cmd_slidev_combine(){
+    local final="$1"; shift
+
+    while [ "$#" -gt 0 ]; do
+        printf "%s" "
+---
+src: ./page/$(basename "$1")
+---
+"
+    done >"$final"
+}
+# EndSection
+
+# Section: help & utils
+# shellcheck disable=SC2120
+___x_cmd_slidev___help(){
+    x help -m slidev "$@" 1>&2
+    return 1
+}
+
+___x_cmd_slidev___check_enter_file(){
+    [ "$#" -ne 0 ] || [ -f "slides.md" ] || {
+        slidev:error -h "x slidev [run]|<dev|build|export> [enter file on current path]" "Enter file not found. Default enter is './slides.md'"
+        return 1
+    }
+}
+# EndSection
+
+# ___x_cmd_slidev___run
+# watch file, then incoporate it

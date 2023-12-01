@@ -1,14 +1,18 @@
 
-function handle( qpat,      varname, _arr, _arrl, i, _pat ){
-    varname = qpat
-
+function handle( qpat,      varname, _arr, _arrl, i, _pat, prefix, name ){
     _arrl = split(qpat, _arr, /\./)
+    gsub("\\.", "_", varname)
+
     for (i=1; i<=_arrl; ++i) {
+        if (i == 1) name = name  _arr[i]
+        else name = name "_"  _arr[i]
         _pat = (_pat == "") ? jqu(_arr[i]) : ( _pat SUBSEP jqu(_arr[i]))
     }
+    varname = name
+    prefix = jqu(PKG_NAME) SUBSEP _pat
 
-    gsub("\\.", "_", varname)
-    print varname "=" shqu1( juq( table_attr( table, PKG_NAME, _pat )  ) )
+    if ( "{" != table[ prefix ] ) print varname "=" table_eval(table, PKG_NAME, table[ prefix ])
+
 }
 
 END {

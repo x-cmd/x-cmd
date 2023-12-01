@@ -1,0 +1,84 @@
+# shellcheck shell=dash
+
+x log init sudo
+
+# x sudo dasel
+___x_cmd_sudo___main(){
+    [ "$#" -gt 0 ]  ||  set -- -h
+
+    local ___X_CMD_SUDO_SUUSER="${___X_CMD_SUDO_SUUSER}"
+
+    while [ $# -gt 0 ]; do
+        local op="$1"
+        case "$op" in
+            -h|--help)  x help -m sudo; return ;;
+            --suuser)
+                ___X_CMD_SUDO_SUUSER="$2";
+                shift 2
+                ;;
+
+            # TODO: put it into cfg: x sudo --cfg suuser=xxys
+            --set-suuser)
+                ___X_CMD_SUDO_SUUSER="$1"
+                return 0
+                ;;
+
+            --unset-suuser)
+                ___X_CMD_SUDO_SUUSER=
+                return 0
+                ;;
+            *)
+                break
+        esac
+    done
+    ___x_cmd_sudo___inner "$@"
+}
+
+___x_cmd_sudo___inner(){
+    local ___X_CMD_SUDO_SUDOBIN="${___X_CMD_SUDO_SUDOBIN:-"$___X_CMD_ROOT_MOD/sudo/lib/bin/sudo_bin"}"
+
+    if x user isroot; then
+        sudo:info "Current process is priviledge process"
+        /bin/sh "$___X_CMD_SUDO_SUDOBIN" "$@"
+    elif [ -n "$___X_CMD_SUDO_SUUSER" ]; then
+        ___x_cmd_sudo___inner_su        -s /bin/sh "$___X_CMD_SUDO_SUDOBIN" "$@"
+    elif x hascmd sudo; then
+        ___x_cmd_sudo___inner_sudo "$@"
+    elif x hascmd su; then
+        ___x_cmd_sudo___inner_su        -s /bin/sh "$___X_CMD_SUDO_SUDOBIN" "$@"
+    fi
+}
+
+___x_cmd_sudo___inner_su(){
+    if x hascmd su; then
+        sudo:info "require root priviledge using su"
+        # TODO: try to restrict the command but meaning less because it is a priviledge process. If it is malicious, the restriction is useless.
+
+        [ -n "$___X_CMD_SUDO_SUUSER" ] || \
+            x ui form "Input user name, default is root" ___X_CMD_SUDO_SUUSER || true
+
+        ___X_CMD_SUDO_SUUSER="${___X_CMD_SUDO_SUUSER:-root}"
+        sudo:info --suuser="$___X_CMD_SUDO_SUUSER" "continue with suuser set"
+
+        ___X_CMD_ROOT="$___X_CMD_ROOT"                      \
+        ___X_CMD_ROOT_CODE="$___X_CMD_ROOT_CODE"            \
+        command su "${___X_CMD_SUDO_SUUSER}" "$@"
+    else
+        sudo:info "abort because su command not found"
+        return 1
+    fi
+}
+
+___x_cmd_sudo___inner_sudo(){
+    if ! command sudo echo -n ""; then
+        # Or maybe user just interrupt
+        sudo:info "You are not a sudoer. Now using su to retry"
+        x ui yesno "Do you want to retry using su?"
+        ___x_cmd_sudo___inner_su /bin/sh "$___X_CMD_SUDO_SUDOBIN" "$@"
+        return
+    fi
+
+    ___X_CMD_ROOT="$___X_CMD_ROOT"                      \
+    ___X_CMD_ROOT_CODE="$___X_CMD_ROOT_CODE"            \
+    command sudo -E "${___X_CMD_SHELL:-/bin/sh}" "$___X_CMD_SUDO_SUDOBIN" "$@"
+}

@@ -3,14 +3,12 @@
 # ls app, default app
 ___x_cmd_pkg_ls(){
     case "$1" in
-        p|populated)      shift;  ___x_cmd_pkg_ls_populated "$@" ;;
-        d|downloaded)     shift;  ___x_cmd_pkg_ls_downloaded "$@" ;;
-        A|all)            shift;  ___x_cmd_pkg_ls_all "$@" ;;
-        xbin)             shift;  ___x_cmd_pkg_ls_xbin "$@" ;;
-        -h|--help)
-            M='pkg ls ' help:ret:0
-            ;;
-        *)                ___x_cmd_pkg_ls___installed "$@" ;;
+        d|downloaded)   shift;  ___x_cmd_pkg_ls_downloaded "$@" ;;
+        A|all)          shift;  ___x_cmd_pkg_ls_all "$@" ;;
+        xbin)           shift;  ___x_cmd_pkg_ls_xbin "$@" ;;
+        i|install)      shift;  ___x_cmd_pkg_ls_installed  "$@"   ;;
+        -h|--help)      M='pkg ls ' help:ret:0  ;;
+        *)              ___x_cmd_pkg_ls_installed "$@" ;;
     esac
 }
 
@@ -40,63 +38,35 @@ ___x_cmd_pkg_ls_xbin(){
 
 # Invoked pkg ls installed
 # TODO: efficiency defect
-___x_cmd_pkg_ls___installed()(
-    local x_=;  ___x_cmd_pkg_osarch_; local osarch="$x_"
-    local locate_list; locate_list="$(___x_cmd_pkg_ll_inner)"
-
-    # TODO: filter bash-preexec ?
-    local i; for i in "$___X_CMD_PKG_ROOT_SPHERE/"*/populate/*/*; do
-        [ ! -d "${i}" ] || printf "%s\n" "${i##*"populate/"}"
-    done 2>/dev/null | command awk -v FS="/" \
-        -v OSARCH="$osarch" \
-        -v LOCAL_LIST="$locate_list" \
-        -v PKG_RAWPATH="$___X_CMD_PKG_METADATA_PATH" \
-        -v TH_THEME_COLOR="\\033[${___X_CMD_THEME_COLOR_CODE}m" \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"  \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.ls.awk"
-)
-
-___x_cmd_pkg_ls_populated(){
-    local X_help_cmd='___x_cmd_pkg_help ls i'
-    help:arg:parse
-    local name="$1"
-    if  [ -n "$name" ]; then
-        ___x_cmd_pkg_ls___installed | awk -v name="$name" '
-        {
-            candidatelen = split(name,candidate," ")
-             for(i = 1; i <= candidatelen; ++i ){
-                 if(match($0,candidate[i])){print $0}
-             }
-        }'
+___x_cmd_pkg_ls_installed(){
+    if ! ___x_cmd_is_interactive; then
+        ___x_cmd_pkg_ls___installed_inner
     else
-        ___x_cmd_pkg_ls___installed
+        ___x_cmd_pkg_osarch_
+        local locate_list; locate_list="$(___x_cmd_pkg_ll_inner)"
+        ___x_cmd_pkg_ls___installed_inner | LC_ALL="$___X_CMD_AWK_LANGUAGE_UTF8" \
+            command awk -v FS="/" \
+            -v OSARCH="$___X_CMD_PKG_OSARCH" \
+            -v LOCAL_LIST="$locate_list" \
+            -v PKG_RAWPATH="$___X_CMD_PKG_METADATA_PATH" \
+            -v TH_THEME_COLOR="\\033[${___X_CMD_THEME_COLOR_CODE}m" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"  \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
+            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
+            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.ls.awk"
     fi
 }
 
-# Invoked pkg ls activated: check environment variable...
-# ___x_cmd_pkg_ls_activated(){
-#     [ -n "$___X_CMD_PKG_ACTIVATE___LIST" ] || return
-#     local _line
-#     local osarch
-#     local locate_list
-#     osarch="$(___x_cmd_pkg_osarch)"
-#     locate_list="$(___x_cmd_pkg_ll)"
-#     command awk -v FS="=" \
-#         -v OSARCH="$osarch" \
-#         -v LOCAL_LIST="$locate_list" \
-#         -v PKG_RAWPATH="$___X_CMD_PKG_METADATA_PATH" \
-#         -v TH_THEME_COLOR="\\033[${___X_CMD_THEME_COLOR_CODE}m" \
-#         -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
-#         -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk" \
-#         -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
-#         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
-#         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.ls.awk" <<A
-# ${___X_CMD_PKG_ACTIVATE___LIST}
-# A
-# }
+___x_cmd_pkg_ls___installed_inner(){
+    (
+        cd "${___X_CMD_PKG_ROOT_SPHERE}" || return 1
+        local i; for i in */*/*/*; do
+            { [ "$i" != "${i#*"/tree."}" ] && [ -d "$i" ]; } || continue
+            printf "%s\n" "${i#*/*/}"
+        done 2>/dev/null
+    )
+}
 
 ___x_cmd_pkg_ls_all(){
     local X_help_cmd='___x_cmd_pkg_help ls all'
@@ -121,11 +91,6 @@ ___x_cmd_pkg_ls_all(){
         last_version = cur_version
     }' <"$json_path"
 }
-
-# ___x_cmd_pkg_ls___all_candidate(){
-#     # TODO: Use find to avoid awk
-#     ls "$___X_CMD_PKG_METADATA_PATH"/*/ | awk '{if(($0 != "") && (! match($0, /^\/[..]*/))){print $0}}'
-# }
 
 ___x_cmd_pkg_ls___all_candidate()(
     x cd "$___X_CMD_PKG_METADATA_PATH" || {

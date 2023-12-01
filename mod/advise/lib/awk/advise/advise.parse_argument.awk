@@ -144,12 +144,13 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
     for (j=1; i+j-1 < argl; ++j) rest_arg[ j ] = args[ i+j-1 ]
     _rest_argc = j - 1
 
-    if (_rest_argc == 0) return advise_complete_option_name_or_argument_value( args[ argl ], genv_table, lenv_table, obj, obj_prefix )
+    arg = args[ argl ]
+    if (_rest_argc == 0) return advise_complete_option_name_or_argument_value( arg, genv_table, lenv_table, obj, obj_prefix )
 
     rest_argc_max = aobj_get_maximum_rest_argc( obj, obj_prefix )
     if (_rest_argc >= rest_argc_max)  return
 
-    return advise_complete_argument_value( args[ argl ], genv_table, lenv_table, obj, obj_prefix, _rest_argc+1 )
+    return advise_complete_argument_value( arg, genv_table, lenv_table, obj, obj_prefix, _rest_argc+1 )
 
 }
 # EndSection

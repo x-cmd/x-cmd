@@ -1,4 +1,3 @@
-
 function handle( qpat,  _arr, _arrl, i, _pat ){
     _arrl = split(qpat, _arr, /\./)
     for (i=1; i<=_arrl; ++i) {
@@ -9,15 +8,17 @@ function handle( qpat,  _arr, _arrl, i, _pat ){
 }
 
 END {
-    if (PANIC_EXIT != 0) exit( PANIC_EXIT )
     prefix = jqu(PKG_NAME) SUBSEP handle( EXPR )
-    if ( "{" != table[ prefix ] ) {
-        print table_eval(table, PKG_NAME, table[ prefix ])
-    } else {
+
+    if( ( k = table[ prefix ] ) != "{") {
+        if( k != "" ) print juq(k)
+    }
+
+    if( table[ prefix ] == "[") {
         l = table[ prefix L ]
         for (i=1; i<=l; ++i) {
-            _k = table[ prefix, i ]
-            print table_eval(table, PKG_NAME, table[ prefix, _k ] )
+            k = table[ prefix, "\""i"\"" ]
+            if( table[ prefix, "\""i"\"" ] != "" ) print juq(k)
         }
     }
 }

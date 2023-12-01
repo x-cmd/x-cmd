@@ -83,15 +83,21 @@ function tapp_handle_exit( exit_code,       rootkp, _ ){
 # EndSection
 
 # Section: user view
-function user_paint_theme_preview( x1, x2, y1, y2, rootkp,         _id, _draw_clear, _res, _, fp, style ){
+function user_paint_theme_preview( x1, x2, y1, y2, rootkp,         _id, _draw_clear, _res, _, fp, style, style_full, style_line, style_row, l, i ){
     _draw_clear = painter_clear_allline( x1, x2 )
     if (split(rootkp, _, "/") < 3) return
     fp = THEME_STYLE_PREVIEW_PATH "/" _[2] "/" _[3]
     if ((style = THEME_STYLE_PREVIEW[ fp ]) == "") {
-        style = cat(fp)
-        _id = index(style, "demo-stop")
-        style = substr( style, 1, _id + 9 )
-        style = str_trim(style)
+        style_full = cat(fp)
+        _id = index(style_full, "demo-stop")
+        style_full = substr(style_full, 1, _id + 9)
+        style_full = str_trim(style_full)
+        l = split(style_full, style_line, "\n")
+        style_row = x2 - x1 + 1
+        if (l > style_row) l = style_row
+        for (i=1; i<=l; ++i){
+            style = (style != "" ) ? style "\n" style_line[i] : style_line[i]
+        }
         THEME_STYLE_PREVIEW[ fp ] = style
     }
     _res = painter_goto_rel(x1, y1) "\r" style

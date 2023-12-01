@@ -54,6 +54,13 @@ function ___tapp_displaymode_alter(){
     }
     tapp_canvas_has_changed()    # Using this to force reset
 }
+
+function ___tapp_exit_screen_recover(){
+    if (___TAPP_DISPLAYMODE_ == "") return
+    ___tapp_displaymode_full_clean()
+    ___TAPP_DISPLAYMODE_ = ""
+    tapp_init0( ROWS, COLS )
+}
 # EndSection
 
 # Section: exit and panic
@@ -65,10 +72,6 @@ function panic( s ){
     TUI_PANIC_EXIT = 1
     TUI_PANIC_TEXT = s
     exit(1)
-}
-
-function ___tapp_exit_screen_recover(){
-    if (___TAPP_DISPLAYMODE_ != "")     ___tapp_displaymode_full_clean()
 }
 
 END{

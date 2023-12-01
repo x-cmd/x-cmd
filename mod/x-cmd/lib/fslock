@@ -1,0 +1,137 @@
+# shellcheck shell=dash
+
+# simliar to fslock wit bug fix theorectically.
+
+___X_CMD_FSLOCK_ROOT="$___X_CMD_ROOT_DATA/fslock"
+
+___x_cmd_fslock(){
+    local op="$1"; shift
+    case "$op" in
+        run|ls|pid|kill)
+                ___x_cmd_fslock_"$op" "$@"     ;;
+        *)      M="Unknown command ==> $op" N=fslock log:ret:64    ;;
+    esac
+}
+
+___x_cmd_fslock_ls(){
+    [ -d "$___X_CMD_FSLOCK_ROOT" ] || return 0
+    x fsiter "$___X_CMD_FSLOCK_ROOT"
+}
+
+___x_cmd_fslock_name_(){
+    if [ "$___X_CMD_SHELL" != dash ]; then
+        fslock_name="${fslock_name//\//_}"
+    else
+        local part=
+        while [ -n "$fslock_name" ]; do
+            part="${fslock_name%%/*}"
+            [ "$part" != "$fslock_name" ] || break
+            fslock_name="${part}_${fslock_name#*/}"
+        done
+    fi
+}
+
+___x_cmd_fslock_pid_(){
+    local fslock_name="$1"
+    ___x_cmd_fslock_name_ "$fslock_name"
+    [ -n "$fslock_name" ] || M="Provide fslock name" N=fslock log:ret:64
+    [ -f "$___X_CMD_FSLOCK_ROOT/$fslock_name/X" ] || return 1
+    x_=; read -r x_ <"$___X_CMD_FSLOCK_ROOT/$fslock_name/X"
+}
+
+___x_cmd_fslock_pid(){
+    local x_=; ___x_cmd_fslock_pid_ "$@" || return
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_fslock_kill___inner(){
+    local fslock_name="$1"
+    ___x_cmd_fslock_name_ "$fslock_name"
+    if [ -f "$___X_CMD_FSLOCK_ROOT/$fslock_name/X" ]; then
+        local pidline=; read -r pidline <"$___X_CMD_FSLOCK_ROOT/$fslock_name/X"
+        kill -s KILL "$pidline" 2>/dev/null
+    fi
+    ___x_cmd_fslock_run___clear "$fslock_name"
+}
+
+___x_cmd_fslock_kill(){
+    if [ "$1" = --all ]; then
+        local l; ___x_cmd_fslock_ls | while read -r l; do
+            x log :fslock "kill fslock name[$l]"
+            ___x_cmd_fslock_kill___inner "$l"
+        done
+        return
+    fi
+
+    local fslock_name="${1}"
+    ___x_cmd_fslock_name_ "$fslock_name"
+    [ -n "$fslock_name" ] || M="Provide fslock name" N=fslock log:ret:64
+    ___x_cmd_fslock_kill___inner "$fslock_name"
+}
+
+___x_cmd_fslock_run(){
+    local fslock_name="${1}"  # Unique fslock_name
+    ___x_cmd_fslock_name_ "$fslock_name"
+    [ -n "$fslock_name" ] || M="Provide fslock name" N=fslock log:ret:64
+    shift
+
+    local ___X_CMD_FSLOCK_RUN_RET
+    while ___x_cmd_fslock_run___checklock; do
+        ___x_cmd_fslock_run___acquirelock || continue
+        ___X_CMD_FSLOCK_RUN_RET=0
+        "$@" || ___X_CMD_FSLOCK_RUN_RET=$?
+
+        ___x_cmd_fslock_run___clear "$fslock_name"
+
+        return "$___X_CMD_FSLOCK_RUN_RET"
+    done
+
+    return 130
+}
+
+___x_cmd_fslock_run___clear(){
+    local fslock_name="${1}"  # Unique fslock_name
+    ___x_cmd_fslock_name_ "$fslock_name"
+    command rm -rf "$___X_CMD_FSLOCK_ROOT/$fslock_name" 2>/dev/null
+}
+
+___x_cmd_fslock_run___checklock(){
+    local pidline=; local IFS; local i;
+
+    local fslock_dirpath="$___X_CMD_FSLOCK_ROOT/$fslock_name"
+    local fslock_filepath="$fslock_dirpath/X" # three folds: x-cmd, index, exclusive.
+    while true; do
+        [ -f "$fslock_filepath" ] || {
+            if [ -d "$fslock_dirpath" ]; then
+                command sleep 0.5  # This is very rare case
+                [ ! -f "$fslock_filepath" ] || continue
+                command rm -rf "$fslock_dirpath" 2>/dev/null
+            fi
+            return 0
+        }
+        read -r pidline <"$fslock_filepath"
+        if [ -z "$pidline" ] || ___x_cmd_fslock_run___pidinexisted "$pidline"; then
+            ___x_cmd_fslock_run___clear "$fslock_name"
+            return 0
+        fi
+
+        IFS=" "
+        for i in 0.2 0.3 0.5; do
+            [ -f "$fslock_filepath" ] || return 0
+            command sleep "$i" || return 130    # return 130 if interrupted
+        done
+    done
+}
+
+___x_cmd_fslock_run___pidinexisted(){
+    [ ! -e "/proc/$1" ] && ! kill -0 "$1" >/dev/null 2>&1
+}
+
+___x_cmd_fslock_run___acquirelock(){
+    x mkdirp "$___X_CMD_FSLOCK_ROOT"
+    command mkdir "$___X_CMD_FSLOCK_ROOT/$fslock_name" 2>/dev/null || return 1
+    {
+        x pidofsubshell
+        printf "%s\n" "$fslock_name"
+    } >"$___X_CMD_FSLOCK_ROOT/$fslock_name/X" 2>/dev/null || return 1
+}
