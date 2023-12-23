@@ -92,7 +92,7 @@ ___x_cmd_docker_setup_prepare(){
 ___x_cmd_docker_setup_prepare___exec(){
     local container="$1"
     local need_setup=; local x_osname=; local x_arch=; local need_busybox=; local need_curl=; local need_x=
-    ___x_cmd_docker_setup_prepare___get_info_form_container_ "$container" || return
+    ___x_cmd_docker_setup_prepare___get_info_form_container_ "$container"                           || return
 
     [ -n "$need_setup" ] || {
         docker:info "Container has already been setup"
@@ -102,25 +102,25 @@ ___x_cmd_docker_setup_prepare___exec(){
     local x_=
     if [ -n "$need_busybox" ]; then
         docker:info "Try to inject ==> busybox"
-        ___x_cmd_docker_setup_prepare___get_pkg_path_ busybox "$x_osname/$x_arch" || return
-        command docker cp "$x_" "$container:/bin/busybox"
+        ___x_cmd_docker_setup_prepare___get_pkg_path_ busybox "$x_osname/$x_arch"                   || return
+        command docker cp "$x_" "$container:/bin/busybox"                                           || return
     fi
 
     if [ -n "$need_curl" ]; then
         docker:info "Try to inject ==> curl"
-        ___x_cmd_docker_setup_prepare___get_pkg_path_ curl "$x_osname/$x_arch" || return
-        command docker cp "$x_" "$container:/bin/curl" || return 1
+        ___x_cmd_docker_setup_prepare___get_pkg_path_ curl "$x_osname/$x_arch"                      || return
+        command docker cp "$x_" "$container:/bin/curl"                                              || return
 
         docker:info "Try to inject ==> ca-certificates"
         x cacert which_
-        command docker cp -L "$x_" "$container:/etc/ssl/certs/ca-certificates.crt" || return
+        command docker cp -L "$x_" "$container:/etc/ssl/certs/ca-certificates.crt" 2>/dev/null      || return
     fi
 
     if [ -n "$need_x" ]; then
         docker:info "Try to inject ==> x"
-        command docker cp "$___X_CMD_ROOT_GLOBAL"                "$container:/var/x-cmd/global"
-        command docker cp "$___X_CMD_ROOT/v/$___X_CMD_VERSION"   "$container:/var/x-cmd/v/global"
-        command docker cp "$___X_CMD_ROOT_MOD/x-cmd/lib/bin/xxx" "$container:/bin/x"
+        command docker cp "$___X_CMD_ROOT_GLOBAL"                "$container:/var/x-cmd/global"     || return
+        command docker cp "$___X_CMD_ROOT/v/$___X_CMD_VERSION"   "$container:/var/x-cmd/v/global"   || return
+        command docker cp "$___X_CMD_ROOT_MOD/x-cmd/lib/bin/xxx" "$container:/bin/x"                || return
     fi
 
     ___x_cmd_docker_setup_prepare___set_startup_in_container_ "$container"
@@ -128,10 +128,10 @@ ___x_cmd_docker_setup_prepare___exec(){
 
 ___x_cmd_docker_setup_prepare___run(){
     local image="$1"
-    local container; container="$( command docker run -it -d "$image" )" || return
+    local container; container="$( command docker run -it -d "$image" )"            || return
 
     local need_setup=; local x_osname=; local x_arch=; local need_busybox=; local need_curl=; local need_x=
-    ___x_cmd_docker_setup_prepare___get_info_form_container_ "$container" || return
+    ___x_cmd_docker_setup_prepare___get_info_form_container_ "$container"           || return
     command docker container rm -f "$container" >/dev/null
 
     local x_=
@@ -165,21 +165,27 @@ ___x_cmd_docker_setup_prepare___get_info_form_container_(){
     docker:debug "Get container information ==> $container"
     need_setup=; x_osname=; x_arch=; need_busybox=; need_curl=; need_x=
 
-    local setup_script; setup_script="$( cat "$___X_CMD_ROOT_MOD/docker/lib/data/setup.sh" )"
+    local setup_script; setup_script="$( ___x_cmd_cmds_cat "$___X_CMD_ROOT_MOD/docker/lib/data/setup.sh" )"
     eval "$( command docker exec "$container" sh -c "${setup_script}; ___x_cmd_docker_setup___getinfo" || printf "return 1\n" )" || return 1
 }
 
 ___x_cmd_docker_setup_prepare___set_startup_in_container_(){
     local container="$1"
-    local setup_script; setup_script="$( cat "$___X_CMD_ROOT_MOD/docker/lib/data/setup.sh" )"
+    local setup_script; setup_script="$( ___x_cmd_cmds_cat "$___X_CMD_ROOT_MOD/docker/lib/data/setup.sh" )"
     docker:info "Set start up file in container"
     command docker exec -e ___X_CMD_WEBSRC_REGION="$___X_CMD_WEBSRC_REGION" "$container" sh -c "${setup_script}; ___x_cmd_docker_setup___init"
 }
 
 ___x_cmd_docker_setup_prepare___get_pkg_path_(){
-    x_=; local name="$1"; local os_arch="$2"
-    docker:debug "Prepare $os_arch $name"
-    x pkg download "$name" "" "$os_arch" "$___X_CMD_DOCKER_CACHE/$name" || return
-    x pkg populate "$name" "" "$os_arch" "$___X_CMD_DOCKER_CACHE/$name" || return
-    x_="$(x pkg xbin path "$name" "" "$os_arch" "$___X_CMD_DOCKER_CACHE/$name")" || return
+    x_=; local name="$1"; local osarch="$2"
+    docker:debug "Prepare $name $osarch to $___X_CMD_DOCKER_CACHE"
+    x pkg sphere add --sphere X --sphereroot "$___X_CMD_DOCKER_CACHE" "$name" "" "$osarch" || {
+        docker:error "Fail to prepare $name $osarch"
+        return 1
+    }
+    docker:debug "Get $name $osarch xbin path"
+    x_="$(x pkg xbin path --sphere X --sphereroot "$___X_CMD_DOCKER_CACHE" "$name" "" "$osarch" X "$___X_CMD_DOCKER_CACHE")" || {
+        docker:error "Fail to get $name $osarch bin path"
+        return 1
+    }
 }

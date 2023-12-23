@@ -1,0 +1,61 @@
+# shellcheck shell=bash  disable=SC2046
+
+___x_cmd_openai_curl(){
+    local op="$1"
+    local url="$2"
+    shift 2
+    local ___X_CMD_RSP_HEADER="\"${___X_CMD_ROOT_TMP}/openai/.____x_cmd_openai_curl_header.$$\""
+
+    local _auth_token="${___X_CMD_OPENAI_TOKEN}"
+    [ -n "${_auth_token}" ] || {
+        _auth_token="$(x openai --cfg get apikey 2>/dev/null)" || {
+            openai:error "token is null. run "x openai --cfg set apikey=\<your_token\>" or ___X_CMD_OPENAI_TOKEN=<your_token>"
+            return 1
+        }
+    }
+    local content_type
+    [ "$op" = "post" ] || content_type="Content-Type: multipart/form-data"
+
+    local _curl_header="Authorization: Bearer ${_auth_token}
+${content_type:-"Content-Type: application/json"}
+${___X_CMD_OPENAI_HEADER}"
+
+    _curl_header="$(x curl gencode "${_curl_header}")"
+    local _curl_url="https://api.openai.com/v1${url}"
+
+    local method; local openai_request_data
+    case "$op" in
+        get)
+            method="GET"
+            openai_request_data="$(eval "printf '%s ' $(x curl gencode $(___x_cmd_openai_curl___use_query_data "$op" "$@"))")"
+            ;;
+        upload)
+            method="POST"
+            openai_request_data="$(eval "printf '%s ' $(x curl gencode $(___x_cmd_openai_curl___use_query_data "$op" "$@"))")"
+            ;;
+        post)
+            method="POST"
+            openai_request_data="$(x curl gencode "$@")" ;;
+    esac
+    openai:debug "x curl -X  ${method}  -D  ${___X_CMD_RSP_HEADER}   $_curl_header   ${output_path:+"-o \'${output_path}\'"}   $openai_request_data   $_curl_url"
+    eval          x curl -X "${method}" -D "${___X_CMD_RSP_HEADER}" "$_curl_header" "${output_path:+"-o \'${output_path}\'"}" "$openai_request_data" "$_curl_url"
+}
+
+___x_cmd_openai_curl___use_query_data(){
+    [ $# -gt 0 ] || return
+    printf "%s " "-G"
+    local name=""
+    local op="$1"; shift
+    for name in "$@"; do
+        case "$name" in
+            _file_path)   printf "%s " "file=@${_file_path}"    ;;
+            *)
+                if [ "$op" = "get" ]; then
+                    printf "%s " "$name=="
+                else
+                    printf "%s " "$name="
+                fi
+                ;;
+        esac
+    done
+}

@@ -2,78 +2,149 @@
 
 # add: link a package to sphere
 # rm:
-___x_cmd_pkg_link() {
-    local X_help_cmd='___x_cmd_pkg_help link';   help:arg-null:parse
-    sphere:parse:args
-    ___x_cmd_pkg_sphere_link --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" add "$name" "$version" "$osarch"
-}
 
-___x_cmd_pkg_unlink(){
-    local X_help_cmd='___x_cmd_pkg_help unlink';   help:arg-null:parse
-    sphere:parse:args
-    ___x_cmd_pkg_sphere_link --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" rm "$name" "$version" "$osarch"
-}
-
-
-# x pkg sphere link --name X rm <pkg> <version>
+# x pkg sphere link add --sphere X <pkg> <version>
 ___x_cmd_pkg_sphere_link(){
-    sphere:parse:option
-    sphere_name="${sphere_name:-"X"}"
-
-    local op="$1";  shift
+    local op="$1"
     case "$op" in
-        exist)      ___x_cmd_pkg_sphere_link_exist "$@"     ;;
-        rm|add)     x fslock run "pkg_sphere_link_${sphere_name}_${1}_${2}" \
-                        ___x_cmd_pkg_sphere_link_"$op" "$@" ;;
-        *)          N=pkg M="sphere link no such option '$op'" log:ret:1
-                    ;;
+        rm|add|exist|ls)
+                shift; ___x_cmd_pkg_sphere_link_"$op" "$@" ;;
+        *)      N=pkg M="sphere link no such option '$op'" log:ret:1
+                ;;
     esac
 }
 
-
+# Section: link add
 ___x_cmd_pkg_sphere_link_add(){
-    local name="$1";        [ -n "$name" ] || N=pkg M="Provide a package name" log:ret:1
-    local version="$2";     [ -n "$version" ] || N=pkg M="Not found $name version" log:ret:1
-    local osarch="$3";      [ -n "$osarch" ] || N=pkg M="Not found osarch value" log:ret:1
+    local sphere_name=; local osarch=; local sociality=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sphere)
+                    sphere_name="$2";
+                    [ -n "$sphere_name" ] || M="Provide a sphere name" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --sphereroot)
+                    local ___X_CMD_PKG_ROOT_SPHERE="$2"
+                    [ -n "$___X_CMD_PKG_ROOT_SPHERE" ] || M="Provide sphere root path" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --osarch)
+                    osarch="$2";    shift 2 ;;
+            --sociality)
+                    sociality="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
 
+    pkg:sphere:name-version
+    [ -n "$sociality" ] || {
+        local x_="" >/dev/null 2>&1; ___x_cmd_pkg_sphere_sociality___get_       \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || return
+        sociality="$x_"
+    }
+
+    x fslock run "pkg_sphere_link_${sphere_name}_${name}_${version}" ___x_cmd_pkg_sphere_link_add___run
+
+    if [ "$sociality" = intrusive ] || [ "$sociality" = dev ]; then
+        pkg:info "Loading boot script file of $name $version"
+        ___x_cmd_pkg_sphere_boot    \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || return
+    fi
+
+    pkg:info "Recording bootrc of $name $version"
+    ___x_cmd_pkg_sphere_bootrc add  \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+        --osarch "$osarch" --sociality "$sociality" "$name" "$version"
+}
+
+___x_cmd_pkg_sphere_link_add___run(){
     local x_treename=; ___x_cmd_pkg_treename_ "$name" "$version" "$osarch" || return
-    pkg:debug --sphere_path "$___X_CMD_PKG_ROOT_SPHERE/$sphere_name" --pkg "$name" --version "$version" "link add"
-    local target_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/l/j/h/bin"
+    local target_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/l/j/h"
     local tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$name/$version"
-    local link_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link_record"
-    local link_file="$link_dir/${name}_${version}"
-    [ ! -f "$link_file" ] || return 0
-    x ensurefp "$link_file"
+    local link_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/${name}_${version}"
 
-    local target=; local bin_file
-    ___x_cmd_pkg_sphere_link___list_all_bin_path "$name" "$version" "$osarch" "$tgt" | while read -r bin_file; do
-        [ -n "$bin_file" ] || continue
-        [ -f "$bin_file" ] || {
-            pkg:error "Not found $bin_file for $name $version bin link"
-            return 1
-        }
+    pkg:info --target_dir "$target_dir" "Trying to link $name $version of the bin/ lib/ man/ file"
 
-        target="$target_dir/${bin_file##*/}"
-        pkg:debug "linking source=$bin_file target=$target"
+    ___x_cmd_pkg_sphere_link_add___run_inner "$name" "$version" "$osarch" "$tgt" bin "$target_dir" "$link_dir" "$link_sociality" || return
+    ___x_cmd_pkg_sphere_link_add___run_inner "$name" "$version" "$osarch" "$tgt" lib "$target_dir" "$link_dir" "$link_sociality" || return
+    ___x_cmd_pkg_sphere_link_add___run_inner_man "$name" "$version" "$osarch" "$tgt" "$target_dir" "$link_dir" "$link_sociality" || return
 
-        command ln -s -f "$bin_file" "$target" || N=pkg M="ln - Operation failure source=$bin_file target=$target" log:ret:1
-        printf "%s\n" "$target" >> "$link_file"
-    done || return
-
-
-    ___x_cmd_path_add_existed_folder "$target_dir" || return
     pkg:info "Successfully set link from path"
 }
 
-___x_cmd_pkg_sphere_link_rm(){
-    local name="$1";    local version="$2";
-    shift 2
+___x_cmd_pkg_sphere_link_add___run_inner(){
+    local name="$1";    local version="$2";    local osarch="$3";   local tgt="$4";
+    local _path="${5:-bin}";    local target_dir="$6";   local link_dir="$7"; local sociality="$8"
+    local link_file="$link_dir/association"
+    [ ! -f "$link_file" ] || {
+        pkg:debug "$name $version has already linked"
+        return 0
+    }
+    x ensurefp "$link_file"
+    local file; local target;
+    ___x_cmd_pkg_sphere_link___list_all_path_expand "$name" "$version" "$osarch" "$tgt" "$_path" "$sociality" | while read -r file; do
+        [ -n "$file" ] || continue
+        [ -e "$file" ] || {
+            pkg:error "Not found $file to $name $version link $_path"
+            x rmrf "$link_file"
+            return 1
+        }
+        target="$target_dir/$_path/${file##*/}"
+        x ensurefp "$target"
+        pkg:debug "linking source=$file target=$target"
+        command ln -s -f "$file" "$target" || N=pkg M="ln - Operation failure source=$file target=$target" log:ret:1
+        printf "%s\n" "$target" >> "$link_file"
+    done
+}
 
-    pkg:debug --sphere_path "$___X_CMD_PKG_ROOT_SPHERE/$sphere_name" --pkg "$name" --version "$version" "link rm"
-    local link_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link_record"
-    local link_file="$link_dir/${name}_${version}"
+___x_cmd_pkg_sphere_link_add___run_inner_man(){
+    local name="$1";    local version="$2";    local osarch="$3";   local tgt="$4";
+    local target_dir="$5";   local link_dir="$6";  local sociality="$7"
+    local link_file="$link_dir/association"
+    [ ! -f "$link_file" ] || {
+        pkg:debug "$name $version has already linked"
+        return 0
+    }
+    x ensurefp "$link_file"
+    local mandir; local target; local file; local filename
+    ___x_cmd_pkg_sphere_link___list_all_path_expand "$name" "$version" "$osarch" "$tgt" "man" "$sociality" | while read -r mandir; do
+        [ -n "$mandir" ] || continue
+        [ -d "$mandir" ] || {
+            pkg:warn "Invalid manpath[$mandir] for $name $version"
+            continue
+        }
+
+        x fsiter "$mandir" | while read -r filename; do
+            case "$filename" in
+                *.[1-9]|*.gz) target="$target_dir/man/${mandir##*/}/$filename" ;;
+                *) continue ;;
+            esac
+            file="$mandir/$filename"
+            x ensurefp "$target"
+            pkg:debug "linking source=$file target=$target"
+            command ln -s -f "$file" "$target" || N=pkg M="ln - Operation failure source=$file target=$target" log:ret:1
+            printf "%s\n" "$target" >> "$link_file"
+        done
+    done
+}
+
+# EndSection
+
+# Section: link rm
+___x_cmd_pkg_sphere_link_rm(){
+    pkg:sphere:parse:args
+    x fslock run "pkg_sphere_link_${sphere_name}_${name}_${version}" ___x_cmd_pkg_sphere_link_rm___run
+}
+___x_cmd_pkg_sphere_link_rm___run(){
+    local link_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/${name}_${version}"
+    local link_file="$link_dir/association"
     [ -f "$link_file" ] || return 0
 
+    pkg:info "Trying to unlink $name $version of the bin/ lib/ man/ file"
     local target
     while read -r target;do
         [ -f "$target" ] || continue
@@ -82,35 +153,74 @@ ___x_cmd_pkg_sphere_link_rm(){
     done < "$link_file"
 
     x rmrf "$link_file"
+
+    if [ "$sociality" = intrusive ] || [ "$sociality" = dev ]; then
+        pkg:info "Loading unboot script file of $name $version"
+        ___x_cmd_pkg_sphere_boot    \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || return
+    fi
+
+    pkg:info "Removing bootrc of $name $version"
+    ___x_cmd_pkg_sphere_bootrc rm   \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+        --osarch "$osarch" "$name"
 }
 
-___x_cmd_pkg_sphere_link_exist(){
-    local name="$1";    local version="$2";
-    shift 2
+# EndSection
 
-    local link_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link_record"
-    local link_file="$link_dir/${name}_${version}"
+___x_cmd_pkg_sphere_link_exist(){
+    pkg:sphere:parse:args
+    local link_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/${name}_${version}"
+    local link_file="$link_dir/association"
     [ -f "$link_file" ]
 }
 
-___x_cmd_pkg_sphere_link___list_all_bin_path() {
-    local name="$1";    local version="$2";    local osarch="$3";   local tgt="$4"
-
-    # TIP: use default osarch
-    local bin_dir; local bin_name
-    ___x_cmd_pkg___list "$name" "$version" "$osarch" "path.bin" | while read -r bin_dir; do
-        [ -n "$bin_dir" ] || continue
-        bin_dir="$tgt/$bin_dir"
-
-        if [ -d "$bin_dir" ]; then
-            x fsiter "$bin_dir" | while read -r bin_name; do
-                [ -n "$bin_name" ] || continue
-                [ -f "$bin_dir/$bin_name" ] || continue
-                printf "%s\n" "$bin_dir/$bin_name"
-            done
-        else
-            printf "%s\n" "$bin_dir"
-        fi
+___x_cmd_pkg_sphere_link_ls(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+    local link_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link"
+    [ -d "$link_dir" ] || return 0
+    local i; for i in "$link_dir"/*; do
+        [ ! -f "$i/association" ] || printf "%s\n" "$i"
     done
 }
 
+___x_cmd_pkg_sphere_link___list_all_path_dir(){
+    local name="$1";    local version="$2";    local osarch="$3";   local tgt="$4";
+    local _path="${5:-bin}";    local sociality="$6"
+    [ -n "$sociality" ] || {
+        local x_=; ___x_cmd_pkg_sphere_sociality get_ "$name" "$version" "$osarch" || return
+        sociality="$x_"
+    }
+
+    local path_dir
+    ___x_cmd_pkg___list "$name" "$version" "$osarch" "path.$_path" | while read -r path_dir; do
+        [ -n "$path_dir" ] || continue
+
+        case "$path_dir" in
+            shim_bin)
+                path_dir="$tgt/shim_bin"
+                [ ! -d "$tgt/adaptive_shim_bin" ] || { [ "$sociality" != adaptive ] && [ "$sociality" != dev ]; } || path_dir="$tgt/adaptive_shim_bin"
+                ;;
+            \.) path_dir="$tgt" ;;
+            *)  path_dir="$tgt/$path_dir";;
+        esac
+
+        printf "%s\n" "$path_dir"
+    done
+}
+
+___x_cmd_pkg_sphere_link___list_all_path_expand(){
+    local path_dir=; local filename=
+    ___x_cmd_pkg_sphere_link___list_all_path_dir "$@" | while read -r path_dir; do
+        [ -d "$path_dir" ] || {
+            pkg:warn "Not found $path_dir directory"
+            continue
+        }
+
+        x fsiter "$path_dir" | while read -r filename; do
+            [ -z "$filename" ] || printf "%s\n" "$path_dir/$filename"
+        done
+    done
+}

@@ -7,7 +7,7 @@ xrc daemon
 x mkdirp "$___X_CMD_DAEMON_LOG_FILEPATH"
 
 if [ -e "$___X_CMD_DAEMON_STDIN_FIFO" ]; then
-    trap "rm \"$___X_CMD_DAEMON_STDIN_FIFO\"" EXIT
+    trap "___x_cmd_cmds_rm \"$___X_CMD_DAEMON_STDIN_FIFO\"" EXIT
 fi
 
 # trap '___x_cmd_daemon_proc_end 130 >>"${___X_CMD_DAEMON_PROC_FILEPATH}/$___X_CMD_DAEMON_PROC_ID"' INT

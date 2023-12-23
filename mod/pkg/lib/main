@@ -1,9 +1,9 @@
 # shellcheck    shell=dash disable=SC2034,SC1090
-___x_cmd_pkg___which_p7zip()(
-    local file_path="$___X_CMD_PKG_ROOT_PATH/$___X_CMD_PKG_VERSION.tar.gz"
-    local file_hash_path="$___X_CMD_PKG_ROOT_PATH/${___X_CMD_PKG_VERSION}_hash.txt"
-    local tmp_file_path="$___X_CMD_PKG_SHARED/$___X_CMD_PKG_VERSION.tar.gz"
-    local tmp_file_hash_path="$___X_CMD_PKG_SHARED/${___X_CMD_PKG_VERSION}_hash.txt"
+___x_cmd_pkg_update___inner()(
+    local file_path="$___X_CMD_PKG_CACHE_PATH/${___X_CMD_PKG_VERSION}.tar.gz"
+    local file_hash_path="$___X_CMD_PKG_CACHE_PATH/${___X_CMD_PKG_VERSION}_hash.txt"
+    local tmp_file_path="$___X_CMD_PKG_CACHE_PATH/${___X_CMD_PKG_VERSION}.tar.gz.tmp"
+    local tmp_file_hash_path="$___X_CMD_PKG_CACHE_PATH/${___X_CMD_PKG_VERSION}_hash.txt.tmp"
     local x_url_tar=
     local x_url_hash=
 
@@ -28,24 +28,13 @@ ___x_cmd_pkg___which_p7zip()(
 
     pkg:info --url "$x_url_hash" "Download ${___X_CMD_PKG_VERSION}_hash.txt"
     x curl -L -sS --speed-time 5 --speed-limit 100 "$x_url_hash" --output "$tmp_file_hash_path" || {
-         pkg:error "Download $___X_CMD_PKG_VERSION.tar.gz failed"
+        pkg:error "Download ${___X_CMD_PKG_VERSION}_hash.txt failed"
         return 1
     }
 
-
-    # ___x_cmd_httpget_gitx x-cmd pkg main "dist/${___X_CMD_PKG_VERSION}_hash.txt" "$tmp_file_hash_path" "-" || {
-    #     pkg:warn "Please check your network status; Or use 'x websrc set cn' and open a new session to run 'x pkg update'"
-    #     return 1
-    # }
-    # ___x_cmd_httpget_gitx x-cmd pkg main "dist/$___X_CMD_PKG_VERSION.tar.gz" "$tmp_file_path" || { # 1-day
-    #     pkg:error "Download $___X_CMD_PKG_VERSION.tar.gz failed"
-    #     return 1
-    # }
-
-
     local hash_value
     local file_hash
-    hash_value="$( < "$tmp_file_hash_path" LC_ALL="$___X_CMD_AWK_LANGUAGE" ___x_cmd_awk___inner '{print $1}')"
+    hash_value="$( < "$tmp_file_hash_path" ___x_cmd_awk___inner '{print $1}')"
     file_hash="$(x sha512 "$tmp_file_path")"
 
 
@@ -56,43 +45,39 @@ ___x_cmd_pkg___which_p7zip()(
     }
 
     ! [ -d "$___X_CMD_PKG_METADATA_PATH/tmp" ] || {
-        x rmrf "$___X_CMD_PKG_SHARED/tmp"
-        x mv "$___X_CMD_PKG_METADATA_PATH/tmp" "$___X_CMD_PKG_SHARED"
+        x rmrf "$___X_CMD_PKG_CACHE_PATH/tmp"
+        x mv "$___X_CMD_PKG_METADATA_PATH/tmp" "$___X_CMD_PKG_CACHE_PATH"
     }
 
-    x rmrf "$___X_CMD_PKG_ROOT_PATH/$___X_CMD_PKG_VERSION.tar.gz" && x rmrf "$___X_CMD_PKG_METADATA_PATH" && x rmrf "$file_hash_path"
+    x rmrf "$file_path" "$file_hash_path"
+    x mv "$tmp_file_path" "$file_path"
+    x mv "$tmp_file_hash_path" "$file_hash_path"
 
-    x cp "$tmp_file_path" "$___X_CMD_PKG_ROOT_PATH/$___X_CMD_PKG_VERSION.tar.gz" && x rmrf "$tmp_file_path"
-    x cp "$tmp_file_hash_path" "$file_hash_path" && x rmrf "$tmp_file_path" "$tmp_file_hash_path"
-
-    ___x_cmd_mkdirp "$___X_CMD_PKG_METADATA_PATH"
-    pkg:debug --tgt "$___X_CMD_PKG_METADATA_PATH"
-    pkg:debug "Deflate the $___X_CMD_PKG_VERSION.tar.gz"
-    if ! ( x cd "${file_path%/*}" && x cp "$___X_CMD_PKG_VERSION.tar.gz" metadata/"$___X_CMD_PKG_VERSION.tar.gz" && x cd metadata && x uz "$___X_CMD_PKG_VERSION.tar.gz" 1>/dev/null && x rmrf "$___X_CMD_PKG_VERSION.tar.gz" ); then
-        pkg:error "Deflation failure."
+    x rmrf "$___X_CMD_PKG_METADATA_PATH"
+    x mkdirp "$___X_CMD_PKG_METADATA_PATH"
+    pkg:debug --tgt "$___X_CMD_PKG_METADATA_PATH" "Deflate the $file_path"
+    ( ___x_cmd_inner_cd "$___X_CMD_PKG_METADATA_PATH" && x uz "$file_path" ) || {
+        pkg:error "Deflation $file_path failure."
         return 1
-    fi
+    }
 
-    ! [ -d "$___X_CMD_PKG_SHARED/tmp" ] || x mv "$___X_CMD_PKG_SHARED/tmp" "$___X_CMD_PKG_METADATA_PATH"
+    ! [ -d "$___X_CMD_PKG_CACHE_PATH/tmp" ] || x mv "$___X_CMD_PKG_CACHE_PATH/tmp" "$___X_CMD_PKG_METADATA_PATH"
 )
 
+# 86400
+___x_cmd_pkg_update___check(){
+    [ -d "$___X_CMD_PKG_METADATA_PATH" ] || x fslock run pkg_update_check ___x_cmd_pkg_update___check_inner
+}
+
+___x_cmd_pkg_update___check_inner(){
+    [ -d "$___X_CMD_PKG_METADATA_PATH" ] || ___x_cmd_pkg_update___inner
+}
 
 ___x_cmd_pkg_update(){
-    case "$1" in
-        -h|--help)
-            M='pkg update' help:ret:0
-            ;;
-    esac
-    # local file_hash_path="$___X_CMD_PKG_ROOT_PATH/${___X_CMD_PKG_VERSION}_hash.txt"
-    # x rmrf "$___X_CMD_PKG_ROOT_PATH/$___X_CMD_PKG_VERSION.tar.gz" && x rmrf "$___X_CMD_PKG_METADATA_PATH" && x rmrf "$file_hash_path"
-    ___x_cmd_pkg___which_p7zip || {
+    local X_help_cmd='x help -m pkg update'; help:arg:parse
+    ___x_cmd_pkg_update___inner || {
         pkg:error "Update the $___X_CMD_PKG_VERSION.tar.gz failed"
         return 1 # Force Update
     }
     pkg:info "Update the $___X_CMD_PKG_VERSION.tar.gz success"
-}
-
-___x_cmd_pkg_help(){
-    x help -m pkg "$@"  >&2
-    return 1
 }

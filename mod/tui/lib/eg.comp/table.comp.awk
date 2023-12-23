@@ -127,10 +127,12 @@ function table_datamodel_request_page_count(){
 }
 
 
-function table_handle_response( o, kp, content,             _start ){
+function table_handle_response( o, kp, content,             _start, cur_maxrow ){
     if ( match( content, "^data:total_count:[0-9]+") ) {
         gsub("^.+:.+:", "", content)
-        comp_table_model_maxrow(o, kp, int(content))
+        cur_maxrow = int(comp_table_model_maxrow(o, kp))
+        content = int(content)
+        if (cur_maxrow < content) comp_table_model_maxrow(o, kp, content)
         comp_table_model_end(o, kp)
         lock_release( o, kp )
         return true

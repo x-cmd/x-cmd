@@ -1,26 +1,24 @@
 # shellcheck shell=dash
 
 # Section: try
-# try = download + populate + linkenv + boot
+# try = add migrate + path + check boot + save env
 ___x_cmd_env_try(){
     local X_help_cmd='x help -m env try';   help:arg-null:parse
-    sphere:parse:option
-    case "$1" in
-        */*)
-            ___x_cmd_env_appoint_candidate "$@"
-            return
-            ;;
-    esac
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-X}"
+    # case "$1" in
+    #     */*)
+    #         ___x_cmd_env_appoint_candidate "$@"
+    #         return
+    #         ;;
+    #     "") return 1 ;;
+    # esac
+
     x:trace env/try
     local ___X_CMD_ENV___PARSE_PKG
     local ___X_CMD_ENV___PARSE_VERSION
 
-    ___x_cmd_pkg_osarch_
     local i; local x_=
-
-    # TODO: optimization: get all info
-    # TODO: cache all of the result in files to avoid awk parsing and processing
-
     for i in "$@"; do
         ___x_cmd_env___pasre_pkg_version_set "$i"
         if [ -z "$___X_CMD_ENV___PARSE_VERSION" ]; then
@@ -28,31 +26,16 @@ ___x_cmd_env_try(){
             return 1
         fi
 
-        ___x_cmd_pkg___attr "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$___X_CMD_PKG_OSARCH" "sphere_name" || return
-        sphere_name="${sphere_name:-"X"}"
-
         x_=; ___x_cmd_env_current_version_ "$___X_CMD_ENV___PARSE_PKG" "$sphere_name"
         [ -z "$x_" ] || {
-            env:warn "Using $___X_CMD_ENV___PARSE_PKG $x_"
+            env:warn "Using $___X_CMD_ENV___PARSE_PKG version $x_, need to cancel it in advance"
             return 1
         }
 
-        env:debug "Step 1/3, Installing $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
-        ___x_cmd_pkg_migrate --safelist "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$___X_CMD_PKG_OSARCH" "$sphere_name" || {
-            env:error "Cannot install package - '$___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION'"
-            return 1
-        }
+        ___x_cmd_pkg_sphere_try run  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" || return
 
-        # TIP: different with use 1
-        env:debug "Step 2/3, Adding PATH $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
-        ___x_cmd_pkg_addpath "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$___X_CMD_PKG_OSARCH" "$sphere_name" || {
-            env:error "Cannot add path into env - '$___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION'"
-            return 1
-        }
-
-        # TIP: different with use 2
-        env:debug "Step 3/3, Recording $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
-        ___x_cmd_sdict put ___X_CMD_ENV_TRY_CONFIG "${___X_CMD_ENV___PARSE_PKG}" "${___X_CMD_ENV___PARSE_VERSION}"
     done
 
     env:info "Successfully try $* in the current environment."
@@ -62,36 +45,33 @@ ___x_cmd_env_try(){
 # Section: untry
 ___x_cmd_env_untry(){
     local X_help_cmd='x help -m env untry';   help:arg-null:parse
-    sphere:parse:option
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-X}"
 
     x:trace env/untry
-    ___x_cmd_pkg_osarch_
-    local ___X_CMD_ENV___PARSE_PKG
-    local ___X_CMD_ENV___PARSE_VERSION
-    local i
+    local i; local name=; local version=; local x_=;
     for i in "$@"; do
-        # TODO: use var
-        ___x_cmd_env___pasre_pkg_version_set "$i"
-        [ -n "$___X_CMD_ENV___PARSE_VERSION" ] || return 0
-        env:info "Untry $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        case "$i" in
+            *=*)    name="${i%%=*}"; version="${i#*=}"      ;;
+            *)      x_=; ___x_cmd_env_try_version_ "$i"
+                    name="$i"; version="$x_"                ;;
+        esac
+        [ -n "$version" ] || {
+            env:warn "Not try $name in current session"
+            return 0
+        }
+        env:info "Untry $name $version"
 
-        ___x_cmd_pkg___attr "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$___X_CMD_PKG_OSARCH" "sphere_name" || return
-        sphere_name="${sphere_name:-"X"}"
-
-        ___x_cmd_pkg_rmpath "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$___X_CMD_PKG_OSARCH" "$sphere_name" || return
-        ___x_cmd_env_unboot "${___X_CMD_ENV___PARSE_PKG}=${___X_CMD_ENV___PARSE_VERSION}"
-        ___x_cmd_pkg_safelist rm "${___X_CMD_ENV___PARSE_PKG}" "${___X_CMD_ENV___PARSE_VERSION}" "$___X_CMD_PKG_OSARCH" "$sphere_name" || return
-        ___x_cmd_sdict rm ___X_CMD_ENV_TRY_CONFIG "${___X_CMD_ENV___PARSE_PKG}"
+        ___x_cmd_pkg_sphere_try cancel  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$name" "$version" || return
     done
 
-    # ___x_cmd_pkg_gc
     env:info "Success to untry $* in this session"
-    # ___X_CMD_ENV_VERSION_CONFIG="$___X_CMD_ENV___CONFIGSTR_SET_"
 }
 
 # EndSection
 
 ___x_cmd_env_try_version_(){
-    local ___X_CMD_SDICT_GET_=; ___x_cmd_sdict_get_ ___X_CMD_ENV_TRY_CONFIG "$1"
-    x_="$___X_CMD_SDICT_GET_"
+    ___x_cmd_pkg_sphere_try get_version_ "$@"
 }

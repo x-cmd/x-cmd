@@ -2,7 +2,10 @@
 ___x_cmd_pkg__smoke()(
     ___x_cmd_pkg_osarch_ || return
     local candidate; candidate="$1"
-    local version="${2:-$(___x_cmd_pkg_default_version "$candidate")}"
+    local version="$2"; [ -n "$version" ] || {
+        local x_=; ___x_cmd_pkg_default_version_ "$candidate" "$___X_CMD_PKG_OSARCH" || return
+        version="$x_"
+    }
     local sphere_name="X"
 
     pkg:info "Smoke testing candidate=$candidate version=$version"
@@ -17,7 +20,7 @@ ___x_cmd_pkg__smoke()(
     local bin_path=; local bin_name=; local cur=; local tgt=;
     local x_treename=; ___x_cmd_pkg_treename_ "$candidate" "$version" "$___X_CMD_PKG_OSARCH" || return
     tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$candidate/$version"
-    ___x_cmd_pkg_sphere_link___list_all_bin_path "$candidate" "$version" "$___X_CMD_PKG_OSARCH" "$tgt"| while read -r bin_path; do
+    ___x_cmd_pkg_sphere_link___list_all_path_expand "$candidate" "$version" "$___X_CMD_PKG_OSARCH" "$tgt" bin app | while read -r bin_path; do
         [ -n "$bin_path" ] || continue
         [ -f "$bin_path" ] || {
             pkg:error "Not found $bin_path for $candidate $version bin link"
@@ -25,6 +28,14 @@ ___x_cmd_pkg__smoke()(
         }
 
         bin_name="${bin_path##*/}"
+        pkg:debug "_smoke bin_name: [$bin_name]"
+        bin_suffix="${bin_name#*.}"
+        ! [ "$bin_suffix" = "conf" ] || continue
+        ! [ "$bin_suffix" = "cmd" ] || continue
+        [ "${___X_CMD_PKG_OSARCH%/*}" = "win" ] || {
+            ! [ "$bin_suffix" = "bat" ] || continue
+        }
+
         unset -f "$bin_name" 2>/dev/null || true
         unalias "$bin_name" 2>/dev/null || true
         cur="$(command -v "$bin_name")"
@@ -34,7 +45,7 @@ ___x_cmd_pkg__smoke()(
         fi
 
         local expected_prefix="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$candidate"
-        if [  "${cur#"$expected_prefix"}" = "$cur" ] || ! ( printf "%s" "$cur" | grep -q "$version") ; then
+        if [  "${cur#"$expected_prefix"}" = "$cur" ] || ! ( printf "%s" "$cur" | command grep -q "$version") ; then
             pkg:error "Smoke FAIL. $candidate $version is not installed in $expected_prefix or $cur does not contain $version"
             return 12
         fi
@@ -45,7 +56,7 @@ ___x_cmd_pkg__smoke()(
     if ! [ -f "$smokepath" ] || ! . "$smokepath"; then
         pkg:error "Smoke FAIL. Smoke file not found or returned exit code candidate=$candidate version=$version smokepath=$smokepath"
         ! [ -f "$smokepath" ] || {
-            cat "$smokepath"; echo
+            x rat "$smokepath"
             pkg:error "Smoke FAIL. smoke file end"
         }
         return 13

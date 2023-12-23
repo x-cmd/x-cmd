@@ -1,0 +1,110 @@
+# shellcheck shell=dash
+xrc:mod:lib pkg     sphere/add/depend   sphere/add/populate    sphere/add/lastaddts
+
+
+___x_cmd_pkg_sphere_add(){
+    [ "$#" -gt 0 ] || set -- --prebuild
+    local op="$1";
+    case "$op" in
+        --prebuild) shift; ___x_cmd_pkg_sphere_add___migrate "$@" ;;
+        --build)    shift; ___x_cmd_pkg_sphere_add___fromsrc "$@" ;;
+        -h|--help)  return ;;
+        *)          ___x_cmd_pkg_sphere_add___migrate "$@" ;;
+    esac
+}
+
+___x_cmd_pkg_sphere_add___migrate(){
+    local protection=; local reason=; local osarch=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sphere)
+                    sphere_name="$2";
+                    [ -n "$sphere_name" ] || M="Provide a sphere name" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --sphereroot)
+                    local ___X_CMD_PKG_ROOT_SPHERE="$2"
+                    [ -n "$___X_CMD_PKG_ROOT_SPHERE" ] || M="Provide sphere root path" N=pkg log:ret:1
+                    shift 2
+                    ;;
+
+            --protection)
+                    case "$2" in
+                        use|try|dependency) protection="$2" ;;
+                        *) N=pkg M="add protection expect[use|try|dependency], but get '$2'" log:ret:64 ;;
+                    esac
+                    shift 2
+                    ;;
+
+            --reason)   reason="$2";    shift 2 ;;
+            --osarch)   osarch="$2";    shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
+    pkg:sphere:name-version
+
+    if ___x_cmd_pkg_sphere_gc_exist \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"; then
+        pkg:warn "There are other processes currently executing the gc recycling function"
+    else
+        # not in gc
+        if ___x_cmd_pkg_sphere_populate_done \
+                --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+                --osarch "$osarch" "$name" "$version"; then
+            ___x_cmd_pkg_sphere_add___protect
+            return 0
+        fi
+    fi
+
+    (
+        x fslock wait_acquire "$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$osarch/$name/$version" || return
+
+        if ! ___x_cmd_pkg_sphere_populate_done  \
+                --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+                --osarch "$osarch" "$name" "$version"; then
+
+            # add DEPENDENCY file MUST be placed here ...
+            ___x_cmd_pkg_sphere_depend_file add \
+                --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+                --osarch "$osarch" "$name" "$version"   || return
+
+            ___x_cmd_pkg_sphere_depend_prepare  \
+                --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+                --osarch "$osarch" "$name" "$version"   || return
+
+            ___x_cmd_pkg_download \
+                "$name" "$version" "$osarch"            || return
+
+            ___x_cmd_pkg_sphere_populate_run    \
+                --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+                --osarch "$osarch" "$name" "$version"   || return
+            # add DONE file ...
+
+        fi
+        ___x_cmd_pkg_sphere_add___protect
+    )
+}
+
+___x_cmd_pkg_sphere_add___protect(){
+    # TODO: add lastaddts
+    ___x_cmd_pkg_sphere_lastaddts add \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"                \
+        --osarch "$osarch" "$name" "$version"
+
+    case "$protection" in
+        use|try)
+            ___x_cmd_pkg_sphere_safelist add --reason "${reason:-"$protection"}"       \
+                --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"        \
+                --osarch "$osarch" "${name}=${version}"
+                ;;
+        *)  pkg:info "Protection of dependency"
+            ;;
+    esac
+}
+
+
+# TODO:
+___x_cmd_pkg_sphere_add___fromsrc(){
+    :
+}

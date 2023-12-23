@@ -1,0 +1,118 @@
+# shellcheck shell=dash
+
+___x_cmd_pkg_sphere_depend(){
+    local op="$1"
+    case "$op" in
+        file|path_|prepare|remove)
+            shift; ___x_cmd_pkg_sphere_depend_"$op" "$@" ;;
+        *)  N=pkg M="sphere depend not such option '$op'" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_pkg_sphere_depend_path_(){
+    pkg:sphere:parse:args
+    local binpath=; local line=; local dep_name=; local dep_version=; local dep_binpath=
+    x_=
+    while read -r line; do
+        [ -n "$line" ] || continue
+        dep_name="${line%%=*}"
+        dep_version="${line#*=}"
+        x_treename=; ___x_cmd_pkg_treename_ "$dep_name" "$dep_version" "$osarch" || return
+        dep_binpath="$(___x_cmd_pkg___list "$dep_name" "$dep_version" "$osarch" path.bin)" || return
+        [ -n "$dep_binpath" ] || continue
+        dep_binpath="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$dep_name/$dep_version/$dep_binpath"
+        binpath="${binpath}:${dep_binpath}"
+    done <<A
+$( ___x_cmd_pkg___list "${name}" "${version}" "${osarch}" dep )
+A
+    [ -n "$binpath" ] || return
+    x_="${binpath#:}"
+}
+
+___x_cmd_pkg_sphere_depend_prepare(){
+    pkg:sphere:parse:args
+
+    local line=;        local dep_name=;        local dep_version=
+    ___x_cmd_pkg___list "${name}" "${version}" "${osarch}" dep | while read -r line; do
+        [ -n "$line" ] || continue
+        dep_version="${line#*=}"
+        dep_name="${line%%=*}"
+        # trap 'x pkg remove $dep_name $dep_version "$___X_CMD_PKG_OSARCH" "$sphere_name"; printf "\r\n";  pkg:error "Download interrupted"; return 1;' INT
+        log:sub:init -i "$dep_name" pkg "Downloading ${osarch} ${name} ${version} dependency"
+        ___x_cmd_pkg_sphere_add --prebuild --protection dependency --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$dep_name" "$dep_version" || return
+        log:sub:fini
+    done
+}
+
+___x_cmd_pkg_sphere_depend_remove(){
+    pkg:sphere:parse:args
+
+    local line=;        local dep_name=;        local dep_version=
+    ___x_cmd_pkg___list "${name}" "${version}" "${osarch}" dep | while read -r line; do
+        [ -n "$line" ] || continue
+        dep_version="${line#*=}"
+        dep_name="${line%%=*}"
+        log:sub:init -i "$dep_name" pkg "Removing ${osarch} ${name} ${version} dependency"
+        ___x_cmd_pkg_sphere_remove --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$dep_name" "$dep_version" || return
+        log:sub:fini
+    done
+}
+
+# Section: dependency file
+___x_cmd_pkg_sphere_depend_file(){
+    local op="$1"
+    case "$op" in
+        ls|add|rm|exist)
+            shift; ___x_cmd_pkg_sphere_depend_file___"$op" "$@" ;;
+        *)  N=pkg M="sphere depend file not such option '$op'" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_pkg_sphere_depend_file___ls(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+    local dependency_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/dependency/$osarch"
+    [ -d "$dependency_dir" ] || return 0
+    x fsiter "$dependency_dir"
+}
+
+___x_cmd_pkg_sphere_depend_file___exist(){
+    pkg:sphere:parse:args
+    local dependency_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/dependency/$osarch"
+    [ -d "$dependency_dir" ] || return 1
+
+    local line=; local file=;
+    while read -r file; do
+        file="$dependency_dir/$file"
+        [ -f "$file" ] || continue
+        while read -r line; do
+            [ -n "$line" ] || continue
+            [ "${line}" = "${name}=${version}" ] || continue
+            return 0
+        done < "$file"
+    done <<A
+$( x fsiter "$dependency_dir" )
+A
+    return 1
+}
+
+___x_cmd_pkg_sphere_depend_file___add(){
+    pkg:sphere:parse:args
+    local dependency_file="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/dependency/$osarch/${name}_${version}"
+    local deplist=; deplist="$(___x_cmd_pkg___list "${name}" "${version}" "${osarch}" dep)" || return
+    [ -n "$deplist" ] || return 0
+    x ensurefp "$dependency_file"
+    printf "%s\n" "$deplist" > "$dependency_file"
+}
+
+___x_cmd_pkg_sphere_depend_file___rm(){
+    pkg:sphere:parse:args
+    local dependency_file="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/dependency/$osarch/${name}_${version}"
+    [ -f "$dependency_file" ] || return 0
+    x rmrf "$dependency_file"
+}
+# EndSection
+
+
+
+

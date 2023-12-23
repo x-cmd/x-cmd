@@ -1,3 +1,6 @@
+BEGIN{
+    if(wsl = "WSL2") wsl=tolower(wsl)
+}
 
 { jiparse_after_tokenize( O, $0 ) }
 
@@ -22,8 +25,9 @@ function print_install_cmd(O, kp,          i, len, key, os_or_release, installer
             split(key, arr, "/")
             os_or_release = arr[1]
             installer = arr[2]
-            if(( os_or_release == "" ) || ( OS == os_or_release ))     print_install_cmd_style(str, reference)
-            else if( RELEASE == os_or_release )                        print_install_cmd_style(str, reference)
+            if(( os_or_release == "" ) || ( OS ~ "^"os_or_release"$" ))     print_install_cmd_style(str, reference)
+            else if( RELEASE == os_or_release )                             print_install_cmd_style(str, reference)
+            else if( wsl ~ "^"os_or_release"$" )                            print_install_cmd_style(str, reference)
 
         }
     }

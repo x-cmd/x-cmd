@@ -1,21 +1,22 @@
 # shellcheck shell=dash
 
 # Section: use
-# use = download + populate + link + linkenv + boot + save config
+# use = add migrate + link + check boot + use record
 ___x_cmd_env_use(){
     local X_help_cmd='x help -m env use';   help:arg-null:parse
-    sphere:parse:option
-    case "$1" in
-        */*)
-            ___x_cmd_env_appoint_candidate "USE" "$@"
-            return
-            ;;
-    esac
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-X}"
+    # case "$1" in
+    #     */*)
+    #         ___x_cmd_env_appoint_candidate "USE" "$@"
+    #         return
+    #         ;;
+    #     "") return 1 ;;
+    # esac
     x:trace env/use
     local ___X_CMD_ENV___PARSE_PKG
     local ___X_CMD_ENV___PARSE_VERSION
 
-    ___x_cmd_pkg_osarch_
     local i; local x_=
     for i in "$@"; do
         ___x_cmd_env___pasre_pkg_version_set "$i"
@@ -24,29 +25,15 @@ ___x_cmd_env_use(){
             return 1
         fi
 
-        ___x_cmd_pkg___attr "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$___X_CMD_PKG_OSARCH" "sphere_name" || return
-        sphere_name="${sphere_name:-"X"}"
-
         x_=; ___x_cmd_env_current_version_ "$___X_CMD_ENV___PARSE_PKG" "$sphere_name"
         [ -z "$x_" ] || {
-            env:warn "Using $___X_CMD_ENV___PARSE_PKG $x_"
+            env:warn "Using $___X_CMD_ENV___PARSE_PKG version $x_, need to cancel it in advance"
             return 1
         }
 
-        env:debug "Step 1/3, Installing $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
-        ___x_cmd_pkg_migrate --safelist "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$___X_CMD_PKG_OSARCH" "$sphere_name" || {
-            env:error "Cannot install package - '$___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION'"
-            return 1
-        }
-
-        env:debug "Step 2/3, Linking $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
-        if ! ___x_cmd_pkg link "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$___X_CMD_PKG_OSARCH" "$sphere_name"; then
-            env:error "Cannot link $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
-            return 1
-        fi
-
-        env:debug "Step 3/3, Recording $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
-        ___x_cmd_pkg_config add "$sphere_name" "${___X_CMD_ENV___PARSE_PKG}" "${___X_CMD_ENV___PARSE_VERSION}" || return
+        ___x_cmd_pkg_sphere_use run  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" || return
     done
 
     env:info "Successfully use $* in the current environment."
@@ -56,32 +43,33 @@ ___x_cmd_env_use(){
 # Section: unuse
 ___x_cmd_env_unuse(){
     local X_help_cmd='x help -m env unuse';   help:arg-null:parse
-    sphere:parse:option
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-X}"
 
     x:trace env/unuse
-    ___x_cmd_pkg_osarch_
-    local ___X_CMD_ENV___PARSE_PKG
-    local ___X_CMD_ENV___PARSE_VERSION
-    local i;
+    local i; local name=; local version=; local x_=;
     for i in "$@"; do
-        ___x_cmd_env___pasre_pkg_version_unset "$i"
-        [ -n "$___X_CMD_ENV___PARSE_VERSION" ] || return 0
-        env:info "Unuse $___X_CMD_ENV___PARSE_PKG $___X_CMD_ENV___PARSE_VERSION"
+        case "$i" in
+            *=*)    name="${i%%=*}"; version="${i#*=}"      ;;
+            *)      x_=; ___x_cmd_env_use_version_ "$i"
+                    name="$i"; version="$x_"                ;;
+        esac
+        [ -n "$version" ] || {
+            env:warn "Not use $name in current session"
+            return 0
+        }
+        env:info "Unusing $name $version"
 
-        ___x_cmd_pkg___attr         "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" "$___X_CMD_PKG_OSARCH" "sphere_name"                                || return
-        sphere_name="${sphere_name:-"X"}"
-
-        ___x_cmd_pkg_unlink                             "${___X_CMD_ENV___PARSE_PKG}" "$___X_CMD_ENV___PARSE_VERSION"       "$___X_CMD_PKG_OSARCH" "$sphere_name"   || return
-        ___x_cmd_env_unboot                             "${___X_CMD_ENV___PARSE_PKG}=${___X_CMD_ENV___PARSE_VERSION}"
-        ___x_cmd_pkg_safelist   rm                      "${___X_CMD_ENV___PARSE_PKG}" "${___X_CMD_ENV___PARSE_VERSION}"     "$___X_CMD_PKG_OSARCH" "$sphere_name"   || return
-        ___x_cmd_pkg_config     rm      "$sphere_name"  "${___X_CMD_ENV___PARSE_PKG}" "${___X_CMD_ENV___PARSE_VERSION}"
+        ___x_cmd_pkg_sphere_use cancel  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$name" "$version" || return
     done
 
-    # ___x_cmd_pkg_gc
     env:info "Success to unuse $* in this session"
 }
 # EndSection
 
 ___x_cmd_env_use_version_(){
-    x_="$(___x_cmd_env_get_use_version "$@" 2>/dev/null)"
+    ___x_cmd_pkg_sphere_use get_version_ "$@"
 }
+

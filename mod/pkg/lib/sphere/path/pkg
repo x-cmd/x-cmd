@@ -1,0 +1,148 @@
+# shellcheck shell=dash disable=2034
+
+# ___x_cmd_pkg_sphere_path_pkg add --sphere X --osarch <osarch> <pkg name> <version>
+___x_cmd_pkg_sphere_path_pkg(){
+    local op="$1";
+    case "$op" in
+        add|rm)     shift; ___x_cmd_pkg_sphere_path_pkg_"$op" "$@" ;;
+        *)          N=pkg M="sphere path no such option '$op'" log:ret:1 ;;
+    esac
+}
+
+___x_cmd_pkg_sphere_path_pkg_add(){
+    local sphere_name=; local osarch=; local sociality=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sphere)
+                    sphere_name="$2";
+                    [ -n "$sphere_name" ] || M="Provide a sphere name" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --sphereroot)
+                    local ___X_CMD_PKG_ROOT_SPHERE="$2"
+                    [ -n "$___X_CMD_PKG_ROOT_SPHERE" ] || M="Provide sphere root path" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --osarch)
+                    osarch="$2";    shift 2 ;;
+            --sociality)
+                    sociality="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
+
+    pkg:sphere:name-version
+    [ -n "$sociality" ] || {
+        local x_="" >/dev/null 2>&1; ___x_cmd_pkg_sphere_sociality___get_       \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || return
+        sociality="$x_"
+    }
+
+    ___x_cmd_pkg_sphere_path_pkg_add___run || return
+
+    if [ "$sociality" = intrusive ] || [ "$sociality" = dev ]; then
+        pkg:info "Loading boot script file of $name $version"
+        ___x_cmd_pkg_sphere_boot    \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || return
+    fi
+
+    pkg:info "Recording path env of $name $version"
+    ___x_cmd_sdict put ___X_CMD_PKG_SPHERE_PATH_CONFIG "$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$osarch/$name" "$version"
+
+}
+
+___x_cmd_pkg_sphere_path_pkg_add___run(){
+    local x_treename=; ___x_cmd_pkg_treename_ "$name" "$version" "$osarch" || return
+    local tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$name/$version"
+    [ -d "$tgt" ] || N=pkg M="Not found directory $tgt" log:ret:1
+
+    ___x_cmd_pkg_sphere_path_pkg_add___run_inner bin || return
+    ___x_cmd_pkg_sphere_path_pkg_add___run_inner lib || return
+    ___x_cmd_pkg_sphere_path_pkg_add___run_inner man || return
+    pkg:info "Add PATH of $name $version successfully"
+}
+
+___x_cmd_pkg_sphere_path_pkg_add___run_inner(){
+    local op="$1"
+    local path_list="$( ___x_cmd_pkg_sphere_link___list_all_path_dir "$name" "$version" "$osarch" "$tgt" "$op" "$sociality" )"
+    [ -n "$path_list" ] || return 0
+    pkg:info "Trying add path of $name $version $op"
+    local path_dir=;
+    while read -r path_dir; do
+        [ -n "$path_dir" ] || continue
+        ___x_cmd_pkg_sphere_path___unit_add_"${op}" "$path_dir" || return
+    done <<A
+$( printf "%s\n" "$path_list" )
+A
+}
+
+___x_cmd_pkg_sphere_path_pkg_rm(){
+    local sphere_name=; local osarch=; local link_sociality=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sphere)
+                    sphere_name="$2";
+                    [ -n "$sphere_name" ] || M="Provide a sphere name" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --sphereroot)
+                    local ___X_CMD_PKG_ROOT_SPHERE="$2"
+                    [ -n "$___X_CMD_PKG_ROOT_SPHERE" ] || M="Provide sphere root path" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --osarch)
+                    osarch="$2";    shift 2 ;;
+            --sociality)
+                    sociality="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
+    pkg:sphere:name-version
+    [ -n "$sociality" ] || {
+        local x_="" >/dev/null 2>&1; ___x_cmd_pkg_sphere_sociality___get_       \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || return
+        sociality="$x_"
+    }
+    ___x_cmd_pkg_sphere_path_pkg_rm___run || return
+
+    if [ "$sociality" = intrusive ] || [ "$sociality" = dev ]; then
+        pkg:info "Loading unboot script file of $name $version"
+        ___x_cmd_pkg_sphere_unboot  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || return
+    fi
+
+    ___x_cmd_sdict rm ___X_CMD_PKG_SPHERE_PATH_CONFIG "$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$osarch/$name"
+}
+
+
+
+___x_cmd_pkg_sphere_path_pkg_rm___run(){
+    local x_treename=; ___x_cmd_pkg_treename_ "$name" "$version" "$osarch" || return
+    local tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$name/$version"
+    [ -d "$tgt" ] || {
+        pkg:warn "Not found directory $tgt"
+        return 0
+    }
+
+    ___x_cmd_pkg_sphere_path_pkg_rm___run_inner bin || return
+    ___x_cmd_pkg_sphere_path_pkg_rm___run_inner lib || return
+    ___x_cmd_pkg_sphere_path_pkg_rm___run_inner man || return
+    pkg:info "Remove PATH of $name $version successfully"
+}
+
+___x_cmd_pkg_sphere_path_pkg_rm___run_inner(){
+    pkg:info "Trying remove path of $name $version $op"
+    local path_dir=;
+    while read -r path_dir; do
+        [ -n "$path_dir" ] || continue
+        ___x_cmd_pkg_sphere_path___unit_rm_"${op}" "$path_dir" || return
+    done <<A
+$( ___x_cmd_pkg_sphere_link___list_all_path_dir "$name" "$version" "$osarch" "$tgt" "$op" "$sociality" )
+A
+}

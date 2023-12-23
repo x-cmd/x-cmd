@@ -5,45 +5,44 @@
 
 # TODO: Using file caching data
 ___x_cmd_pkg___attr(){
-    local x_=; ___x_cmd_pkg___attr_code_getrc_ "$@" || return
-    . "$x_"
-}
-
-___x_cmd_pkg___attr_code_getrc_(){
     local name="$1";    [ -n "$name" ] || N=pkg M="Provide a package name" log:ret:1
-    local version="${2:-$(___x_cmd_pkg_default_version "$name" "$osarch")}"
+    local version="$2"; [ -n "$version" ] || {
+        local x_=; ___x_cmd_pkg_default_version_ "$name" "$osarch" || return
+        version="$x_"
+    }
     [ -n "$version" ] || N=pkg M="Not found $name version" log:ret:1
     local osarch="$3"
-    [ -n "$osarch" ] || {
-        ___x_cmd_pkg_osarch_ || return
-        osarch="$___X_CMD_PKG_OSARCH"
-    } || N=pkg M="Not found osarch" log:ret:1
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
     local QUERY="$4";   [ -n "$QUERY" ] || N=pkg M="Provide package attr" log:ret:1
 
     local metafp="$___X_CMD_PKG_METADATA_PATH/$name/meta.tt.json"
     local versionfp="$___X_CMD_PKG_METADATA_PATH/$name/version.tt.json"
     local str="$___X_CMD_PKG_METADATA_PATH/$osarch/$___X_CMD_WEBSRC_REGION/$name/$version/${QUERY}"
-    local envfp="${___X_CMD_ROOT_CACHE}/pkg/attr/$str"
+    local envfp="$___X_CMD_ROOT_TMP/pkg/attr$str"
     pkg:debug "attr envfp => $envfp"
-    { [ "$envfp" -nt "$metafp" ] && [ "$envfp" -nt "$versionfp" ]; } || {
-        x ensurefp "$envfp"
-        {
-            ___x_cmd_pkg___all_info "$name" "$version" "$osarch" |
-            LC_ALL="$___X_CMD_AWK_LANGUAGE" command awk \
-                -v QUERY="$QUERY" \
-                -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
-                -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk" \
-                -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
-                -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
-                -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
-                -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk" \
-                -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.attr.awk" \
-                || printf "\n%s\n" "pkg:error \"Not found $name package data\"; false;"
-        } > "$envfp"
-    }
-
+    x depend run "$envfp" -- "$metafp" "$versionfp" -- ___x_cmd_pkg___attr_code_inner "$name" "$version" "$osarch" "$QUERY" "$envfp"
     [ -f "$envfp" ] || return
-    x_="$envfp"
+    . "$envfp"
+}
+
+# TODO: use depend mod
+___x_cmd_pkg___attr_code_inner(){
+    local name="$1";    local version="$2";     local osarch="$3";
+    local QUERY="$4";   local envfp="$5"
+    x ensurefp "$envfp"
+    {
+        ___x_cmd_pkg___all_info "$name" "$version" "$osarch" |
+        LC_ALL="$___X_CMD_AWK_LANGUAGE" ___x_cmd_cmds_awk \
+            -v QUERY="$QUERY" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
+            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
+            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk" \
+            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.attr.awk" \
+            || printf "\n%s\n" "pkg:error \"Not found $name package data\"; false;"
+    } > "$envfp"
 }
 
 # EndSection
@@ -67,7 +66,8 @@ ___x_cmd_pkg___get_script_path(){
 # Section: osarch
 ___x_cmd_pkg_osarch_(){
     if [ -z "$___X_CMD_PKG_OSARCH" ]; then
-        ___X_CMD_PKG_OSARCH="$(___x_cmd_os name)/$(___x_cmd_os arch)" || return 1
+        x os name_ || return 1;     x os arch_ || return 1
+        ___X_CMD_PKG_OSARCH="${___X_CMD_OS_NAME_}/${___X_CMD_OS_ARCH_}"
         [ -n "$___X_CMD_PKG_OSARCH" ] || return 1
     fi
 }
@@ -82,10 +82,7 @@ ___x_cmd_pkg_osarch(){
 # Section: tree name
 ___x_cmd_pkg_treename_(){
     local name="$1";    local version="$2";     local osarch="$3"
-    [ -n "$osarch" ] || {
-        ___x_cmd_pkg_osarch_ || return
-        osarch="$___X_CMD_PKG_OSARCH"
-    } || N=pkg M="Not found osarch" log:ret:1
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
 
     local tree=; ___x_cmd_pkg___attr "$name" "$version" "$osarch" "tree" || return
     ___x_cmd_pkg_treename_get_form_tree_ "$osarch" "$tree"
@@ -99,10 +96,7 @@ ___x_cmd_pkg_treename_get_form_tree_(){
         return
     }
 
-    [ -n "$osarch" ] || {
-        ___x_cmd_pkg_osarch_ || return
-        osarch="$___X_CMD_PKG_OSARCH"
-    } || N=pkg M="Not found osarch" log:ret:1
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
 
     # default
     local os="${osarch%%/*}"
@@ -119,7 +113,7 @@ ___x_cmd_pkg_treename_get_form_tree_(){
 # Section: get raw text from all.7z
 ___x_cmd_pkg_locate(){
     local tgt="${1:?Provide name}"
-    ___x_cmd_pkg_ll_inner | command awk -v FS=/ -v RS="\t" -v tgt="$tgt" '$2==tgt{ TGT=1; print $0 } { if(TGT>0){exit(1)}} END{{exit(0)}}'
+    ___x_cmd_pkg_ll_inner | ___x_cmd_cmds_awk -v FS=/ -v RS="\t" -v tgt="$tgt" '$2==tgt{ TGT=1; print $0 } { if(TGT>0){exit(1)}} END{{exit(0)}}'
 }
 
 # Default, China
@@ -128,12 +122,8 @@ ___x_cmd_pkg___all_info(){
         --non-version) local version_json=--non-version; shift ;;
     esac
     local name="$1";    [ -n "$name" ] || N=pkg M="Provide a package name" log:ret:1
+    local osarch="$3";  [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
     local version="${2:-""}"
-    local osarch="$3"
-    [ -n "$osarch" ] || {
-        ___x_cmd_pkg_osarch_ || return
-        osarch="$___X_CMD_PKG_OSARCH"
-    } || N=pkg M="Not found osarch" log:ret:1
 
     if [ "$name" = "$CUSTOMIZE_PKG_NAME" ]; then
         name="$CUSTOMIZE_PKG_PATH"
@@ -145,11 +135,11 @@ ___x_cmd_pkg___all_info(){
     # pkg:debug --name "$name"  --version "$version" --osarch "$osarch"  --___X_CMD_PKG_METADATA_PATH "$___X_CMD_PKG_METADATA_PATH" --___X_CMD_WEBSRC_REGION "$___X_CMD_WEBSRC_REGION" "all info"
     printf "%s\n%s\n%s\n%s\n%s\n" "$name" "$version" "$osarch" "$___X_CMD_PKG_METADATA_PATH" "$___X_CMD_WEBSRC_REGION"
 
-    cat "$___X_CMD_PKG_METADATA_PATH/$name/meta.tt.json" 2>/dev/null || N=pkg M="Not found $name meta.tt.json" log:ret:1
+    ___x_cmd_cmds_cat "$___X_CMD_PKG_METADATA_PATH/$name/meta.tt.json" 2>/dev/null || N=pkg M="Not found $name meta.tt.json" log:ret:1
     printf "\n"
 
     if [ -z "$version_json" ]; then
-        cat "$___X_CMD_PKG_METADATA_PATH/$name/version.tt.json" 2>/dev/null || N=pkg M="Not found $name version.tt.json" log:ret:1
+        ___x_cmd_cmds_cat "$___X_CMD_PKG_METADATA_PATH/$name/version.tt.json" 2>/dev/null || N=pkg M="Not found $name version.tt.json" log:ret:1
     else
         printf "\n"
     fi
@@ -169,29 +159,38 @@ ___x_cmd_pkg___list(){
         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.list.awk"
 }
 
-
 ___x_cmd_pkg_default_version(){
+    local x_=; ___x_cmd_pkg_default_version_ "$@" || return
+    printf "%s\n" "$x_"
+}
 
-    case "$1" in
-        -h|--help)
-            ___x_cmd_pkg_help default_version
-            return 1
-            ;;
-    esac
+___x_cmd_pkg_default_version_(){
+    local X_help_cmd='x help -m pkg default_version'; help:arg:parse
+    local name="$1";    [ -n "$name" ] || N=pkg M="Provide a package name" log:ret:1
+    local osarch="$2";  [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
 
-    local name="${1}"
-    [ -n "$name" ] || M='Provide a package name' N=pkg log:ret:1
-    local osarch="${2:-$(___x_cmd_pkg_osarch)}"
+    local metafp="$___X_CMD_PKG_METADATA_PATH/$name/meta.tt.json"
+    local versionfp="$___X_CMD_PKG_METADATA_PATH/$name/version.tt.json"
+    local str="$___X_CMD_PKG_METADATA_PATH/$osarch/$name"
+    local envfp="$___X_CMD_ROOT_TMP/pkg/default_version_$str"
+    pkg:debug "default version envfp => $envfp"
+    x depend run "$envfp" -- "$metafp" "$versionfp" -- ___x_cmd_pkg_default_version___inner "$name" "$osarch" "$envfp" || return
+    [ -f "$envfp" ] || return
+    . "$envfp"
+}
 
-    # ___x_cmd_pkg___which_p7zip 86400 || return
-    [ -f "$___X_CMD_PKG_ROOT_PATH/$___X_CMD_PKG_VERSION.tar.gz" ] || ___x_cmd_pkg_update
+___x_cmd_pkg_default_version___inner(){
+    local name="$1";    local osarch="$2";  local envfp="$3"
+
+    ___x_cmd_pkg_update___check || return
+    x ensurefp "$envfp"
     ___x_cmd_pkg___all_info --non-version "$name" "" "$osarch" | LC_ALL="$___X_CMD_AWK_LANGUAGE" ___x_cmd_awk___inner \
         -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
         -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
         -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk" \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.default_version.awk"
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.default_version.awk" > "$envfp"
 }
 
 
@@ -216,23 +215,3 @@ ___x_cmd_pkg___is_support(){
     return 1
 }
 
-___x_cmd_pkg_migrate(){
-    local add_safelist=
-    while [ "$#" -gt 0 ]; do
-        case "$1" in
-            --safelist)
-                    add_safelist=1
-                    shift
-                    ;;
-            *)      break ;;
-        esac
-    done
-
-    sphere:parse:args
-    ___x_cmd_pkg_download "$name" "$version" "$osarch" || return
-    ___x_cmd_pkg_populate "$name" "$version" "$osarch" "$sphere_name" "$___X_CMD_PKG_ROOT_SPHERE" || return
-    [ -z "$add_safelist" ] || ___x_cmd_pkg_safelist add "$name" "$version" "$osarch" "$sphere_name" "$___X_CMD_PKG_ROOT_SPHERE"
-}
-___x_cmd_pkg_install(){
-    ___x_cmd_pkg_migrate "$@"
-}

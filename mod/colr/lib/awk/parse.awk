@@ -46,6 +46,11 @@ function pcolorline( i ){
 
     RGBSET = "\033[48;2;" r[i] ";" g[i] ";" b[i] "m"
     printf("%s", RGBSET)
+    printf("%10s", "#" hex[i])
+    printf("  %s  ", UI_RESET)
+
+    RGBSET = "\033[48;2;" r[i] ";" g[i] ";" b[i] "m"
+    printf("%s", RGBSET)
     printf("%20s", rgb[i])
     printf("  %s  ", UI_RESET)
 

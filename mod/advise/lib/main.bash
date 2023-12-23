@@ -57,6 +57,6 @@ ___x_cmd_advise_run___compgen_wordlist(){
         [ -z "$candidate_prefix" ] || i="${candidate_prefix}${i}"
         printf "%s\n" "${i}"
         maxitem=$(( maxitem - 1 ))
-    done | uniq 2>/dev/null
+    done | command uniq 2>/dev/null
 }
 

@@ -5,7 +5,7 @@
 main(){
     local cmd
     while true; do
-        cmd="$(cat "${fifo}")"
+        cmd="$(___x_cmd_cmds_cat "${fifo}")"
         local code=$?
         case "$code" in
             0)         ;;

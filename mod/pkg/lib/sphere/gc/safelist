@@ -1,0 +1,144 @@
+# shellcheck shell=dash
+# list is a diretory
+# 1. to avoid conflicts
+# 2. suitable performance for all
+
+# ___x_cmd_pkg_sphere_safelist add --sphere X --osarch osarch <pkg name>=<version>
+
+___x_cmd_pkg_sphere_safelist(){
+    local op="$1"
+    case "$op" in
+        ls|exist|rm|add|isempty|rm_all)
+            shift; ___x_cmd_pkg_sphere_safelist___"$op" "$@"  ;;
+        *)  N=pkg M="sphere safelist no such option '$op'" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_pkg_sphere_safelist___add(){
+    local sphere_name=; local osarch=; local reason=;
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sphere)
+                    sphere_name="$2";
+                    [ -n "$sphere_name" ] || M="Provide a sphere name" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --sphereroot)
+                    local ___X_CMD_PKG_ROOT_SPHERE="$2"
+                    [ -n "$___X_CMD_PKG_ROOT_SPHERE" ] || M="Provide sphere root path" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --osarch)
+                    osarch="$2"; shift 2 ;;
+            --reason)
+                    reason="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    sphere_name="${sphere_name:-"X"}"
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
+    local safelist_rootpath="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/safelist";
+    local name=; local version=; local file=;
+    while [ $# -gt 0 ]; do
+        ___x_cmd_pkg_sphere_safelist___parse_arg "$1" || return
+        shift
+        pkg:debug "Safelist adding $osarch $name $version"
+        file="$safelist_rootpath/$osarch/${name}_${version}/X"
+        x ensurefp "$file"
+        printf "%s\n" "$reason" >> "$file"
+    done
+}
+
+___x_cmd_pkg_sphere_safelist___rm(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+
+    local safelist_rootpath="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/safelist"
+    local name=; local version=; local fp=
+    [ -d "$safelist_rootpath" ] || return 0
+    [ "$#" -gt 0 ] || {
+        pkg:warn "Provide the pkg safelist to be deleted, <pkg-name>=<version>"
+        return 1
+    }
+
+    while [ $# -gt 0 ]; do
+        ___x_cmd_pkg_sphere_safelist___parse_arg "$1" || return
+        shift
+        fp="$safelist_rootpath/$osarch/${name}_${version}";
+        pkg:debug "Safelist removing $osarch $name $version"
+        [ -e "$fp" ] || continue
+        x rmrf "$fp"
+    done
+}
+
+___x_cmd_pkg_sphere_safelist___exist(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+    local safelist_rootpath="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/safelist"
+    local name=; local version=; local file=
+    while [ $# -gt 0 ]; do
+        ___x_cmd_pkg_sphere_safelist___parse_arg "$1" || return
+        shift
+        file="$safelist_rootpath/$osarch/${name}_${version}/X";
+        [ -f "$file" ] || return 1
+    done
+}
+
+___x_cmd_pkg_sphere_safelist___ls(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+    if ! ___x_cmd_is_interactive || [ ! -t 1 ]; then
+        ___x_cmd_pkg_sphere_safelist___ls_inner
+    else
+        x ui cyan "The safelist:"
+        printf "\n"
+        ___x_cmd_pkg_sphere_safelist___ls_inner | while read -r l; do
+            osarch="${l%/*}"
+            l="${l#"$osarch"/}"
+            name="${l%%_*}"
+            version="${l#*_}"
+            printf "%s\n" "${name}=${version}=${osarch}"
+        done | ___x_cmd_pkg_ls___show_info "="
+    fi
+}
+
+___x_cmd_pkg_sphere_safelist___ls_inner()(
+    local dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/safelist"
+    local i; local osarch=; local name=; local version=;
+    [ -d "$dir" ] || return 0
+    ___x_cmd_inner_cd "$dir" 2>/dev/null || return
+    for i in */*/*; do
+        [ -d "$i" ] || continue
+        [ -f "$i/X" ] || continue
+        printf "%s\n" "$i"
+    done
+)
+
+___x_cmd_pkg_sphere_safelist___isempty(){
+    [ -z "$(___x_cmd_pkg_sphere_safelist___ls "$@")" ]
+}
+
+___x_cmd_pkg_sphere_safelist___rm_all(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+
+    pkg:info "Trying clear out safelist"
+    local safelist_rootpath="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/safelist"
+    local name=; local version=; local fp=
+
+    ___x_cmd_pkg_sphere_safelist___ls --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+        | while read -r l; do
+        fp="$safelist_rootpath/$l"
+        pkg:debug "Safelist removing $fp"
+        [ -e "$fp" ] || continue
+        x rmrf "$fp"
+    done
+}
+
+___x_cmd_pkg_sphere_safelist___parse_arg(){
+    case "$1" in
+        *=*)    name="${1%%=*}"; version="${1#*=}" ;;
+        *)      pkg:error "safelist expect '<pkg>=<version>' but get '$1'"; return 1 ;;
+    esac
+}
+

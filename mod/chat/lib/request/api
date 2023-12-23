@@ -1,0 +1,66 @@
+
+# 1000 => cluster into a xz file
+___x_cmd_chat_request___api(){(
+    local cur_ai="$1"
+    local output="$2"
+    local type="$3"
+    local message="$4"     # Shoud be a quoted json string
+    shift 4
+    local IFS=" ";  local current_message="$*"
+    local filepath; filepath="${___X_CMD_CHAT_SESSION_DIR}/${cur_ai}/$(x pidid vlseqid ___X_CMD_CHAT_REC).jso"
+
+    x rmrf "$output"    # Using
+    mkfifo "$output"
+    (
+        # shellcheck disable=SC3044
+        [ -z "$BASH_VERSION" ] || shopt -s expand_aliases
+        x ensurefp "$filepath"
+        chat:debug "Sending request $output => $message"
+        local resp=""; resp="$(___x_cmd_chat_request___api_ "$cur_ai" "$message" | tee "$output" | x "$cur_ai" handler get_response )" || return
+        chat:debug "Saving => $filepath"
+
+        # TODO: Use pure json instead of yml.
+        {
+            printf "%s\n" '{
+                type: "'"$type"'",
+                current_message: '"${current_message:-"\"\""}"',
+                message: '"${message:-"\"\""}"',
+                response: '"${resp:-"\"\""}"'
+            }' | x jo n
+        } >>"$filepath"
+
+        x rmrf "$output"
+    ) &
+)}
+
+# Using chatgpt api
+# ref: https://platform.openai.com/docs/api-reference/chat/create
+___x_cmd_chat_request___api_(){
+    local cur_ai="$1"
+    local message="$2"
+    case "$cur_ai" in
+        openai)
+            local proxy=;   ___x_cmd_chat_cur proxy:= 2>/dev/null
+            x openai --request \
+                ${proxy:+"--proxy"} ${proxy:+"$proxy"}  \
+                --message "$message"
+            ;;
+        zhipu)
+            x zhipu --request --message "$message"
+            ;;
+
+        gemini)
+
+            ;;
+    esac
+}
+
+___x_cmd_chat_request___apiv2(){
+    local cur_provider
+    ___x_cmd_chat_cur cur_provider:=provider 2>/dev/null
+    [ -z "$cur_provider" ] || cur_provider=gemini
+
+    # gemini openai
+    x "$cur_provider" chat request  "$@"
+}
+

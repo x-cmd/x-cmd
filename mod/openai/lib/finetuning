@@ -1,6 +1,105 @@
+# shellcheck shell=dash
 # https://platform.openai.com/docs/guides/fine-tuning
 
+
 ___x_cmd_openai_finetuning(){
-    :
+    param:scope     ___x_cmd_openai
+    param:subcmd    ___x_cmd_openai_finetuning                       \
+        ls                "List organization fine-tuning jobs"      \
+        create            "Creates an embedding vector representing the input text" \
+        retrieve          "Get info about a fine-tuning job"    \
+        cancel            "Immediately cancel a fine-tuning job"  \
+        event             "List fine-tuning events"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_openai_finetuning _param_help_doc
+    return 1
 }
 
+___x_cmd_openai_finetuning_create(){
+    param:scope     ___x_cmd_openai
+    param:dsl       '
+options:
+    --model                         "ID of the model to use"                                                               <>:String
+    --training_file                 "Input text to embed, encoded as a string or array of tokens"                          <>:String
+    --suffix                        "A string of up to 18 characters that will be added to your fine-tuned model name"     <>=""
+    --validation_file               "The ID of an uploaded file that contains validation data"                             <>=""
+    --n_epochs                      "The number of epochs to train the model for"                                          <>=""
+    --batch_size                    "Number of examples in each batch"                                                     <>=""
+    --learning_rate_multiplier      "Scaling factor for the learning rate"                                                 <>=""
+'
+    param:run
+
+    local hyperparameters
+    hyperparameters=$(x jo "{
+        ${n_epochs+"n_epochs:$n_epochs"},
+        ${batch_size+"batch_size:$batch_size"},
+        ${learning_rate_multiplier+"learning_rate_multiplier:$learning_rate_multiplier"},
+    }")
+    local gen_openai_json="";   gen_openai_json="$(param:option2json +hyperparameters -n_epochs -batch_size -learning_rate_multiplier)"
+    openai:debug  --data "$gen_openai_json"
+
+    local api_key;              api_key="$(x openai --cfg get apikey)"
+    x curl \
+        -H "Authorization: Bearer $api_key"   \
+        -H "Content-Type: application/json"   \
+        -d "$gen_openai_json"                 \
+        https://api.openai.com/v1/fine_tuning/jobs
+}
+
+___x_cmd_openai_finetuning_ls(){
+    param:scope     ___x_cmd_openai
+    param:dsl       '
+options:
+    --limit        "Number of fine-tuning jobs to retrieve"                               <>:Number="20"
+    --after        "Identifier for the last job from the previous pagination request"     <>=""
+'
+    param:run
+    ___x_cmd_openai_curl get /fine_tuning/jobs limit after
+}
+
+___x_cmd_openai_finetuning_retrieve(){
+    param:scope     ___x_cmd_openai
+    param:dsl       '
+options:
+    #1          "The ID of the fine-tuning job"         <>
+'
+    param:run
+
+    local api_key;              api_key="$(x openai --cfg get apikey)"
+    x curl \
+        -H "Authorization: Bearer $api_key"   \
+        https://api.openai.com/v1/fine_tuning/jobs/"$1"
+}
+
+___x_cmd_openai_finetuning_cancel(){
+    param:scope     ___x_cmd_openai
+    param:dsl       '
+options:
+    #1          "The ID of the fine-tuning job"         <>
+'
+    param:run
+
+    local api_key;              api_key="$(x openai --cfg get apikey)"
+    x curl \
+        -H "Authorization: Bearer $api_key"   \
+        https://api.openai.com/v1/fine_tuning/jobs/"$1"/cancel
+}
+
+___x_cmd_openai_finetuning_event(){
+    param:scope     ___x_cmd_openai
+    param:dsl       '
+options:
+    #1             "The ID of the fine-tuning job"                                        <>
+    --limit        "Number of fine-tuning jobs to retrieve"                               <>=""
+    --after        "Identifier for the last job from the previous pagination request"     <>=""
+'
+    param:run
+
+    local api_key;              api_key="$(x openai --cfg get apikey)"
+    x curl \
+        -H "Authorization: Bearer $api_key"   \
+        https://api.openai.com/v1/fine_tuning/jobs/"$1"/events
+}

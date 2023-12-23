@@ -5,7 +5,7 @@
 # TODO: Maybe using a P2P share connection for mirror downloading.
 ___x_cmd_pkg_download(){
     x:trace pkg/download
-    local X_help_cmd='___x_cmd_pkg_help download';   help:arg-null:parse
+    local X_help_cmd='x help -m pkg download';   help:arg-null:parse
 
     case "$1" in
         */*)
@@ -13,49 +13,24 @@ ___x_cmd_pkg_download(){
             return
             ;;
     esac
-    ___x_cmd_pkg_prepare "$@" || return
-    ___x_cmd_pkg___download "$@"
+    ___x_cmd_pkg_download___inner "$@"
 }
 
 
-___x_cmd_pkg___download(){
-
-    local name="${1}"
-    [ -n "$name" ] || M='Provide a package name' N=pkg log:ret:1
-    local osarch="${3:-$(___x_cmd_pkg_osarch)}"
-    local version="${2:-$(___x_cmd_pkg_default_version "$name" "$osarch")}" || return
+___x_cmd_pkg_download___inner(){
+    local name="$1";    [ -n "$name" ] || N=pkg M="Provide a package name" log:ret:1
+    local osarch="$3";  [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
+    local version="$2"; [ -n "$version" ] || {
+        local x_=; ___x_cmd_pkg_default_version_ "$name" "$osarch";
+        version="$x_";
+    }
     [ -n "$version" ] || {
         pkg:warn "Not found candidate => $name"
         pkg:warn "Please use 'x pkg update' and 'x pkg ll' to check available candidate"
         return 1
     }
 
-    local download_file_ext=; local md5= ; local sha1= ; local sha256=; local sha512=;
-    local unpack=; local npm=; local npmurl_cn=; local npmurl_internet=; local url_cn=; local url_internet=
-    ___x_cmd_pkg___attr "$name" "$version" "$osarch" "md5,sha1,sha256,sha512,download_file_ext,unpack,npm,url.${___X_CMD_WEBSRC_REGION:-internet},npmurl.${___X_CMD_WEBSRC_REGION:-internet}" || return
-    [ -n "$unpack" ] || {
-        pkg:debug "Skip download"
-        return 0
-    }
-    local os="${osarch%/*}";  local arch="${osarch#*/}"
-    if [ "$unpack" = "none" ] && [ -z "$download_file_ext" ]; then
-        local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$name.${os}.${arch}"
-    else
-        if [ "$___X_CMD_WEBSRC_REGION" = "cn" ] && [ "$npm" = "yes" ];then
-            local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}_${os}_${arch}.tgz"
-        else
-            local ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}_${os}_${arch}.$download_file_ext"
-        fi
-    fi
-
-
-    x mkdirp "$___X_CMD_PKG_DOWNLOAD_PATH/$name" || {
-        pkg:error "Create $___X_CMD_PKG_DOWNLOAD_PATH/$name failed" ; return 1
-    }
-
-    ( x fslock run "pkg_download_${name}_${version}_${os}_${arch}" ___x_cmd_pkg_download___inner_ "$name" "$version" "$osarch" "$ball" )
-
-    [ -f "$ball" ]
+    x fslock run "pkg_${name}_${version}_${osarch}" ___x_cmd_pkg_download___inner_ "$name" "$version" "$osarch"
 }
 
 # ___X_CMD_PKG_DOWNLOAD_SOURCE=
@@ -65,15 +40,34 @@ ___x_cmd_pkg___download(){
 # npm
 
 ___x_cmd_pkg_download___inner_(){
-    pkg:debug --Download name "$name" --version "$version" --ball "$ball"
+    local name="$1";    local version="$2";     local osarch="$3"
+    local download_file_ext=; local md5= ; local sha1= ; local sha256=; local sha512=;
+    local unpack=; local npm=; local npmurl_cn=; local npmurl_internet=; local url_cn=; local url_internet=
+    ___x_cmd_pkg___attr "$name" "$version" "$osarch" "md5,sha1,sha256,sha512,download_file_ext,unpack,npm,url.${___X_CMD_WEBSRC_REGION:-internet},npmurl.${___X_CMD_WEBSRC_REGION:-internet}" || return
+    [ -n "$unpack" ] || {
+        pkg:debug "Skip download"
+        return 0
+    }
+    local os="${osarch%/*}";  local arch="${osarch#*/}"; local ball
+    if [ "$unpack" = "none" ] && [ -z "$download_file_ext" ]; then
+        ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/$name.${os}.${arch}"
+    else
+        ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}_${os}_${arch}.$download_file_ext"
+    fi
+
+
+    x mkdirp "$___X_CMD_PKG_DOWNLOAD_PATH/$name" || {
+        pkg:error "Create $___X_CMD_PKG_DOWNLOAD_PATH/$name failed" ; return 1
+    }
+
+    pkg:info "Trying download ==> '$name $version'"
     if [ -f "$ball" ]; then
         if ___x_cmd_pkg_download___check_hashsum "$ball" "$md5" "$sha1" "$sha256" "$sha512"; then
-            pkg:info "File already downloaded: $ball"
+            pkg:info "File already downloaded => $ball"
             return 0
         fi
 
-        pkg:warn "File corrupted. Download the $ball again."
-        x rmrf "$ball"
+        pkg:warn "Download the $ball again"
     fi
 
     local url_strategy=npm
@@ -89,6 +83,7 @@ ___x_cmd_pkg_download___inner_(){
 
     local url=
     if [ "$url_strategy" = npm ] && [ "$npm" = yes ]; then
+        ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}_${os}_${arch}.tgz"
         eval url="\$npmurl_${___X_CMD_WEBSRC_REGION:-internet}"
     else
         eval url="\$url_${___X_CMD_WEBSRC_REGION:-internet}"
@@ -105,13 +100,13 @@ ___x_cmd_pkg_download___inner_(){
         --url "$url" --destination "$ball" --name "$name" --version "$version"
 
     x curl -I "$url" | {
-        trap 'x pkg remove $name $version 2>/dev/null; printf "\r\n";  pkg:error "Download interrupted"; return 1 || exit 1;' INT
+        trap 'printf "\r\n"; pkg:error "Download interrupted"; ___x_cmd_pkg_sphere_gc_remove___ball $name $version $osarch; return 130;' INT
         read -r head;
         head="${head#* }"; head="${head%% *}"
         case "$head" in
             2??|3??)
                 if ! x curl --progress-bar --location --retry-max-time 10 --retry 0 "$url" --output "$ball"; then
-                    pkg:warn "Fail to download from $url"
+                    pkg:error "Fail to download from $url"
                     x rmrf "$ball"
                     return 1
                 fi
@@ -122,21 +117,18 @@ ___x_cmd_pkg_download___inner_(){
                 return 1
                 ;;
         esac
-    }
+    } || return
 
     if [ "$url_strategy" = npm ] && [ "$npm" = yes ]; then
         local npm_package="$___X_CMD_PKG_DOWNLOAD_PATH/$name/package"
         x uz "$ball"  "$___X_CMD_PKG_DOWNLOAD_PATH/$name" || M='Unzip npm package failed' N=pkg log:ret:1
-        x mv "$npm_package/bin/"* "$___X_CMD_PKG_DOWNLOAD_PATH/$name/" ||  M='Move npm package failed' N=pkg log:ret:1
+        local x_=; x fsiter --file01_ "$npm_package/dist" || return
+        x mv "$npm_package/dist/$x_" "$___X_CMD_PKG_DOWNLOAD_PATH/$name" ||  M='Move npm package failed' N=pkg log:ret:1
         x rmrf "$ball" "$npm_package" || M='Remove npm package failed' N=pkg log:ret:1
         ball="$___X_CMD_PKG_DOWNLOAD_PATH/$name/${version}_${os}_${arch}.$download_file_ext"
     fi
 
-    ! ___x_cmd_pkg_download___check_hashsum "$ball" "$md5" "$sha1" "$sha256" "$sha512" || return 0
-    pkg:error "File corrupted."
-    x rmrf "$ball"
-    return 1
-
+    ___x_cmd_pkg_download___check_hashsum "$ball" "$md5" "$sha1" "$sha256" "$sha512"
 }
 
 ___x_cmd_pkg_download___check_hashsum(){
@@ -149,31 +141,40 @@ ___x_cmd_pkg_download___check_hashsum(){
     [ -z "$5" ]  ||   sha="$(___x_cmd_sha512    "$filepath")"
 
     [ "$sha" = "$2$3$4$5" ]  ||  {
-        pkg:warn "Except: " "$2$3$4$5"  " equal to "  "${sha%% *}"
+        pkg:warn "Except: [$2$3$4$5] equal to [${sha%% *}]"
+        pkg:error "File corrupted"
+        x rmrf "$filepath"
         return 1
     }
     return 0
 }
 
 
+# <name> <version>
+# <yml dir path> <name> <version>
 ___x_cmd_pkg___appoint(){
-    local yml_file="${1}"
-    [ -n "$yml_file" ] || M='Provide a folder path' N=pkg log:ret:1
-    local meta_input="$yml_file/meta.yml"; local meta_output="$yml_file/meta.tt.json"
-    local version_intput="$yml_file/version.yml"; local version_output="$yml_file/version.tt.json"
-    local name="${yml_file##*/}"
-    local CUSTOMIZE_PKG_PATH
-    local CUSTOMIZE_PKG_NAME
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
 
-    CUSTOMIZE_PKG_NAME="$name"
-    CUSTOMIZE_PKG_PATH="tmp/$name"
+    local yml_dir="${1}"
+    [ -d "$yml_dir" ] || M='Provide a folder path' N=pkg log:ret:1
+    local meta_input="$yml_dir/meta.yml";           local meta_output="$yml_dir/meta.tt.json"
+    local version_intput="$yml_dir/version.yml";    local version_output="$yml_dir/version.tt.json"
+    local name="${yml_dir##*/}"
+    local CUSTOMIZE_PKG_NAME="$name"
+    local CUSTOMIZE_PKG_PATH="tmp/$name"
 
-    x ccmd --convert "$meta_input" "$meta_output" eval  "___x_cmd_pkg___appoint_handle_data \"\$meta_input\" \"\$meta_output\""
-    x ccmd --convert "$version_intput" "$version_output" eval  "___x_cmd_pkg___appoint_handle_data \"\$version_intput\" \"\$version_output\""
+    x ccmd --convert "$meta_input" "$meta_output"           eval "___x_cmd_pkg___appoint_handle_data \"\$meta_input\" \"\$meta_output\""
+    x ccmd --convert "$version_intput" "$version_output"    eval "___x_cmd_pkg___appoint_handle_data \"\$version_intput\" \"\$version_output\""
 
-    ___x_cmd_pkg___tmp_move "$yml_file" "$meta_output" "$version_output"
+    ___x_cmd_pkg___tmp_move "$yml_dir" "$meta_output" "$version_output"
+    # Use add
+    ___x_cmd_pkg_sphere_add --prebuild --protection use --reason "use,appoint"      \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+        --osarch "$osarch" "$name" "$version"
+
     ___x_cmd_pkg___download "$name" || return
-    ___x_cmd_pkg_populate "$name" || return
+    ___x_cmd_pkg_sphere_populate_run "$name" || return
     pkg:info "Download and populate $name successfully"
 }
 
@@ -191,8 +192,8 @@ ___x_cmd_pkg___appoint_handle_data(){
 
 
 ___x_cmd_pkg___tmp_move(){
-    local yml_file="$1"
-    local name="${yml_file##*/}"
+    local yml_dir="$1"
+    local name="${yml_dir##*/}"
     local meta_j_path="$2"
     local version_j_path="$3"
     x mkdirp "$___X_CMD_PKG_METADATA_PATH/tmp/$name"
@@ -200,7 +201,7 @@ ___x_cmd_pkg___tmp_move(){
     x cp "$version_j_path" "$___X_CMD_PKG_METADATA_PATH/tmp/$name"
 
     x mkdirp "$___X_CMD_PKG_METADATA_PATH/tmp/$name/.x-cmd"
-    ! [ -d "$yml_file/.x-cmd" ] || x cp "$yml_file/.x-cmd/"* "$___X_CMD_PKG_METADATA_PATH/tmp/$name/.x-cmd"
+    ! [ -d "$yml_dir/.x-cmd" ] || x cp "$yml_dir/.x-cmd/"* "$___X_CMD_PKG_METADATA_PATH/tmp/$name/.x-cmd"
     x rmrf "$meta_j_path" "$version_j_path"
 
 }

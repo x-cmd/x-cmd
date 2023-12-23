@@ -18,6 +18,7 @@ BEGIN{
     carr[3] = regulate(carr[3])
 
     printf("rgb: %s %s %s\n", carr[1], carr[2], carr[3])
+    printf("hex: #%02x%02x%02x\n", carr[1], carr[2], carr[3])
 }
 
 function dist(a, b, c,      e ) {

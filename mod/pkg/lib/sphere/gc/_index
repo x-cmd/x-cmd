@@ -1,0 +1,99 @@
+# shellcheck    shell=dash
+
+xrc:mod:lib pkg     sphere/gc/recycle   sphere/gc/remove    sphere/gc/safelist
+
+___x_cmd_pkg_sphere_gc(){
+    [ "$#" -gt 0 ] || set -- --app
+    local op="$1"; shift
+    case "$op" in
+        safelist)   ___x_cmd_pkg_sphere_gc_safelist "$@" ;;
+        run)        ___x_cmd_pkg_sphere_gc_run "$@" ;;
+        -h|--help)  x help -m pkg gc ;;
+        *)          N=pkg M="sphere gc not such option '$op'" log:ret:64
+    esac
+}
+
+___x_cmd_pkg_sphere_gc_safelist(){
+    [ "$#" -gt 0 ] || set -- -h
+    local op="$1"; shift
+    case "$op" in
+        add)
+            ___x_cmd_pkg_sphere_safelist add --reason "use,gc-safelist" "$@"
+            ;;
+        ls|exist|rm)
+            ___x_cmd_pkg_sphere_safelist "$op" "$@"
+            ;;
+        *)  N=pkg M="gc safelist not such option '$op'" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_pkg_sphere_gc_exist(){
+    pkg:sphere:parse:option
+    local gcdir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/gc"
+    [ -d "$gcdir" ] || return 1
+    ! x fsiter --dirempty "$gcdir"
+}
+
+___x_cmd_pkg_sphere_gc_run(){(
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+    case "$1" in
+        --safelist-rm)  shift; ___x_cmd_pkg_sphere_safelist rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$@" || return ;;
+        --safelist-add) shift; ___x_cmd_pkg_sphere_safelist add --reason "use,gc-run-add" --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$@" || return ;;
+    esac
+
+    pkg:info "Trying gc"
+    local x_=; ___x_cmd_pidofsubshell_
+    local gcfp="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/gc/Start.${x_}"
+    trap 'x rmrf '"$gcfp"';' EXIT
+    x ensurefp "$gcfp"; printf "%s\n" "" > "$gcfp"
+    sleep 1
+
+    # TODO:
+    # Interactive clear out safelist
+    # if ___x_cmd_is_interactive_tty && [ -t 1 ]; then
+    #     if ! ___x_cmd_pkg_sphere_safelist isempty   \
+    #         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+    #         && ___x_cmd_pkg_sphere_safelist ls      \
+    #         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+    #         && x ui yesno "Whether to recycle the pkg recorded on the safelist"; then
+
+    #         ___x_cmd_pkg_sphere_safelist rm_all     \
+    #         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"
+    #     fi
+    # fi
+
+    ___x_cmd_pkg_sphere_gc_run___inner "$gcfp"
+)}
+
+# TODO: A = ALL packages
+# TODO: B = islink + safelist + DEPEENCYLIST
+# TODO: C = candidates = A - B
+___x_cmd_pkg_sphere_gc_run___inner(){
+    local gcfp="$1"
+    local gc_loop_continue=1; local l=; local name=; local version=;
+    while [ -n "$gc_loop_continue" ]; do
+        gc_loop_continue=
+
+        while read -r l; do
+            [ -n "$l" ] || continue
+            name="${l%%/*}"
+            version="${l#*/}"
+
+            ___x_cmd_pkg_sphere_gc_recycle \
+                --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+                --osarch "$osarch" "$name" "$version" || continue
+
+            pkg:info "gc ==> trying to remove $name $version"
+            ___x_cmd_pkg_sphere_gc_remove___silent \
+                --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+                --osarch "$osarch" "$name" "$version" "$gcfp" || {
+                pkg:warn "gc ==> failed to remove $name $version"
+                continue
+            }
+            gc_loop_continue=1
+        done <<A
+$(___x_cmd_pkg_ls_installed)
+A
+    done
+}

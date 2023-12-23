@@ -7,60 +7,63 @@ ___x_cmd_pkg_ls(){
         A|all)          shift;  ___x_cmd_pkg_ls_all "$@" ;;
         xbin)           shift;  ___x_cmd_pkg_ls_xbin "$@" ;;
         i|install)      shift;  ___x_cmd_pkg_ls_installed  "$@"   ;;
-        -h|--help)      M='pkg ls ' help:ret:0  ;;
+        -h|--help)      x help -m pkg ls ;;
         *)              ___x_cmd_pkg_ls_installed "$@" ;;
     esac
 }
 
 ___x_cmd_pkg_ls_downloaded(){
-    local X_help_cmd='___x_cmd_pkg_help ls d'
-    help:arg:parse
+    local X_help_cmd='x help -m pkg ls downloaded';  help:arg:parse
     [ -d "$___X_CMD_PKG_DOWNLOAD_PATH" ] || return 0
-    [ "$(x ls "$___X_CMD_PKG_DOWNLOAD_PATH" | wc -l )" -gt 0 ] || return 0
-
     if [ "$#" -gt 0 ]; then
         [ -d "$___X_CMD_PKG_DOWNLOAD_PATH/$1" ] || {
             pkg:error "Not found $1 in your download path"
             return 1
         }
-        x ls "$___X_CMD_PKG_DOWNLOAD_PATH/$1"
+        x fsiter "$___X_CMD_PKG_DOWNLOAD_PATH/$1"
     else
-        x ls "$___X_CMD_PKG_DOWNLOAD_PATH"
+        x fsiter "$___X_CMD_PKG_DOWNLOAD_PATH"
     fi
 }
 
 
 ___x_cmd_pkg_ls_xbin(){
-    local X_help_cmd='___x_cmd_pkg_help ls xbin'
-    help:arg:parse
-    <"$___X_CMD_PKG_METADATA_PATH/binmod.txt" awk -v FS=":" '{ if($2 != ""){ print $2 }}'
+    local X_help_cmd='x help -m pkg ls xbin';   help:arg:parse
+    <"$___X_CMD_PKG_METADATA_PATH/binmod.txt" ___x_cmd_cmds_awk -v FS=":" '{ if($2 != ""){ print $2 }}'
 }
 
 # Invoked pkg ls installed
 # TODO: efficiency defect
 ___x_cmd_pkg_ls_installed(){
-    if ! ___x_cmd_is_interactive; then
+    if ! ___x_cmd_is_interactive || [ ! -t 1 ]; then
         ___x_cmd_pkg_ls___installed_inner
     else
         ___x_cmd_pkg_osarch_
         local locate_list; locate_list="$(___x_cmd_pkg_ll_inner)"
-        ___x_cmd_pkg_ls___installed_inner | LC_ALL="$___X_CMD_AWK_LANGUAGE_UTF8" \
-            command awk -v FS="/" \
-            -v OSARCH="$___X_CMD_PKG_OSARCH" \
-            -v LOCAL_LIST="$locate_list" \
-            -v PKG_RAWPATH="$___X_CMD_PKG_METADATA_PATH" \
-            -v TH_THEME_COLOR="\\033[${___X_CMD_THEME_COLOR_CODE}m" \
-            -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
-            -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"  \
-            -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
-            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
-            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.ls.awk"
+        ___x_cmd_pkg_ls___installed_inner | ___x_cmd_pkg_ls___show_info "/"
     fi
+}
+
+___x_cmd_pkg_ls___show_info(){
+    local _FS="${1:-"/"}"
+    ___x_cmd_pkg_osarch_
+    local locate_list; locate_list="$(___x_cmd_pkg_ll_inner)"
+    LC_ALL="$___X_CMD_AWK_LANGUAGE_UTF8" \
+    ___x_cmd_cmds_awk -v FS="$_FS" \
+        -v OSARCH="$___X_CMD_PKG_OSARCH" \
+        -v LOCAL_LIST="$locate_list" \
+        -v PKG_RAWPATH="$___X_CMD_PKG_METADATA_PATH" \
+        -v TH_THEME_COLOR="\\033[${___X_CMD_THEME_COLOR_CODE}m" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"  \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.ls.awk"
 }
 
 ___x_cmd_pkg_ls___installed_inner(){
     (
-        cd "${___X_CMD_PKG_ROOT_SPHERE}" || return 1
+        ___x_cmd_inner_cd "${___X_CMD_PKG_ROOT_SPHERE}" || return 1
         local i; for i in */*/*/*; do
             { [ "$i" != "${i#*"/tree."}" ] && [ -d "$i" ]; } || continue
             printf "%s\n" "${i#*/*/}"
@@ -69,8 +72,7 @@ ___x_cmd_pkg_ls___installed_inner(){
 }
 
 ___x_cmd_pkg_ls_all(){
-    local X_help_cmd='___x_cmd_pkg_help ls all'
-    help:arg:parse
+    local X_help_cmd='x help -m pkg ls all';    help:arg:parse
 
     if ! [ -d "$___X_CMD_PKG_METADATA_PATH" ]; then return 0; fi
     local pkg_name="${1}"
@@ -93,7 +95,7 @@ ___x_cmd_pkg_ls_all(){
 }
 
 ___x_cmd_pkg_ls___all_candidate()(
-    x cd "$___X_CMD_PKG_METADATA_PATH" || {
+    ___x_cmd_inner_cd "$___X_CMD_PKG_METADATA_PATH" 2>/dev/null || {
         pkg:error Can not found dir: "$___X_CMD_PKG_METADATA_PATH"
         return 1
     }
@@ -101,7 +103,7 @@ ___x_cmd_pkg_ls___all_candidate()(
         case "$dir" in
             binmod*)   continue ;;
         esac
-        x cd "$___X_CMD_PKG_METADATA_PATH/$dir" || continue
+        ___x_cmd_inner_cd "$___X_CMD_PKG_METADATA_PATH/$dir" 2>/dev/null || continue
         for candidate in *; do
             case "$candidate" in
                 bash-preexec) continue ;;

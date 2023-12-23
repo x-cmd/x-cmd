@@ -5,8 +5,8 @@ function handle( varname, param,    t ){
     return param sprintf("${%s+%s}", varname, t )
 }
 
-{
-    argl = str_split($0, arg, "\001")
+BEGIN{
+    argl = str_split(ENVIRON[ "data" ], arg, "\001")
 
     # code = data = ""
     for (i=1; i<=argl; ++i) {
@@ -56,7 +56,7 @@ function handle( varname, param,    t ){
         if ( arg[i] != "") code = code " -d " "\"$" arg[i] "\""
     }
 
+    print code ;
 }
-END{ print code ; }
 
 

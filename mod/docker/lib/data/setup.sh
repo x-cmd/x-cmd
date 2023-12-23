@@ -26,7 +26,7 @@ ___x_cmd_docker_setup___set_startup_inner(){
     local X_STR='if [ -f "$HOME/.x-cmd.root/X" ]; then . "$HOME/.x-cmd.root/X"; else eval "$(x init)"; fi'
     x log :x info "Setting startup in $file"
     [ ! -f "$file" ] || {
-        ! grep -F "$X_STR" "$file" >/dev/null || return 0
+        ! command grep -F "$X_STR" "$file" >/dev/null || return 0
         command cp "$file" "$file.origin"
     }
     printf "\n%s\n" "$X_STR" >> "$file"
@@ -79,8 +79,8 @@ ___x_cmd_os_arch_() {
     # If running a 64bit ARM kernel but a 32bit ARM userland, change ARCH to 32bit ARM (armv7l)
     if [ "$___X_CMD_OS_NAME_" = "Linux" ] && [ "${___X_CMD_OS_ARCH_}" = arm64 ]; then
         local L
-        L=$(ls -dl /sbin/init 2>/dev/null) #                                         if /sbin/init is 32bit executable
-        if [ "$(od -An -t x1 -j 4 -N 1 "${L#*-> }")" = ' 01' ]; then
+        L=$(command ls -dl /sbin/init 2>/dev/null)                  # if /sbin/init is 32bit executable
+        if [ "$(command od -An -t x1 -j 4 -N 1 "${L#*-> }")" = ' 01' ]; then
             ___X_CMD_OS_ARCH_=armv7l
         fi
     fi
