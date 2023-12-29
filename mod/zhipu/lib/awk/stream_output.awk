@@ -1,5 +1,10 @@
+( NR==1 ) && ($0 ~ "^{"){
+    IS_ERROR_CONTENT=1
+    jiparse_after_tokenize( o_error, $0 )
+}
 ( $0 ~ "event:"){
     event = substr($0, 7)
+    if (event != "finish") IS_ERROR_CONTENT = 1
     next
 }
 ( $0 ~ "^data:" ){
@@ -15,9 +20,14 @@
     next
 }
 
+function zhipu_display_response_text_end(){
+    if (IS_ERROR_CONTENT != 1) printf "\n"
+    else {
+        print log_error("zhipu", log_mul_msg(jstr(o_error)))
+    }
+}
 
 END{
-    if (event != "finish")  exit(1)
-    printf "\n"
+    zhipu_display_response_text_end()
 }
 

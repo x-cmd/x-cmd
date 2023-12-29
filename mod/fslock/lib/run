@@ -4,20 +4,39 @@ ___x_cmd_fslock_run___inner(){
 }
 
 ___x_cmd_fslock_run(){
-    # TODO: in the future we will add --no-subshell and figure out how to make it works on ctrl-c.
-    (
-        ___x_cmd_fslock_run___main "$@"
-    )
+    local MAXTRY=-1
+    case "$1" in
+        --try)
+                    shift;
+                    ___x_cmd_fslock_run___try   "$@" ;;
+        --maxtry)
+                    MAXTRY="$2"; shift 2
+                    ___x_cmd_fslock_run___main  "$@" ;;
+        *)
+                    ___x_cmd_fslock_run___main  "$@" ;;
+    esac
 }
 
 ___x_cmd_fslock_run___main(){
+    # TODO: in the future we will add --no-subshell and figure out how to make it works on ctrl-c.
+    (
+        ___x_cmd_fslock_run___main_ "$@"
+    )
+}
+
+___x_cmd_fslock_run___main_(){
     local x_
     ___x_cmd_fslock_name_ "$1"   # Unique fslock_name
     [ -n "$x_" ] || M="Provide fslock name" N=fslock log:ret:64
     shift
 
+    local attempt="${MAXTRY}"
     local ___X_CMD_FSLOCK_RUN_RET
     while ___x_cmd_fslock_wait "$x_"; do
+        if [ "$attempt" -gt 0 ]; then
+            attempt=$((attempt-1))
+            [ 0 -ne "$attempt" ] || M="Max try reached [maxtry=$MAXTRY]" N=fslock log:ret:1
+        fi
         ___x_cmd_fslock_acquire "$x_" || continue
         ___X_CMD_FSLOCK_RUN_RET=0
         ___x_cmd_fslock_run___inner "$@" || ___X_CMD_FSLOCK_RUN_RET=$?
@@ -27,6 +46,26 @@ ___x_cmd_fslock_run___main(){
     done
 
     return 130
+}
+
+___x_cmd_fslock_run___try(){(
+    ___x_cmd_fslock_run___try_ "$@"
+)}
+
+___x_cmd_fslock_run___try_(){
+    local x_
+    ___x_cmd_fslock_name_ "$1"   # Unique fslock_name
+    [ -n "$x_" ] || M="Provide fslock name" N=fslock log:ret:64
+    shift
+
+    ___x_cmd_fslock_available "$x_" || return "${X_err:-$?}"
+
+    ___x_cmd_fslock_acquire "$x_"   || return
+    ___X_CMD_FSLOCK_RUN_RET=0
+    ___x_cmd_fslock_run___inner "$@" || ___X_CMD_FSLOCK_RUN_RET=$?
+
+    ___x_cmd_fslock_release "$x_"
+    return "$___X_CMD_FSLOCK_RUN_RET"
 }
 
 
