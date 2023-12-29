@@ -26,25 +26,30 @@ function gemini_gen_promote_system_or_part_str(minion_obj, prompt_dic_name,     
             else str = str minion_obj[ _kp S "\""i"\"" ] JOINSEP
         }
     }
-    if ( str !~ "^\"" )  str = jqu(str)
-    return sprintf("{\"text\": %s}", str)
+    if( ! chat_str_is_null(str)) {
+        if ( str !~ "^\"" )  str = jqu(str)
+        return sprintf("{\"text\": %s} ," , str)
+    }
 }
 
 function gemini_gen_promote_context_example_str(minion_obj,     _kp, i, l, user, assistant, promote_content, example, promptline){
     promote_content =  minion_prompt_context( minion_obj, Q2_1 )
-
+     if ( ! chat_str_is_null(promote_content)) promote_content = promote_content " ;"
     l = minion_example_len(minion_obj, Q2_1 )
 
     _kp = Q2_1 SUBSEP "\"prompt\"" S "\"example\""
     for (i=1; i<=l; ++i){
         user = minion_obj[ _kp S "\""i"\"" S  "\"a\""]
         assistant = minion_obj[ _kp S "\""i"\"" S  "\"u\""]
+        if (( chat_str_is_null(user)) &&  ( chat_str_is_null(assistant) )) continue
         example = example "User: " user ";" "Assistant: " assistant JOINSEP
     }
+    if ( ! chat_str_is_null(example)) example = "Example: " example ";"
 
     _kp = Q2_1 SUBSEP "\"prompt\"" S "\"promptline\""
     promptline = minion_prompt_promptline(minion_obj, Q2_1)
-    return sprintf("%s ; example: %s ; %s", promote_content, example, promptline)
+    if ( ! chat_str_is_null(promptline)) promote_content = promptline " ;"
+    return sprintf("%s%s%s", promote_content, example, promptline)
 }
 
 
@@ -58,9 +63,11 @@ function gemini_req_from_creq(history_obj, minion_obj, question,         str, i,
     promote_part_json = gemini_gen_promote_system_or_part_str( minion_obj, "part" )
 
     promote_content = gemini_gen_promote_context_example_str( minion_obj )
-    USER_LATEST_QUESTION = promote_content JOINSEP  question
 
-    return sprintf("{\"contents\":[ %s {\"parts\":[ %s , %s ,{\"text\": %s}],\"role\":\"user\"}]}\n", _history_str, promote_system_json, promote_part_json, jqu(USER_LATEST_QUESTION))
+    if ( ! chat_str_is_null(promote_content))  USER_LATEST_QUESTION = promote_content JOINSEP  question
+    else USER_LATEST_QUESTION = question
+
+    return sprintf("{\"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s}],\"role\":\"user\"}]}\n", _history_str, promote_system_json, promote_part_json, jqu(USER_LATEST_QUESTION))
 }
 
 # extract ...

@@ -7,6 +7,7 @@ END{
 
     if (OPENAI_RESPONESE_IS_ERROR_CONTENT == 1) {
         print log_error("openai", log_mul_msg(jstr(o_error)))
+        exit(2)
     } else {
         printf "\n"
 

@@ -38,6 +38,7 @@ ___x_cmd_gemini_chat_request(){
     ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion 2>/dev/null
 
     local cfg_model=
+    local cfg_proxy=
     ___x_cmd_gemini_cfg --var cfg_model=model 2>/dev/null
 
     local chatid
@@ -68,13 +69,21 @@ ___x_cmd_gemini_chat_request(){
         local requestbody
         read -r requestbody
 
-        local cache_file="${content_dir}/gemini.response.yml"
-        [ -d "${content_dir}" ] || x mkdirp "${content_dir}"
+        x retry --max 5 --interval 3 ___x_cmd_gemini_chat_request___try
+    }
+}
 
-        ___x_cmd_gemini_request_generaxwtecontent "$requestbody" "$model" | \
+___x_cmd_gemini_chat_request___try(){
+    local cache_file="${content_dir}/gemini.response.yml"
+    [ -d "${content_dir}" ] || x mkdirp "${content_dir}"
+
+    gemini:debug "Sending request to gemini server"
+    ___x_cmd_gemini_request_generaxwtecontent "$requestbody" "$model" | \
         {
             local interative=
             if ___x_cmd_is_interactive; then interative=1; fi
+
+            local errcode=0
             # generate res.yml + ui
             x cawk -E  ___X_CMD_CHAT_SESSION_DIR,session,interative,cache_file,chatid,cfg_session                   \
                     -m j/json,j/jiter,j/jcp                                      \
@@ -82,9 +91,14 @@ ___x_cmd_gemini_chat_request(){
                     -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"                \
                     -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"                \
                     -f "$___X_CMD_ROOT_MOD/gemini/lib/chat/gemini.awk"           \
-                    -f "$___X_CMD_ROOT_MOD/gemini/lib/chat/handleresponse.awk"
+                    -f "$___X_CMD_ROOT_MOD/gemini/lib/chat/handleresponse.awk" || errcode=$?
+
+            # TODO: there is an option that can preserve the original response
+            # X_retry_last=1
+            case $errcode in
+                0)      ;;
+                *)      x rmrf "$content_dir" ;;
+            esac
+            return "$errcode"
         }
-   }
 }
-
-

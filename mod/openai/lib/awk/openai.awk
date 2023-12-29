@@ -72,7 +72,11 @@ function openai_req_from_creq(history_obj, minion_obj, question,          i, l, 
     _maxtoken       = minion_maxtoken( minion_obj, MINION_KP )
     _seed           = minion_seed( minion_obj, MINION_KP )
     _temperature    = minion_temperature( minion_obj, MINION_KP )
-    _maxtoken       = (_maxtoken != "") ? "\"max_tokens\": " _maxtoken "," : ""
+
+    # TODO: in some case, _maxtoken is 0, but it is not a valid value for openai. Find out why that happened in line 72
+    _maxtoken       = int(_maxtoken)
+    _maxtoken       = (_maxtoken > 0) ? "\"max_tokens\": " _maxtoken "," : ""
+
     _seed           = (_seed != "") ? "\"seed\": " int(_seed) "," : ""
     _temperature    = (_temperature != "") ? "\"temperature\": " _temperature "," : ""
 

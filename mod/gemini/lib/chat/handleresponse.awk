@@ -17,7 +17,11 @@ END{
     CHATID          =  ENVIRON[ "chatid" ]
 
     SESSIONDIR      = SESSIONDIR "/" minion_session( minion_obj, MINION_KP )
-    if(INTERACTIVE == 1) print gemini_display_response_text(gemini_resp_o)
+
+    return_str      = gemini_display_response_text(gemini_resp_o)
+    if (return_str == "")   exit(2)
+
+    if(INTERACTIVE == 1) print return_str
 
     gemini_res_to_cres( gemini_resp_o, cres_o , SUBSEP "cres" , SESSIONDIR, CHATID )
     print cres_dump( cres_o, SUBSEP "cres" ) > (SESSIONDIR "/" CHATID "/chat.response.yml")
