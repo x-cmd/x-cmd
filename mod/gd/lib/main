@@ -27,20 +27,18 @@ xrc:mod:lib gd  util back choose relm search history
 
 ___x_cmd_gd___main(){
     if [ "$#" -eq 0 ]; then
-        # TODO: Open the file explorer app.
-        # ___x_cmd_inner_cd; return
         ___x_cmd_gd_search___history
         return
     fi
 
     case "$1" in
-        "")             ___x_cmd_gd_origin  ;   return ;;
+        "")             ___x_cmd_gd_origin  ;                       return ;;
 
         # ++|.)           ___x_cmd_gd_origin . ;  return ;;   # TODO: increase the weight of current directory
         # --)             ___x_cmd_gd_origin . ;  return ;;   # TODO: decrease the weight of current directory
 
-        -)              ___x_cmd_gd_origin -;   return ;;   # gd to most recent
-        -i)             shift; ___x_cmd_gd_interactive "$@"; return ;;
+        -)              shift; ___x_cmd_gd_origin "$OLDPWD" "$@";   return ;;   # gd to most recent
+        -i)             ___x_cmd_gd_pick_set "$2";                  return ;;
         -h|--help)      M='gd' help:ret:0 ;;
     esac
 
@@ -48,89 +46,117 @@ ___x_cmd_gd___main(){
 }
 
 ___x_cmd_gd___main_magic(){
-    local p="$1"; ! [ "$#" -gt 0 ] || shift
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_gd_goto_pickfromiter . ""
+        return
+    fi
+
+    local p="$1";           shift
     if [ -d "$p" ]; then
-        ___x_cmd_gd_origin "$p"; return
+        ___x_cmd_gd_origin "$p" "$@";
+        return
     fi
 
     case "$p" in
-        -r|--relm)          ___x_cmd_gd_relm "$@"                     ;;
-        :|:*)               ___x_cmd_gd_relm___magic "${p}" "$@"      ;;
+        -r|--relm)          ___x_cmd_gd_relm                    "$@" ;;
+        :|:*)               ___x_cmd_gd_relm___magic "${p}"     "$@" ;;
 
-        *://*)              ___x_cmd_gd_origin "$p"                   ;;
+        *://*)              ___x_cmd_gd_origin "$p"             "$@" ;;
 
         # gd back
-        -b)                 ___x_cmd_gd_back "$@"                       ;;
-        ...)                ___x_cmd_gd_origin ../..                    ;;
-        ....)               ___x_cmd_gd_origin ../../../                ;;
-        ../*)               ___x_cmd_gd_back "${p#*/}"                  ;;
-        .../*)              ___x_cmd_gd_back "${p#*/}"                  ;;
+        -b)                 ___x_cmd_gd_back                    "$@" ;;
+        ...)                ___x_cmd_gd_origin  ../..           "$@" ;;
+        ....)               ___x_cmd_gd_origin  ../../../       "$@" ;;
+        ../*)               ___x_cmd_gd_back    "${p#*/}"       "$@" ;;
+        .../*)              ___x_cmd_gd_back    "${p#*/}"       "$@" ;;
 
         # gd-forward        # Might cause some problem
-        -f)                 ___x_cmd_gd_forward "$@"                    ;;
-        ./*)                ___x_cmd_gd_forward "${p#./}"               ;;
+        -f)                 ___x_cmd_gd_forward                 "$@" ;;
+        ./*)                ___x_cmd_gd_forward "${p#./}"       "$@" ;;
 
         # history
-        -H|--history)       ___x_cmd_gd_history "$@" ;;
-        --)                 ___x_cmd_gd_history___first ;;
-        -*)                 ___x_cmd_gd_history___firstmatch "${p#-}"   ;;
+        -H|--history)       ___x_cmd_gd_history                 "$@" ;;
+        --)                 ___x_cmd_gd_history___first         "$@";;
+        -*)                 ___x_cmd_gd_history___firstmatch "${p#-}"   "$@" ;;
 
         # gd with find
 
-        %*)                 ___x_cmd_gd_search___xcmdroot   "${p#*%}"   ;;      # consider
-        ,*)                 ___x_cmd_gd_search___home       "${p#*,}"   ;;      # = is not support in zsh, that's why we use ,
+        %*)                 ___x_cmd_gd_search___xcmdroot   "${p#*%}"   "$@" ;;      # consider
+        ,*)                 ___x_cmd_gd_search___home       "${p#*,}"   "$@" ;;      # = is not support in zsh, that's why we use ,
 
-        /*)                 ___x_cmd_gd_choose ___x_cmd_gd_iter / "${p#/}"     ;;
-        */*)                ___x_cmd_gd_choose ___x_cmd_gd_iter . "${p}"       ;;
-        *)                  ___x_cmd_gd_choose ___x_cmd_gd_iter . "${p}"       ;;
+        /*)                 ___x_cmd_gd_goto_pickfromiter / "${p#/}"    "$@" ;;
+        */*)                ___x_cmd_gd_goto_pickfromiter . "${p}"      "$@" ;;
+        *)                  ___x_cmd_gd_goto_pickfromiter . "${p}"      "$@" ;;
     esac
 }
 
 ___x_cmd_gd_init(){
-    # ___x_cmd_gd_history___load
     ___x_cmd_gd_relm___init
 }
 
 ___x_cmd_gd_init
 
 ___x_cmd_gd_forward(){
-    ___x_cmd_gd_choose command find . -path "*${1}*" -type d -print
+    local x_="$1";  shift
+    ___x_cmd_gd_pick_ ___x_cmd_cmds find . -path "*${x_}" -type d -print || return
+    ___x_cmd_gd_origin "$x_" "$@"
 }
 
 ## Section: gd origin
 
 # 1. Explictly Inject to gd: x gd :inject
 # alias gd=___x_cmd_gd_origin
+
+# c gh://x-bash/advise
+
 ___x_cmd_gd_origin(){
-    local ppp="$1"
+    [ "$#" -gt 0 ]  ||      set - "$HOME"
+
+    local ppp="$1";         local domain
     case "$ppp" in
-        gh://*)             domain=github.com   ___x_cmd_gd_origin___git "${ppp#gh://}" ;;
-        gt://*)             domain=gitee.com    ___x_cmd_gd_origin___git "${ppp#gt://}" ;;
-        gl://*)             domain=gitlab.com   ___x_cmd_gd_origin___git "${ppp#gl://}" ;;
-        gcode://*)          domain=gitcode.net  ___x_cmd_gd_origin___git "${ppp#gitcode://}" ;;
-        *)                  ___x_cmd_gd_origin___chdir "$@" ;;
+        gh:*)               domain=github.com   ;;
+        gt:*)               domain=gitee.com    ;;
+        gl:*)               domain=gitlab.com   ;;
+        gcode:*)            domain=gitcode.net  ;;
+        *)                  ___x_cmd_gd_origin___chdir "$@"; return ;;
     esac
+
+    ppp="${ppp#*:}"
+    shift
+    ___x_cmd_gd_origin___git "${ppp#//}" "$@"
 }
 
 ___X_CMD_GD_GIT_STORE="$___X_CMD_ROOT_DATA/git"
 
 # domain=github.com
 ___x_cmd_gd_origin___git(){
-    if [ -d "$___X_CMD_GD_GIT_STORE/$domain/$1" ]; then
-        ___x_cmd_gd_origin "$___X_CMD_GD_GIT_STORE/$domain/$1"
+    local dir="$1"; shift
+    if [ -d "$___X_CMD_GD_GIT_STORE/$domain/$dir" ]; then
+        ___x_cmd_gd_origin "$___X_CMD_GD_GIT_STORE/$domain/$dir" "$@"
     else
         # NOTICE: The reason using subshell is to make sure current dir unchanged when ctrl-c interrupt.
         (
-            x mcd "$___X_CMD_GD_GIT_STORE/$domain/${1%/*}"
-            command git clone git@$domain:"$1"
+            x mcd "$___X_CMD_GD_GIT_STORE/$domain/${dir%/*}"
+            ___x_cmd_cmds git clone git@$domain:"$dir"
         )
         # ___x_cmd_gd_origin___chdir "${1##*/}"
-        ___x_cmd_gd_origin___chdir "$___X_CMD_GD_GIT_STORE/$domain/$1"
+        ___x_cmd_gd_origin___chdir "$___X_CMD_GD_GIT_STORE/$domain/$dir" "$@"
     fi
 }
 
 ___x_cmd_gd_origin___chdir(){
-    ___x_cmd_inner_cd "$@" || return
+    local dir="$1"; shift
+
+    if [ "$#" -gt 0 ]; then
+        local ___X_CMD_GD_ORIGIN_PWD="$PWD"
+        ___x_cmd_cd0 "$dir" 2>/dev/null || N=gd M="Invalid directory [path=$dir]" log:ret:1
+        "$@"
+        ___x_cmd_cd0 "$___X_CMD_GD_ORIGIN_PWD"
+        return
+    fi
+
+    ___x_cmd_cmds_cd "$dir" 2>/dev/null || N=gd M="Invalid directory [path=$dir]" log:ret:1
+
     if [ "${-#*i}${___X_CMD_FS_DEBUG}" != "$-" ] && [ -t 1 ] ; then
         ___x_cmd_gd_history___top "$PWD"
     fi

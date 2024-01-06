@@ -48,11 +48,12 @@ function creq_loadfromjsonfile( o, kp, fp ){
     jiparse2leaf_fromfile( o, kp,  fp )
 }
 
-function creq_create( o, minion_obj, minion_kp, model, question, chatid, history_num, history_message,       _kp){
+function creq_create( o, minion_obj, minion_kp, type, model, question, chatid, history_num, history_message,       _kp){
     _kp = SUBSEP "\""1"\""
 
     jlist_put(o,  "" , "{")
     jdict_put(o, _kp, "\"minion\"",          "{")
+    jdict_put(o, _kp, "\"type\"",            jqu(type))
     jdict_put(o, _kp, "\"model\"",           jqu(model))
     jdict_put(o, _kp, "\"question\"",        jqu(question))
     jdict_put(o, _kp, "\"chatid\"",          jqu(chatid))

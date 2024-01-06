@@ -1,8 +1,8 @@
 # shellcheck shell=dash
 
-___X_CMD_ASDF_DIR="${___X_CMD_ROOT_DATA}/asdf"
-
 x log init asdf
+
+xrc:mod:lib     asdf        __xinstall
 
 ___x_cmd_asdf___main(){
     local X_help_cmd='___x_cmd_asdf___help'
@@ -10,13 +10,26 @@ ___x_cmd_asdf___main(){
 
     local op="$1"; shift
     case "$op" in
-        --install)    ___x_cmd_asdf___install "$@" ;;
-        --uninstall)  ___x_cmd_asdf___uninstall "$@" ;;
-        --activate)   ___x_cmd_asdf___activate "$@" ;;
-        --deactivate) ___x_cmd_asdf___deactivate "$@" ;;
-        --help|-h)    ___x_cmd_asdf___help "$@" ;;
+        use|unuse|--install|--uninstall|--activate|--deactivate|--help|--xinstall)
+            ___x_cmd_asdf___"${op#--}" "$@" ;;
+        -h)    ___x_cmd_asdf___help "$@" ;;
         *)            ___x_cmd_asdf___bin "$op" "$@" ;;
     esac
+}
+
+___x_cmd_asdf___use(){
+    local name="$1"
+    local version="${2:-latest}"
+
+    ___x_cmd_asdf___bin plugin add "$name" || return
+    ___x_cmd_asdf___bin install "$name" "$version" || return
+    ___x_cmd_asdf___bin global "$name" "$version" || return
+}
+
+___x_cmd_asdf___unuse(){
+    local name="$1"
+    ___x_cmd_asdf___bin uninstall "$name" || return
+    ___x_cmd_asdf___bin plugin remove "$name" || return
 }
 
 ___x_cmd_asdf___install(){
@@ -29,36 +42,40 @@ ___x_cmd_asdf___install(){
         x env use curl || return
     }
 
-    git clone https://github.com/asdf-vm/asdf.git "$___X_CMD_ASDF_DIR" --branch v0.13.1 || return
+    git clone https://github.com/asdf-vm/asdf.git "$___X_CMD_ROOT_DATA/asdf" --branch v0.13.1 || return
 }
 
 ___x_cmd_asdf___uninstall(){
     asdf:info "uninstalling asdf"
-    x rmrf "$___X_CMD_ASDF_DIR"
+    x rmrf "$___X_CMD_ROOT_DATA/asdf"
 }
 
-# TODO: uncertain
 ___x_cmd_asdf___activate(){
-    local cmd="export ASDF_DIR='$___X_CMD_ASDF_DIR' ; export ASDF_DATA_DIR='$___X_CMD_ASDF_DIR'; . '$___X_CMD_ASDF_DIR/asdf.sh'"
+    local cmd="export ASDF_DIR='$___X_CMD_ROOT_DATA/asdf' ; export ASDF_DATA_DIR='$___X_CMD_ROOT_DATA/asdf'; [ ! -f '$___X_CMD_ROOT_DATA/asdf/asdf.sh' ] || . '$___X_CMD_ROOT_DATA/asdf/asdf.sh'"
     eval "$cmd"
     asdf:info "asdf activated, if you want to deactivate, run 'x asdf --deactivate'"
     x boot rc add asdf-activate "$cmd"
 }
 
 ___x_cmd_asdf___deactivate(){
-    x path rm "$___X_CMD_ASDF_DIR/shims"
+    x path rm "$___X_CMD_ROOT_DATA/asdf/shims"
+    x path rm "$___X_CMD_ROOT_DATA/asdf/bin"
     unset ASDF_DIR
     unset ASDF_DATA_DIR
     x boot rc del asdf-activate
 }
 
 ___x_cmd_asdf___bin(){
-    if [ ! -f "$___X_CMD_ASDF_DIR/bin/asdf" ]; then
+    ___x_cmd_hascmd asdf || {
         ___x_cmd_asdf___install || return
         ___x_cmd_asdf___activate || return
-    fi
+    }
 
-    asdf "$@"
+    ___x_cmd_asdf___bin(){
+        asdf "$@"
+    }
+
+    ___x_cmd_asdf___bin "$@"
 }
 
 ___x_cmd_asdf___help(){

@@ -1,28 +1,35 @@
 
 BEGIN{
     INTERACTIVE = ENVIRON[ "interative" ]
-    CHATID      = ENVIRON[ "chatid" ]
-    CACHE_FILE  = ENVIRON[ "cache_file" ]
-
+    GEMINI_CONTENT_DIR  = ENVIRON[ "content_dir" ]
+    GEMINI_HAS_RESPONSE_CONTENT = 0
 }
 
 {
+    GEMINI_HAS_RESPONSE_CONTENT = 1
     jiparse_after_tokenize( gemini_resp_o, $0 )
-    print $0 > CACHE_FILE
-    if(INTERACTIVE == "") print $0
+    print $0                                    > (GEMINI_CONTENT_DIR "/gemini.response.yml" )
 }
 
 END{
-    SESSIONDIR      =  ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
-    CHATID          =  ENVIRON[ "chatid" ]
+    gemini_parse_response(gemini_resp_o, ret_o)
 
-    SESSIONDIR      = SESSIONDIR "/" minion_session( minion_obj, MINION_KP )
+    # TODO: errorcode
+    if (GEMINI_HAS_RESPONSE_CONTENT == 0) {
+        log_error("gemini", "The response content is empty")
+        print                                   > (GEMINI_CONTENT_DIR "/chat.error.yml")
+        exit(2)
+    }
+    else if (ret_o[ "code" ] != "") {
+        msg_str = jstr(gemini_resp_o)
+        log_error("gemini", log_mul_msg( msg_str ))
+        print msg_str                           > (GEMINI_CONTENT_DIR "/chat.error.yml")
+        exit(2)
+    }
+    else {
+        print ret_o[ "text" ]
 
-    return_str      = gemini_display_response_text(gemini_resp_o)
-    if (return_str == "")   exit(2)
-
-    if(INTERACTIVE == 1) print return_str
-
-    gemini_res_to_cres( gemini_resp_o, cres_o , SUBSEP "cres" , SESSIONDIR, CHATID )
-    print cres_dump( cres_o, SUBSEP "cres" ) > (SESSIONDIR "/" CHATID "/chat.response.yml")
+        gemini_res_to_cres( gemini_resp_o, cres_o , SUBSEP "cres"  )
+        print cres_dump( cres_o, SUBSEP "cres" ) > (GEMINI_CONTENT_DIR "/chat.response.yml")
+    }
 }

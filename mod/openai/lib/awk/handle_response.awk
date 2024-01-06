@@ -1,24 +1,25 @@
 END{
     INTERACTIVE         = ENVIRON[ "interative" ]
-    CHATID              = ENVIRON[ "chatid" ]
-    MINION_JSON_CACHE   = ENVIRON[ "minion_json_cache" ]
-    SESSIONDIR          = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
+    OPENAI_CONTENT_DIR  = ENVIRON[ "content_dir" ]
     MINION_KP           = SUBSEP "\"1\""
 
-    if (OPENAI_RESPONESE_IS_ERROR_CONTENT == 1) {
-        print log_error("openai", log_mul_msg(jstr(o_error)))
+    if ( OPENAI_HAS_RESPONSE_CONTENT == 0 ) {
+        log_error("openai", "The response content is empty")
+        print                                       > (GEMINI_CONTENT_DIR "/chat.error.yml")
         exit(2)
-    } else {
+    }
+    else if (OPENAI_RESPONESE_IS_ERROR_CONTENT == 1) {
+        msg_str = jstr(o_error)
+        log_error("openai", log_mul_msg(jstr(o_error)))
+        print msg_str                               > (OPENAI_CONTENT_DIR "/chat.error.yml")
+        exit(2)
+    }
+    else {
         printf "\n"
-
-        minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE, "openai" )
-        SESSIONDIR      = SESSIONDIR "/" minion_session( minion_obj, MINION_KP )
-        mkdirp( SESSIONDIR "/" CHATID )
-
         #
-        print jstr(o_response)                      > (SESSIONDIR "/" CHATID "/openai.response.yml")
+        print jstr(o_response)                      > (OPENAI_CONTENT_DIR "/openai.response.yml")
 
         openai_res_to_cres( o_response, cres_o, SUBSEP "cres" )
-        print cres_dump( cres_o, SUBSEP "cres" )    > (SESSIONDIR "/" CHATID "/chat.response.yml")
+        print cres_dump( cres_o, SUBSEP "cres" )    > (OPENAI_CONTENT_DIR "/chat.response.yml")
     }
 }

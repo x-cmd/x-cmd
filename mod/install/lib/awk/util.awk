@@ -9,8 +9,9 @@ BEGIN{
 }
 
 function print_install_cmd_style(str, reference, install_name){
+    str = str_trim(str)
     if (IS_RUN == 1 ) {
-        print "\003\n" str
+        printf (" \\\n%s", qu1(str))
         return
     }
 
@@ -20,12 +21,14 @@ function print_install_cmd_style(str, reference, install_name){
     }
 
     if (IS_GET == 1) {
-        printf("%s%s%s:\n  %scmd%s: %s\n  %sreference%s: %s\n", \
-            INSTALL_UI_FG_YELLOW, install_name, INSTALL_UI_END, \
-            INSTALL_UI_FG_GREEN, INSTALL_UI_END, str, \
-            INSTALL_UI_FG_CYAN, INSTALL_UI_END, reference )
+        printf("%s%s%s:\n  %s%s%s: %s\n  %s%s%s: %s\n", \
+            INSTALL_UI_FG_YELLOW,   install_name,   INSTALL_UI_END, \
+            INSTALL_UI_FG_GREEN,    "cmd",          INSTALL_UI_END, str, \
+            INSTALL_UI_FG_CYAN,     "reference",    INSTALL_UI_END, reference )
         return
     }
-    printf("%s- cmd%s: %s\n  %sreference%s: %s\n", INSTALL_UI_FG_YELLOW, INSTALL_UI_END, str, INSTALL_UI_FG_CYAN, INSTALL_UI_END, reference)
+    printf("- %s%s%s: %s\n  %s%s%s: %s\n", \
+        INSTALL_UI_FG_CYAN,     "reference",    INSTALL_UI_END, reference, \
+        INSTALL_UI_FG_YELLOW,   "cmd",          INSTALL_UI_END, str )
 }
 

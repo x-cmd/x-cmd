@@ -41,10 +41,10 @@ function openai_gen_minion_content_str(minion_obj,    _kp, i, l, user, assistant
 }
 
 function openai_gen_minion_system_str(minion_obj,    _kp, i, l, _str, _res){
-    _kp = MINION_KP SUBSEP "\"prompt\"" S "\"system\""
-    v = minion_obj[ _kp ]
-    if ( ! chat_str_is_null(v) && (v != "[") ) example = v
+    v = minion_system( minion_obj, MINION_KP )
+    if ( ! chat_str_is_null(v) && (v != "[") ) return v
 
+    _kp = MINION_KP SUBSEP "\"prompt\"" S "\"system\""
     l = minion_system_len(minion_obj, MINION_KP )
     for (i=1; i<=l; ++i){
         _str = minion_obj[ _kp S "\""i"\""]

@@ -5,11 +5,14 @@
 # req.json
 # res.json
 function chat_history_load( o, session_dir, history_num, chatid,      _cmd, t, i, j, l, kp, kp_i, _ ){
-    _cmd = "command ls " session_dir " | command sort -r"
+    _cmd = "command find " session_dir " -name \"chat.response.yml\"" " | command sort -r"
 
     i = 0
     if (history_num > 0) {
         while( ( _cmd | getline t ) > 0 ){
+            match(t, "/[^/]+/chat.response.yml")
+            t = substr(t, RSTART+1)
+            gsub("/.*$", "", t)
             if ( t == chatid) continue
             _[ ++i ] = t
             if (i >= history_num) break

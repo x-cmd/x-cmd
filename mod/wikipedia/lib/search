@@ -4,24 +4,27 @@
 ___x_cmd_wikipedia_search(){
     [ "$#" -gt 0 ] ||  N=wikipedia M="Please provide a value for the query" log:ret:64
 
-    # if --json, --text, --yml, --csv
+    local datamode="tui"
+    local str=
 
-    local datamode=tui
-    case "$1" in
-        -j|--json)      datamode=json   ; shift ;;
-        -y|--yml)       datamode=yml    ; shift ;;
-        -t|--txt)       datamode=txt    ; shift ;;
-        --csv)          datamode=csv    ; shift ;;
-        --tui)          datamode=tui    ; shift ;;
-    esac
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -j|--json)      datamode="json"   ; shift ;;
+            -y|--yml)       datamode="yml"    ; shift ;;
+            # -t|--txt)       datamode="txt"    ; shift ;;
+            --csv)          datamode="csv"    ; shift ;;
+            --tui)          datamode="tui"    ; shift ;;
+            *)              str="$1"          ; shift ;;
+        esac
+    done
 
-    local str="$1"; shift
+    [ -n "$str" ] || M='Please provide some information you need to look up ' N=wikipedia log:ret:1
 
-    ___x_cmd_wikipedia_search___get "$1" | x jo .query | {
-        x jo env . .searchinfo.suggestion  .search
+    ___x_cmd_wikipedia_search___get "$str" | x jo .query | {
+        x jo env . suggestion=.searchinfo.suggestion search=.search
 
         if [ "$search" != "[]" ]; then
-            ___x_cmd_wikipedia_search___view <<<A
+            ___x_cmd_wikipedia_search___view_"$datamode" <<A
 $search
 A
             return 0
@@ -29,17 +32,33 @@ A
 
         # automatically
         if [ -n "$suggestion" ]; then
-            ___x_cmd_wikipedia_search___get "$1" \
+            ___x_cmd_wikipedia_search___get "$suggestion" \
                 | x jo .query.search    \
-                | ___x_cmd_wikipedia_search___view
+                | ___x_cmd_wikipedia_search___view_"$datamode"
+        else
+            wikipedia:error "There were no results matching the query"
+            return 1
         fi
 }
-
-___x_cmd_wikipedia_search___view(){
-    :
 }
 
 ___x_cmd_wikipedia_search___get(){
     ___x_cmd_wikipedia_api_search --str "$1" --srinfo suggestion
 }
 
+___x_cmd_wikipedia_search___view_json(){
+    ___x_cmd_cmds_cat | x jo color
+}
+
+___x_cmd_wikipedia_search___view_yml(){
+    ___x_cmd_cmds_cat | x j2y
+}
+
+___x_cmd_wikipedia_search___view_tui(){
+    ___x_cmd_wikipedia_search___view_csv | x csv app --clear
+}
+
+___x_cmd_wikipedia_search___view_csv(){
+    ___x_cmd_cmds_cat | x jo 2c           .title .pageid .size .wordcount .timestamp  \
+                      | x csv header --add Title  Pageid  Size  Wordcount  Timestamp
+}

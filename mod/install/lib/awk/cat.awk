@@ -13,6 +13,7 @@ END{
 function print_install_cmd(O, kp,          i, len, key, os_or_release, installer, str, j){
     len = O[ kp  L]
     j = 0
+
     for(i=1; i<=len; ++i){
         key = juq(O[ kp S i ])
         str = juq(O[ kp S "\""key"\"" S "\"cmd\"" ])
@@ -28,7 +29,6 @@ function print_install_cmd(O, kp,          i, len, key, os_or_release, installer
             if(( os_or_release == "" ) || ( OS ~ "^"os_or_release"$" ))     print_install_cmd_style(str, reference)
             else if( RELEASE == os_or_release )                             print_install_cmd_style(str, reference)
             else if( wsl ~ "^"os_or_release"$" )                            print_install_cmd_style(str, reference)
-
         }
     }
 }

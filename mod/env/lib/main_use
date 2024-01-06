@@ -14,30 +14,84 @@ ___x_cmd_env_use(){
     #     "") return 1 ;;
     # esac
     x:trace env/use
-    local ___X_CMD_ENV___PARSE_PKG
-    local ___X_CMD_ENV___PARSE_VERSION
+    local ___X_CMD_ENV___PARSE_PKG=
+    local ___X_CMD_ENV___PARSE_VERSION=
 
     local i; local x_=
     for i in "$@"; do
+        ___X_CMD_ENV___PARSE_VERSION=
         ___x_cmd_env___pasre_pkg_version_set "$i"
         if [ -z "$___X_CMD_ENV___PARSE_VERSION" ]; then
             env:warn "Not found $___X_CMD_ENV___PARSE_PKG version"
             return 1
         fi
 
-        x_=; ___x_cmd_env_current_version_ "$___X_CMD_ENV___PARSE_PKG" "$sphere_name"
-        [ -z "$x_" ] || {
-            env:warn "Using $___X_CMD_ENV___PARSE_PKG version $x_, need to cancel it in advance"
-            return 1
-        }
-
-        ___x_cmd_pkg_sphere_use run  \
+        ___x_cmd_env_use___handle \
             --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
             --osarch "$osarch" "$___X_CMD_ENV___PARSE_PKG" "$___X_CMD_ENV___PARSE_VERSION" || return
     done
-
-    env:info "Successfully use $* in the current environment."
 }
+
+___x_cmd_env_use___handle(){
+    pkg:sphere:parse:args
+    local x_=""
+
+    if ___x_cmd_is_interactive; then
+        x_=; ___x_cmd_env_try_version_  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$name"  || return
+        [ -z "$x_" ] || [ "$x_" = "$version" ] || {
+            x ui yesno "Whether to untry [pkg=$name] [version=$x_]?" || return
+            x env untry "${name}=${x_}" || return
+        }
+
+        x_=; ___x_cmd_env_use_version_  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$name"  || return
+        [ -z "$x_" ] || [ "$x_" = "$version" ] || {
+            local id=; x ui select id "Here the choices for you:" \
+                "x env unuse ${name}=${x_}, then x env use, notice, the other process executed won't be affected. But other shell env will be activated"  \
+                "x env try ${name}=${version}, only activated in this shell environment" || return
+
+            case "$id" in
+                1) x env unuse  "${name}=${x_}"         ;;
+                2) x env try    "${name}=${version}"; return ;;
+                *) return 1 ;;
+            esac
+        }
+    else
+        x_=; ___x_cmd_env_try_version_  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$name"  || return
+        [ -z "$x_" ] || {
+            env:warn \
+                --hint "Before using new version. You must untry the original one cautiously because it will affect this shell env" \
+                --cmd "x env untry ${name}=${x_}" \
+                "Abort because [pkg=$name] [version=$x_] is in try and also it is not in interactive mode"
+            return 1
+        }
+
+        x_=; ___x_cmd_env_use_version_  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$name"  || return
+        [ -z "$x_" ] || {
+            env:warn \
+                --hint1 "You could just trying this version in current shell env without affecting the other shell environment." \
+                --cmd1  "x env try ${name}=${version}" \
+                --hint2 "Before using new version. You must unuse the original one cautiously because it will affect other shell env" \
+                --cmd2  "x env unuse ${name}=${x_}" \
+                "Abort because [pkg=$name] [version=$x_] is in use and also it is not in interactive mode"
+            return 1
+        }
+    fi
+
+    ___x_cmd_pkg_sphere_use run  \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+        --osarch "$osarch" "$name" "$version" || return
+
+    env:info "Successfully use [pkg=$name] [version=$version] in the current environment"
+}
+
 # EndSection
 
 # Section: unuse

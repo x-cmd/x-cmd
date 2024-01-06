@@ -745,3 +745,62 @@ function str_divide( astr, _sep, ret,    i ){
     ret[2] = substr( astr, i+1 )
 }
 # EndSection
+
+
+# Section: ring
+BEGIN{
+    RING_MOD        = 1
+    RING_COUNTER    = 2
+    RING_OFFSET     = 3
+}
+function ring_init( o, mod ){
+    o[ RING_MOD ]        = mod
+    o[ RING_COUNTER ]   = 0
+}
+
+function ring_add( o, element,        m, n, i ){
+    n = (o[ RING_COUNTER ] += 1)
+    m = o[ RING_MOD ]
+    o[ RING_OFFSET + (n % m) ] = element
+}
+
+# i start with 1
+function ring_get( o, i,   m, n ){
+    n = o[ RING_COUNTER ]
+    m = o[ RING_MOD ]
+
+    if ( n < m ) {
+        return o[ RING_OFFSET + i ]
+    } else {
+        return o[ RING_OFFSET + ( (n + i) % m ) ]
+    }
+}
+
+function ring_counter( o ){
+    return o[ RING_COUNTER ]
+}
+
+function ring_size( o ){
+    n = o[ RING_COUNTER ]
+    m = o[ RING_MOD ]
+
+    if ( n < m )    return n
+    else            return m
+}
+
+# TODO: ...
+# function ring_dump( o, tgt,   m, n, i ){
+#     n = o[ RING_COUNTER ]
+#     m = o[ RING_MOD ]
+
+#     if ( n < m ) {
+#         for (i=1; i<=n; ++i)  tgt[ i ] = o[ RING_OFFSET + i ]
+#     } else {
+#         j = 0
+#         for (i = (n + 1) % m; i<m; ++i) tgt[ ++j ] = o[ RING_OFFSET + i ]
+#         i = i - m
+#         for (; j<=m; ++j)  tgt[ ++j ] = o[ RING_OFFSET + (i++) ]
+#     }
+# }
+
+# EndSection

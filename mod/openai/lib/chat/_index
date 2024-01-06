@@ -22,15 +22,21 @@ ___x_cmd_openai_chat_request(){
     local minion=""
     local session=""
     local model=""
+    local system=""
+    local type="chat"
+    local confirm_before_send=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
             --session)      session="$2";           shfit 2 ;;
             --minion)       minion="$2";            shift 2 ;;
-            --model)        model="$2";             shift 2 ;;
-            --history)      history_num="$2";       shift 2 ;;
+            --history|-n)   history_num="$2";       shift 2 ;;
             --question)     question="$2";          shift 2 ;;
-            *)              question="$*";          break ;;
+            --model)        model="$2";             shift 2 ;;
+            --system)       system="$2";            shift 2 ;;
+            --type)         type="$2";              shift 2 ;;
+            -c)             confirm_before_send=1;  shift 1 ;;
+            *)              question="${question}$*"; break ;;
         esac
     done
 
@@ -46,10 +52,10 @@ ___x_cmd_openai_chat_request(){
     local x_=; ___x_cmd_chat_minion_cache_json_ "$minion" || return
     local minion_json_cache="$x_"
 
-    openai:debug --chatid "$chatid" --model "$model" --question "$question" "chat request"
+    openai:debug --chatid "$chatid" --model "$model" --question "$question" --history_num "$history_num" --confirm_before_send "$confirm_before_send" "chat request"
 
     {
-        x cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,question,chatid,minion_json_cache   \
+        x cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,question,chatid,minion_json_cache,system,type   \
                 -E cfg_history_num,cfg_session,cfg_minion,cfg_model,cfg_maxtoken,cfg_seed,cfg_temperature \
                 -m j/json,j/jiter,j/jcp \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"        \
@@ -60,37 +66,60 @@ ___x_cmd_openai_chat_request(){
                 -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai.awk"       \
                 -f "$___X_CMD_ROOT_MOD/openai/lib/awk/handle_request.awk"
     } | {
-        read -r model
+        local content_dir
+        read -r content_dir
 
-        local requestbody
-        read -r requestbody
-
-        ___x_cmd_openai_request_generaxwtecontent "$requestbody" "$model" | \
-        {
-            local interative=
-            if ___x_cmd_is_interactive; then interative=1; fi
-            x cawk  -E session,interative,minion_json_cache,chatid,___X_CMD_CHAT_SESSION_DIR,cfg_session         \
-                    -m j/json,j/jiter,j/jcp                                     \
-                    -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"               \
-                    -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"             \
-                    -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"               \
-                    -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai.awk"           \
-                    -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai_stream_output_util.awk"    \
-                    -f "$___X_CMD_ROOT_MOD/openai/lib/awk/handle_response.awk" || {
-                        local l; find "$___X_CMD_CHAT_SESSION_DIR" -type d | while read -r l; do
-                            [ "${l##*/}" != "$chatid" ] || {
-                                openai:debug "Remove $l"
-                                x rmrf "$l"
-                            }
-                        done
-                        return 1
-                    }
+        ___x_cmd_openai_chat_request___trapexit(){
+            openai:debug "Remove chat.running file"
+            x rmrf "$content_dir/chat.running"
         }
+
+        printf "%s\n" $$ >"$content_dir/chat.running"
+        trap '___x_cmd_openai_chat_request___trapexit' EXIT
+
+        {
+            read -r model
+
+            local requestbody
+            read -r requestbody
+
+            x retry --max 2 --interval 3 ___x_cmd_openai_chat_request___try
+        } || {
+            ___x_cmd_openai_chat_request___trapexit
+            return 1
+        }
+
    }
 }
 
-___x_cmd_openai_chat_request_with_pipe(){
-    :
+___x_cmd_openai_chat_request___try(){
+    openai:debug "Sending request to openai server"
+    [ -z "$confirm_before_send" ] || {
+        printf "%s\n" "$requestbody" | x j2y | x bat -l yml
+        x ui yesno "Do your want to send this message?" || return 0
+    }
+
+    ___x_cmd_openai_request_generaxwtecontent "$requestbody" "$model" | \
+    {
+        local interative=
+        if ___x_cmd_is_interactive; then interative=1; fi
+
+        local errcode=0
+        x cawk  -E content_dir,interative         \
+                -m j/json,j/jiter,j/jcp                                     \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"               \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"             \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"               \
+                -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai.awk"           \
+                -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai_stream_output_util.awk"    \
+                -f "$___X_CMD_ROOT_MOD/openai/lib/awk/handle_response.awk" || errcode=$?
+
+        case $errcode in
+            0)      ;;
+            *)  x rmrf "$content_dir/openai.response.yml" "$content_dir/chat.response.yml" ;;
+        esac
+        return "$errcode"
+    }
 }
 
 # x openai chat --model gpt4 -n 3 --file a.md -f b.md -f c.md --prompt english ''

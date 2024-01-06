@@ -763,7 +763,12 @@ ___x_cmd_zshplugin_autosuggest_escape_emoji_bug(){
 		[[ "$suggestion" = *🏳* ]]; then
 
 		suggestion=""
+		return
 	fi
+
+	case "$suggestion" in
+		*$'\n'*)		suggestion=""	;;
+	esac
 }
 
 #--------------------------------------------------------------------#

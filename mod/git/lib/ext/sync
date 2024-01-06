@@ -1,36 +1,50 @@
 # shellcheck shell=dash
 
 ___x_cmd_git_sync(){
-    [ "$#" -gt 0 ]      ||      set -- run origin
+    local origin="origin"
+    local clean=
 
-    local op="$1"; shift
-    case "$op" in
-        track|pull|push)        ___x_cmd_git_all_"$op" "$@" ;;
-        run)                    ___x_cmd_git_sync_run "$@" ;;
-        *)                      ___x_cmd_git_sync_run "$op" "$@" ;;
-    esac
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --origin)    origin="$2";   shift 2 ;;
+            --clean|-c)  clean=1;       shift 1 ;;
+            *)           break ;;
+        esac
+    done
+
+    ___x_cmd_git_sync_run "$origin" "$@"
 }
 
 ___x_cmd_git_sync_run(){
-    local clean_if_not_clean=""
-    case "$1" in
-        --clean|-c)     clean_if_not_clean=1 ;;
-    esac
-
     ___x_cmd_git_meta_isclean || {
-        [ -n "$clean_if_not_clean" ] || {
+        [ -n "$clean" ] || {
             git:error "git-sync: not clean"
             return 1
         }
 
-        if ___x_cmd_is_interactive_tty; then command git clean -i   -f -d
-        else                                 command git clean      -f -d
+        if ___x_cmd_is_interactive_tty; then ___x_cmd___git_origin -i   -f -d
+        else                                 ___x_cmd___git_origin      -f -d
         fi
-        command git stash
+        ___x_cmd___git_origin stash
     }
 
-    local arg; for arg in "$@"; do
-        ___x_cmd_git_all_download "$arg" && \
-        ___x_cmd_git_all_push "$arg"
+    ___x_cmd___git_origin fetch "$origin"
+    ___x_cmd___git_origin pull --all --tags
+
+    local curbranch; curbranch="$(x git meta branch)"
+
+    [ "$#" -eq 0 ] || {
+        git:info "setting [current-branch=$branch] to update"
+        set -- "$@" "$curbranch"
+    }
+
+    local branch; for branch in "$@"; do
+        git:info "updating [branch=$branch]"
+        ___x_cmd___git_origin checkout "$branch"
+        ___x_cmd___git_origin pull "$origin" "$branch"
+        ___x_cmd___git_origin push "$origin" "$branch"
     done
+
+    git:info "recover to the [branch=$branch] before updating"
+    ___x_cmd___git_origin checkout "$curbranch"
 }

@@ -12,20 +12,35 @@ function gemini_gen_history_str( history_obj, minion_obj, i,      _text_res, _te
 
     return "{  \"parts\": [ {\"text\":" _text_req "}],  \"role\": \"user\" }, {  \"parts\": [ {\"text\":" _text_res "}],  \"role\": \"model\" }"
 }
-function gemini_gen_promote_system_or_part_str(minion_obj, prompt_dic_name,       _kp, i, l, str){
-    _kp = Q2_1 SUBSEP "\"prompt\"" S "\""prompt_dic_name"\""
 
-    if( prompt_dic_name == "system" ) l = minion_system_len(minion_obj, Q2_1 )
-    else if( prompt_dic_name == "part" ) l = minion_system_len(minion_obj, Q2_1 )
-
-    l = minion_obj[ _kp L ]
-    if( l == "" ) str = minion_obj[ _kp ]
+function gemini_gen_promote_part_str(minion_obj,       _kp, i, l, str){
+    v = minion_part( minion_obj, MINION_KP )
+    if ( ! chat_str_is_null(v) && (v != "[") ) str = v
     else {
+        _kp = MINION_KP SUBSEP "\"prompt\"" S "\"part\""
+        l = minion_part_len(minion_obj, MINION_KP )
         for (i=1; i<=l; ++i){
-            if( l == 1 ) str = minion_obj[ _kp S "\"1\"" ]
-            else str = str minion_obj[ _kp S "\""i"\"" ] JOINSEP
+            str = str minion_obj[ _kp S "\""i"\"" ] JOINSEP
         }
     }
+
+    if( ! chat_str_is_null(str)) {
+        if ( str !~ "^\"" )  str = jqu(str)
+        return sprintf("{\"text\": %s} ," , str)
+    }
+}
+
+function gemini_gen_promote_system_str(minion_obj,       _kp, i, l, str){
+    v = minion_system( minion_obj, MINION_KP )
+    if ( ! chat_str_is_null(v) && (v != "[") ) str = v
+    else {
+        _kp = MINION_KP SUBSEP "\"prompt\"" S "\"system\""
+        l = minion_system_len(minion_obj, MINION_KP )
+        for (i=1; i<=l; ++i){
+            str minion_obj[ _kp S "\""i"\"" ] JOINSEP
+        }
+    }
+
     if( ! chat_str_is_null(str)) {
         if ( str !~ "^\"" )  str = jqu(str)
         return sprintf("{\"text\": %s} ," , str)
@@ -59,15 +74,18 @@ function gemini_req_from_creq(history_obj, minion_obj, question,         str, i,
         str = gemini_gen_history_str(history_obj, minion_obj, i)
         if(str != "") _history_str = _history_str str " ,"
     }
-    promote_system_json = gemini_gen_promote_system_or_part_str( minion_obj, "system" )
-    promote_part_json = gemini_gen_promote_system_or_part_str( minion_obj, "part" )
+    promote_system_json = gemini_gen_promote_system_str( minion_obj )
+    promote_part_json = gemini_gen_promote_part_str( minion_obj )
 
     promote_content = gemini_gen_promote_context_example_str( minion_obj )
 
     if ( ! chat_str_is_null(promote_content))  USER_LATEST_QUESTION = promote_content JOINSEP  question
     else USER_LATEST_QUESTION = question
 
-    return sprintf("{\"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s}],\"role\":\"user\"}]}\n", _history_str, promote_system_json, promote_part_json, jqu(USER_LATEST_QUESTION))
+    _safe_setting = "\"safetySettings\": [     {       \"category\": \"HARM_CATEGORY_SEXUALLY_EXPLICIT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_HATE_SPEECH\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_HARASSMENT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_DANGEROUS_CONTENT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     }    ]"
+    gsub(/BLOCK_ONLY_HIGH/, "BLOCK_NONE", _safe_setting) # BLOCK_ONLY_HIGH, BLOCK_ONLY_HIGH
+
+    return sprintf("{ %s, \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s}],\"role\":\"user\"}]}\n", _safe_setting, _history_str, promote_system_json, promote_part_json, jqu(USER_LATEST_QUESTION))
 }
 
 # extract ...
@@ -89,21 +107,11 @@ function gemini_res_to_cres(gemini_resp_o, cres_o, kp,      v, resp_kp ){
 
 }
 
-function gemini_display_response_text(gemini_resp_o,        _kp, str, code,error_message){
-     # more info
+function gemini_parse_response(gemini_resp_o, ret_o,        _kp, str, code){
     _kp = Q2_1 S "\"candidates\"" S "\"1\"" S "\"content\""
 
     str =  juq(gemini_resp_o[ _kp  S "\"parts\"" S "\"1\"" S "\"text\""])
-
-    if(str == ""){
-        code = gemini_resp_o[ Q2_1 S "\"error\"" S "\"code\"" ]
-        error_message = juq(gemini_resp_o[ Q2_1 S "\"error\"" S "\"message\"" ])
-
-        str = "http code: " code "error_message: "error_message
-
-       return sprintf("http code: %s\nerror_message: %s\n", code, error_message )
-    }
-
-    return str
-
+    code = gemini_resp_o[ Q2_1 S "\"error\"" S "\"code\"" ]
+    ret_o[ "text" ] = str
+    ret_o[ "code" ] = code
 }

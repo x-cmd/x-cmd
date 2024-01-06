@@ -54,6 +54,16 @@ function minion_session( o, prefix,         v ){
     return "X"
 }
 
+function minion_type( o, prefix,         v ){
+    v = ENVIRON[ "type" ]
+    if ( ! chat_str_is_null(v) )    return v
+
+    v = o[ prefix S "\"type\"" ]
+    if ( ! chat_str_is_null(v) )    return ((v ~ "^\"") ? juq(v) : v)
+
+    return "chat"
+}
+
 function minion_maxtoken( o, prefix,            v ){
     v = ENVIRON[ "maxtoken" ]
     if ( ! chat_str_is_null(v) )    return int(v)
@@ -85,13 +95,39 @@ function minion_prompt_promptline( o, prefix,           v ){
     return ((v ~ "^\"") ? juq(v) : v)
 }
 
+function minion_example( o, prefix,      v ){
+    v = ENVIRON[ "example" ]
+    if ( ! chat_str_is_null(v) )    return v
+
+    return o[ prefix S "\"prompt\"" S "\"example\"" ]
+}
+
 function minion_example_len( o, prefix ){
     return o[ prefix S "\"prompt\"" S "\"example\"" L ]
+}
+
+function minion_system( o, prefix,      v ){
+    v = ENVIRON[ "system" ]
+    if ( ! chat_str_is_null(v) )    return v
+
+    return o[ prefix S "\"prompt\"" S "\"system\"" ]
 }
 
 function minion_system_len( o, prefix ){
     return o[ prefix S "\"prompt\"" S "\"system\"" L ]
 }
+
+function minion_part( o, prefix,      v ){
+    v = ENVIRON[ "part" ]
+    if ( ! chat_str_is_null(v) )    return v
+
+    return o[ prefix S "\"prompt\"" S "\"part\"" ]
+}
+
+function minion_part_len( o, prefix ){
+    return o[ prefix S "\"prompt\"" S "\"part\"" L ]
+}
+
 
 
 function minion_load_from_jsonfile( o, prefix, jsonfilepath, provider ){
