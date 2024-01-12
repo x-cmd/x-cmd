@@ -33,12 +33,20 @@ function chat_history_load( o, session_dir, history_num, chatid,      _cmd, t, i
     }
 
     # print  jstr( o )
-
 }
 
-# [
-#     {
-#         "creq": {},
-#         "cres": {}
-#     }
-# ]
+function chat_history_get_req_text(o, prefix, i){
+    return o[  prefix SUBSEP "\""i"\"" SUBSEP "\"creq\"" SUBSEP "\"question\""]
+}
+
+function chat_history_get_res_text(o, prefix, i){
+    return o[  Q2_1 SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"reply\"" SUBSEP "\"parts\"" SUBSEP "\"1\"" SUBSEP "\"text\"" ]
+}
+
+function chat_history_get_finishReason(o, prefix, i){
+    return o[  Q2_1 SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"finishReason\"" ]
+}
+
+function chat_history_get_maxnum(o, prefix){
+    return o[ prefix L ]
+}

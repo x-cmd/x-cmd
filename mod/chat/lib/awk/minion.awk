@@ -1,8 +1,6 @@
-# this is json pipe
-
-# {
-#     jpqrse( $0 )
-# }
+BEGIN{
+    JOINSEP = "\n\n"
+}
 
 function minion_name( o, prefix,        v ){
     v = o[ prefix S "\"name\"" ]
@@ -64,6 +62,16 @@ function minion_type( o, prefix,         v ){
     return "chat"
 }
 
+function minion_output( o, prefix,         v ){
+    v = ENVIRON[ "output" ]
+    if ( ! chat_str_is_null(v) )    return v
+
+    v = o[ prefix S "\"output\"" ]
+    if ( ! chat_str_is_null(v) )    return ((v ~ "^\"") ? juq(v) : v)
+
+    # return ENVIRON[ "cfg_output" ]
+}
+
 function minion_maxtoken( o, prefix,            v ){
     v = ENVIRON[ "maxtoken" ]
     if ( ! chat_str_is_null(v) )    return int(v)
@@ -89,8 +97,8 @@ function minion_prompt_context( o, prefix,          v ){
     return ((v ~ "^\"") ? juq(v) : v)
 }
 
-function minion_prompt_promptline( o, prefix,           v ){
-    v = o[ prefix S  "\"prompt\"" S "\"promptline\"" ]
+function minion_prompt_content( o, prefix,           v ){
+    v = o[ prefix S  "\"prompt\"" S "\"content\"" ]
     if ( chat_str_is_null(v) )  return
     return ((v ~ "^\"") ? juq(v) : v)
 }
@@ -106,6 +114,21 @@ function minion_example_len( o, prefix ){
     return o[ prefix S "\"prompt\"" S "\"example\"" L ]
 }
 
+function minion_example_tostr( o, prefix,      v, _kp, i, l, _str, _res, u, a ){
+    v = minion_example( o, prefix )
+    if ( ! chat_str_is_null(v) && (v != "[") ) return v
+    _kp = prefix S "\"prompt\"" S "\"example\""
+    l = minion_example_len( o, prefix )
+    for (i=1; i<=l; ++i){
+        u = o[ _kp S "\""i"\"" S "\"u\"" ]
+        a = o[ _kp S "\""i"\"" S "\"a\"" ]
+        _res = _res "User: "        ((u ~ "^\"") ? juq(u) : u) ";\n"
+        _res = _res "Assistant: "   ((a ~ "^\"") ? juq(a) : a) "\n"
+    }
+    _res = ( _res != "" ) ? "example:\n" _res JOINSEP : ""
+    return _res
+}
+
 function minion_system( o, prefix,      v ){
     v = ENVIRON[ "system" ]
     if ( ! chat_str_is_null(v) )    return v
@@ -113,22 +136,40 @@ function minion_system( o, prefix,      v ){
     return o[ prefix S "\"prompt\"" S "\"system\"" ]
 }
 
+function minion_system_tostr( o, prefix,       v, _kp, i, l, _str, _res ){
+    v = minion_system( o, prefix )
+    if ( ! chat_str_is_null(v) && (v != "[") ) return v
+
+    _kp = prefix S "\"prompt\"" S "\"system\""
+    l = minion_system_len(o, prefix )
+    for (i=1; i<=l; ++i) {
+        _str = o[ _kp S "\""i"\"" ]
+        if ( chat_str_is_null( _str ) ) continue
+        _str = ((_str ~ "^\"") ? juq(_str) : _str)
+        _res = _res _str JOINSEP
+    }
+    return _res
+}
+
 function minion_system_len( o, prefix ){
     return o[ prefix S "\"prompt\"" S "\"system\"" L ]
 }
 
-function minion_part( o, prefix,      v ){
-    v = ENVIRON[ "part" ]
-    if ( ! chat_str_is_null(v) )    return v
-
-    return o[ prefix S "\"prompt\"" S "\"part\"" ]
+function minion_filelist_attach( o, prefix,     v, i, l, arr, fp, _str, _res ){
+    v = ENVIRON[ "filelist_attach" ]
+    if ( chat_str_is_null(v) ) return
+    l = split( v, arr, ":" )
+    for (i=1; i<=l; ++i){
+        fp = arr[i]
+        if (fp == "") continue
+        _str =  "FILENAME: " fp "\n"    \
+                "------BEGIN------\n"   \
+                cat(fp)                 \
+                "\n------ENG------\n\n"
+        _res = _res _str
+    }
+    return _res
 }
-
-function minion_part_len( o, prefix ){
-    return o[ prefix S "\"prompt\"" S "\"part\"" L ]
-}
-
-
 
 function minion_load_from_jsonfile( o, prefix, jsonfilepath, provider ){
     jiparse2leaf_fromfile( o, prefix, jsonfilepath )

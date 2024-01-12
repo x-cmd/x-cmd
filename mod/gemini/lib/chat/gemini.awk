@@ -2,90 +2,61 @@ BEGIN{
     Q2_1 = SUBSEP "\"1\""
     JOINSEP = "\n\n"
 }
-# req_json = creq
-function gemini_gen_history_str( history_obj, minion_obj, i,      _text_res, _text_req) {
 
-    _text_req = history_obj[  Q2_1 SUBSEP "\""i"\"" SUBSEP "\"creq\"" SUBSEP "\"question\""]
-    _text_res = history_obj[  Q2_1 SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"reply\"" SUBSEP "\"parts\"" SUBSEP "\"1\"" SUBSEP "\"text\"" ]
-    # TODO: finishReason
-    if(( _text_req =="") ||(_text_res == "")) return
+function gemini_gen_unit_str(str){
+    if( ! chat_str_is_null(str)) {
+        if (str !~ "^\"")  str = jqu(str)
+        return sprintf("{\"text\": %s} ," , str)
+    }
+}
 
+function gemini_gen_history_str( history_obj, i,      _text_res, _text_req, _text_finishReason) {
+    _text_req = chat_history_get_req_text(history_obj,  Q2_1, i)
+    _text_res = chat_history_get_res_text(history_obj,  Q2_1, i)
+    _text_finishReason = chat_history_get_finishReason(history_obj,  Q2_1, i)
+    if( (_text_finishReason !~ "(STOP|stop)") || (_text_req =="") ||(_text_res == "")) return
     return "{  \"parts\": [ {\"text\":" _text_req "}],  \"role\": \"user\" }, {  \"parts\": [ {\"text\":" _text_res "}],  \"role\": \"model\" }"
 }
 
-function gemini_gen_promote_part_str(minion_obj,       _kp, i, l, str){
-    v = minion_part( minion_obj, MINION_KP )
-    if ( ! chat_str_is_null(v) && (v != "[") ) str = v
-    else {
-        _kp = MINION_KP SUBSEP "\"prompt\"" S "\"part\""
-        l = minion_part_len(minion_obj, MINION_KP )
-        for (i=1; i<=l; ++i){
-            str = str minion_obj[ _kp S "\""i"\"" ] JOINSEP
-        }
-    }
+function gemini_gen_minion_content_str(minion_obj,      context, example, content){
+    context = minion_prompt_context(minion_obj, MINION_KP)
+    context = (context != "") ? context JOINSEP : ""
 
-    if( ! chat_str_is_null(str)) {
-        if ( str !~ "^\"" )  str = jqu(str)
-        return sprintf("{\"text\": %s} ," , str)
-    }
+    example = minion_example_tostr(minion_obj, MINION_KP)
+    content = minion_prompt_content(minion_obj, MINION_KP)
+
+    return context example content
 }
 
-function gemini_gen_promote_system_str(minion_obj,       _kp, i, l, str){
-    v = minion_system( minion_obj, MINION_KP )
-    if ( ! chat_str_is_null(v) && (v != "[") ) str = v
-    else {
-        _kp = MINION_KP SUBSEP "\"prompt\"" S "\"system\""
-        l = minion_system_len(minion_obj, MINION_KP )
-        for (i=1; i<=l; ++i){
-            str minion_obj[ _kp S "\""i"\"" ] JOINSEP
-        }
-    }
-
-    if( ! chat_str_is_null(str)) {
-        if ( str !~ "^\"" )  str = jqu(str)
-        return sprintf("{\"text\": %s} ," , str)
-    }
+function gemini_gen_safe_setting_str(             _safe_setting){
+    _safe_setting = "\"safetySettings\": [     {       \"category\": \"HARM_CATEGORY_SEXUALLY_EXPLICIT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_HATE_SPEECH\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_HARASSMENT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_DANGEROUS_CONTENT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     }    ],"
+    gsub(/BLOCK_ONLY_HIGH/, "BLOCK_NONE", _safe_setting) # BLOCK_ONLY_HIGH, BLOCK_ONLY_HIGH
+    return _safe_setting
 }
 
-function gemini_gen_promote_context_example_str(minion_obj,     _kp, i, l, user, assistant, promote_content, example, promptline){
-    promote_content =  minion_prompt_context( minion_obj, Q2_1 )
-     if ( ! chat_str_is_null(promote_content)) promote_content = promote_content " ;"
-    l = minion_example_len(minion_obj, Q2_1 )
-
-    _kp = Q2_1 SUBSEP "\"prompt\"" S "\"example\""
+function gemini_req_from_creq(history_obj, minion_obj, question,         str, i, l, _history_str, promote_content, \
+    promote_system_json, _filelist_str, _safe_setting ){
+    l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
-        user = minion_obj[ _kp S "\""i"\"" S  "\"a\""]
-        assistant = minion_obj[ _kp S "\""i"\"" S  "\"u\""]
-        if (( chat_str_is_null(user)) &&  ( chat_str_is_null(assistant) )) continue
-        example = example "User: " user ";" "Assistant: " assistant JOINSEP
-    }
-    if ( ! chat_str_is_null(example)) example = "Example: " example ";"
-
-    _kp = Q2_1 SUBSEP "\"prompt\"" S "\"promptline\""
-    promptline = minion_prompt_promptline(minion_obj, Q2_1)
-    if ( ! chat_str_is_null(promptline)) promote_content = promptline " ;"
-    return sprintf("%s%s%s", promote_content, example, promptline)
-}
-
-
-function gemini_req_from_creq(history_obj, minion_obj, question,         str, i, l, _history_str, promote_content, promote_system_json, promote_part_json){
-    l = history_obj[ Q2_1 L ]
-    for (i=1; i<=l; ++i){
-        str = gemini_gen_history_str(history_obj, minion_obj, i)
+        str = gemini_gen_history_str(history_obj, i)
         if(str != "") _history_str = _history_str str " ,"
     }
-    promote_system_json = gemini_gen_promote_system_str( minion_obj )
-    promote_part_json = gemini_gen_promote_part_str( minion_obj )
 
-    promote_content = gemini_gen_promote_context_example_str( minion_obj )
+    promote_content = gemini_gen_minion_content_str( minion_obj )
 
-    if ( ! chat_str_is_null(promote_content))  USER_LATEST_QUESTION = promote_content JOINSEP  question
+    promote_system_json = minion_system_tostr(minion_obj, MINION_KP)
+    if (promote_system_json != "") promote_system_json = gemini_gen_unit_str(promote_system_json)
+
+    _filelist_str = minion_filelist_attach( minion_obj, minion_kp)
+    if (_filelist_str != "") _filelist_str = gemini_gen_unit_str(_filelist_str)
+
+    if ( ! chat_str_is_null(promote_content))  USER_LATEST_QUESTION = promote_content
     else USER_LATEST_QUESTION = question
 
-    _safe_setting = "\"safetySettings\": [     {       \"category\": \"HARM_CATEGORY_SEXUALLY_EXPLICIT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_HATE_SPEECH\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_HARASSMENT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_DANGEROUS_CONTENT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     }    ]"
-    gsub(/BLOCK_ONLY_HIGH/, "BLOCK_NONE", _safe_setting) # BLOCK_ONLY_HIGH, BLOCK_ONLY_HIGH
+    _safe_setting = gemini_gen_safe_setting_str()
 
-    return sprintf("{ %s, \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s}],\"role\":\"user\"}]}\n", _safe_setting, _history_str, promote_system_json, promote_part_json, jqu(USER_LATEST_QUESTION))
+    return sprintf("{ %s \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s}],\"role\":\"user\"}]}\n", \
+        _safe_setting, _history_str, promote_system_json, _filelist_str, jqu(USER_LATEST_QUESTION))
 }
 
 # extract ...
@@ -95,7 +66,6 @@ function gemini_res_to_cres(gemini_resp_o, cres_o, kp,      v, resp_kp ){
 
     resp_kp = Q2_1 SUBSEP "\"candidates\"" SUBSEP "\"1\""
 
-
     jdict_put( cres_o, kp, "\"reply\"", "\"\"" )
     cp_cover( cres_o, kp SUBSEP "\"reply\"", gemini_resp_o,  resp_kp SUBSEP "\"content\""  )
 
@@ -104,7 +74,6 @@ function gemini_res_to_cres(gemini_resp_o, cres_o, kp,      v, resp_kp ){
 
     v = gemini_resp_o[ resp_kp SUBSEP "\"index\""  ]
     jdict_put( cres_o, kp, "\"index\"",        ( (v == "" )   ? "\"\"" : v) )
-
 }
 
 function gemini_parse_response(gemini_resp_o, ret_o,        _kp, str, code){

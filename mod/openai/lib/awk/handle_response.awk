@@ -5,7 +5,7 @@ END{
 
     if ( OPENAI_HAS_RESPONSE_CONTENT == 0 ) {
         log_error("openai", "The response content is empty")
-        print                                       > (GEMINI_CONTENT_DIR "/chat.error.yml")
+        print                                       > (OPENAI_CONTENT_DIR "/chat.error.yml")
         exit(2)
     }
     else if (OPENAI_RESPONESE_IS_ERROR_CONTENT == 1) {

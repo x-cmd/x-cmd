@@ -3,7 +3,7 @@
 
 BEGIN{
 
-    QUESTION          = ENVIRON[ "question" ]
+    QUESTION          = ENVIRON[ "BODY" ]
     CHATID            = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE = ENVIRON[ "minion_json_cache" ]
     SESSIONDIR        = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
@@ -20,11 +20,12 @@ BEGIN{
 
     chat_history_load( history_obj, SESSIONDIR, HISTORY_NUM, CHATID)
 
-
     gemini_request_body_json            = gemini_req_from_creq( history_obj, minion_obj,  QUESTION )    # Notice: it's must before creq_create
+    gemini_request_body_json            = chat_str_replaceall(  gemini_request_body_json)
 
     creq_create( creq_obj, minion_obj, MINION_KP,     TYPE, MODEL, USER_LATEST_QUESTION, CHATID, HISTORY_NUM )
-    print creq_dump( creq_obj )         > (SESSIONDIR "/" CHATID "/chat.request.yml")
+    chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj))
+    print chat_request_json             > (SESSIONDIR "/" CHATID "/chat.request.yml")
 
     print gemini_request_body_json      > (SESSIONDIR "/" CHATID "/gemini.request.body.yml")
 

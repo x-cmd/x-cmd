@@ -1,5 +1,5 @@
 BEGIN{
-    QUESTION            = ENVIRON[ "question" ]
+    QUESTION            = ENVIRON[ "BODY" ]
     CHATID              = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE   = ENVIRON[ "minion_json_cache" ]
     SESSIONDIR          = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
@@ -17,9 +17,11 @@ BEGIN{
 
     #
     creq_create( creq_obj, minion_obj, MINION_KP, TYPE, MODEL, QUESTION, CHATID, HISTORY_NUM )
-    print creq_dump( creq_obj )         > (SESSIONDIR "/" CHATID "/chat.request.yml")
+    chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj ) )
+    print chat_request_json             > (SESSIONDIR "/" CHATID "/chat.request.yml")
 
-    openai_request_body_json            = openai_req_from_creq( history_obj, minion_obj,  QUESTION )
+    openai_request_body_json            = openai_req_from_creq( history_obj, minion_obj, MINION_KP )
+    openai_request_body_json            = chat_str_replaceall( openai_request_body_json )
     print openai_request_body_json      > (SESSIONDIR "/" CHATID "/openai.request.body.yml")
 
     print SESSIONDIR "/" CHATID

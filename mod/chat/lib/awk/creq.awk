@@ -63,7 +63,6 @@ function creq_create( o, minion_obj, minion_kp, type, model, question, chatid, h
 
 function creq_dump( o,  _kp ){
     return  jstr( o, _kp )
-
 }
 
 # function creq_json_file_create(obj, fildedir, MINION, model, QUESTION, CHATID, HISTORY_NUM ){

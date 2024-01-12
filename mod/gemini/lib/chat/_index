@@ -1,4 +1,4 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2034
 
 # ___X_CMD_CHAT_SESSION_DIR="$___X_CMD_ROOT_DATA/chat/session"
 
@@ -26,7 +26,18 @@ ___x_cmd_gemini_chat_request(){
     local system=""
     local type="chat"
     local confirm_before_send=""
+    local question_op=""
+    local count_token=""
+    local filelist_attach=""
 
+    local apikey=
+    ___x_cmd_gemini_cur     apikey:= 2>/dev/null
+    [ -n "$apikey" ] || {
+        gemini:error "Please setting up your apikey first ==> 'x gemini --cfg apikey=<your apikey>'"
+        return 1
+    }
+
+    local x_
     while [ $# -gt 0 ]; do
         case "$1" in
             --session)      session="$2";           shfit 2 ;;
@@ -36,10 +47,31 @@ ___x_cmd_gemini_chat_request(){
             --model)        model="$2";             shift 2 ;;
             --system)       system="$2";            shift 2 ;;
             --type)         type="$2";              shift 2 ;;
+            --file)
+                            x abspath_ "$2"
+                            [ -f "$x_" ] || N=gemini M="Please provide a valid [filepath=$2] after --file." log:ret:64
+                            filelist_attach="${filelist_attach}:${x_}";
+                            shift 2 ;;
+            --count)        count_token=1 ;  shift 1 ;;
+
             -c)             confirm_before_send=1;  shift 1 ;;
+
+
+            --with-question|--with-question-lineno|\
+            --with-question-file|--with-question-lineno-file)
+                            question_op="$1";       shift 1 ;;
             *)              question="${question}$*"; break ;;
         esac
     done
+
+    local x_=""
+    case "$question_op" in
+        --with-question)                ___x_cmd_chat_request___question_ "$question"               || return; question="$x_" ;;
+        --with-question-lineno)         ___x_cmd_chat_request___question_lineno_ "$question"        || return; question="$x_" ;;
+        --with-question-file)           ___x_cmd_chat_request___question_file_ "$question"          || return; question="$x_" ;;
+        --with-question-lineno-file)    ___x_cmd_chat_request___question_lineno_file_ "$question"   || return; question="$x_" ;;
+        *) ;;
+    esac
 
     local cfg_history_num=; local cfg_session=;     local cfg_minion=
     ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion 2>/dev/null
@@ -52,11 +84,11 @@ ___x_cmd_gemini_chat_request(){
     gemini:debug --chatid "$chatid" --confirm_before_send "$confirm_before_send"
 
     [ -n "$minion" ] || minion="default"
-    local x_=; ___x_cmd_chat_minion_cache_json_ "$minion" || return
+    x_=; ___x_cmd_chat_minion_cache_json_ "$minion" || return
     local minion_json_cache="$x_"
     {
-
-        x cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,question,model,chatid,minion_json_cache,system,type \
+        BODY="$question" \
+        x cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach \
                 -E cfg_history_num,cfg_session,cfg_minion,cfg_model  \
                 -m j/json,j/jiter,j/jcp \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"          \
@@ -86,8 +118,11 @@ ___x_cmd_gemini_chat_request(){
 
             local requestbody
             read -r requestbody
-
-            x retry --max 3 --interval 3 ___x_cmd_gemini_chat_request___try
+            if [ -z "$count_token" ]; then
+                x retry --max 3 --interval 3 ___x_cmd_gemini_chat_request___try
+            else
+                x retry --max 3 --interval 3 ___x_cmd_gemini_count_request___try
+            fi
         } || {
             ___x_cmd_gemini_chat_request___trapexit
             return 1

@@ -1,7 +1,7 @@
 # Section: user model
-BEGIN{
-    TAPP_CANVAS_FULLSCREEN = 1
-}
+# BEGIN{
+#     TAPP_CANVAS_FULLSCREEN = 1
+# }
 function tapp_init(){
     THEME_STYLE_PREVIEW_PATH = ENVIRON[ "style_preview" ]
     THEME_NAVI_ROW = ENVIRON[ "navi_row" ]
