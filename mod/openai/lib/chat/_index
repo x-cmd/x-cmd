@@ -27,8 +27,9 @@ ___x_cmd_openai_chat_request(){
     local system=""
     local type="chat"
     local confirm_before_send=""
-    local question_op=""
     local filelist_attach=""
+
+    local numbered=""
 
     local apikey=
     ___x_cmd_openai_cur apikey:= 2>/dev/null
@@ -36,6 +37,8 @@ ___x_cmd_openai_chat_request(){
         openai:error "Please setting up your apikey first ==> 'x openai --cfg apikey=<your apikey>'"
         return 1
     }
+
+    local inputtype=none
 
     local x_=""
     while [ $# -gt 0 ]; do
@@ -52,27 +55,24 @@ ___x_cmd_openai_chat_request(){
                             [ -f "$x_" ] || N=openai M="Please provide a valid [filepath=$2] after --file." log:ret:64
                             filelist_attach="${filelist_attach}:${x_}";
                             shift 2 ;;
+
             -c)             confirm_before_send=1;  shift 1 ;;
 
-            --with-question|--with-question-lineno|\
-            --with-question-file|--with-question-lineno-file)
-                            question_op="$1";       shift 1 ;;
+            --pipe|--edit)  inputtype="${1#--}";    shift 1 ;;
+            --numbered)     numbered=1;             shift 1 ;;
+
+
             *)              question="${question}$*"; break ;;
         esac
     done
 
     x_=""
-    case "$question_op" in
-        --with-question)                ___x_cmd_chat_request___question_ "$question"               || return; question="$x_" ;;
-        --with-question-lineno)         ___x_cmd_chat_request___question_lineno_ "$question"        || return; question="$x_" ;;
-        --with-question-file)           ___x_cmd_chat_request___question_file_ "$question"          || return; question="$x_" ;;
-        --with-question-lineno-file)    ___x_cmd_chat_request___question_lineno_file_ "$question"   || return; question="$x_" ;;
-        *) ;;
-    esac
+    ___x_cmd_chat_request___preparequestion_ "$question" "$inputtype" "$numbered" || return
+    question="$x_"
 
 
-    local cfg_history_num=; local cfg_session=;     local cfg_minion=
-    ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion 2>/dev/null
+    local cfg_history_num=; local cfg_session=;     local cfg_minion=;  local cfg_userlang=
+    ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion cfg_userlang=userlang 2>/dev/null
 
     local cfg_model=;       local cfg_maxtoken=;    local cfg_seed=;    local cfg_temperature=
     ___x_cmd_openai_cfg --var cfg_model=model cfg_maxtoken=maxtoken cfg_seed=seed cfg_temperature=temperature 2>/dev/null
@@ -86,6 +86,7 @@ ___x_cmd_openai_chat_request(){
     openai:debug --chatid "$chatid" --model "$model" --question "$question" --history_num "$history_num" --confirm_before_send "$confirm_before_send" "chat request"
 
     {
+        userlang="${cfg_userlang:-$LANG}" \
         BODY="$question" \
         x cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach   \
                 -E cfg_history_num,cfg_session,cfg_minion,cfg_model,cfg_maxtoken,cfg_seed,cfg_temperature \
@@ -97,31 +98,32 @@ ___x_cmd_openai_chat_request(){
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"           \
                 -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai.awk"       \
                 -f "$___X_CMD_ROOT_MOD/openai/lib/awk/handle_request.awk"
-    } | {
-        local content_dir
-        read -r content_dir
+    } | ( ___x_cmd_openai_chat_request___launch )
+}
 
-        ___x_cmd_openai_chat_request___trapexit(){
-            openai:debug "Remove chat.running file"
-            x rmrf "$content_dir/chat.running"
-        }
+___x_cmd_openai_chat_request___launch(){
+    local content_dir
+    read -r content_dir
 
-        printf "%s\n" $$ >"$content_dir/chat.running"
-        trap '___x_cmd_openai_chat_request___trapexit' EXIT
+    ___x_cmd_openai_chat_request___trapexit(){
+        openai:debug "Remove chat.running file"
+        x rmrf "$content_dir/chat.running"
+    }
 
-        {
-            read -r model
+    printf "%s\n" $$ >"$content_dir/chat.running"
+    trap '___x_cmd_openai_chat_request___trapexit' EXIT
 
-            local requestbody
-            read -r requestbody
+    {
+        read -r model
 
-            x retry --max 2 --interval 3 ___x_cmd_openai_chat_request___try
-        } || {
-            ___x_cmd_openai_chat_request___trapexit
-            return 1
-        }
+        local requestbody
+        read -r requestbody
 
-   }
+        x retry --max 2 --interval 3 ___x_cmd_openai_chat_request___try
+    } || {
+        ___x_cmd_openai_chat_request___trapexit
+        return 1
+    }
 }
 
 ___x_cmd_openai_chat_request___try(){

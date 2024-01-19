@@ -1,14 +1,20 @@
 # shellcheck shell=dash
 
-___X_CMD_GITHOOK_VERSION="v0.0.1" # If upgrade the version. The `gitconfig/lib/main` also need to upgrade
+# If upgrade the version. The `gitconfig/lib/main` theme message box that record version also need to upgrade
+___X_CMD_GITHOOK_VERSION="v0.0.2"
+
+x log init githook
 
 ___x_cmd_githook___main(){
     [ -n "$1" ] || set -- "--help"
     local op="$1"; shift
     case "$op" in
-        apply|clear)      ___x_cmd_githook_"$op" "$@" ;;
-        --apply|--clear)  ___x_cmd_githook_"${op#--}" "$@" ;;
-        -h|--help)        ___x_cmd_githook_help ;;
+        apply|clear|reapply|reset)
+            ___x_cmd_githook_"$op" "$@" ;;
+        --apply|--clear)
+            ___x_cmd_githook_"${op#--}" "$@" ;;
+        -h|--help)
+            ___x_cmd_githook_help ;;
     esac
 }
 
@@ -18,20 +24,32 @@ ___x_cmd_githook_help(){
     return 1
 }
 
+___x_cmd_githook___locate_(){
+    ___x_cmd_search_path_ . ".x-cmd/git/hook.yml" || return
+    x_="$___X_CMD_SEARCH_PATH_RESULT"
+}
+
 ___x_cmd_githook_apply(){
-    local fp="${1:-"$(x wsroot)/.x-cmd/git/hook.yml"}"
-    local git_hook_cache_dir="${2:-"$(x wsroot)/.git/.x-cmd/hooks/${___X_CMD_GITHOOK_VERSION}"}"
+    local x_=""; ___x_cmd_githook___locate_
+    [ -n "$x_" ] || return 0
+    local githook_wsdir="$x_"
 
-    [ -d "$git_hook_cache_dir" ] || {
-        local tgt_hook_path="$___X_CMD_ROOT_GDATA/githook/hooks/${___X_CMD_GITHOOK_VERSION}"
-        [ -d "$tgt_hook_path" ] || {
-            x mkdirp "$___X_CMD_ROOT_GDATA/githook/hooks"
-            x cp -r "$___X_CMD_ROOT_MOD/githook/lib/hooks/${___X_CMD_GITHOOK_VERSION}" "$tgt_hook_path"
-        }
+    local fp="${1:-"$githook_wsdir/.x-cmd/git/hook.yml"}"
+    local git_hook_cache_dir="${2:-"$githook_wsdir/.git/.x-cmd/hooks/${___X_CMD_GITHOOK_VERSION}"}"
 
-        command git config --local core.hooksPath "$tgt_hook_path"
-        # command git config --local x-cmd.githook.init ""
-    }
+    local tgt_hook_path="$___X_CMD_ROOT_GDATA/githook/hooks/${___X_CMD_GITHOOK_VERSION}"
+
+    [ -z "$___X_CMD_GITHOOK_APPLY_FORCE" ] || x rmrf "$tgt_hook_path"
+
+    if [ ! -d "$git_hook_cache_dir" ] || [ ! -d "$tgt_hook_path" ]; then
+        githook:info "Enable git hook by setting [core.hooksPath=$tgt_hook_path]"
+        ___x_cmd_cmds git config --local core.hooksPath "$tgt_hook_path"
+    fi
+
+    if [ ! -d "$tgt_hook_path" ]; then
+        x mkdirp "$___X_CMD_ROOT_GDATA/githook/hooks"
+        x cp -r "$___X_CMD_ROOT_MOD/githook/lib/hooks/${___X_CMD_GITHOOK_VERSION}" "$tgt_hook_path"
+    fi
 
     x rmrf "$git_hook_cache_dir"
     x mkdirp "$git_hook_cache_dir"
@@ -46,13 +64,32 @@ ___x_cmd_githook_apply(){
         -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk"     \
         -f "${___X_CMD_ROOT_MOD}/githook/lib/awk/apply.awk"
 
+    printf "" > "$git_hook_cache_dir/DONE.APPLY.GITHOOK.X-CMD.COM"
+}
+
+___x_cmd_githook_reapply(){
+    ___X_CMD_GITHOOK_APPLY_FORCE=1 ___x_cmd_githook_apply "$@"
+}
+
+___x_cmd_githook_reset(){
+    local tgt_hook_path="$___X_CMD_ROOT_GDATA/githook/hooks/${___X_CMD_GITHOOK_VERSION}"
+
+    githook:info "Remove [dir=$tgt_hook_path]"
+    x rmrf "$tgt_hook_path"
+    x mkdirp "$___X_CMD_ROOT_GDATA/githook/hooks"
+
+    githook:info --src "$___X_CMD_ROOT_MOD/githook/lib/hooks/${___X_CMD_GITHOOK_VERSION}" "Copy to [tgt=$tgt_hook_path]"
+    x cp -r "$___X_CMD_ROOT_MOD/githook/lib/hooks/${___X_CMD_GITHOOK_VERSION}" "$tgt_hook_path"
+
+    githook:info "Setting [core.hooksPath=$tgt_hook_path]"
+    ___x_cmd_cmds git config --local core.hooksPath "$tgt_hook_path"
 }
 
 ___x_cmd_githook_clear(){
-    local git_hook_cache_dir="${1:-"$(x wsroot)/.git/.x-cmd/hooks"}"
-
-    x rmrf "${git_hook_cache_dir}"
-    command git config --local --unset core.hooksPath
+    local x_=""; ___x_cmd_githook___locate_
+    if [ -n "$x_" ] || [ -n "$1" ]; then
+        local git_hook_cache_dir="${1:-"$x_/.git/.x-cmd/hooks"}"
+        x rmrf "${git_hook_cache_dir}"
+    fi
+    ___x_cmd_cmds git config --local --unset core.hooksPath
 }
-
-

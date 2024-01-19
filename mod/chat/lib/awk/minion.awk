@@ -91,6 +91,12 @@ function minion_temperature( o, prefix,         v ){
     return ENVIRON[ "cfg_temperature" ]
 }
 
+function minion_is_jsonmode( o, prefix,         v ){
+    v = o[ prefix S "\"json\"" ]
+    if ( ! chat_str_is_null(v) )    v = ((v ~ "^\"") ? juq(v) : v)
+    return (v == "true")
+}
+
 function minion_prompt_context( o, prefix,          v ){
     v = o[ prefix S  "\"prompt\"" S "\"context\"" ]
     if ( chat_str_is_null(v) )  return

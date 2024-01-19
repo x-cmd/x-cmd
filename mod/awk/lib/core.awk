@@ -35,17 +35,6 @@ function joinwrap( sep, left, right, arr, prefix, start, end ){
     return _result
 }
 
-BEGIN{
-    STR_TERMINAL_ESCAPE033 = "\033\\[([0-9]+;)*([0-9]+)?(m|dh|A|B|C|D)"
-    STR_TERMINAL_ESCAPE033_LIST = "(" STR_TERMINAL_ESCAPE033 ")+"
-    TRIM033 = STR_TERMINAL_ESCAPE033_LIST
-}
-
-function trim033(){
-    gsub( TRIM033, "", text )
-    return text
-}
-
 function divide( astr, _sep, ret,     i ){
     if ( (i = index( astr, _sep )) <= 0 ) return false
     ret[1] = substr( astr, 1, i-1 )
@@ -715,15 +704,21 @@ function str_joinwrap(sep, left, right, obj, prefix, start, end,     i, _result)
 ### EndSection
 
 BEGIN{
-    STR_TERMINAL_ESCAPE033 = "\033\\[([0-9]+;)*([0-9]+)?(m|dh|A|B|C|D)"
+    # STR_TERMINAL_ESCAPE033 = "\033\\[([0-9]+;)*([0-9]+)?(m|dh|A|B|C|D)"
+    STR_TERMINAL_ESCAPE033 = "\033\\[[^A-Za-z]*[A-Za-z=]"
     STR_TERMINAL_ESCAPE033_LIST = "(" STR_TERMINAL_ESCAPE033 ")+"
+    TRIM033 = STR_TERMINAL_ESCAPE033_LIST
 }
 
 function str_len( s ) {         return length( s );     }
 function str_len_noesc( s ){    return length( str_remove_esc( s ) );   }
 
+function trim033( text ){
+    gsub( TRIM033, "", text )
+    return text
+}
+
 function str_remove_esc(text){
-    # gsub(/\033\[([0-9]+;)*[0-9]+m/, "", text)
     gsub( STR_TERMINAL_ESCAPE033_LIST, "", text )
     return text
 }

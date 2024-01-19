@@ -141,7 +141,8 @@ function utf8text_to_arr( o, kp , col, arr, arrkp,      l, i, k, e, el, _e1, _e1
 # Section: utf8tt
 
 BEGIN{
-    TERMINAL_ESCAPE033 = "\033\\[([0-9]+;)*([0-9]+)?(m|dh|A|B|C|D)"
+    # TERMINAL_ESCAPE033 = "\033\\[([0-9]+;)*([0-9]+)?(m|dh|A|B|C|D)"
+    TERMINAL_ESCAPE033 = "\033\\[[^A-Za-z]*[A-Za-z=]"
     TERMINAL_ESCAPE033_LIST = "(" TERMINAL_ESCAPE033 ")+"
 }
 

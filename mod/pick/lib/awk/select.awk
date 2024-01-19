@@ -39,10 +39,12 @@ function tapp_handle_wchar( value, name, type ){
     pick_handle( o, PICK_KP, value, name, type )
 }
 
-function tapp_handle_response(fp,       _content, arr){
+function tapp_handle_response(fp,       _content, _, arr, i, l){
     _content = cat(fp)
     if( _content == "" ) panic("list data is empty")
-    arr_cut(arr, _content, "\n")
+    arr_cut(_, _content, "\n")
+    arr[L] = l = _[L]
+    for (i=1; i<=l; ++i) arr[i] = str_remove_esc(_[i])
     pick_data_set( o, PICK_KP, arr, PICK_SIZE )
 }
 

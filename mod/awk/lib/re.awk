@@ -83,7 +83,7 @@ BEGIN {
     RE_UTF8_HAN = "[一-龥]+"
     RE_UTF8_NON_ASCII = "[^\0-\127]+$"
 
-    RE_033 = "\033\\[([0-9]+;)*[0-9]+m"
+    RE_033 = "\033\\[[^A-Za-z]*[A-Za-z=]"
 
     RE_IP_A = re_range(0, 127)   re_interval_expression( "([.]" re_range(0, 255) ")", 3 )
     RE_IP_B = re_range(128, 191) re_interval_expression( "([.]" re_range(0, 255) ")", 3 )

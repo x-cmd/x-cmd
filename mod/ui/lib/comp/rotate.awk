@@ -6,10 +6,11 @@ BEGIN{
   SIZE = (SIZE <= 0) ? ROWS : SIZE
 
   PREFIX = ENVIRON[ "PREFIX" ]
+  EXITCLEAR  = ENVIRON[ "EXITCLEAR" ]
   PROMPT_RUN = ENVIRON[ "PROMPT_RUN" ]
   PROMPT_END = ENVIRON[ "PROMPT_END" ]
 
-  _errcode = ui_rotate_fromstdin( SIZE, PREFIX, PROMPT_RUN, PROMPT_END )
+  _errcode = ui_rotate_fromstdin( SIZE, PREFIX, EXITCLEAR, PROMPT_RUN, PROMPT_END )
 }
 
 END{

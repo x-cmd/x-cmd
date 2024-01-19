@@ -3,36 +3,70 @@
 # using rerun to fix
 ___x_cmd_xx___fix___rerun(){
     local x_=""
+
     if [ $# -eq 0 ]; then
-        x_=; x history --last_ || return
-        local x_id="${x_%% *}"
-        local x_cmd="${x_#* }"
+        local x_id=; local x_cmd=;
+        x history --last_ || return
         x_=; ___x_cmd_xx___fix___rerun___cmdstr_ "$x_id" "$x_cmd" || return
     else
-        local fake_id="CMDARR.${HISTCMD}"
+        local fake_id="CMDARR.${HISTCMD:-0}"
         x_=; ___x_cmd_xx___fix___rerun___cmdarr_ "$fake_id" "$@" || return
     fi
 
-    local ___X_CMD_XX_FIX_CHOICELIST="${___X_CMD_XX_FIX_CHOICELIST}${___X_CMD_UNSEENCHAR_NEWLINE}${x_}"
-    ___x_cmd_xx___execchoicelist "$___X_CMD_XX_FIX_CHOICELIST"
+    ___x_cmd_xx___execchoicelist "$x_" json
 }
-
 
 ___x_cmd_xx___fix___rerun___cmdarr_(){
     local _cmdid="$1"; shift
-    x ui yesno "Use ai to fix, or exit" || return
-    x_=; ___x_cmd_xx___fix___rerun_cmdresult_ --cmdarr "$_cmdid" "$@" || return
+
+    x_=; ___x_cmd_xx___fix___rerun_cmdresult_filepath_ "$_cmdid" || return
+    if [ -f "$x_" ]; then
+        x ui yesno "Use ai to fix, or exit" || return
+    else
+        local id=;
+        x ui select id "Select the operation you want to fix:" \
+            "Rerun cmd to get stderr result and then use ai" \
+            "Just use ai" \
+            "exit" || return
+        case "$id" in
+            1)  x_=""; ___x_cmd_xx___fix___rerun_cmdresult_ --cmdarr "$_cmdid" "$@" || return ;;
+            2)  x_="" ;;
+            *)  return 1 ;;
+        esac
+    fi
+
     ___x_cmd_xx___co_fix_ --cmdarr "$x_" "$@"
 }
 
 ___x_cmd_xx___fix___rerun___cmdstr_(){
     local _cmdid="$1"
     local _cmdstr="$2"
-    x ui yesno "Use ai to fix, or exit" || return
-    x_=; ___x_cmd_xx___fix___rerun_cmdresult_ --cmdstr "$_cmdid" "$_cmdstr" || return
+
+    x_=; ___x_cmd_xx___fix___rerun_cmdresult_filepath_ "$_cmdid" || return
+    if [ -f "$x_" ]; then
+        x ui yesno "Use ai to fix, or exit" || return
+    else
+        local id=;
+        x ui select id "Select the operation you want to fix [cmd=$_cmdstr]:" \
+            "RERUN command for stderr data to query ai" \
+            "Only use command string to query ai" \
+            "Exit" || return
+        case "$id" in
+            1)  x_=""; ___x_cmd_xx___fix___rerun_cmdresult_ --cmdstr "$_cmdid" "$_cmdstr" || return ;;
+            2)  x_="" ;;
+            *)  return 1 ;;
+        esac
+    fi
+
     ___x_cmd_xx___co_fix_ --cmdstr "$x_" "$_cmdstr"
 }
 
+___x_cmd_xx___fix___rerun_cmdresult_filepath_(){
+    local _cmdid="$1"
+    [ -n "$_cmdid" ] || N=xx M="Not found cmd id" log:ret:1
+    x_="$___X_CMD_ROOT_TMP/xx/cmdlog/$$-${_cmdid}"
+    # [ -f "$x_" ] || x scriptty store fp_ "$_cmdid" $$
+}
 
 ___x_cmd_xx___fix___rerun_cmdresult_(){
     local _cmdid=
@@ -46,10 +80,9 @@ ___x_cmd_xx___fix___rerun_cmdresult_(){
                         ;;
     esac
 
-    [ -n "$_cmdid" ] || N=xx M="Not found cmd id" log:ret:1
-    x_="$___X_CMD_ROOT_TMP/xx/rerun/$$/$_cmdid"
+    x_=; ___x_cmd_xx___fix___rerun_cmdresult_filepath_ "$_cmdid" || return
     [ ! -f "$x_" ] || return 0
-    xx:debug "Rerun cmd stderr result filepath[$x_]"
+    xx:info "Rerun cmd stderr result [fp=$x_]"
     x ensurefp "$x_"
     (
         {

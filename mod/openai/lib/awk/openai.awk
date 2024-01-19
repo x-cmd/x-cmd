@@ -28,7 +28,7 @@ function openai_gen_minion_content_str(minion_obj, minion_kp,      context, exam
 }
 
 function openai_req_from_creq(history_obj, minion_obj, minion_kp,          i, l, str, \
-    _system_str, _history_str, _content_str, _messages_str, _mode, _maxtoken, _seed, _temperature, _data_str){
+    _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken, _seed, _temperature, _data_str){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
         str = openai_gen_history_str(history_obj, i)
@@ -48,14 +48,16 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp,          i, l,
     _maxtoken       = minion_maxtoken( minion_obj, minion_kp )
     _seed           = minion_seed( minion_obj, minion_kp )
     _temperature    = minion_temperature( minion_obj, minion_kp )
+    _jsonmode       = minion_is_jsonmode( minion_obj, minion_kp )
 
     # TODO: in some case, _maxtoken is 0, but it is not a valid value for openai. Find out why that happened in line 72
     _maxtoken       = (_maxtoken > 0) ? "\"max_tokens\": " _maxtoken "," : ""
     _seed           = (_seed != "") ? "\"seed\": " int(_seed) "," : ""
     _temperature    = (_temperature != "") ? "\"temperature\": " _temperature "," : ""
+    _jsonmode       = (_jsonmode) ? "\"response_format\": { \"type\": \"json_object\" }," : ""
 
-    _data_str = sprintf( "{ \"model\": %s, \"messages\": [ %s ], %s%s%s \"stream\": true }", \
-                    _mode, _messages_str, _maxtoken, _seed, _temperature )
+    _data_str = sprintf( "{ \"model\": %s, \"messages\": [ %s ], %s \"stream\": true }", \
+                    _mode, _messages_str, _jsonmode _maxtoken _seed _temperature )
 
     return _data_str
 }

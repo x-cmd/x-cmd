@@ -37,11 +37,12 @@ function pick_data_set( o, kp, arr, obj,        i, l, w, max_w, title_width ){
     if (obj[ "WIDTH_ADAPTIVE" ] == 1) {
         l = arr[L]
         for (i=1; i<=l; ++i){
-            w = wcswidth_cache( arr[i] )
+            w = wcswidth_cache( str_remove_esc(arr[i]) )
             if (max_w < w) max_w = w
         }
         title_width = wcswidth_cache( obj[ "TITLE" ] )
         if (max_w < title_width) max_w = title_width
+        max_w = max_w + 1
         comp_gsel_item_width(o, kp, (obj[ "WIDTH" ] = max_w))
         obj[ "WIDTH_ADAPTIVE" ] = 0
     }

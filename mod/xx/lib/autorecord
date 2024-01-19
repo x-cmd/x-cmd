@@ -1,0 +1,100 @@
+# shellcheck shell=dash
+
+___x_cmd_xx_autorecord(){
+    local op="$1";
+    case "$op" in
+        e|en|enable)
+            shift; ___x_cmd_xx_autorecord_enable "$@"
+            ;;
+
+        d|de|disable)
+            shift; ___x_cmd_xx_autorecord_disable "$@"
+            ;;
+        *)  N=xx M="Not support option[$op]" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_xx_autorecord_enable(){
+    [ -z "$___X_CMD_XX_AUTORECORD_ENABLE" ] || return "$___X_CMD_XX_AUTORECORD_ENABLE"
+
+    local x_;   ___x_cmd_xx_autorecord___tty_fp_
+
+    ___X_CMD_XX_AUTORECORD_ENABLE=1
+    if ! ___x_cmd_is_interactive; then
+        xx:error "Fail to enable autorecord because it is not a interractive tty"
+        return 1
+    fi
+
+    if [ -n "${ZSH_VERSION}${BASH_VERSION}" ]; then
+        xx:info "Enable autorecord"
+        x_replhook_feature="xx autorecord" x replhook_enable || return
+        ___x_cmd_replhook_preexec_add ___x_cmd_xx_autorecord___preexec
+        ___x_cmd_replhook_precmd_add ___x_cmd_xx_autorecord___precmd
+        ___X_CMD_XX_AUTORECORD_ENABLE=0
+    else
+        xx:error --shell "$___X_CMD_SHELL" "Currently donnot support autorecord in shell besides bash and zsh."
+        return 1
+    fi
+}
+
+___x_cmd_xx_autorecord_disable(){
+    [ -n "$___X_CMD_XX_AUTORECORD_ENABLE" ] || return 0
+    if [ -n "${ZSH_VERSION}${BASH_VERSION}" ]; then
+        # recover stderr
+        exec 2>/dev/tty
+        xx:info "Disable autorecord"
+        ___x_cmd_replhook_preexec_rm ___x_cmd_xx_autorecord___preexec
+        ___x_cmd_replhook_precmd_rm ___x_cmd_xx_autorecord___precmd
+    else
+        xx:error --shell "$___X_CMD_SHELL" "Currently donnot suuport autorecord in shell besides bash and zsh."
+    fi
+
+    ___X_CMD_XX_AUTORECORD_ENABLE=
+    ___x_cmd_xx_autorecord___killlastone
+}
+
+___x_cmd_xx_autorecord___precmd(){
+    ___x_cmd_xx_autorecord___killlastone
+    exec 2>/dev/tty
+}
+
+___x_cmd_xx_autorecord___preexec(){
+    local x_
+    ___x_cmd_xx_autorecord___tty_fp_
+    local ___tty_fp="$x_"
+
+    local fp="$___X_CMD_ROOT_TMP/xx/cmdlog/$$-${HISTCMD}"
+    local lastrec="$___X_CMD_ROOT_TMP/xx/data/autorecord/$___tty_fp/pid"
+
+    x ensurefp "$fp" "$lastrec"
+
+    ___x_cmd_xx_autorecord___killlastone
+
+    exec 2>"$fp"
+    (
+        {
+            x pidofsubshell >"$lastrec"
+            local record_pid
+            read -r record_pid < "$lastrec"
+            ___x_cmd_cmds tail -f "$fp" --pid="$record_pid" >/dev/tty
+        } &
+    )
+}
+
+___x_cmd_xx_autorecord___tty_fp_(){
+    [ -z "$___X_CMD_TTY_FP" ] || ___X_CMD_TTY_FP=$(tty) || return 1
+    x_="$___X_CMD_TTY_FP"
+}
+
+___x_cmd_xx_autorecord___killlastone(){
+    local x_
+    ___x_cmd_xx_autorecord___tty_fp_
+    local ___tty_fp="$x_"
+
+    local lastrec="$___X_CMD_ROOT_TMP/xx/data/autorecord/$___tty_fp/pid"
+    [ ! -f "$lastrec" ] || {
+        local last_stderr_record_pid
+        read -r last_stderr_record_pid < "$lastrec"
+        kill -s KILL "$last_stderr_record_pid" 2>/dev/null
+    }
+}

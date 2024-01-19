@@ -3,20 +3,25 @@
 ___x_cmd_gh_org_repo(){
     param:scope  ___x_cmd_github
     param:subcmd ___x_cmd_gh_org_repo                                   \
-        ls                  "List organization repo"                    \
+        ll                  "List organization repo"                    \
         create              "Create organization repo"                  \
-        --app               "Interactive UI show organization repo"     \
+        ls                  "Interactive UI show organization repo"     \
         export              "Export repo csv data"
     param:subcmd:try
     param:run
 
-    ___x_cmd_gh_org_repo_app
+    ___x_cmd_gh_org_repo_ls
 }
 
 # Section: App
 # https://docs.github.com/en/rest/repos/repos#list-organization-repositories
 # shellcheck disable=SC2120
-___x_cmd_gh_org_repo_app() {
+___x_cmd_gh_org_repo_ls() {
+    if ___x_cmd_gx_has_format_args "$@"; then
+        ___x_cmd_gh_org_repo_ll "$@"
+        return
+    fi
+
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
@@ -29,13 +34,19 @@ options:
     --page      "Page number of the results to fetch."                      <>:Number="1"
 A
     param:run
+
     local ___gh_error_msg="Couldn't find any data by  ${1}"
     local Address="$1"
-    local ___X_CMD_TUI_TABLE_FINAL_COMMAND
-    local ___X_CMD_TUI_TABLE_CUR_LINE
-    local ___X_CMD_TUI_TABLE_CUR_ITEM
-    local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_get_multi  "/orgs/$Address/repos" type sort direction'
-    ___x_cmd_gh_tui_app "org.repo.app.awk"
+    if ___x_cmd_gx_is_interactive_env; then
+        local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+        local ___X_CMD_TUI_TABLE_CUR_LINE
+        local ___X_CMD_TUI_TABLE_CUR_ITEM
+        local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA='___x_cmd_gh_get_multi  "/orgs/$Address/repos" type sort direction'
+        ___x_cmd_gh_tui_app "org.repo.app.awk"
+    else
+        ___x_cmd_gh_get_multi  "/orgs/$Address/repos" type sort direction | \
+            x jo 2c    .full_name
+    fi
 
     if [ "$___X_CMD_TUI_TABLE_FINAL_COMMAND" = "c" ]; then
         ___x_cmd_gh_org_repo_create --org "$Address"
@@ -45,7 +56,7 @@ A
 
 # Section: List
 # https://docs.github.com/en/rest/repos/repos#list-organization-repositories
-___x_cmd_gh_org_repo_ls() {
+___x_cmd_gh_org_repo_ll() {
     param:scope     ___x_cmd_github
     param:dsl       <<A
 options:
@@ -56,11 +67,15 @@ options:
 
     --per_page  "Results per page"                                          <>:Number=30
     --page      "Page number of the results to fetch."                      <>:Number=1
-    --json|-j   "output json data"
+
+    --json|-j   "output origin json data"
+    --csv       "output csv data"
+    --yml       "output yml data"
 A
     param:run
-    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ] ; then
-        ___x_cmd_gh_get_multi  "/orgs/$1/repos" type sort direction
+    
+    if ___x_cmd_gx_output_is_format; then
+        ___x_cmd_gh_get_multi  "/orgs/$1/repos" type sort direction | ___x_cmd_gx_output_format
     elif [ "$type" = "member" ] ; then
         ___x_cmd_gh_get_multi  "/orgs/$1/repos" type sort direction | \
             x jo 2c            .full_name  .visibility .permissions.push .permissions.maintain .description | \

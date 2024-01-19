@@ -30,22 +30,30 @@ ___x_cmd_gemini_chat_request(){
     local count_token=""
     local filelist_attach=""
 
+    local numbered=""
+
     local apikey=
     ___x_cmd_gemini_cur     apikey:= 2>/dev/null
     [ -n "$apikey" ] || {
         gemini:error "Please setting up your apikey first ==> 'x gemini --cfg apikey=<your apikey>'"
+        gemini:warn "You can get the gemini apikey from: https://makersuite.google.com/app/apikey"
         return 1
     }
+
+    local inputtype=none
 
     local x_
     while [ $# -gt 0 ]; do
         case "$1" in
             --session)      session="$2";           shfit 2 ;;
             --minion)       minion="$2";            shift 2 ;;
-            --history|n)    history_num="$2";       shift 2 ;;
-            --question)     question="$2";          shift 2 ;;
+            --history|-n)   history_num="$2";       shift 2 ;;
+
             --model)        model="$2";             shift 2 ;;
+
             --system)       system="$2";            shift 2 ;;
+            # --context)
+
             --type)         type="$2";              shift 2 ;;
             --file)
                             x abspath_ "$2"
@@ -56,25 +64,20 @@ ___x_cmd_gemini_chat_request(){
 
             -c)             confirm_before_send=1;  shift 1 ;;
 
+            --question)     question="$2";          shift 2 ;;
+            --pipe|--edit)  inputtype="${1#--}";    shift 1 ;;
+            --numbered)     numbered=1;             shift 1 ;;
 
-            --with-question|--with-question-lineno|\
-            --with-question-file|--with-question-lineno-file)
-                            question_op="$1";       shift 1 ;;
             *)              question="${question}$*"; break ;;
         esac
     done
 
     local x_=""
-    case "$question_op" in
-        --with-question)                ___x_cmd_chat_request___question_ "$question"               || return; question="$x_" ;;
-        --with-question-lineno)         ___x_cmd_chat_request___question_lineno_ "$question"        || return; question="$x_" ;;
-        --with-question-file)           ___x_cmd_chat_request___question_file_ "$question"          || return; question="$x_" ;;
-        --with-question-lineno-file)    ___x_cmd_chat_request___question_lineno_file_ "$question"   || return; question="$x_" ;;
-        *) ;;
-    esac
+    ___x_cmd_chat_request___preparequestion_ "$question" "$inputtype" "$numbered"
+    question="$x_"
 
-    local cfg_history_num=; local cfg_session=;     local cfg_minion=
-    ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion 2>/dev/null
+    local cfg_history_num=; local cfg_session=;     local cfg_minion=;  local cfg_userlang=
+    ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion cfg_userlang=userlang 2>/dev/null
 
     local cfg_model=
     ___x_cmd_gemini_cfg --var cfg_model=model 2>/dev/null
@@ -87,6 +90,7 @@ ___x_cmd_gemini_chat_request(){
     x_=; ___x_cmd_chat_minion_cache_json_ "$minion" || return
     local minion_json_cache="$x_"
     {
+        userlang="${cfg_userlang:-$LANG}" \
         BODY="$question" \
         x cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach \
                 -E cfg_history_num,cfg_session,cfg_minion,cfg_model  \
@@ -100,34 +104,36 @@ ___x_cmd_gemini_chat_request(){
                 -f "$___X_CMD_ROOT_MOD/gemini/lib/chat/handlerequest.awk"
         # generate req.yml
         # generate requestbody.json
-    } | (
-        local content_dir
-        read -r content_dir
+    } | ( ___x_cmd_gemini_chat_request___launch )
+}
 
-        # generate a file for running
-        ___x_cmd_gemini_chat_request___trapexit(){
-            gemini:debug "Remove chat.running file"
-            x rmrf "$content_dir/chat.running"
-        }
+___x_cmd_gemini_chat_request___launch(){
+    local content_dir
+    read -r content_dir
 
-        printf "%s\n" $$ >"$content_dir/chat.running"
-        trap '___x_cmd_gemini_chat_request___trapexit' EXIT
+    # generate a file for running
+    ___x_cmd_gemini_chat_request___trapexit(){
+        gemini:debug "Remove chat.running file"
+        x rmrf "$content_dir/chat.running"
+    }
 
-        {
-            read -r model
+    printf "%s\n" $$ >"$content_dir/chat.running"
+    trap '___x_cmd_gemini_chat_request___trapexit' EXIT
 
-            local requestbody
-            read -r requestbody
-            if [ -z "$count_token" ]; then
-                x retry --max 3 --interval 3 ___x_cmd_gemini_chat_request___try
-            else
-                x retry --max 3 --interval 3 ___x_cmd_gemini_count_request___try
-            fi
-        } || {
-            ___x_cmd_gemini_chat_request___trapexit
-            return 1
-        }
-    )
+    {
+        read -r model
+
+        local requestbody
+        read -r requestbody
+        if [ -z "$count_token" ]; then
+            x retry --max 3 --interval 3 ___x_cmd_gemini_chat_request___try
+        else
+            x retry --max 3 --interval 3 ___x_cmd_gemini_count_request___try
+        fi
+    } || {
+        ___x_cmd_gemini_chat_request___trapexit
+        return 1
+    }
 }
 
 ___x_cmd_gemini_chat_request___try(){

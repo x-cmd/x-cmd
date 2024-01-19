@@ -24,5 +24,6 @@ function chat_str_replaceall( src,          _name, ans ){
         ans = ans substr(src, 1, RSTART-1) _name
         src = substr(src, RSTART+RLENGTH)
     }
-    return ans src
+
+    return str_remove_esc( ans src )
 }

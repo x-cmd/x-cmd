@@ -3,10 +3,34 @@
 ___x_cmd_pkg_sphere_depend(){
     local op="$1"
     case "$op" in
-        file|path_|prepare|remove)
+        file|path_|prepare|remove|dependent|dependency)
             shift; ___x_cmd_pkg_sphere_depend_"$op" "$@" ;;
         *)  N=pkg M="sphere depend not such option '$op'" log:ret:64 ;;
     esac
+}
+
+___x_cmd_pkg_sphere_depend_dependent(){
+    pkg:sphere:parse:args
+    pkg:info "Find the dependencies of [pkg=$name] [version=$version] [osarch=$osarch]"
+    ___x_cmd_pkg___list "${name}" "${version}" "${osarch}" dep
+}
+
+___x_cmd_pkg_sphere_depend_dependency(){
+    pkg:sphere:parse:args
+    local dependency_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/dependency/$osarch"
+    [ -d "$dependency_dir" ] || return 1
+
+    pkg:info "Find who depends on [pkg=$name] [version=$version] [osarch=$osarch]"
+    local pkg=; local file=; local x_name=; local x_version=
+    while read -r pkg; do
+        file="$dependency_dir/$pkg"
+        [ -f "$file" ] || continue
+        ___x_cmd_pkg_sphere_depend_file___exist___record "$file" "$name" "$version" || continue
+        ___x_cmd_pkg___split_name_version_ "$pkg" || continue
+        printf "%s=%s\n" "$x_name" "$x_version"  | ___x_cmd_pkg_ls___show_info "="
+    done <<A
+$( x fsiter "$dependency_dir" )
+A
 }
 
 ___x_cmd_pkg_sphere_depend_path_(){
@@ -81,18 +105,28 @@ ___x_cmd_pkg_sphere_depend_file___exist(){
     local dependency_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/dependency/$osarch"
     [ -d "$dependency_dir" ] || return 1
 
-    local line=; local file=;
+    local file=;
     while read -r file; do
         file="$dependency_dir/$file"
         [ -f "$file" ] || continue
-        while read -r line; do
-            [ -n "$line" ] || continue
-            [ "${line}" = "${name}=${version}" ] || continue
-            return 0
-        done < "$file"
+        ___x_cmd_pkg_sphere_depend_file___exist___record "$file" "$name" "$version" || continue
+        return 0
     done <<A
 $( x fsiter "$dependency_dir" )
 A
+    return 1
+}
+
+___x_cmd_pkg_sphere_depend_file___exist___record(){
+    local file="$1"
+    local name="$2"
+    local version="$3"
+    local line=;
+    while read -r line; do
+        [ -n "$line" ] || continue
+        [ "${line}" = "${name}=${version}" ] || continue
+        return 0
+    done < "$file"
     return 1
 }
 

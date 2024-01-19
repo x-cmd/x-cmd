@@ -20,7 +20,7 @@ function ui_rotate1( screensize, fp,     line,     d, i ){
     IFS = i
 }
 
-function ui_rotate_fromstdin( n, prefix, prompt_run, prompt_end,    i, o, _line, _c ){
+function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end,    i, o, _line, _c ){
     prompt_run = ( prompt_run != "") ? prompt_run : "Running ..."
     prompt_end = ( prompt_end != "") ? prompt_end : "Done"
     for (i=1; i<=n; ++i)    printf("%s", "\r\n")
@@ -46,13 +46,12 @@ function ui_rotate_fromstdin( n, prefix, prompt_run, prompt_end,    i, o, _line,
 
     ui_rotate_render_prompt( o, prefix, prompt_end )
     printf ("%s", UI_LINEWRAP_ENABLE) > "/dev/stderr"
+    if (exitclear == 1) ui_rotate_render_clear()
     return _c
 }
 
 function ui_rotate_render( o, prefix,      i, n, str ){
-    printf("%s", UI_CURSOR_RESTORE \
-        UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
-        "\r" UI_CURSOR_RESTORE UI_CURSOR_SAVE ) > "/dev/stderr"
+    ui_rotate_render_clear()
 
     n = ring_size( o )
     counter = ring_counter( o )
@@ -60,6 +59,12 @@ function ui_rotate_render( o, prefix,      i, n, str ){
         str = sprintf("%4d  %s", (counter - n + i), ring_get( o, i ))
         printf("%s%s%s\n", prefix, th(TH_THEME_COLOR, "│ "), th(UI_FG_DARKGRAY, str)) > "/dev/stderr"
     }
+}
+
+function ui_rotate_render_clear(){
+    printf( "%s", UI_CURSOR_RESTORE \
+        UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
+        "\r" UI_CURSOR_RESTORE UI_CURSOR_SAVE ) > "/dev/stderr"
 }
 
 function ui_rotate_render_prompt( o, prefix, prompt,    n ){
