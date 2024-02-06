@@ -248,4 +248,8 @@ function wcwidth_first_char(s,        l, w, i){
     return (w != "") ? length(w) : l
 }
 
+function wcswidth_without_style_cache(s){
+    return wcswidth_cache( str_remove_style(s) )
+}
+
 # EndSection

@@ -20,13 +20,11 @@ function comp_table_init( o, kp ){
 }
 
 # Section: ctrl handle
-function comp_table_handle( o, kp, char_value, char_name, char_type,        r, c, _has_no_handle ) {
+function comp_table_handle( o, kp, char_value, char_name, char_type,        _has_no_handle ) {
 
     if ( o[ kp, "TYPE" ] != "table" ) return false
     # slct: remap
-    draw_table_cell_highlight( o, kp, r = comp_table_get_focused_row(o, kp), c = comp_table_get_focused_col(o, kp), false )
-    draw_table_row_highlight( o, kp, r, false )
-    draw_table_col_highlight( o, kp, c, false )
+    comp_table___update_highlight(o, kp, false)
 
     if (comp_table_ctrl_filter_sw_get(o, kp) == true){
         if (char_name == U8WC_NAME_CARRIAGE_RETURN)                                     comp_table_ctrl_filter_sw_toggle(o, kp)
@@ -58,13 +56,17 @@ function comp_table_handle( o, kp, char_value, char_name, char_type,        r, c
         change_set(o, kp, "table.foot")
     }
 
-    draw_table_cell_highlight( o, kp, r = comp_table_get_focused_row(o, kp), c = comp_table_get_focused_col(o, kp), true )
-    draw_table_row_highlight( o, kp, r, true )
-    draw_table_col_highlight( o, kp, c, true )
+    comp_table___update_highlight(o, kp, true)
 
     return ( _has_no_handle == true ) ? false : true
 
     # sort: remap
+}
+
+function comp_table___update_highlight(o, kp, tf,          r, c){
+    draw_table_cell_highlight( o, kp, r = comp_table_get_focused_row(o, kp), c = comp_table_get_focused_col(o, kp), tf )
+    draw_table_row_highlight( o, kp, r, tf )
+    draw_table_col_highlight( o, kp, c, tf )
 }
 
 function comp_table___handle_left( o, kp ){
@@ -81,6 +83,24 @@ function comp_table___handle_right( o, kp ){
 
 function comp_table___row_selected_sw_toggle(o, kp, r){
     draw_table_row_selected_sw_toggle(o, kp, r)
+}
+
+function comp_table___col_set(o, kp, c,         v){
+    if (c < (v = ctrl_num_get_min(o, kp)))      c = v
+    else if (c > (v = ctrl_num_get_max(o, kp))) c = v
+
+    comp_table___update_highlight(o, kp, false)
+    ctrl_num_set( o, kp, c )
+    comp_table___update_highlight(o, kp, true)
+}
+
+function comp_table___row_set(o, kp, r,         v){
+    if (r > (v = comp_table_model_maxrow(o, kp))) r = v
+    else if ( r < 1) r = 1
+
+    comp_table___update_highlight(o, kp, false)
+    ctrl_page_set( o, kp, r )
+    comp_table___update_highlight(o, kp, true)
 }
 
 # EndSection
@@ -357,3 +377,42 @@ function comp_table___pagesize_row(o, kp, v){
     if (v == "")  return ctrl_page_pagesize_get(o, kp)
     else          ctrl_page_pagesize_set(o, kp, v)
 }
+
+# Section: current position
+
+# col S row
+function comp_table_current_position_var(o, kp, s,       a, i, l){
+    if ( ! match(s, POSITION_SEP) ) return
+    o[ kp, "cur.pos" ] = true
+    o[ kp, "cur.pos.col" ] = int( substr(s, 1, RSTART-1) )
+    o[ kp, "cur.pos.row" ] = int( substr(s, RSTART+RLENGTH) )
+}
+
+function comp_table_current_position_set(o, kp,          c, r){
+    if (o[ kp, "cur.pos" ] != true) return
+    if ((c = o[ kp, "cur.pos.col" ]) > 0) {
+        comp_table___col_set(o, kp, c)
+        comp_table_change_set_all( o, kp )
+        o[ kp, "cur.pos.col" ] = 0
+    }
+
+    if ((r = o[ kp, "cur.pos.row" ]) > 0) {
+        m = comp_table_model_maxrow(o, kp)
+        if (r > m) r = m
+        else {
+            o[ kp, "cur.pos.row" ] = 0
+            o[ kp, "cur.pos" ] = false
+        }
+
+        comp_table___row_set(o, kp, r)
+        comp_table_change_set_all( o, kp )
+    }
+}
+
+function comp_table_current_position_get(o, kp,      c, r){
+    c = comp_table_get_cur_col(o, kp)
+    r = comp_table_get_cur_row(o, kp)
+    return c POSITION_SEP r
+}
+
+# EndSection

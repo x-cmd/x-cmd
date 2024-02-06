@@ -84,6 +84,7 @@ function comp_navi___ctrl_col_inc( o, kp,     v, _rootkp ){
 function comp_navi___ctrl_col_dec( o, kp,     v ){
     v = comp_navi___cur_col(o, kp)
     if ( v <= 1 ) return false
+    draw_navi_initial_col_decrement(o, kp, v)
     comp_navi___cur_col(o, kp, --v)
     return true
 }
@@ -115,6 +116,17 @@ function comp_navi___sel_data_add( o, kp, rootkp, val,      _kp ){
     comp_gsel_init( o, _kp, "", false )
     comp_gsel_ctrl_loop_sw_set(o, _kp, comp_navi_ctrl_rowloop_sw_get(o, kp))
     comp_gsel_data_add( o, _Kp, val)
+}
+
+function comp_navi___get_row_of_preview_kp( o, kp, rootkp, preview_kp, isfuzzy,         i, l, v ){
+    l = comp_navi_data_len( o, kp, rootkp )
+    if (isfuzzy == true) preview_kp = tolower(preview_kp)
+    for (i=1; i<=l; ++i){
+        v = comp_navi_data_preview_kp( o, kp, rootkp, i )
+        if (isfuzzy == true) v = tolower(v)
+        if (v == preview_kp) return i
+    }
+    return 0
 }
 
 # EndSection
@@ -183,31 +195,39 @@ function comp_navi_paint_preview_ischange(o, kp) {
 # EndSection
 
 # Section: current position
-function comp_navi_current_position_var(o, kp, s,       a, i, l){
-    l = split(s, a, "/")
+function comp_navi_current_position_var(o, kp, s, isfuzzy,       a, i, l){
+    if (s == "") return
+    o[ kp, "cur.pos", "isfuzzy" ] = isfuzzy
+    l = split(s, a, POSITION_SEP)
     for (i=1; i<=l; ++i) o[ kp, "cur.pos", i ] = a[i]
     return o[ kp, "cur.pos", "unprocessed_arg_count" ] = o[ kp, "cur.pos" L ] = l
 }
 
-function comp_navi_current_position_set(o, kp,          c, l, _kp){
+function comp_navi_current_position_set(o, kp,          c, l, _kp, preview_kp, r){
     if (o[ kp, "cur.pos", "unprocessed_arg_count" ] <= 0) return
     c = comp_navi___cur_col(o, kp)
     if (c <= (l = o[ kp, "cur.pos" L ])){
         _kp = navi_arr_data_trace_col_val(o, kp, c)
         if (comp_navi_data_available(o, kp, _kp)){
-            if (comp_navi___col_row_set(o, kp, c, o[ kp, "cur.pos", c ]) == false) return
-            comp_navi_change_set_all( o, kp )
-            if ((c < l) && (comp_navi_col_preview_type_is_sel(o, kp, c)) && (comp_navi___ctrl_col_inc(o, kp) == false)) return
-            o[ kp, "cur.pos", "unprocessed_arg_count" ] --
+            preview_kp = o[ kp, "cur.pos", c ]
+            r = comp_navi___get_row_of_preview_kp( o, kp, _kp, preview_kp, o[ kp, "cur.pos", "isfuzzy" ])
+            if (( r <= 0 ) || (comp_navi___col_row_set(o, kp, c, r) == false)) {
+                o[ kp, "cur.pos", "unprocessed_arg_count" ] = 0
+            } else {
+                comp_navi_change_set_all( o, kp )
+                if ((c < l) && (comp_navi_col_preview_type_is_sel(o, kp, c)) && (comp_navi___ctrl_col_inc(o, kp) == false)) return
+                o[ kp, "cur.pos", "unprocessed_arg_count" ] --
+            }
         }
     }
 }
 
-function comp_navi_current_position_get(o, kp,      c, i, r, s){
+function comp_navi_current_position_get(o, kp,      c, i, r, _kp, s){
     c = comp_navi___cur_col(o, kp)
     for (i=1; i<=c; ++i){
         r = comp_navi___col_row_get(o, kp, i)
-        s = s ((s != "") ? "/" r : r)
+        _kp = navi_arr_data_trace_col_val(o, kp, i)
+        s = ((s != "") ? s POSITION_SEP : "") comp_navi_data_preview_kp( o, kp, _kp, r )
     }
     return s
 }

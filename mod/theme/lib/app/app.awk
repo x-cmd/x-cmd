@@ -1,7 +1,8 @@
 # Section: user model
-# BEGIN{
-#     TAPP_CANVAS_FULLSCREEN = 1
-# }
+BEGIN{
+    # TAPP_CANVAS_FULLSCREEN = 1
+    THEME_NAVI_POSITION = ENVIRON[ "___X_CMD_THEME_NAVI_POSITION" ]
+}
 function tapp_init(){
     THEME_STYLE_PREVIEW_PATH = ENVIRON[ "style_preview" ]
     THEME_NAVI_ROW = ENVIRON[ "navi_row" ]
@@ -11,6 +12,7 @@ function tapp_init(){
     navi_statusline_init( o, APPKP )
     change_set(o, APPKP, "theme.custom.tip")
     comp_navi_ctrl_rowloop_sw_set(o, APPKP, false)
+    comp_navi_current_position_var(o, APPKP, THEME_NAVI_POSITION)
 }
 
 function user_request_data(o, kp, rootkp,               _content, width, i, j, k, m, _kp, _l_layout, _l_theme, _l_scheme, k_layout, k_theme, v_scheme, view_layout_data, layout, theme, scheme){
@@ -70,6 +72,7 @@ function tapp_handle_response(fp,       _content){
 
 function tapp_handle_exit( exit_code,       rootkp, _ ){
     if (exit_is_with_cmd()){
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_THEME_POSITION", comp_navi_current_position_get(o, APPKP)) )
         if (FINALCMD == "ENTER"){
                 if (comp_navi_cur_preview_type_is_sel( o, APPKP ))    rootkp = comp_navi_get_col_rootkp(o, APPKP, 3)
                 else    rootkp = comp_navi_get_cur_rootkp(o, APPKP)

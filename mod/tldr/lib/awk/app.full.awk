@@ -44,9 +44,13 @@ function user_tldr_parse_data_cmd( o, kp, list,              lang_os, i, l, _, c
 }
 
 ## Section: user model
+BEGIN{
+    TLDR_NAVI_POSITION = ENVIRON[ "___X_CMD_TLDR_NAVI_POSITION" ]
+}
 function tapp_init(){
     user_tldr_init()
     user_request_data(o, TLDR_KP)
+    comp_navi_current_position_var(o, TLDR_KP, TLDR_NAVI_POSITION)
 }
 
 # EndSection

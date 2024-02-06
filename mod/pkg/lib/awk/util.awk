@@ -27,6 +27,8 @@ function pkg_init_table( jobj, table, table_kp,
     split( juq( table_osarch( table, pkg_name ) ), _os_arch, "/" )
     pkg_add_table( "os", _os_arch[1], table, table_kp )
     pkg_add_table( "arch", _os_arch[2], table, table_kp )
+    pkg_add_table( "semantic_version", substr( version, 2 ), table, table_kp )
+
 }
 
 function pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name,         is_match_osarch, _osarch, _version_osarch, _rule_kp, _rule_l, i ,k, _kpat){
@@ -147,8 +149,10 @@ function parse_pkg_meta_json(o, pkg_name, text) {
     return jqparse_dict0( text, o, jqu(pkg_name) SUBSEP jqu("meta") )
 }
 
-function parse_pkg_version_json(o, pkg_name, text) {
-    return jqparse_dict0( text, o, jqu(pkg_name) SUBSEP jqu("version") )
+function parse_pkg_version_json(o, pkg_name, text,      l, a) {
+    # return jqparse_dict0( text, o, jqu(pkg_name) SUBSEP jqu("version") )
+    l = split( text, a, "\t" )
+    return jqparse_dict( o, jqu(pkg_name) SUBSEP jqu("version"), l, a )
 }
 
 function pkg_kp(a1, a2, a3, a4, a5, a6, a7, a8, a9,

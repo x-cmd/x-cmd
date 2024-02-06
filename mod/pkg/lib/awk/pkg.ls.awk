@@ -1,3 +1,7 @@
+BEGIN{
+    LOCAL_LIST = ENVIRON[ "LOCAL_LIST" ]
+}
+
 {
     if ($0 == "") next
     arr_push( installed_pkg_name, $1 )
@@ -10,15 +14,14 @@
 }
 
 function pkg_print_installed_list( name, version, osarch,       _final_version, jobj, table, s ){
-    _pkg_name = pkg_local[ name ]
+    _pkg_name = ( (pkg_local[ name ] == "") ? name : pkg_local[ name ])
 
-    parse_pkg_meta_json( jobj, _pkg_name, cat( PKG_RAWPATH "/" _pkg_name "/meta.tt.json" ) )
-    parse_pkg_version_json( jobj, _pkg_name, cat( PKG_RAWPATH "/" _pkg_name "/version.tt.json" ) )
+    parse_pkg_meta_json(        jobj, _pkg_name,    cat( PKG_RAWPATH "/" _pkg_name "/meta.tt.json"      ) )
+    parse_pkg_version_json(     jobj, _pkg_name,    cat( PKG_RAWPATH "/" _pkg_name "/version.tt.json"   ) )
 
     pkg_init_table( jobj, table, jqu(_pkg_name), _pkg_name, "", ((osarch != "") ? osarch : OSARCH) )
 
     _final_version = pkg_get_version_or_head_version( jobj, table, _pkg_name)
-
     if (osarch == "") s = ""
     else s = str_pad_right(osarch, installed_pkg_osarch_max_len) " "
 

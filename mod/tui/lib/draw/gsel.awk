@@ -94,14 +94,18 @@ function draw_gsel___on_title(o, kp, x1, x2, y1, y2, opt,        title_val, v, _
     return painter_clear_screen(x1, x2, y1, y2) v
 }
 
-function draw_gsel___on_footer(o, kp, x1, x2, y1, y2, opt,       v, i, s, p){
+function draw_gsel___on_footer(o, kp, x1, x2, y1, y2, opt,       v, i, s, p, t){
     if ( ! change_is(o, kp, "gsel.foot") ) return
     change_unset(o, kp, "gsel.foot")
     s = opt_get( opt, "pagesize" )
     i = opt_get( opt, "cur.cell" )
     i = int( ( i - 1 ) / s ) + 1
     p = int( ( opt_get( opt, "data.maxrow" ) - 1 ) / s ) + 1
-    v = th( UI_TEXT_DIM, space_restrict_or_pad_utf8( "<" i "/" p ">" , y2-y1+1) )
+    v = "<" i "/" p ">"
+    t = "<Ctrl+c/Ctrl+d>:Midway Quit  <Enter>:Correct Quit"
+    if (comp_gsel_ctrl_multiple_sw_get(o, kp)) t = t "  <Tab>:Select"
+    v = th( UI_TEXT_DIM, t "  " v )
+    # v = th( UI_TEXT_DIM, space_restrict_or_pad_utf8( v "  " t , y2-y1+1) )
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) v
 }
 
@@ -114,8 +118,11 @@ function draw_gsel___on_cell( o, kp, i, w, opt,         v, ri){
     if (draw_gsel_cell_selected( o, kp, ri )) v = TH_GSEL_ITEM_SELECTED_PREFIX th( TH_GSEL_ITEM_SELECTED, v )
     else v = TH_GSEL_ITEM_UNSELECTED_PREFIX th( TH_GSEL_ITEM_UNSELECTED, v )
 
-    if (i == opt_get( opt, "cur.cell" )) v = TH_GSEL_ITEM_FOCUSED_PREFIX th( TH_GSEL_ITEM_FOCUSED, v )
-    else v = TH_GSEL_ITEM_UNFOCUSED_PREFIX th( TH_GSEL_ITEM_UNFOCUSED, v )
+    if (i != opt_get( opt, "cur.cell" )) v = TH_GSEL_ITEM_UNFOCUSED_PREFIX th( TH_GSEL_ITEM_UNFOCUSED, v )
+    else {
+        v = str_remove_style(v)
+        v = TH_GSEL_ITEM_FOCUSED_PREFIX th( TH_GSEL_ITEM_FOCUSED, v )
+    }
     return v
 }
 

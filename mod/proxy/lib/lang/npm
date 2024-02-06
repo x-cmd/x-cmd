@@ -3,54 +3,72 @@
 
 ___x_cmd_proxy_npm(){
     param:subcmd ___x_cmd_proxy_npm \
-        url             "Provide url of mirror candidates" \
+        ls              "List all the mirrors"            \
         set             "Setting the mirror"              \
-        get             "Get current mirror"              \
+        current         "Get current mirror"              \
         unset           "Reset the source to the original official"
     param:subcmd:try
     param:run
 
-    if ! command -v npm >/dev/null; then
-        proxy:error "command not found. npm, you should install npm in your system."
+    x hascmd npm || N=proxy M="[command=npm] not found." log:ret:1
+    [ "$#" -eq 0 ] || {
+        ___x_cmd_proxy___util_subcmd_invalid npm "$@"
         return 1
-    else
-        ___x_cmd_proxy___util_current_mirror "npm"
-    fi
+    }
 
-}
-
-___x_cmd_proxy_npm_url(){
-    param:dsl <<A
-option:
-    #1    "Mirror name"       <mirror-name>=ali    = ali official
-A
-    param:run
-
-    case "$1" in
-        ali)             printf "%s\n" "https://registry.npmmirror.com"     ;;
-        official)        printf "%s\n" "https://registry.npmjs.org/"         ;;
+    local _SELECT
+    x ui select "_SELECT" \
+        "Methods:" \
+            "Set npm registry mirror (default is npmmirror)" \
+            "List all the npm registry candidates" \
+            "Get the current npm registry" \
+            "Reset the npm registry to the official"
+    
+    case "$_SELECT" in
+        1)  ___x_cmd_proxy_npm_set       ;;
+        2)  ___x_cmd_proxy_npm_ls        ;;
+        3)  ___x_cmd_proxy_npm_current   ;;
+        4)  ___x_cmd_proxy_npm_unset     ;;
+        *)  proxy:info "Canceled" ; return 1 ;;
     esac
 }
 
-___x_cmd_proxy_npm_get(){
+___x_cmd_proxy_npm_ls(){
     param:void
+
+    printf "%s\n" \
+        "Code          Url                                  Name"                 \
+        "npmmirror     https://registry.npmmirror.com       npmmirror (阿里云赞助)" \
+        "official      https://registry.npmjs.org/          official (官方源)"       
+        # "zju           https://mirrors.zju.edu.cn/npm       浙江大学开源软件镜像站"   \ # the mirror is not available
+}
+
+___x_cmd_proxy_npm_current(){
+    param:void
+    proxy:info "Current registry [cmd='npm config get registry']"
     npm config get registry
 }
 
 ___x_cmd_proxy_npm_set() {
     param:dsl <<A
 option:
-    #1    "Mirror name"       <mirror-name>=ali    = ali official
+    #1    "Mirror name"       <mirror-name>=npmmirror    = npmmirror zju official
 A
     param:run
 
     local url
-    url="$(___x_cmd_proxy_npm_url "$1")"
+    url="$(___x_cmd_proxy_npm___url "$1")"
     proxy:info "Setting npm mirror $url"
-    npm config set registry "$url"
+    npm config set registry "$url" || return 1
+    proxy:info "Done"
 }
 
 ___x_cmd_proxy_npm_unset() {
     param:void
     ___x_cmd_proxy_npm_set   official
+}
+
+___x_cmd_proxy_npm___url(){
+    ___x_cmd_proxy_npm_ls | \
+        ___x_cmd_cmds_awk -v name="$1" 'NR>1 && $1 == name { print $2 ; exit 0;}'
 }

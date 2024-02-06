@@ -10,34 +10,144 @@ ___x_cmd_fslock_acquire(){
     local fslock_name="$1"
 
     local x_=;  ___x_cmd_pidofsubshell_
+    local SPID="$x_"
 
     x mkdirp "$___X_CMD_FSLOCK_ROOT"
     local fslock_fp="${___X_CMD_FSLOCK_ROOT}/${fslock_name}.fslock.x-cmd.X"
-    local fslock_fp_pid="${___X_CMD_FSLOCK_ROOT}/${fslock_name}.fslock.x-cmd.$x_"
+    local fslock_fp_pid="${___X_CMD_FSLOCK_ROOT}/${fslock_name}.fslock.x-cmd.$SPID"
 
-    fslock:info "acquire [fslock=$fslock_name] in [process=$x_]"
+    fslock:debug "[SPID=$SPID] Try to acquire [fslock=$fslock_name]"
 
-    {
-        printf "%s\n" "$x_"
-        x ps fingerprint get "$x_"
-        printf "%s\n" "$fslock_name"
-    } >"${fslock_fp_pid}" 2>/dev/null || {
-        [ ! -f "$fslock_fp_pid" ] || ___x_cmd_cmds_rm "${fslock_fp_pid}"
+    local content
+    content="$SPID
+$(x ps fingerprint get "$SPID")
+$fslock_name"
+
+    printf "%s\n" "$content" >"${fslock_fp_pid}" || {
+        fslock:warn "[SPID=$SPID] Fail to write $fslock_fp_pid"
+        [ ! -f "$fslock_fp_pid" ] || ___x_cmd_cmds_rm "${fslock_fp_pid}" 2>/dev/null
+        # Notice: We DONOT need to remove with best effort because it is NOT soft ln to X lock file.
         return 1
     }
 
-    ___x_cmd_cmds sync
-
-    ___x_cmd_cmds_ln -s "${fslock_fp_pid}" "${fslock_fp}" 2>/dev/null || {
-        [ ! -f "$fslock_fp_pid" ] || ___x_cmd_cmds_rm "${fslock_fp_pid}"
+    # ___x_cmd_cmds sync        # This MUST be disabled because it will affect the next sync. The file IO workload is an issue and be observed in WSL2.
+    ___x_cmd_fslock_acquire___link || {
+        ___x_cmd_fslock_acquire___besteffortrm "link competition failure";
         return 1
     }
 
     local pidline="";
-    read -r pidline <"$fslock_fp"
-    [ "$pidline" = "$x_" ] || {
-        fslock:warn --spid "$x_" "This should be bug in MSYS. fslock[$fslock_name] is acquired by other process[$pidline]"
-        [ ! -f "$fslock_fp_pid" ] || ___x_cmd_cmds_rm "${fslock_fp_pid}"
+    ___x_cmd_fslock_acquire___readpid_ "$fslock_fp" || {
+        fslock:warn "[SPID=$SPID] fslock[$fslock_name] [file=$fslock_fp] is NOT sync to disk. This is very RARE case and resulting a recovery process."
+        ___x_cmd_fslock_acquire___besteffortrm "verify by reading the lock content";
         return 1
     }
+
+    pidline="$x_"
+
+    [ -n "$pidline" ] || {
+        fslock:error "[SPID=$SPID] [SHOULD NEVER HAPPEN] fslock[$fslock_name] file has NO content."
+        ___x_cmd_fslock_acquire___besteffortrm "content empty";
+        return 1
+    }
+
+    [ "$pidline" = "$SPID" ] || {
+        fslock:warn "[SPID=$SPID] This should be bug of ln in MSYS. fslock[$fslock_name] is actually acquired by other process[$pidline]"
+        ___x_cmd_fslock_acquire___besteffortrm ;     return 1
+    }
+
+    fslock:info "[SPID=$SPID] Lock acquired [fslock=$fslock_name]"
+
+    ___x_cmd_fslock_cleanup___reserve_x_and_pid "$fslock_name" "$SPID"
+}
+
+___x_cmd_fslock_acquire___link(){
+    if ___x_cmd_cmds_ln -s "${fslock_fp_pid}" "${fslock_fp}" 2>/dev/null; then
+        return 0
+    fi
+
+    if [ -z "$___X_CMD_FSLOCK_ACQUIRE_TRY_RELEASE" ]; then
+        [ -f "$fslock_fp_pid" ] || \
+            fslock:debug "[SPID=$SPID] After link failed. BUG in ZSH. fslock[$fslock_name] file NOT sync to disk."
+        return 1
+    fi
+
+    # We bet that ${fslock_fp}.X can always be deleted successfully...
+    (
+        trap '___x_cmd_cmds_rm -rf "${fslock_fp}.X";' EXIT
+        ___x_cmd_cmds_ln -s "${fslock_fp_pid}" "${fslock_fp}.X" 2>/dev/null || return 1
+
+        if [ ! -e "$fslock_fp" ]; then
+            ___x_cmd_cmds_rm -rf "$fslock_fp"
+            return 0
+        fi
+        {
+            read -r pidline
+            read -r fingerprint
+        } <"$fslock_fp"
+        if [ -z "$pidline" ]; then
+            ___x_cmd_cmds_rm -rf "$fslock_fp"
+            return 0
+        fi
+        if ! ___x_cmd_ps_fingerprint_check "$pidline" "$fingerprint"; then
+            ___x_cmd_cmds_rm -rf "$fslock_fp"        # ___x_cmd_fslock_available___clear "$fslock_name"
+            return 0
+        fi
+    ) || return 1
+
+    # try again
+    ___x_cmd_cmds_ln -s "${fslock_fp_pid}" "${fslock_fp}" 2>/dev/null
+}
+
+___x_cmd_fslock_acquire___readpid2_(){
+    local fp="$1"
+    # ___x_cmd_cmds sync -f "${fp}" # Out of concern of performance, we donot sync here. We will sync only when reading empty file.
+    x_=""
+    {
+        # read -r x_ <"$fp"
+        read -r x_ <<A
+$(___x_cmd_cmds_cat "$fp")
+A
+    } 2>/dev/null
+    # fslock:info "primitive reading from [fp=$fp] [data=$x_]"
+}
+
+___x_cmd_fslock_acquire___readpid_(){
+    local fp="$1"
+    x_=""
+
+    {
+        read -r x_ <"$fp"
+    } 2>/dev/null
+    fslock:debug "primitive reading from [fp=$fp] [data=$x_]"
+    [ -z "$x_" ] || return 0
+
+    ___x_cmd_cmds sync -f "$fp" 2>/dev/null
+
+    local count=1
+    while [ "$count" -lt 5 ]; do
+        count=$((count + 1))
+        fslock:info "[SPID=$SPID] try [count=$count]"
+
+        read -r x_ <<A
+$(___x_cmd_cmds cat "$fp" 2>/dev/null)
+A
+
+        [ -z "$x_" ] || return 0
+        ___x_cmd_cmds sleep 0.$count || return 130
+    done
+
+    return 1
+}
+
+___x_cmd_fslock_acquire___besteffortrm(){
+    fslock:debug "[SPID=$SPID] FAIL AT $1"
+    [ -f "$fslock_fp_pid" ] || \
+        fslock:warn "[SPID=$SPID] besteffortrm BUG in ZSH. fslock[$fslock_name] file NOT sync to disk."
+
+    fslock:debug "[SPID=$SPID] Best effort to remove [fp=$fslock_fp_pid]"
+
+    # printf "\n\n" >"${fslock_fp_pid}"       # clear the file to 1000% make sure the lock is not required by this process
+    # ___x_cmd_cmds sync "${fslock_fp_pid}"
+    ___x_cmd_cmds_rm "${fslock_fp_pid}" 2>/dev/null     # The empty file strategy make this rm actually redundant.
 }

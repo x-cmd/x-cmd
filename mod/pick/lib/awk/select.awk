@@ -3,6 +3,10 @@ function user_request_selected_data(){
 }
 # Section: user model
 
+BEGIN{
+    PICK_POSITION = ENVIRON[ "___X_CMD_TUI_PICK_POSITION" ]
+}
+
 function tapp_init(){
     PICK_KP = "pick_kp"
     user_request_selected_data()
@@ -12,6 +16,8 @@ function tapp_init(){
     PICK_SIZE[ "LIMIT" ] = PICK_LIMIT
     PICK_SIZE[ "TITLE" ] = PICK_SELECT_TITLE
     pick_init( o, PICK_KP, true, PICK_SIZE )
+
+    comp_gsel_current_position_var(o, PICK_KP, PICK_POSITION)
 }
 
 # EndSection
@@ -39,18 +45,24 @@ function tapp_handle_wchar( value, name, type ){
     pick_handle( o, PICK_KP, value, name, type )
 }
 
-function tapp_handle_response(fp,       _content, _, arr, i, l){
+function tapp_handle_response(fp,       _content, _, arr, i, l, v){
     _content = cat(fp)
     if( _content == "" ) panic("list data is empty")
     arr_cut(_, _content, "\n")
     arr[L] = l = _[L]
-    for (i=1; i<=l; ++i) arr[i] = str_remove_esc(_[i])
+    for (i=1; i<=l; ++i) {
+        v = str_remove_esc(_[i])
+        gsub(/[ \t\b\v\n]+/, " ", v)
+        arr[i] = v
+    }
     pick_data_set( o, PICK_KP, arr, PICK_SIZE )
+    comp_gsel_current_position_set(o, PICK_KP)
 }
 
 function tapp_handle_exit( exit_code ){
     if (exit_is_with_cmd()){
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_PICK_SELECTED_ITEM", pick_result( o, PICK_KP ) ) )
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_PICK_POSITION", comp_gsel_current_position_get(o, PICK_KP) ) )
     }
 }
 

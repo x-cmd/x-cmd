@@ -1,18 +1,53 @@
-function user_request_data( o, kp, rootkp ){
+function user_request_data( o, kp, rootkp,          p ){
     if (! lock_acquire( o, kp ) ) panic("lock bug")
-    tapp_request( "data:request:" rootkp)
+    p = "/" rootkp
+    gsub("/+", "/", p)
+    tapp_request( "data:request:" rootkp "\n" p)
+}
+
+BEGIN{
+    LS_APP_NAVI_POSITION = ENVIRON[ "___X_CMD_TUI_NAVI_POSITION" ]
+    LS_APP_NAVI_POSITION_ISFUZZY = ENVIRON[ "___X_CMD_TUI_NAVI_POSITION_ISFUZZY" ]
+    LS_APP_BASEDATA = ENVIRON[ "___X_CMD_LS_APP_BASEDATA" ]
+}
+
+function user_bashpath_init(o, kp, pwd, position,       i, l, pa, a, v, s, str, col){
+    l = split(pwd, a, "/")
+    for (i=1; i<=l; ++i){
+        v = a[i]
+        if( v == "" ) continue
+        col ++
+        s = s "/" v
+        str = ((str != "") ? str POSITION_SEP : "") s
+    }
+    str = str POSITION_SEP
+
+    if (position != "") {
+        l = split(position, pa, POSITION_SEP)
+        if (pa[l] ~ "^" pwd) str = position
+    }
+
+    if ( ( str ~ "/\\." ) && (STATE_HIDDEN_VISIBLE == 0 ) ) STATE_HIDDEN_VISIBLE = 1
+    if (LS_APP_NAVI_POSITION_ISFUZZY != true) draw_navi_initial_col(o, kp, ++col)
+    comp_navi_current_position_var(o, kp, str, LS_APP_NAVI_POSITION_ISFUZZY)
 }
 
 # Section: user model
 function tapp_init(){
-    LS_APP_BASEPATH = ENVIRON[ "___X_CMD_LS_APP_BASEPATH" ]
+    delete o
     LS_KP = "ls_kp"
-    comp_navi_current_position_var(o, LS_KP, ___X_CMD_TUI_CURRENT_NAVI_POSITION)
     navi_init(o, LS_KP)
 
+    navi_statusline_add( o, LS_KP, "o", "Open", "Press 'o' to open the file with GUI application" )
+    navi_statusline_add( o, LS_KP, "b", "Browse", "Press 'b' to open the file with browser" )
+    navi_statusline_add( o, LS_KP, "H", "Hide", "Press 'H' to toggle ignore entries starting with '.'" )
     navi_statusline_init( o, LS_KP )
+
     CUSTOM_FILEINFO_KP = LS_KP SUBSEP "fileinfo_kp"
     comp_textbox_init(o, CUSTOM_FILEINFO_KP, "scrollable")
+
+    if (LS_APP_BASEDATA != "") user_parse_basedata( o, LS_KP, LS_APP_BASEDATA )
+    else user_bashpath_init(o, LS_KP, ENVIRON[ "___X_CMD_LS_APP_BASEPATH" ], LS_APP_NAVI_POSITION)
 }
 
 # EndSection
@@ -24,10 +59,17 @@ function tapp_handle_clocktick( idx, trigger, row, col ){
 }
 
 function tapp_handle_wchar( value, name, type ){
-    navi_handle_wchar( o, LS_KP, value, name, type )
+    if (navi_handle_wchar( o, LS_KP, value, name, type )) return
+    else if (value == "o")  tapp_request( "x:open:"     comp_navi_get_cur_rootkp(o, LS_KP))
+    else if (value == "b")  tapp_request( "x:browse:"   comp_navi_get_cur_rootkp(o, LS_KP))
+    else if (value == "H")  {
+        STATE_HIDDEN_VISIBLE = 1 - STATE_HIDDEN_VISIBLE
+        LS_APP_NAVI_POSITION = comp_navi_current_position_get(o, LS_KP)
+        tapp_init()
+    }
 }
 
-function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr){
+function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr, v){
     _content = cat(fp)
     if( match( _content, "^errexit:")) panic(substr(_content, RSTART+RLENGTH))
     else if ( match( _content, "^data:item:" ) ){
@@ -38,36 +80,80 @@ function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr){
         if ((l == 3) && (_log == "")) _log = "Directory is empty"
         o[ LS_KP, _rootkp, "log" ] = _log
         comp_navi_data_init( o, LS_KP, _rootkp )
-        for (i=4; i<=l; ++i) user_data_add( o, LS_KP, _rootkp, arr[i] )
+        for (i=4; i<=l; ++i) {
+            v = arr[i]
+            if ((v == "") || (arr[ v, "processed" ])) continue
+            arr[ v, "processed" ] = true
+            user_data_add( o, LS_KP, _rootkp, v )
+        }
         comp_navi_data_end( o, LS_KP, _rootkp )
     }
 }
 
-function user_data_add( o, kp, rootkp, str,          _, name, l, i, _kp ){
+BEGIN{
+    STATE_HIDDEN_VISIBLE = ENVIRON[ "STATE_HIDDEN_VISIBLE" ]
+    if (STATE_HIDDEN_VISIBLE=="")   STATE_HIDDEN_VISIBLE = 0
+}
+
+function user_data_add( o, kp, rootkp, str,          _, name, l, i, _kp, _update, _regex ){
     l = split(str, _, " ")
-    if (_[1] !~ "^([bcp])") i = 9
-    else i = 10
-    for (name=_[i++]; i<=l; ++i) name = name " " _[i]
+    if (l < 7) {
+        return
+    } else if (_[6] ~ "\\?") {
+        _update = _[6]
+        _regex = "[\\? ]+"
+    } else {
+        if (_[1] !~ "^([bc])")  _update = _[6] " " _[7] " " _[8]
+        else                    _update = _[7] " " _[8] " " _[9]
+        _regex = _update
+        gsub(" +", " +", _regex)
+    }
+
+    if (! match(str, _regex))   return
+    name = str_trim(substr(str, RSTART+RLENGTH))
+    gsub("^/+", "", name)
+    if (STATE_HIDDEN_VISIBLE == 0 && name ~ "^\\.")     return
 
     _kp = rootkp "/" name
     if (_[1] ~ "^d") comp_navi_data_add_kv( o, kp, rootkp, TH_THEME_COLOR name, "{", _kp )
     else {
         comp_navi_data_add_kv( o, kp, rootkp, name, "preview", _kp )
-        o[ kp, _kp, "name" ]    = name
-        o[ kp, _kp, "mode" ]    = _[1]
-        o[ kp, _kp, "owner" ]   = _[3]
-        o[ kp, _kp, "group" ]   = _[4]
-        o[ kp, _kp, "size" ]    = _[5]
-        o[ kp, _kp, "update" ]  = _[6] " " _[7] " " _[8]
+        jdict_put( o, kp SUBSEP _kp, "Name", name )
+        jdict_put( o, kp SUBSEP _kp, "Mode",  _[1] )
+        if (_[1] !~ "^([bc])")  jdict_put( o, kp SUBSEP _kp, "Size",         _[5] )
+        else                    jdict_put( o, kp SUBSEP _kp, "Device type",  _[5] " " _[6] )
+        jdict_put( o, kp SUBSEP _kp, "Owner", _[3] )
+        jdict_put( o, kp SUBSEP _kp, "Group", _[4] )
+        jdict_put( o, kp SUBSEP _kp, "Update", _update )
     }
+}
+
+function user_parse_basedata( o, kp, pathlist,      i, l, _, str, w, max_w, v ){
+    l = split( pathlist, _, "\n" )
+    for (i=1; i<=l; ++i){
+        if ( ! match(_[i], "\001") ) {
+            str[ i, "kp" ]   = _[i]
+            str[ i, "view" ] = _[i]
+        } else {
+            v = substr(_[i], RSTART+1)
+            str[ i, "kp" ]   = v
+            str[ i, "view" ] = th(TH_THEME_MINOR_COLOR, substr(_[i], 1, RSTART-1)) " " v
+        }
+
+        w = wcswidth_without_style_cache(str[ i, "view" ] )
+        if (max_w < w) max_w = w
+    }
+    comp_navi_data_init( o, kp )
+    for (i=1; i<=l; ++i) comp_navi_data_add_kv( o, kp, "", str[ i, "view" ] , "{", str[ i, "kp" ] , max_w )
+    comp_navi_data_end( o, kp )
 }
 
 function tapp_handle_exit( exit_code,       p, v ){
     if (exit_is_with_cmd()){
         p = comp_navi_get_cur_rootkp(o, LS_KP)
-        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_NAVI_CUR_FILE", LS_APP_BASEPATH p ) )
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_NAVI_CUR_FILE", p ) )
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_NAVI_FINAL_COMMAND", FINALCMD ) )
-        if (FINALCMD == "ENTER") v = comp_navi_current_position_get(o, LS_KP)
+        v = comp_navi_current_position_get(o, LS_KP)
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_NAVI_POSITION", v) )
     }
 }
@@ -75,18 +161,15 @@ function tapp_handle_exit( exit_code,       p, v ){
 # EndSection
 
 # Section: user view
-function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, _name ){
+function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, i, l, k ){
     if ( ! change_is(o, kp, "navi.preview") ) return
     change_unset(o, kp, "navi.preview")
 
-    _name = o[ kp, rootkp, "name" ]
-    if (_name == "") return
-    s =        th( TH_THEME_MINOR_COLOR, "name: " )   _name
-    s = s "\n" th( TH_THEME_MINOR_COLOR, "mode: " )   o[ kp, rootkp, "mode" ]
-    s = s "\n" th( TH_THEME_MINOR_COLOR, "size: " )   o[ kp, rootkp, "size" ]
-    s = s "\n" th( TH_THEME_MINOR_COLOR, "owner: " )  o[ kp, rootkp, "owner" ]
-    s = s "\n" th( TH_THEME_MINOR_COLOR, "group: " )  o[ kp, rootkp, "group" ]
-    s = s "\n" th( TH_THEME_MINOR_COLOR, "update: " ) o[ kp, rootkp, "update" ]
+    if ( (l = o[ kp, rootkp L ]) <= 0 ) return
+    for (i=1; i<=l; ++i){
+        k = o[ kp, rootkp, i ]
+        s = ((s != "") ? s "\n" : "" ) th( TH_THEME_MINOR_COLOR, k ": " ) o[ kp, rootkp, k ]
+    }
     comp_textbox_put(o, CUSTOM_FILEINFO_KP, s)
     return comp_textbox_paint(o, CUSTOM_FILEINFO_KP, x1, x2, y1, y2)
 }
@@ -96,8 +179,7 @@ function user_paint_status( o, kp, x1, x2, y1, y2,      s, _log, _path ) {
     change_unset(o, kp, "navi.footer")
     s = comp_navi_get_cur_rootkp(o, kp)
     _log = o[ kp, s, "log" ]
-    _path = LS_APP_BASEPATH s
-
+    _path = s
     s = th( UI_TEXT_BOLD TH_THEME_COLOR, "Path: " ) _path
     if ( _log != "" ) s = s "\n" th( UI_FG_YELLOW, "Log: " ) _log
 

@@ -2,14 +2,34 @@
 
 xrc:mod:lib pkg     sphere/gc/recycle   sphere/gc/remove    sphere/gc/safelist
 
+
+# x env gc --rm python
+# x env gc python
+
+# x env gc # interactive
+
+# Autogc:
+# 1. exe long unused:
+# Provide user a list of package that is : vert old-version + unused:
+# Calculating the size of the packages suggested to be removed.
+
+# 1. Remove some packages long unused
+# 2. Select some packages to remove
+
+# x env unuse python
+# x env unuse java
+# x env gc python java
+
 ___x_cmd_pkg_sphere_gc(){
-    [ "$#" -gt 0 ] || set -- run
-    local op="$1"; shift
-    case "$op" in
-        safelist)   ___x_cmd_pkg_sphere_gc_safelist "$@" ;;
-        run)        ___x_cmd_pkg_sphere_gc_run "$@" ;;
+    case "$1" in
+        # Inner function
+        run)        shift; ___x_cmd_pkg_sphere_gc_run "$@" ;;
+        safelist)   shift; ___x_cmd_pkg_sphere_gc_safelist "$@" ;;
         -h|--help)  x help -m pkg gc ;;
-        *)          N=pkg M="sphere gc not such option '$op'" log:ret:64
+
+        "")         ___x_cmd_pkg_sphere_gc_run ;;
+        *)          ___x_cmd_pkg_sphere_gc_run --safelist-rm "$@" ;;
+        # *)          N=pkg M="sphere gc not such option '$op'" log:ret:64
     esac
 }
 
@@ -29,43 +49,101 @@ ___x_cmd_pkg_sphere_gc_safelist(){
 
 ___x_cmd_pkg_sphere_gc_exist(){
     pkg:sphere:parse:option
-    local gcdir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/gc"
-    [ -d "$gcdir" ] || return 1
-    ! x fsiter --dirempty "$gcdir"
+    local gcfp="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/gc/Start"
+    [ -f "$gcfp" ] || return 1
+    # ! x fsiter --dirempty "$gcdir"
+    ! ___x_cmd_pkg_sphere_gc___defuselock "$gcfp"
 }
 
-___x_cmd_pkg_sphere_gc_run(){(
+
+___x_cmd_pkg_sphere_gc___defuselock(){
+    local gcfp="$1"
+    [ -f "$gcfp" ] || return
+
+    local bombpid;
+    local fingerprint;
+    {
+        read -r bombpid
+        read -r fingerprint
+    } < "$gcfp"
+
+    if ___x_cmd_ps fingerprint check "$bombpid" "$fingerprint"; then
+        pkg:warn "There is another process [PID=$bombpid] running gc"
+        return 1
+    else
+        x rmrf "$gcfp"
+    fi
+}
+
+xrc ps
+___x_cmd_pkg_sphere_gc_run(){(  # Must be a subshell
+    local noapp=
     pkg:sphere:parse:option
     sphere_name="${sphere_name:-"X"}"
+
     case "$1" in
-        --safelist-rm)  shift; ___x_cmd_pkg_sphere_safelist rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$@" || return ;;
-        --safelist-add) shift; ___x_cmd_pkg_sphere_safelist add --reason "use,gc-run-add" --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$@" || return ;;
+        --inner)        shift; noapp=1 ;;
+        --safelist-rm)  shift; noapp=1; ___x_cmd_pkg_sphere_safelist rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$@" || return ;;
+        --safelist-add) shift; noapp=1; ___x_cmd_pkg_sphere_safelist add --reason "use,gc-run-add" --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$@" || return ;;
     esac
 
-    pkg:info "Trying gc"
-    local x_=; ___x_cmd_pidofsubshell_
-    local gcfp="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/gc/Start.${x_}"
-    trap 'x rmrf '"$gcfp"';' EXIT
-    x ensurefp "$gcfp"; printf "%s\n" "" > "$gcfp"
-    sleep 1
+    pkg:info "Initiating garbage collection for [sphere=$sphere_name]"
 
-    if [ -t 1 ] && ___x_cmd_is_interactive; then
-        local list; list="$( ___x_cmd_pkg_sphere_safelist___ls_human --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" )"
-        if [ -n "$list" ]; then
-            local l=
-            printf "%s\n" "$list" | (
-                trap - EXIT
-                x pick --width 100% --limit no-limit --ask "Using Tab to select the pkg you want to remove from the safelist."
-             ) | while read -r l; do
-                eval set -- "${l% *}"
-                ___x_cmd_pkg_sphere_safelist rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$1" "${2}=${3}"
-                shift "$#"
-            done
-        fi
+    local gcfp="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/gc/Start"
+    trap 'x rmrf "$gcfp";' EXIT
+
+    if [ -f "$gcfp" ]; then
+        ___x_cmd_pkg_sphere_gc___defuselock "$gcfp" || return
     fi
 
+    x ensurefp "$gcfp";
+
+    local x_=;
+    ___x_cmd_pidofsubshell_;        local spid="$x_"
+    ___x_cmd_ps fingerprint get_;   local fingerprint="$x_"
+    printf "%s\n" "$spid" "$fingerprint" >"$gcfp"
+
+    ___x_cmd_cmds sync
+    sleep 1 # long enough to make sure file written
+
+    local winner_pid
+    read -r winner_pid <"$gcfp";
+
+    if [ ! "$winner_pid" = "$spid" ]; then
+        pkg:info "Abort because other process [PID=$winner_pid] win the gc lock."
+        return
+    fi
+
+    if [ -z "$noapp" ] && [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___x_cmd_pkg_sphere_gc_run___interactive
+    fi
     ___x_cmd_pkg_sphere_gc_run___inner "$gcfp"
 )}
+
+# shellcheck disable=2120
+___x_cmd_pkg_sphere_gc_run___interactive(){
+    local l=; local osarch=; local name=; local version=;
+    local list; list="$( ___x_cmd_pkg_sphere_safelist___ls_human --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" )"
+    if [ -n "$list" ]; then
+        local l=
+        list="$( printf "%s\n" "$list" | x pick --width 100% --limit no-limit --ask "Using Tab to select the pkg you want to remove from the safelist." )"
+        printf "%s\n" "$list" | while read -r l; do
+            [ -n "$l" ] || continue
+            l="${l%%" ("*}"
+            osarch="${l%% *}"; l="${l#* }"
+            name="${l%% *}"
+            version="${l#* }"
+            pkg:info "Safelist removing [name=$name] [version=$version] [osarch=$osarch]"
+            ___x_cmd_pkg_sphere_safelist rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "${name}=${version}"
+
+            if ___x_cmd_pkg_sphere_link_exist --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+                --osarch "$osarch" "$name" "$version" && x ui yesno "Whether unuse to unlinked [name=$name] [version=$version] [osarch=$osarch]" ; then
+                pkg:debug "Unlinked [name=$name] [version=$version] [osarch=$osarch]"
+                ___x_cmd_pkg_sphere_link_rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" "$version"
+            fi
+        done
+    fi
+}
 
 # TODO: A = ALL packages
 # TODO: B = islink + safelist + DEPEENCYLIST

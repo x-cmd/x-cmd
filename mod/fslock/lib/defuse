@@ -1,0 +1,170 @@
+# shellcheck shell=dash
+
+xrc ps   # NOTICE: very important to load ps in advance
+
+___x_cmd_fslock_defuse(){
+    local fslock_name="$1"
+    local fslock_fp="${___X_CMD_FSLOCK_ROOT}/${fslock_name}.fslock.x-cmd.X"
+
+    if [ ! -L "$fslock_fp" ] && [ ! -e "$fslock_fp" ]; then     # Notice: -e is for git-bash
+        fslock:debug "[fslock|defuse] [lock=$fslock_name] [fp=$fslock_fp] is GONE."
+        return 0
+    fi
+
+    local pidline="";
+    local fingerprint="";
+
+    {
+        {
+            read -r pidline
+            read -r fingerprint
+        } <"$fslock_fp"
+    } || {
+        ___x_cmd_fslock_defusebomb0 "$fslock_fp"
+        fslock:warn "[fslock|defuse] fslock[$fslock_name] fail to read from [file=$fslock_fp]"
+        return 0
+    }
+
+    if [ -z "$pidline" ]; then
+        ___x_cmd_fslock_defusebomb0 "$fslock_fp"
+        fslock:warn "[fslock|defuse] fslock[$fslock_name] pidline is empty"
+        return 0
+    fi
+
+    if ! ___x_cmd_ps_fingerprint_check "$pidline" "$fingerprint"; then
+        # ___x_cmd_cmds_rm -rf "$fslock_fp"        # ___x_cmd_fslock_available___clear "$fslock_name"
+        # local fslock_fp_pid="${___X_CMD_FSLOCK_ROOT}/${fslock_name}.fslock.x-cmd.$pidline"
+        # ___x_cmd_cmds_rm -rf "$fslock_fp_pid"
+
+        # printf "%s\n" "" "$fingerprint" >"$fslock_fp_pid"
+        # if [ -L "$fslock_fp" ] || [ -e "$fslock_fp" ]; then
+        #     ___x_cmd_fslock_defusebomb0 "$fslock_fp"
+        # fi
+        # ___x_cmd_cmds sync -f "$fslock_fp_pid"  # I want this waiting to be slow.
+
+        fslock:debug "[fslock|defuse] fslock[$fslock_name] [pid=$pidline] [fingerprint=$fingerprint] is NOT match"
+        if [ ! -L "$fslock_fp" ] && [ ! -e "$fslock_fp" ]; then
+            ___x_cmd_fslock_defusebomb0 "$fslock_fp"
+            fslock:debug "[fslock|defuse] fslock[$fslock_name] defusebomb"
+        else
+            fslock:debug "[fslock|defuse] fslock[$fslock_name] defusebomb fail because lock gone in the middle"
+        fi
+        return 1
+    fi
+
+    # In gitbash the link is a duplicate file.
+    # This might lead to a bug that the lock is acquired but the process does not know.
+    local x_
+    x pidofsubshell_
+    if [ "$x_" = "$pidline" ]; then
+        fslock:warn "[fslock|defuse] fslock[$fslock_name] This is my own lock. Very rare case."
+        x rmrf "$fslock_fp"
+        return 1
+    fi
+
+    return 1
+}
+
+___x_cmd_fslock_defusebomb0(){
+    ___x_cmd_cmds_rm -rf "$fslock_fp"       # ___x_cmd_fslock_available___clear "$fslock_name"
+}
+
+___x_cmd_fslock_defusebomb___dareyou(){
+    local bomb_fp="$1"
+
+    local x_=;  ___x_cmd_pidofsubshell_
+    local pid="$x_"
+
+    local fp="$1.ts.$pid"
+
+    local ts; ts="$(___x_cmd_cmds date +%s)";
+
+    if [ -f "$fp" ]; then
+        {
+            read -r file_pid
+            read -r timestamp
+        } <"$fp" || {
+            fslock:info "Fail failed."
+        }
+
+        local diff="$(( ts - timestamp ))"
+
+        if [ "$diff" -lt 6 ]; then
+            fslock:warn "[diff=$diff] The defusebomb process might still be active. Sleep for $((diff + 1)) second before exit."
+            ___x_cmd_cmds sleep $((diff + 1)) || return 130
+            return 1
+        else
+            fslock:info "Continue to retrieve the lock for it is out of date."
+        fi
+    fi
+
+    printf "%s\n" "$pid" "$ts" >"$fp"
+    ___x_cmd_cmds sync -f "$fp"
+    ___x_cmd_cmds sleep 3
+
+    # Notice: MUST use cat instead of file stream to read the file.
+    ___x_cmd_cmds cat "$fp" | {
+        read -r file_pid
+        if [ "$file_pid" = "$pid" ]; then
+            ___x_cmd_cmds_rm -rf "$bomb_fp" "$fp"
+        else
+            fslock:warn "[fslock|defusebomb] [pid=$pid] The bomb should be defuse by [file_pid=$file_pid]."
+        fi
+    }
+}
+
+___x_cmd_fslock_defusebomb___recursivelock(){
+    local bombfile="$1"
+    local lockfile_X="$1.bomblock.X"
+    local depth="${2:-1}"
+
+    [ "$depth" -lt 5 ] || {
+        # TODO: Consider using ___x_cmd_fslock_defusebomb___dareyou
+        fslock:error "Too many failures on bomblock. Give up."
+        return 1
+    }
+
+    (
+        local pid=;              x pidofsubshell_;           pid="$x_"
+
+        local fingerprint
+        if [ -e "$lockfile_X" ] || [ -L "$lockfile_X" ]; then       # In git-bash, using cp instead of link. So use -e instead of -L
+            if ___x_cmd_cmds cat "$1" | {
+                local _pid
+                local _fingerprint
+                { read -r _pid && read -r _fingerprint; } 2>/dev/null || {
+                    fslock:warn "Fail to readpid for competitor who win"
+                    return 1
+                }
+                ___x_cmd_ps_fingerprint_check "$_pid" "$_fingerprint"
+            }; then
+                return 1
+            else
+                ___x_cmd_fslock_defusebomb___recursivelock "$lockfile_X" "$((depth + 1))" || return 1
+            fi
+        fi
+
+        local lockfile_pid="$bombfile.bomblock.$pid"
+        x ps fingerprint get_;      fingerprint="$x_"
+        trap '___x_cmd_cmds_rm -rf "$lockfile_pid" 2>/dev/null' EXIT
+        printf "%s\n" "$pid" "$fingerprint" >"$lockfile_pid"
+
+        ___x_cmd_cmds ln -s "$lockfile_pid" "$lockfile_X" || return 1
+        ___x_cmd_cmds sync -f "$lockfile_pid"
+
+        ___x_cmd_fslock_acquire___readpid_ "$lockfile_X" || {
+            fslock:warn "[BOMBLOCK] [SPID=$pid] [DEPTH=$depth] Fail to readpid from [fp=$lockfile_X]"
+            return 1
+        }
+
+        [ "$x_" = "$pid" ] || {
+            fslock:warn "[BOMBLOCK] [SPID=$pid] [DEPTH=$depth] This should be bug of ln in MSYS. Bomblock is actually acquired by other process[$x_]"
+            ___x_cmd_fslock_acquire___besteffortrm ;     return 1
+        }
+
+        ___x_cmd_cmds_rm -rf "$bombfile" "$lockfile_X" "$1.bomblock".* 2>/dev/null
+    ) || {
+        ___x_cmd_cmds sleep 2 || return 130 # Punishment for the competitor. Optional.
+        return 1
+    }
+}

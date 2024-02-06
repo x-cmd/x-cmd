@@ -9,6 +9,17 @@ function draw_navi_data_available( o, kp, rootkp, tf ){
     o[ kp, "data", rootkp, "ava" ] = tf
 }
 
+function draw_navi_initial_col(o, kp, c){
+    if (c == "")        return int(o[ kp, "initial.col" ])
+    o[ kp, "initial.col" ] = c
+}
+
+function draw_navi_initial_col_decrement(o, kp, cur_col){
+    c = o[ kp, "initial.col" ]
+    if (cur_col != c) return
+    o[ kp, "initial.col" ] = c - 1
+}
+
 function draw_navi_paint( o, kp, x1, x2, y1, y2, is_dim, opt,       _draw_clear, _draw_sel, _draw_preview, _draw_box ){
     if ( ! change_is(o, kp, "navi.body") ) return
     change_unset(o, kp, "navi.body")
@@ -39,6 +50,7 @@ function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, 
             draw_navi_unava( o, kp, _rootkp, true )
             break
         } else {
+            if (i < draw_navi_initial_col(o, kp)) continue
             w = navi_arr_data_view_width( o, kp, _rootkp )
             s = s draw_navi___paint_body_sel( o, kp, _rootkp, x1, x2, y1+c, y1+c+w-1, (i != l), opt)
             c += w

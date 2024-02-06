@@ -24,13 +24,20 @@ function pick_init( o, kp, filter_sw, obj,          title, row, col, width, limi
 }
 
 function pick_handle( o, kp, value, name, type ){
-    comp_handle_exit( value, name, type )
-    if (name == U8WC_NAME_CARRIAGE_RETURN)  exit_with_elegant("ENTER")
+    if (name == "QUIT")                                 pick_exit_without_clear()
+    else if (name == U8WC_NAME_END_OF_TEXT)             pick_exit_without_clear()
+    else if (name == U8WC_NAME_END_OF_TRANSIMISSION)    exit(0)
+    else if (name == U8WC_NAME_CARRIAGE_RETURN)         exit_with_elegant("ENTER")
     else if ( comp_gsel_handle( o, kp, value, name, type ) ) {
         comp_gsel_model_end(o, kp)
         return true
     }
     return false
+}
+
+function pick_exit_without_clear(){
+    ___TAPP_SW_CLEAR_ON_EXIT = false
+    exit(0)
 }
 
 function pick_data_set( o, kp, arr, obj,        i, l, w, max_w, title_width ){
@@ -81,7 +88,6 @@ function pick_paint( o, kp, x1, x2, y1, y2 ){
 }
 
 function pick_result( o, kp ){
-    if (comp_gsel_ctrl_multiple_sw_get( o, kp )) return comp_gsel_get_selected_item(o, kp)
-    else return comp_gsel_get_cur_item(o, kp)
+    return comp_gsel_get_cur_selected_item(o, kp)
 }
 

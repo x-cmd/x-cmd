@@ -4,6 +4,10 @@ BEGIN{
 
     INDICATOR_CMD = "\001\001\001"
     INDICATOR_FINALCMD = INDICATOR_CMD "\001"
+
+    POSITION_SEP = "\001\002\003"
+
+    ___TAPP_SW_CLEAR_ON_EXIT = ENVIRON[ "___TAPP_SW_CLEAR_ON_EXIT" ]
 }
 
 function tapp_canvas_rowsize_get(){
@@ -75,7 +79,7 @@ function panic( s ){
 }
 
 END{
-    if (sw_clear_on_exit == true) {
+    if (___TAPP_SW_CLEAR_ON_EXIT == true) {
         ___tapp_exit_screen_recover()
         printf("%s", UI_CURSOR_RESTORE \
             space_screen(CANVAS_ROWSIZE+1, COLS) "\r" painter_up(CANVAS_ROWSIZE) \

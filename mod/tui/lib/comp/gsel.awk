@@ -184,10 +184,37 @@ function comp_gsel_get_cur_item(o, kp,          i){
     return comp_gsel_data_get(o, kp, i)
 }
 
-function comp_gsel_get_selected_item(o, kp,         i, l, v){
+function comp_gsel_get_selected_item(o, kp, _sep,         i, l, v){
+    if (_sep == "") _sep = "\n"
     l = draw_gsel_cell_selected_count(o, kp)
-    for (i=1; i<=l; ++i) v = ((v) ? v "\n" : "") comp_gsel_data_get(o, kp, draw_gsel_select_item(o, kp, i))
+    for (i=1; i<=l; ++i) v = ((v) ? v _sep : "") comp_gsel_data_get(o, kp, draw_gsel_select_item(o, kp, i))
     return v
+}
+
+function comp_gsel_get_cur_selected_item(o, kp, _sep){
+    if (comp_gsel_ctrl_multiple_sw_get( o, kp )) return comp_gsel_get_selected_item(o, kp, _sep)
+    else return comp_gsel_get_cur_item(o, kp)
+}
+
+function comp_gsel_set_cur_item(o, kp, v,           i){
+    if ((i = comp_gsel___get_item_id(o, kp, v)) > 0) return ctrl_page_set( o, kp, i )
+}
+
+function comp_gsel_set_selected_item(o, kp, v){
+    if (! comp_gsel_ctrl_multiple_sw_get(o, kp)) return
+    if ((i = comp_gsel___get_item_id(o, kp, v)) > 0) {
+        if (draw_gsel_cell_selected(o, kp, i)) return
+        draw_gsel_cell_selected_sw_toggle(o, kp, i)
+        ctrl_page_set(o, kp, i)
+    }
+}
+
+function comp_gsel___get_item_id(o, kp, v,          i, l){
+    l = comp_gsel___slct_data_maxrow( o, kp )
+    for (i=1; i<=l; ++i){
+        if (comp_gsel_data_get(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i)) == v)
+            return i
+    }
 }
 
 # EndSection
@@ -274,4 +301,30 @@ function comp_gsel_data_clear( o, kp ) {
     change_set(o, kp, "gsel.foot")
     return model_arr_clear( o, kp )
 }
+# EndSection
+
+# Section: current position
+function comp_gsel_current_position_var(o, kp, s,       a, i, l){
+    if (s == "") return
+    l = split(s, a, POSITION_SEP)
+    for (i=1; i<=l; ++i) o[ kp, "cur.pos", i ] = a[i]
+    o[ kp, "cur.pos" L ] = l
+}
+
+function comp_gsel_current_position_set(o, kp,         i, l){
+    if ((l = int(o[ kp, "cur.pos" L ])) > 0) {
+        if (l == 1) comp_gsel_set_cur_item(o, kp, o[ kp, "cur.pos", 1 ])
+        else {
+            for (i=1; i<=l; ++i)
+                comp_gsel_set_selected_item(o, kp, o[ kp, "cur.pos", i])
+        }
+        o[ kp, "cur.pos" L ] = 0
+        comp_gsel_change_set_all(o, kp)
+    }
+}
+
+function comp_gsel_current_position_get(o, kp){
+    return comp_gsel_get_cur_selected_item(o, kp, POSITION_SEP)
+}
+
 # EndSection

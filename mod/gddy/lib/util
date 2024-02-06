@@ -1,14 +1,14 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2046
 
 ___x_cmd_gddy_curl(){
     local op="$1"
     local _api_url="$2"
     shift 2
     local GDDY_KEY=;local GDDY_SECRET=
-    GDDY_KEY="$(___x_cmd_gddy_cfg get key)"; GDDY_SECRET="$(___x_cmd_gddy_cfg get secret)"
+    ___x_cmd_gddy_cur    GDDY_KEY:=key   GDDY_SECRET:=secret 2>/dev/null
     if [ -z "$GDDY_KEY" ] || [ -z "$GDDY_SECRET" ]; then
         gddy:error "Please setting up your apikey first ==> 'x gddy --cfg key=<your apikey> secret=<your secret>'"
-        gddy:warn "You can get the gemini apikey from: https://developer.godaddy.com/keys"
+        gddy:warn "You can get the godaddy apikey from: https://developer.godaddy.com/keys"
         return 1
     fi
 
@@ -18,28 +18,25 @@ ___x_cmd_gddy_curl(){
         get)
             local ___X_CMD_API_GDDY_HEADER=" -D '$___X_CMD_GDDY_TMP/.____x_cmd_gddy_curl_header' -H 'accept: application/json' -H 'Authorization: sso-key ${GDDY_KEY}:${GDDY_SECRET}' $header"
             if [ -n "$NO_CACHE" ]; then
-                ___x_cmd_gddy_api get "$_api_url" "$___X_CMD_API_GDDY_HEADER"
+                ___x_cmd_gddy_api get "$_api_url" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gddy_curl___use_query_data "$@"))")
             else
-                x ccmd 10s --        eval "___x_cmd_gddy_api \"get\" \"$_api_url\" \"$___X_CMD_API_GDDY_HEADER\""
+                x ccmd 10s --        eval "___x_cmd_gddy_api \"get\" \"$_api_url\" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gddy_curl___use_query_data "$@"))")"
             fi
-            ___x_cmd_gddy_http_error
             ;;
         post)
             local ___X_CMD_API_GDDY_HEADER="-D '$___X_CMD_GDDY_TMP/.____x_cmd_gddy_curl_header' -H 'accept: application/json' -H 'Authorization: sso-key ${GDDY_KEY}:${GDDY_SECRET}' -H 'Content-Type: application/json'$header"
-            ___x_cmd_gddy_api post "$_api_url"  "$___X_CMD_API_GDDY_HEADER"  "$gen_gddy_json"
-            ___x_cmd_gddy_http_error
+            ___x_cmd_gddy_api post "$_api_url" "$(x curl gencode "$@")"
             ;;
         patch|put)
             local ___X_CMD_API_GDDY_HEADER="-D '$___X_CMD_GDDY_TMP/.____x_cmd_gddy_curl_header' -H 'accept: application/json' -H 'Authorization: sso-key ${GDDY_KEY}:${GDDY_SECRET}' -H 'Content-Type: application/json' $header"
-            ___x_cmd_gddy_api "$op" "$_api_url"  "$___X_CMD_API_GDDY_HEADER"  "$gen_gddy_json"
-            ___x_cmd_gddy_http_error
+            ___x_cmd_gddy_api "$op" "$_api_url" "$(x curl gencode "$@")"
             ;;
         del)
             local ___X_CMD_API_GDDY_HEADER="-D '$___X_CMD_GDDY_TMP/.____x_cmd_gddy_curl_header' -H 'accept: application/json' -H 'Authorization: sso-key ${GDDY_KEY}:${GDDY_SECRET}' $header"
-            ___x_cmd_gddy_api del "$_api_url" "$___X_CMD_API_GDDY_HEADER"
-            ___x_cmd_gddy_http_error
+            ___x_cmd_gddy_api del "$_api_url" "$(x curl gencode "$@")"
             ;;
     esac
+
 
 }
 
@@ -56,11 +53,12 @@ ___x_cmd_gddy_http_error(){
     local http_resp_code=""
     http_resp_code="$(___x_cmd_gddy_resp_code)"
     gddy:debug "HTTP CODE: $http_resp_code"
-    if [ -n "$http_resp_code" ] && [ "$http_resp_code" -ge 200 ] && [ "$http_resp_code" -le 303 ]; then
+    if [ -n "$http_resp_code" ] && [ "$http_resp_code" -eq 200 ] ; then
         return 0
     else
+        gddy:error "HTTP Code is $http_resp_code"
         [ -z "$___X_CMD_GDDY_SHOW_HTTP_CODE" ] || {
-            gddy:error "HTTP Code is $http_resp_code"
+            printf "\n"
             if command -v unset 1>/dev/null; then
                 ___x_cmd_cmds unset ___X_CMD_GDDY_SHOW_HTTP_CODE
             fi
@@ -98,4 +96,25 @@ ___x_cmd_gddy_genlist(){
         END{ print "]"}
     '
 }
+
+___x_cmd_gh____handle_resp(){
+    [ -z "$err_msg" ] || ___x_cmd_gx_printf_error "$err_msg"
+}
+
+
+___x_cmd_gddy_curl___use_query_data(){
+    [ $# -gt 0 ] || return
+    printf "%s " "-G"
+    local name=""
+    for name in "$@"; do
+        case "$name" in
+            p)          [ -z "$p" ]   || printf "%s " "path==$p"    ;;
+            sta)        [ -z "$sta" ] || printf "%s " "status==$sta";;
+            *)                           printf "%s " "$name=="     ;;
+        esac
+    done
+}
+
+
+
 

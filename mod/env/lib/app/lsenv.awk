@@ -50,14 +50,15 @@ function user_data_add( o, kp, rootkp, str,         preview, _, v) {
     comp_navi_data_add_kv( o, kp, rootkp, v, preview, rootkp " " v )
 }
 
-function tapp_handle_exit( exit_code,       s, v, _ ){
+function tapp_handle_exit( exit_code,       s, v, _, len ){
     if (exit_is_with_cmd()){
         s = comp_navi_get_cur_rootkp(o, LSENV_KP)
         v = o[ LSENV_KP, s, "info", "\"version\"" ]
         if (v == "") return
-        split( s, _, " " )
+        len = split( s, _, " " )
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_FINAL_COMMAND", FINALCMD ) )
-        tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_APP_CANDIDATE", _[2] "=" v ) )
+        if (len == 3) tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_APP_CANDIDATE", _[2] "=" v ) )
+        else tapp_send_finalcmd( sh_varset_val( "___X_CMD_ENV_LSENV_APP_CANDIDATE", substr( _[1], index( _[1], "/") +1 ) "=" v ) )
     }
 }
 

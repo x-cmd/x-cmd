@@ -1,0 +1,77 @@
+# shellcheck shell=dash disable=SC2034,SC2154
+___x_cmd_gddy_domain(){
+    param:subcmd ___x_cmd_gddy_domain                                                                       \
+        info          "Retrieve details for the specified Domain"                                           \
+        ls            "Retrieve a list of Domains for the specified shopper"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gddy_domain _param_help_doc
+    return 1
+}
+
+# https://developer.godaddy.com/doc/endpoint/domains#/v1/list
+___x_cmd_gddy_domain_ls(){
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    --shopper_id          "Shopper ID whose domains are to be retrieved"                                                  <>=""
+    --statuses            "Only include results with status value in any of "                                             <>="ACTIVE"    =  ACTIVE AWAITING_CLAIM_ACK  AWAITING_DOCUMENT_AFTER_TRANSFER  AWAITING_DOCUMENT_AFTER_UPDATE_ACCOUNT AWAITING_DOCUMENT_UPLOAD  AWAITING_FAILED_TRANSFER_WHOIS_PRIVACY
+    --statusGroups        "Only include results with status value in any of the specified groups"                         <>="INACTIVE"  = INACTIVE PRE_REGISTRATION REDEMPTION RENEWABLE VERIFICATION_ICANN VISIBLE
+    --includes            "Optional details to be included in the response"                                               <>=""  = authCode contacts nameServers
+    --modifiedDate        "Only include results that have been modified since the specified date"                         <>=""
+    --limit               "Maximum number of domains to return"                                                           <>=""
+    --marker              "Marker Domain to use as the offset in results"                                                 <>=""
+
+    --json|-j      "output raw JSON data"
+'
+    param:run
+    [ -z "$shopper_id" ] || local header="-H 'X-Shopper-Id: $shopper_id'"
+    ___x_cmd_gddy_curl get "/v1/domains" statuses statusGroups includes modifiedDate limit marker | \
+    ___x_cmd_gddy_domain___handle_ui ls
+}
+
+# https://developer.godaddy.com/doc/endpoint/domains#/v1/get
+___x_cmd_gddy_domain_info(){
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    #1               "Domain name whose details are to be retrieved"                      <>
+    --shopper_id     "Shopper ID expected to own the specified domain"                    <>=""
+    --json|-j        "output raw JSON data"
+'
+    param:run
+    [ -z "$id" ] || local header="-H 'X-Shopper-Id: $id'"
+    ___x_cmd_gddy_curl get "/v1/domains/${1}"  |\
+    ___x_cmd_gddy_domain___handle_ui info
+ }
+
+
+___x_cmd_gddy_domain___handle_ui(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+            ___x_cmd_cmds cat
+            ___x_cmd_gddy_http_error
+            return
+    fi
+
+
+    case "$1" in
+
+        info)
+            x ja jl2c .authCode .contactAdmin.email .contactBilling.email .renewDeadline  |\
+            x csv header --add  AuthCode Admin_email Billing_email  RenewDeadline | \
+            x csv static_tab
+            ;;
+        ls)
+            x ja 2c .domain .domainId .createdAt .expires |\
+            x csv header --add  Domain DomainId  CreatedAt Expires | \
+            x csv static_tab
+            ;;
+    esac
+
+    ___x_cmd_gddy_http_error
+
+}
+
+
+

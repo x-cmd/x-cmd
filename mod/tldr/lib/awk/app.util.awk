@@ -27,8 +27,11 @@ function tapp_handle_wchar( value, name, type ){
 function tapp_handle_exit( exit_code,       p, v ){
     if (exit_is_with_cmd()){
         # debug( qu1(comp_navi_get_cur_rootkp(o, TLDR_KP) ) )
-        if ((FINALCMD == "ENTER") && (! comp_navi_cur_preview_type_is_sel( o, TLDR_KP )))
-            tapp_send_finalcmd( "___x_cmd_tldr_cat " qu1( comp_navi_get_cur_rootkp(o, TLDR_KP) ) )
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_TLDR_POSITION", comp_navi_current_position_get(o, TLDR_KP)) )
+        if (FINALCMD == "ENTER") {
+            if (! comp_navi_cur_preview_type_is_sel( o, TLDR_KP ))
+                tapp_send_finalcmd( "___x_cmd_tldr_cat " qu1( comp_navi_get_cur_rootkp(o, TLDR_KP) ) )
+        }
     }
 }
 
