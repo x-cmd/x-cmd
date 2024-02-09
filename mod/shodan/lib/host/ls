@@ -1,0 +1,40 @@
+# shellcheck shell=dash
+# https://developer.shodan.io/api
+___x_cmd_shodan_host_ls(){
+    local X_help_cmd='x help -m shodan host ls';   help:arg:parse
+
+    local ip="$1"
+
+    if [ -z "$ip" ]; then
+        shodan:info "Fetch your public IP to query"
+        ip="$(x ip echo)" || return
+    fi
+
+    [ -n "$ip" ] || return 1
+    x is ip "$ip" || shodan:info "Fetching the IP of the [host=$ip]"
+    shodan:info "Returns all services that have been found on the given host [IP=$ip]"
+
+    if ! ___x_cmd_shodan_is_interactive_env; then
+        ___x_cmd_shodan_host_ls___curl
+        return
+    fi
+
+    ___x_cmd_shodan_host_ls___curl | {
+        x jo  env .  .ip_str .city .country_name .org .last_update  .data .error
+        [ -n "$ip_str" ] || N=shodan M="$error" log:ret:1
+
+        printf "\n IP: %s\n Org: %s\n City: %s\n Country: %s\n Last Update: %s" \
+            "${ip_str}" "${org}" "${city}" "${country_name}" "${last_update}"
+
+        printf "%s\n" "${data}" | \
+            x ja 2c .port .transport .http.title .domains.1 .timestamp          | \
+            x csv header --add  Port  Protocol  Description Domains Timestamp   | \
+            x csv app --width 20%,20%,20%,20%,20% --return print
+    }
+}
+
+___x_cmd_shodan_host_ls___curl(){
+    ___x_cmd_shodan_curl get "/shodan/host/${ip}?"
+}
+
+

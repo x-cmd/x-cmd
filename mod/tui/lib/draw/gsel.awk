@@ -102,7 +102,7 @@ function draw_gsel___on_footer(o, kp, x1, x2, y1, y2, opt,       v, i, s, p, t){
     i = int( ( i - 1 ) / s ) + 1
     p = int( ( opt_get( opt, "data.maxrow" ) - 1 ) / s ) + 1
     v = "<" i "/" p ">"
-    t = "<Ctrl+c/Ctrl+d>:Midway Quit  <Enter>:Correct Quit"
+    t = "<Ctrl+c>:Abort <Ctrl+d>:Exit <Enter>:Confirm"
     if (comp_gsel_ctrl_multiple_sw_get(o, kp)) t = t "  <Tab>:Select"
     v = th( UI_TEXT_DIM, t "  " v )
     # v = th( UI_TEXT_DIM, space_restrict_or_pad_utf8( v "  " t , y2-y1+1) )

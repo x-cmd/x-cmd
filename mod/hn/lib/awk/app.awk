@@ -25,10 +25,9 @@ function tapp_init(){
     user_table_model_init()
 }
 
-function tapp_canvas_rowsize_recalulate( rows,      l ){
-    l = int(rows/3)
-    if (l >= 10)        return l
-    else if(rows < 10)  return false
+function tapp_canvas_rowsize_recalulate( rows ){
+    if (rows >= 28)     return 26
+    else if(rows < 9)   return false
     else                return rows - 2
 }
 
@@ -43,8 +42,18 @@ function tapp_handle_clocktick( idx, trigger, row, col,        v ){
     table_datamodel_refill(o, TABLE_KP )
 }
 
-function tapp_handle_wchar( value, name, type ){
+function tapp_handle_wchar( value, name, type,          id ){
     if ( table_handle_wchar( o ,TABLE_KP, value, name, type ) ) return
+    else if (value == "o") {
+        id = table_arr_get_data(o, TABLE_KP, comp_table_get_cur_row(o, TABLE_KP), 5)
+        tapp_request("x:browse:" id)
+        return true
+    }
+    else if (value == "u") {
+        id = table_arr_get_data(o, TABLE_KP, comp_table_get_cur_row(o, TABLE_KP), 5)
+        tapp_request("x:browselink:" id)
+        return true
+    }
 }
 
 function tapp_handle_exit( exit_code){
@@ -95,16 +104,19 @@ function user_table_model_init(){
     table_init(o, TABLE_KP)
     user_table_comp_init()
 
-    TABLE_LAYOUT( TABLE_COL_TITLE,          30, 40 )
+    TABLE_LAYOUT( TABLE_COL_TITLE,          40, 70 )
     TABLE_LAYOUT( TABLE_COL_SCORE,          6, 10 )
-    TABLE_LAYOUT( TABLE_COL_BY,             20, 20 )
+    TABLE_LAYOUT( TABLE_COL_BY,             15, 15 )
     TABLE_LAYOUT( TABLE_COL_TIME,           16, 16 )
     TABLE_LAYOUT( TABLE_COL_ID,             10, 10 )
-    TABLE_LAYOUT( TABLE_COL_DESCENDANTS,    12, 10 )
-    TABLE_LAYOUT( TABLE_COL_URL,            30, 50 )
+    # TABLE_LAYOUT( TABLE_COL_DESCENDANTS,    10, 8 )
+    TABLE_LAYOUT( TABLE_COL_URL,            20, 50 )
     TABLE_LAYOUT( TABLE_COL_TYPE,           6, 6 )
-    TABLE_LAYOUT( TABLE_COL_TEXT,           30, 30 )
-    TABLE_LAYOUT( TABLE_COL_KIDS,           20, 30 )
+    # TABLE_LAYOUT( TABLE_COL_TEXT,           30, 30 )
+    # TABLE_LAYOUT( TABLE_COL_KIDS,           20, 30 )
+
+    TABLE_STATUSLINE_ADD( "o", "Open", "Open Hacker News comment page" )
+    TABLE_STATUSLINE_ADD( "u", "Url", "Open the article link page" )
     table_statusline_init(o, TABLE_KP)
 
     comp_table_current_position_var(o, TABLE_KP, HN_POSITION)

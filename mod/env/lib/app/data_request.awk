@@ -7,31 +7,31 @@ END{
     l = O[ _kp L ]
     for (i=1; i<=l; ++i){
         key = O[ _kp,  i ]
-        insert_info()
+        insert_info(O, _kp, key)
         print  juq(key) "\003\004" jstr1(O, _kp S key S "\"info\"")
     }
 }
 
-function insert_info(){
+function insert_info(O, kp, key){
         if (region != "cn") region = "en"
 
-        desc = O[_kp S key S "\"info\"" S "\"desc\"" S "\""region"\"" ]
+        desc = O[kp S key S "\"info\"" S "\"desc\"" S "\""region"\"" ]
         if(desc != ""){
-            jdict_put(O, _kp S key S "\"info\"", "\"desc\"" , desc)
+            jdict_put(O, kp S key S "\"info\"", "\"desc\"" , desc)
         }else {
-            desc = O[_kp S "\"desc\"" S "\""region"\"" ]
-            jdict_put(O, _kp S key S "\"info\"", "\"desc\"" , desc)
-        }
+            desc = O[kp S "\"desc\"" S "\""region"\"" ]
+            jdict_put(O, kp S key S "\"info\"", "\"desc\"" , desc)
+        }q
 
-        homepage = O[_kp S "\"homepage\""]
-        if (homepage != "") jdict_put(O, _kp S key S "\"info\"", "\"homepage\"" , homepage)
+        homepage = O[kp S "\"homepage\""]
+        if (homepage != "") jdict_put(O, kp S key S "\"info\"", "\"homepage\"" , homepage)
 
-        size = O[_kp S key S "\"info\"" S "\"size\"" S "\""os"/"arch"\"" ]
-        if (size != "")jdict_put(O, _kp S key S "\"info\"", "\"size\"" , size)
-        else jdict_put(O, _kp S key S "\"info\"", "\"size\"" ,  "\"Unknown\"")
+        size = O[kp S key S "\"info\"" S "\"size\"" S "\""os"/"arch"\"" ]
+        if (size != "")jdict_put(O, kp S key S "\"info\"", "\"size\"" , size)
+        else jdict_put(O, kp S key S "\"info\"", "\"size\"" ,  "\"Unknown\"")
 
-        license = O[_kp S "\"license\""]
-        if (license != "") jdict_put(O, _kp S key S "\"info\"", "\"license\"" , license)
+        license = O[kp S "\"license\""]
+        if (license != "") jdict_put(O, kp S key S "\"info\"", "\"license\"" , license)
 }
 
 
