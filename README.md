@@ -39,7 +39,7 @@ Your support is our biggest motivation.
 4. Provides a range of interactive CLI tools ([github](https:/github.com/), [gitee](https://gitee.com/), with more tool modules to be released in the next six months).
 5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 800KB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
-Now there are more than 100 modules, nearly 500 packages, and more than 1000 install[https://www.x-cmd.com/install/] receipes ~
+Now there are more than **100 modules**, **nearly 500 packages**, and **more than 1000 [install](https://www.x-cmd.com/install/) receipes** ~
 
 ## [Module](https://x-cmd.com/mod/)
 
