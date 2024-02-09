@@ -39,7 +39,9 @@
 4. 提供一系列的交互式 cli 工具（[github](https://github.com/), [gitee](https://gitee.com/)，更多的工具模块将在最近半年发布）
 5. 极轻极快: 包括全功能模块安装包体积不超过800KB，首启后 shell 的加载时间一般不超过100ms
 
-## [模块 -- **80+**](https://x-cmd.com/mod/)
+现有 超过 100 个模块，接近 500 个的包，以及 超过 1000 条 install[https://www.x-cmd.com/install/] receipe ~
+
+## [模块](https://x-cmd.com/mod/)
 
 | 模块 | 功能 | 类似项目 |
 | --- | --- | --- |
@@ -54,7 +56,7 @@
 | [ws](https://cn.x-cmd.com/mod/ws) | 项目脚本管理 | ? |
 | [hub](https://cn.x-cmd.com/mod/hub) | 脚本发布服务 | ? |
 
-## [包 -- **150+**](https://x-cmd.com/pkg/)
+## [包](https://x-cmd.com/pkg/)
 
 | 包 | 官网 | 功能 |
 | -- | -- | -- |
