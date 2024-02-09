@@ -1,6 +1,7 @@
 # shellcheck shell=dash disable=SC2034,SC2154
 
-xrc:mod:lib     gddy domain/record/dns
+xrc:mod:lib     gddy domain/record/_index
+
 ___x_cmd_gddy_domain(){
     param:subcmd ___x_cmd_gddy_domain                                                                       \
         info          "Retrieve details for the specified Domain"                                           \
@@ -10,7 +11,7 @@ ___x_cmd_gddy_domain(){
     param:subcmd:try
     param:run
 
-    ___x_cmd_gddy_domain _param_help_doc
+    ___x_cmd_gddy_domain ls
     return 1
 }
 
@@ -45,7 +46,7 @@ options:
     --json|-j        "output raw JSON data"
 '
     param:run
-    [ -z "$id" ] || local header="-H 'X-Shopper-Id: $id'"
+    [ -z "$shopper_id" ] || local header="-H 'X-Shopper-Id: $shopper_id'"
     ___x_cmd_gddy_curl get "/v1/domains/${1}"  |\
     ___x_cmd_gddy_domain___handle_ui info
  }
@@ -76,16 +77,32 @@ ___x_cmd_gddy_domain___handle_ui(){
     fi
 
     case "$1" in
-
         info)
-            x ja jl2c .authCode .contactAdmin.email .contactBilling.email .renewDeadline  |\
-            x csv header --add  AuthCode Admin_email Billing_email  RenewDeadline | \
-            x csv static_tab
+            x ja jl2c \
+                .authCode .contactAdmin.email .contactBilling.email .renewDeadline  \
+                | x csv header --add  AuthCode Admin_email Billing_email  RenewDeadline \
+                | x csv static_tab
             ;;
         ls)
-            x ja 2c .domain .domainId .createdAt .expires |\
-            x csv header --add  Domain DomainId  CreatedAt Expires | \
-            x csv app --width 25%,25%,25%,- --return print
+            local domain
+            domain="$(x ja 2c .domain .domainId .createdAt .expires \
+                | x csv header --add  Domain DomainId  CreatedAt Expires \
+                | x csv app --width 25%,25%,25%,- --return print)"
+
+            [ -n "$domain" ] || return
+            domain="${domain%%,*}"
+
+            local id
+            x ui select id "Next move for [Domain=$domain]:"   \
+                "x gddy domain info $domain" \
+                "x gddy domain record ls $domain" \
+                "Exit"
+
+            case "$id" in
+                1)      x gddy domain info "$domain";       return ;;
+                2)      x gddy domain record ls "$domain";  return ;;
+                3)      return
+            esac
             ;;
 
         available)

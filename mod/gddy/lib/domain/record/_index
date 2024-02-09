@@ -1,0 +1,89 @@
+# shellcheck shell=dash disable=SC2034,SC2154
+
+xrc:mod:lib gddy  \
+    domain/record/ls    domain/record/ll \
+    domain/record/add   domain/record/rm    domain/record/edit
+
+# https://developer.godaddy.com/doc/endpoint/domains#/
+___x_cmd_gddy_domain_record(){
+    param:subcmd ___x_cmd_gddy_domain_record                                                                                  \
+        ls                 "Retrieve DNS Records for the specified Domain with interactive UI table"                  \
+        ll                 "Retrieve DNS Records for the specified Domain with terminal table"                        \
+        add                "Add the specified DNS Records to the specified Domain"                                    \
+        rm                 "Delete all DNS Records for the specified Domain with the specified Type and Name"         \
+        "edit|ed"          "Edit the specified DNS Records to the specified Domain"
+
+    param:subcmd:try
+    param:run
+    ___x_cmd_gddy_domain_record  _param_help_doc
+    return 1
+}
+
+
+___x_cmd_gddy_dns___handle_ui(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        ___x_cmd_cmds cat
+        ___x_cmd_gddy_http_error
+        return
+    fi
+    local successful_msg= ; local error_msg=
+    (
+        local data
+        x jo env data=.
+
+        case "$1" in
+            ls)
+                if ! ___x_cmd_gddy_http_error; then
+                    printf "%s" "$data"
+                else
+                    local res
+                    res="$(printf "%s" "$data" | \
+                        x ja 2c .data .name  .ttl .type| \
+                        x csv header --add  Data Name  ttl Type | \
+                        x csv app --width 25%,25%,25%,- --return print)"
+
+                    # [ -n "$res" ] || return 0
+                    # res="${res%%,*}"
+
+                    # x ui select id "Next move for [IP=$res]:"   \
+                    #     "Shodan info for this IP" \
+                    #     "Exit"
+
+                    # case "$ip" in
+                    #     1)      x shodan idb "$ip"; return ;;
+                    #     2)      return
+                    # esac
+                fi
+                return
+                ;;
+            ll)
+                if ! ___x_cmd_gddy_http_error; then
+                    printf "%s" "$data"
+                else
+                    printf "%s" "$data" | \
+                        x ja 2c .data .name  .ttl .type| \
+                        x csv header --add  Data Name  ttl Type | \
+                        x csv static_tab
+                fi
+                return
+                ;;
+
+            *)
+                successful_msg="[Success]: Domain $1 transferin successful"
+                error_msg="Domain $1 transferin failure"
+                x jo env err_msg=.message
+                ;;
+
+        esac
+
+        if ! ___x_cmd_gddy_http_error; then
+            gddy:error "$err_msg"
+            ___x_cmd_ui_tf false "$error_msg"
+        else
+            ___x_cmd_ui_tf true "$successful_msg"
+        fi
+    )
+
+}
+
+

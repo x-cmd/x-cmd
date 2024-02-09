@@ -115,8 +115,8 @@ function user_table_model_init(){
     # TABLE_LAYOUT( TABLE_COL_TEXT,           30, 30 )
     # TABLE_LAYOUT( TABLE_COL_KIDS,           20, 30 )
 
-    TABLE_STATUSLINE_ADD( "o", "Open", "Open Hacker News comment page" )
-    TABLE_STATUSLINE_ADD( "u", "Url", "Open the article link page" )
+    TABLE_STATUSLINE_ADD( "o", "Open-HN", "Open Hacker News comment page" )
+    TABLE_STATUSLINE_ADD( "u", "Open-Url", "Open the article link page" )
     table_statusline_init(o, TABLE_KP)
 
     comp_table_current_position_var(o, TABLE_KP, HN_POSITION)
