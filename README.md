@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-Currently in alpha testing (v0.2.8), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
+Currently in alpha testing (v0.2.9), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
 <br>
 If you like x-cmd, please give us a star ⭐.
 <br>
@@ -33,8 +33,8 @@ Your support is our biggest motivation.
 
 ## [Introduction](https://x-cmd.com)
 
-1. Supports one-click execution of hosted scripts in the posixcompatible shells (**ash/bash/dash/zsh, with more to be supported in the future), even innon-scratch lightweight container images such as busybox and alpine.
-2. Supports installation of programming language runtimes (currently supports node, python, java, etc.), allowing users to execute hosted scripts with oneclick on environments with x environment.
+1. Supports one-click execution of hosted scripts in the posixcompatible shells (**ash/bash/dash/zsh**, with more to be supported in the future), even innon-scratch lightweight container images such as busybox and alpine.
+2. Supports installation of programming language runtimes (currently supports **node, python, java**, etc.), allowing users to execute hosted scripts with oneclick on environments with x environment.
 3. Enhances the user experience of posix shell with themes, quickpath navigation, and better shell intelligent completion and prompting features to be added in the future.
 4. Provides a range of interactive CLI tools (gh for github, gt for gitee, with more tool modules to be released in the next six months).
 5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 1.1MB, and the shell loadingtime after initial startup generally does not exceed 100ms.
