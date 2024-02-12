@@ -33,11 +33,11 @@
 
 ## [介绍](https://x-cmd.com)
 
-1. 可在主流posix shell([bash](http://tiswww.case.edu/php/chet/bash/bashtop.html)/[zsh](https://www.zsh.org/)/[dash](https://manpages.debian.org/bullseye/dash/dash.1.en.html)/[ash](https://github.com/ash-shell/ash)，更多将在后续支持)系统环境下(即便在非 scratch 轻量容器镜像内，如[busybox](https://busybox.net/)，[alpine](https://www.alpinelinux.org/)等镜像)，一键运行托管脚本
+1. 可在主流 posix shell (**ash/dash/bash/zsh**，更多将在后续支持) 系统环境下(即便在非 scratch 轻量容器镜像内，如 busybox 和 alpine 等镜像)，一键运行托管脚本
 2. 可安装主流开发语言运行时（现支持[node](https://nodejs.org/en/)，[python](https://www.python.org/)，[java](https://www.java.com/en/)等等），在此之上，可让用户在装有x环境下的环境上一键运行托管脚本
 3. 增强 posix shell 的用户体验：主题，路径快速跳转，后面会加入更好的shell智能补全和提示功能
-4. 提供一系列的交互式 cli 工具（[github](https://github.com/), [gitee](https://gitee.com/)，更多的工具模块将在最近半年发布）
-5. 极轻极快: 包括全功能模块安装包体积不超过800KB，首启后 shell 的加载时间一般不超过100ms
+4. 提供一系列的交互式 cli 工具（ gh for github, gt for gitee )，更多的工具模块将在最近半年发布）
+5. 极轻极快: 包括全功能模块安装包体积 1.1MB，首启后 shell 的加载时间一般不超过100ms
 
 现有 **超过 100** 个[模块](https://x-cmd.com/mod)，**接近 500 个**的[包](https://x-cmd.com/pkg)，以及 **超过 1000 条** [install](https://www.x-cmd.com/install/) receipe ~
 

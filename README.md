@@ -33,11 +33,11 @@ Your support is our biggest motivation.
 
 ## [Introduction](https://x-cmd.com)
 
-1. Supports one-click execution of hosted scripts in the posixcompatible shells ([bash](http://tiswww.case.edu/php/chet/bashbashtop.html)/[zsh](https://www.zsh.org/)/[dash](https://manpagesdebian.org/bullseye/dash/dash.1.en.html)/[ash](https://github.comash-shell/ash), with more to be supported in the future), even innon-scratch lightweight container images such as [busybox](https:/busybox.net/) and [alpine](https://www.alpinelinux.org/).
-2. Supports installation of programming language runtimes (currently supports [node](https://nodejs.org/en/),[python](https://www.python.org/), [java](https://www.java.comen/), etc.), allowing users to execute hosted scripts with oneclick on environments with x environment.
+1. Supports one-click execution of hosted scripts in the posixcompatible shells (**ash/bash/dash/zsh, with more to be supported in the future), even innon-scratch lightweight container images such as busybox and alpine.
+2. Supports installation of programming language runtimes (currently supports node, python, java, etc.), allowing users to execute hosted scripts with oneclick on environments with x environment.
 3. Enhances the user experience of posix shell with themes, quickpath navigation, and better shell intelligent completion and prompting features to be added in the future.
-4. Provides a range of interactive CLI tools ([github](https:/github.com/), [gitee](https://gitee.com/), with more tool modules to be released in the next six months).
-5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 800KB, and the shell loadingtime after initial startup generally does not exceed 100ms.
+4. Provides a range of interactive CLI tools (gh for github, gt for gitee, with more tool modules to be released in the next six months).
+5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 1.1MB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
 Now there are more than **100** [modules](https://x-cmd.com/mod), **nearly 500** [packages](https://x-cmd.com/pkg), and **more than 1000** [install](https://www.x-cmd.com/install/) receipes ~
 
