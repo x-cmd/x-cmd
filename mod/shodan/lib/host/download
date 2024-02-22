@@ -1,0 +1,69 @@
+# shellcheck shell=dash
+
+# using the search to query all data
+
+# x curl -svvv -w "data: ${#1}\n" -G "https://api.shodan.io/tools/httpheaders?data=[1-3]" --data-urlencode a=3  -o /dev/null 2>a.out
+___x_cmd_shodan_host_download(){
+    local limit=1000
+    local IFS=" "
+    local query=""
+    local file=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -a|--all)       limit=-1;       shift 1 ;;
+            --limit)        limit="$2";     shift 2 ;;
+            -f|--file)      file="$2";      shift 2 ;;
+            *)              query="$*";     break   ;;
+        esac
+    done
+
+    [ -n "$file" ] || file="x_shodan_data.json"
+    ! [ -f "$file" ] || N=shodan M="File already exists: $file" log:ret:1
+
+    local count=
+    count=$( ___x_cmd_shodan_host_count "$@" | x jo . .total) || return
+    x is int "$count" || N=shodan M="Fail to fetch count=$count" log:ret:1
+    shodan:info "total [count=$count]"
+
+    if [ "$limit" -gt 0 ] && [ "$limit" -lt "$count" ]; then
+        shodan:info "Download only top $limit with Limit=$limit"
+        count="$limit"
+    fi
+
+    local page="$((  (count-1)/100 + 1  ))"
+    shodan:info "Number of pages is $page"
+    shodan:info "Target file ==> $file"
+
+    local tmpdirp=".x-cmd.shodan.dir"
+    x mkdirp "$tmpdirp"
+
+    set -- "/shodan/host/search?page=[1-$page]" --output "$tmpdirp/#1" --fail-early --fail-with-body
+    set -- "$@" -w "%{http_code}\n%{size_download}\n%{speed_download}\n%{filename_effective}\n"
+    set -- "$@" --data-urlencode "query=$query"
+
+    {
+        printf "%s\n" "Loading" '' '' ''
+        ___x_cmd_shodan_ourl get "$@" | {
+            local code=
+            local size=
+            local speed=
+            local fp=
+            local i=0
+            while read -r code; do
+                read -r size    || return
+                read -r speed   || return
+                read -r fp      || return
+                # shodan:debug "[size=$size] [fp=$fp] [speed=$speed] [http code ==> $code]"
+                printf "%s\n" "[size=$size]" "[fp=$fp]" "[speed=$speed]" "[http code ==> $code]"
+                i=$((i+1))
+                case "$code" in
+                    20*)    x jq '.matches[]' >> "$file" <"${fp}" ;;
+                    *)      N=shodan M="[Http_code=$code] Get data failed" log:ret:1 ;;
+                esac
+            done
+            x rmrf "${tmpdirp}"
+        }
+    } | x ourl pbar --page "1-$page" --size 4
+}
+

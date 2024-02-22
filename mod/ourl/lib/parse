@@ -1,0 +1,99 @@
+
+___x_cmd_ourl_parse(){
+    [ "$#" -gt 0 ] || set -- -h
+
+    local op="$1";  shift
+    case "$op" in
+        -h|--help)
+            x help -m ourl parse ;;
+        body|header|local|isok)
+            ___x_cmd_ourl_parse_"$op" "$@" ;;
+    esac
+}
+
+alias ourl:parse:local='
+local XOH_1=
+local XOH_code=
+local XOH_content_length=
+local XOH_content_type=
+local XOH_date=
+local XOH_other=
+'
+
+___x_cmd_ourl_parse_body(){
+    local len="${1:-XOH_content_length}"
+    if [ "${len:-0}" -gt 0 ]; then
+        ___x_cmd_cmds head -c "$len"
+    fi
+}
+
+___x_cmd_ourl_parse_isok(){
+    case "$XOH_code" in
+        2*)     return 0 ;;
+        *)      return 1 ;;
+    esac
+}
+
+___x_cmd_ourl_parse_header(){
+    while ___x_cmd_ourl_parse_header___header; do
+        ! ___x_cmd_ourl_parse_header___isfinal || return 0
+    done
+}
+
+___x_cmd_ourl_parse_header___isfinal(){
+    case "$XOH_1" in
+        *Connection*|*connection*)  return 1 ;;
+        *Connect*|*CONNECT*)        return 1 ;;
+        *Upgrade*)                  return 1 ;;
+    esac
+
+    [ -z "$XOH_content_type" ]  ||  return 0
+    case "$XOH_code" in
+        ""|3*|4*|5*)                return 1 ;;
+    esac
+
+    case "$XOH_content_length" in
+        ""|0)                   ;;  # Sometimes, we just fail to parse Content-Length
+        *)                          return 0 ;;
+    esac
+
+    [ -z "$XOH_date" ]          ||  return 0
+    [ -z "$XOH_cache_control" ] ||  return 0
+    return 1
+}
+
+___x_cmd_ourl_parse_header___header(){
+    XOH_1=
+    XOH_code=
+    XOH_content_length=
+    XOH_content_type=
+    XOH_date=
+    XOH_other=
+    local x_=
+
+    local line
+    while read -r line; do
+        [ -n "$line" ] || return 0 # This is the normal exit
+        if [ -z "$XOH_1" ]; then
+            XOH_1="$line"
+            XOH_code="${line#* }"
+            XOH_code="${XOH_code%% *}"
+            ___x_cmd_is_int "$XOH_code" || XOH_code=
+            continue
+        fi
+
+        case "$line" in
+            content-length:*|Content-Length:*)
+                ___x_cmd_ourl_str_trim_ "${line#*:}";   XOH_content_length="$x_" ;;
+            content-type:*|Content-Type:*)
+                ___x_cmd_ourl_str_trim_ "${line#*:}";   XOH_content_type="$x_" ;;
+            Date:*|date:*)
+                ___x_cmd_ourl_str_trim_ "${line#*:}";   XOH_date="$x_" ;;
+            *)  XOH_other="${XOH_other}${line}
+"
+        esac
+    done
+    return 1 # read failure, then exit.
+}
+
+

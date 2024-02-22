@@ -1,0 +1,66 @@
+# shellcheck shell=dash
+xrc ourl
+
+___X_CMD_SHODAN_OURL_URL="https://api.shodan.io"
+
+___x_cmd_shodan_ourl(){
+    local op="$1";  shift
+
+    if [ "$op" = rget ]; then
+        ___x_cmd_ourl raw -X get --silent "$___X_CMD_SHODAN_OURL_URL/$1" "$@"
+        return
+    fi
+
+    local SHODAN_KEY=
+    ___x_cmd_shodan_cur    SHODAN_KEY:=key  2>/dev/null
+    if [ -z "$SHODAN_KEY" ]; then
+        shodan:error "Please setting up your apikey first ==> 'x shodan --cfg key=<your apikey>'"
+        shodan:warn "You can get the shodan apikey from: https://account.shodan.io/"
+        return 1
+    fi
+
+    local XOURL_URL="$___X_CMD_SHODAN_OURL_URL"
+    set -- "$@"     --rate  1/s -d "key=${SHODAN_KEY}"
+    # set -- "$@"     --fail-early --fail-with-body
+    case "$op" in
+        get)    XOURL_GET_BEFORE=""   XOURL_GET_AFTER=""  ___x_cmd_shodan_ourl_get  "$@" ;;
+        post)   XOURL_POST_BEFORE=""  XOURL_POST_AFTER="" ___x_cmd_ourl post        "$@" ;;
+        del)    XOURL_DEL_BEFORE=""   XOURL_DEL_AFTER=""  ___x_cmd_ourl del         "$@" ;;
+        put)    XOURL_PUT_BEFORE=""   XOURL_PUT_AFTER=""  ___x_cmd_ourl put         "$@" ;;
+    esac
+}
+
+___x_cmd_shodan_ourl_get(){
+    if [ -z "$X_CCMD_TIMEOUT" ]; then           ___x_cmd_ourl get "$@"
+    else            x ccmd "$X_CCMD_TIMEOUT" -- ___x_cmd_ourl get "$@"
+    fi
+}
+
+# It is very hard to use it.
+# The curl error code should be written out without file.
+___x_cmd_shodan_ourl_sget(){
+    ___x_cmd_shodan_curl get "$@" --dump-header - --fail-with-body | {
+        ourl:parse:local
+        ___x_cmd_ourl parse header
+        if ___x_cmd_ourl parse isok; then
+            if [ -z "$XOURL_succ" ]; then
+                ___x_cmd_ourl parse body
+                return 0
+            fi
+            ___x_cmd_ourl parse body | eval "$XOURL_succ"
+            return 0
+        else
+            ___x_cmd_ourl parse body | eval "${XOURL_fail:-___x_cmd_shodan_ourl_logjson}"
+            return 1
+        fi
+    }
+}
+
+___x_cmd_shodan_ourl_logjson(){
+    {
+        printf "\n%s\n" "---"
+        silentx j2y
+        printf "\n%s\n" "---"
+    } >&2
+}
+

@@ -1,0 +1,43 @@
+# shellcheck shell=dash
+
+xrc:mod:lib shodan      host/search/facet       host/search/filter
+
+___x_cmd_shodan_host_search(){
+    [ $# -gt 0 ] || set - --help
+
+    local IFS=" "
+    local query=;   local facet=;
+    local page=1
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)              x help -m shodan host search;               return ;;
+            -f|--facet|--facets)    [ -n "$2" ] || N=shodan M="Arg Expect after $1" log:ret:64;  facet="$2";     shift 2 ;;
+            -p|--page)              [ -n "$2" ] || N=shodan M="Arg Expect after $1" log:ret:64;  page="$2";      shift 2 ;;
+
+            facet|facets)           ___x_cmd_shodan_host_search_facet   "$@";   return ;;
+            filter|filters)         ___x_cmd_shodan_host_search_filter  "$@";   return ;;
+
+            # *:*)                  query="$query $1" ;;
+            *)                      query="$*"; break ;;
+        esac
+    done
+
+    ___x_cmd_shodan_is_interactive_env || {
+        ___x_cmd_shodan_host_search___exec___curl
+        return
+    }
+
+    ___x_cmd_shodan_host_search___exec___curl | x j2y
+}
+
+
+___x_cmd_shodan_host_search___exec___curl(){
+    [ -n "${query}" ] || N=shodan M="Empty search query" log:ret:64
+
+    set -- --data-urlencode "query=$query" --data-urlencode "page=$page"
+    [ -z "$facet" ] || set -- "$@" --data-urlencode "facets=$facet"
+
+    X_CCMD_TIMEOUT=1h \
+        ___x_cmd_shodan_curl_get "/shodan/host/search" "$@"
+}
+

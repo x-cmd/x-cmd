@@ -13,25 +13,25 @@ END{
 }
 
 function insert_info(O, kp, key){
-        if (region != "cn") region = "en"
+    if (region != "cn") region = "en"
 
-        desc = O[kp S key S "\"info\"" S "\"desc\"" S "\""region"\"" ]
-        if(desc != ""){
-            jdict_put(O, kp S key S "\"info\"", "\"desc\"" , desc)
-        }else {
-            desc = O[kp S "\"desc\"" S "\""region"\"" ]
-            jdict_put(O, kp S key S "\"info\"", "\"desc\"" , desc)
-        }q
+    desc = O[kp S key S "\"info\"" S "\"desc\"" S "\""region"\"" ]
+    if(desc != ""){
+        jdict_put(O, kp S key S "\"info\"", "\"desc\"" , desc)
+    }else {
+        desc = O[kp S "\"desc\"" S "\""region"\"" ]
+        jdict_put(O, kp S key S "\"info\"", "\"desc\"" , desc)
+    }
 
-        homepage = O[kp S "\"homepage\""]
-        if (homepage != "") jdict_put(O, kp S key S "\"info\"", "\"homepage\"" , homepage)
+    homepage = O[kp S "\"homepage\""]
+    if (homepage != "") jdict_put(O, kp S key S "\"info\"", "\"homepage\"" , homepage)
 
-        size = O[kp S key S "\"info\"" S "\"size\"" S "\""os"/"arch"\"" ]
-        if (size != "")jdict_put(O, kp S key S "\"info\"", "\"size\"" , size)
-        else jdict_put(O, kp S key S "\"info\"", "\"size\"" ,  "\"Unknown\"")
+    size = O[kp S key S "\"info\"" S "\"size\"" S "\""os"/"arch"\"" ]
+    if (size != "")jdict_put(O, kp S key S "\"info\"", "\"size\"" , size)
+    else jdict_put(O, kp S key S "\"info\"", "\"size\"" ,  "\"Unknown\"")
 
-        license = O[kp S "\"license\""]
-        if (license != "") jdict_put(O, kp S key S "\"info\"", "\"license\"" , license)
+    license = O[kp S "\"license\""]
+    if (license != "") jdict_put(O, kp S key S "\"info\"", "\"license\"" , license)
 }
 
 
