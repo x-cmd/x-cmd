@@ -14,5 +14,6 @@ END{
     for (i=0; i<scorel; i++){
         if (score[scorel-i] > i) hidx++
     }
+    print sh_varset_val( "_score_L", int(scorel) )
     print sh_varset_val( "_hidx", int(hidx) )
 }
