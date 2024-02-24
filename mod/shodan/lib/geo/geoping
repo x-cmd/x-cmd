@@ -1,0 +1,60 @@
+# shellcheck shell=dash disable=SC2154,SC2034
+# https://geonet.shodan.io/docs#/default/geoping_api_geoping__ip__get
+___x_cmd_shodan_geoping(){
+    local X_help_cmd='x help -m shodan geo geoping';   help:arg-null:parse
+    shodan:arg:format:all
+
+    local ip_or_hostname="$1"
+    if [ -z "$ip_or_hostname" ]; then
+        shodan:info "Fetch your public IP to ping"
+        ip_or_hostname="$(x ip echo)" || return
+    fi
+    [ -n "$ip_or_hostname" ] || N=shodan M="Provide an ip or a hostname" log:ret:64
+
+    shodan:info "Ping an IP or hostname=$ip_or_hostname"
+
+    ___x_cmd_shodan_geoping___"$format"
+}
+
+___x_cmd_shodan_geoping___app(){
+    local data; data=$( ___x_cmd_shodan_geoping___csv ) || return
+
+    data="$(    ___x_cmd_pipevar data   x csv app --return print    )"
+    [ -n "$data" ] || return 0
+
+    local ip="${data%%,*}"
+    # local loc="${data#*,#,}"; loc="${loc%%,*}"
+    shodan:info "Selected [IP=$ip]"
+    local id
+    x ui select id "Next move for this ip:" \
+        "Lookup the internet db for this ip" \
+        "Reverse lookup for domain name" \
+        "Exit"
+
+    case "$id" in
+        1)      x shodan idb "$ip" ;;
+        2)      x shodan dns reverse "$ip" ;;
+        3)      return ;;
+    esac
+}
+
+___x_cmd_shodan_geoping___csv(){
+    local data; data=$( ___x_cmd_shodan_geoping___raw ) || shodan:data:ret
+    ___x_cmd_pipevar data   ___x_cmd_shodan_geoping___parse_json2csv
+}
+
+___x_cmd_shodan_geoping___json(){
+    local data; data=$( ___x_cmd_shodan_geoping___raw ) || shodan:data:ret
+    ___x_cmd_pipevar data
+}
+
+___x_cmd_shodan_geoping___raw(){
+    x curl -sS "https://geonet.shodan.io/api/geoping/${ip_or_hostname}"
+}
+
+# Section: parse
+___x_cmd_shodan_geoping___parse_json2csv(){
+    # ip, is_alive, city/country, min_rtt/avg_rtt/max_rtt, rtts, latlon
+    x ja -v hostname="$ip_or_hostname" -f "$___X_CMD_ROOT_MOD/shodan/lib/geo/awk/geoping.awk" | x csv convert --col
+}
+# EndSection

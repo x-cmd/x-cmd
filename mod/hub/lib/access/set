@@ -1,0 +1,77 @@
+
+
+___x_cmd_hub_access_set(){
+    local X_help_cmd='___x_cmd_hub___help access set'
+    help:arg-null:parse
+
+    local user=; local public=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --public)       public=true; shift  ;;
+            --user)         user="$2"; shift 2 ;;
+            *) break ;;
+        esac
+    done
+
+    local remotefp="$1"
+    [ -n "$remotefp" ] || M='Provide resource path' N=hub log:ret:64
+    remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
+
+    if [ -n "$public" ] ; then
+        local x_=;
+        NO_CACHE=1 ___x_cmd_hub_file_which_ "$remotefp" || return 1
+        ___x_cmd_hub_file_put -f --public "$x_" "$remotefp" || return 1
+    else
+        ___x_cmd_hub_access___set_muti_user "${user}" "${remotefp}" || return 1
+    fi
+}
+
+___x_cmd_hub_access___set_muti_user(){
+    local x_=""
+    local user="$1"
+    local remotefp="$2"
+    [ -n "$remotefp" ] || M='Provide resource path' N=hub log:ret:64
+
+    if [ -z "$user" ];then
+        ___x_cmd_ui_tf false "Please provide --user <username> or --public" >&2
+        return 1
+    fi
+    hub:debug "Step1 => Download and decrypt the file key."
+    x_=; ___x_cmd_hub_access___decrypt_filekey_ "${remotefp}" || return 1
+    [ -n "${x_}" ] || {
+        ___x_cmd_hub_access___set_user "${user}" "${remotefp}"
+        return 0
+    }
+
+    hub:debug "Step2 => Encrypt filekey use user's public key."
+    local filekey_path="${x_}"
+    x_=; ___x_cmd_hub_access___authorized_filekey_ "${user}" "${remotefp}" "${filekey_path}" || return 1
+
+    hub:debug "Step3 => Uploading filekey"
+    local filekey_date="${x_}"
+    ___x_cmd_hub_access___upload_filekey "${filekey_date}" "${remotefp}" || return 1
+
+    hub:debug "Step4 => Update access"
+    ___x_cmd_hub_access___set_user "${user}" "${remotefp}"
+}
+
+
+___x_cmd_hub_access___set_user(){
+    local user="$1"     ; [ -n "$user" ]     || M='Provide user'          N=hub log:ret:64
+    local remotefp="$2" ; [ -n "$remotefp" ] || M='Provide resource path' N=hub log:ret:64
+
+    local resp=; resp="$(___x_cmd_hub_u_curl put /api/v0/access -- "res=${remotefp}" "username=${user}")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to set access:"
+        return 1
+    }
+    hub:debug "resp => $resp"
+    ___x_cmd_hub_u_handle_resp true "Success to set access for $remotefp"
+}
+
+___x_cmd_hub_access___set_public(){
+    local remotefp="$1" ; [ -n "$remotefp" ] || M='Provide remote file path' N=hub log:ret:64
+    local resp=; resp="$(___x_cmd_hub_u_curl put /api/v0/access -- "res=${remotefp}" "isPublic=true")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to set access:"
+        return 1
+    }
+}

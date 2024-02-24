@@ -1,0 +1,88 @@
+# shellcheck shell=dash
+
+# If the data already exists, then stop
+___x_cmd_hn___story_data(){
+    [ "$#" -gt 0 ] || N=hn M="Please privode store item id" log:ret:64
+    ___x_cmd_hn___story_datainbulk "$@" || return
+    ___x_cmd_hn___story_data_output "$@"
+}
+
+___x_cmd_hn___story_data_output(){
+    local datadir="$___X_CMD_HN_CACHE_STORE"; local datafile=""; local x_
+    local id; for id in "$@"; do
+        datafile="$datadir/${id}.json"; x_=""
+        [ ! -f "$datafile" ] || x rat_ "$datafile"
+        [ -n "$x_" ] || printf "%s\n" "{}"
+        printf "%s\n" "$x_"
+    done
+}
+
+___x_cmd_hn___story_datainbulk(){
+    local arg=""; local datadir="$___X_CMD_HN_CACHE_STORE"; local datafile=""
+    local id; for id in "$@"; do
+        datafile="$datadir/${id}.json"
+        [ ! -f "$datafile" ] || ! x fileage --in "$___X_CMD_HN_CACHE___TIMELIMIT" "$datafile" || continue
+        arg="$arg $id"
+    done
+    [ -n "$arg" ] || return 0
+    eval ___x_cmd_hn___story_json_with_pbar "$arg"
+}
+
+___x_cmd_hn___story_json_with_pbar(){
+    [ "$#" -gt 0 ] || N=hn M="Please privode store item id" log:ret:64
+    ___x_cmd_hn___story_json "$@" | x ourl pbar --size 4 --total "$#"
+}
+___x_cmd_hn___story_json(){
+    [ "$#" -gt 0 ] || N=hn M="Please privode store item id" log:ret:64
+    local arg=
+    while [ "$#" -gt 0 ]; do
+        if [ "$#" -le 500 ]; then
+            ___x_cmd_hn___story_json_inner "$@"
+            return
+        else
+            arg="$*"
+            shift 500
+            arg="${arg%"$*"}"
+            eval ___x_cmd_hn___story_json_inner "$arg" || return
+        fi
+    done
+}
+___x_cmd_hn___story_json_inner(){
+    ___x_cmd_hn___story_raw "$@" | ___x_cmd_hn___story_parse_resp2jsonfp "$#"
+}
+
+___x_cmd_hn___story_raw(){
+    [ "$#" -gt 0 ] || N=hn M="Please privode store item id" log:ret:64
+    local OLDIFS="$IFS"
+    local IFS=","
+    local idlist="{$*}"
+    IFS="$OLDIFS"
+
+    local datadir="$___X_CMD_HN_CACHE_STORE"
+    x mkdirp "$datadir"
+
+    set -- "https://hacker-news.firebaseio.com/v0/item/${idlist}.json?print=pretty" --fail-early --fail-with-body
+    set -- "$@" -m 3 -L -sS -w "$___X_CMD_OURL_WRITEOUT" --output "${datadir}/#1.tmp"
+    hn:debug "x curl $* 2>&1"
+
+    x curl "$@" 2>&1
+}
+
+___x_cmd_hn___story_parse_resp2jsonfp(){
+    local n=$1
+    ourl:writeout:init
+    while ourl:writeout:read; do
+        printf "%s\n" "[http_code=${XOW_code}]" "[size=${XOW_size} B]" "[speed=${XOW_speed} B/s]" "[exitcode=${XOW_exitcode}]"
+        n="$((n-1))"
+        case "$XOW_code" in
+            20*)    x mv -f "${XOW_fp}" "${XOW_fp%".tmp"}.json" ;;
+            *)
+                    hn:error "[Http_code=$XOW_code] Get data failed"
+                    ___x_cmd_ourl_json2errorlog
+                    x rmrf "$XOW_fp"
+                    return "$XOW_exitcode"
+        esac
+    done
+    [ "${n}" -le 0 ]
+}
+

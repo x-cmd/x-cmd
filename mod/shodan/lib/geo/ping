@@ -1,77 +1,30 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2154,SC2034
 # https://geonet.shodan.io/docs#/default/ping_api_ping__ip__get
 ___x_cmd_shodan_ping(){
-    local X_help_cmd='x help -m shodan geo ping';   help:arg:parse
+    local X_help_cmd='x help -m shodan geo ping';   help:arg-null:parse
+    shodan:arg:format:raw/json/app:all
 
     local ip_or_hostname="$1"
     if [ -z "$ip_or_hostname" ]; then
         shodan:info "Fetch your public IP to ping"
-        ip_or_hostname="$(x ip echo)" || return
+        ip_or_hostname="$(x ip echo)"   || return
+        [ -n "$ip_or_hostname" ]        || return 1
     fi
-
-    [ -n "$ip_or_hostname" ] || return 1
 
     shodan:info "Ping an IP or hostname=$ip_or_hostname"
-    if  ___x_cmd_shodan_is_interactive_env; then
-        ___x_cmd_shodan_ping___curl  | x j2y
-    else
-        ___x_cmd_shodan_ping___curl
-    fi
+    ___x_cmd_shodan_ping___"$format"
 }
 
-___x_cmd_shodan_ping___curl(){
+___x_cmd_shodan_ping___app(){
+    local data; data=$( ___x_cmd_shodan_ping___raw ) || shodan:data:ret
+    ___x_cmd_pipevar data   x j2y
+}
+
+___x_cmd_shodan_ping___json(){
+    local data; data=$( ___x_cmd_shodan_ping___raw ) || shodan:data:ret
+    ___x_cmd_pipevar data
+}
+
+___x_cmd_shodan_ping___raw(){
     x curl -sS "https://geonet.shodan.io/api/ping/${ip}"
 }
-
-# https://geonet.shodan.io/docs#/default/geoping_api_geoping__ip__get
-___x_cmd_shodan_geoping(){
-    local X_help_cmd='x help -m shodan geo geoping';   help:arg:parse
-
-    local ip_or_hostname="$1"
-    if [ -z "$ip_or_hostname" ]; then
-        shodan:info "Fetch your public IP to ping"
-        ip_or_hostname="$(x ip echo)" || return
-    fi
-
-    [ -n "$ip_or_hostname" ] || return 1
-
-    shodan:info "Ping an IP or hostname=$ip_or_hostname"
-    if  ___x_cmd_shodan_is_interactive_env; then    ___x_cmd_shodan_geoping___app
-    else                                            ___x_cmd_shodan_geoping___curl
-    fi
-}
-
-___x_cmd_shodan_geoping___curl(){
-    x curl -sS "https://geonet.shodan.io/api/geoping/${ip_or_hostname}"
-}
-
-___x_cmd_shodan_geoping___apphandle(){
-    # ip, is_alive, city/country, min_rtt/avg_rtt/max_rtt, rtts, latlon
-    x ja -v hostname="$ip_or_hostname" -f "$___X_CMD_ROOT_MOD/shodan/lib/awk/geoping.awk"
-}
-
-___x_cmd_shodan_geoping___app(){
-    local data
-    data="$(___x_cmd_shodan_geoping___curl \
-        | ___x_cmd_shodan_geoping___apphandle \
-        | x csv convert --col \
-        | x csv app --return print)"
-
-    [ -n "$data" ] || return 0
-
-    local ip="${data%%,*}"
-    # local loc="${data#*,#,}"; loc="${loc%%,*}"
-    shodan:info "Selected [IP=$ip]"
-    local id
-    x ui select id "Next move for this ip:" \
-        "Lookup the internet db for this ip" \
-        "Reverse lookup for domain name" \
-        "Exit"
-
-    case "$id" in
-        1)      x shodan idb "$ip" ;;
-        2)      x shodan dns reverse "$ip" ;;
-        3)      return ;;
-    esac
-}
-

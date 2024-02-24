@@ -2,12 +2,13 @@ function handle(        ipv4 ){
     ipv4 = prop[ "inet" ]
     if (ipv4 == "" ) return
     if (ipv4 == "127.0.0.1" ) return
-    printf("%10s\t%s\n", name, ipv4)
+    printf("%-45s\t%s%s\n", name, ":", ipv4)
     prop[ "inet" ] = ""
 }
 
 $0~/^[^ \t\v\r]/{
     handle()
+    gsub(":", "", $0)
     name = $0
     # parse mtu
     next

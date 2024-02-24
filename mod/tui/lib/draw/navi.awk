@@ -48,6 +48,7 @@ function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, 
         _rootkp = navi_arr_data_trace_col_val( o, kp, i )
         if (!draw_navi_data_available(o, kp, _rootkp)) {
             draw_navi_unava( o, kp, _rootkp, true )
+            s = s draw_navi___paint_null_data(x1, x2, y1+c, y1+c+16-1)
             break
         } else {
             if (i < draw_navi_initial_col(o, kp)) continue
@@ -58,6 +59,11 @@ function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, 
     }
     o[ kp, "view.body", "width" ] = c
     return s
+}
+
+function draw_navi___paint_null_data( x1, x2, y1, y2,        v){
+    v = "Data loading ..."
+    return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) th( UI_TEXT_DIM, v )
 }
 
 function draw_navi___paint_body_sel(o, kp, rootkp, x1, x2, y1, y2, is_dim, opt,        s){

@@ -1,0 +1,41 @@
+
+
+___x_cmd_hub_file___upload_file(){
+    local localfp="$1";  [ -n "$localfp" ]  || M='Provide local file path'  N=hub log:ret:64
+    local remotefp="$2"; [ -n "$remotefp" ] || M='Provide remote file path' N=hub log:ret:64
+    local force="$3"
+    local public="$4"
+
+    local filekey=
+    local filekey_base64=
+    [ -z "${___X_CMD_HUB_ENC}" ] || {
+        # Generate and encrypt file
+        local x_ ; ___x_cmd_hub_keypair_get_key_path_ "$___X_CMD_HUB_KEYPAIR_NAME" public || return 1
+
+        filekey="$(___x_cmd_hub_file___gen_filekey)" || return 1
+        filekey_base64="$(printf "%s" "$filekey" | ___x_cmd_hub_file___encrypt_filekey "$x_")"  || {
+            ___x_cmd_ui_tf false "Failed to encrypt filekey" >&2
+            return 1
+        }
+    }
+
+    ___x_cmd_hub_u_curl get "/api/v0/file/upload/url?res=$(x url encode "$remotefp")&force=${force}&isPublic=${public}" \
+        ${___X_CMD_HUB_ENC+"-H"} ${___X_CMD_HUB_ENC+"Encryption-filekey-base64: $filekey_base64"}  | {
+        local url=; local msg=
+        x jo env . .url .msg
+        [ -n "$url" ] || {
+            ___x_cmd_hub_u_handle_resp false "Failed to put $localfp to $remotefp:"
+            return 1
+        }
+
+        hub:debug "Upload $url"
+        <"$localfp" ___x_cmd_hub_file___encrypt_file "$filekey" \
+            | x curl -X PUT -sSL "$url"  -H "Content-Type: application/octet-stream" --data-binary @- || {
+            ___x_cmd_ui_tf false "Failed to put $localfp to $remotefp" >&2
+            return 1
+        }
+
+        ___x_cmd_ui_tf true "Upload $localfp to $remotefp"
+    }
+}
+

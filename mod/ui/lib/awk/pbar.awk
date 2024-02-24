@@ -17,8 +17,8 @@ function get_progressbar_body(percent,          _width, _stars, i, _s){
     percent = (percent > 100) ? 100 : percent
 
     _stars = int(_width * percent / 100)
-    for (i=1; i<=_stars; ++i)   _s = _s th(TH_THEME_COLOR UI_TEXT_REV, " ")
-    for (; i<=_width; ++i)      _s = _s th(UI_FG_DARKGRAY UI_TEXT_REV, " ")
+    _s =    th(TH_THEME_COLOR UI_TEXT_REV, str_rep(" ", _stars))
+    _s = _s th(UI_FG_DARKGRAY UI_TEXT_REV, str_rep(" ", _width - _stars))
 
     if (percent == 100) _s = _s " DONE!"
     else                _s = _s sprintf(" %3d%%", percent)

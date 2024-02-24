@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-
+# https://developer.shodan.io/api/trends
 ___x_cmd_shodan_trend_search(){
     [ $# -gt 0 ] ||         set -- -h
 
@@ -16,27 +16,47 @@ ___x_cmd_shodan_trend_search(){
 }
 
 ___x_cmd_shodan_trend_search___main(){
+    shodan:arg:format:raw/json/app:all
+
     local query="$1"
     local facet="$2"
 
     [ -n "$query" ] ||  N=shodan M="Required query" log:ret:64
 
-    if ! ___x_cmd_shodan_is_interactive_env; then
-        ___x_cmd_shodan_trend_search___curl
-        return
-    fi
-
-    ___x_cmd_shodan_trend_search___curl | x j2y
-}
-
-___x_cmd_shodan_trend_search___curl(){
-    # X_CCMD_TIMEOUT=10m  \
-    ___X_CMD_SHODAN_API_URL=https://trends.shodan.io    \
-        ___x_cmd_shodan_trend_search___inner
-}
-
-___x_cmd_shodan_trend_search___inner(){
-    set -- "/api/v1/search" -d "query=$query"
+    set -- -d "query=$query"
     [ -z "$facet" ] || set -- "$@" -d "facets=$facet"
-    ___x_cmd_shodan_curl_get "$@"
+
+    ___x_cmd_shodan_trend_search___main___"$format" "$@"
 }
+
+
+___x_cmd_shodan_trend_search___main___app(){
+    local data; data="$( ___x_cmd_shodan_trend_search___main___raw "$@" )" || shodan:data:ret
+    ___x_cmd_pipevar    data  | ___x_cmd_shodan_trend_search___parse_json2csv |\
+    x csv app --width 30%,30% --return print
+}
+
+
+___x_cmd_shodan_trend_search___main___json(){
+    local data; data="$( ___x_cmd_shodan_trend_search___main___raw "$@" )" || shodan:data:ret
+    ___x_cmd_pipevar    data
+}
+
+___x_cmd_shodan_trend_search___main___raw(){
+    x ccmd 10m --  ___x_cmd_shodan_ourl get \
+        "https://trends.shodan.io/api/v1/search" "$@"
+}
+
+___x_cmd_shodan_trend_search___parse_json2csv(){
+    local error=
+    local matches=
+    local total=
+    x jo env . .matches .error .total
+    [ -z "$error" ] || N=shodan M="$error" log:ret:1
+    printf "%s" "$matches"     |\
+        x ja 2c .month .count  |\
+        total="${total}"        \
+        x csv awk '{print cval(1)","cval(2)} END{print "total,"ENVIRON[ "total" ]}' |\
+        x csv header --add month count
+}
+

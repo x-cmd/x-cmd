@@ -1,45 +1,30 @@
-# shellcheck shell=bash
+# shellcheck shell=bash disable=SC2154,2034
 # This function is used to edit an existing alert
 ___x_cmd_shodan_alert_edit(){
-    local id="$1"; shift
-    [ -n "$id" ] ||  N=shodan M="Provide an alert ID" log:ret:1
-    [ "$#" -gt 0 ] || N=shodan M="Provide an IP" log:ret:1
-
+    local X_help_cmd='x help -m shodan alert edit';   help:arg-null:parse
+    shodan:arg:format:raw/json/app:all
+    local id="$1"
+    [ -n "$id" ]   ||  N=shodan M="Provide an alert ID" log:ret:64
+    [ "$#" -gt 0 ] || N=shodan M="Provide an IP"        log:ret:64
+    shift
     local x_=
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            [0-9]*)
-                ___x_cmd_shodan_alert_edit_append_ip_ "$1"; shift
-                ;;
-            *)
-                shodan:error Invalid IP:"$1"
-                return 1
-                ;;
+            [0-9]*) ___x_cmd_shodan_alert_edit___handle "$1"; shift     ;;
+            *)      N=shodan M="Invalid IP: $1" log:ret:64              ;;
         esac
     done
 
-    local ip="$x_"
-    ___x_cmd_shodan_alert_edit_curl "$id" "$ip"
+    shodan:debug "json=$x_"
+    set -- "-d '{ \"filters\": {\"ip\": [$x_]}}'"
+    ___x_cmd_shodan_alert_edit___"$format" "$@"
 }
 
-___x_cmd_shodan_alert_edit_curl(){
-    local id="$1"; local ip="$2"
-    local json="{ \"filters\": {\"ip\": [$ip]}}"
-
-    shodan:info "edit alert[IP=$ip]"
-    if ! ___x_cmd_shodan_is_interactive_env; then
-        ___x_cmd_shodan_curl post "/shodan/alert/${id}" "-d '$json'"
-        return
-    fi
-    ___x_cmd_shodan_curl post "/shodan/alert/${id}" "-d '$json'" | x j2y
-}
-
-
-___x_cmd_shodan_alert_edit_append_ip_(){
+___x_cmd_shodan_alert_edit___handle(){
     local ip="$1"
     local _ip=; local tmp=;
     if [ "$ip" = "${ip% *}" ]; then
-        x_="${x_:+$x_,}\"$_ip\""
+        x_="${x_:+$x_,}\"$ip\""
     else
         while [ "$ip" != "${ip% *}" ]; do
             _ip="${ip%% *}" ; tmp="${ip#* }"
@@ -50,10 +35,17 @@ ___x_cmd_shodan_alert_edit_append_ip_(){
     fi
 }
 
-
-
-# This function is an alias for the edit function
-___x_cmd_shodan_alert_ed(){
-    shodan:error "Unsupported [function=___x_cmd_shodan_alert_ed]"
-    return 1
+___x_cmd_shodan_alert_edit___app(){
+    local data;     data="$( ___x_cmd_shodan_alert_edit___raw "$@" )"    || shodan:data:ret
+    ___x_cmd_pipevar data       x j2y
 }
+
+___x_cmd_shodan_alert_edit___json(){
+    local data;     data="$( ___x_cmd_shodan_alert_edit___raw "$@" )"    || shodan:data:ret
+    ___x_cmd_pipevar data
+}
+
+___x_cmd_shodan_alert_edit___raw(){
+    ___x_cmd_shodan_curl post "/shodan/alert/${id}" "$@"
+}
+

@@ -1,38 +1,57 @@
-# shellcheck shell=dash disable=SC2034
+# shellcheck shell=dash disable=SC2154,SC2034
 ___X_CMD_SHODAN_ENTITYDB_TIMELIMIT=1d
+___X_CMD_SHODAN_ENTITYDB_URL="https://entitydb.shodan.io/api"
+
 ___x_cmd_shodan_entitydb_search(){
-    local name="$1"
-    local XOURL_URL="https://entitydb.shodan.io/api"
+    local X_help_cmd='x help -m shodan entitydb search';   help:arg-null:parse
+    shodan:arg:format:all
+    local name="$1"; local url=
+    [ -n "$name" ]   ||  N=shodan M="Provide a name" log:ret:64
 
-    if ___x_cmd is int "$name"; then    ___x_cmd_shodan_entitydb_id     "$name"
-    else                                ___x_cmd_shodan_entitydb_symbol "$name"
+    if ___x_cmd is int "$name"; then    url="${___X_CMD_SHODAN_ENTITYDB_URL}/entities/${name}"
+    else                                url="${___X_CMD_SHODAN_ENTITYDB_URL}/entities/symbol/${name}"
     fi
+
+    "___x_cmd_shodan_entitydb_search___${format}"
 }
 
-___x_cmd_shodan_entitydb_id(){
-    local id="$1"
-    x ccmd "$___X_CMD_SHODAN_ENTITYDB_TIMELIMIT" -- \
-        ___x_cmd_ourl get "/entities/$id" --fail-with-body \
-        || N=shodan M="Fail for id=$id" log:ret:1
+
+# shellcheck shell=dash disable=SC2034
+
+___x_cmd_shodan_entitydb_search___app(){
+    local data
+    data="$( ___x_cmd_shodan_entitydb_search___csv )"    || shodan:data:ret
+    ___x_cmd_pipevar data      x csv app
 }
 
-___x_cmd_shodan_entitydb_symbol(){
-    local name="$1"
-
-
-    x ccmd "$___X_CMD_SHODAN_ENTITYDB_TIMELIMIT" -- \
-    ___x_cmd_ourl get "/entities/symbol/$name" --fail-with-body | \
-    {
-        ourl:parse:local
-        ___x_cmd_ourl parse header
-        if ___x_cmd_ourl parse isok; then
-            ___x_cmd_ourl parse body
-        else
-            {
-                printf "%s\n" "---"
-                ___x_cmd_ourl parse body | x j2y
-                printf "%s\n" "---"
-            } >&2
-        fi
-    }
+___x_cmd_shodan_entitydb_search___csv(){
+    local data
+    data="$( ___x_cmd_shodan_entitydb_search___raw )"    || shodan:data:ret
+    ___x_cmd_pipevar data    ___x_cmd_shodan_entitydb_id___parse_json2csv
 }
+
+___x_cmd_shodan_entitydb_search___tsv(){
+    local data
+    data="$( ___x_cmd_shodan_entitydb_search___raw )"    || shodan:data:ret
+    ___x_cmd_pipevar data ___x_cmd_shodan_entitydb_id___parse_json2csv | x csv 2tsv
+}
+
+___x_cmd_shodan_entitydb_search___json(){
+    local data
+    data="$( ___x_cmd_shodan_entitydb_search___raw )"    || shodan:data:ret
+    ___x_cmd_pipevar data
+}
+
+___x_cmd_shodan_entitydb_search___parse_json2csv(){
+    x jo .finance_data |\
+        x ja 2c .report_year .report_at .revenue .net_income .filing_url |\
+        x csv header --add Report_at Revenue Net_income Filing_url
+}
+
+___x_cmd_shodan_entitydb_search___raw(){
+    x ccmd "$___X_CMD_SHODAN_ENTITYDB_TIMELIMIT" 2>/dev/null -- \
+        x curl  --fail-with-body  -sS \
+        "${url}" \
+        || N=shodan M="Fail for name=${name}" log:ret:1
+}
+
