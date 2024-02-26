@@ -8,6 +8,7 @@ BEGIN{
     POSITION_SEP = "\001\002\003"
 
     ___TAPP_SW_CLEAR_ON_EXIT = ENVIRON[ "___TAPP_SW_CLEAR_ON_EXIT" ]
+    TUI_PANIC_EXIT = 0
 }
 
 function tapp_canvas_rowsize_get(){
@@ -68,14 +69,10 @@ function ___tapp_exit_screen_recover(){
 # EndSection
 
 # Section: exit and panic
-
-BEGIN{
-    TUI_PANIC_EXIT = 0
-}
-function panic( s ){
-    TUI_PANIC_EXIT = 1
+function panic( s, c ){
+    TUI_PANIC_EXIT = (c != "") ? int(c) : 1
     TUI_PANIC_TEXT = s
-    exit(1)
+    exit(TUI_PANIC_EXIT)
 }
 
 END{
@@ -92,8 +89,6 @@ END{
     printf("%s", UI_CURSOR_NORMAL UI_CURSOR_SHOW UI_LINEWRAP_ENABLE) >"/dev/stderr"
     tapp_handle_exit( TUI_PANIC_EXIT )
     if (TUI_PANIC_TEXT != "") log_error("tui", TUI_PANIC_TEXT)
-    tapp_send_finalcmd( "___X_CMD_TUI_APP_TMP_EXITCODE='" TUI_PANIC_EXIT "'" )
-    exit( TUI_PANIC_EXIT );
 }
 # EndSection
 

@@ -145,7 +145,7 @@ function tapp_handle_clocktick( idx, trigger, row, col ){
 }
 
 function tapp_handle_wchar( value, name, type,              ctrl_sw, _has_no_handle ){
-    if (name == U8WC_NAME_END_OF_TEXT)                              exit(0)
+    if (name == U8WC_NAME_END_OF_TEXT)                              exit(130)
     else if (name == U8WC_NAME_END_OF_TRANSIMISSION)                exit(0)
 
     if (comp_statusline_isfullscreen(o, STATUSLINE_KP)){

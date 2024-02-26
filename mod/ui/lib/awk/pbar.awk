@@ -4,7 +4,7 @@ function print_progressbar(percent, size,         i, _v, _s, _info){
     _s = get_progressbar_body(percent) _info
 
     size --
-    for (i=1; i<=size && getline _v; ++i) _info = _info "  " th(TH_BAR_INFO[i%4], _v)
+    for (i=1; i<=size && getline _v; ++i) _info = _info "  " th(TH_PBAR_INFO[i%4], _v)
     _s = _s ((_info != "") ? "\n" th(UI_FG_DARKGRAY, _info) : "" )
 
     printf( "%s\n", UI_CURSOR_RESTORE UI_CURSOR_HIDE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
@@ -17,8 +17,8 @@ function get_progressbar_body(percent,          _width, _stars, i, _s){
     percent = (percent > 100) ? 100 : percent
 
     _stars = int(_width * percent / 100)
-    _s =    th(TH_THEME_COLOR UI_TEXT_REV, str_rep(" ", _stars))
-    _s = _s th(UI_FG_DARKGRAY UI_TEXT_REV, str_rep(" ", _width - _stars))
+    _s =    th(TH_PBAR_LEFT, str_rep(TH_PBAR_CHAR, _stars))
+    _s = _s th(TH_PBAR_RIGHT, str_rep(TH_PBAR_CHAR, _width - _stars))
 
     if (percent == 100) _s = _s " DONE!"
     else                _s = _s sprintf(" %3d%%", percent)
@@ -28,11 +28,14 @@ function get_progressbar_body(percent,          _width, _stars, i, _s){
 BEGIN{
     # TH_THEME_COLOR = ENVIRON[ "___X_CMD_THEME_COLOR_CODE" ]
     # TH_THEME_COLOR = (TH_THEME_COLOR) ? "\033[" TH_THEME_COLOR "m" : UI_FG_CYAN
-    TH_THEME_COLOR = UI_FG_CYAN
-    TH_BAR_INFO[ 1 ] = UI_END
-    TH_BAR_INFO[ 2 ] = UI_FG_GREEN
-    TH_BAR_INFO[ 3 ] = UI_FG_YELLOW
-    TH_BAR_INFO[ 0 ] = UI_FG_BLUE
+    TH_PBAR_INFO[ 1 ] = UI_END
+    TH_PBAR_INFO[ 2 ] = UI_FG_GREEN
+    TH_PBAR_INFO[ 3 ] = UI_FG_YELLOW
+    TH_PBAR_INFO[ 0 ] = UI_FG_BLUE
+
+    TH_PBAR_CHAR    = " " # "━"
+    TH_PBAR_LEFT    = UI_FG_CYAN UI_TEXT_REV
+    TH_PBAR_RIGHT   = UI_FG_DARKGRAY UI_TEXT_REV
 
     COLUMNS = ENVIRON[ "COLUMNS" ]
     if (COLUMNS < 20) log_error("ui", "The current screen COLUMNS[" COLUMNS "] is insufficient to display the content")

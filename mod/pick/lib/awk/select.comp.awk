@@ -24,8 +24,8 @@ function pick_init( o, kp, filter_sw, obj,          title, row, col, width, limi
 }
 
 function pick_handle( o, kp, value, name, type ){
-    if (name == "QUIT")                                 pick_exit_without_clear()
-    else if (name == U8WC_NAME_END_OF_TEXT)             pick_exit_without_clear()
+    if (name == "QUIT")                                 pick_exit_without_clear(0)
+    else if (name == U8WC_NAME_END_OF_TEXT)             pick_exit_without_clear(130)
     else if (name == U8WC_NAME_END_OF_TRANSIMISSION)    exit(0)
     else if (name == U8WC_NAME_CARRIAGE_RETURN)         exit_with_elegant("ENTER")
     else if ( comp_gsel_handle( o, kp, value, name, type ) ) {
@@ -35,9 +35,9 @@ function pick_handle( o, kp, value, name, type ){
     return false
 }
 
-function pick_exit_without_clear(){
+function pick_exit_without_clear(c){
     ___TAPP_SW_CLEAR_ON_EXIT = false
-    exit(0)
+    exit(int(c))
 }
 
 function pick_data_set( o, kp, arr, obj,        i, l, w, max_w, title_width ){
