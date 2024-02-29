@@ -10,7 +10,7 @@
 
 <p align="center">
   <a target="_blank" href="https://x-cmd.com/">
-    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/github/v/tag/x-cmd/x-cmd?label=alpha&labelColor=107fbc">
+    <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/github/v/release/x-cmd/x-cmd?label=beta&labelColor=107fbc">
   </a>
 </p>
 
