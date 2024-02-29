@@ -1,0 +1,118 @@
+# shellcheck shell=dash
+
+___x_cmd_mirror___util_get_url_by_name(){
+    local name="$1"
+    local url
+    url="$(___x_cmd_cmds_awk -v name="$name" 'NR>1 && $1 == name { print $2 ; exit 0;}')"
+    if [ -n "$url" ]; then
+        printf "%s" "$url"
+    else
+        mirror:warn "No such mirror found for '$name'"
+        return 1
+    fi
+}
+
+___x_cmd_mirror___util_subcmd_invalid(){
+    local subcmd="${1}"
+    local param="${2}"
+    if [ -z "$param" ]; then ___x_cmd_ui_tf false "Subcommand required. See 'x mirror $subcmd --help|-h'" >&2
+    else
+        ___x_cmd_ui_tf false "'$param' is not a subcommand. " >&2 ;
+        x mirror "$subcmd" --help >&2
+    fi
+    return 1
+}
+
+___x_cmd_mirror___util_current_mirror(){
+    local subcmd="${1}"
+    local res
+    res="$("___x_cmd_mirror_${subcmd}_get")" || return
+    mirror:info --url "$res" "Current Registry"
+}
+
+# Section: Backup & Rollback functions
+
+___X_CMD_MIRROR_BACKUP_DIR="$___X_CMD_ROOT_DATA/mirror/backup"
+
+# Backup the src_path(file or directory) to the dst_dir.
+# @param1 src_path
+# @param2 app_name
+# example:
+#   ___x_cmd_proxy___backup /etc/apt/sources.list apt
+#   ___x_cmd_proxy___backup /etc/yum.repos.d yum
+___x_cmd_proxy___util_backup() {
+    local src_path
+    local app_name
+    local dst_dir
+
+    src_path="${1}"
+    app_name="${2}"
+
+    dst_dir="$___X_CMD_MIRROR_BACKUP_DIR/$app_name/$(date +%y%m%d_%0H%M%S)"
+    x mkdirp "$dst_dir"
+
+    mirror:info "Backing up $src_path to $dst_dir"
+
+    if [ -f "$src_path" ]; then
+        ___x_cmd_cmds_cp "$src_path" "$dst_dir"
+    elif [ -d "$src_path" ]; then
+        ___x_cmd_cmds_cp -r "$src_path"/* "$dst_dir"
+    else
+        mirror:error "Invalid src_path: $src_path"
+    fi
+}
+
+# Rollback from the last backup file.
+# @param1 dst_path
+# @param2 app_name
+# example:
+#   ___x_cmd_mirror___util_rollback /etc/apt/sources.list apt
+#   ___x_cmd_mirror___util_rollback /etc/yum.repos.d yum
+___x_cmd_mirror___util_rollback() {
+    local dst_path
+    local app_name
+    local bak_dir
+
+    dst_path="${1}"
+    app_name="${2}"
+    bak_dir="${3}"
+
+    if [ -n "$bak_dir" ]; then
+        bak_dir="$___X_CMD_MIRROR_BACKUP_DIR/$app_name/$bak_dir"
+    else
+        bak_dir="$___X_CMD_MIRROR_BACKUP_DIR/$app_name"
+        bak_dir="$bak_dir/$(___x_cmd_cmds_ls -t "$bak_dir" | head -n 1)"
+    fi
+
+    if [ -d "$bak_dir" ]; then
+        mirror:info "Rollback from $bak_dir"
+        if [ -z "${IS_ROOT}" ] ; then
+            ___x_cmd_cmds_cp -r "$bak_dir"/* "$dst_path"
+        else
+            sudo cp -r "$bak_dir"/* "$dst_path"
+        fi
+    else
+        mirror:info "No backup dir found in $bak_dir"
+    fi
+}
+
+___x_cmd_mirror___util_rollback_ls() {
+    local app_name
+    app_name="$1"
+
+    if [ -d "$___X_CMD_MIRROR_BACKUP_DIR" ]; then
+        local files
+        files="$(___x_cmd_cmds_ls -t "$___X_CMD_MIRROR_BACKUP_DIR/$app_name")"
+        if [ -n "$files" ]; then
+            printf "%s" "$files"
+        else
+            mirror:error "No backup file found."
+            return 1
+        fi
+    else
+        mirror:error "No backup directory found."
+        return 1
+    fi
+}
+
+# EndSection

@@ -45,14 +45,13 @@ function tapp_handle_wchar( value, name, type ){
     pick_handle( o, PICK_KP, value, name, type )
 }
 
-function tapp_handle_response(fp,       _content, _, arr, i, l, v){
-    _content = cat(fp)
-    if( _content == "" ) panic("list data is empty")
-    arr_cut(_, _content, "\n")
+function tapp_handle_response(fp,        _, arr, i, l, v){
+    cat_to_arr(fp, _)
     arr[L] = l = _[L]
+    if( l <= 0 ) panic("list data is empty")
     for (i=1; i<=l; ++i) {
-        v = str_remove_esc(_[i])
-        gsub(/[ \t\b\v\n]+/, " ", v)
+        v = _[i]
+        gsub(/[\t\b\v\n]+/, " ", v)
         arr[i] = v
     }
     pick_data_set( o, PICK_KP, arr, PICK_SIZE )

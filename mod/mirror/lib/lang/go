@@ -1,0 +1,155 @@
+# shellcheck shell=sh disable=SC3043
+# Reference: https://cloud.tencent.com/developer/article/1773630
+
+___x_cmd_mirror_go(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m mirror go         "$@"
+            return   ;;
+    esac
+
+    x hascmd go || N=mirror M="[command=go] not found." log:ret:1
+    case "$op" in
+        ls|current|set|unset)  ___x_cmd_mirror_go_"${op}"  "$@" ;;
+        *)                     ___x_cmd_mirror___util_subcmd_invalid go "$@" ;;
+    esac
+}
+
+___x_cmd_mirror_go_ls(){
+    printf "%s\n" \
+        "Code          Url                                    Name" \
+        "ali           https://mirrors.aliyun.com/goproxy/    阿里云镜像站" \
+        "goproxy       https://goproxy.io/zh/                 goproxy" \
+        "qiniu         https://goproxy.cn/                    七牛云镜像站" \
+        "official      https://proxy.golang.org/              官方镜像站"
+}
+
+___x_cmd_mirror_go___url(){
+    ___x_cmd_mirror_go_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+___x_cmd_mirror_go_current()(
+    local GOPROXY
+    eval "$(go env | ___x_cmd_cmds grep -i GOPROXY)"
+    printf "%s" "$GOPROXY"
+)
+
+___x_cmd_mirror_go_set(){
+    [ "$#" -gt 0 ] ||   set -- ali
+    case "$1" in
+        -h|--help)
+            x help -m mirror go set "$@"
+            return   ;;
+    esac
+
+    local url
+    url="$(___x_cmd_mirror_go___url "$1")" || return
+    mirror:info "Setting go mirror $url"
+
+    local code
+    if [ "$(go version | ___x_cmd_cmds_awk '{ a=substr($3, 3); if(a<1.13) print 1; else print 0 }')" = 1 ]; then
+        code="
+    export GOPROXY=$url
+    export GO111MODULE=on
+"
+    else
+        code="
+    go env -w GO111MODULE=on
+    go env -w GOPROXY="${url},direct"
+"
+    fi
+
+    eval "$code"
+    mirror:info -m "Setting the GORPOXY and GO111MODULE env.
+url: $(___x_cmd_mirror_go_current)"
+}
+
+___x_cmd_mirror_go_unset(){
+    local code
+
+    # TODO: To be optimized.
+    if [ "$(go version | ___x_cmd_cmds_awk '{ a=substr($3, 3); if(a<1.13) print 1; else print 0 }')" = 1 ]; then
+        code="export GOPROXY="
+    else
+        code="go env -u GOPROXY"
+    fi
+
+    eval "$code"
+    mirror:info -m "unset the GORPOXY and GO111MODULE env.
+url: $(___x_cmd_mirror_go_current)"
+}
+
+# TODO:
+
+# Using web to judge instead of dig command
+# net is-in-china
+___x_cmd_mirror_go_auto(){
+    # if dig sh.x-cmd.com 2>/dev/null | grep gitee 2>/dev/null 1>dev/null; then
+    #     ___x_cmd_mirror_go set ali
+    #     ___x_cmd_mirror_go sum set qiniu
+    # else
+    #     : Why
+    # fi
+
+    ___x_cmd_mirror_go set ali
+    ___x_cmd_mirror_go gosumdb set qiniu
+}
+
+___x_cmd_mirror_go_gosumdb(){
+    [ "$#" -gt 0 ] ||   set -- --help
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m mirror go gosumdb "$@"
+            return   ;;
+        set|unset)
+            ___x_cmd_mirror_go_gosumdb_"${op}" "$@"
+            ;;
+    esac
+}
+
+___x_cmd_mirror_go_gosumdb_set(){
+    case "${1:-qiniu}" in
+        qiniu|io|goproxoy.io)   ___x_cmd_mirror_go_set    https://GOPROXY.cn ;;
+        *)                      export GOSUMDB=gosum.io+ce6e7565+AY5qEHUk/qmHc5btzW45JVoENfazw8LielDsaI+lEbq6 ;;
+    esac
+}
+
+___x_cmd_mirror_go_gosumdb_unset(){
+    export GOSUMDB=
+}
+
+# help doc: https://GOPROXY.io/zh/docs/enterprise.html
+___x_cmd_mirror_go_service(){
+    if go ps >/dev/null 2>&1; then
+        go run -d -p80:8081 GOPROXY/GOPROXY "$@"
+    elif :; then
+        : Build directly.
+    else
+        # Just download the exe file.
+        ./bin/GOPROXY -listen=0.0.0.0:80 -cacheDir=/tmp/test -mirror https://GOPROXY.io -exclude "git.corp.example.com,rsc.io/private"
+    fi
+}
+
+___x_cmd_mirror_go_tutorial(){
+    ___x_cmd_cmds_cat <<A
+Windows Powershell:
+
+Format:
+    \$env:GOPROXY = <url>
+
+Example:
+    \$env:GOPROXY = "https://GOPROXY.cn"
+
+Windows:
+    1. 右键 我的电脑 -> 属性 -> 高级系统设置 -> 环境变量
+    2. 在 “[你的用户名]的用户变量” 中点击 ”新建“ 按钮
+    3. 在 “变量名” 输入框并新增 “GOPROXY”
+    4. 在对应的 “变量值” 输入框中新增 “https://GOPROXY.io,direct”
+    5. 最后点击 “确定” 按钮保存设置
+A
+}

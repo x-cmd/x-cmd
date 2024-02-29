@@ -174,7 +174,7 @@ function utf8tt_refresh( o, kp, row, col ){
     utf8tt_to_arr( o, kp, col, o, kp SUBSEP "VIEW" )
 }
 
-function utf8tt_to_arr( o, kp, col, arr, arrkp,      _null, a, l, _l, i, j, k, e, el, _e1, _rest, _restl, _sep ){
+function utf8tt_to_arr( o, kp, col, arr, arrkp,      _null, a, l, _l, i, j, k, e, el, _e1, _rest, _restl, _sep, _last_sep ){
     l = o[ kp L ]
     for (i=1; i<=l; ++i) {
         _l = o[ kp, i L ]
@@ -189,7 +189,7 @@ function utf8tt_to_arr( o, kp, col, arr, arrkp,      _null, a, l, _l, i, j, k, e
                 _rest = _rest _e1
                 _restl = _restl + wcswidth_cache( _e1 )
                 if (_e1 == e) {
-                    _rest = _sep _rest (_sep = o[ kp, i, j, "SEP"])
+                    _rest = _last_sep _rest (_sep = o[ kp, i, j, "SEP"])
                     if (_restl == col) {
                         _null = 0
                         arr[ arrkp, ++k ] = _rest
@@ -199,9 +199,10 @@ function utf8tt_to_arr( o, kp, col, arr, arrkp,      _null, a, l, _l, i, j, k, e
                     e = ""
                 } else {
                     if (_restl == col-1) _rest = _rest " "
-                    arr[ arrkp, ++k ] = _sep _rest
+                    arr[ arrkp, ++k ] = _rest
                     _rest = ""
                     _restl = 0
+                    _last_sep = _sep
                     e = substr(e, length(_e1)+1)
                 }
             }

@@ -1,0 +1,108 @@
+# shellcheck shell=sh disable=SC3043
+
+# Refer: https://blog.csdn.net/m0_37282062/article/details/115770314
+
+___x_cmd_mirror_docker(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m mirror docker         "$@"
+            return   ;;
+    esac
+
+    x hascmd docker || N=mirror M="[command=docker] not found." log:ret:1
+    case "$op" in
+        ls|current|replace|rollback)  ___x_cmd_mirror_docker_"${op}"  "$@" ;;
+        set)                          ___x_cmd_mirror_docker_replace  "$@" ;;
+        *)                            ___x_cmd_mirror___util_subcmd_invalid docker "$@" ;;
+    esac
+}
+
+___x_cmd_mirror_docker_ls(){
+    printf "%s\n" \
+        "Code          Url                                        Name"                  \
+        "ustc          https://docker.mirrors.ustc.edu.cn/        中国科学技术大学开源镜像站" \
+        "netease       https://hub-mirror.c.163.com/              网易开源镜像站"           \
+        "docker-cn     https://registry.docker-cn.com/            docker-cn"              \
+        "ali           https://mirrors.aliyun.com/docker-ce/      阿里云镜像站"
+}
+
+___x_cmd_mirror_docker_current(){
+    local filepath="/etc/docker/daemon.json"
+    if [ -f "$filepath" ]; then
+        ___x_cmd_cmds_cat "$filepath"
+    else
+        mirror:warn "No docker config file found"
+        return 1
+    fi
+}
+
+___x_cmd_mirror_docker___url(){
+    ___x_cmd_mirror_docker_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+___x_cmd_mirror_docker_replace(){
+    [ "$#" -gt 0 ] ||   set -- ustc
+    case "$1" in
+        -h|--help)
+            x help -m mirror docker replace "$@"
+            return   ;;
+    esac
+
+    local url
+    url="$(___x_cmd_mirror_docker___url "${1}")" || return
+
+    mirror:info "Setting docker mirror $url"
+
+    sudo mkdir -p /etc/docker
+    sudo touch /etc/docker/daemon.json
+
+    local src_path
+    src_path="/etc/docker/daemon.json"
+    ___x_cmd_proxy___util_backup /etc/docker/daemon.json docker
+
+    local tmp
+    tmp="$(___x_cmd_cmds_cat $src_path)"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        mirror:warn "using sudo"
+        sudo awk -v tmp="$tmp" -v url="$url" 'BEGIN { tmp="";tmp=tmp "{\"registry-mirrors\":[\""url"\"]}";print tmp}' | sudo tee "$src_path"
+    else
+        ___x_cmd_cmds_awk -v tmp="$tmp" -v url="$url" 'BEGIN { tmp="";tmp=tmp "{\"registry-mirrors\":[\""url"\"]}";print tmp}' > "$src_path"
+    fi
+
+    mirror:info "Finished, you can restart docker to take effect"
+    # todo: restart docker
+    # sudo systemctl daemon-reload
+    # sudo systemctl restart docker
+    # sudo service daemon-reload restart
+    # sudo service docker restart
+}
+
+___x_cmd_mirror_docker_rollback(){
+    case "$1" in
+        ls)
+            ___x_cmd_mirror_docker_rollback_ls
+            return 0
+            ;;
+        -h|--help)
+            x help -m mirror docker rollback "$@"
+            return 0
+            ;;
+        *)  ;;
+    esac
+
+    if [ "$(id -u)" -ne 0 ]; then
+        mirror:warn "using sudo"
+        IS_ROOT=1 ___x_cmd_mirror___util_rollback /etc/docker/daemon.json docker "$1"
+    else
+        ___x_cmd_mirror___util_rollback /etc/docker/daemon.json docker "$1"
+    fi
+}
+
+___x_cmd_mirror_docker_rollback_ls() {
+    ___x_cmd_mirror___util_rollback_ls docker
+}

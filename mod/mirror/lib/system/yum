@@ -1,0 +1,134 @@
+# shellcheck shell=sh disable=SC3043
+
+# For centos users
+# Reference: https://mirrors.tuna.tsinghua.edu.cn/help/centos-vault/
+
+___x_cmd_mirror_yum(){
+    [ "$#" -gt 0 ] || { ___x_cmd_mirror_yum___app ; return ; }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m mirror yum "$@"
+            return   ;;
+    esac
+
+    x hascmd yum || N=mirror M="[command=yum] not found." log:ret:1
+    case "$op" in
+        ls|replace|current|rollback)
+                ___x_cmd_mirror_yum_"${op}"               "$@" ;;
+        set)    ___x_cmd_mirror_yum_replace               "$@" ;;
+        *)      ___x_cmd_mirror___util_subcmd_invalid yum "$@" ;;
+    esac
+}
+
+___x_cmd_mirror_yum_ls(){
+    printf "%s\n" \
+        "Code       Url                                      Name" \
+        "ali        https://mirrors.aliyun.com/centos        阿里云" \
+        "ustc       https://mirrors.ustc.edu.cn              中国科学技术大学开源镜像站" \
+        "tuna       https://mirrors.tuna.tsinghua.edu.cn     清华大学开源软件镜像站" \
+        "official   http://mirror.centos.org                 官方镜像站"
+}
+
+___x_cmd_mirror_yum_current(){
+    local src_dir
+    src_dir="/etc/yum.repos.d"
+    local file
+    file="$(___x_cmd_cmds ls -1 ${src_dir}/*CentOS-*.repo | head -n 1)"
+    mirror:info "Current yum mirror: $(grep -E '^baseurl=|^mirrorlist=' ${file})"
+}
+
+___x_cmd_mirror_yum___url(){
+    ___x_cmd_mirror_yum_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+___x_cmd_mirror_yum_replace() {
+    [ "$#" -gt 0 ] ||   set -- ali
+    case "$1" in
+        -h|--help)
+            x help -m mirror yum replace "$@"
+            return   ;;
+    esac
+
+    local src_dir
+    src_dir="/etc/yum.repos.d"
+    ___x_cmd_proxy___util_backup $src_dir yum
+
+    local url
+    local src
+    src="${1}"
+    url="$(___x_cmd_mirror_yum___url "$src")" || return
+    mirror:info "Setting yum mirror $url"
+
+    local version_id
+    xrc os && ___x_cmd_os release __ version_id
+    case "$version_id" in
+        *5*)
+            minorver=5.11
+            sed -e 's|^mirrorlist=|#mirrorlist=|g' \
+                -e "s|^#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=${url}/centos-vault/
+            $minorver|g" \
+                -i.bak \
+            ${src_dir}/CentOS-*.repo
+            ;;
+        *6*)
+            minorver=6.10
+            sed -e 's|^mirrorlist=|#mirrorlist=|g' \
+                -e "s|^#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=${url}/centos-vault/
+            $minorver|g" \
+                -i.bak \
+            ${src_dir}/CentOS-*.repo
+            ;;
+        *7*)
+            sed -e 's|^mirrorlist=|#mirrorlist=|g' \
+                -e "s|^#baseurl=http://mirror.centos.org/altarch/|baseurl=${url}/centos-altarch/|g" \
+                -e "s|^#baseurl=http://mirror.centos.org/\$contentdir/|baseurl=${url}/centos-altarch/|g" \
+                -i.bak \
+                ${src_dir}/CentOS-*.repo
+            ;;
+        *8*)
+            sed -e "s|^mirrorlist=|#mirrorlist=|g" \
+                -e "s|^#baseurl=http://mirror.centos.org/\$contentdir|baseurl=${url}/centos|g" \
+                -i.bak \
+                ${src_dir}/CentOS-*.repo
+            ;;
+        *)
+            mirror:error "Unsupported version: $version_id"
+            return 1
+            ;;
+    esac
+
+    mirror:info "$(tail -n 10 /etc/yum.repos.d/CentOS-*Base*.repo)"
+
+    mirror:info "Restarting yum"
+    yum makecache
+}
+
+___x_cmd_mirror_yum_rollback() {
+    case "$1" in
+        ls)
+            ___x_cmd_mirror_yum_rollback_ls
+            return 0
+            ;;
+        -h|--help)
+            x help -m mirror yum rollback "$@"
+            return 0
+            ;;
+        *)  ;;
+    esac
+
+    if [ "$(id -u)" -ne 0 ]; then
+        mirror:warn "using sudo"
+        IS_ROOT=1 ___x_cmd_mirror___util_rollback /etc/yum.repos.d yum "$1"
+        sudo yum makecache
+    else
+        ___x_cmd_mirror___util_rollback /etc/yum.repos.d yum "$1"
+        yum makecache
+    fi
+}
+
+___x_cmd_mirror_yum_rollback_ls() {
+    ___x_cmd_mirror___util_rollback_ls yum
+}

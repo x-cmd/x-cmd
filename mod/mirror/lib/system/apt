@@ -1,0 +1,125 @@
+# shellcheck shell=sh disable=SC3043
+# Reference:
+
+___x_cmd_mirror_apt(){
+    [ "$#" -gt 0 ] || { ___x_cmd_mirror_apt___app ; return ; }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m mirror apt "$@"
+            return   ;;
+    esac
+
+    x hascmd apt || N=mirror M="[command=apt] not found." log:ret:1
+    case "$op" in
+        ls|replace|current|rollback)
+                ___x_cmd_mirror_apt_"${op}"               "$@" ;;
+        set)    ___x_cmd_mirror_apt_replace               "$@" ;;
+        *)      ___x_cmd_mirror___util_subcmd_invalid apt "$@" ;;
+    esac
+}
+
+___x_cmd_mirror_apt___app(){
+    local _SELECT
+    x ui select "_SELECT" \
+        "Methods:" \
+            "Set apt mirror (default is ali)" \
+            "Get current apt mirror" \
+            "List all the apt mirror candidates" \
+            "Rollback the apt mirror to the original official"
+
+    case "$_SELECT" in
+        1)  ___x_cmd_mirror_apt_replace       ;;
+        2)  ___x_cmd_mirror_apt_current       ;;
+        3)  ___x_cmd_mirror_apt_ls            ;;
+        4)  ___x_cmd_mirror_apt_rollback      ;;
+        *)  mirror:info "Canceled" ; return 1 ;;
+    esac
+}
+
+___x_cmd_mirror_apt_ls(){
+    printf "%s\n" \
+        "Code          Url                                  Name"                 \
+        "ali           mirrors.aliyun.com                   阿里云镜像站"           \
+        "tuna          mirrors.tuna.tsinghua.edu.cn         清华大学开源软件镜像站"  \
+        "ustc          mirrors.ustc.edu.cn                  中国科学技术大学开源镜像站" \
+        "bfsu          mirrors.bfsu.edu.cn                  北京外国语大学开源软件镜像站" \
+        "tencent       mirrors.tencent.com                  腾讯软件源"             \
+        "netease       mirrors.163.com                      网易开源镜像站"         \
+        "sohu          mirrors.sohu.com                     搜狐开源镜像站"
+}
+
+___x_cmd_mirror_apt_current(){
+    ___x_cmd_cmds cat /etc/apt/sources.list
+}
+
+___x_cmd_mirror_apt___url(){
+    ___x_cmd_mirror_apt_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+# TODO: Just replace the original text, maybe not the best way.
+# shellcheck disable=SC2120
+___x_cmd_mirror_apt_replace() {
+    [ "$#" -gt 0 ] ||   set -- ali
+    case "$1" in
+        -h|--help)
+            x help -m mirror apt replace "$@"
+            return   ;;
+    esac
+
+    # TODO: Some problem in ubuntu 12.04
+    local url
+    url="$(___x_cmd_mirror_apt___url "${1}")" || return
+    if [ -z "$url" ]; then
+        mirror:error "Invalid mirror name: $1"
+        return 1
+    fi
+    mirror:info "Setting apt mirror $url"
+
+    local src_path
+    src_path="/etc/apt/sources.list"
+    ___x_cmd_proxy___util_backup /etc/apt/sources.list apt
+
+    local tmp
+    tmp="$(___x_cmd_cmds_cat $src_path)"
+
+    # If there is no root permission, use sudo
+    if [ "$(id -u)" -ne 0 ]; then
+        mirror:warn "using sudo"
+        printf "%s" "$tmp" | sudo awk '!/^#/ { gsub(/:\/\/[^\/]*\//, "://'"$url"'/"); } { print }' | sudo tee "$src_path" > /dev/null
+        sudo apt update
+    else
+        printf "%s" "$tmp" | ___x_cmd_cmds awk '!/^#/ { gsub(/:\/\/[^\/]*\//, "://'"$url"'/"); } { print }' > "$src_path"
+        apt update
+    fi
+}
+
+# Rollback from the last backup file.
+# Get the last backup file from the backup directory.
+# shellcheck disable=SC2120
+___x_cmd_mirror_apt_rollback() {
+    case "$1" in
+        ls)
+            ___x_cmd_mirror_apt_rollback_ls
+            return 0
+            ;;
+        -h|--help)
+            x help -m mirror apt rollback "$@"
+            return 0
+            ;;
+        *)  ;;
+    esac
+
+    if [ "$(id -u)" -ne 0 ]; then
+        mirror:warn "using sudo"
+        IS_ROOT=1 ___x_cmd_mirror___util_rollback /etc/apt/sources.list apt "$1"
+    else
+        ___x_cmd_mirror___util_rollback /etc/apt/sources.list apt "$1"
+    fi
+}
+
+___x_cmd_mirror_apt_rollback_ls() {
+    ___x_cmd_mirror___util_rollback_ls apt
+}

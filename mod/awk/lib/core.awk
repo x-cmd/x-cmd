@@ -280,15 +280,23 @@ function log_level( level, mod, msg, c, c_bg, c_msg ){
 
 # Section: fs.awk cat bcat
 # TODO: this module try to provide facility for filesystem manipulation in the future.
-function cat( filepath,    r, c ){
+function cat( filepath,    r, c, l ){
     CAT_FILENOTFOUND = false
     filepath = filepath_adjustifwin( filepath )
-    while ((c=(getline <filepath))==1) {
-        r = (r == "") ? $0 : r RS $0
-    }
+    while ((c=(getline <filepath))==1) { l = RS $0; r = r l; }
+    sub("^"RS, "", r)
     if (c == -1)    CAT_FILENOTFOUND = true
     close( filepath )
     return r
+}
+
+function cat_to_arr( filepath, arr,         r, c, i ){
+    CAT_FILENOTFOUND = false
+    filepath = filepath_adjustifwin( filepath )
+    while ((c=(getline <filepath))==1) arr[ ++i ] = $0
+    if (c == -1)    CAT_FILENOTFOUND = true
+    close( filepath )
+    return ( arr[L] = i )
 }
 
 function cat_is_filenotfound(){

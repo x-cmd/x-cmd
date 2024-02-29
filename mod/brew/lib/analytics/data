@@ -1,0 +1,101 @@
+# shellcheck shell=dash
+
+# https://formulae.brew.sh/analytics/
+___x_cmd_brew_analytics_data(){
+    local X_help_cmd='x help -m brew analytics data'; help:arg-null:parse
+    local op="$1";  shift
+    case "$op" in
+        open)
+            ___x_cmd_brew_analytics_open "$@"
+        ;;
+
+        install-homebrew-core)
+            ___x_cmd_brew_analytics_curl "/install/homebrew-core/" "$@" ;;
+        install-on-request-homebrew-core)
+            ___x_cmd_brew_analytics_curl "/install-on-request/homebrew-core" "$@" ;;
+        cask|cask-install)
+            ___x_cmd_brew_analytics_curl "/cask-install/homebrew-cask" "$@" ;;
+        error|build-error)
+            ___x_cmd_brew_analytics_curl "/build-error/homebrew-core" "$@" ;;
+    esac
+}
+
+___x_cmd_brew_analytics___yml(){
+    local data;     data="$( ___x_cmd_brew_analytics___raw "$@" )"     || brew:data:ret
+    ___x_cmd_pipevar data         x j2y
+}
+
+___x_cmd_brew_analytics___csv(){
+    local data;     data="$( ___x_cmd_brew_analytics___raw "$@" )"     || brew:data:ret
+    ___x_cmd_pipevar data         ___x_cmd_brew_analytics___parse_json2csv
+}
+
+___x_cmd_brew_analytics___app(){
+    local data;     data="$( ___x_cmd_brew_analytics___csv "$@" )"     || brew:data:ret
+    ___x_cmd_pipevar data         x csv header --add item count |   x csv --app
+}
+
+___x_cmd_brew_analytics___json(){
+    local data;     data="$( ___x_cmd_brew_analytics___raw "$@" )"     || brew:data:ret
+    ___x_cmd_pipevar data
+}
+
+
+___x_cmd_brew_analytics_curl(){
+    local url="$1"; shift
+    local days=365
+    local format=
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --365)  days=365 ; shift ;;
+            --90)   days=90  ; shift ;;
+            --30)   days=30  ; shift ;;
+            --yml|--json|--csv|--app)
+                    format=${1##--} ; shift ;;
+
+            *)      N=brew M="Not support [option=$1]" log:ret:64 ;;
+        esac
+    done
+
+    if [ -z "$format" ]; then
+        if  ! ___x_cmd_brew_is_interactive_env; then
+            format=yml
+        else
+            format=app
+        fi
+    fi
+
+    if [ "$url" = "/build-error/homebrew-core" ]; then
+        brew:info "Data of build-error only provides data within 30 days"
+        days=30
+    fi
+    # ccmd 7 days ...
+    ___x_cmd_brew_analytics___"$format" "${url}" "${days}"
+}
+
+___x_cmd_brew_analytics___raw(){
+    local url="$1"; local days="$2"
+    x ccmd 7d -- x curl --fail-with-body -sS \
+                "https://formulae.brew.sh/api/analytics/${url}/${days}d.json"
+}
+
+___x_cmd_brew_analytics___parse_json2csv(){
+    x ja -f "$___X_CMD_ROOT_MOD/brew/lib/analytics/awk/data.awk"
+}
+
+
+___x_cmd_brew_analytics_open(){
+    local days=""
+    case "$1" in
+        --365)  days=365 ;;
+        --90)   days=90 ;;
+        --30)   days=30 ;;
+    esac
+
+    if [ -z "$days" ]; then
+        x browse "https://formulae.brew.sh/analytics"
+    else
+        x browse "https://formulae.brew.sh/analytics/install/$days"
+    fi
+}

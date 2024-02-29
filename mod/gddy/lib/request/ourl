@@ -1,0 +1,67 @@
+# shellcheck shell=bash disable=SC2046,SC2154
+xrc ourl
+___X_CMD_GDDY_OURL_URL="https://api.godaddy.com"
+X_CCMD_TIMEOUT=10s
+
+___x_cmd_gddy_ourl(){
+    local op="$1"
+    local _api_url="$2"
+
+    shift 2
+
+    if [ "$op" = rget ]; then
+        ___x_cmd_ourl raw -X get --silent "$___X_CMD_GDDY_OURL_URL/$1" "$@"
+        return
+    fi
+
+    local GDDY_KEY=; local GDDY_SECRET=; local GDDY_PROXY=
+    ___x_cmd_gddy_cur    GDDY_KEY:=key   GDDY_SECRET:=secret GDDY_PROXY:=proxy 2>/dev/null
+    if [ -z "$GDDY_KEY" ] || [ -z "$GDDY_SECRET" ]; then
+        gddy:error "Please setting up your apikey first ==> 'x gddy --cfg key=<your apikey> secret=<your secret>'"
+        gddy:warn "You can get the godaddy apikey from: https://developer.godaddy.com/keys"
+        return 1
+    fi
+
+    local XOURL_URL="$___X_CMD_GDDY_OURL_URL"
+
+    set -- "$@"                          $(eval "printf '%s ' $(x curl gencode $(___x_cmd_gddy_ourl___use_query_data "$@"))")
+
+    [ -z "$gen_gddy_json" ] || set --    "$@"  --data "$gen_gddy_json"
+    [ -z "$GDDY_PROXY" ]    || set --    "$@"  --proxy "$GDDY_PROXY"
+
+    set -- "$@"        --dump-header     "$___X_CMD_GDDY_TMP/.____x_cmd_gddy_curl_header"
+    set -- "$@"        --header          "Authorization: sso-key ${GDDY_KEY}:${GDDY_SECRET}"
+    set -- "$@"        --header          "accept: application/json"
+    set -- "$@"        --header          "X-Shopper-Id: ${shopper_id}"
+
+    # set -- "$@"     --fail-early --fail-with-body
+    case "$op" in
+        get)      XOURL_GET_BEFORE=""   XOURL_GET_AFTER=""    ___x_cmd_gddy_ourl_get    "${_api_url}" "$@" ;;
+        post)     XOURL_POST_BEFORE=""  XOURL_POST_AFTER=""   ___x_cmd_ourl post        "${_api_url}" "$@" ;;
+        del)      XOURL_DEL_BEFORE=""   XOURL_DEL_AFTER=""    ___x_cmd_ourl del         "${_api_url}" "$@" ;;
+        put)      XOURL_PUT_BEFORE=""   XOURL_PUT_AFTER=""    ___x_cmd_ourl put         "${_api_url}" "$@" ;;
+        patch)    XOURL_PATCH_BEFORE="" XOURL_PUT_AFTER=""    ___x_cmd_ourl patch       "${_api_url}" "$@" ;;
+    esac
+}
+
+___x_cmd_gddy_ourl_get(){
+    if [ -n "$NO_CACHE" ]; then                 ___x_cmd_ourl get "$@"
+    else            x ccmd "$X_CCMD_TIMEOUT" -- ___x_cmd_ourl get "$@"
+    fi
+}
+
+
+___x_cmd_gddy_ourl___use_query_data(){
+    [ $# -gt 0 ] || return
+    printf "%s " "-G"
+    local name=""
+    for name in "$@"; do
+        case "$name" in
+            p)          [ -z "$p" ]   || printf "%s " "path==$p"    ;;
+            sta)        [ -z "$sta" ] || printf "%s " "status==$sta";;
+            *)                           printf "%s " "$name=="     ;;
+        esac
+    done
+}
+
+

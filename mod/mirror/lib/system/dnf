@@ -1,0 +1,122 @@
+# shellcheck shell=sh disable=SC3043
+
+# For centos users
+# Reference: https://www.jianshu.com/p/969d128e0c9b
+
+___x_cmd_mirror_dnf(){
+    [ "$#" -gt 0 ] || set -- --help
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m mirror dnf "$@"
+            return   ;;
+    esac
+
+    x hascmd dnf || N=mirror M="[command=dnf] not found." log:ret:1
+    case "$op" in
+        ls|replace|current|rollback)
+                ___x_cmd_mirror_dnf_"${op}"               "$@" ;;
+        set)    ___x_cmd_mirror_dnf_replace               "$@" ;;
+        *)      ___x_cmd_mirror___util_subcmd_invalid dnf "$@" ;;
+    esac
+}
+
+___x_cmd_mirror_dnf_ls(){
+    printf "%s\n" \
+        "Code       Url                                      Name" \
+        "ali        https://mirrors.aliyun.com/centos        阿里云" \
+        "ustc       https://mirrors.ustc.edu.cn              中国科学技术大学开源镜像站" \
+        "tuna       https://mirrors.tuna.tsinghua.edu.cn     清华大学开源软件镜像站" \
+        "official   http://mirror.centos.org                 官方镜像站"
+}
+
+# TODO: support more version
+___x_cmd_mirror_dnf_current(){
+    ___x_cmd_cmds_cat /etc/yum.repos.d/CentOS-Base.repo
+}
+
+___x_cmd_mirror_dnf___url(){
+    ___x_cmd_mirror_dnf_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+___x_cmd_mirror_dnf_replace() {
+    [ "$#" -gt 0 ] ||   set -- ali
+    case "$1" in
+        -h|--help)
+            x help -m mirror dnf replace "$@"
+            return   ;;
+    esac
+
+    local src_dir
+    src_dir="/etc/yum.repos.d"
+    ___x_cmd_proxy___util_backup $src_dir dnf
+
+    local url
+    local src
+    src=$1
+    url="$(___x_cmd_mirror_dnf_url "$src")" || return
+    mirror:info "Setting dnf mirror $url"
+
+    local version_id
+    xrc os && ___x_cmd_os release __ version_id
+    case "$version_id" in
+        *8*)
+            local src_path1
+            src_path1="/etc/yum.repos.d/CentOS-Linux-AppStream.repo"
+            local src_path2
+            src_path2="/etc/yum.repos.d/CentOS-Linux-BaseOS.repo"
+
+            local tmp1
+            tmp1="$(___x_cmd_cmds_cat $src_path1)"
+            local tmp2
+            tmp2="$(___x_cmd_cmds_cat $src_path2)"
+
+            if [ "$(id -u)" -ne 0 ]; then
+                mirror:warn "using sudo"
+                printf "%s" "" | sudo awk -v tmp1="$tmp1" -v url="$url" '{res=gsub(/^mirrorlist=[.*]/,"baseurl=url/$releasever/AppStream/$basearch/os/",tmp1);print res}' | sudo tee "$src_path1"
+                printf "%s" "" | sudo awk -v tmp2="$tmp2" -v url="$url" '{res=gsub(/^mirrorlist=[.*]/,"baseurl=url/$releasever/BaseOS/$basearch/os/",tmp2);print res}' | sudo tee "$src_path2"
+            else
+                printf "%s" "" | ___x_cmd_cmds_awk -v tmp1="$tmp1" -v url="$url" '{res=gsub(/^mirrorlist=[.*]/,"baseurl=url/$releasever/AppStream/$basearch/os/",tmp1);print res}' > "$src_path1"
+                printf "%s" "" | ___x_cmd_cmds_awk -v tmp2="$tmp2" -v url="$url" '{res=gsub(/^mirrorlist=[.*]/,"baseurl=url/$releasever/AppStream/$basearch/os/",tmp1);print res}' > "$src_path2"
+            fi
+            ;;
+        *)
+            mirror:error "Unsupported version: $version_id"
+            return 1
+            ;;
+    esac
+
+    mirror:info "Restarting dnf"
+    dnf clean all
+    dnf makecache
+}
+
+___x_cmd_mirror_dnf_rollback() {
+    case "$1" in
+        ls)
+            ___x_cmd_mirror_dnf_rollback_ls
+            return 0
+            ;;
+        -h|--help)
+            x help -m mirror dnf rollback "$@"
+            return 0
+            ;;
+        *)  ;;
+    esac
+
+
+    if [ "$(id -u)" -ne 0 ]; then
+        mirror:warn "using sudo"
+        IS_ROOT=1 ___x_cmd_mirror___util_rollback /etc/yum.repos.d dnf "$1"
+        sudo dnf makecache
+    else
+        ___x_cmd_mirror___util_rollback /etc/yum.repos.d dnf "$1"
+        dnf makecache
+    fi
+}
+
+___x_cmd_mirror_dnf_rollback_ls() {
+    ___x_cmd_mirror___util_rollback_ls dnf
+}

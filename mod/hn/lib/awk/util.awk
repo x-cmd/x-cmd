@@ -8,7 +8,17 @@ function hn_th( style, text, no_color ){
     return th( style, text )
 }
 
-function hn_preview(o, kp, item, no_color,          by, descendants, id, score, time, title, type, url, kids_num, text, indent, _res){
+function hn_preview(o, kp, item, no_color,          by, descendants, id, score, time, title, type, url, kids_num, parent, text, indent, _res){
+
+    if ( item != "") {
+        item = hn_th(UI_FG_YELLOW, sprintf("%4d", item) ". ", no_color)
+        indent = "      "
+    }
+
+    if (o[ kp L ] <= 0) return item "null"
+    else if (o[ kp, "\"deleted\"" ] == "true")  return item "deleted"
+    else if (o[ kp, "\"dead\"" ] == "true")     return item "dead"
+
     by          = hn_value( o[ kp, "\"by\"" ] )
     # descendants = hn_value( o[ kp, "\"descendants\"" ] )
     id          = hn_value( o[ kp, "\"id\"" ] )
@@ -19,11 +29,8 @@ function hn_preview(o, kp, item, no_color,          by, descendants, id, score, 
     time        = hn_value( o[ kp, "\"time\"" ] )
     text        = hn_value( o[ kp, "\"text\"" ] )
     kids_num    = hn_value( o[ kp, "\"kids\"" L ] )
+    parent      = hn_value( o[ kp, "\"parent\"" ] )
 
-    if ( item != "") {
-        item = hn_th(UI_FG_YELLOW, sprintf("%4d", item) ". ", no_color)
-        indent = "      "
-    }
 
     score       = hn_th(UI_FG_GREEN, " " int(score) " point", no_color)
     by          = hn_th(UI_FG_YELLOW, " by " by, no_color)
@@ -37,6 +44,10 @@ function hn_preview(o, kp, item, no_color,          by, descendants, id, score, 
     }
 
     _res = _res "\n" indent hn_th(UI_FG_DARKGRAY, " comment-url: https://news.ycombinator.com/item?id=" id, no_color)
+
+    if ( parent != "" ) {
+        _res = _res "\n" indent hn_th(UI_FG_DARKGRAY, " parent-url: https://news.ycombinator.com/item?id=" parent, no_color)
+    }
 
     if ( text != "" ) {
         _res = _res "\n" indent hn_th(UI_FG_DARKGRAY, " text: " text, no_color)

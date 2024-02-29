@@ -10,7 +10,6 @@ ___x_cmd_advise_run(){
     local name="${1:-${COMP_WORDS[1]}}"
     local x_=;  ___x_cmd_advise_run_filepath_ "$___X_CMD_ADVISE_RUN_CMD" "$name" || return
 
-    # Used in `eval "$candidate_exec"`
     local cur="${COMP_WORDS[CURRENT]}"
     local candidate_arr=(); local candidate_exec_arr=(); local candidate_nospace_arr=();
     local candidate_exec=; local offset=; local ___X_CMD_ADVISE_RUN_SET_NOSPACE=; local candidate_prefix=
@@ -27,6 +26,7 @@ ___x_cmd_advise_run(){
     [ -z "$_message_str" ]                  || LC_ALL="$_UTF8" LANG="$_UTF8" _message -r "$_message_str"
     [ -z "${candidate_exec_arr[*]}" ]       || candidate_arr+=( "${candidate_exec_arr[@]}" )
     ___x_cmd_advise_run___ltrim_maxitem
+    ___x_cmd_advise_run___fix_mac_zsh
 
     [ -z "${candidate_arr[*]}" ]            || LC_ALL="$_UTF8" LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_arr
     [ -z "${candidate_nospace_arr[*]}" ]    || LC_ALL="$_UTF8" LANG="$_UTF8" ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___describe 'commands' candidate_nospace_arr
@@ -45,7 +45,7 @@ ___x_cmd_advise_run___describe(){
 
 ___x_cmd_advise_run___ltrim_maxitem(){
     local IFS="$___X_CMD_ADVISE_IFS_INIT"
-    local maxitem="${___X_CMD_ADVISE_MAX_ITEM:-0}"
+    local maxitem="${___X_CMD_ADVISE_MAX_ITEM:-99}"
     local candidata_arr_item="${#candidate_arr[@]}"
     if [ "$maxitem" -gt "$candidata_arr_item" ]; then
         maxitem=$(( maxitem - candidata_arr_item ))
@@ -54,4 +54,11 @@ ___x_cmd_advise_run___ltrim_maxitem(){
         candidate_arr=( "${candidate_arr[@]:0:$maxitem}" )
         candidate_nospace_arr=()
     fi
+}
+
+___x_cmd_advise_run___fix_mac_zsh(){
+    x os is darwin || return
+    local n="${#candidate_arr[@]}"
+    [ $n = 2 ] || return
+    candidate_arr=( $( printf "%s\n" "${candidate_arr[@]}" | ___x_cmd_cmds sort -r ) )
 }

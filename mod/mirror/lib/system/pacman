@@ -1,0 +1,93 @@
+# shellcheck shell=sh disable=SC3043
+# Refer: https://mirrors.tuna.tsinghua.edu.cn/help/archlinux/
+
+___x_cmd_mirror_pacman(){
+    [ "$#" -gt 0 ] || set -- --help
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m mirror pacman "$@"
+            return   ;;
+    esac
+
+    x hascmd pacman || N=mirror M="[command=pacman] not found." log:ret:1
+    case "$op" in
+        ls|replace|current|rollback)
+                ___x_cmd_mirror_pacman_"${op}"               "$@" ;;
+        set)    ___x_cmd_mirror_pacman_replace               "$@" ;;
+        *)      ___x_cmd_mirror___util_subcmd_invalid pacman "$@" ;;
+    esac
+}
+
+___x_cmd_mirror_pacman_ls(){
+    printf "%s\n" \
+        "Code   Url                                              Name" \
+        "tuna   https://mirrors.tuna.tsinghua.edu.cn/archlinux   清华大学开源软件镜像站" \
+        "ustc   https://mirrors.ustc.edu.cn/archlinux            中国科学技术大学开源镜像站" \
+        "ali    https://mirrors.aliyun.com/archlinux             阿里云" \
+        "bfsu   https://mirrors.bfsu.edu.cn/archlinux            北京外国语大学开源软件镜像站"
+}
+
+___x_cmd_mirror_pacman_current(){
+    ___x_cmd_cmds_cat /etc/pacman.d/mirrorlist
+}
+
+___x_cmd_mirror_pacman___url(){
+    ___x_cmd_mirror_pacman_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+___x_cmd_mirror_pacman_replace(){
+    [ "$#" -gt 0 ] ||   set -- tuna
+    case "$1" in
+        -h|--help)
+            x help -m mirror pacman replace "$@"
+            return   ;;
+    esac
+
+    local url
+    url="$(___x_cmd_mirror_pacman___url "${1}")" || return
+    mirror:info "Setting pacman mirror $url"
+
+    local src_path
+    src_path="/etc/pacman.d/mirrorlist"
+    ___x_cmd_proxy___util_backup /etc/pacman.d/mirrorlist pacman
+
+    local tmp
+    tmp="$(___x_cmd_cmds_cat $src_path)"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        mirror:warn "using sudo"
+        printf "%s" "" | sudo awk -v tmp="$tmp" -v url="$url" 'BEGIN { url=url "/$repo/os/$arch";tmp=tmp "\nServer = " url;print tmp}' | sudo tee "$src_path"
+        sudo pacman -Syy
+    else
+        printf "%s" "" | ___x_cmd_cmds_awk -v tmp="$tmp" -v url="$url" 'BEGIN { url=url "/$repo/os/$arch";tmp=tmp "\nServer = " url;print tmp}' > "$src_path"
+        pacman -Syy
+    fi
+}
+
+___x_cmd_mirror_pacman_rollback(){
+    case "$1" in
+        ls)
+            ___x_cmd_mirror_pacman_rollback_ls
+            return 0
+            ;;
+        -h|--help)
+            x help -m mirror pacman rollback "$@"
+            return 0
+            ;;
+        *)  ;;
+    esac
+
+    if [ "$(id -u)" -ne 0 ]; then
+        mirror:warn "using sudo"
+        IS_ROOT=1 ___x_cmd_mirror___util_rollback /etc/pacman.d/mirrorlist pacman "$1"
+    else
+        ___x_cmd_mirror___util_rollback /etc/pacman.d/mirrorlist pacman "$1"
+    fi
+}
+
+___x_cmd_mirror_pacman_rollback_ls() {
+    ___x_cmd_mirror___util_rollback_ls pacman
+}

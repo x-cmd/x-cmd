@@ -1,0 +1,111 @@
+# shellcheck shell=sh disable=SC3043
+
+# https://cargo.budshome.com/reference/source-replacement.html#:~:text=目前国内%20cargo,镜像源有：中国科学技术大学源、上海交通大学源、清华大学源，以及%20rustcc%20社区源%E3%80%82
+
+___x_cmd_mirror_cargo(){
+    [ "$#" -gt 0 ] || { ___x_cmd_mirror_cargo___app ; return ; }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m mirror cargo "$@"
+            return   ;;
+    esac
+
+    x hascmd cargo || N=mirror M="[command=cargo] not found." log:ret:1
+    case "$op" in
+        ls|replace|current|rollback)
+                ___x_cmd_mirror_cargo_"${op}"             "$@" ;;
+        set)    ___x_cmd_mirror_cargo_replace             "$@" ;;
+        *)      ___x_cmd_mirror___util_subcmd_invalid cargo "$@" ;;
+    esac
+}
+
+
+___x_cmd_mirror_cargo___app(){
+    local _SELECT
+    x ui select "_SELECT" \
+        "Methods:" \
+            "Set cargo mirror (default is tuna)" \
+            "Get current cargo mirror" \
+            "List all the cargo mirror candidates" \
+            "Rollback the cargo mirror to the original official"
+
+    case "$_SELECT" in
+        1)  ___x_cmd_mirror_cargo_replace       ;;
+        2)  ___x_cmd_mirror_cargo_get           ;;
+        3)  ___x_cmd_mirror_cargo_ls            ;;
+        4)  ___x_cmd_mirror_cargo_rollback      ;;
+        *)  mirror:info "Canceled" ; return 1 ;;
+    esac
+}
+
+___x_cmd_mirror_cargo_ls(){
+    printf "%s\n" \
+        "Code          Url                                                                Name"                 \
+        "tuna          https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git       清华大学开源软件镜像站"  \
+        "sjtu          https://mirrors.sjtug.sjtu.edu.cn/git/crates.io-index/             上海交通大学开源软件镜像站"
+}
+
+___x_cmd_mirror_cargo_current(){
+    local res
+    if res="$(< "$HOME/.cargo/config" grep registry)" && [ -n "$res" ]; then
+        printf "%s\n" "$res" | ___x_cmd_cmds_awk -F '"' '{print $2}'
+    else
+        mirror:error "No mirror is set. You can use 'mirror cargo replace <mirror-name>' to set a mirror."
+        return 1
+    fi
+}
+
+___x_cmd_mirror_cargo___url(){
+    ___x_cmd_mirror_cargo_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+# shellcheck disable=SC2120
+___x_cmd_mirror_cargo_replace() {
+    [ "$#" -gt 0 ] ||   set -- tuna
+    case "$1" in
+        -h|--help)
+            x help -m mirror cargo replace "$@"
+            return   ;;
+    esac
+
+    local src_path
+    src_path="$HOME/.cargo/config"
+    if [ ! -f "$src_path" ]; then
+        printf "" > "$src_path"
+    fi
+    ___x_cmd_proxy___util_backup "$src_path" cargo
+
+    local url
+    local src
+    src="${1}"
+
+    url="$(___x_cmd_mirror_cargo___url "$src")" || return
+    #TODO: Ask a question to confirm
+    mirror:info "Setting cargo mirror $url"
+    printf "[source.crates-io]\nreplace-with='%s'\n[source.%s]\nregistry=\"%s\"" "$src" "$src" "$url" > "$src_path"
+    mirror:info "Done"
+}
+
+# shellcheck disable=SC2120
+___x_cmd_mirror_cargo_rollback() {
+    case "$1" in
+        ls)
+            ___x_cmd_mirror_cargo_rollback_ls
+            return 0
+            ;;
+        -h|--help)
+            x help -m mirror cargo rollback "$@"
+            return 0
+            ;;
+        *)  ;;
+    esac
+
+    ___x_cmd_mirror___util_rollback "$HOME/.cargo/config" cargo "$1"
+}
+
+___x_cmd_mirror_cargo_rollback_ls() {
+    ___x_cmd_mirror___util_rollback_ls cargo
+}
