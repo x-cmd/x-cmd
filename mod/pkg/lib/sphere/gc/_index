@@ -21,14 +21,15 @@ xrc:mod:lib pkg     sphere/gc/recycle   sphere/gc/remove    sphere/gc/safelist
 # x env gc python java
 
 ___x_cmd_pkg_sphere_gc(){
-    case "$1" in
+    local op="$1"
+    case "$op" in
         # Inner function
-        run)        shift; ___x_cmd_pkg_sphere_gc_run "$@" ;;
-        safelist)   shift; ___x_cmd_pkg_sphere_gc_safelist "$@" ;;
+        run|safelist|exist|remove|recycle)
+                    shift; ___x_cmd_pkg_sphere_gc_"$op" "$@" ;;
         -h|--help)  x help -m pkg gc ;;
 
         "")         ___x_cmd_pkg_sphere_gc_run ;;
-        *)          ___x_cmd_pkg_sphere_gc_run --safelist-rm "$@" ;;
+        *)          ___x_cmd_pkg_sphere_gc_run --pkg "$@" ;;
         # *)          N=pkg M="sphere gc not such option '$op'" log:ret:64
     esac
 }
@@ -77,14 +78,12 @@ ___x_cmd_pkg_sphere_gc___defuselock(){
 
 xrc ps
 ___x_cmd_pkg_sphere_gc_run(){(  # Must be a subshell
-    local noapp=
+    local noall=
     pkg:sphere:parse:option
     sphere_name="${sphere_name:-"X"}"
 
     case "$1" in
-        --inner)        shift; noapp=1 ;;
-        --safelist-rm)  shift; noapp=1; ___x_cmd_pkg_sphere_safelist rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$@" || return ;;
-        --safelist-add) shift; noapp=1; ___x_cmd_pkg_sphere_safelist add --reason "use,gc-run-add" --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$@" || return ;;
+        --pkg)  shift; noall=1;;
     esac
 
     pkg:info "Initiating garbage collection for [sphere=$sphere_name]"
@@ -114,14 +113,16 @@ ___x_cmd_pkg_sphere_gc_run(){(  # Must be a subshell
         return
     fi
 
-    if [ -z "$noapp" ] && [ -t 1 ] && ___x_cmd_is_interactive; then
-        ___x_cmd_pkg_sphere_gc_run___interactive || return
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        if [ -z "$noall" ]; then    ___x_cmd_pkg_sphere_gc_run___interactive_all || return
+        else                        ___x_cmd_pkg_sphere_gc_run___interactive_pkg "$@" || return
+        fi
     fi
     ___x_cmd_pkg_sphere_gc_run___inner "$gcfp"
 )}
 
 # shellcheck disable=2120
-___x_cmd_pkg_sphere_gc_run___interactive(){
+___x_cmd_pkg_sphere_gc_run___interactive_all(){
     local l=; local osarch=; local name=; local version=;
     local list; list="$( ___x_cmd_pkg_sphere_safelist___ls_human --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" )"
     if [ -n "$list" ]; then
@@ -134,16 +135,32 @@ ___x_cmd_pkg_sphere_gc_run___interactive(){
             name="${l%% *}"; l="${l#* }"
             version="${l% *}"
 
-            pkg:info "Safelist removing [name=$name] [version=$version] [osarch=$osarch]"
-            ___x_cmd_pkg_sphere_safelist rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "${name}=${version}"
-
-            if ___x_cmd_pkg_sphere_link_exist --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
-                --osarch "$osarch" "$name" "$version" && x ui yesno "Whether unuse to unlinked [name=$name] [version=$version] [osarch=$osarch]" ; then
-                pkg:debug "Unlinked [name=$name] [version=$version] [osarch=$osarch]"
-                ___x_cmd_pkg_sphere_link_rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" "$version"
-            fi
+            ___x_cmd_pkg_sphere_gc_run___interactive_unit_ || return
         done
     fi
+}
+
+___x_cmd_pkg_sphere_gc_run___interactive_pkg(){
+    local l=; local osarch=; local name=; local version=;
+    ___x_cmd_pkg_sphere_safelist___parse_arg "$@" | while read -r l; do
+        name="${l%%/*}"; l="${l#*/}"
+        version="${l%%/*}";
+        osarch="${l#*/}"
+
+        ___x_cmd_pkg_sphere_gc_run___interactive_unit_ || return
+    done
+}
+
+___x_cmd_pkg_sphere_gc_run___interactive_unit_(){
+    if ___x_cmd_pkg_sphere_link exist --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+        --osarch "$osarch" "$name" "$version"; then
+        x ui yesno "Whether unuse to unlinked [name=$name] [version=$version] [osarch=$osarch]" || return
+        pkg:debug "Unlinked [name=$name] [version=$version] [osarch=$osarch]"
+        ___x_cmd_pkg_sphere_link rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" "$version" || return
+    fi
+
+    x ui yesno "Whether remove ${name}=${version} from safelist in [sphere=$sphere_name]" || return
+    ___x_cmd_pkg_sphere_safelist rm  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "${name}=${version}" || return
 }
 
 # TODO: A = ALL packages
@@ -165,7 +182,7 @@ ___x_cmd_pkg_sphere_gc_run___inner(){
                 --osarch "$osarch" "$name" "$version" || continue
 
             pkg:info "gc ==> trying to remove $name $version"
-            ___x_cmd_pkg_sphere_gc_remove___silent \
+            ___x_cmd_pkg_sphere_gc_remove silent \
                 --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
                 --osarch "$osarch" "$name" "$version" "$gcfp" || {
                 pkg:warn "gc ==> failed to remove $name $version"

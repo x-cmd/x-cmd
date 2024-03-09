@@ -111,15 +111,16 @@ function comp_gsel_ctrl_search_inc(o, kp,       r){
 
 function comp_gsel___search_date(o, kp, r, step,        _search, l, i){
     if ((_search = comp_gsel___search_get(o, kp)) == "") return
+    _search = tolower( _search )
     step = (step) ? step : 1
     if (step > 0) {
         l = comp_gsel___slct_data_maxrow( o, kp )
         for (i=r+1; i<=l; i+=step)
-            if (index(comp_gsel_data_get(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i)), _search) > 0)
+            if (index(tolower(comp_gsel_data_get(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i))), _search) > 0)
                 return ctrl_page_set( o, kp, i )
     } else {
         for (i=r-1; i>=1; i+=step)
-            if (index(comp_gsel_data_get(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i)), _search) > 0)
+            if (index(tolower(comp_gsel_data_get(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i))), _search) > 0)
                 return ctrl_page_set( o, kp, i )
     }
 }
@@ -147,11 +148,11 @@ function comp_gsel___slct_handle( o, kp, char_value, char_name, char_type ){
 }
 
 function comp_gsel___slct_data(o, kp,          s, l, i, _viewl ){
-    s = comp_gsel___slct_get( o, kp )
+    s = tolower(comp_gsel___slct_get( o, kp ))
     l = comp_gsel_data_len( o, kp )
     model_arr_set_key_value( o, kp, "view-row" SUBSEP 1, 0 )
     for (i=1; i<=l; ++i){
-        if ((s != "") && ( index(comp_gsel_data_get( o, kp, i ), s) <=0 )) continue
+        if ((s != "") && ( index(tolower(comp_gsel_data_get( o, kp, i )), s) <=0 )) continue
         model_arr_set_key_value(o, kp, "view-row" SUBSEP (++_viewl), i)
     }
     comp_gsel___slct_data_maxrow( o, kp, _viewl + 0 )

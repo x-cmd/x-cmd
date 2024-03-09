@@ -1,0 +1,64 @@
+# shellcheck shell=bash
+# using current user, all hosts
+# https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_profiles?view=powershell-7.2#the-profile-files
+# if (Test-Path "\Users"){Write-Output "Hello, World!"}
+
+___x_cmd_pwsh___setupxcmd(){
+
+    x ui yesno "Would you like to grant permission to modify the Set-ExecutionPolicy to execute powershell profile?" 2>/dev/null || return
+    x pwsh "Set-ExecutionPolicy  RemoteSigned  -Scope CurrentUser" || return 
+
+    local x_=; local os=
+    x os name_; os="$x_"
+    local fp="$HOME/.config/powershell/profile.ps1"
+    [ "$os" != win ] || fp="$HOME/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1"
+
+    if ___x_cmd_pwsh___env_is_wsl; then
+        local user_file=; os="wsl"
+        user_file="$(x pwsh -Command Write-Host \$env:USERPROFILE)" 2>/dev/null
+        user_file="${user_file##*\\}"
+        fp="/mnt/c/Users/$user_file/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1"
+    fi
+
+    local profile_ps_line=" # boot up x-cmd"
+    pwsh:debug "[fp=$fp]"
+    ___x_cmd_pwsh___setupxcmd_boot "$profile_ps_line" "$fp"
+}
+
+___x_cmd_pwsh___setupxcmd_boot(){
+    local line="$1"
+    local fp="$2"
+    x ensurefp "$fp"
+    if ___x_cmd_cmds grep -F "$line" "$fp" >/dev/null 2>&1; then
+        pwsh:info "Already installed"
+    else
+        local cmd=
+        case "$os" in
+            win|wsl)    ___x_cmd_pwsh___setupxcmd_boot_"$os" "$fp"    ;;
+            other)      ___x_cmd_pwsh___setupxcmd_boot_other "$fp"    ;;
+        esac
+
+        printf "%s %s\n" "$cmd" "$line" >> "$fp" ||  N=pwsh M="Not found profile file"  log:ret:1
+        pwsh:info "Installed"
+    fi
+}
+
+___x_cmd_pwsh___setupxcmd_boot_win(){ # gitbash
+    local fp="$1"
+    local prefix_path="${HOME#/}"
+    prefix_path="${prefix_path#*/}"
+    local x_=;  ___x_cmd_pwsh_slash2backslash "$prefix_path"
+    cmd="if (Test-Path "$x_\\\\.x-cmd.root\\X") { . "$x_\\\\.x-cmd.root\\X" }" # how to run X ?
+
+}
+
+___x_cmd_pwsh___setupxcmd_boot_wsl(){
+    local fp="$1"
+    cmd="if (Test-Path "\\Users\\$user_file\\\\.x-cmd.root\\X") { . "\\Users\\$user_file\\\\.x-cmd.root\\X" }"
+}
+
+___x_cmd_pwsh___setupxcmd_boot_other(){
+    local fp="$1"
+    cmd="if (Test-Path "\\$HOME\\\\.x-cmd.root\\X") { . "\\$HOME\\\\.x-cmd.root\\X" }"
+}
+

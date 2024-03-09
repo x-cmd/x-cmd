@@ -1,0 +1,98 @@
+# shellcheck shell=sh disable=SC3043,2154
+___x_cmd_whisper___dictate(){
+    local op="$1";shift
+    case "$op" in
+        txt)
+            ___x_cmd_whisper___dictate_txt "$@";;
+        karaok)
+            ___x_cmd_whisper___dictate_karaok "$@";;
+        prepare)
+            ___x_cmd_whisper___dictate___prepare "$@";;
+        *)
+            ___x_cmd_whisper___dictate___main "$op" "$@";;
+    esac
+}
+
+___x_cmd_whisper___dictate___main(){
+    local modelName
+    local fileName
+    while [ $# -gt 0 ];do
+        local op="${1}";shift
+        case "${op}" in
+            -m|--model)
+                modelName="${1}"; shift ;;
+            -f|--file)
+                fileName="${1}" ; shift ;;
+            *)
+                break;;
+        esac
+    done
+
+    local x_=""
+    [ -n "${modelName}" ] || {
+        ___x_cmd_whisper___dictate___desicemodel_ || return 1
+        modelName="${x_}"
+    }
+
+    local fileDir
+    fileDir="$(___x_cmd_whisper___dictate___prepare "${fileName}")"
+    [ -n "${fileDir}"  ] || N=whisper M="Failed to preprocess audio file."  log:ret:1
+
+    x_="";___x_cmd_whisper___model_download_ "${modelName}"
+    local modelDir="${x_}"
+    [ -n "${modelDir}" ] || N=whisper M="Failed to load local model."       log:ret:1
+
+    whisper:debug "x whispercpp -m ${modelDir} -f ${fileDir} $*"
+    x whispercpp -m "${modelDir}" -f "${fileDir}" "$@"
+}
+
+___x_cmd_whisper___dictate___prepare(){
+    local dir="${X_CMD_WHISPER_WAV_DIR}"
+
+    [ $# -gt 0 ]            || N=whisper M="Specify at least one audio file to be recognized"   log:ret:1
+    local fileName="${1}"
+    [ -f "${fileName}" ]    || N=whisper M="File ${fileName} does not exist"                    log:ret:1
+
+    # local format="${fileName##*.}"
+    # 16000Hz ?
+    # if [  "${format}" = "wav" ]; then
+    #     printf "%s" "${fileName}"
+    #     return 0
+    # fi
+    local outName
+    if [ -z "${dir}" ];then
+        outName="${fileName%.*}.wav"
+    else
+        outName="${dir}/${fileName##*/}${fileName%.*}.wav"
+    fi
+    x ffmpeg -i "${fileName}" -ar 16000 "${outName}" -y
+    printf "%s" "${outName}"
+}
+
+
+___x_cmd_whisper___dictate_txt(){
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m whisper txt ;;
+        *)
+            ___x_cmd_whisper___dictate___main "$op" "$@" -otxt
+    esac
+}
+
+___x_cmd_whisper___dictate_karaok(){
+    ___x_cmd_whisper___dictate___main "$@" -owts
+}
+
+___x_cmd_whisper___dictate___desicemodel_(){
+    local ___X_CMD_CSV_APP_DATA_name=""
+    x csv app --return var --clear < "${___X_CMD_ROOT_MOD}"/whisper/lib/model.csv
+    [ -n "${___X_CMD_CSV_APP_DATA_name}" ] || return 1
+    x_="${___X_CMD_CSV_APP_DATA_name}"
+}
+
+# ___x_cmd_whisper___dictate___autodesicemodel(){
+#     local fileDir="${1}"
+#     x whispercpp -m "${modelName}" -dl -f "${fileDir}"
+#     printf "%s" "${___X_CMD_CSV_APP_DATA_name}"
+# }

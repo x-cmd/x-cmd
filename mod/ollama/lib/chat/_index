@@ -1,0 +1,135 @@
+# shellcheck shell=dash
+xrc chat
+xrc:mod:lib     ollama      chat/send
+
+___x_cmd_ollama_chat(){
+    local X_help_cmd='x help -m ollama chat'; help:arg:parse
+    local op="$1";
+    case "$op" in
+        request)
+            shift; ___x_cmd_ollama_chat_"$op" "$@" ;;
+        *)  N=ollama M="Not support such option '$op'" log:ret:64
+    esac
+}
+
+___x_cmd_ollama_chat_request(){
+    local X_help_cmd='x help -m ollama chat request'; help:arg:parse
+    local question=""
+    local history_num=""
+    local minion=""
+    local session=""
+    local model=""
+    local system=""
+    local type="chat"
+    local confirm_before_send=""
+    local filelist_attach=""
+
+    local numbered=""
+
+    local inputtype=none
+
+    local x_=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --session)      session="$2";           shfit 2 ;;
+            --minion)       minion="$2";            shift 2 ;;
+            --history|-n)   history_num="$2";       shift 2 ;;
+            --question)     question="$2";          shift 2 ;;
+            --model)        model="";               shift 2 ;;
+            --system)       system="$2";            shift 2 ;;
+            --type)         type="$2";              shift 2 ;;
+            --file)
+                            x abspath_ "$2"
+                            [ -f "$x_" ] || N=ollama M="Please provide a valid [filepath=$2] after --file." log:ret:64
+                            filelist_attach="${filelist_attach}:${x_}";
+                            shift 2 ;;
+
+            -c)             confirm_before_send=1;  shift 1 ;;
+
+            --pipe|--edit)  inputtype="${1#--}";    shift 1 ;;
+            --numbered)     numbered=1;             shift 1 ;;
+
+
+            *)              question="${question}$*"; break ;;
+        esac
+    done
+
+    x_=""
+    ___x_cmd_chat_request___preparequestion_ "$question" "$inputtype" "$numbered" || return
+    question="$x_"
+
+
+    local cfg_history_num=; local cfg_session=;     local cfg_minion=;  local cfg_userlang=
+    ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion cfg_userlang=userlang 2>/dev/null
+
+    local chatid=;  chatid="$(x pidid vlseqid ___X_CMD_CHAT_REC)"
+
+    [ -n "$minion" ] || minion="default"
+    x_=; ___x_cmd_chat_minion_cache_json_ "$minion" || return
+    local minion_json_cache="$x_"
+
+    ollama:debug --chatid "$chatid" --model "$model" --question "$question" --history_num "$history_num" --confirm_before_send "$confirm_before_send" "chat request"
+
+    {
+        userlang="${cfg_userlang:-$LANG}" \
+        BODY="$question" \
+        x cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach   \
+                -E cfg_history_num,cfg_session,cfg_minion,cfg_model,cfg_maxtoken,cfg_seed,cfg_temperature \
+                -m j/json,j/jiter,j/jcp \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"        \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"           \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"         \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"           \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"           \
+                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/ollama.awk"       \
+                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/handle_request.awk"
+    } | ( ___x_cmd_ollama_chat_request___launch )
+}
+
+___x_cmd_ollama_chat_request___launch(){
+    local content_dir
+    read -r content_dir
+
+    ___x_cmd_ollama_chat_request___trapexit(){
+        x rmrf "$content_dir/chat.running"
+    }
+
+    printf "%s\n" $$ >"$content_dir/chat.running"
+    trap '___x_cmd_ollama_chat_request___trapexit' EXIT
+
+    {
+        read -r model
+
+        local requestbody
+        read -r requestbody
+
+        x retry --max 2 --interval 3 ___x_cmd_ollama_chat_request___try
+    } || {
+        ___x_cmd_ollama_chat_request___trapexit
+        return 1
+    }
+}
+
+___x_cmd_ollama_chat_request___try(){
+    [ -z "$confirm_before_send" ] || {
+        printf "%s\n" "$requestbody" | x j2y | x bat -l yml
+        x ui yesno "Do your want to send this message?" || return 0
+    }
+
+    ___x_cmd_ollama_api_chat "$requestbody" "$model" | \
+    {
+        local interative=
+        if ___x_cmd_is_interactive; then interative=1; fi
+
+        local errcode=0
+        x cawk  -E content_dir,interative         \
+                -m j/json,j/jiter,j/jcp                                     \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"               \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"             \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"               \
+                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/ollama.awk"           \
+                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/ollama_stream_output_util.awk"    \
+                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/handle_response.awk"
+    }
+}
+

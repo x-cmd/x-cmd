@@ -14,6 +14,7 @@ END{
 
 function insert_info(O, kp, key){
     if (region != "cn") region = "en"
+    if( O[kp S key S "\"info\""] ~ "null|NULL" ) O[kp S key S "\"info\""] = "{"
 
     desc = O[kp S key S "\"info\"" S "\"desc\"" S "\""region"\"" ]
     if(desc != ""){

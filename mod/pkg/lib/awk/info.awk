@@ -1,7 +1,10 @@
 BEGIN{
-    VERSION  = ENVIRON[ "version" ]
-    OSARCH   = ENVIRON[ "osarch" ]
-    region   = ENVIRON[ "___X_CMD_WEBSRC_REGION" ]
+    VERSION         = ENVIRON[ "version"                ]
+    OSARCH          = ENVIRON[ "osarch"                 ]
+    region          = ENVIRON[ "___X_CMD_WEBSRC_REGION" ]
+    pkg_real_name   = ENVIRON[ "pkg_real_name"          ]
+
+    pkg_real_name   = substr(pkg_real_name, index(pkg_real_name,"/") + 1 )
 }
 
 {
@@ -14,7 +17,16 @@ END{
     if (VERSION == "") generate_lateset_ten_info(O, kp)
     else generate_single_version_info(O, kp, VERSION)
 
-    print jstr(O)
+    _[ kp ] = "{"
+    _[L] = "1"
+    
+    jdict_put(_, kp, "\"pkg\"" , pkg_real_name)
+    jdict_put(_, kp, "\"homepage\"" , O[ kp S "\"homepage\""])
+    jdict_put(_, kp, "\"license\"" , O[ kp S "\"license\""])
+    jdict_put(_, kp, "\"desc\"" , O[ kp S "\"desc\""])
+
+    cp_cover( _, kp , O, kp )
+    print jstr(_)
 }
 
 function generate_desc_by_region(O, kp,        desc){
