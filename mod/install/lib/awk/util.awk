@@ -12,7 +12,7 @@ BEGIN{
 function print_install_cmd_style(str, reference, install_name){
     str = str_trim(str)
     if (IS_RUN == 1 ) {
-        printf (" \\\n%s", qu1(str))
+        printf ("\\\n%s ", qu1(str))
         return
     }
 
@@ -41,5 +41,6 @@ function print_install_basic_info_style(name, homepage, desc, lang){
         INSTALL_UI_FG_GREEN,     "Description",   INSTALL_UI_END, desc,
         INSTALL_UI_FG_GREEN,     "Language",      INSTALL_UI_END, lang )
     }
+
 }
 

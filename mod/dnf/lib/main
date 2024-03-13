@@ -1,61 +1,36 @@
 # shellcheck shell=dash disable=SC2034,SC2016
+xrc proxy
 x log init dnf
+xrc:mod:lib dnf     __xmirror __xproxy __repo install nv
 
 ___x_cmd_dnf___main(){
     [ "$#" -gt 0 ] ||   set -- nv
 
-    local op="$1"; shift
-    case "$op" in
-        install)        ___x_cmd_dnf___install  "$@" ;;
-        nv)             ___x_cmd_dnf___nv       "$@" ;;
-        --help|-h)      x help -m dnf;        return ;;
-        *)              ___x_cmd_cmds dnf "$op" "$@" ;;
-    esac
-}
-
-___x_cmd_dnf___nv(){
-    local X_help_cmd='x help -m dnf nv'
-    help:arg:parse
-
-    { [ -t 1 ] && ___x_cmd_is_interactive; } \
-        || {
-            x ccmd 1d -- ___x_cmd_dnf___lsraw
-            return 0
-        }
-
-    local software
-    software="$(x ccmd 1d -- ___x_cmd_dnf___lsraw | x pick --width 40 --col 10)"
-    [ -n "$software" ] || {
-        dnf:info "Exit because no software is selected."
-        return 0
+    x hascmd dnf   ||  {
+        dnf:warn "dnf command not found."
+        return 1
     }
 
-    local id
-    x ui select id "What to do NEXT"                        \
-        "x dnf install $software"                           \
-        "EXIT"     || return
+    local op="$1"; shift
+    case "$op" in
+        nv)                 ___x_cmd_dnf___nv       "$@" ;;
+        install)            ___x_cmd_dnf___install  "$@" ;;
+        proxy|--xproxy)     ___x_cmd_dnf___xproxy   "$@" ;;
+        mirror|--xmirror)   ___x_cmd_dnf___xmirror  "$@" ;;
 
-    case "$id" in
-        1)      x dnf install "$software" ;;
-        2)      return 0 ;;
+        autoremove|shell     \
+        |distro-sync|remove  \
+        |reinstall|update    \
+        |upgrade|downgrade   \
+        |upgrade-minimal)
+                            ___x_cmd_dnf___exec     "$op"   "$@" ;;
+
+        --help|-h)          x help -m dnf;          return       ;;
+        *)                  ___x_cmd_cmds dnf       "$op"   "$@" ;;
     esac
 }
 
-___x_cmd_dnf___lsraw(){
-    ___x_cmd_cmds dnf list | ___x_cmd_cmds awk 'NR>2{
-        print $1
-    }'
-}
-
-___x_cmd_dnf___install(){
-    local X_help_cmd='x help -m dnf nv'
-    help:arg:parse
-
-    if [ $# -eq 0 ]; then
-        ___x_cmd_dnf___nv
-        return 0
-    fi
-
-    # Using x sudo
-    x sudo dnf install "$@"
+___x_cmd_dnf___exec(){
+    dnf:info "running command  →  x sudo dnf $*"
+    ___x_cmd_dnf___xproxy run x sudo dnf "$@"
 }

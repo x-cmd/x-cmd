@@ -1,14 +1,26 @@
 BEGIN{
+    HAS_CONTENT = 0
     if(wsl = "WSL2") wsl=tolower(wsl)
 }
 
-{ jiparse_after_tokenize( O, $0 ) }
+{
+    if($0 != "") HAS_CONTENT = 1
+    jiparse_after_tokenize( O, $0 )
+}
 
 END{
+    if(HAS_CONTENT == 0) exit(0)
     print_basic_info(O)
     RELEASE = tolower(RELEASE)
     kp = SUBSEP "\"1\"" SUBSEP "\"rule\""
     print_install_cmd(O, kp)
+
+    if (IS_RUN == 1 ){
+        print "\\"
+        printf("'x open %s'", juq(O[SUBSEP "\"1\"" SUBSEP "\"homepage\""]))
+        print " \\"
+        print "'Exit'"
+    }
 }
 
 function print_install_cmd(O, kp,          i, len, key, os_or_release, installer, str, j){

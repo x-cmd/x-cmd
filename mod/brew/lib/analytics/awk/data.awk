@@ -1,4 +1,6 @@
 BEGIN{
+    if ( url ~ "^cask") IS_CASK = 1
+    else IS_CASK = 0
     KP = SUBSEP "\"1\""
 }
 
@@ -15,8 +17,8 @@ END{
     for(i=1; i<=formulae_l; ++i){
         key = O[ KP S "\"formulae\"" S "\""i"\""]
         formulae_kp = KP S "\"formulae\"" S key S "\"1\""
-
-        formula = juq(O[ formulae_kp S "\"formula\""])
+        if ( IS_CASK == 1)  formula = juq(O[ formulae_kp S "\"cask\""])
+        else                formula = juq(O[ formulae_kp S "\"formula\""])
         count = juq(O[ formulae_kp S "\"count\""])
 
         print formula"," count

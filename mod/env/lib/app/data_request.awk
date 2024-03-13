@@ -31,6 +31,9 @@ function insert_info(O, kp, key){
     if (size != "")jdict_put(O, kp S key S "\"info\"", "\"size\"" , size)
     else jdict_put(O, kp S key S "\"info\"", "\"size\"" ,  "\"Unknown\"")
 
+    bin = O[kp S "\"bin\""]; jdict_rm(O,"\"bin\"")
+    if (bin != "")jdict_put(O, kp S key S "\"info\"", "\"bin\"" , bin)
+
     license = O[kp S "\"license\""]
     if (license != "") jdict_put(O, kp S key S "\"info\"", "\"license\"" , license)
 }

@@ -31,7 +31,7 @@ function tapp_handle_response(fp,       _content, _rootkp, l, i, arr){
         _rootkp = substr( arr[1], RLENGTH+1 )
         comp_navi_data_init( o, LSENV_KP, _rootkp )
         for (i=2; i<=l; ++i) {
-            if(arr[i] ~ "^homepage|^license|^desc") continue
+            if(arr[i] ~ "^homepage|^license|^desc|^bin") continue
             user_data_add( o, LSENV_KP, _rootkp, arr[i] )
         }
         comp_navi_data_end( o, LSENV_KP, _rootkp )

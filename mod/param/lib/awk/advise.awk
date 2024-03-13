@@ -45,8 +45,10 @@ function generate_advise_json_subcmd(       i, l, subcmd_name, subcmd_true, subc
             subcmd_name = substr(subcmd_name, 3)
             subcmd_true = "X_CMD_ADVISE_SUBCMD_TRUE=1"
         }
-        if( subcmd_map[ _name_arr[ 1 ], SUBCMD_FUNCNAME ] != "" )   subcmd_funcname = subcmd_map[ _name_arr[ 1 ], SUBCMD_FUNCNAME ] "_" subcmd_name
-        else                                                        subcmd_funcname = "${X_CMD_ADVISE_FUNC_NAME}_" subcmd_name
+
+        subcmd_funcname = subcmd_map[ subcmd_id_by_name(_name_arr[ 1 ]), SUBCMD_FUNCNAME ]
+        if ( subcmd_funcname != "" )    subcmd_funcname = subcmd_funcname "_" subcmd_name
+        else                            subcmd_funcname = "${X_CMD_ADVISE_FUNC_NAME}_" subcmd_name
 
         subcmd_invocation = sprintf("\\$( B=\"\\$( PARAM_SUBCMD_DEF=''; %s X_CMD_ADVISE_FUNC_NAME=%s %s _x_cmd_advise_json %s)\"; if [ -n \"\\$B\" ]; then printf \"%%s\" \"\\$B\"; else return 1; fi; )", subcmd_true, subcmd_funcname, subcmd_funcname, qu1( subcmd_desc(i) ) )
 

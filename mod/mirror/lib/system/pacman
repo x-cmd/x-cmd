@@ -46,6 +46,8 @@ ___x_cmd_mirror_pacman_replace(){
             return   ;;
     esac
 
+    ___x_cmd_mirror_pacman_rollback_save || N=mirror M="Save original config failed." log:ret:1
+
     local url
     url="$(___x_cmd_mirror_pacman___url "${1}")" || return
     mirror:info "Setting pacman mirror $url"
@@ -59,35 +61,30 @@ ___x_cmd_mirror_pacman_replace(){
 
     if [ "$(id -u)" -ne 0 ]; then
         mirror:warn "using sudo"
-        printf "%s" "" | ___x_cmd_cmds_awk -v tmp="$tmp" -v url="$url" 'BEGIN { url=url "/$repo/os/$arch";tmp=tmp "\nServer = " url;print tmp}' | sudo tee "$src_path"
+        printf "%s" "$tmp" | ___x_cmd_cmds_awk -v url="$url" '
+                                                            BEGIN { url="Server = "url "/$repo/os/$arch"; THE_REST=0}
+                                                            THE_REST==0{ if($0 ~ "^#.*"){print $0} else{ if(url != $0){printf("\n%s\n%s", url, $0)} else {print $0}; THE_REST=1}}
+                                                            THE_REST==1{if(url != $0){print $0}}
+                                                              ' | x sudo tee "$src_path"
         sudo pacman -Syy
     else
-        printf "%s" "" | ___x_cmd_cmds_awk -v tmp="$tmp" -v url="$url" 'BEGIN { url=url "/$repo/os/$arch";tmp=tmp "\nServer = " url;print tmp}' | tee "$src_path"
+        printf "%s" "" | ___x_cmd_cmds_awk -v url="$url" '
+                                                            BEGIN { url="Server = "url "/$repo/os/$arch"; THE_REST=0}
+                                                            THE_REST==0{ if($0 ~ "^#.*"){print $0} else{ if(url != $0){printf("\n%s\n%s", url, $0)} else {print $0}; THE_REST=1}}
+                                                            THE_REST==1{if(url != $0){print $0}}
+                                                              ' | tee "$src_path"
         pacman -Syy
     fi
 }
 
+
+___x_cmd_mirror_pacman_rollback_save(){
+    ___x_cmd_mirror___util_save "/etc/pacman.d/mirrorlist" "pacman"
+}
+
+
 ___x_cmd_mirror_pacman_rollback(){
-    case "$1" in
-        ls)
-            ___x_cmd_mirror_pacman_rollback_ls
-            return 0
-            ;;
-        -h|--help)
-            x help -m mirror pacman rollback "$@"
-            return 0
-            ;;
-        *)  ;;
-    esac
-
-    if [ "$(id -u)" -ne 0 ]; then
-        mirror:warn "using sudo"
-        IS_ROOT=1 ___x_cmd_mirror___util_rollback /etc/pacman.d/mirrorlist pacman "$1"
-    else
-        ___x_cmd_mirror___util_rollback /etc/pacman.d/mirrorlist pacman "$1"
-    fi
+    ___x_cmd_mirror___util_rollback_original "/etc/pacman.d/mirrorlist" "pacman" || return
+    x rmrf "$___X_CMD_ROOT_DATA/mirror/pacman"
 }
 
-___x_cmd_mirror_pacman_rollback_ls() {
-    ___x_cmd_mirror___util_rollback_ls pacman
-}
