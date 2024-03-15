@@ -17,7 +17,7 @@ ___x_cmd_tldr_version_pages_(){
 }
 
 ___x_cmd_tldr_version_pages___from_yml_(){
-    local index="$___X_CMD_TLDR_TMP_DATA/index.yml"
+    local index="$___X_CMD_TLDR_DIR_DATA/index.yml"
     { [ -f "$index" ] && [ "$1" != --update ]; } || \
         ( x fslock run "tldr.index" ___x_cmd_tldr_download index.yml "$index" ) || return
     read -r x_ < "$index"
@@ -29,50 +29,57 @@ ___x_cmd_tldr_version_pages___from_yml_(){
 }
 
 ___x_cmd_tldr_update(){
-    local lang="${1:-$___X_CMD_TLDR_LANG_PREFERED}"
-    local x_;   ___x_cmd_tldr_version_pages___from_yml_ --update    || return
+    local lang="$1"; local x_
+    [ -n "$lang" ] || { x_=; ___x_cmd_tldr_lang get_ || return; lang="$x_"; }
+    x_=; ___x_cmd_tldr_version_pages___from_yml_ --update    || return
     ___x_cmd_tldr_download_unzip_pages "$x_" "$lang" --update       || return
     ___x_cmd_tldr_download_unzip_lang "$___X_CMD_TLDR_LANG_VERSION" --update
 }
 
 ___x_cmd_tldr_lang_perpare(){
-    tldr:debug "tldr lang check => ${___X_CMD_TLDR_TMP_DATA}/lang/${___X_CMD_TLDR_LANG_VERSION}"
-    [ -d "${___X_CMD_TLDR_TMP_DATA}/lang/${___X_CMD_TLDR_LANG_VERSION}" ] || \
+    tldr:debug "tldr lang check => ${___X_CMD_TLDR_DIR_DATA}/lang/${___X_CMD_TLDR_LANG_VERSION}"
+    [ -d "${___X_CMD_TLDR_DIR_DATA}/lang/${___X_CMD_TLDR_LANG_VERSION}" ] || \
         ( x fslock run "tldr.lang" ___x_cmd_tldr_download_unzip_lang "$___X_CMD_TLDR_LANG_VERSION" ) || return
 }
 
 ___x_cmd_tldr_pages_prepare(){
-    local lang="${1:-"${___X_CMD_TLDR_LANG_PREFERED:-en}"}"
+    local lang="$1"; local x_
+    [ -n "$lang" ] || { x_=; ___x_cmd_tldr_lang get_ || return; lang="$x_"; }
     ___x_cmd_tldr_version_pages_ || return
-    tldr:debug "tldr pages check => ${___X_CMD_TLDR_TMP_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.${lang}"
-    [ -d "${___X_CMD_TLDR_TMP_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.${lang}" ] || \
+    tldr:debug "tldr pages check => ${___X_CMD_TLDR_DIR_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.${lang}"
+    [ -d "${___X_CMD_TLDR_DIR_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.${lang}" ] || \
         ( x fslock run "tldr.pages.${lang}" ___x_cmd_tldr_download_unzip_pages "$___X_CMD_TLDR_PAGES_VERSION" "$lang" ) || return
+
 }
 
 ___x_cmd_tldr_download_unzip_lang(){
     local version="$1"
-    local tgz_path="${___X_CMD_TLDR_TMP_CACHE}/lang/${version}.tar.xz"
+    local tgz_path="${___X_CMD_TLDR_DIR_CACHE}/lang/${version}.tar.xz"
     { [ -f "$tgz_path" ] && [ "$2" != --update ]; } || {
         ___x_cmd_tldr_download "lang/${version}.tar.xz" "$tgz_path" || return
     }
 
-    local data_path="${___X_CMD_TLDR_TMP_DATA}/lang/${version}"
+    local data_path="${___X_CMD_TLDR_DIR_DATA}/lang/${version}"
     x rmrf "$data_path";    x mkdirp "$data_path"
     ! x uz "$tgz_path" "$data_path" || tldr:info "The lang/${version} already UPDATED"
 }
 
 ___x_cmd_tldr_download_unzip_pages(){
     local version="$1";     local lang="$2"
-    local tgz_path="${___X_CMD_TLDR_TMP_CACHE}/${version}/pages.${lang}.tgz"
+    local tgz_path="${___X_CMD_TLDR_DIR_CACHE}/${version}/pages.${lang}.tgz"
 
     { [ -f "$tgz_path" ] && [ "$3" != --update ]; } || {
         local page_lang="pages"; [ "$lang" = en ] || page_lang="pages.${lang}"
-        ___x_cmd_tldr_download "$version/$page_lang.tgz" "$tgz_path" || return
-    }
+        ___x_cmd_tldr_download "$version/$page_lang.tgz" "$tgz_path"
+    } || return
 
-    local data_path="${___X_CMD_TLDR_TMP_DATA}/${version}/pages.${lang}"
+    local data_path="${___X_CMD_TLDR_DIR_DATA}/${version}/pages.${lang}"
     x rmrf "$data_path";    x mkdirp "$data_path"
-    ! x uz "$tgz_path" "$data_path" || tldr:info "The pages.${lang} version already UPDATED to $version"
+    x uz "$tgz_path" "$data_path" || {
+        x rmrf "$tgz_path" "$data_path"
+        return 1
+    }
+    tldr:info "The pages.${lang} version already UPDATED to $version"
 }
 
 ___x_cmd_tldr_download(){

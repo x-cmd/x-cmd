@@ -15,14 +15,17 @@ END{
 
 
     for(i=1; i<=formulae_l; ++i){
-        key = O[ KP S "\"formulae\"" S "\""i"\""]
-        formulae_kp = KP S "\"formulae\"" S key S "\"1\""
-        if ( IS_CASK == 1)  formula = juq(O[ formulae_kp S "\"cask\""])
-        else                formula = juq(O[ formulae_kp S "\"formula\""])
-        count = juq(O[ formulae_kp S "\"count\""])
+        key = O[ KP S "\"formulae\"" S "\""i"\"" ]
+        formulae_len = O[ KP S "\"formulae\"" S key L]
 
-        print formula"," count
+        for(j=1; j<=formulae_len; ++j){
+            formulae_kp = KP S "\"formulae\"" S key S "\""j"\""
+            if ( IS_CASK == 1)  formula = O[ formulae_kp S "\"cask\""]
+            else                formula = O[ formulae_kp S "\"formula\""]
+            count = O[ formulae_kp S "\"count\""]
+            gsub(",", "", count)
+            print formula"," count
+        }
     }
-    printf("%s (total_items),%s (total_count)\n", total_items, total_count)
-
+    # printf("[total_items: %s],[total_count: %s]\n", total_items, total_count)
 }

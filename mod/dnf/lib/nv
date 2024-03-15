@@ -1,27 +1,33 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2016
 
 ___x_cmd_dnf___nv(){
     local X_help_cmd='x help -m dnf nv'
     help:arg:parse
 
-    [ -d "/var/cache/dnf" ] || {
-        dnf:warn "The first time you use dnf, you need to update your local software list repository."
-        x dnf update -y || {
+    local dnffp=; dnffp="$(___x_cmd_cmds ls -1 /var/cache/dnf/*.solv 2>/dev/null | head -n 1)"
+    [ -f "$dnffp" ] || {
+        dnf:info "Update the software in the repository."
+        x dnf upgrade -y || {
             dnf:error "dnf update fail"
-            x rmrf "/var/cache/dnf"
+            # x dnf clean metadata
             return 1
         }
-        x ccmd 1d -- ___x_cmd_dnf___lsraw > /dev/null 1>&2
+        dnffp="$(___x_cmd_cmds ls -1 /var/cache/dnf/*.solv 2>/dev/null | head -n 1)"
+    }
+
+    local ccmdfp=; ccmdfp="$(x ccmd which ___x_cmd_dnf___lsraw)"
+    [ "$ccmdfp" -nt "$dnffp" ] || {
+        x rmrf "$ccmdfp"
     }
 
     { [ -t 1 ] && ___x_cmd_is_interactive; } \
         || {
-            x ccmd 1d -- ___x_cmd_dnf___lsraw
+            x ccmd 3d -- ___x_cmd_dnf___lsraw
             return 0
         }
 
     local software
-    software="$(x ccmd 1d -- ___x_cmd_dnf___lsraw | x pick --width 40 --col 10)"
+    software="$(x ccmd 3d -- ___x_cmd_dnf___lsraw | x pick --width 40 --col 10)"
     [ -n "$software" ] || {
         dnf:info "Exit because no software is selected."
         return 0
@@ -47,8 +53,14 @@ ___x_cmd_dnf___nv(){
 }
 
 ___x_cmd_dnf___lsraw(){
-    ___x_cmd_cmds dnf list --all | ___x_cmd_cmds awk 'NR>2{ print $1}' | ___x_cmd_cmds sort -u | while read -r line; do
-        local line="${line%.*}"
-        printf "%s\n" "$line"
-    done
+    dnf:info "running command  →  dnf list"
+    ___x_cmd_cmds dnf list -y --all | ___x_cmd_cmds awk '
+    NR>2{
+        l = $1
+        sub("\\.[^\\.]*$", "", l)
+
+        if ((arr[l] != 1) && (l != "Available") && (l != "可安装的软件包")) print l
+        arr[l] = 1
+    }
+    ' | ___x_cmd_cmds sort -u
 }

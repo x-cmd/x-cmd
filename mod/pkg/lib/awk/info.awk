@@ -19,11 +19,12 @@ END{
 
     _[ kp ] = "{"
     _[L] = "1"
-    
+
     jdict_put(_, kp, "\"pkg\"" , pkg_real_name)
     jdict_put(_, kp, "\"homepage\"" , O[ kp S "\"homepage\""])
     jdict_put(_, kp, "\"license\"" , O[ kp S "\"license\""])
     jdict_put(_, kp, "\"desc\"" , O[ kp S "\"desc\""])
+    jdict_put(_, kp, "\"bin\"" , O[ kp S "\"bin\""])
 
     cp_cover( _, kp , O, kp )
     print jstr(_)

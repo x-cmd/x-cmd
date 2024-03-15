@@ -50,7 +50,7 @@ function tapp_handle_wchar( value, name, type,          i, l, v, r, c, _cur_data
     }
 }
 
-function tapp_handle_exit( exit_code,       r, _cur_row, i, l, k, v ){
+function tapp_handle_exit( exit_code,       r, _cur_row, i, l, k, v, is_local ){
     if (exit_is_with_cmd()){
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_CSV_POSITION", comp_table_current_position_get(o, TABLE_KP) ) )
         if (___X_CMD_CSV_APP_RET_STYLE == "") return
@@ -58,13 +58,14 @@ function tapp_handle_exit( exit_code,       r, _cur_row, i, l, k, v ){
         if (___X_CMD_CSV_APP_RET_STYLE ~ "^(line|print)$"){
             _cur_row = csv_dump_row(CSV_DATA, "", r, 1, 1, CSV_DATA[ L L ])
             tapp_send_finalcmd( sh_varset_val( "___X_CMD_CSV_APP_DATA_CURROW", _cur_row, true ) )
-        } else if (___X_CMD_CSV_APP_RET_STYLE == "var"){
+        } else if ((___X_CMD_CSV_APP_RET_STYLE == "var") || (___X_CMD_CSV_APP_RET_STYLE == "local-var")){
+            if (___X_CMD_CSV_APP_RET_STYLE == "local-var") is_local = true
             l = CSV_DATA[ L L ]
             for (i=1; i<=l; ++i){
                 k = CSV_DATA[ SUBSEP 1, i ]
                 gsub("[\\.\\|:/]", "_", k)
                 v = CSV_DATA[ SUBSEP r, i ]
-                tapp_send_finalcmd( sh_varset_val( "___X_CMD_CSV_APP_DATA_" k, v ) )
+                tapp_send_finalcmd( sh_varset_val( "___X_CMD_CSV_APP_DATA_" k, v, is_local ) )
             }
         }
     }
