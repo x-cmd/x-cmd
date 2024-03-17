@@ -1,6 +1,6 @@
 ---
 name: PKG recommendation
-about: Supercharge X-CMDER ! Usually It will take us 3-10 days to review. Search X-CMD's registry for existing packages in [here](https://x-cmd.com/pkg). Thank you.
+about: Supercharge X-CMDER ! Usually It will take us 3-10 days to review. Search X-CMD's registry for existing packages in https://x-cmd.com/pkg. Thank you.
 title: "[PKG] <name of recipe, like python, tmux>"
 labels: pkg
 assignees: edwinjhlee
