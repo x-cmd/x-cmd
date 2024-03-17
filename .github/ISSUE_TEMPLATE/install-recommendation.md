@@ -1,14 +1,15 @@
 ---
-name: INSTALL recommendation
-about: Recommend a pkg to make X-CMDER more powerful. Usually It will take us 3-10 days to review, repkg/build, and test. Thank you.
-title: "[PKG] <name of recipe, like python, tmux>"
+name: PKG recommendation
+about: Recommend an PKG to make X-CMDER more powerful
+title: "[INSTALL] <name of recipe, like openssh, tmux>"
 labels: ''
 assignees: edwinjhlee
+
 ---
 
 **Basic Information**
 
-name: <PKG name>
+name: <INSTALL name>
 official website: 
 source code website: [e.g. https://github.com/x-cmd/x-cmd]
 
@@ -32,9 +33,8 @@ source code website: [e.g. https://github.com/x-cmd/x-cmd]
 
 **Does this software function well in Windows, Linux, Mac, for amd64 and arm64**
 
-**Describe this package you'd like to recommend**
+**Describe this software you'd like to recommend**
 
 **Additional context**
 Add any other context or screenshots about the feature request here.
-
 
