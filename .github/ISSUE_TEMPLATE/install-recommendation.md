@@ -1,8 +1,8 @@
 ---
-name: PKG recommendation
-about: Recommend an PKG to make X-CMDER more powerful
+name: INSTALL recommendation
+about: Recommend an INSTALL recipe to make X-CMDER more powerful. Usually It will take us 1-5 days to review, and test. To see all install recipes avaiable please visit https://x-cmd.com/install. Thank you.
 title: "[INSTALL] <name of recipe, like openssh, tmux>"
-labels: ''
+labels: install
 assignees: edwinjhlee
 
 ---

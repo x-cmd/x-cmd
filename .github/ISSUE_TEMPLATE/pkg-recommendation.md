@@ -1,6 +1,6 @@
 ---
 name: INSTALL recommendation
-about: Recommend a pkg to make X-CMDER more powerful. Usually It will take us 3-10 days to review, repkg/build, and test. Thank you.
+about: Supercharge X-CMDER ! Usually It will take us 3-10 days to review, repkg/build, and test. You can search X-CMD's registry for existing packages in https://x-cmd.com/pkg. Thank you.
 title: "[PKG] <name of recipe, like python, tmux>"
 labels: ''
 assignees: edwinjhlee
