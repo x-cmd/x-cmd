@@ -1,13 +1,52 @@
 # shellcheck shell=dash
 
 ___x_cmd_apt___install(){
-    local X_help_cmd='x help -m apt install'
-    help:arg:parse
-
     if [ $# -eq 0 ]; then
-        ___x_cmd_apt___nv
-        return 0
+        ___x_cmd_apt_install___app
+    else
+        ___x_cmd_apt___exec install "$@"
     fi
-
-    ___x_cmd_apt___exec install "$@"
 }
+
+___x_cmd_apt_install___app(){
+    [ -f "/var/lib/apt/lists/lock" ] || {
+        apt:warn "The first time you use apt, you need to update your local software list repository."
+        x apt update
+        ___x_cmd_apt___repo_lsname > "$___X_CMD_PKG_CACHE_PATH/lsname"
+    }
+
+    { [ -t 1 ] && ___x_cmd_is_interactive; } \
+        || {
+            ___x_cmd_apt___lsraw
+            return 0
+        }
+
+    apt:info "Use 'x apt -h' for help."
+    apt:info "Select a package to install, or view information."
+    local software
+    software="$(___x_cmd_apt___lsraw | x pick --width 40 --col 10)"
+    [ -n "$software" ] || {
+            apt:info "Exit because no software is selected."
+            return 0
+        }
+
+    local id=
+    # TODO: Maybe view the source code, or open install information
+    x ui select id "What to do NEXT"    \
+        "x apt install   $software"     \
+        "x apt reinstall $software"     \
+        "x apt show      $software"     \
+        "browse repo of $software"      \
+        "apt --help"                    \
+        "EXIT"     || return
+    case "$id" in
+        1)      x apt install   "$software" ;;
+        2)      x apt reinstall "$software" ;;
+        3)      x apt show      "$software" ;;
+        # 4)      x install       "$software" ;;
+        4)      ___x_cmd_apt___repo_browse "$software" ;;
+        5)      x help -m apt ;;
+        6)      return 0 ;;
+    esac
+}
+

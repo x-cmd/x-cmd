@@ -33,7 +33,7 @@ function navi_statusline_search(o, kp){
     kp = kp SUBSEP "statusline"
     comp_statusline_data_clear( o, kp )
     comp_statusline_data_put( o, kp, "←↓↑→/hjkl", "Move focus","Press keys to move focus"  )
-    comp_statusline_data_put( o, kp, "/", "Close search", "Press '/' to close search items" )
+    comp_statusline_data_put( o, kp, "enter", "Close search", "Press '/' to close search items" )
 }
 
 function navi_statusline_add( o, kp, v, s, l ){
@@ -78,19 +78,19 @@ function navi_handle_clocktick( o, kp, idx, trigger, row, col ){
 function navi_handle_wchar( o, kp, value, name, type,          _has_no_handle ){
     comp_handle_exit( value, name, type )
     if (comp_statusline_isfullscreen(o, kp SUBSEP "statusline")){
-        if (! comp_statusline_handle( o, kp SUBSEP "statusline", value, name, type )) _has_no_handle = true
-        if (! comp_statusline_isfullscreen(o, kp SUBSEP "statusline")) navi_change_set_all( o, kp )
+        if (! comp_statusline_handle( o, kp SUBSEP "statusline", value, name, type ))   _has_no_handle = true
+        if (! comp_statusline_isfullscreen(o, kp SUBSEP "statusline"))                  navi_change_set_all( o, kp )
     } else {
-        if (value == "/")                                           comp_navi_sel_sw_toggle( o, kp )
-        else if (comp_navi_handle( o, kp, value, name, type ))      _has_no_handle = false
-        else if (value == "q")                                      exit_with_elegant("q")
-        else if (name == U8WC_NAME_CARRIAGE_RETURN)                 exit_with_elegant("ENTER")
-        else _has_no_handle = true
+        if ((value == "/") && (ctrl_navi_sel_sw_get( o, kp ) == false))                 comp_navi_sel_sw_toggle( o, kp )
+        else if (comp_navi_handle( o, kp, value, name, type ))                          _has_no_handle = false
+        else if (value == "q")                                                          exit_with_elegant("q")
+        else if (name == U8WC_NAME_CARRIAGE_RETURN)                                     exit_with_elegant("ENTER")
+        else                                                                            _has_no_handle = true
 
         # update statusline
         if ((_has_no_handle == true) && (comp_statusline_handle( o, kp SUBSEP "statusline", value, name, type ))) _has_no_handle = false
-        else if (ctrl_navi_sel_sw_get( o, kp )) navi_statusline_search( o, kp )
-        else navi_statusline_normal( o, kp )
+        else if (ctrl_navi_sel_sw_get( o, kp ))                                         navi_statusline_search( o, kp )
+        else                                                                            navi_statusline_normal( o, kp )
     }
 
     return ( _has_no_handle == true ) ? false : true
