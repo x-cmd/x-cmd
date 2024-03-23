@@ -7,8 +7,8 @@ BEGIN{
 END{
     nl = o[ Q2_1 L ]
     if (nl <= 0) exit(1)
-    
-    printf("%s,%s,%s,%s,%s,%s,%s,%s,%s\n", "version", "quant", "format", "bits", "method", "size", "max_ram_required", "usecase", "hf")
+
+    printf("%s\n", "name,version,quant,format,bits,method,size,max_ram_required,usecase,hf")
     for (i=1; i<=nl; ++i){
         name = o[ Q2_1, i ]
         vl = o[ Q2_1, name L ]
@@ -34,8 +34,10 @@ function llmf_get_content(o, kp, name, version, quant,              format, hf, 
     ram     = llmf_csv_quote( o[ kp SUBSEP "\"max-ram-required\"" ])
     usecase = llmf_csv_quote( o[ kp SUBSEP "\"usecase\"" ])
 
-    name = llmf_csv_quote(juq(name) "-" juq(version))
-    return sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s", name, quant, format, bits, method, size, ram, usecase, hf )
+    name    = llmf_csv_quote(juq(name))
+    version = llmf_csv_quote(juq(version))
+    # name = llmf_csv_quote(juq(name) "/" juq(version) "/" juq(quant) "." juq(format) )
+    return sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", name, version, quant, format, bits, method, size, ram, usecase, hf )
 }
 
 function llmf_csv_quote(s){

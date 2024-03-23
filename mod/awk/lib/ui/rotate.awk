@@ -20,7 +20,7 @@ function ui_rotate1( screensize, fp,     line,     d, i ){
     IFS = i
 }
 
-function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end,    i, o, _line, _c ){
+function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end,    i, o, _line, l, arr, _c ){
     prompt_run = ( prompt_run != "") ? prompt_run : "Running ..."
     prompt_end = ( prompt_end != "") ? prompt_end : "Done"
     for (i=1; i<=n; ++i)    printf("%s", "\r\n")
@@ -28,19 +28,23 @@ function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end,    i
 
     ring_init( o, n )
     while (getline _line) {
-        if (_line ~ /^EXITCODE:/) {
-            _c = int( substr( _line, 10 ) )
-        }
-        else {
-            gsub("\033\\[[^A-Za-z]*[A-Za-z=]", "",  _line )
-            gsub( "\n", "\\n", _line )
-            gsub( "\t", "\\t", _line )
-            gsub( "\v", "\\v", _line )
-            gsub( "\b", "\\b", _line )
-            gsub( "\r", "\\r", _line )
-            ring_add( o, _line )
-            ui_rotate_render( o, prefix )
-            ui_rotate_render_prompt( o, prefix, prompt_run )
+        l = split(_line, arr, "\n|\r")
+        for (i=1; i<=l; ++i){
+            _line = arr[i]
+            if (_line ~ /^EXITCODE:/) {
+                _c = int( substr( _line, 10 ) )
+            }
+            else {
+                gsub("\033\\[[^A-Za-z]*[A-Za-z=]", "",  _line )
+                gsub( "\n", "\\n", _line )
+                gsub( "\t", "\\t", _line )
+                gsub( "\v", "\\v", _line )
+                gsub( "\b", "\\b", _line )
+                gsub( "\r", "\\r", _line )
+                ring_add( o, _line )
+                ui_rotate_render( o, prefix )
+                ui_rotate_render_prompt( o, prefix, prompt_run )
+            }
         }
     }
 

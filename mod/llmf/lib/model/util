@@ -1,0 +1,92 @@
+# shellcheck shell=dash disable=2142
+
+___x_cmd_llmf___prepare_model_mmproj(){
+    local x_
+    [ -n "$model" ] || {
+        x_=; ___x_cmd_llmf_model_default get_
+        model="$x_"
+    }
+
+    [ -n "$model" ]  || N=llmf M="No model specified" log:ret:64
+
+    [ -f "$model" ] || {
+        x_=;
+        ___x_cmd_llava___model_confirm_ "$model"    || return
+        ___x_cmd_llmf_model_exist "$x_" \
+            || ___x_cmd_llmf_model_download "$x_"   || return
+        ___x_cmd_llmf_model_which_ "$x_"            || return
+        model="$x_"
+    }
+
+    x_=; ___x_cmd_llava___model2mmproj_ "$model" "$mmproj"
+    mmproj="$x_"
+    [ -z "$mmproj" ] || {
+        [ -f "$mmproj" ] || {
+            x_=;
+            ___x_cmd_llava___model_confirm_ "$mmproj"   || return
+            ___x_cmd_llmf_model_exist "$x_" \
+                || ___x_cmd_llmf_model_download "$x_"   || return
+            ___x_cmd_llmf_model_which_ "$x_"            || return
+            mmproj="$x_"
+        }
+
+    }
+    llmf:debug --model "$model" --mmproj "${mmproj:-"undefined"}"
+}
+
+alias llmf:prepare:model:mmproj='
+    ___x_cmd_llmf___prepare_model_mmproj || return
+'
+
+___x_cmd_llava___model2mmproj_(){
+    local model="$1"
+    local mmproj="$2"
+
+    [ -z "$mmproj" ] || {
+        x_="$mmproj"
+        return 0
+    }
+
+    x_=
+
+    case "$model" in
+        *.llamafile)    x_=""   ;;
+        *.gguf)         x_=""   ;;      # Figure out
+    esac
+}
+
+___x_cmd_llava___model_confirm_(){
+    local model="$1"
+    x_="";
+    if ___x_cmd_llava___model2hf_ "$model"; then
+        x_="$model"
+    else
+        ___x_cmd_is_interactive || N=llmf M="Please provide model <name/version/quant.format>" log:ret:64
+        ___x_cmd_llmf_model_default get_        || return
+        x ui yesno "Use the default model: $x_" || return
+    fi
+}
+
+___x_cmd_llava___model2hf_(){
+    local model="$1"
+    local l="$model"
+    local model_name=; local model_version=; local model_quant=;
+    model_name="${l%%/*}";       l="${l#*/}"
+    model_version="${l%%/*}";    l="${l#*/}"
+    model_quant="${l%.*}"
+
+    ___x_cmd_llava___prepare_metadata || return
+    local fp="$___X_CMD_LLMF_MODEL_DATA_INFO/${model_name}.json"
+    [ -f "$fp" ] || N=llmf M="Not found such [model=$model]" log:ret:1
+
+    local tmp_version=;
+    tmp_version="$(printf "%s\n" "${model_version}" | sed 's/\./\\./g')"
+    llmf:debug --fp "$fp" --tmp_version "$tmp_version" --model_quant "$model_quant" "Model get hf"
+    x_="$( < "$fp" x jo env . hf=".${tmp_version}.${model_quant}.hf" -- 'printf "%s\n" "$hf"')"
+
+    [ -n "$x_" ] || N=llmf M="The [model=$model] does not exist or the data parsing is abnormal" log:ret:1
+}
+
+___x_cmd_llava___prepare_metadata(){
+    [ -d "$___X_CMD_LLMF_MODEL_DATA_INFO" ] || x pkg update
+}

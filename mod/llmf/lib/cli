@@ -1,3 +1,7 @@
+# shellcheck shell=dash
+
+# x llmf cli -m tinyllama --stdin
+# x llmf cli -p 'wirte a story about llama' -- --no-display-prompt --log-disable
 
 ___x_cmd_llmf_cli(){
     [ "$#" -gt 0 ]      ||   set - --help
@@ -14,23 +18,86 @@ ___x_cmd_llmf_cli(){
             -h|--help)      x help -m llmf cli;
                             return 1    ;;
 
-            -m|--model)     model="$2";             shift 2 ;;
-            --mmproj)       mmproj="$2";            shift 2 ;;
+            -m|--model)     [ "$#" -ge 2 ] || N=llmf M="Please provide the model value" log:ret:64;
+                            model="$2";             shift 2 ;;
 
-            -p|--prompt)    prompt="$prompt $2";    shift 2 ;;
-            -t|--temp)      temp="$2";              shift 2 ;;
+            --mmproj)       [ "$#" -ge 2 ] || N=llmf M="Please provide the mmproj value" log:ret:64;
+                            mmproj="$2";            shift 2 ;;
+
+            -p|--prompt)    [ "$#" -ge 2 ] || N=llmf M="Please provide the prompt value" log:ret:64;
+                            prompt="$prompt $2";    shift 2 ;;
+
+            --stdin)        prompt="$prompt $(___x_cmd_cmds_cat)"
+                            shift
+                            ;;
+
+            -t|--temp)      temp="$2"
+                            [ "$#" -ge 2 ] || N=llmf M="Please provide the temp value" log:ret:64; shift 2 ;;
             -0)             temp=0;                 shift   ;;
-
-            -|--edit)       edit=1;                 shift 1 ;;
-
-            --)             shift;                  break ;;
-
+            -|--edit)       edit=1;                 shift   ;;
+            --)             shift;                  break   ;;
             *)              prompt="$prompt $1";    shift   ;;
         esac
     done
 
-    # Modifile a file ...
-    [ -z "$edit" ] || prompt="$(x ted)"  # Based upon the prompt content, we can use ted to modify the prompt
+    llmf:prepare:model:mmproj
+    [ -z "$model" ]  || set -- "$@" --model "$model"
+    [ -z "$mmproj" ] || set -- "$@" --mmproj "$mmproj"
 
-    ___x_cmd cosmo llamafile "$@" --model "$model" --prompt "$prompt" --mmproj "$mmproj" --temp "$temp"
+    [ -z "$edit" ] || {
+        # Based upon the prompt content, we can use ted to modify the prompt
+        local x_=; ___x_cmd_llmf_prompt_edit_ "$prompt" || return
+        prompt="$x_"
+    }
+
+    llmf:debug --cmd "x cosmo llamafile $* --cli --prompt '$prompt' --temp '$temp'"
+    ___x_cmd cosmo llamafile "$@" --cli --prompt "$prompt" --temp "$temp"
+}
+
+___x_cmd_llmf_cli___exec(){
+    local model="$1";    shift
+    ___x_cmd_llmf___exec "$model" --cli --no-display-prompt --log-disable "$@"
+}
+
+# In the future, we should write it to disk. But the problem will be how can we ever delete
+___x_cmd_llmf_prompt_edit_(){
+    x_=""
+    local fp="$___X_CMD_ROOT_TMP/llmf/prompt/$$"
+    local prompt="$1"
+
+    local id=""
+    if [ ! -f "$fp" ]; then
+        x ensurefp "$fp"
+        printf "%s\n" "$prompt" >"$fp"
+    else
+        id=""; x ui select id "There is recently edited content in this shell sesion." \
+            "Load Recently Edited Content"      \
+            "Discard Recently Edited Content"
+
+        case "$id" in
+            1)      prompt="$(___x_cmd_cmds_cat "$fp")" ;;
+            *)      printf "%s\n" "$prompt" >"$fp" ;;
+        esac
+    fi
+
+    while true; do
+        prompt="$(x gum write --width 0 --value "$prompt")" || return 130
+        printf "%s\n" "$prompt" >"$fp"
+
+        id=""; x ui select id "The current prompt is:
+---------------- begin ----------------
+$prompt
+---------------- end ----------------
+" \
+        "Go back to edit again"      \
+        "Confirm"
+
+        case "$id" in
+            1)      continue ;;
+            2)      break ;;
+            *)      return 1 ;;
+        esac
+    done
+
+    x_="$(___x_cmd_cmds_cat "$fp")"
 }

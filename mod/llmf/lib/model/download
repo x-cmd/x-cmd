@@ -1,31 +1,31 @@
 # shellcheck shell=sh disable=SC3043
 
+# ___x_cmd_llmf_model_download llava/v1.5-7b/q4_k.gguf
 ___x_cmd_llmf_model_download(){
-    [ "$#" -ge 3 ] || N=llmf M="Please provide <model-name> <version> <quant-method>" log:ret:64
-    local model_name="${1}"
-    local model_version="${2}"
-    local model_quant="${3}"
+    local model="$1"
+    local x_=; ! ___x_cmd_llmf_model_which_ "$model" || {
+        llmf:info --cache "$x_" "The [model=$model] is exist"
+        return 0
+    }
 
-    local fp="$___X_CMD_PKG_ROOT_PATH/metadata/$___X_CMD_PKG_VERSION/llmf/${model_name}.json"
-    [ -f "$fp" ] || N=llmf M="Not found such model-name=$model_name" log:ret:1
+    if [ -z "$model" ]; then
+        ___x_cmd_is_interactive || N=llmf M="Please provide model <name/version/quant.format>" log:ret:64
 
-    local tmp_version=""
-    tmp_version="$(printf "%s" "${model_version}" | sed 's/\./\\./g')"
-    local hf=""
-    local model_type=""
-    x:info "fp: $fp tmp_version[$tmp_version] model_quant[$model_quant]"
-    < "$fp" x jo env  . hf=".${tmp_version}.${model_quant}.hf"      \
-                model_type=".${tmp_version}.${model_quant}.format"
+        model="$(___x_cmd_llmf_model_ls___app)" || return
+        [ -n "$model" ] || return
+        llmf:info "Planning execution => \`x llmf model download $model\`"
+        x ui yesno "Do you want to download [model=$model] ?" || return
+        ___x_cmd_llmf_model_download "$model"
+        return
+    fi
 
-    { [ -n "$hf" ] && [ -n "$model_type" ]; } || N=llmf M="The model does not exist or the data parsing is abnormal." log:ret:1
+    local tmpfile="$___X_CMD_ROOT_TMP/llmf/model/$model"
+    local cachefile="$___X_CMD_LLMF_MODEL_DATA_CACHE/$model"
 
-    local local_dir="$___X_CMD_ROOT_DATA/llmf/local"
-    local model_id="${model_name}/${model_version}/${model_quant}.${model_type}"
-    local tmpfile="${local_dir}/tmp/${model_id}"
-    local cachefile="${local_dir}/model/${model_id}"
-
+    x_=; ___x_cmd_llava___model2hf_ "$model" || return
+    llmf:info --hf "$x_" --cache "$cachefile" "Downloading [model=$model]"
     x ensurefp "$tmpfile"
-    x huggingface --publicdownload "${hf}" "$tmpfile" || N=llmf M="Fail to download [model=$model_id]" log:ret:1
+    x huggingface --publicdownload "$x_" "$tmpfile" || N=llmf M="Fail to download [model=$model]" log:ret:1
 
     x ensurefp "$cachefile"
     x mv "$tmpfile" "$cachefile"

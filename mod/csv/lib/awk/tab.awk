@@ -75,6 +75,11 @@ BEGIN{
     while ( (c = csv_irecord( data )) > 0 ) {
         data[ L L ] = c
         data[ L ] = CSV_IRECORD_CURSOR
+        if ( CSV_IRECORD_CURSOR == 1 ) CSV_TOTAL = c
+        if ( c != CSV_TOTAL ) {
+            ERROR_ROW = CSV_IRECORD_CURSOR
+            exit(1)
+        }
         if (STREAM_MODE == 0)   continue
         else                    handle_row_by_rule( CSV_IRECORD_CURSOR )
     }

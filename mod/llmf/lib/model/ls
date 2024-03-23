@@ -25,32 +25,42 @@ ___x_cmd_llmf_model_ls(){
 
 # Section: inner
 ___x_cmd_llmf_model_ls___json(){
-    local dir=""
+    local dir=
     case "$1" in
-        --local) dir="$___X_CMD_ROOT_DATA/llmf/model/data" ;;
-        *)       dir="$___X_CMD_PKG_ROOT_PATH/metadata/$___X_CMD_PKG_VERSION/llmf" ;;
+        --local)    dir="$___X_CMD_LLMF_MODEL_DATA_CACHE";;
+        *)          dir="$___X_CMD_LLMF_MODEL_DATA_INFO" ;;
     esac
     [ -d "$dir" ] || N=llmf M="Data is empty" log:ret:1
-    x fsiter "$dir" | ___x_cmd_llmf_model_ls___json_inner
+
+    (
+        ___x_cmd_cmds cd "$dir" || return
+        ___x_cmd_cmds find . -type f 2>/dev/null | while read -r l; do
+            [ "$l" = "${l%".log"}" ] || continue
+            l="${l#"./"}"
+            l="${l%"."*}"
+            printf "%s\n" "$l"
+        done
+    ) | ___x_cmd_llmf_model_ls___json_inner
+
 }
 
 ___x_cmd_llmf_model_ls___json_inner(){
-    local dir="$___X_CMD_PKG_ROOT_PATH/metadata/$___X_CMD_PKG_VERSION/llmf"
-    [ -d "$dir" ] || return
-    x cawk  -v dirpath="$dir"       \
-            -m j/json,j/jiter,j/jcp \
-            -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/parse.awk"
+    ___x_cmd_llava___prepare_metadata || return
+    x cawk -v dirpath="$___X_CMD_LLMF_MODEL_DATA_INFO" -m j/json,j/jiter,j/jcp \
+        -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/parse_info.awk"
 }
 
 ___x_cmd_llmf_model_ls___csv(){
     ___x_cmd_llmf_model_ls___json "$@" | x cawk -m j/json,j/jiter,csv -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/json2csv.awk"
 }
 
-___x_cmd_llmf_model_ls___app(){
-    local op="$1"; [ "$#" -le 0 ] || shift
-    local ___X_CMD_CSV_APP_DATA; ___X_CMD_CSV_APP_DATA="$( ___x_cmd_llmf_model_ls___csv "$op" )" || return
+___x_cmd_llmf_model_ls___app()(
+    local ___X_CMD_CSV_APP_DATA; ___X_CMD_CSV_APP_DATA="$( ___x_cmd_llmf_model_ls___csv "$@" )" || return
     [ -n "$___X_CMD_CSV_APP_DATA" ] || N=llmf M="Data is empty" log:ret:1
-    x csv app "$@"
-}
+    x csv app --return var --clear || return
+    [ -n "$___X_CMD_CSV_APP_DATA_name" ] || return
+    local selected="${___X_CMD_CSV_APP_DATA_name}/${___X_CMD_CSV_APP_DATA_version}/${___X_CMD_CSV_APP_DATA_quant}.${___X_CMD_CSV_APP_DATA_format}"
+    printf "%s\n" "$selected"
+)
 
 # EndSection
