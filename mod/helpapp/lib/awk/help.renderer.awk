@@ -1,5 +1,4 @@
-function print_helpdoc_init(no_color, websrc_region, theme_color0, theme_color1, desc_color0, desc_color1 ){
-    COMP_HELPDOC_WEBSRC_REGION  = websrc_region
+function print_helpdoc_init(no_color, theme_color0, theme_color1, desc_color0, desc_color1, position_order, po_arr ){
     COMP_HELPDOC_HELP_INDENT_LEN = 4;    COMP_HELPDOC_HELP_INDENT_STR = "    "
     COMP_HELPDOC_DESC_INDENT_LEN = 3;    COMP_HELPDOC_DESC_INDENT_STR = "   "
     COMP_HELPDOC_TAG_LEFT = "---- "
@@ -17,6 +16,8 @@ function print_helpdoc_init(no_color, websrc_region, theme_color0, theme_color1,
         COMP_HELPDOC_UI_THEME[0]   = ( theme_color0 == "" ) ? UI_FG_CYAN  : theme_color0
         COMP_HELPDOC_UI_THEME[1]   = ( theme_color1 == "" ) ? UI_FG_CYAN : theme_color1 # UI_FG_GREEN
     }
+
+    comp_parse_position_order( position_order, po_arr)
 }
 
 function locate_obj_prefix( obj, args,       i, j, l, argl, optarg_id, obj_prefix ){
@@ -148,6 +149,7 @@ function generate_flag_help_unit( obj, kp, arr, arr_kp,        i, v, l, _str, _m
 }
 
 function generate_flag_help(obj, kp, arr_group,        _str, l, i, k ){
+    if (! arr_group[ ADVISE_HAS_TAG ]) return
     if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = generate_flag_help_unit(obj, kp, arr_group, ADVISE_NULL_TAG ) "\n"
     l = arr_group[ L ]
     for (i=1; i<=l; ++i){
@@ -174,29 +176,30 @@ function generate_option_help_unit( obj, kp, arr, arr_kp,         i, v, l, _str,
         _str = _str comp_helpdoc_unit_line( th_interval(COMP_HELPDOC_UI_THEME) _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
             th_interval(COMP_HELPDOC_UI_DESC) _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
     }
-    return _str
+    return (_str != "") ? _str "\n" : ""
 }
 
 function generate_option_help( obj, kp, arr_group,           _str, l, i, k ) {
+    if (! arr_group[ ADVISE_HAS_TAG ]) return
     if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = generate_option_help_unit( obj, kp, arr_group, ADVISE_NULL_TAG)
     l = arr_group[ L ]
     for (i=1; i<=l; ++i){
         k = arr_group[ i ]
         if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
         if (! aobj_len( arr_group, k )) continue
-        _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_option_help_unit( obj, kp, arr_group, k) "\n"
+        _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_option_help_unit( obj, kp, arr_group, k)
     }
     if (_str == "") return
-    return generate_title("OPTIONS:") "\n" _str "\n"
+    return generate_title("OPTIONS:") "\n" _str
 }
 
 function generate_rest_argument_help( obj, kp, arr,         i, v, l, _str, _max_len, _text_arr, _option_after ){
+    if ((l = arr_len(arr)) <= 0) return
     arr_clone_of_kp( arr, _text_arr )
     _max_len = generate_help_for_namedoot_cal_maxlen_desc( obj, kp, _text_arr )
 
     th_interval_init(COMP_HELPDOC_UI_THEME)
     th_interval_init(COMP_HELPDOC_UI_DESC)
-    l = arr_len(arr)
     for ( i=1; i<=l; ++i ) {
         v = arr[ i ]
         help_get_ref(obj, kp SUBSEP v)
@@ -226,6 +229,7 @@ function generate_subcmd_help_unit( obj, kp, arr, arr_kp,        i, v, l, _str, 
 }
 
 function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _str_footer, l, i, k) {
+    if (! arr_group[ ADVISE_HAS_TAG ]) return
     _str_title = generate_title("SUBCOMMANDS:") "\n"
     if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = _str generate_subcmd_help_unit( obj, kp, arr_group, ADVISE_NULL_TAG)
     l = arr_group[ L ]
@@ -257,33 +261,38 @@ function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
         _res = _res k " "
     }
     _res = _res "<SUBCOMMAND> --help"
-    if (COMP_HELPDOC_WEBSRC_REGION == "\"cn\"") return "运行 '"_res"' 以获取有关命令的更多信息\n\n"
+    if (___X_CMD_HELP_LANGUAGE == "\"cn\"") return "运行 '"_res"' 以获取有关命令的更多信息\n\n"
     return "Run '"_res"' for more information on a command\n\n"
 }
 
 function generate_name_help( obj, kp,       n, d, _str){
+    kp = kp SUBSEP "\"#name\""
     if (aobj_is_null( obj, kp)) return
     th_interval_init(COMP_HELPDOC_UI_THEME)
     _str = generate_title("NAME:") "\n"
     n = obj[ kp ]
     if ( n == "{" ) {
         n = obj[ kp, 1 ]
-        if ((d = obj[ kp, n ]) == "null") d = aobj_get_value_with_local_language(obj, kp, COMP_HELPDOC_WEBSRC_REGION)
+        if ((d = obj[ kp, n ]) == "null") d = aobj_get_value_with_local_language(obj, kp, ___X_CMD_HELP_LANGUAGE)
     }
     _str = _str COMP_HELPDOC_HELP_INDENT_STR  th_interval(COMP_HELPDOC_UI_THEME) juq(n) COMP_HELPDOC_UI_END ( aobj_str_is_null(d) ? "" : " - " aobj_uq(d) ) "\n"
     return _str "\n"
 }
 
-function generate_desc_help(obj, kp,        _str, d){
-    if (aobj_is_null( obj, kp)) return
-    _str = generate_title("DESCRIPTON:") "\n"
-    d = obj[ kp ]
-    if ( d == "{" ) d = aobj_get_value_with_local_language(obj, kp, COMP_HELPDOC_WEBSRC_REGION)
-    _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line(aobj_uq(d), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
-    return _str "\n"
+function generate_desc_help(obj, kp, tip,        _str, d, tip_str){
+    kp = kp SUBSEP "\"#desc\""
+    tip_str = generate_tip_help(tip)
+    if (! aobj_is_null( obj, kp) ) {
+        d = obj[ kp ]
+        if ( d == "{" ) d = aobj_get_value_with_local_language(obj, kp, ___X_CMD_HELP_LANGUAGE)
+        _str = COMP_HELPDOC_HELP_INDENT_STR str_cut_line(aobj_uq(d), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
+    }
+    _str = (_str != "") ? _str "\n" tip_str : tip_str
+    return (_str != "") ? generate_title("DESCRIPTON:") "\n" _str : ""
 }
 
 function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {
+    kp = kp SUBSEP "\"#synopsis\""
     if (aobj_is_null( obj, kp)) return
     th_interval_init(COMP_HELPDOC_UI_THEME)
     _str = generate_title("SYNOPSIS:") "\n"
@@ -295,20 +304,21 @@ function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {
     for (i=1; i<=l; ++i){
         k = obj[ kp, jqu(i), 1]
         v = obj[ kp, jqu(i), k]
-        if (v == "null") v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), COMP_HELPDOC_WEBSRC_REGION)
+        if (v == "null") v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), ___X_CMD_HELP_LANGUAGE)
         _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( th_interval(COMP_HELPDOC_UI_THEME) juq(k) " " COMP_HELPDOC_UI_END aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     }
     return _str "\n"
 }
 
 function generate_tldr_help(obj, kp,            l, i, k, v, _str){
+    kp = kp SUBSEP "\"#tldr\""
     if (aobj_is_null( obj, kp)) return
     th_interval_init(COMP_HELPDOC_UI_THEME)
-    _str = generate_title("EXAMPLES:") "\n"
+    _str = generate_title("TLDR:") "\n"
     l = obj[ kp L ]
     for (i=1; i<=l; ++i){
         k = obj[ kp, jqu(i), "\"cmd\"" ]
-        v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), COMP_HELPDOC_WEBSRC_REGION)
+        v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), ___X_CMD_HELP_LANGUAGE)
         if ( ! aobj_str_is_null(v) ) _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( th_interval(COMP_HELPDOC_UI_THEME) aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
         _str = _str space_rep(COMP_HELPDOC_HELP_INDENT_LEN * 2) COMP_HELPDOC_UI_END  str_cut_line(aobj_uq(k), COMP_HELPDOC_HELP_INDENT_LEN * 2) "\n"
     }
@@ -316,7 +326,7 @@ function generate_tldr_help(obj, kp,            l, i, k, v, _str){
 }
 
 function generate_other_help_unit(obj, kp,      l, i, k, v, _str, _kp_language){
-    _kp_language = aobj_get_kp_with_local_language(obj, kp, COMP_HELPDOC_WEBSRC_REGION)
+    _kp_language = aobj_get_kp_with_local_language(obj, kp, ___X_CMD_HELP_LANGUAGE)
     if ( ! aobj_is_null(obj, _kp_language) ) return generate_other_help_unit(obj, _kp_language)
     l = obj[ kp L ]
     for (i=1; i<=l; ++i){
@@ -328,6 +338,7 @@ function generate_other_help_unit(obj, kp,      l, i, k, v, _str, _kp_language){
 }
 
 function generate_other_help(obj, kp,       l, i, k, v, _str){
+    kp = kp SUBSEP "\"#other\""
     if (aobj_is_null( obj, kp)) return
     th_interval_init(COMP_HELPDOC_UI_THEME)
     return generate_title("SEE ALSO:") "\n" generate_other_help_unit(obj, kp)
@@ -336,7 +347,7 @@ function generate_other_help(obj, kp,       l, i, k, v, _str){
 function generate_tip_help_unit( arr, kp, color, title,            l, i, _str, v){
     l = arr[ kp L ]
     for (i=1; i<=l; ++i) {
-        if ( (v = arr[ kp, "\""i"\"" ]) == "{" ) v = aobj_uq(aobj_get_value_with_local_language(arr, kp SUBSEP "\""i"\"", COMP_HELPDOC_WEBSRC_REGION))
+        if ( (v = arr[ kp, "\""i"\"" ]) == "{" ) v = aobj_uq(aobj_get_value_with_local_language(arr, kp SUBSEP "\""i"\"", ___X_CMD_HELP_LANGUAGE))
         sub("\n+$", "", v)
         _str = _str COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_UI_TITLE color title "\n" COMP_HELPDOC_UI_END COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_HELP_INDENT_STR  str_cut_line( v, COMP_HELPDOC_HELP_INDENT_LEN * 2) COMP_HELPDOC_UI_END "\n"
     }
@@ -352,14 +363,20 @@ function generate_tip_help(arr,         _str, i, l, kp, color, title){
         else if ( kp == "#tip:danger" )   { color = COMP_HELPDOC_UI_TIP_DANGER; title = "DANGER:"; }
         _str = _str generate_tip_help_unit(arr, kp, color, title)
     }
-    return _str "\n"
+    return (_str != "" ) ? _str "\n" : ""
 }
 
 function help_get_ref(obj, kp,        msg){
     if ((msg = comp_advise_get_ref(obj, kp)) != true) return panic( msg )
 }
 
-function print_helpdoc( obj, kp, width,        _res, i, j, l, v, s, _has_tip, _has_name, _has_description, _has_synopsis, _has_tldr, _has_other, TIP, RESTOPT, OPTION_GROUP, SUBCMD_GROUP, FLAG_GROUP ){
+function comp_parse_position_order(str, arr,        i, l){
+    sub("^[-]+", "", str)
+    if (str == "") str = "name,synopsis,desc,tldr,option,flag,arg,subcmd,other"
+    return arr_cut( arr, str, "," )
+}
+
+function print_helpdoc( obj, kp, width, po_arr,             _res, i, j, l, v, s, TIP, RESTOPT, OPTION_GROUP, SUBCMD_GROUP, FLAG_GROUP ){
     if (width < 50) return "The current width is not enough to display the help document!\n"
     COMP_HELPDOC_WIDTH = width
     COMP_HELPDOC_LEFT_W = int(width/5) * 3
@@ -369,13 +386,7 @@ function print_helpdoc( obj, kp, width,        _res, i, j, l, v, s, _has_tip, _h
     for (i=1; i<=l; ++i) {
         v = aobj_get( obj, kp SUBSEP i)
         s = juq(v)
-        if ( s == "#name")              _has_name = true
-        else if ( s == "#desc")         _has_description = true
-        else if ( s == "#synopsis")     _has_synopsis = true
-        else if ( s == "#tldr")         _has_tldr = true
-        else if ( s == "#other")        _has_other = true
-        else if ( s ~ "^#tip" ) {
-            _has_tip = true
+        if ( s ~ "^#tip" ) {
             arr_push(TIP, s)
             cp_cover(TIP, s, obj, kp SUBSEP v)
         }
@@ -383,17 +394,20 @@ function print_helpdoc( obj, kp, width,        _res, i, j, l, v, s, _has_tip, _h
     }
 
     comp_advise_parse_group(obj, kp, SUBCMD_GROUP, OPTION_GROUP, FLAG_GROUP)
+    l = po_arr[L]
+    for (i=1; i<=l; ++i){
+        v = po_arr[i]
+        if (v == "name")            _res = _res generate_name_help( obj, kp )
+        else if (v == "synopsis")   _res = _res generate_synopsis_help( obj, kp )
+        else if (v == "desc")       _res = _res generate_desc_help( obj, kp, TIP )
+        else if (v == "option")     _res = _res generate_option_help( obj, kp, OPTION_GROUP )
+        else if (v == "flag")       _res = _res generate_flag_help( obj, kp, FLAG_GROUP )
+        else if (v == "arg")        _res = _res generate_rest_argument_help( obj, kp, RESTOPT )
+        else if (v == "subcmd")     _res = _res generate_subcmd_help( obj, kp, SUBCMD_GROUP )
+        else if (v == "tldr")       _res = _res generate_tldr_help( obj, kp )
+        else if (v == "other")      _res = _res generate_other_help( obj, kp )
+    }
 
-    if ( _has_name == true )                        _res =      generate_name_help( obj, kp SUBSEP "\"#name\"")
-    if ( _has_synopsis == true )                    _res = _res generate_synopsis_help( obj, kp SUBSEP "\"#synopsis\"")
-    if ( _has_description == true )                 _res = _res generate_desc_help( obj, kp SUBSEP "\"#desc\"")
-    if ( _has_tip == true )                         _res = _res generate_tip_help(TIP)
-    if (OPTION_GROUP[ ADVISE_HAS_TAG ])             _res = _res generate_option_help( obj, kp, OPTION_GROUP )
-    if (FLAG_GROUP[ ADVISE_HAS_TAG ])               _res = _res generate_flag_help( obj, kp, FLAG_GROUP )
-    if (arr_len(RESTOPT))                           _res = _res generate_rest_argument_help( obj, kp, RESTOPT )
-    if (SUBCMD_GROUP[ ADVISE_HAS_TAG ])             _res = _res generate_subcmd_help( obj, kp, SUBCMD_GROUP )
-    if ( _has_tldr == true )                        _res = _res generate_tldr_help( obj, kp SUBSEP "\"#tldr\"")
-    if ( _has_other == true )                       _res = _res generate_other_help( obj, kp SUBSEP "\"#other\"")
     gsub("\n+$", "\n", _res)
     return _res
 }

@@ -1,0 +1,121 @@
+
+___X_CMD_ASDF_INSTANCE_PATH="$___X_CMD_ROOT_DATA/asdf"
+___X_CMD_ASDF_DEFAULT_VERSION=v0.14.0
+
+# Section: version
+___x_cmd_asdf_manager___version_latest(){
+    ___x_cmd_asdf_manager___version | ___x_cmd_cmds head -n 1
+}
+
+___x_cmd_asdf_manager___version(){
+    (
+        ___x_cmd_inner_cd "$___X_CMD_ASDF_INSTANCE_PATH"
+        ___x_cmd_asdf_manager___version___ls
+    )
+}
+
+___x_cmd_asdf_manager___version___ls(){
+    ___x_cmd_cmds git tag -l | ___x_cmd_cmds sort -r -t '.' -k 1 -nk 2
+}
+# EndSection
+
+# Section: install/uninstall
+___x_cmd_asdf_manager___install(){
+    ___x_cmd_asdf_manager___download    || return
+    ___x_cmd_asdf_manager___activate    || return
+}
+
+___x_cmd_asdf_manager___uninstall(){
+    ___x_cmd_asdf_manager___deactivate  || return
+    ___x_cmd_asdf_manager___remove      || return
+}
+
+___x_cmd_asdf_manager___upgrade(){
+    ___x_cmd_asdf_manager___switch "$@"
+}
+
+___x_cmd_asdf_manager___switch(){
+    ___x_cmd_asdf_manager___download "$1"
+}
+
+___x_cmd_asdf_manager___allversion(){
+    ___x_cmd_asdf_manager___version
+}
+
+# EndSection
+
+# Section: activate/deactivate
+___x_cmd_asdf_manager___activate(){
+    # TODO: must quote the path with single quote
+    local cmd="export ASDF_DIR='$___X_CMD_ASDF_INSTANCE_PATH' ; export ASDF_DATA_DIR='$___X_CMD_ASDF_INSTANCE_PATH'; [ ! -f '$___X_CMD_ASDF_INSTANCE_PATH/asdf.sh' ] || . '$___X_CMD_ASDF_INSTANCE_PATH/asdf.sh'"
+    eval "$cmd"
+    asdf:info "asdf activated, if you want to deactivate, run 'x asdf --deactivate'"
+    x boot rc add asdf-activate "$cmd"
+}
+
+___x_cmd_asdf_manager___isactivated(){
+    case "$(___x_cmd boot rc ls)" in
+        *asdf-activate*)    return 0 ;;
+        *)                  return 1 ;;
+    esac
+}
+
+___x_cmd_asdf_manager___deactivate(){
+    x path rm "$___X_CMD_ROOT_DATA/asdf/shims"
+    x path rm "$___X_CMD_ROOT_DATA/asdf/bin"
+    unset ASDF_DIR
+    unset ASDF_DATA_DIR
+    x boot rc del asdf-activate
+}
+# EndSection
+
+# Section: download / remove ==> Normally, user just only use install
+___x_cmd_asdf_manager___download(){
+    local version="${1}"
+
+    asdf:info "Download asdf from https://github.com/asdf-vm/asdf.git"
+    ___x_cmd_hascmd git     || x env use git                || return
+    ___x_cmd_hascmd curl    || x env use curl               || return
+
+    if ! [ -d "$___X_CMD_ASDF_INSTANCE_PATH" ] ; then
+        ___x_cmd_cmds git clone \
+            https://github.com/asdf-vm/asdf.git \
+            "$___X_CMD_ASDF_INSTANCE_PATH"          || N=asdf M="Fail to git clone" log:ret:1
+    else
+        ___x_cmd_inner_cd \
+            "$___X_CMD_ASDF_INSTANCE_PATH"
+
+        ___x_cmd_cmds git fetch                     || N=asdf M="Fail to git fetch" log:ret:1
+    fi
+
+    [ -z "$version" ] || {
+        version="$(___x_cmd_asdf_manager___version_latest)"
+        asdf:info "Version not specified. So we will use the latest version -> $version"
+    }
+    ___x_cmd_cmds checkout "$version"
+}
+
+___x_cmd_asdf_manager___remove(){
+    ! ___x_cmd_asdf_manager___isactivated || {
+        if ! ___x_cmd_is_interactive; then
+            asdf:error "ASDF should be deactivate first"
+            return 1
+        fi
+
+        local id
+        x ui select id "ASDF is still activated"    \
+            "x asdf --deactivate"   \
+            "ABORT"
+
+        case "$id" in
+            1)      ___x_cmd_asdf --deactivate ;;
+            *)      asdf:info "ABORT the asdf remove process"
+                    return 1
+        esac
+    }
+
+    asdf:info "Removing asdf directory -> $___X_CMD_ASDF_INSTANCE_PATH"
+    ___x_cmd rmrf "$___X_CMD_ASDF_INSTANCE_PATH"
+}
+# EndSection
+

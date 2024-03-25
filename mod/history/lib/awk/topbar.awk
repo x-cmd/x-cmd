@@ -1,25 +1,20 @@
 
 BEGIN{
     BARLEN = 50
-    TOP = int( ENVIRON[ "top" ] )
     if ( TOP <= 0 ) TOP = 16
-}
-
-
-{
-    if ($2 ~ "^[\\[\\{\\(_]")   next
-    if ($2 ~ "^[^\\(]+\\(\\)")  next
-    if ($2 ~ "^\\\\n")          next
 }
 
 {
     count = $1
     $1 = ""
-    cmd = $0
-    gsub( "^ *", "", cmd )
+    cmd = str_trim($0)
 
     cmdlist[ ++ cmdlistl ] = cmd
     cmdc [ cmd ] = count
+    if (cmdlistl <= TOP) {
+        w = length(cmd)
+        if (max_w < w) max_w = w
+    }
 
     TOTAL += count
 }
@@ -31,32 +26,26 @@ END{
         cmd = cmdlist[ id ]
         count = cmdc[ cmd ]
 
-        # if (cmd ~ "^[\\[\\{\\(_]")  continue
-        # if (cmd ~ "^[^\\(]+\\(\\)") continue
-        # if (cmd ~ "^\\\\n")         continue
-
         if (MAX == "")  MAX = count
 
         if ( id <= 10 ) {
             printf("\033[0;35m%5d ",    count)
             printf("\033[1;32m%4s ",    int(count/TOTAL * 100) "%")
-            printf("\033[0m\t%-10s ",   cmd)
+            printf("\033[0m\t%-"max_w"s  ",   cmd)
             printf("\033[0;1m%s\n",     drawbar( BARLEN * count / MAX, BARLEN, "\033[46m") )
         } else {
             printf("\033[2;35m%5d ",    count)
             printf("\033[2;32m%4s ",    int(count/TOTAL * 100) "%")
-            printf("\033[0;2m\t%-10s ", cmd)
+            printf("\033[0;2m\t%-"max_w"s  ", cmd)
             printf("\033[0;2m%s\n",     drawbar( BARLEN * count / MAX, BARLEN, "\033[2;42m") )
         }
-
-
-        # printf("\033[35m%5d \033[32m%4s \033[0;1m\t%-10s  %s\n",  \
-        #     count,                                      \
-        #     int(count/TOTAL * 100) "%",                 \
-        #     cmd,                                        \
-        #     drawbar( BARLEN * count / MAX, BARLEN))
-        # printf("\033[31m%5d  \033[0m%s\n", count, drawbar_str( int(BARLEN * count / MAX), BARLEN, cmd))
     }
+}
+
+function str_trim(astr){
+    gsub(/^[ \t\b\v\n]+/, "", astr)
+    gsub(/[ \t\b\v\n]+$/, "", astr)
+    return astr
 }
 
 function drawbar( num, n, positive_style,       i, a ){

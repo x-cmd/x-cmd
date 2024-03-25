@@ -105,7 +105,8 @@ function tapp_init(){
     TH_HETHEME_THEME_COLOR1 = ENVIRON[ "___X_CMD_HELP_THEME_COLOR_CODE_1" ]
     TH_HETHEME_DESC_COLOR0  = ENVIRON[ "___X_CMD_HELP_DESC_COLOR_CODE_0" ]
     TH_HETHEME_DESC_COLOR1  = ENVIRON[ "___X_CMD_HELP_DESC_COLOR_CODE_1" ]
-    print_helpdoc_init(IS_TH_NO_COLOR, WEBSRC_REGION, TH_HETHEME_THEME_COLOR0, TH_HETHEME_THEME_COLOR1, TH_HETHEME_DESC_COLOR0, TH_HETHEME_DESC_COLOR1)
+    TH_HELP_POSITION_ORDER  = ENVIRON[ "___X_CMD_HELP_POSITION_ORDER" ]
+    print_helpdoc_init(IS_TH_NO_COLOR, TH_HETHEME_THEME_COLOR0, TH_HETHEME_THEME_COLOR1, TH_HETHEME_DESC_COLOR0, TH_HETHEME_DESC_COLOR1, TH_HELP_POSITION_ORDER, TH_HELP_POSITION_ORDER_ARR)
     APPKP = "helpapp_kp"
     NAVI_KP = APPKP SUBSEP 1
     HELP_KP = APPKP SUBSEP 2
@@ -211,7 +212,7 @@ function user_helpdoc_paint( x1, x2, y1, y2, is_ctrl_help,      rootkp, w, _res)
         w = y2 - y1 - 4
         if ( ! change_is( HELPDOC, rootkp, w)) {
             # HELPDOC[ rootkp, w ] = jstr(FILE_DATA_OBJ, "DATA" SUBSEP rootkp)
-            HELPDOC[ rootkp, w ] = print_helpdoc(FILE_DATA_OBJ, "DATA" SUBSEP rootkp, w)
+            HELPDOC[ rootkp, w ] = print_helpdoc(FILE_DATA_OBJ, "DATA" SUBSEP rootkp, w, TH_HELP_POSITION_ORDER_ARR)
             change_set( HELPDOC, rootkp, w)
         }
 

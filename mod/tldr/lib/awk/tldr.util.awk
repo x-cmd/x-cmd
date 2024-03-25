@@ -148,7 +148,7 @@ function comp_tldr_init_of_mdfile(col, no_color, no_background){
 }
 
 function comp_tldr_paint_of_file_content(content, width, no_color, no_background,      r, i, l, _, cmd, _res){
-    if (width < 50) return "The current width is not enough to display the tldr document!"
+    if (width < 20) return "The current width is not enough to display the tldr document!"
     comp_tldr_init_of_mdfile(width, no_color, no_background)
 
     l = split(content, _, "\n")

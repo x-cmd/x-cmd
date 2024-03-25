@@ -39,5 +39,3 @@ BEGIN{
     if (size > 0) l = (( l > size ) ? size : l)
     for (i=1; i<=l; ++i) print result[i]
 }
-
-

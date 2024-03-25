@@ -30,5 +30,3 @@ BEGIN{
     sortfornext( ENVIRON[ "cmd" ], result )
     for (i=1; i<=result[L]; ++i) print result[i]
 }
-
-

@@ -1,4 +1,4 @@
-BEGIN{  if (WEBSRC_REGION != "cn") WEBSRC_REGION = "en";  WEBSRC_REGION = jqu(WEBSRC_REGION);  }
+BEGIN{  if (___X_CMD_HELP_LANGUAGE != "cn") ___X_CMD_HELP_LANGUAGE = "en";  ___X_CMD_HELP_LANGUAGE = jqu(___X_CMD_HELP_LANGUAGE);  }
 function aobj_get_value_with_local_language(o, kp, language){
     return o[ aobj_get_kp_with_local_language(o, kp, language) ]
 }
@@ -144,10 +144,10 @@ function aobj_get_description( obj, obj_prefix,         d, _kp, _kp_name, _n ){
     _kp_name = aobj_get_special_value_id( obj_prefix, "name" )
     _n = obj[ _kp_name ]
     if ( _n == "{" ) d = obj[ _kp_name, obj[ _kp_name, 1 ] ]
-    if ( d =="null" ) d = aobj_get_value_with_local_language(obj, _kp_name, WEBSRC_REGION)
+    if ( d =="null" ) d = aobj_get_value_with_local_language(obj, _kp_name, ___X_CMD_HELP_LANGUAGE)
     if ( d == "" ) {
         _kp = aobj_get_special_value_id( obj_prefix, "desc" )
-        if ( (d = obj[ _kp ]) == "{" ) d = aobj_get_value_with_local_language(obj, _kp, WEBSRC_REGION)
+        if ( (d = obj[ _kp ]) == "{" ) d = aobj_get_value_with_local_language(obj, _kp, ___X_CMD_HELP_LANGUAGE)
     }
     if ( ! aobj_str_is_null(d) ) return aobj_uq(d)
 }

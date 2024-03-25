@@ -12,7 +12,10 @@
 END{
     for (i=1; i<=cmd0arr[L]; ++i) {
         cmd0 = cmd0arr[i]
+        if (cmd0 ~ "^[\\[\\{\\(_]")         continue
+        else if (cmd0 ~ "^[^\\(]+\\(\\)")   continue
+        else if (cmd0 ~ "^\\\\n")           continue
+        else if (cmd0 ~ "^<")               continue
         print cmd0map[cmd0], cmd0
-        # print cmd0
     }
 }
