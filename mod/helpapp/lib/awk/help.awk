@@ -7,7 +7,7 @@ END{
     TH_HETHEME_DESC_COLOR0  = ENVIRON[ "___X_CMD_HELP_DESC_COLOR_CODE_0" ]
     TH_HETHEME_DESC_COLOR1  = ENVIRON[ "___X_CMD_HELP_DESC_COLOR_CODE_1" ]
     TH_HELP_POSITION_ORDER  = ENVIRON[ "___X_CMD_HELP_POSITION_ORDER" ]
-q
+
     prepare_argarr(ARGSTR, HELP_ARG_SEP)
     obj_prefix = locate_obj_prefix( obj, args )
 

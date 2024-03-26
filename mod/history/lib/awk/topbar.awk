@@ -20,6 +20,7 @@ BEGIN{
 }
 
 END{
+    if ( TOP > cmdlistl ) TOP = cmdlistl
     while (1) {
         if (id++ >= TOP)  exit(0)
 
