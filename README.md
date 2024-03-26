@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-Currently in beta testing (v0.2.15), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
+Currently in beta testing (v0.3.0), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
 <br>
 If you like x-cmd, please give us a star ⭐.
 <br>
@@ -39,7 +39,7 @@ Your support is our biggest motivation.
 4. Provides a range of interactive CLI tools (gh for github, gt for gitee, with more tool modules to be released in the next six months).
 5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 1.1MB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
-Now there are more than **100** [modules](https://x-cmd.com/mod), **nearly 500** [packages](https://x-cmd.com/pkg), and **more than 1000** [install](https://www.x-cmd.com/install/) receipes ~
+Now there are more than **200** [modules](https://x-cmd.com/mod), **more than 500** [packages](https://x-cmd.com/pkg), and **more than 1100** [install](https://www.x-cmd.com/install/) receipes ~
 
 ## [Module](https://x-cmd.com/mod/)
 
