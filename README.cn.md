@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-现在处于 beta 阶段（v0.2.15 版本），请勿用于生产环境。我们计划在未来三个月以每个月3个版本的速度往前迭代。
+现在处于 beta 阶段（v0.3.0 版本），请勿用于生产环境。我们计划在未来三个月以每个月3个版本的速度往前迭代。
 <br>
 如果你觉得 x-cmd 不错，请给我们一个 star ⭐
 <br>
@@ -39,7 +39,7 @@
 4. 提供一系列的交互式 cli 工具（ gh for github, gt for gitee ，更多的工具模块将在最近半年发布）
 5. 极轻极快: 包括全功能模块安装包体积 1.1MB，首启后 shell 的加载时间一般不超过100ms
 
-现有 **超过 100** 个[模块](https://x-cmd.com/mod)，**接近 500 个**的[包](https://x-cmd.com/pkg)，以及 **超过 1000 条** [install](https://www.x-cmd.com/install/) receipe ~
+现有 **超过 200** 个[模块](https://x-cmd.com/mod)，**超过 500 个**的[包](https://x-cmd.com/pkg)，以及 **超过 1100 条** [install](https://www.x-cmd.com/install/) 指南 ~
 
 ## [模块](https://x-cmd.com/mod/)
 
