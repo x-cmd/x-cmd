@@ -66,7 +66,7 @@
 | [openssl](https://cn.x-cmd.com/pkg/openssl) | [openssl](https://www.openssl.org/) | 安全密码学工具 |
 | [fd](https://cn.x-cmd.com/pkg/fd) | [fd](https://github.com/sharkdp/fd) | find的高效替代 |
 | [rg](https://cn.x-cmd.com/pkg/rg) | [rg](https://github.com/BurntSushi/ripgrep) | grep的高效替代 |
-| [sd](https://cn.x-cmd.com/pkg/sd) | [rg](https://github.com/BurntSushi/ripgrep) | 类sed，但更易上手 |
+| [sd](https://cn.x-cmd.com/pkg/sd) | [sd](https://github.com/chmln/sd) | 类sed，但更易上手 |
 | [bat](https://cn.x-cmd.com/pkg/bat) | [bat](https://github.com/sharkdp/bat) | cat的rust实现 |
 | [nmap](https://cn.x-cmd.com/pkg/nmap) | [nmap](https://nmap.org/) | 安全扫描工具 |
 | [pandoc](https://cn.x-cmd.com/pkg/pandoc) | [pandoc](https://pandoc.org/) | 文档格式转换工具 |

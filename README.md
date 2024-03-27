@@ -66,7 +66,7 @@ Now there are more than **200** [modules](https://x-cmd.com/mod), **more than 50
 | [openssl](https://x-cmd.com/pkg/openssl) | [openssl](https://www.openssl.org/) | Secure cryptographic |
 | [fd](https://x-cmd.com/pkg/fd) | [fd](https://github.com/sharkdp/fd) | Efficient replacement for find|
 | [rg](https://x-cmd.com/pkg/rg) | [rg](https://github.com/BurntSushi/ripgrep) | Efficient replacement for grep|
-| [sd](https://x-cmd.com/pkg/sd) | [rg](https://github.com/BurntSushi/ripgrep) | Like sed, but more easy to use |
+| [sd](https://x-cmd.com/pkg/sd) | [sd](https://github.com/chmln/sd) | Like sed, but more easy to use |
 | [bat](https://x-cmd.com/pkg/bat) | [bat](https://github.com/sharkdp/bat) |Rust implementation of cat|
 | [nmap](https://x-cmd.com/pkg/nmap) | [nmap](https://nmap.org/) | Security scanning |
 | [pandoc](https://x-cmd.com/pkg/pandoc) | [pandoc](https://pandoc.org/) | Document format conversion |
