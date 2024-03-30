@@ -13,7 +13,7 @@ ___x_cmd_mirror_apt(){
 
     x hascmd apt || N=mirror M="[command=apt] not found." log:ret:1
     case "$op" in
-        ls|replace|current|rollback)
+        ls|replace|current|unset)
                 ___x_cmd_mirror_apt_"${op}"               "$@" ;;
         set)    ___x_cmd_mirror_apt_replace               "$@" ;;
         *)      ___x_cmd_mirror___util_subcmd_invalid apt "$@" ;;
@@ -33,7 +33,7 @@ ___x_cmd_mirror_apt___app(){
         1)  ___x_cmd_mirror_apt_replace       ;;
         2)  ___x_cmd_mirror_apt_current       ;;
         3)  ___x_cmd_mirror_apt_ls            ;;
-        4)  ___x_cmd_mirror_apt_rollback      ;;
+        4)  ___x_cmd_mirror_apt_unset         ;;
         *)  mirror:info "Canceled" ; return 1 ;;
     esac
 }
@@ -69,6 +69,8 @@ ___x_cmd_mirror_apt_replace() {
             return   ;;
     esac
 
+    ___x_cmd_mirror_apt_save || N=mirror M="Save apt original sources list failed." log:ret:1
+
     # TODO: Some problem in ubuntu 12.04
     local url
     url="$(___x_cmd_mirror_apt___url "${1}")" || return
@@ -80,7 +82,7 @@ ___x_cmd_mirror_apt_replace() {
 
     local src_path
     src_path="/etc/apt/sources.list"
-    ___x_cmd_proxy___util_backup /etc/apt/sources.list apt
+    # ___x_cmd_proxy___util_backup /etc/apt/sources.list apt
 
     local tmp
     tmp="$(___x_cmd_cmds_cat $src_path)"
@@ -99,29 +101,18 @@ ___x_cmd_mirror_apt_replace() {
 # Rollback from the last backup file.
 # Get the last backup file from the backup directory.
 # shellcheck disable=SC2120
-___x_cmd_mirror_apt_rollback() {
-    case "$1" in
-        ls)
-            ___x_cmd_mirror_apt_rollback_ls
-            return 0
-            ;;
-        -h|--help)
-            x help -m mirror apt rollback "$@"
-            return 0
-            ;;
-        *)  ;;
-    esac
 
-    if [ "$(id -u)" -ne 0 ]; then
-        mirror:warn "using sudo"
-        IS_ROOT=1 ___x_cmd_mirror___util_rollback /etc/apt/sources.list apt "$1"
-        sudo apt update
-    else
-        ___x_cmd_mirror___util_rollback /etc/apt/sources.list apt "$1"
-        apt update
-    fi
+___x_cmd_mirror_apt_save(){
+    ___x_cmd_mirror___util_save "/etc/apt/sources.list" "apt"
 }
 
-___x_cmd_mirror_apt_rollback_ls() {
-    ___x_cmd_mirror___util_rollback_ls apt
+___x_cmd_mirror_apt_rollback(){
+    ___x_cmd_mirror___util_rollback_original "/etc/apt/sources.list" "apt" || return
+    x rmrf "$___X_CMD_ROOT_DATA/mirror/apt"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        x sudo apt update
+    else
+               apt update
+    fi
 }

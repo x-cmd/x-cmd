@@ -74,8 +74,8 @@ function tapp_handle_exit( exit_code,       rootkp, _ ){
     if (exit_is_with_cmd()){
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_THEME_POSITION", comp_navi_current_position_get(o, APPKP)) )
         if (FINALCMD == "ENTER"){
-                if (comp_navi_cur_preview_type_is_sel( o, APPKP ))    rootkp = comp_navi_get_col_rootkp(o, APPKP, 3)
-                else    rootkp = comp_navi_get_cur_rootkp(o, APPKP)
+            if (comp_navi_cur_preview_type_is_sel( o, APPKP ))  rootkp = comp_navi_get_col_rootkp(o, APPKP, 3)
+            else                                                rootkp = comp_navi_get_cur_rootkp(o, APPKP)
 
             split(rootkp, _, "/")
             tapp_send_finalcmd( sh_varset_val( "___X_CMD_THEME_SCHEME", _[2] "/" _[3]) )

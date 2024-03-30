@@ -8,6 +8,7 @@ function tapp_init(){
     navi_init(o, LSENV_KP)
     navi_statusline_init( o, LSENV_KP )
     comp_textbox_init(o, "CUSTOM_FILEINFO_KP")
+    comp_navi_current_position_var(o, LSENV_KP, ENVIRON[ "___X_CMD_ENV_NAVI_POSITION" ])
 }
 
 # EndSection
@@ -52,6 +53,7 @@ function user_data_add( o, kp, rootkp, str,         preview, _, v) {
 
 function tapp_handle_exit( exit_code,       s, v, _, len ){
     if (exit_is_with_cmd()){
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_ENVAPP_POSITION", comp_navi_current_position_get(o, LSENV_KP)) )
         s = comp_navi_get_cur_rootkp(o, LSENV_KP)
         v = o[ LSENV_KP, s, "info", "\"version\"" ]
         if (v == "") return
