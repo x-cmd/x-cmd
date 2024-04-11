@@ -6,6 +6,7 @@ BEGIN{
 }
 
 function csva_handle( data,     r, b, c, i, _lastcell, _tmp, _tmpl ){
+    if (data == "") return
     if (CSVA_COMPLETE == false) data = CSVA_LAST data
     else {
         CNF = 0

@@ -86,7 +86,7 @@ function env_code(VAR, text){
     gsub(/\\/, "\\\\", text)
     gsub(/"/, "\\\"", text)
     gsub("\n", "\\n", text)
-    printf("%s", VAR "=\"$(printf \"" text "\")\"; ")
+    printf("%s\n", VAR "=\"$(printf \"" text "\")\"; ")
 }
 
 BEGIN {

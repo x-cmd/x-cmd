@@ -11,6 +11,83 @@
     return 0
 }
 
+# Section 0: get ___X_CMD_SHELL and TMPDIR
+___x_cmd_readlink_recursive_(){
+    if [ -L "${1:?Provide link}" ]; then
+        local next_link
+        next_link="$(readlink "${1}")" || return
+        if [ "${next_link#/}" = "$next_link" ]; then
+            next_link="$(dirname "${1}")/$next_link"
+        fi
+        ___x_cmd_readlink_recursive_ "$next_link"
+    else
+        [ ! -e "${1}" ] && return 1        # File Not Exists
+        ___X_CMD_READLINK_RECURSIVE_="$1"
+    fi
+}
+
+# Variables defined with the alias can only be used after this point.
+if [ -n "$BASH_VERSION" ]; then
+    ___X_CMD_SHELL=bash
+    shopt -s expand_aliases
+elif [ -n "$ZSH_VERSION" ]; then
+    ___X_CMD_SHELL=zsh
+    # The same as 'shopt -s expand_aliases' in bash, refer: https://stackoverflow.com/questions/23258413/expand-aliases-in-non-interactive-shells
+    setopt aliases
+    zmodload zsh/system
+    # for pidofsubshell acceleration. not necessary.
+    # <topic:opt/>
+    # <topic:zsh/>
+    # NOTICE: for restricted shell, this might be a problem
+elif [ -n "$KSH_VERSION" ]; then
+    case "$KSH_VERSION" in
+        *PD\ KSH*)
+            ___X_CMD_SHELL=ksh
+            # This is the ksh that can run x-bash
+            ;;
+        *)
+            x(){
+                :
+            }
+            # Only support the xbin, not x-cmd
+            return
+            ;;
+    esac
+    # ___X_CMD_SHELL=ksh
+    # alias local=typeset
+else
+    if [ -r "/proc/$$/cmdline" ]; then  read -r ___X_CMD_SHELL <"/proc/$$/cmdline"
+    else                                ___X_CMD_SHELL="${0}"
+    fi
+    case "$___X_CMD_SHELL" in
+        *dash*)      ___X_CMD_SHELL=dash ;;
+        *)
+            if ___x_cmd_readlink_recursive_  "$___X_CMD_SHELL"; then
+                case "$___X_CMD_READLINK_RECURSIVE_" in
+                    *dash*)     ___X_CMD_SHELL=dash ;;
+                    *busybox*)  ___X_CMD_SHELL=ash  ;;
+                    *)          ___X_CMD_SHELL=
+                esac
+            else
+                ___X_CMD_SHELL=
+            fi
+            ;;
+    esac
+    # printf "%s\n" "- W|x: Unknown shell." >&2
+    # TODO: "${___X_CMD_SHELL//a/b}" exit 2
+    # if : "${___X_CMD_SHELL//a/b}"; then
+    #     ___X_CMD_SHELL=ash
+    # else
+    #     ___X_CMD_SHELL=dash
+    # fi 2>/dev/null
+    # TODO: Otherwise, loading a remarkable script to detect shell
+fi
+___X_CMD_CUR_SHELL="${___X_CMD_SHELL:-sh}"      # TODO: will remove
+
+[ -n "$TMPDIR" ] || TMPDIR="$(dirname "$(mktemp -u)")/"     # It is posix standard. BUT NOT set in some cases.
+# EndSection
+
+
 ___x_cmd_help_ret(){
     eval x help -m "${M}"
     return 1
@@ -170,81 +247,6 @@ ___x_cmd_followlink_(){
     ___x_cmd_readlink_recursive_ "$@" || return
     x_="$___X_CMD_READLINK_RECURSIVE_"
 }
-
-___x_cmd_readlink_recursive_(){
-    if [ -L "${1:?Provide link}" ]; then
-        local next_link
-        next_link="$(readlink "${1}")" || return
-        if [ "${next_link#/}" = "$next_link" ]; then
-            next_link="$(dirname "${1}")/$next_link"
-        fi
-        ___x_cmd_readlink_recursive_ "$next_link"
-    else
-        [ ! -e "${1}" ] && return 1        # File Not Exists
-        ___X_CMD_READLINK_RECURSIVE_="$1"
-    fi
-}
-
-# Variables defined with the alias can only be used after this point.
-if [ -n "$BASH_VERSION" ]; then
-    ___X_CMD_SHELL=bash
-    shopt -s expand_aliases
-elif [ -n "$ZSH_VERSION" ]; then
-    ___X_CMD_SHELL=zsh
-    # The same as 'shopt -s expand_aliases' in bash, refer: https://stackoverflow.com/questions/23258413/expand-aliases-in-non-interactive-shells
-    setopt aliases
-    zmodload zsh/system
-    # for pidofsubshell acceleration. not necessary.
-    # <topic:opt/>
-    # <topic:zsh/>
-    # NOTICE: for restricted shell, this might be a problem
-elif [ -n "$KSH_VERSION" ]; then
-    case "$KSH_VERSION" in
-        *PD\ KSH*)
-            ___X_CMD_SHELL=ksh
-            # This is the ksh that can run x-bash
-            ;;
-        *)
-            x(){
-                :
-            }
-            # Only support the xbin, not x-cmd
-            return
-            ;;
-    esac
-    # ___X_CMD_SHELL=ksh
-    # alias local=typeset
-else
-    if [ -r "/proc/$$/cmdline" ]; then  read -r ___X_CMD_SHELL <"/proc/$$/cmdline"
-    else                                ___X_CMD_SHELL="${0}"
-    fi
-    case "$___X_CMD_SHELL" in
-        *dash*)      ___X_CMD_SHELL=dash ;;
-        *)
-            if ___x_cmd_readlink_recursive_  "$___X_CMD_SHELL"; then
-                case "$___X_CMD_READLINK_RECURSIVE_" in
-                    *dash*)     ___X_CMD_SHELL=dash ;;
-                    *busybox*)  ___X_CMD_SHELL=ash  ;;
-                    *)          ___X_CMD_SHELL=
-                esac
-            else
-                ___X_CMD_SHELL=
-            fi
-            ;;
-    esac
-    # printf "%s\n" "- W|x: Unknown shell." >&2
-    # TODO: "${___X_CMD_SHELL//a/b}" exit 2
-    # if : "${___X_CMD_SHELL//a/b}"; then
-    #     ___X_CMD_SHELL=ash
-    # else
-    #     ___X_CMD_SHELL=dash
-    # fi 2>/dev/null
-    # TODO: Otherwise, loading a remarkable script to detect shell
-fi
-___X_CMD_CUR_SHELL="${___X_CMD_SHELL:-sh}"      # TODO: will remove
-
-[ -n "$TMPDIR" ] || TMPDIR="$(dirname "$(mktemp -u)")/"     # It is posix standard. BUT NOT set in some cases.
-
 # EndSection
 
 # Section 2: xrc: util,ldict
@@ -438,7 +440,7 @@ xrc(){
         root)                   printf "%s" "$___X_CMD_ROOT" ;;
         upgrade)                xrc:mod xrc/lib/setup/upgrade && ___x_cmd_xrc_upgrade "$@" ;;
         clear)                  x rmrf "$___X_CMD_ROOT/v/${1:-$___X_CMD_VERSION}" ;;
-        ls)                     ___x_cmd_cmds_ls "$___X_CMD_ROOT_MOD" ;;                      # If tar.gz, using tar ls. If folder, ls $folder
+        --ls)                   ___x_cmd_cmds_ls "$___X_CMD_ROOT_MOD" ;;                      # If tar.gz, using tar ls. If folder, ls $folder
         setmain)                ___x_cmd_xrc_set_main "$@" ;;
         reload)                 xrc:mod xrc/lib/reload && ___x_cmd_reload "$@" ;;
         reset)                  ___x_cmd_xrc_reset ;;
@@ -473,7 +475,7 @@ if ___x_cmd_is_suitable_advise_env; then
 
     ! [ -f "$___X_CMD_ROOT_ADV/chat/advise.jso" ]   || ___x_cmd_advise init @gpt "$___X_CMD_ROOT_ADV/chat/advise.jso"
 
-    ! [ -f "$___X_CMD_ROOT_ADV/gd/advise.jso" ]     || ___x_cmd_advise init c "$___X_CMD_ROOT_ADV/gd/advise.jso"
+    ! [ -f "$___X_CMD_ROOT_ADV/cd/advise.jso" ]     || ___x_cmd_advise init c "$___X_CMD_ROOT_ADV/cd/advise.jso"
 fi
 
 # EndSection
@@ -525,8 +527,8 @@ if ___x_cmd_is_interactive_tty; then
     alias xp="x pwsh"
 
     # alias cd='{ [ "$___X_CMD_SHELL_NOTTOPLEVEL" -eq 1 ] || { local ___X_CMD_SHELL_NOTTOPLEVEL && ___X_CMD_SHELL_NOTTOPLEVEL=1; }; ___x_cmd cd'
-    alias cd='___X_CMD_SHELL_CALLER="$0" ___x_cmd cd'
-    alias c='___x_cmd gd'    # remove in the future
+    # alias cd='___X_CMD_SHELL_CALLER="$0" ___x_cmd cd'
+    alias c='___x_cmd cd'    # remove in the future
 
     alias ,='x co --exec'
     alias "，"='x co --exec';    # for Chinese user

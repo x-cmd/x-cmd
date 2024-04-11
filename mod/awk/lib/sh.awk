@@ -136,4 +136,9 @@ function sh_varset_var( var, var1, is_local,       _local ){
     return _local sh_varset(var, "\"$" var1 "\"")
 }
 
+function sh_printf_varset_val( var, val, is_local,          str ){
+    str = sh_varset_val(var, val, is_local)
+    return sprintf("printf \"%%s\\n\" %s", shqu1(str))
+}
+
 # EndSection

@@ -11,6 +11,7 @@ BEGIN{
 END{
     if(HAS_CONTENT == 0) exit(0)
     print_basic_info(O)
+    RELEASE = install_juq(RELEASE)
     RELEASE = tolower(RELEASE)
     kp = SUBSEP "\"1\"" SUBSEP "\"rule\""
     print_install_cmd(O, kp)
@@ -57,6 +58,11 @@ function print_basic_info(O,    region,   homepage, desc, lang){
     desc = juq(O[ SUBSEP "\"1\"" SUBSEP "\"desc\"" SUBSEP "\""region"\"" ])
 
     print_install_basic_info_style(NAME, homepage, desc, lang)
+}
+
+function install_juq(str){
+    if(str ~ "^[\"]") return juq(str)
+    else return str
 }
 
 

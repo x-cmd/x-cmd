@@ -8,29 +8,53 @@ function user_request_data( o, kp, rootkp ){
 function user_parse_json_data(o, kp, obj,       i, l, _kp, jl, j){
     l = obj[L]
     comp_navi_data_init( o, kp )
-    for (i=1; i<=l; ++i){
-        _kp = SUBSEP "\"" i "\""
-        user_parse_json_data_value(o, kp, "", obj, _kp, true)
+    if (l == 1){
+        _kp = SUBSEP "\"1\""
+        l = obj[ _kp L ]
+        for (i=1; i<=l; ++i) {
+            user_parse_json_data_value(o, kp, "", obj, _kp SUBSEP obj[ _kp, i ] )
+        }
+    }
+    else {
+        for (i=1; i<=l; ++i){
+            _kp = SUBSEP "\"" i "\""
+            user_parse_json_data_value(o, kp, "", obj, _kp, true)
+        }
     }
     comp_navi_data_end( o, kp )
 }
 
-function user_parse_json_data_value(o, kp, rootkp, obj, obj_kp,     v, name ){
-    v = obj[ obj_kp ]
+function user_parse_json_data_value(o, kp, rootkp, obj, obj_kp, is_list,            v, name ){
+    v = view = obj[ obj_kp ]
     name = obj_kp
     gsub(".*" SUBSEP, "", name)
     if (name ~ "^\"") name = juq(name)
-    if ( v == "{" ) {
-        comp_navi_data_add_kv(o, kp, rootkp, TH_THEME_COLOR name, "{", obj_kp )
-        user_parse_json_data_dict( o, kp, obj, obj_kp )
-        return
+    if (! is_list) {
+        if ( v == "{" ) {
+            comp_navi_data_add_kv(o, kp, rootkp, TH_THEME_COLOR name, "{", obj_kp )
+            user_parse_json_data_dict( o, kp, obj, obj_kp )
+            return
+        }
+        else if ( v == "[" ) {
+            comp_navi_data_add_kv(o, kp, rootkp, TH_THEME_MINOR_COLOR name, "{", obj_kp )
+            user_parse_json_data_list(o, kp, obj, obj_kp)
+            return
+        }
+        comp_navi_data_add_kv(o, kp, rootkp, name, "preview", obj_kp )
+    } else {
+        if ( v == "{" ) {
+            comp_navi_data_add_kv(o, kp, rootkp, TH_THEME_COLOR "[" name "]{", "{", obj_kp )
+            user_parse_json_data_dict( o, kp, obj, obj_kp )
+            return
+        }
+        else if ( v == "[" ) {
+            comp_navi_data_add_kv(o, kp, rootkp, TH_THEME_MINOR_COLOR "[" name "][", "{", obj_kp )
+            user_parse_json_data_list(o, kp, obj, obj_kp)
+            return
+        }
+        v = (v ~ "^\"") ? juq(v) : v
+        comp_navi_data_add_kv(o, kp, rootkp, "[" name "]" v, "preview", obj_kp )
     }
-    else if ( v == "[" ) {
-        comp_navi_data_add_kv(o, kp, rootkp, TH_THEME_MINOR_COLOR name, "{", obj_kp )
-        user_parse_json_data_list(o, kp, obj, obj_kp)
-        return
-    }
-    comp_navi_data_add_kv(o, kp, rootkp, name, "preview", obj_kp )
 }
 
 function user_parse_json_data_dict(o, kp, obj, obj_kp,          i, l){
@@ -46,7 +70,7 @@ function user_parse_json_data_list(o, kp, obj, obj_kp,          i, l){
     comp_navi_data_init( o, kp, obj_kp )
     l = obj[ obj_kp L ]
     for (i=1; i<=l; ++i) {
-        user_parse_json_data_value(o, kp, obj_kp, obj, obj_kp SUBSEP "\"" i "\"" )
+        user_parse_json_data_value(o, kp, obj_kp, obj, obj_kp SUBSEP "\"" i "\"", true )
     }
     comp_navi_data_end( o, kp, obj_kp )
 }

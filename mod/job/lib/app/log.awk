@@ -83,11 +83,11 @@ function tapp_handle_exit( exit_code,       arr, logfile, finalcmd, position ){
             finalcmd = FINALCMD
             position = comp_navi_current_position_get(o, JOB_LOG_KP)
             logfile = JOB_LOG_FILE_BASEPATH "/" comp_navi_get_cur_rootkp(o, JOB_LOG_KP)
-            tapp_send_finalcmd( sh_varset_val( "logfile", logfile ))
+            tapp_send_finalcmd( sh_printf_varset_val( "logfile", logfile ))
         }
     }
-    tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_NAVI_FINAL_COMMAND", finalcmd ) )
-    tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_NAVI_POSITION", position) )
+    tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_TUI_NAVI_FINAL_COMMAND", finalcmd ) )
+    tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_TUI_CURRENT_NAVI_POSITION", position) )
 }
 
 # EndSection
