@@ -48,7 +48,7 @@ function tapp_handle_wchar( value, name, type ){
 function tapp_handle_response(fp,        _, arr, i, l, v){
     cat_to_arr(fp, _)
     arr[L] = l = _[L]
-    if( l <= 0 ) panic("list data is empty")
+    if (( l <= 0 ) || (_[1] == "")) panic("list data is empty")
     for (i=1; i<=l; ++i) {
         v = _[i]
         gsub(/[\t\b\v\n]+/, " ", v)
