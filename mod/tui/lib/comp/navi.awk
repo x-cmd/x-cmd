@@ -215,7 +215,11 @@ function comp_navi_current_position_set(o, kp,          c, l, _kp, preview_kp, r
                 o[ kp, "cur.pos", "unprocessed_arg_count" ] = 0
             } else {
                 comp_navi_change_set_all( o, kp )
-                if ((c < l) && (comp_navi_col_preview_type_is_sel(o, kp, c)) && (comp_navi___ctrl_col_inc(o, kp) == false)) return
+                if ((c < l) && (comp_navi_col_preview_type_is_sel(o, kp, c)) && (comp_navi___ctrl_col_inc(o, kp) == false)) {
+                    if ( comp_navi_data_available(o, kp, comp_navi_get_cur_rootkp( o, kp )) ) \
+                        o[ kp, "cur.pos", "unprocessed_arg_count" ] = 0     # ava and inc==false
+                    return
+                }
                 o[ kp, "cur.pos", "unprocessed_arg_count" ] --
             }
         }

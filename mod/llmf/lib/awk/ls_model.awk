@@ -1,4 +1,5 @@
 BEGIN{
+    dirpath = ENVIRON[ "dirpath" ]
     Q2_1 = SUBSEP "\"1\""
     IS_MMPROJ = ENVIRON[ "IS_MMPROJ" ]
 }

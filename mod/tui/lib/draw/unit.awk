@@ -15,3 +15,10 @@ function draw_unit_truncate_string( str, w,      v ){
     return wcstruncate_cache( v, w-1 ) "…"
 }
 
+function draw_unit_cell_match_highlight( s, v, style,           sl, id ){
+    if ((s == "") || ((id = index(tolower(v), tolower(s))) <= 0)) return th( style, v )
+    sl = length(s)
+    return style substr(v, 1, id-1) \
+        UI_FG_YELLOW substr(v, id, sl) UI_END \
+        style substr(v, id+sl) UI_END
+}

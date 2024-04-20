@@ -2,34 +2,13 @@ function user_request_data( o, kp, rootkp,          p ){
     if (! lock_acquire( o, kp ) ) panic("lock bug")
     p = "/" rootkp
     gsub("/+", "/", p)
-    tapp_request( "data:request:" rootkp "\n" p)
+    tapp_request( "data:request:local:" rootkp "\n" p)
 }
 
 BEGIN{
     LS_APP_NAVI_POSITION = ENVIRON[ "___X_CMD_TUI_NAVI_POSITION" ]
     LS_APP_NAVI_POSITION_ISFUZZY = ENVIRON[ "___X_CMD_TUI_NAVI_POSITION_ISFUZZY" ]
     LS_APP_BASEDATA = ENVIRON[ "___X_CMD_LS_APP_BASEDATA" ]
-}
-
-function user_bashpath_init(o, kp, pwd, position,       i, l, pa, a, v, s, str, col){
-    l = split(pwd, a, "/")
-    for (i=1; i<=l; ++i){
-        v = a[i]
-        if( v == "" ) continue
-        col ++
-        s = s "/" v
-        str = ((str != "") ? str POSITION_SEP : "") s
-    }
-    str = str POSITION_SEP
-
-    if (position != "") {
-        l = split(position, pa, POSITION_SEP)
-        if (pa[l] ~ "^" pwd) str = position
-    }
-
-    if ( ( str ~ "/\\." ) && (STATE_HIDDEN_VISIBLE == 0 ) ) STATE_HIDDEN_VISIBLE = 1
-    if (LS_APP_NAVI_POSITION_ISFUZZY != true) draw_navi_initial_col(o, kp, ++col)
-    comp_navi_current_position_var(o, kp, str, LS_APP_NAVI_POSITION_ISFUZZY)
 }
 
 # Section: user model
@@ -46,8 +25,8 @@ function tapp_init(){
     CUSTOM_FILEINFO_KP = LS_KP SUBSEP "fileinfo_kp"
     comp_textbox_init(o, CUSTOM_FILEINFO_KP, "scrollable")
 
-    if (LS_APP_BASEDATA != "") user_parse_basedata( o, LS_KP, LS_APP_BASEDATA )
-    else user_bashpath_init(o, LS_KP, ENVIRON[ "___X_CMD_LS_APP_BASEPATH" ], LS_APP_NAVI_POSITION)
+    if (LS_APP_BASEDATA != "") user_parse_basedata( o, LS_KP, LS_APP_BASEDATA )                         # data
+    else user_parse_basepath(o, LS_KP, ENVIRON[ "___X_CMD_LS_APP_BASEPATH" ], LS_APP_NAVI_POSITION)      # abspath
 }
 
 # EndSection
@@ -72,10 +51,10 @@ function tapp_handle_wchar( value, name, type ){
 function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr, v){
     _content = cat(fp)
     if( match( _content, "^errexit:")) panic(substr(_content, RSTART+RLENGTH))
-    else if ( match( _content, "^data:item:" ) ){
+    else if ( match( _content, "^data:item:local:" ) ){
         lock_release( o, LS_KP )
         l = split(_content, arr, "\n")
-        _rootkp = arr[1];   gsub( "^data:item:", "", _rootkp )
+        _rootkp = arr[1];   gsub( "^data:item:local:", "", _rootkp )
         _log = arr[2];      gsub( "^data:log:", "", _log )
         if ((l == 3) && (_log == "")) _log = "Directory is empty"
         o[ LS_KP, _rootkp, "log" ] = _log
@@ -84,7 +63,7 @@ function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr, v){
             v = arr[i]
             if ((v == "") || (arr[ v, "processed" ])) continue
             arr[ v, "processed" ] = true
-            user_data_add( o, LS_KP, _rootkp, v )
+            user_local_data_add( o, LS_KP, _rootkp, v )
         }
         comp_navi_data_end( o, LS_KP, _rootkp )
     }
@@ -95,7 +74,7 @@ BEGIN{
     if (STATE_HIDDEN_VISIBLE=="")   STATE_HIDDEN_VISIBLE = 0
 }
 
-function user_data_add( o, kp, rootkp, str,          _, name, l, i, _kp, _update, _regex ){
+function user_local_data_add( o, kp, rootkp, str,          _, name, l, i, _kp, _update, _regex ){
     l = split(str, _, " ")
     if (l < 7) {
         return
@@ -128,6 +107,27 @@ function user_data_add( o, kp, rootkp, str,          _, name, l, i, _kp, _update
     }
 }
 
+function user_parse_basepath(o, kp, pwd, position,       i, l, pa, a, v, s, str, col){
+    l = split(pwd, a, "/")
+    for (i=1; i<=l; ++i){
+        v = a[i]
+        if( v == "" ) continue
+        col ++
+        s = s "/" v
+        str = ((str != "") ? str POSITION_SEP : "") s
+    }
+    str = str POSITION_SEP
+
+    if (position != "") {
+        l = split(position, pa, POSITION_SEP)
+        if (pa[l] ~ "^" pwd) str = position
+    }
+
+    if ( ( str ~ "/\\." ) && (STATE_HIDDEN_VISIBLE == 0 ) ) STATE_HIDDEN_VISIBLE = 1
+    if (LS_APP_NAVI_POSITION_ISFUZZY != true) draw_navi_initial_col(o, kp, ++col)
+    comp_navi_current_position_var(o, kp, str, LS_APP_NAVI_POSITION_ISFUZZY)
+}
+
 function user_parse_basedata( o, kp, pathlist,      i, l, _, str, w, max_w, v ){
     l = split( pathlist, _, "\n" )
     for (i=1; i<=l; ++i){
@@ -143,6 +143,7 @@ function user_parse_basedata( o, kp, pathlist,      i, l, _, str, w, max_w, v ){
         w = wcswidth_without_style_cache(str[ i, "view" ] )
         if (max_w < w) max_w = w
     }
+    max_w = max_w + 2
     comp_navi_data_init( o, kp )
     for (i=1; i<=l; ++i) comp_navi_data_add_kv( o, kp, "", str[ i, "view" ] , "{", str[ i, "kp" ] , max_w )
     comp_navi_data_end( o, kp )
@@ -154,7 +155,7 @@ function tapp_handle_exit( exit_code,       p, v ){
         tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_TUI_NAVI_CUR_FILE", p ) )
         tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_TUI_NAVI_FINAL_COMMAND", FINALCMD ) )
         v = comp_navi_current_position_get(o, LS_KP)
-        tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_TUI_CURRENT_NAVI_POSITION", v) )
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_NAVI_POSITION", v) )
     }
 }
 

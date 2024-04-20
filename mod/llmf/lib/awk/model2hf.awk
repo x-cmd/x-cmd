@@ -1,5 +1,6 @@
 
 BEGIN{
+    dirpath = ENVIRON[ "dirpath" ]
     model = ENVIRON[ "model" ]
     l = split(model, _, "/")
     if (l != 3) exit(1)

@@ -86,7 +86,7 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row,
             c = _num_w
             for (j=_lc; j<=_rc; ++j) {
                 w = layout_avg_get_size(o, kp, j)
-                _str = _str "\r" painter_right( y1+c ) draw_table___on_cell(o, kp, i, j, w)
+                _str = _str "\r" painter_right( y1+c ) draw_table___on_cell(o, kp, opt, i, j, w)
                 c += w
             }
         }
@@ -98,7 +98,7 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row,
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) _str
 }
 
-function draw_table___on_cell( o, kp, i, j, w,             ri, ci, v, l, _v_1 ){
+function draw_table___on_cell( o, kp, opt, i, j, w,             ri, ci, v, l, _v_1, s, sl, id ){
     ri = model_arr_get(o, kp, "view-row" SUBSEP i)
     ci = layout_avg_get_item(o, kp, j)
     v  = table_arr_get_data(o, kp, ri, ci)
@@ -106,7 +106,11 @@ function draw_table___on_cell( o, kp, i, j, w,             ri, ci, v, l, _v_1 ){
 
     if ( draw_table_cell_highlight(o, kp, i, j) )  v = th( TH_TABLE_SELECTED_ROW_COL, v )
     else if ( draw_table_row_highlight(o, kp, i) ) v = th( TH_TABLE_SELECTED_ROW, v )
-    else if ( draw_table_col_highlight(o, kp, j) ) v = th( TH_TABLE_SELECTED_COL, v )
+    else if ( draw_table_col_highlight(o, kp, j) ) {
+        if ( opt_getor( opt, "filter.enable", false ) )         s = opt_get( opt, "filter.text" )
+        else if ( opt_getor( opt, "search.enable", false ) )    s = opt_get( opt, "search.text" )
+        v = draw_unit_cell_match_highlight( s, v, TH_TABLE_SELECTED_COL )
+    }
     return v
 }
 

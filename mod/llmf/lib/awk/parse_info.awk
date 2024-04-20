@@ -43,6 +43,7 @@ function llmf_parse_json(o, obj,            l, i, name, kp, v, q  ){
 }
 
 BEGIN{
+    dirpath = ENVIRON[ "dirpath" ]
     Q2_1 = SUBSEP "\"1\""
     o[ L ] = 1
     o[ Q2_1 ] = "{"

@@ -77,7 +77,7 @@ ___x_cmd_pkg_sphere_gc___defuselock(){
 }
 
 xrc ps
-___x_cmd_pkg_sphere_gc_run(){(  # Must be a subshell
+___x_cmd_pkg_sphere_gc_run(){
     local noall=
     pkg:sphere:parse:option
     sphere_name="${sphere_name:-"X"}"
@@ -89,37 +89,51 @@ ___x_cmd_pkg_sphere_gc_run(){(  # Must be a subshell
     pkg:info "Initiating garbage collection for [sphere=$sphere_name]"
 
     local gcfp="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/gc/Start"
-    trap 'x rmrf "$gcfp";' EXIT
+    local gclist="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/gc/list"
 
-    if [ -f "$gcfp" ]; then
-        ___x_cmd_pkg_sphere_gc___defuselock "$gcfp" || return
-    fi
+    (  # Must be a subshell
+        trap 'x rmrf "$gcfp";' EXIT
 
-    x ensurefp "$gcfp";
-
-    local x_=;
-    ___x_cmd_pidofsubshell_;        local spid="$x_"
-    ___x_cmd_ps fingerprint get_;   local fingerprint="$x_"
-    printf "%s\n" "$spid" "$fingerprint" >"$gcfp"
-
-    ___x_cmd_cmds sync -f "$gcfp"
-    sleep 1 # long enough to make sure file written
-
-    local winner_pid
-    read -r winner_pid <"$gcfp";
-
-    if [ ! "$winner_pid" = "$spid" ]; then
-        pkg:info "Abort because other process [PID=$winner_pid] win the gc lock."
-        return
-    fi
-
-    if [ -t 1 ] && ___x_cmd_is_interactive; then
-        if [ -z "$noall" ]; then    ___x_cmd_pkg_sphere_gc_run___interactive_all || return
-        else                        ___x_cmd_pkg_sphere_gc_run___interactive_pkg "$@" || return
+        if [ -f "$gcfp" ]; then
+            ___x_cmd_pkg_sphere_gc___defuselock "$gcfp" || return
         fi
-    fi
-    ___x_cmd_pkg_sphere_gc_run___inner "$gcfp"
-)}
+
+        x ensurefp "$gcfp";
+        x rmrf "$gclist"
+
+        local x_=;
+        ___x_cmd_pidofsubshell_;        local spid="$x_"
+        ___x_cmd_ps fingerprint get_;   local fingerprint="$x_"
+        printf "%s\n" "$spid" "$fingerprint" >"$gcfp"
+
+        ___x_cmd_cmds sync -f "$gcfp"
+        sleep 1 # long enough to make sure file written
+
+        local winner_pid
+        read -r winner_pid <"$gcfp";
+
+        if [ ! "$winner_pid" = "$spid" ]; then
+            pkg:info "Abort because other process [PID=$winner_pid] win the gc lock."
+            return
+        fi
+
+        if [ -t 1 ] && ___x_cmd_is_interactive; then
+            if [ -z "$noall" ]; then    ___x_cmd_pkg_sphere_gc_run___interactive_all || return
+            else                        ___x_cmd_pkg_sphere_gc_run___interactive_pkg "$@" || return
+            fi
+        fi
+        ___x_cmd_pkg_sphere_gc_run___inner "$gcfp" "$gclist" || return
+    ) || return
+
+    [ -f "$gclist" ] || return 0
+    local name
+    local version
+    while read -r name && read -r version; do
+        ___x_cmd_pkg_sphere_path rm --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$name" "$version"
+    done < "$gclist"
+    x rmrf "$gclist"
+}
 
 # shellcheck disable=2120
 ___x_cmd_pkg_sphere_gc_run___interactive_all(){
@@ -167,6 +181,7 @@ ___x_cmd_pkg_sphere_gc_run___interactive_unit_(){
 # TODO: C = candidates = A - B
 ___x_cmd_pkg_sphere_gc_run___inner(){
     local gcfp="$1"
+    local gclist="$2"
     local gc_loop_continue=1; local l=; local name=; local version=;
     while [ -n "$gc_loop_continue" ]; do
         gc_loop_continue=
@@ -187,6 +202,10 @@ ___x_cmd_pkg_sphere_gc_run___inner(){
                 pkg:warn "gc ==> failed to remove $name $version"
                 continue
             }
+
+            x ensurefp "$gclist"
+            printf "%s\n" "$name" "$version" >> "$gclist"
+
             gc_loop_continue=1
         done <<A
 $(___x_cmd_pkg_ls___installed)

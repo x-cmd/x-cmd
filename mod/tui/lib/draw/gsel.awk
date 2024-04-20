@@ -109,18 +109,22 @@ function draw_gsel___on_footer(o, kp, x1, x2, y1, y2, opt,       v, i, s, p, t){
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) v
 }
 
-function draw_gsel___on_cell( o, kp, i, w, opt,         v, ri){
+function draw_gsel___on_cell( o, kp, i, w, opt,         v, ri, s, sl, id ){
     w = w - TH_GSEL_ITEM_PREFIX_WIDTH
     ri = model_arr_get(o, kp, "view-row" SUBSEP i)
     v = model_arr_data_get(o, kp, ri)
+    v = str_remove_esc(v)
 
     if (draw_gsel_cell_selected( o, kp, ri )) {
-        v = str_remove_esc(v)
         v = space_restrict_or_pad_utf8_esc(v, w)
         v = TH_GSEL_ITEM_SELECTED_PREFIX th( TH_GSEL_ITEM_SELECTED, v )
     } else {
+        if ( opt_get( opt, "search.enable" ) )  s = opt_get( opt, "search.text" )
+        else                                    s = opt_get( opt, "filter.text" )
+
+        v = draw_unit_cell_match_highlight( s, v, TH_GSEL_ITEM_UNSELECTED )
         v = space_restrict_or_pad_utf8_esc(v, w)
-        v = TH_GSEL_ITEM_UNSELECTED_PREFIX th( TH_GSEL_ITEM_UNSELECTED, v )
+        v = TH_GSEL_ITEM_UNSELECTED_PREFIX v
     }
 
     if (i != opt_get( opt, "cur.cell" )) v = TH_GSEL_ITEM_UNFOCUSED_PREFIX th( TH_GSEL_ITEM_UNFOCUSED, v )

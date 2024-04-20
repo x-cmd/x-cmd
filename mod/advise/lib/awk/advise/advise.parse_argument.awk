@@ -89,7 +89,7 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
         _subcmdid = aobj_get_subcmdid_by_id( obj, obj_prefix, _arg_id )
         if (_subcmdid != "") {
             if ( ! aobj_option_all_set( lenv_table, obj, obj_prefix ) ) {
-                return advise_panic("All required options should be set")
+                return advise_error("All required options should be set")
             }
             obj_prefix = obj_prefix SUBSEP _subcmdid
             CAND[ "KEYPATH" ] = obj_prefix
@@ -121,7 +121,7 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
                     continue
                 }
 
-                if (j<_arg_arrl) return advise_panic("Fail at parsing: " arg ". Accept at least one argument: -" _arg_arr[j] )
+                if (j<_arg_arrl) return advise_error("Fail at parsing: " arg ". Accept at least one argument: -" _arg_arr[j] )
 
                 for (k=1; k<=_optargc; ++k)  {
                     if ( i>=argl ) {

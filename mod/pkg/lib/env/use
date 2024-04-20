@@ -1,0 +1,111 @@
+# shellcheck shell=dash
+
+# use = add migrate + link + check boot + use record
+___x_cmd_pkg_env_use(){
+    local X_help_cmd='x help -m pkg use'
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-X}"
+
+    local name=
+    local version=
+
+    local i=;
+    for i in "$@"; do
+        ___x_cmd_pkg___pasre_pkg_version_set "$i" || return
+        ___x_cmd_pkg_env_use___handle || return
+    done
+}
+
+___x_cmd_pkg_env_use___handle(){
+    if ___x_cmd_is_interactive; then    ___x_cmd_pkg_env_use___handle___interative
+    else                                ___x_cmd_pkg_env_use___handle___noninterative
+    fi
+}
+
+___x_cmd_pkg_env_use___handle___interative(){
+    local ___X_CMD_PKG_ENV_LOG_CMD="${___X_CMD_PKG_ENV_LOG_CMD:-"x pkg env"}"
+    local x_
+    x_=; ___x_cmd_pkg_sphere_try get_version_ \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" || return
+    if [ -n "$x_" ]; then       # already has try version
+        ! x ui yesno "Whether to untry [pkg=$name] [version=$x_], because it may affect this shell env" || \
+            ___x_cmd_pkg_env untry "${name}=${x_}" || return
+    fi
+
+    x_=; ___x_cmd_pkg_sphere_use get_version_ \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" || return
+    if [ -n "$x_" ]; then       # already has use version
+        if [ "$x_" = "$version" ]; then    pkg:info "Already used [pkg=$name] [version=$x_] in this shell env"; return 0; fi
+
+        local id=; local cmd=
+        x ui select id,cmd  "Before using new version, here are the following options for you:" \
+                        "$___X_CMD_PKG_ENV_LOG_CMD unuse ${name}=${x_}, the other process executed won't be affected, but other shell env will be activated"  \
+                        "$___X_CMD_PKG_ENV_LOG_CMD try ${name}=${version}, only activated in this shell environment" \
+                        "return 1" || return
+        case "$id" in
+            1)  ___x_cmd_pkg_env unuse "${name}=${x_}" ||   return ;;
+            2)  ___x_cmd_pkg_env try "${name}=${version}";  return ;;    # use try instead of use for current package
+            *)  return 1 ;;
+        esac
+    fi
+
+    ___x_cmd_pkg_sphere_use run \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" "$version"
+}
+
+___x_cmd_pkg_env_use___handle___noninterative(){
+    local ___X_CMD_PKG_ENV_LOG_CMD="${___X_CMD_PKG_ENV_LOG_CMD:-"x pkg env"}"
+    local x_
+    x_=; ___x_cmd_pkg_sphere_try get_version_ \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" || return
+    if [ -n "$x_" ]; then       # already has try version
+        pkg:warn \
+            --hint "Before using new version. You must untry the original one cautiously because it will affect this shell env" \
+            --cmd "$___X_CMD_PKG_ENV_LOG_CMD untry ${name}=${x_}" \
+            "Abort because [pkg=$name] [version=$x_] is in try and also it is not in interactive mode"
+        return 1
+    fi
+
+    x_=; ___x_cmd_pkg_sphere_use get_version_ \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" || return
+    if [ -n "$x_" ]; then       # already has use version
+        if [ "$x_" != "$version" ]; then    pkg:info "Already used [pkg=$name] [version=$x_] in this shell env"; return 0; fi
+
+        pkg:warn \
+            --cmd1  "$___X_CMD_PKG_ENV_LOG_CMD try ${name}=${version}"  --hint1 "You could just trying this version in current shell env without affecting the other shell environment." \
+            --cmd2  "$___X_CMD_PKG_ENV_LOG_CMD unuse ${name}=${x_}"     --hint2 "Before using new version. You must unuse the original one cautiously because it will affect other shell env" \
+            "Abort because [pkg=$name] [version=$x_] is in use and also it is not in interactive mode"
+        return 1
+    fi
+
+    ___x_cmd_pkg_sphere_use run \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" "$version"
+}
+
+
+___x_cmd_pkg_env_unuse(){
+    local X_help_cmd='x help -m pkg unuse'
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-X}"
+
+    local i; local name=; local version=; local x_=;
+    for i in "$@"; do
+        case "$i" in
+            *=*)    name="${i%%=*}"; version="${i#*=}"      ;;
+            *)      x_=; ___x_cmd_pkg_sphere_use get_version_ \
+                        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+                        --osarch "$osarch" "$i"
+                    name="$i"; version="$x_"
+                    ;;
+        esac
+        [ -n "$version" ] || {
+            pkg:warn "Not use $name in current session"
+            return 0
+        }
+
+        ___x_cmd_pkg_sphere_use cancel  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$name" "$version" || return
+    done
+}
+

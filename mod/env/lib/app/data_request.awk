@@ -1,3 +1,9 @@
+BEGIN{
+    ARGS = ENVIRON[ "ARGS" ]
+    os = ENVIRON[ "os" ]
+    arch = ENVIRON[ "arch" ]
+    region = ENVIRON[ "region" ]
+}
 {jiparse_after_tokenize( O, $0 )}
 
 END{

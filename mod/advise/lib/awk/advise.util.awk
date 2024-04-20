@@ -1,5 +1,5 @@
-function advise_panic(msg){
-    CAND[ "MESSAGE" ] = jqu(msg)
+function advise_error(msg){
+    CAND[ "MESSAGE" ] = (msg ~ "^\"") ? msg : jqu(msg)
     return false
 }
 

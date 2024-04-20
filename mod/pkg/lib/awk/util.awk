@@ -1,4 +1,7 @@
-
+BEGIN{
+    IS_ERREXIT = ENVIRON[ "IS_ERREXIT" ]
+    IS_ERREXIT = ( IS_ERREXIT != "" ) ? IS_ERREXIT : 1
+}
 # Section: init table
 function pkg_init_table( jobj, table, table_kp,
     pkg_name, version, osarch,
@@ -17,7 +20,7 @@ function pkg_init_table( jobj, table, table_kp,
     pkg_copy_table( jobj, jqu(pkg_name) SUBSEP jqu("meta"), table, table_kp )
 
     if ( pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name) == 0 )
-        panic( "Perhaps the platform is NOT supported your OS or ARCH - " table_osarch( table, pkg_name ) " ----> " pkg_name )
+        pkg_error( "Perhaps the platform is NOT supported your OS or ARCH - " table_osarch( table, pkg_name ) " ----> " pkg_name )
 
     _final_version = table_version( table, pkg_name)
     if ( _final_version != "" ) {
@@ -184,10 +187,10 @@ function pkg_kp(a1, a2, a3, a4, a5, a6, a7, a8, a9,
     return ret
 }
 
-function panic( s ){
+function pkg_error( s ){
     log_error( "pkg", s )
     PANIC_EXIT = 1
-    exit(1)
+    if ( IS_ERREXIT == 1 ) exit(1)
 }
 
 

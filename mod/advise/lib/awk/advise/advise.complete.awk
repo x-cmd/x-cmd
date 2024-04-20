@@ -3,7 +3,7 @@
 
 # get the candidate value
 function advise_get_ref_and_group(obj, kp,        msg, subcmd_group, option_group, flag_group){
-    if ((msg = comp_advise_get_ref(obj, kp)) != true) return advise_panic( msg )
+    if ((msg = comp_advise_get_ref(obj, kp)) != true) return false # advise_error( msg )
     comp_advise_parse_group(obj, kp, subcmd_group, option_group, flag_group)
     comp_advise_remove_dev_tag_of_arr_group(obj, kp, subcmd_group)
     comp_advise_remove_dev_tag_of_arr_group(obj, kp, option_group)
@@ -113,6 +113,6 @@ function advise_complete_option_name_or_argument_value( curval, genv, lenv, obj,
         if ( ! aobj_is_required(obj, obj_prefix SUBSEP k) ) continue
         if ( lenv_table[ k ] == "" ) _required_options = (_required_options == "") ? k : _required_options ", " k
     }
-    if (_required_options != "") return advise_panic("Required options [ " _required_options " ] should be set")
+    if (_required_options != "") return advise_error("Required options [ " _required_options " ] should be set")
 
 }
