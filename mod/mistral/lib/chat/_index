@@ -2,13 +2,13 @@
 # shellcheck shell=dash
 
 xrc chat
-xrc:mod:lib     mistral      chat/send
+xrc:mod:lib     mistral      chat/send chat/exec
 
 ___x_cmd_mistral_chat(){
     local X_help_cmd='x help -m mistral chat'; help:arg:parse
     local op="$1";
     case "$op" in
-        request|preparehistory)
+        request|preparehistory|exec)
             shift; ___x_cmd_mistral_chat_"$op" "$@" ;;
         *)  N=mistral M="Not support such option '$op'" log:ret:64
     esac
@@ -16,87 +16,7 @@ ___x_cmd_mistral_chat(){
 
 ___x_cmd_mistral_chat_request(){
     local X_help_cmd='x help -m mistral chat request'; help:arg:parse
-    local question=""
-    local history_num=""
-    local minion=""
-    local session=""
-    local model=""
-    local system=""
-    local type="chat"
-    local confirm_before_send=""
-    local filelist_attach=""
-
-    local numbered=""
-
-    local apikey=
-    ___x_cmd_mistral_cur apikey:= 2>/dev/null
-    [ -n "$apikey" ] || {
-        mistral:error "Please setting up your apikey first ==> 'x mistral --cfg apikey=<your apikey>'"
-        return 1
-    }
-
-    local inputtype=none
-
-    local x_=""
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --session)      session="$2";        [ $# -ge 2 ] || N=mistral M="Please provide a value"   log:ret:64;   shift 2 ;;
-            --minion)       minion="$2";         [ $# -ge 2 ] || N=mistral M="Please provide a value"   log:ret:64;   shift 2 ;;
-            --history|-n)   history_num="$2";    [ $# -ge 2 ] || N=mistral M="Please provide a value"   log:ret:64;   shift 2 ;;
-            --question)     question="$2";       [ $# -ge 2 ] || N=mistral M="Please provide a value"   log:ret:64;   shift 2 ;;
-            --model)        model="$2";          [ $# -ge 2 ] || N=mistral M="Please provide a value"   log:ret:64;   shift 2 ;;
-            --system)       system="$2";         [ $# -ge 2 ] || N=mistral M="Please provide a value"   log:ret:64;   shift 2 ;;
-            --type)         type="$2";           [ $# -ge 2 ] || N=mistral M="Please provide a value"   log:ret:64;   shift 2 ;;
-            --file)
-                            [ $# -ge 2 ] || N=mistral M="Please provide a value"   log:ret:64;
-                            x abspath_ "$2"
-                            [ -f "$x_" ] || N=mistral M="Please provide a valid [filepath=$2] after --file." log:ret:64
-                            filelist_attach="${filelist_attach}:${x_}";
-                            shift 2 ;;
-
-            -c)             confirm_before_send=1;  shift 1 ;;
-
-            --pipe|--edit)  inputtype="${1#--}";    shift 1 ;;
-            --numbered)     numbered=1;             shift 1 ;;
-
-
-            *)              question="${question}$*"; break ;;
-        esac
-    done
-
-    x_=""
-    ___x_cmd_chat_request___preparequestion_ "$question" "$inputtype" "$numbered" || return
-    question="$x_"
-
-
-    local cfg_history_num=; local cfg_session=;     local cfg_minion=;  local cfg_userlang=
-    ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion cfg_userlang=userlang 2>/dev/null
-
-    local cfg_model=;       local cfg_maxtoken=;    local cfg_seed=;    local cfg_temperature=
-    ___x_cmd_mistral_cfg --var cfg_model=model cfg_maxtoken=maxtoken cfg_seed=seed cfg_temperature=temperature 2>/dev/null
-
-    local chatid=;  chatid="$(x pidid vlseqid ___X_CMD_CHAT_REC)"
-
-    [ -n "$minion" ] || minion="default"
-    x_=; ___x_cmd_chat_minion_cache_json_ "$minion" || return
-    local minion_json_cache="$x_"
-
-    mistral:debug --chatid "$chatid" --model "$model" --question "$question" --history_num "$history_num" --confirm_before_send "$confirm_before_send" "chat request"
-
-    {
-        userlang="${cfg_userlang:-$LANG}" \
-        BODY="$question" \
-        x cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach   \
-                -E cfg_history_num,cfg_session,cfg_minion,cfg_model,cfg_maxtoken,cfg_seed,cfg_temperature \
-                -m j/json,j/jiter,j/jcp \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"        \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"           \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"         \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"           \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"           \
-                -f "$___X_CMD_ROOT_MOD/mistral/lib/awk/mistral.awk"       \
-                -f "$___X_CMD_ROOT_MOD/mistral/lib/awk/handle_request.awk"
-    } | ( ___x_cmd_mistral_chat_request___launch )
+    ___x_cmd chat --exec --provider mistral "$@"
 }
 
 ___x_cmd_mistral_chat_request___launch(){
@@ -124,6 +44,7 @@ ___x_cmd_mistral_chat_request___launch(){
     }
 }
 
+
 ___x_cmd_mistral_chat_request___try(){
     mistral:debug "Sending request to mistral server"
     [ -z "$confirm_before_send" ] || {
@@ -131,8 +52,10 @@ ___x_cmd_mistral_chat_request___try(){
         x ui yesno "Do your want to send this message?" || return 0
     }
 
-    ___x_cmd_mistral_request_generaxwtecontent "$requestbody" | \
     {
+        ___x_cmd ccmd "$cache_time" -- \
+            ___x_cmd_mistral_request_generaxwtecontent "$requestbody"
+    } | {
         local interative=
         if ___x_cmd_is_interactive; then interative=1; fi
 

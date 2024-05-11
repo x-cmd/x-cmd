@@ -101,7 +101,7 @@ function md_body_transform_quote( text,     s1, s2){
         s1 = substr(text, 1, RSTART-1)
         s2 = substr(text, RSTART+1, RLENGTH-2)
         gsub(STR_TERMINAL_ESCAPE033_LIST, "", s2)
-        text = s1 "\033[40;31m" s2  "\033[0m" substr(text, RSTART+RLENGTH)
+        text = s1 "\033[48;2;48;48;48m\033[38;2;255;80;95m" s2  "\033[0m" substr(text, RSTART+RLENGTH)
     }
     return text
 }

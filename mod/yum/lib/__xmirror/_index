@@ -1,0 +1,180 @@
+# shellcheck shell=sh disable=SC3043
+
+___x_cmd_yum___xmirror(){
+    [ $# -gt 0 ]    ||  set - --help
+    local op="$1";      shift
+
+    local O=yum
+    case "$op" in
+        ls|set|unset|current)      ___x_cmd_mirror_yum        "$op" "$@" ;;  # In the future, we will put the mirror code here ...
+        -h|--help)                 x help -m yum mirror             "$@" ;;
+    esac
+}
+
+# For centos users
+# Reference: https://mirrors.tuna.tsinghua.edu.cn/help/centos-vault/
+
+___x_cmd_mirror_yum(){
+    [ "$#" -gt 0 ] || { ___x_cmd_mirror_yum___app ; return ; }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            x help -m mirror yum "$@"
+            return   ;;
+    esac
+    local ___X_CMD_OS_RELEASE="$(x os rname)"
+    x hascmd yum || N=mirror M="[command=yum] not found." log:ret:1
+    case "$op" in
+        ls|replace|current|unset)
+                ___x_cmd_mirror_yum_"${op}"               "$@" ;;
+        set)    ___x_cmd_mirror_yum_replace               "$@" ;;
+        *)      ___x_cmd_mirror___util_subcmd_invalid yum "$@" ;;
+    esac
+}
+
+___x_cmd_mirror_yum_ls(){
+    printf "%s\n" \
+        "Code       Url                                      Name" \
+        "ali        https://mirrors.aliyun.com               阿里云" \
+        "ustc       https://mirrors.ustc.edu.cn              中国科学技术大学开源镜像站" \
+        "tuna       https://mirrors.tuna.tsinghua.edu.cn     清华大学开源软件镜像站"
+        # "official   http://mirror.centos.org                 官方镜像站"
+}
+
+___x_cmd_mirror_yum_current(){
+    local src_file
+    case "$___X_CMD_OS_RELEASE" in
+        *centos*)       src_file="$(___x_cmd_cmds ls -1 /etc/yum.repos.d/CentOS-*Base*.repo | head -n 1)" ;;
+        *fedora*)       src_file="/etc/yum.repos.d/fedora.repo" ;;
+        *)              mirror:error "Unsupported system: $___X_CMD_OS_RELEASE"
+                        return 1
+                        ;;
+    esac
+    ___x_cmd_cmds_cat "$src_file"
+}
+
+xrc mirror
+___x_cmd_mirror_yum___url(){
+    ___x_cmd_mirror_yum_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+___x_cmd_mirror_yum_replace() {
+    [ "$#" -gt 0 ] ||   set -- ali
+    case "$1" in
+        -h|--help)
+            x help -m mirror yum replace "$@"
+            return   ;;
+    esac
+
+    local src_dir
+    src_dir="/etc/yum.repos.d"
+    # ___x_cmd_proxy___util_backup $src_dir yum
+
+    local url
+    local src="$1"
+    url="$(___x_cmd_mirror_yum___url "$src")" || return
+    mirror:info "Setting yum mirror $url"
+
+    case "$___X_CMD_OS_RELEASE" in
+        *centos*)
+            local version_id
+            xrc os && ___x_cmd_os release __ version_id
+            case "$version_id" in
+                *5*)
+                    minorver=5.11
+                    ___x_cmd_mirror_yum_replace_exec \
+                        -e 's|^mirrorlist=|#mirrorlist=|g' \
+                        -e "s|^#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=${url}/centos-vault/$minorver|g" \
+                        -i.bak \
+                    ${src_dir}/CentOS-*.repo
+                    ___x_cmd_mirror_yum_save
+                    ;;
+                *6*)
+                    minorver=6.10
+                    ___x_cmd_mirror_yum_replace_exec \
+                        -e 's|^mirrorlist=|#mirrorlist=|g' \
+                        -e "s|^#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=${url}/centos-vault/$minorver|g" \
+                        -i.bak \
+                    ${src_dir}/CentOS-*.repo
+                    ___x_cmd_mirror_yum_save
+                    ;;
+                *7*)
+                    ___x_cmd_mirror_yum_replace_exec \
+                        -e 's|^mirrorlist=|#mirrorlist=|g' \
+                        -e "s|^#baseurl=http://mirror.centos.org/centos|baseurl=${url}/centos|g" \
+                        -i.bak \
+                        ${src_dir}/CentOS-*.repo || return 1
+                        ___x_cmd_mirror_yum_save
+                    ;;
+                *8*)
+                    minorver=8.5.2111
+                    ___x_cmd_mirror_yum_replace_exec \
+                        -e 's|^mirrorlist=|#mirrorlist=|g' \
+                        -e "s|^#baseurl=http://mirror.centos.org/\$contentdir/\$releasever|baseurl=${url}/centos-vault/$minorver|g" \
+                        -i.bak \
+                        ${src_dir}/CentOS-*.repo || return 1
+                        ___x_cmd_mirror_yum_save
+                    ;;
+                *)
+                    mirror:error "Unsupported version: $version_id"
+                    return 1
+                    ;;
+            esac
+            ;;
+        *fedora*)
+            ___x_cmd_mirror_yum_replace_exec \
+                -e 's|^metalink=|#metalink=|g' \
+                -e "s|^#baseurl=http://download.example/pub/fedora/linux|baseurl=${url}/fedora|g" \
+                -i.bak \
+                ${src_dir}/fedora.repo \
+                ${src_dir}/fedora-updates.repo \
+                ${src_dir}/fedora-modular.repo \
+                ${src_dir}/fedora-updates-modular.repo 2>/dev/null || return 1
+                ___x_cmd_mirror_yum_save
+            ;;
+        *)      mirror:error "Unsupported system: $___X_CMD_OS_RELEASE"
+                return 1
+            ;;
+    esac
+
+    mirror:info "Restarting yum"
+    if [ "$(id -u)" -ne 0 ]; then
+        x sudo yum makecache
+    else
+        yum makecache
+    fi
+}
+
+___x_cmd_mirror_yum_replace_exec(){
+    if [ "$(id -u)" -ne 0 ]; then
+        mirror:warn "using sudo"
+        sudo sed "$@"
+    else
+        ___x_cmd_cmds sed "$@"
+    fi
+}
+
+___x_cmd_mirror_yum_save(){
+    local src_dir
+    src_dir="/etc/yum.repos.d"
+    local rollback_file_fp="$___X_CMD_ROOT_DATA/mirror/yum/"
+
+    ___x_cmd_mirror___util_save___bak "$src_dir" "$rollback_file_fp"
+}
+
+___x_cmd_mirror_yum_unset(){
+    local rollback_file_dir="$___X_CMD_ROOT_DATA/mirror/yum/"
+
+    ___x_cmd_mirror___util_rollback_original___bak "/etc/yum.repos.d/" "$rollback_file_dir"
+
+
+    if [ "$(id -u)" -ne 0 ]; then
+        x sudo yum makecache
+    else
+        yum makecache
+    fi
+}
+
+

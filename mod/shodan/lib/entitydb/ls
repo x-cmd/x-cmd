@@ -3,23 +3,25 @@
 ___x_cmd_shodan_entitydb_ls(){
     local X_help_cmd='x help -m shodan entitydb ls';   help:arg:parse
     if ! ___x_cmd_shodan_is_interactive_env; then
-        ___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/shodan/lib/data/entity.csv"
+        ___x_cmd_shodan_entitydb_ls___raw
         return 0
     fi
 
 
-    local ___X_CMD_CSV_APP_DATA_SYMBOL=
-    local ___X_CMD_CSV_APP_DATA_ID=
-    local ___X_CMD_CSV_APP_DATA_NAME=
-    < "$___X_CMD_ROOT_MOD/shodan/lib/entitydb/entity.csv"  x csv --app --return var
-    [ -n "$___X_CMD_CSV_APP_DATA_ID" ] || return
+    local ___X_CMD_CSV_APP_DATA_CURROW=
 
-    local eid="$___X_CMD_CSV_APP_DATA_ID"
-    local name="$___X_CMD_CSV_APP_DATA_SYMBOL"
+    ___x_cmd_shodan_entitydb_ls___raw | ___x_cmd_shodan_entitydb_ls___parse_json2csv |  x csv --app --return line
+    local eid=${___X_CMD_CSV_APP_DATA_CURROW%%,*}
 
-    local id
+    [ -n "$eid" ] || return
+
+    local name="${___X_CMD_CSV_APP_DATA_CURROW#*,}"
+    name="${name%%,*}"
+
+    local id=
     x ui select id \
-        "Next move for [entity=$name]"      \
+        "Next move for [ entity=$name]"      \
+        "Open on website"                    \
         "Exit"
 
     case "$id" in
@@ -31,9 +33,24 @@ ___x_cmd_shodan_entitydb_ls(){
     # 2)      ___x_cmd_shodan_entitydb_id "$eid" | x j2y ;;  # In the future, we will use a interactive json.
 }
 
-___x_cmd_shodan_entitydb_search___raw(){
+___x_cmd_shodan_entitydb_ls___raw(){
     x ccmd "$___X_CMD_SHODAN_ENTITYDB_TIMELIMIT" 2>/dev/null -- \
         x curl  --fail-with-body  -sS \
-        "${url}" \
+        "https://entitydb.shodan.io/api/entities" \
         || N=shodan M="Fail for name=${name}" log:ret:1
 }
+
+___x_cmd_shodan_entitydb_ls___parse_json2csv(){
+    x jo .entities | x jo 2c .id .tickers .entity_name  | x csv awk '{
+            sym = juq(cval(2))
+            len = split(sym,arr,",")
+            str= ""
+            for(i=1; i<=len;++i){
+                if(i < len) str = str juq(arr[i]) ","
+                else        str = str juq(arr[i])
+            }
+            print cval(1)","jqu(str)","jqu(cval(3))
+        }' |\
+        x csv header --add ID SYMBOL NAME
+}
+

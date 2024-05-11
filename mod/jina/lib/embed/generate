@@ -1,0 +1,86 @@
+
+# shellcheck shell=dash
+
+___x_cmd_jina_embed_generate(){(
+    local filelist=""
+    local gclist=""
+    local tmpfp=""
+    local dataid=""
+    local format=""
+
+    local tmpdir="$___X_CMD_ROOT_TMP/jina/embed/data"
+    [ -d  "$tmpdir"  ] || x mkdirp "$tmpdir"
+
+    trap 'eval ___x_cmd_cmds rm -f "$gclist"' EXIT
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -)
+                dataid="$(x pidid vlseqid ___X_CMD_JINA_EMBEDDING)"
+                tmpfp="$tmpdir/$dataid"
+                ___x_cmd_cmds cat > "$tmpfp"
+                filelist="${filelist}${tmpfp}"
+                gclist="${gclist}${tmpfp} "
+                shift 1
+                ;;
+
+            -d|--data)
+                dataid="$(x pidid vlseqid ___X_CMD_JINA_EMBEDDING)"
+                tmpfp="$tmpdir/$dataid"
+                printf "%s\n" "$2" >> "$tmpfp"
+                filelist="${filelist}${tmpfp}"
+                gclist="${gclist}${tmpfp} "
+                shift 2
+                ;;
+
+            -f|--file)
+                [ $# -ge 2 ] || N=jina M="Please provide a value"   log:ret:1;
+                local x_=; x abspath_ "$2"
+                [ -f "$x_" ] || N=jina M="Please provide a valid [filepath=$2] after --file." log:ret:64
+                filelist="${filelist}:${x_}";
+                shift 2 ;;
+
+            --yml)
+                format=yml; shift
+                ;;
+
+            --help|-h)
+                x help -m jina embed generate "$@"
+               return ;;
+            *)
+                dataid="$(x pidid vlseqid ___X_CMD_JINA_EMBEDDING)"
+                tmpfp="$tmpdir/$dataid"
+                printf "%s\n" "$*">> "$tmpfp"
+                filelist="${filelist}${tmpfp}"
+                gclist="${gclist}${tmpfp} "
+                break
+                ;;
+        esac
+    done
+    ___x_cmd_jina_embed_generate___json "$filelist"
+)}
+
+# "input": ["Your text string goes here", "You can send multiple texts"],
+# model: "jina-embeddings-v2-base-en"
+
+___x_cmd_jina_embed_generate___json(){
+    local filelist="$1"
+    local jina_model=;
+    {
+        ___x_cmd_jina_cfg --var jina_model=embedModel
+        [ -n "$jina_model" ] || jina_model="jina-embedddings-v2-base-en"
+
+        x cawk -E filelist,jina_model    \
+               -m j/json,j/jiter,j/jcp  \
+               -f "$___X_CMD_ROOT_MOD/jina/lib/awk/generate_embed_json.awk"
+    } | {
+
+        read -r content
+
+        if [ -n "$format" ]; then ___x_cmd_jina_embed_generate_request "$content" | x j2y
+        else                      ___x_cmd_jina_embed_generate_request "$content"
+        fi
+    }
+
+}
+
+

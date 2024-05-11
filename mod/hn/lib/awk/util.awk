@@ -4,7 +4,7 @@ function hn_value(v){
 }
 
 function hn_th( style, text, no_color ){
-    if (no_color) return text
+    if (no_color == true) return text
     return th( style, text )
 }
 

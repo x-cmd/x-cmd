@@ -1,0 +1,143 @@
+# shellcheck shell=dash
+# Get a Wikipedia search suggestion for `query`
+
+___x_cmd_wkp_search(){
+    [ "$#" -gt 0 ] ||  N=wkp M="Please provide a value for the query" log:ret:64
+
+    local datamode="app"
+    local str=
+
+    local IFS=" "
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m wkp search; return ;;
+
+            -j|--json)      datamode="json" ;            shift ;;
+            -y|--yml)       datamode="yml"  ;            shift ;;
+            --csv)          datamode="csv"  ;            shift ;;
+            --app)          datamode="app"  ;            shift ;;
+
+            --)             shift ;            str="$*"; break ;;
+            *)                                 str="$*"; break ;;
+        esac
+    done
+
+    [ -n "$str" ] || M='Please provide some information you need to look up ' N=wkp log:ret:1
+
+    local search
+    local suggestion
+    local data
+    data="$(___x_cmd_wkp_search___get "$str" | ___x_cmd jo .query)"
+
+    ___x_cmd jo env . suggestion=.searchinfo.suggestion search=.search <<A
+$data
+A
+    search="$(printf "%s" "$search" | ___x_cmd_cmds sed 's/<span class=\\"searchmatch\\">//g; s/<\/span>//g')"
+    if [ "$search" != "[]" ]; then
+        ___x_cmd_wkp_search___view_"$datamode" <<A
+$search
+A
+    return 0
+    fi
+
+    # automatically
+    if [ -n "$suggestion" ]; then
+        ___x_cmd_wkp_search___get "$suggestion" \
+            | ___x_cmd jo .query.search    \
+            | ___x_cmd_cmds sed 's/<span class=\\"searchmatch\\">//g; s/<\/span>//g' \
+            | ___x_cmd_wkp_search___view_"$datamode"
+    else
+        wkp:error "There were no results matching the query"
+        return 1
+    fi
+}
+
+___x_cmd_wkp_search___get(){
+    ___x_cmd_wkp_api_search --str "$1" --srinfo suggestion
+}
+
+___x_cmd_wkp_search___view_json(){
+    ___x_cmd_cmds_cat
+}
+
+___x_cmd_wkp_search___view_yml(){
+    ___x_cmd_cmds_cat | ___x_cmd j2y
+}
+
+___x_cmd_wkp_search___view_app(){
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___X_CMD_SHBIN_CODE='
+            xrc wkp ;
+            "$@"
+        ' ___x_cmd_antizshbin ___x_cmd_wkp_search___view_app___
+    else
+        ___x_cmd_wkp_search___view_csv
+    fi
+}
+
+___x_cmd_wkp_search___view_app___hint(){
+    local kw="$1"
+    wkp:info \
+        --extract   "x wkp extract '$kw'" \
+        --browse    "x wkp open '$kw'" \
+        "FYI"
+}
+
+___x_cmd_wkp_search___view_app___(){
+    ___x_cmd csv app --return var --clear               \
+        --preview snippet                               \
+        --action o Open 'Open on website'               \
+        --processor ___x_cmd_wkp_search___view_app_open \
+        ___x_cmd_wkp_search___view_csv
+
+    [ -n "$___X_CMD_CSV_APP_DATA_title" ] || return 1
+    local title="$___X_CMD_CSV_APP_DATA_title"
+
+    local id=
+    ___x_cmd ui select id "What to do NEXT"                \
+        "show extract of            \"$title\""     \
+        "browse page of             \"$title\""     \
+        "let _wkp = extract of      \"$title\""     \
+        "EXIT"     || {
+            local err=$?
+            ___x_cmd_wkp_search___view_app___hint "$title"
+            return $err
+        }
+
+    case "$id" in
+        1)      ___x_cmd wkp extract  "$title"
+                ___x_cmd_wkp_search___view_app___hint "$title"
+                ;;
+
+        2)      ___x_cmd wkp open "$title"
+                ___x_cmd_wkp_search___view_app___hint "$title"
+                ;;
+
+        3)      wkp:info "Storing data of [title=$title] into variable -> _wkp"
+                _wkp="$(___x_cmd_wkp extract "$title")"
+                ;;
+        *)      ___x_cmd_wkp_search___view_app___hint "$title"
+                return 0
+                ;;
+    esac
+}
+
+___x_cmd_wkp_search___view_csv(){
+    ___x_cmd_cmds_cat | ___x_cmd jo 2c           .title .pageid .snippet .size .wordcount .timestamp  \
+                      | ___x_cmd csv header --add title  pageid  snippet  size  wordcount  timestamp
+}
+
+
+___x_cmd_wkp_search___view_app_open(){
+    local op="$*"
+    case "$op" in
+        x:request:o*)
+            op="${op##*"$___X_CMD_UNSEENCHAR_001"}"
+            op="${op%%,*}"
+            ___x_cmd open https://wikipedia.org/wiki/"$op"
+            ;;
+    esac
+}
+
+
+

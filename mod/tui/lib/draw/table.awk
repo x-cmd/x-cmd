@@ -1,16 +1,22 @@
-function draw_table_style_init(){
-    TH_TABLE_SELECTED_COL           = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_SELECTED_COL" ]            : TH_THEME_COLOR
+function draw_table_style_init(_color,      _minor_color){
+    if (_color != "") _minor_color = _color
+    else {
+        _color = TH_THEME_COLOR
+        _minor_color = TH_THEME_MINOR_COLOR
+    }
+
+    TH_TABLE_SELECTED_COL           = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_SELECTED_COL" ]            : _color
     TH_TABLE_SELECTED_ROW           = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_SELECTED_ROW" ]            : UI_TEXT_REV
-    TH_TABLE_SELECTED_ROW_COL       = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_SELECTED_ROW_COL" ]        : TH_THEME_COLOR UI_TEXT_REV UI_TEXT_BOLD
+    TH_TABLE_SELECTED_ROW_COL       = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_SELECTED_ROW_COL" ]        : _color UI_TEXT_REV UI_TEXT_BOLD
     TH_TABLE_HEADER_ITEM_NORMAL     = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_HEADER_ITEM_NORMAL" ]      : UI_TEXT_UNDERLINE UI_TEXT_BOLD
-    TH_TABLE_HEADER_ITEM_FOCUSED    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_HEADER_ITEM_FOCUSED" ]     : UI_TEXT_UNDERLINE UI_TEXT_BOLD  TH_THEME_COLOR
+    TH_TABLE_HEADER_ITEM_FOCUSED    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_HEADER_ITEM_FOCUSED" ]     : UI_TEXT_UNDERLINE UI_TEXT_BOLD  _color
     TH_TABLE_NUM_NORMAL             = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_NUM_NORMAL" ]              : ""
     TH_TABLE_NUM_FOCUSED            = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_NUM_FOCUSED" ]             : ""
-    TH_TABLE_NUM_PREFIX_SELECTED    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_NUM_PREFIX_SELECTED" ]     : TH_THEME_COLOR "> " UI_END
+    TH_TABLE_NUM_PREFIX_SELECTED    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_NUM_PREFIX_SELECTED" ]     : _color "> " UI_END
     TH_TABLE_NUM_PREFIX_UNSELECTED  = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_NUM_PREFIX_UNSELECTED" ]   : "  "
     TH_TABLE_NUM_PREFIX_WIDTH       = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_NUM_PREFIX_WIDTH" ]        : int(wcswidth_cache(str_remove_esc(TH_TABLE_NUM_PREFIX_UNSELECTED)))
-    TH_TABLE_FOOTER                 = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_FOOTER" ]                  : TH_THEME_MINOR_COLOR
-    TH_TABLE_BOX                    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_BOX" ]                     : TH_THEME_COLOR # UI_FG_DARKGRAY
+    TH_TABLE_FOOTER                 = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_FOOTER" ]                  : _minor_color
+    TH_TABLE_BOX                    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_BOX" ]                     : _color # UI_FG_DARKGRAY
     TH_TABLE_ICON                   = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_ICON" ]                    : "" # "✨" # "⚡"
     TH_TABLE_ICON_STYLE             = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_ICON_STYLE" ]              : TH_TABLE_HEADER_ITEM_FOCUSED
     TH_TABLE_CURRENT_INFO           = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_TABLE_CURRENT_INFO" ]            : "" # UI_FG_BLUE
@@ -31,9 +37,10 @@ function draw_table_change_set_all( o, kp ){
 }
 
 function draw_table( o, kp, x1, x2, y1, y2, opt, \
-    _draw_box, _draw_filter, _draw_header, _draw_boby, _draw_footer, _draw_search ){
+    _draw_box, _draw_filter, _draw_header, _draw_boby, _draw_footer, _draw_search, _color ){
 
-    _draw_box = draw_table___on_box(            o, kp, x1,      x2,     y1, y2, TH_TABLE_BOX )
+    _color = opt_get( opt, "box.color" )
+    _draw_box = draw_table___on_box(            o, kp, x1,      x2,     y1, y2, (( _color !="" ) ? _color:TH_TABLE_BOX) )
     x1++; x2--; y1++; y2--
     y1++; y2--
 

@@ -71,5 +71,10 @@ function comp_textbox_clear( o, kp ) {
     ctrl_page_init( o, kp, 1, 1, 1 )
     comp_textbox_put( o, kp, "" )
 }
+
+function comp_textbox_top( o, kp ){
+    change_set(o, kp, "textbox")
+    ctrl_page_init( o, kp, 1, 1, 1 )
+}
 # EndSection
 

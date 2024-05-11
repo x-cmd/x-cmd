@@ -1,4 +1,5 @@
 function draw_unit_page_begin( v, page_row ) {
+    if ( page_row <= 0 ) return 1
     return ( int((v-1) / page_row) * page_row ) + 1
 }
 

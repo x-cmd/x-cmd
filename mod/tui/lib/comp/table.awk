@@ -320,7 +320,7 @@ function comp_table_change_set_all( o, kp  ) {
     return draw_table_change_set_all( o, kp )
 }
 
-function comp_table_paint( o, kp, x1, x2, y1, y2,       _opt, _slct_change, _body_change, _cur_col, _cur_row, _cur_col_true, _cur_row_true, _filter_enable ) {
+function comp_table_paint( o, kp, x1, x2, y1, y2, color,       _opt, _slct_change, _body_change, _cur_col, _cur_row, _cur_col_true, _cur_row_true, _filter_enable ) {
 
     _search_change = change_is(o, kp, "table.search")
     _slct_change = change_is(o, kp, "table.filter")
@@ -335,6 +335,7 @@ function comp_table_paint( o, kp, x1, x2, y1, y2,       _opt, _slct_change, _bod
     opt_set( _opt, "num.enable",      comp_table_display_column_num(o, kp) )
     opt_set( _opt, "filter.enable",   comp_table_ctrl_filter_sw_get(o, kp) )
     opt_set( _opt, "search.enable",   comp_table_ctrl_search_sw_get(o, kp) )
+    opt_set( _opt, "box.color",       color )
 
     if ( _slct_change ) {
         opt_set( _opt, "filter.text",     comp_table___slct_get(o, kp, _cur_col_true) )

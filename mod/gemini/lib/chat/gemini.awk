@@ -9,6 +9,10 @@ function gemini_gen_unit_str(str){
         return sprintf("{\"text\": %s} ," , str)
     }
 }
+function gemini_gen_generationConfig(temperature,         _temperature){
+    _temperature    =  "\"temperature\": " temperature
+    return ", \"generationConfig\": { " _temperature " }"
+}
 
 function gemini_gen_history_str( history_obj, i,      _text_res, _text_req, _text_finishReason) {
     _text_req = chat_history_get_req_text(history_obj,  Q2_1, i)
@@ -35,7 +39,7 @@ function gemini_gen_safe_setting_str(             _safe_setting){
 }
 
 function gemini_req_from_creq(history_obj, minion_obj, question,         str, i, l, _history_str, promote_content, \
-    promote_system_json, _filelist_str, _safe_setting ){
+    promote_system_json, _filelist_str, _safe_setting, _temperature, config ){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
         str = gemini_gen_history_str(history_obj, i)
@@ -47,16 +51,19 @@ function gemini_req_from_creq(history_obj, minion_obj, question,         str, i,
     promote_system_json = minion_system_tostr(minion_obj, MINION_KP)
     if (promote_system_json != "") promote_system_json = gemini_gen_unit_str(promote_system_json)
 
-    _filelist_str = minion_filelist_attach( minion_obj, minion_kp)
+    _filelist_str = minion_filelist_attach( minion_obj, MINION_KP)
     if (_filelist_str != "") _filelist_str = gemini_gen_unit_str(_filelist_str)
+
+    _temperature    = minion_temperature( minion_obj, MINION_KP )
+    if (_temperature != "") config = gemini_gen_generationConfig(_temperature)
 
     if ( ! chat_str_is_null(promote_content))  USER_LATEST_QUESTION = promote_content
     else USER_LATEST_QUESTION = question
 
     _safe_setting = gemini_gen_safe_setting_str()
 
-    return sprintf("{ %s \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s}],\"role\":\"user\"}]}\n", \
-        _safe_setting, _history_str, promote_system_json, _filelist_str, jqu(USER_LATEST_QUESTION))
+    return sprintf("{ %s \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s}],\"role\":\"user\"}] %s }\n", \
+        _safe_setting, _history_str, promote_system_json, _filelist_str, jqu(USER_LATEST_QUESTION), config)
 }
 
 # extract ...

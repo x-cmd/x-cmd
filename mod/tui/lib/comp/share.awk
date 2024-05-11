@@ -254,3 +254,14 @@ function wcswidth_without_style_cache(s){
 }
 
 # EndSection
+
+# Section: component
+function tui_parse_width_num(w, col, default, min, max){
+    if (w ~ "^[0-9]+%$") w = int(col *  w / 100)
+    if ((default != "") && (w <= 0))    w = default
+    else if ((min != "") && (w < min) ) w = min
+    else if ((max != "") && (w > max) ) w = max
+    return int(w)
+}
+
+# EndSection

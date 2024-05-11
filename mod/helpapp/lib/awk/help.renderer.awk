@@ -20,24 +20,6 @@ function print_helpdoc_init(no_color, theme_color0, theme_color1, desc_color0, d
     comp_parse_position_order( position_order, po_arr)
 }
 
-function locate_obj_prefix( obj, args,       i, j, l, argl, optarg_id, obj_prefix ){
-    obj_prefix = SUBSEP "\"1\""   # Json Parser
-    argl = args[L]
-    for (i=1; i<=argl; ++i){
-        help_get_ref(obj, obj_prefix )
-        l = aobj_len( obj, obj_prefix )
-        for (j=1; j<=l; ++j) {
-            optarg_id = aobj_get( obj, obj_prefix SUBSEP j)
-            if ("|"juq(optarg_id)"|" ~ "\\|"args[i]"\\|") {
-                obj_prefix = obj_prefix SUBSEP optarg_id
-                break
-            }
-        }
-        if (j>l) break
-    }
-    return obj_prefix
-}
-
 function arr_clone_of_kp( src, dst, kp,       l, i ){
     dst[ L ] = l = src[ kp L ]
     for (i=1; i<=l; ++i)  dst[i] = src[ (kp != "") ? kp SUBSEP "\""i"\"" : i ]

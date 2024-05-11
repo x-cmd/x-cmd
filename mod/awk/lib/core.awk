@@ -101,22 +101,59 @@ function var_set(name, value){
 # EndSection
 
 # Section: json
+# function juq_original( str ){
+#     str = substr( str, 2, length(str)-2 )
+#     gsub( /\\\\/, "\001", str )
+#     gsub( /\\"/, "\"", str )
+#     gsub( /\\n/, "\n", str )
+#     gsub( /\\t/, "\t", str )
+#     gsub( /\\v/, "\v", str )
+#     gsub( /\\b/, "\b", str )
+#     gsub( /\\r/, "\r", str )
+#     gsub( "\\/", "/", str )                 # Notice: This is for the bwh json.
+#     gsub( "\001", "\\", str )
+#     return str
+# }
+
+BEGIN{
+    PHP_JSON = ENVIRON["___X_CMD_AWK_PHPJSON"]
+}
+
 function juq( str ){
     str = substr( str, 2, length(str)-2 )
+    if (str !~ /\\/) return str
+
     gsub( /\\\\/, "\001", str )
     gsub( /\\"/, "\"", str )
     gsub( /\\n/, "\n", str )
-    gsub( /\\t/, "\t", str )
-    gsub( /\\v/, "\v", str )
-    gsub( /\\b/, "\b", str )
     gsub( /\\r/, "\r", str )
-    gsub( "\\/", "/", str )                 # Notice: This is for the bwh json.
+    gsub( /\\t/, "\t", str )
+
+    if (str ~ /\\/) {
+        if (str ~ /\\u/){   # Only for gemini ...
+            gsub( /\\u003c/, "<", str )
+            gsub( /\\u003e/, ">", str )
+            # TODO: in the future: if (str ~ /\\u/) -> transform to binary format. Time consuming ...
+        }
+
+        gsub( /\\v/, "\v", str )    # Notice: Will remove in the future, the jq won't recognized
+        gsub( /\\b/, "\b", str )
+        if (PHP_JSON)   gsub( "\\/", "/", str )                 # Notice: This is for the bwh json.
+        # control characters from U+0000 through U+001F must be escaped
+    }
+
     gsub( "\001", "\\", str )
     return str
 }
 
+function juq_gawk( str ){
+    # using translate for UTF-8 handle
+}
+
 function juq1( str ){
     str = substr( str, 2, length(str)-2 )
+    if (str !~ /\\/) return str
+
     gsub( /\\\\/, "\001", str )
     gsub( /\\'/, "'", str )
     gsub( /\\n/, "\n", str )
@@ -128,12 +165,13 @@ function juq1( str ){
     return str
 }
 
+# TODO: will translate control chars to unicode -- That might be the bug in the script play.
 function jqu( str ){
     gsub( "\\\\", "&\\", str )
     gsub( "\"", "\\\"", str )
     gsub( "\n", "\\n", str )
     gsub( "\t", "\\t", str )
-    gsub( "\v", "\\v", str )
+    gsub( "\v", "\\v", str )        # Notice: Will remove in the future, using \u000b to encode
     gsub( "\b", "\\b", str )
     gsub( "\r", "\\r", str )
     return "\"" str "\""
@@ -713,7 +751,7 @@ function str_joinwrap(sep, left, right, obj, prefix, start, end,     i, _result)
 
 BEGIN{
     # STR_TERMINAL_ESCAPE033 = "\033\\[([0-9]+;)*([0-9]+)?(m|dh|A|B|C|D)"
-    STR_TERMINAL_ESCAPE033 = "\033\\[[^A-Za-z]*[A-Za-z=]"
+    STR_TERMINAL_ESCAPE033 = "\033\\[[^A-Za-z]*(dh|[A-Za-z=])"
     STR_TERMINAL_ESCAPE033_LIST = "(" STR_TERMINAL_ESCAPE033 ")+"
     TRIM033 = STR_TERMINAL_ESCAPE033_LIST
 }

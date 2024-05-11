@@ -1,0 +1,278 @@
+
+# @gemini "summary data [ddgo:x-cmd jq]() and [wiki:x-cmd jq]()"
+
+# @gemini --ddgo "keyword"
+# @gemini + ddgo "keyword"
+# @gemini + wp "keyword"
+# @gemini - wp
+
+___x_cmd_chat___exec(){
+    local question=""
+    local history=""
+    local minion=""
+    local session=""
+    local model=""
+    local system=""
+    local type="chat"
+    local confirm_before_send=""
+    # local question_op=""
+    local count_token=""
+    local filelist_attach=""
+    local provider="openai"
+    local numbered=""
+    local temperature=""
+
+    local inputtype=""
+    local inputdesc="This data form pipe"
+
+    local NL="${___X_CMD_UNSEENCHAR_NEWLINE}"
+    local reflist=""
+
+    local cache_time=1h
+
+    local x_=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --provider)     provider="$2";
+                            [ $# -ge 2 ] || N=chat M="Please provide the provider value" log:ret:64;
+                            ___x_cmd_chat___exec_validate "$provider" || return
+                            shift 2 ;;
+
+            -t|--temperature)
+                            temperature="$2"
+                            [ $# -ge 2 ] || N=chat M="Please provide the temperature value" log:ret:64;
+                            shift 2
+                            ;;
+
+            --jina)         [ $# -ge 2 ] || N=chat M="Please provide the URL value" log:ret:64;
+                            x_=; ___x_cmd_chat___exec_jina_ "$2" || return
+                            reflist="${reflist}${x_}${NL}"
+                            shift 2 ;;
+
+            ## DDGO just preserve the top 10 results
+            --ddgo)         [ $# -ge 2 ] || N=chat M="Please provide the duckduckgo keyword" log:ret:64;
+                            x_=; ___x_cmd_chat___exec_ddgo_ "$2" || return
+                            reflist="${reflist}${x_}${NL}"
+                            shift 2 ;;
+            --tldr)         [ $# -ge 2 ] || N=chat M="Please provide the tldr command" log:ret:64;
+                            x_=; ___x_cmd_chat___exec_tldr_ "$2" || return
+                            reflist="${reflist}${x_}${NL}"
+                            shift 2 ;;
+
+            --ddgq)         ;;
+            --wp)           ;; # wikipedia
+            # --cht)          ;;
+
+            --kv)           [ $# -ge 3 ] || N=chat M="Please provide the key-value, --kv <key> <value>" log:ret:64
+                            x_=; ___x_cmd_chat___exec_kv_ "$2" "$3" || return
+                            reflist="${reflist}${x_}${NL}"
+                            shift 3 ;;
+            # --eval "x ls # list all files"
+            --eval)
+                            [ $# -ge 2 ] || N=chat M="Please provide the command to eval" log:ret:64;
+                            chat:info "Eval command -> $2"
+                            x_=; ___x_cmd_chat___exec_cmd_ "$2" "Result from execute $2" || return
+                            reflist="${reflist}${x_}${NL}"
+                            shift 2 ;;
+
+            -e)             [ $# -ge 2 ] || N=chat M="Please provide the env name" log:ret:64;
+                            x_=; ___x_cmd_chat___exec_env_ "$2" || return
+                            reflist="${reflist}${x_}${NL}"
+                            shift 2 ;;
+            -f|--file)
+                            [ $# -ge 2 ] || N=chat M="Please provide the filepath" log:ret:64;
+                            x_=; ___x_cmd_chat___exec_file_ "$2" || return
+                            reflist="${reflist}${x_}${NL}"
+                            shift 2 ;;
+
+            --session)      session="$2";           [ $# -ge 2 ] || N=chat M="Please provide the session value" log:ret:64; shift 2 ;;
+            --minion)       minion="$2";            [ $# -ge 2 ] || N=chat M="Please provide the minion value"  log:ret:64; shift 2 ;;
+            --history|-n)   history_num="$2";       [ $# -ge 2 ] || N=chat M="Please provide the history num"   log:ret:64; shift 2 ;;
+            --model)        model="$2";             [ $# -ge 2 ] || N=chat M="Please provide the model value"   log:ret:64; shift 2 ;;
+            --system)       system="$2";            [ $# -ge 2 ] || N=chat M="Please provide the system value"  log:ret:64; shift 2 ;;
+            # --context)
+            --type)         type="$2";              [ $# -ge 2 ] || N=chat M="Please provide the type value"    log:ret:64; shift 2 ;;
+            --count)        count_token=1 ;         shift 1 ;; # now just gemini
+
+            -c)             confirm_before_send=1;  shift 1 ;;
+
+            --edit)         inputtype="${1#--}";    shift 1 ;;
+
+            -P|--nopipe)    inputtype=none;         shift 1 ;;      # For script process if inside the pipe
+            -p)             inputtype=pipe;
+                            inputdesc="$2"
+                            [ $# -ge 2 ] || N=chat M="Please provide a description of the value of the input pipe" log:ret:64;
+                            shift 2 ;;
+
+            --numbered)     numbered=1;             shift 1 ;;
+
+            --question)     question="$2";          [ $# -ge 2 ] || N=chat M="Please provide the question value" log:ret:64;  shift 2 ;;
+            *)              question="${question}$*"; break ;;
+        esac
+    done
+
+    [ -n "$inputtype" ] || {
+        if [ -p /dev/stdin ]; then  inputtype=pipe
+        else                        inputtype=none
+        fi
+    }
+
+    x_=; ___x_cmd_chat_request___preparequestion_ "$question" "$inputtype" "$numbered" "$inputdesc" || return
+    question="$x_"
+
+    x_=; ___x_cmd str trimm_ "$reflist"
+    question="${x_}${question}"
+
+    # TODO: scan the question, extract url.
+    # Prompt to ask whether to extract the content from the url using jina
+
+    # @gemini "Please summary the data [ddgo:]"
+
+    local cfg_history_num=; local cfg_session=;     local cfg_minion=;  local cfg_userlang=
+    ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion cfg_userlang=userlang 2>/dev/null
+
+    [ -n "$minion" ] || minion="default"
+    x_=; ___x_cmd_chat_minion_cache_json_ "$minion" || return
+    local minion_json_cache="$x_"
+
+    local chatid=;  chatid="$(___x_cmd pidid vlseqid ___X_CMD_CHAT_REC)"
+    chat:debug --chatid "$chatid" --model "$model" --question "$question" --history_num "$history_num" --confirm_before_send "$confirm_before_send" "chat exec"
+    ___x_cmd "$provider" chat exec
+}
+
+___x_cmd_chat___exec_validate(){
+    local provider="$1"
+    case "$provider" in
+        openai|gemini|mistral|ollama|moonshot) ;;
+        *)
+            N=chat M="Provider must be [openai|gemini|mistral|ollama|moonshot]" log:ret:64
+            ;;
+    esac
+}
+
+
+___x_cmd_chat___exec_jina_(){
+    x_=""
+    local _cmd="$1"
+    local _content
+    chat:info "x jina reader $_cmd"
+    _content="$(___x_cmd jina reader "$_cmd")" || return
+    ___x_cmd_chat___wrap_ REFERENCE-LINK    "$_cmd";        _cmd="$x_"
+    ___x_cmd_chat___wrap_ REFETENCE-CONTENT "$_content";    _content="$x_"
+    x_="${_cmd}
+${_content}"
+    # ___x_cmd_chat___exec_cmd_ "x jina reader $1" "ref: $1"
+}
+
+___x_cmd_chat___exec_tldr_(){
+    x_=""
+    local _cmd="$1"
+    local _content
+    chat:info "x tldr --cat $_cmd"
+    _content="$(eval ___x_cmd tldr --cat "$_cmd")" || return
+    ___x_cmd_chat___wrap_ TLDR-COMMAND  "$_cmd";        _cmd="$x_"
+    ___x_cmd_chat___wrap_ TLDR-CONTENT  "$_content";    _content="$x_"
+    x_="${_cmd}
+${_content}"
+    # ___x_cmd_chat___exec_cmd_ "x tldr --cat $1" "tldr of: $1"
+}
+
+___x_cmd_chat___exec_ddgo_(){
+    x_=""
+    local _cmd="$1"
+    local _content
+    chat:info "x ddgo --top 10 $_cmd"
+    _content="$(___x_cmd ddgo --top 10 "$_cmd")" || return
+    ___x_cmd_chat___wrap_ "DuckDuckGo-SEARCH-ENGINE"    "$_cmd";        _cmd="$x_"
+    ___x_cmd_chat___wrap_ "DuckDuckGo-SEARCH-CONTENT"   "$_content";    _content="$x_"
+    x_="${_cmd}
+${_content}"
+    # ___x_cmd_chat___exec_cmd_ "x ddgo $1" "Result from DuckDuckGo search engine"
+
+}
+
+
+___x_cmd_chat___exec_cmd_(){
+    local cmd_text="$1"
+    local cmd_desc="$2"
+    local cmd_res; cmd_res="$(eval "$cmd_text")" || {
+        local _exitcode="$?"
+        chat:error "command errexit with code=$_exitcode"
+        return 1
+    }
+
+    ___x_cmd_chat___wrap_ COMMAND-TO-EVAL   "$cmd_text";    cmd_text="$x_"
+    ___x_cmd_chat___wrap_ COMMAND-DESC      "$cmd_desc";    cmd_desc="$x_"
+    ___x_cmd_chat___wrap_ COMMAND-RESULT    "$cmd_res";     cmd_res="$x_"
+    x_="${cmd_text}
+${cmd_desc}
+${cmd_res}"
+}
+
+
+# abc_content="$(cat abc.txt)"
+# @gemini --kv "file content: abc.txt" "$abc_content"
+# res="$(x ddgo adf)"
+# @gemini --kv "Result from duckduckgo" "$res"
+___x_cmd_chat___exec_kv_(){
+    local key="$1"
+    local val="$2"
+    x_=; ___x_cmd_chat___wrap_ KEY "$key";      key="$x_"
+    x_=; ___x_cmd_chat___wrap_ VALUE "$val";    val="$x_"
+    x_=; ___x_cmd_chat___wrap_ KEY-VALUE-PAIR "${key}
+${val}"
+}
+
+___x_cmd_chat___exec_env_(){
+    local str="$1"
+    local varname="${str%%=*}"
+    local varval=""
+    local msg=""
+    if [ "$varname" = "$str" ]; then
+        msg="The value of environment variable $varname"
+    else
+        msg="${str#*=}"
+    fi
+
+    eval "varval=\$$varname"
+    x_=; ___x_cmd_chat___wrap_ "$msg" "$varval"
+}
+
+___x_cmd_chat___exec_file_(){
+    local str="$1"
+    local filename="${str%=*}"
+    x_=; ___x_cmd abspath_ "$filename"
+    [ -f "$x_" ] || N=chat M="Please provide a valid [filepath=$filename]" log:ret:1
+
+    local _content; _content="$(___x_cmd_cmds_cat "$x_")"
+
+    [ "$filename" = "$str" ] || filename="${str##*=}"
+    x_=; ___x_cmd_chat___wrap_ "FILE-NAME" "$filename";     filename="$x_"
+    x_=; ___x_cmd_chat___wrap_ "FILE-CONTENT" "$_content";  _content="$x_"
+    x_="${filename}
+${_content}"
+}
+
+___x_cmd_chat___wrap_(){
+    local key="$1"
+    local value="$2"
+
+    # x_="[$key]${value}[/$key]"
+    # x_="<|---BEGIN[$key]---|>${value}<|---END---|>"
+    x_="[$key]${value}[/$key]"
+
+#     x_="<|---$key---|>
+# ${value}[
+# <|---$key---|>"
+
+#     x_="-----BEGIN<|$key|>-----
+# $value
+# ------ END -----"
+
+}
+
+___x_cmd_chat___wrap(){
+    local x_
+    ___x_cmd_chat___wrap_ "$@"
+    printf "%s\n" "$x_"
+}

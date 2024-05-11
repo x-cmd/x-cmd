@@ -99,6 +99,17 @@ function comp_advise_remove_dev_tag_of_arr_group(o, kp, arr_group,          i, j
 
 # EndSection
 
+# Section: prepare argument
+function comp_advise_prepare_argarr( argstr, args, sep,       l ){
+    if ( argstr == "" ) return
+    sep = (sep != "") ? sep : " "
+    gsub( "(^[\002]+)|([\002]+$)", "" , argstr)
+    l = split(argstr, args, sep)
+    args[L] = l
+}
+
+# EndSection
+
 ## Section: advise ref filepath
 
 function comp_advise_get_ref(obj, kp,        r, msg, i, l){
@@ -119,8 +130,32 @@ function comp_advise_get_ref_inner(obj, kp, filepath,       _){
     jref_rm(obj, kp)
     jiparse2leaf_fromfile( _, kp, filepath )
     if ( cat_is_filenotfound() ) return "Not found such advise jso file - " filepath
-    cp_cover(obj, kp, _, kp)
+    # cp_cover(obj, kp, _, kp)
+    cp(obj, kp, _, kp)
     return true
+}
+
+function comp_advise_locate_obj_prefix( obj, args,       msg, i, j, l, argl, optarg_id, obj_prefix ){
+    obj_prefix = SUBSEP "\"1\""   # Json Parser
+    argl = args[L]
+    for (i=1; i<=argl; ++i){
+        if ((msg = comp_advise_get_ref(obj, obj_prefix)) != true) {
+            log_error( "advise", msg )
+            exit(1)
+            return
+        }
+
+        l = aobj_len( obj, obj_prefix )
+        for (j=1; j<=l; ++j) {
+            optarg_id = aobj_get( obj, obj_prefix SUBSEP j)
+            if ("|"juq(optarg_id)"|" ~ "\\|"args[i]"\\|") {
+                obj_prefix = obj_prefix SUBSEP optarg_id
+                break
+            }
+        }
+        if (j>l) break
+    }
+    return obj_prefix
 }
 
 # EndSection

@@ -1,69 +1,55 @@
 # shellcheck shell=dash disable=SC2034,SC2016
 x log init yum
 
+xrc:mod:lib  yum   __xmirror/_index  __repo __xproxy install nv
+
 ___x_cmd_yum___main(){
     [ "$#" -gt 0 ] ||   set -- nv
-
     local op="$1"; shift
     case "$op" in
-        install)            ___x_cmd_yum___install          "$@" ;;
+        -h|--help)
+            x help -m yum "$@"; return   ;;
+    esac
+
+    x hascmd yum || {
+        yum:warn "yum command not found."
+        return 1
+    }
+
+    case "$op" in
+        install)            ___x_cmd_yum_install            "$@" ;;
         nv)                 ___x_cmd_yum___nv               "$@" ;;
 
         proxy|--xproxy)     ___x_cmd_yum___xproxy           "$@" ;;
         mirror|--xmirror)   ___x_cmd_yum___xmirror          "$@" ;;
 
 
-        --help|-h)           x help -m yum;        return        ;;
         # proxy)            ___x_cmd_yum___proxy    "$@"         ;;
         *)                  ___x_cmd_cmds yum "$op" "$@"         ;;
     esac
 }
 
-___x_cmd_yum___nv(){
-    local X_help_cmd='x help -m yum nv'
-    help:arg:parse
-    { [ -t 1 ] && ___x_cmd_is_interactive; } \
-        || {
-            x ccmd 1d -- ___x_cmd_yum___lsraw
-            return 0
-        }
-
-    local x_=""
-    ___X_CMD_PICK_SHBIN_CODE="xrc yum" \
-    ___x_cmd_storeread_ x pick --width 40 --col 10 x ccmd 1d -- ___x_cmd_yum___lsraw
-    local software=$x_
-
-    [ -n "$software" ] ||  {
-        yum:info "Exit because no software is selected."
-        return 0
-    }
-
-    local id
-    x ui select id "What to do NEXT"                        \
-        "x yum install $software"                        \
-        "EXIT"     || return
-
-    case "$id" in
-        1)      x yum install "$software" ;;
-        2)      return 0 ;;
-
-    esac
+___x_cmd_yum___exec(){
+    yum:info "running command  →  x sudo yum $*"
+    ___x_cmd_yum___xproxy run x sudo yum "$@"
 }
 
 ___x_cmd_yum___lsraw(){
-    ___x_cmd_cmds yum list | ___x_cmd_cmds awk 'NR>2{
-        print $1
-    }'
+    local x_=; ___x_cmd_yum___lsraw_ || return 1
+    ___x_cmd_cmds_cat "$x_"
 }
 
-___x_cmd_yum___install(){
-    local X_help_cmd='x help -m yum nv'
-    help:arg:parse
-    if [ $# -eq 0 ]; then
-        ___x_cmd_yum___nv
-        return 0
-    fi
+___x_cmd_yum___lsraw_(){
+    local cachefp=; cachefp="$___X_CMD_ROOT_DATA/yum/cache/lsname"
+    x ensurefp "$cachefp"
+    local l=;
+    <"$cachefp" read -r l
 
-    # Using x sudo
-    x sudo yum install "$@"
+    [ -n "$l" ] || {
+        x rmrf "$cachefp"
+        yum:error "list software fail, please try again."
+        return 1
+    }
+    x_="$cachefp"
 }
+

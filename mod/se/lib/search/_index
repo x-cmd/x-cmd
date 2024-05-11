@@ -1,0 +1,144 @@
+# shellcheck shell=dash
+___x_cmd_se_search(){
+    [ "$#" -gt 0 ] ||  N=se M="Please provide a question for the query" log:ret:64
+    local datamode="app"
+    local title=
+
+    local IFS=" "
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m se search "$@";   return ;;
+
+            -j|--json)      datamode="json" ;                   shift ;;
+            -c|--csv)       datamode="csv"  ;                   shift ;;
+            --app)          datamode="app"  ;                   shift ;;
+
+            --)             shift ;                 title="$*"; break ;;
+            *)                                      title="$*"; break ;;
+        esac
+    done
+    [ -n "$title" ] || N=se M='Please provide a question for the query' log:ret:1
+    ___x_cmd_se_search___"$datamode" "$title"
+}
+
+___x_cmd_se_search___app(){
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___X_CMD_SHBIN_CODE='
+            xrc se ;
+            "$@"
+        ' ___x_cmd_antizshbin ___x_cmd_se_search___app___ "$@"
+    else
+        ___x_cmd_se_search___csv "$@"
+    fi
+}
+
+___x_cmd_se_search___json(){
+    local title="$1"
+    ___x_cmd_se___search_api --title "$title" | ___x_cmd jo .items
+}
+
+___x_cmd_se_search___csv(){
+    ___x_cmd_se_search___json "$@" \
+        | ___x_cmd jo 2c            .title .question_id .accepted_answer_id \
+        | ___x_cmd csv header --add  title  qid          best_answerid
+}
+
+___x_cmd_se_search___app___hint(){
+    local question_id="$1"
+    local title="$2"
+    se:info \
+        --question   "x se question --showall $question_id" \
+        --browse     "x open 'https://stackoverflow.com/questions/$question_id/$title'" \
+        "FYI"
+}
+
+___x_cmd_se___print_q(){
+    local title="$1"
+    printf "%s\n" "==="
+    printf "\033[35;1m%s \033[36m%s\033[0m\n" "Question:" "$title"
+    printf "%s" "---"
+}
+
+___x_cmd_se___lessviewer(){
+    if </dev/null less --use-color >/dev/null; then
+        ___x_cmd less -r --use-color --prompt "Press q to QUIT, h for HELP"
+    else
+        ___x_cmd less -R
+    fi
+}
+
+___x_cmd_se___batviewer(){
+    ___x_cmd bat -l md
+}
+
+___x_cmd_se_search___app___(){
+    local ___X_CMD_CSV_APP_DATA_title
+    local ___X_CMD_CSV_APP_DATA_qid
+    local ___X_CMD_CSV_APP_DATA_best_answerid
+
+    local cont=1
+    while [ $cont -eq 1 ]; do
+        ___x_cmd csv app --return var --clear           \
+            --continue se-app                           \
+            --action o open 'Open on website'           \
+            --processor ___x_cmd_se_search___app___open \
+            ___x_cmd_se_search___csv "$@"
+
+        [ -n "$___X_CMD_CSV_APP_DATA_title" ] || return 0
+        [ -n "$___X_CMD_CSV_APP_DATA_qid" ] || return 1
+        local title="$___X_CMD_CSV_APP_DATA_title"
+        local question_id="$___X_CMD_CSV_APP_DATA_qid"
+
+        if [ -n "$___X_CMD_CSV_APP_DATA_best_answerid" ]; then
+            se:info --Question "$title" "get accepted answer"
+            ___x_cmd_se_question___accept "$question_id"
+        fi
+
+        ___x_cmd_se___print_q "$title"
+
+        local id=
+        ___x_cmd ui select id "Next for Question:"   \
+            "return to qeustion list"           \
+            "get all answer"                    \
+            "open stackoverflow.com to view"    \
+            "let _se = accepted answer"         \
+            "EXIT"  || {
+                local err=$?
+                ___x_cmd_se_search___app___hint "$question_id" "$title"
+                return $err
+            }
+
+        case "$id" in
+            1)      ;;
+            2)      # TODO: dump and show all of the answer
+                    ___x_cmd se question --showall "$question_id"
+                    ___x_cmd_se_search___app___hint "$question_id" "$title"
+                    return 0
+                    ;;
+            3)      ___x_cmd open https://stackoverflow.com/questions/"$question_id/$title"
+                    return 0
+                    ;;
+            4)      se:info "Storing data into variable -> _se"
+                    _se="$(___x_cmd_se_question___accept "$question_id")"
+                    return 0
+                    ;;
+            *)      ___x_cmd_se_search___app___hint "$question_id" "$title"
+                    return 0
+                    ;;
+        esac
+    done
+}
+
+___x_cmd_se_search___app___open(){
+    local title; local question_id; local tmp
+    local op="$*"
+    case "$op" in
+        x:request:o*)
+            op="${op##*"$___X_CMD_UNSEENCHAR_001"}"
+            title="${op%%,*}"
+            tmp="${op#*,}"
+            question_id="${tmp%%,*}"
+            ___x_cmd open https://stackoverflow.com/questions/"$question_id/$title"
+            ;;
+    esac
+}

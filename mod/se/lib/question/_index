@@ -1,0 +1,79 @@
+# shellcheck shell=dash
+xrc:mod:lib     se  question/api question/showall question/accept
+___x_cmd_se_question(){
+    [ "$#" -gt 0 ] ||  N=se M="Please provide a id for the query" log:ret:64
+    local datamode; local id
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      x help -m se question "$@"; return ;;
+            -j|--json)      datamode="json" ;            shift ;;
+            # -y|--yml)       datamode="yml"  ;            shift ;;
+            -c|--csv)       datamode="csv"  ;            shift ;;
+            --app)          datamode="app"  ;            shift ;;
+            --accept)       datamode="accept"  ;         shift ;;
+            --showall)      datamode="showall"  ;        shift ;;
+            *)              id="$1" ;                    shift ;;
+        esac
+    done
+
+    [ -n "$id" ] || N=se M='Please provide a id for the query' log:ret:1
+    if [ -n "$datamode" ]; then
+        ___x_cmd_se_question___"$datamode" "$id"
+    else
+        ___x_cmd_se_question___accept "$id"
+    fi
+}
+
+___x_cmd_se_question___json(){
+    ___x_cmd_se___question_api --id "$1"
+}
+
+___x_cmd_se_question___csv(){
+    ___x_cmd_se_question___json "$@" \
+        | ___x_cmd jo .items \
+        | ___x_cmd jo 2c           .answer_id .is_accepted .score  \
+        | ___x_cmd csv header --add answer_id  is_accepted  score
+}
+
+___x_cmd_se_question___app(){
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___X_CMD_SHBIN_CODE='
+            xrc se ;
+            "$@"
+        ' ___x_cmd_antizshbin ___x_cmd_se_question___app___ "$@"
+    else
+        ___x_cmd_se_question___csv "$@"
+    fi
+}
+
+___x_cmd_se_question___app___(){
+    local question_id="$1"
+    local title
+    title="$(___x_cmd_se_question___json "$question_id" \
+      | ___x_cmd jo .items \
+      | ___x_cmd jo .1.title \
+      | ___x_cmd_cmds sed -e 's|&quot;|"|g' -e "s|&#39;|\'|g" )"
+
+    [ -n "$title" ] || N="se" M="not found answer of [question_id=$question_id]" log:ret:1
+    se:info "The question [title=$title]"
+
+    local ___X_CMD_CSV_APP_DATA_answer_id
+    ___x_cmd csv app --return var --clear           \
+        ___x_cmd_se_question___csv "$question_id"
+
+    [ -n "$___X_CMD_CSV_APP_DATA_answer_id" ] || return 1
+    local answer_id="$___X_CMD_CSV_APP_DATA_answer_id"
+
+    local id=
+    ___x_cmd ui select id "Next:"   \
+        "get the answer content"               \
+        "open stackoverflow.com to view"    \
+        "EXIT"     || return
+
+    case "$id" in
+        1)      ___x_cmd se answer "$answer_id" ;;
+        2)      ___x_cmd open "https://stackoverflow.com/questions/$question_id/$title/$answer_id#$answer_id" ;;
+        3)      return 0 ;;
+    esac
+}

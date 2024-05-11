@@ -5,7 +5,7 @@ ___X_CMD_MONNSHOT_FILE_URL="https://api.moonshot.cn/v1/files"
 
 ___x_cmd_moonshot_api_file(){
     local op="$1"; shift
-
+    [ $# -gt 0 ]    ||      set - ls
     case "$op" in
         upload|info|content|ls|rm)
             ___x_cmd_moonshot_api_file_"$op" "$@" ;;
@@ -48,11 +48,34 @@ ___x_cmd_moonshot_api_file_ls(){
     local X_help_cmd='x help -m moonshot file ls';   help:arg:parse
     local apikey=
     ___x_cmd_moonshot_cur apikey:=  2>/dev/null
-    x curl -sS  $___X_CMD_MONNSHOT_FILE_URL -H "Authorization: Bearer $apikey" |
+
+    local ___X_CMD_CSV_APP_DATA_ID=
+    local ___X_CMD_CSV_APP_DATA_Object=
+    local ___X_CMD_CSV_APP_DATA_Filename=
+    local ___X_CMD_CSV_APP_DATA_Purpose=
+    local ___X_CMD_CSV_APP_DATA_Status=
+
+    x curl -X GET -sS  $___X_CMD_MONNSHOT_FILE_URL -H "Authorization: Bearer $apikey" |
         x jo .data |\
         x ja 2c .id .object .bytes .filename .purpose .status |\
         x csv header --add  ID Object Bytes Filename Purpose Status |\
-        x csv app --return print
+        x csv app --return var
+
+        [ -n "$___X_CMD_CSV_APP_DATA_ID" ] || return 0
+        local id=""
+        x ui select id "What to do NEXT for file: $___X_CMD_CSV_APP_DATA_Filename(ID = $___X_CMD_CSV_APP_DATA_ID)" \
+        "Get Content"    \
+        "Remove file"    \
+        "EXIT"     || return
+
+
+        case "$id" in
+            1)      ___x_cmd_moonshot_api_file_content "$___X_CMD_CSV_APP_DATA_ID" ;;
+            2)      ___x_cmd_moonshot_api_file_rm "$___X_CMD_CSV_APP_DATA_ID"      ;;
+            3)
+                    moonshot:info "EXIT [code=0]"
+                    return 0 ;;
+        esac
 }
 
 ___x_cmd_moonshot_api_file_rm(){
@@ -60,6 +83,6 @@ ___x_cmd_moonshot_api_file_rm(){
     local file_id="$1"; local apikey=
     [ -n "$file_id" ] || N=moonshot M="Please provide a file ID" log:ret:1
     ___x_cmd_moonshot_cur apikey:=  2>/dev/null
-    x curl DELETE -sS  "$___X_CMD_MONNSHOT_FILE_URL/${file_id}" -H "Authorization: Bearer $apikey" | x j2y
+    x curl -X DELETE -sS  "$___X_CMD_MONNSHOT_FILE_URL/${file_id}" -H "Authorization: Bearer $apikey" | x j2y
 }
 

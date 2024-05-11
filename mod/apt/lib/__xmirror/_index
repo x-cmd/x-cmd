@@ -1,0 +1,164 @@
+# shellcheck shell=dash
+
+____x_cmd_apt___xmirror(){
+    local ___X_CMD_APT_mirror_sources=
+    local ___X_CMD_OS_RELEASE=
+    ____x_cmd_apt___xmirror___ensure || return
+
+    [ "$#" -gt 0 ] || { ____x_cmd_apt___xmirror___app ; return ; }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            # TODO: ... fix
+            x help -m apt mirror "$@"
+            return   ;;
+    esac
+
+    case "$op" in
+        ls|replace|current|rollback)
+                ____x_cmd_apt___xmirror_"${op}"               "$@" ;;
+        set)    ____x_cmd_apt___xmirror_replace               "$@" ;;
+        unset)  ____x_cmd_apt___xmirror_rollback              "$@" ;;
+        *)      ___x_cmd_mirror___util_subcmd_invalid apt     "$@" ;;
+    esac
+}
+
+____x_cmd_apt___xmirror___ensure(){
+    x hascmd apt || N=apt M="[command=apt] not found." log:ret:1
+
+    ___X_CMD_OS_RELEASE="$(x os rname)"
+    case "$___X_CMD_OS_RELEASE" in
+        *ubuntu*)
+            ___X_CMD_OS_RELEASE="ubuntu"
+            ___X_CMD_APT_mirror_sources="/etc/apt/sources.list"
+            ;;
+        *debian*)
+            ___X_CMD_OS_RELEASE="debian"
+            ___X_CMD_APT_mirror_sources="/etc/apt/sources.list.d/debian.sources"
+            ;;
+        *kali*)
+            ___X_CMD_OS_RELEASE="kali"
+            ___X_CMD_APT_mirror_sources="/etc/apt/sources.list"
+            ;;
+        # TODO: test
+        *raspberrypi*)
+            ___X_CMD_OS_RELEASE="raspberrypi"
+            ___X_CMD_APT_mirror_sources="/etc/apt/sources.list.d/raspi.list"
+            ;;
+        *)
+            N=apt M="Unsupported system: $___X_CMD_OS_RELEASE" log:ret:1
+            ;;
+    esac
+}
+
+____x_cmd_apt___xmirror___app(){
+    local _SELECT
+    x ui select "_SELECT" \
+        "Methods:" \
+            "Set apt mirror (default is ali)" \
+            "Get current apt mirror" \
+            "List all the apt mirror candidates" \
+            "Rollback the apt mirror to the original official"
+
+    case "$_SELECT" in
+        1)  ____x_cmd_apt___xmirror replace       ;;
+        2)  ____x_cmd_apt___xmirror current       ;;
+        3)  ____x_cmd_apt___xmirror ls            ;;
+        4)  ____x_cmd_apt___xmirror rollback      ;;
+        *)  apt:info "Canceled" ;        return 1 ;;
+    esac
+}
+
+____x_cmd_apt___xmirror_ls(){
+    printf "%s\n" \
+        "Code          Url                                  Name"                 \
+        "ali           mirrors.aliyun.com                   阿里云镜像站"           \
+        "tuna          mirrors.tuna.tsinghua.edu.cn         清华大学开源软件镜像站"  \
+        "ustc          mirrors.ustc.edu.cn                  中国科学技术大学开源镜像站" \
+        "bfsu          mirrors.bfsu.edu.cn                  北京外国语大学开源软件镜像站" \
+        "tencent       mirrors.tencent.com                  腾讯软件源"
+
+        # "netease       mirrors.163.com                      网易开源镜像站"         \
+        # "sohu          mirrors.sohu.com                     搜狐开源镜像站"
+}
+
+____x_cmd_apt___xmirror_advise_ls(){
+    ____x_cmd_apt___xmirror_ls | awk 'NR >1 { print $1 }'
+}
+
+____x_cmd_apt___xmirror_current(){
+    ___x_cmd_cmds cat "$___X_CMD_APT_mirror_sources"
+}
+
+____x_cmd_apt___xmirror___url(){
+    ____x_cmd_apt___xmirror_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+# TODO: Just replace the original text, maybe not the best way.
+# shellcheck disable=SC2120
+____x_cmd_apt___xmirror_replace() {
+    [ "$#" -gt 0 ] ||   set -- ali
+    case "$1" in
+        -h|--help)
+            x help -m mirror apt replace "$@"
+            return   ;;
+    esac
+
+    ____x_cmd_apt___xmirror_save || N=apt M="Save apt original sources list failed." log:ret:1
+
+    # TODO: Some problem in ubuntu 12.04
+    local url
+    url="$(____x_cmd_apt___xmirror___url "${1}")" || return
+    if [ -z "$url" ]; then
+        apt:error "Invalid mirror name: $1"
+        return 1
+    fi
+    apt:info "Setting apt mirror $url"
+
+    # ___x_cmd_proxy___util_backup "$___X_CMD_APT_mirror_sources" apt
+
+    x os name_
+    local repo_arch="$___X_CMD_OS_RELEASE"
+    [ "$___X_CMD_OS_RELEASE" != "ubuntu" ] || {
+        [ "$___X_CMD_OS_ARCH_" = "x64" ] || repo_arch="$___X_CMD_OS_RELEASE-ports"
+    }
+
+    local tmp
+    tmp="$(___x_cmd_cmds_cat "$___X_CMD_APT_mirror_sources")"
+
+    # If there is no root permission, use sudo
+    if [ "$(id -u)" -ne 0 ]; then
+        apt:warn "using sudo"
+        printf "%s" "$tmp" | \
+            ___x_cmd_cmds awk '!/^#/ && !/security/ { gsub(/:\/\/[^\/]*\/[^\/]*/, "://'"$url"'/'"$repo_arch"'"); } { print }' \
+        | sudo tee "$___X_CMD_APT_mirror_sources" > /dev/null
+        sudo apt update
+    else
+        printf "%s" "$tmp" | \
+            ___x_cmd_cmds awk '!/^#/ && !/security/ { gsub(/:\/\/[^\/]*\/[^\/]*/, "://'"$url"'/'"$repo_arch"'"); } { print }' \
+        > "$___X_CMD_APT_mirror_sources"
+        apt update
+    fi
+}
+
+# Rollback from the last backup file.
+# Get the last backup file from the backup directory.
+# shellcheck disable=SC2120
+
+____x_cmd_apt___xmirror_save(){
+    ___x_cmd_mirror___util_save "$___X_CMD_APT_mirror_sources" "apt"
+}
+
+____x_cmd_apt___xmirror_rollback(){
+    ___x_cmd_mirror___util_rollback_original "$___X_CMD_APT_mirror_sources" "apt" || return
+    x rmrf "$___X_CMD_ROOT_DATA/mirror/apt"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        x sudo apt update
+    else
+               apt update
+    fi
+}
+
