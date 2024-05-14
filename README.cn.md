@@ -28,6 +28,20 @@
 你的支持是我们不断改进的动力 ~
 </p>
 
+<table align="center">
+    <tr>
+        <td align="center" width="300px">
+            <b>微信公众号：oh my x</b>
+            <p>
+            扫码关注官方微信公众号获取开源软件和 x-cmd 的最新用法与独家资讯
+            </p>
+        </td>
+        <td align="center" >
+            <img align="center" src="https://foruda.gitee.com/images/1715696069230260264/d8037bf6_9641432.png" alt="公众号二维码，微信搜索：oh my x" height="140">
+        </td>
+    </tr>
+</table>
+
 ![x theme demo gif](https://foruda.gitee.com/images/1697770832734408357/545a3160_11092596.gif "theme.gif")
 
 
