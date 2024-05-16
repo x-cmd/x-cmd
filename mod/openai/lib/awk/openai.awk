@@ -58,7 +58,7 @@ function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key
     return _str
 }
 
-function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq_kp,          i, l, str, \
+function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq_kp, def_model,          i, l, str, \
     _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken, _seed, _temperature, _data_str){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
@@ -76,7 +76,7 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq
     _content_str    = openai_gen_minion_content_str(minion_obj, minion_kp, _media_str)
     _messages_str   = _history_str _system_str _filelist_str _content_str
 
-    _mode           = jqu(minion_model( minion_obj, minion_kp ))
+    _mode           = jqu(minion_model( minion_obj, minion_kp, def_model ))
     _maxtoken       = minion_maxtoken( minion_obj, minion_kp )
     _seed           = minion_seed( minion_obj, minion_kp )
     _temperature    = minion_temperature( minion_obj, minion_kp )

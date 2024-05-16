@@ -27,7 +27,7 @@ END{
     chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj ) )
     print chat_request_json             > (SESSIONDIR "/" CHATID "/chat.request.yml")
 
-    openai_request_body_json            = openai_req_from_creq( history_obj, minion_obj, MINION_KP, creq_obj, CREQ_KP )
+    openai_request_body_json            = openai_req_from_creq( history_obj, minion_obj, MINION_KP, creq_obj, CREQ_KP, def_model )
     openai_request_body_json            = chat_str_replaceall( openai_request_body_json )
     print openai_request_body_json      > (SESSIONDIR "/" CHATID "/openai.request.body.yml")
 
