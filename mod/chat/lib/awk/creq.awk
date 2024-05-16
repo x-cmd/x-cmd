@@ -28,9 +28,9 @@ function creq_model( o, prefix ){
     return o[ prefix S "\"model\"" ]
 }
 
-function creq_history_message( o, prefix ){
-    return o[ prefix S "\"model\"" ]
-}
+# function creq_history_message( o, prefix ){
+#     return o[ prefix S "\"model\"" ]
+# }
 
 
 function creq_load( o,  jsonstr,      _arrl, _arr, i ){
@@ -48,7 +48,7 @@ function creq_loadfromjsonfile( o, kp, fp ){
     jiparse2leaf_fromfile( o, kp,  fp )
 }
 
-function creq_create( o, minion_obj, minion_kp, type, model, question, chatid, history_num, history_message,       _kp){
+function creq_create( o, minion_obj, minion_kp, type, model, question, chatid, history_num, imagelist,       _kp, _kp_media, i, l, _arr, _keyl){
     _kp = SUBSEP "\""1"\""
 
     jlist_put(o,  "" , "{")
@@ -59,6 +59,20 @@ function creq_create( o, minion_obj, minion_kp, type, model, question, chatid, h
     jdict_put(o, _kp, "\"chatid\"",          jqu(chatid))
     jdict_put(o, _kp, "\"history_num\"",     history_num)
     cp_cover(o, _kp SUBSEP "\"minion\"", minion_obj, minion_kp)
+
+    imagelist = str_trim( imagelist )
+    if (imagelist != "") {
+        jdict_put(o, _kp, "\"media\"", "[")
+        _kp_media = _kp SUBSEP "\"media\""
+        l = split(imagelist, _arr, "\n")
+        for (i=1; i<=l; ++i){
+            jlist_put(o, _kp_media, "{")
+            _keyl = o[ _kp_media L ]
+            jdict_put(o, _kp_media SUBSEP "\"" _keyl "\"", "\"type\"",      "\"image\"")
+            jdict_put(o, _kp_media SUBSEP "\"" _keyl "\"", "\"base64\"",    jqu(_arr[ i ]))
+            jdict_put(o, _kp_media SUBSEP "\"" _keyl "\"", "\"msg\"",       jqu(_arr[ ++i ]))
+        }
+    }
 }
 
 function creq_dump( o,  _kp ){

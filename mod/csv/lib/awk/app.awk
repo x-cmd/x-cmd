@@ -174,12 +174,12 @@ function user_parse_action_to_arr(action, arr){
     return arr_cut( arr, action, "\n")
 }
 
-function user_parse_action_statusline(o, kp, arr,        i, l, _){
+function user_parse_action_statusline(o, kp, arr,        i, l){
     l = arr[L]
     for (i=1; i<=l; i+=3) table_statusline_add(o, kp, arr[i], arr[i+1], arr[i+2])
 }
 
-function user_parse_preview_str(o, kp, str,             i, l, c){
+function user_parse_preview_str(o, kp, str,             i, l, c, _){
     if (str == "") return
     l = split(str, _, ",")
     for (i=1; i<=l; ++i) {

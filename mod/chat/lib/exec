@@ -20,15 +20,18 @@ ___x_cmd_chat___exec(){
     # local question_op=""
     local count_token=""
     local filelist_attach=""
-    local provider="openai"
+    local provider="gemini"
     local numbered=""
     local temperature=""
+    local history_num=0
 
     local inputtype=""
-    local inputdesc="This data form pipe"
+    [ -n "$NO_PIPE_DATA_SIGN_DISPLAY" ] || local inputdesc="This data form pipe"
 
     local NL="${___X_CMD_UNSEENCHAR_NEWLINE}"
     local reflist=""
+    local imagelist=""
+    local _file=""
 
     local cache_time=1h
 
@@ -37,7 +40,7 @@ ___x_cmd_chat___exec(){
         case "$1" in
             --provider)     provider="$2";
                             [ $# -ge 2 ] || N=chat M="Please provide the provider value" log:ret:64;
-                            ___x_cmd_chat___exec_validate "$provider" || return
+                            ___x_cmd_chat_provider___validate "$provider" || return
                             shift 2 ;;
 
             -t|--temperature)
@@ -83,8 +86,16 @@ ___x_cmd_chat___exec(){
                             shift 2 ;;
             -f|--file)
                             [ $# -ge 2 ] || N=chat M="Please provide the filepath" log:ret:64;
-                            x_=; ___x_cmd_chat___exec_file_ "$2" || return
-                            reflist="${reflist}${x_}${NL}"
+                            x_=; ___x_cmd abspath_ "$2"
+                            [ -f "$x_" ] || N=chat M="Please provide a valid [filepath=$2]" log:ret:1
+                            _file="$x_"
+                            if ___x_cmd_chat___cache_file_image_to_base64_ "$_file"; then
+                                imagelist="${imagelist}${x_}${NL}"
+                            elif ___x_cmd_chat___exec_file_ "$_file"; then
+                                reflist="${reflist}${x_}${NL}"
+                            else
+                                return 1
+                            fi
                             shift 2 ;;
 
             --session)      session="$2";           [ $# -ge 2 ] || N=chat M="Please provide the session value" log:ret:64; shift 2 ;;
@@ -149,19 +160,16 @@ ___x_cmd_chat___exec(){
 
     local chatid=;  chatid="$(___x_cmd pidid vlseqid ___X_CMD_CHAT_REC)"
     chat:debug --chatid "$chatid" --model "$model" --question "$question" --history_num "$history_num" --confirm_before_send "$confirm_before_send" "chat exec"
+    [ -z "$imagelist" ] || {
+        case "$provider" in
+            openai|gemini)  ;;
+            *)  chat:error "Currently, only openai or gemini support multimodal model, while [provider=$provider] does not support"
+                return 1
+                ;;
+        esac
+    }
     ___x_cmd "$provider" chat exec
 }
-
-___x_cmd_chat___exec_validate(){
-    local provider="$1"
-    case "$provider" in
-        openai|gemini|mistral|ollama|moonshot) ;;
-        *)
-            N=chat M="Provider must be [openai|gemini|mistral|ollama|moonshot]" log:ret:64
-            ;;
-    esac
-}
-
 
 ___x_cmd_chat___exec_jina_(){
     x_=""
@@ -288,3 +296,31 @@ ___x_cmd_chat___wrap(){
     ___x_cmd_chat___wrap_ "$@"
     printf "%s\n" "$x_"
 }
+
+___x_cmd_chat___cache_file_image_to_base64_(){
+    local str="$1"
+    local filename="${str%=*}"
+    local base64_data=
+    x_=; ___x_cmd abspath_ "$filename"
+    [ -f "$x_" ] || N=chat M="Please provide a valid [filepath=$filename]" log:ret:1
+    case "$x_" in
+        *.PNG|*.png|*.JPEG|*.jpeg|*.JPG|*.jpg|*.WEBP|*.webp|*.GIF|*.gif)
+            # base64_file="$base64_dir/$( ___x_cmd sha512 "$x_" )"
+            base64_data="$( ___x_cmd_chat___cache_file_base64file "$x_" )"
+
+            [ "$filename" = "$str" ] || filename="${str##*=}"
+            x_="${base64_data}${NL}${filename}"
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+___x_cmd_chat___cache_file_base64file(){
+    if ___x_cmd_cmds base64 -w 0 /dev/null 2>/dev/null 1>&2; then
+        ___x_cmd_cmds base64 -w 0 "$1"
+    else
+        ___x_cmd_cmds base64 -i "$1"
+    fi
+}
+

@@ -17,17 +17,48 @@ function openai_gen_history_str( history_obj, i,        _text_req, _text_res, _t
     return  openai_gen_unit_str( "user", _text_req )", " openai_gen_unit_str( "assistant", _text_res )
 }
 
-function openai_gen_minion_content_str(minion_obj, minion_kp,      context, example, content){
+function openai_gen_minion_content_str(minion_obj, minion_kp, media_str,      context, example, content){
     context = minion_prompt_context(minion_obj, minion_kp)
     context = ( context != "" ) ? context JOINSEP : ""
 
     example = minion_example_tostr(minion_obj, minion_kp)
     content = minion_prompt_content(minion_obj, minion_kp)
+    content = context example content
 
-    return openai_gen_unit_str( "user", context example content )
+    if( media_str != "" ){
+        return sprintf( "{ \"role\": \"user\", \"content\": [ { \"type\": \"text\", \"text\": %s } %s ] }", jqu(content), media_str )
+    }
+    return openai_gen_unit_str( "user", content )
+
 }
 
-function openai_req_from_creq(history_obj, minion_obj, minion_kp,          i, l, str, \
+function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key, _type, _url, _type_msg, _base64, _msg, _str){
+    _kp_media = creq_kp SUBSEP "\"media\""
+    l = creq_obj[ _kp_media L ]
+    if (l <= 0) return
+    for (i=1; i<=l; ++i){
+        _kp_key = _kp_media SUBSEP "\""i"\""
+        _type   = creq_obj[ _kp_key, "\"type\"" ]
+        _url    = creq_obj[ _kp_key, "\"url\"" ]
+        if ( _type == "\"image\"" ) {
+            _type = "\"image_url\""
+            _type_msg = "image/"
+        }
+
+        if ( _url != "" ) {
+            _str    = _str sprintf(",{ \"type\": %s, \"image_url\": { \"url\": %s } }", _type, jqu(_url))
+        } else {
+            _base64 = juq(creq_obj[ _kp_key, "\"base64\"" ])
+            _msg    = juq(creq_obj[ _kp_key, "\"msg\"" ])
+            _msg    = "data:" _type_msg _msg ";base64,{" _base64 "}"
+            _str    = _str sprintf(",{ \"type\": %s, \"image_url\": { \"url\": %s } }", _type, jqu( _msg ))
+        }
+
+    }
+    return _str
+}
+
+function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq_kp,          i, l, str, \
     _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken, _seed, _temperature, _data_str){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
@@ -41,7 +72,8 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp,          i, l,
     _filelist_str   = minion_filelist_attach( minion_obj, minion_kp )
     if (_filelist_str != "") _filelist_str = openai_gen_unit_str( "user", _filelist_str) " ,"
 
-    _content_str    = openai_gen_minion_content_str(minion_obj, minion_kp)
+    _media_str      = openai_gen_media_str(creq_obj, creq_kp)
+    _content_str    = openai_gen_minion_content_str(minion_obj, minion_kp, _media_str)
     _messages_str   = _history_str _system_str _filelist_str _content_str
 
     _mode           = jqu(minion_model( minion_obj, minion_kp ))

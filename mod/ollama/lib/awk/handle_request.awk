@@ -13,7 +13,7 @@ BEGIN{
     mkdirp( SESSIONDIR "/" CHATID )
 
 
-    chat_history_load( history_obj, SESSIONDIR, 1)
+    chat_history_load( history_obj, SESSIONDIR, HISTORY_NUM)
 
     creq_create( creq_obj, minion_obj, MINION_KP, TYPE, MODEL, QUESTION, CHATID, HISTORY_NUM )
     chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj ) )

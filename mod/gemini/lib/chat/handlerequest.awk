@@ -7,9 +7,17 @@ BEGIN{
     CHATID            = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE = ENVIRON[ "minion_json_cache" ]
     SESSIONDIR        = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
+    IMAGELIST         = ENVIRON[ "imagelist" ]
 
-    MINION_KP = SUBSEP "\"1\""
+    Q2_1               = SUBSEP "\"1\""
+    MINION_KP          = Q2_1
+    CREQ_KP            = Q2_1
+}
+{
+    IMAGELIST = IMAGELIST $0 "\n"
+}
 
+END{
     minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE , "gemini")
     TYPE                = minion_type( minion_obj, MINION_KP )
     MODEL               = minion_model( minion_obj, MINION_KP )
@@ -20,18 +28,18 @@ BEGIN{
 
     chat_history_load( history_obj, SESSIONDIR, HISTORY_NUM, CHATID)
 
-    gemini_request_body_json            = gemini_req_from_creq( history_obj, minion_obj,  QUESTION )    # Notice: it's must before creq_create
+    creq_create( creq_obj, minion_obj, MINION_KP,     TYPE, MODEL, USER_LATEST_QUESTION, CHATID, HISTORY_NUM, IMAGELIST)
+    chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj))
+
+    gemini_request_body_json            = gemini_req_from_creq( history_obj, minion_obj,  QUESTION, creq_obj, CREQ_KP)    # Notice: it's must before creq_create
     gemini_request_body_json            = chat_str_replaceall(  gemini_request_body_json)
 
-    creq_create( creq_obj, minion_obj, MINION_KP,     TYPE, MODEL, USER_LATEST_QUESTION, CHATID, HISTORY_NUM )
-    chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj))
     print chat_request_json             > (SESSIONDIR "/" CHATID "/chat.request.yml")
 
     print gemini_request_body_json      > (SESSIONDIR "/" CHATID "/gemini.request.body.yml")
 
     print SESSIONDIR "/" CHATID
     print MODEL
-    print gemini_request_body_json
 }
 
 

@@ -4,7 +4,7 @@
 
 xrc:mod:lib     gemini      chat/exec
 ___x_cmd_gemini_chat(){
-    local X_help_cmd='x help -m gemini chat'; help:arg:parse
+    local X_help_cmd='___x_cmd help -m gemini chat'; help:arg:parse
     local op="$1";  shift
     case "$op" in
         request|preparehistory|exec) #  preparehistory ？？
@@ -15,20 +15,19 @@ ___x_cmd_gemini_chat(){
 
 # inner
 
-# x gemini chat --request --timeline X --history 3 --question "" --example ""
+# ___x_cmd gemini chat --request --timeline X --history 3 --question "" --example ""
 ___x_cmd_gemini_chat_request(){
-    local X_help_cmd='x help -m gemini chat request'; help:arg:parse
+    local X_help_cmd='___x_cmd help -m gemini chat request'; help:arg:parse
     ___x_cmd chat --exec --provider gemini "$@"
 }
 
 ___x_cmd_gemini_chat_request___launch(){
     local content_dir
     read -r content_dir
-
     # generate a file for running
     ___x_cmd_gemini_chat_request___trapexit(){
         gemini:debug "Remove chat.running file"
-        x rmrf "$content_dir/chat.running"
+        ___x_cmd rmrf "$content_dir/chat.running"
     }
 
     printf "%s\n" $$ >"$content_dir/chat.running"
@@ -36,13 +35,13 @@ ___x_cmd_gemini_chat_request___launch(){
 
     {
         read -r model
+        local request_body_file="$content_dir/gemini.request.body.yml"
+        [ -f "$request_body_file" ] || return
 
-        local requestbody
-        read -r requestbody
         if [ -z "$count_token" ]; then
-            x retry --max 3 --interval 3 ___x_cmd_gemini_chat_request___try
+            ___x_cmd retry --max 3 --interval 3 ___x_cmd_gemini_chat_request___try
         else
-            x retry --max 3 --interval 3 ___x_cmd_gemini_count_request___try
+            ___x_cmd retry --max 3 --interval 3 ___x_cmd_gemini_count_request___try
         fi
     } || {
         ___x_cmd_gemini_chat_request___trapexit
@@ -53,19 +52,21 @@ ___x_cmd_gemini_chat_request___launch(){
 ___x_cmd_gemini_chat_request___try(){
     gemini:debug "Sending request to gemini server"
     [ -z "$confirm_before_send" ] || {
-        printf "%s\n" "$requestbody" | x j2y | x bat -l yml
-        x ui yesno "Do your want to send this message?" || return 0
+        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >/dev/tty
+        ___x_cmd ui yesno "Do your want to send this message?" || return 0
     }
 
     {
+        local _sha512; _sha512="$(< "$request_body_file" ___x_cmd sha512 )"
+        request_body_file="$request_body_file" \
         ___x_cmd ccmd "$cache_time" -- \
-            ___x_cmd_gemini_request_generaxwtecontent "$requestbody" "$model"
+            ___x_cmd_gemini_request_generaxwtecontent "$model" "$_sha512"
     } | {
         local interative=
         if ___x_cmd_is_interactive; then interative=1; fi
 
         local errcode=0
-        x cawk -E  content_dir,interative   \
+        ___x_cmd cawk -E  content_dir,interative   \
                 -m j/json,j/jiter,j/jcp                                      \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"             \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"                \
@@ -77,7 +78,7 @@ ___x_cmd_gemini_chat_request___try(){
 
         case $errcode in
             0)      ;;
-            *)  x rmrf "$content_dir/gemini.response.yml" "$content_dir/chat.response.yml" ;;
+            *)  ___x_cmd rmrf "$content_dir/gemini.response.yml" "$content_dir/chat.response.yml" ;;
         esac
         return "$errcode"
     }

@@ -13,7 +13,7 @@ function ollama_dsiplay_response_text_stream(s, o_response,      item, finish_re
     JITER_LEVEL = JITER_CURLEN = 0
     item = sprintf("%s", juq(o_response[ KP_CONTENT ]))
     OLLAMA_RESPONSE_CONTENT = OLLAMA_RESPONSE_CONTENT item
-    printf item
+    printf( "%s", item )
     fflush()
     finish_status = o_response[ KP_DONE ]
     if ( finish_status != "false" ) {
@@ -35,7 +35,7 @@ function ollama_dsiplay_response_text_stream(s, o_response,      item, finish_re
     }
 }
 
-( NR>1 && $0 != "" ){
+( NR>=1 && $0 != "" ){
     OLLAMA_HAS_RESPONSE_CONTENT = 1;
     if (OLLAMA_RESPONESE_IS_ERROR_CONTENT==1) jiparse_after_tokenize( o_error, $0 )
     else ollama_dsiplay_response_text_stream( $0, o_response )

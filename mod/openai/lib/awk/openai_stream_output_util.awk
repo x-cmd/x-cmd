@@ -4,7 +4,7 @@ function openai_dsiplay_response_text_stream(s,       o, item, finish_reason){
     JITER_LEVEL = JITER_CURLEN = 0
     item = sprintf("%s", juq(o[ KP_CONTENT ]))
     OPENAI_RESPONSE_CONTENT = OPENAI_RESPONSE_CONTENT item
-    printf item
+    printf( "%s", item )
     fflush()
     finish_reason = o[ KP_FINISH_REASON ]
     if ( finish_reason != "null" ) {

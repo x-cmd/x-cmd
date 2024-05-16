@@ -1,0 +1,101 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_gtb_meta_ls(){
+    [ "$#" -gt 0 ] ||   set - --app
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            ___x_cmd help -m gtb meta ls;  return    ;;
+        --app|--csv)
+            ___x_cmd_gtb_meta_ls___"${op#*--}"  "$@" ;;
+        *)
+            ___x_cmd_gtb_meta_ls___app "$op" "$@"    ;;
+    esac
+}
+
+___x_cmd_gtb_meta_ls___app(){
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___X_CMD_SHBIN_CODE='
+            xrc gtb ;
+            "$@"
+        ' ___x_cmd_antizshbin ___x_cmd_gtb_meta_ls___app___ "$@"
+    else
+        ___x_cmd_gtb_meta_ls___csv "$@"
+    fi
+}
+
+___x_cmd_gtb_meta_ls___app___(){
+    local x_=
+    ___x_cmd_gtb_meta_which_ || return
+
+    local ___X_CMD_CSV_APP_DATA_Id
+    local ___X_CMD_CSV_APP_DATA_Title
+    ___x_cmd csv app --return var --clear  \
+        --hide_index                        \
+        --width "5,35%,8,20%,10,-,-,-,-"    \
+        --table-width 60%                   \
+        --preview Subjects,Bookshelves      \
+        ___x_cmd_gtb_meta_ls___csv_ccmd "$@"
+
+    [ -n "$___X_CMD_CSV_APP_DATA_Id" ] || return 0
+    local title="$___X_CMD_CSV_APP_DATA_Title"
+    local book_id="$___X_CMD_CSV_APP_DATA_Id"
+
+    gtb:info --m:title "$title"
+    local id=
+    ___x_cmd ui select id "Next:"       \
+        "view the details of the book"  \
+        "browse page to view"           \
+        "EXIT"  || {
+            local err=$?
+            ___x_cmd_gtb_meta_ls___app___hint "$book_id"
+            return $err
+        }
+
+    case "$id" in
+        1)      ___x_cmd_gtb txt "$book_id"
+                ___x_cmd_gtb_meta_ls___app___hint "$book_id"
+                ;;
+        2)      gtb:info x open "https://www.gutenberg.org/cache/epub/${book_id}/pg${book_id}-images.html"
+                ___x_cmd open "https://www.gutenberg.org/cache/epub/${book_id}/pg${book_id}-images.html"
+                ;;
+        *)      ___x_cmd_gtb_meta_ls___app___hint "$book_id"
+                return 0
+                ;;
+    esac
+}
+
+___x_cmd_gtb_meta_ls___app___hint(){
+    local book_id="$1"
+    gtb:info \
+        --txt        "x gtb txt $book_id" \
+        --browse     "x open 'https://www.gutenberg.org/cache/epub/${book_id}/pg${book_id}-images.html" \
+        "FYI"
+}
+
+___x_cmd_gtb_meta_ls___csv_ccmd(){
+    ___x_cmd ccmd 10m -- ___x_cmd_gtb_meta_ls___csv_ "$@"
+}
+
+___x_cmd_gtb_meta_ls___csv_(){
+        ___x_cmd_gtb_meta_ls___csv "$@" | \
+        ___x_cmd csv header --mod "Text#=Id" | \
+        ___x_cmd csv tab 1:2000 1,4,8,6,3,5,2,7,9
+}
+
+___x_cmd_gtb_meta_ls___csv(){
+    local grep_kw="$*"
+
+    local x_
+    ___x_cmd_gtb_meta_which_ || return
+
+    if [ -z "$grep_kw" ]; then
+        ___x_cmd_cmds_cat "$x_"
+    else
+        < "$x_" ___x_cmd cawk -E grep_kw -m csv \
+            -f "${___X_CMD_ROOT_MOD}/csv/lib/awk/csva.awk" \
+            -f "${___X_CMD_ROOT_MOD}/gtb/lib/meta/parse.awk"
+    fi
+}
+

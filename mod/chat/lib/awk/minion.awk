@@ -19,14 +19,16 @@ function minion_history_num( o, prefix,         v ){
     return int(ENVIRON[ "cfg_history_num" ])
 }
 
-function minion_model( o, prefix,           v ){
+function minion_model( o, prefix, def_model,           v ){
     v = ENVIRON[ "model" ]
     if ( ! chat_str_is_null(v) )    return v
 
     v = o[ prefix S "\"model\"" ]
     if ( ! chat_str_is_null(v) )    return ((v ~ "^\"") ? juq(v) : v)
 
-    return ENVIRON[ "cfg_model" ]
+    v = ENVIRON[ "cfg_model" ]
+    if ( (v == "") && (def_model !="" ) ) v = def_model
+    return v
 }
 
 function minion_seed( o, prefix,            v ){

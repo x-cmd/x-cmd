@@ -1,0 +1,122 @@
+# shellcheck shell=dash
+
+___x_cmd_jina_search(){
+    [ "$#" -gt 0 ] ||  N=jina M="Please provide a value for the search" log:ret:64
+    local datamode="app"
+    local search=
+
+    local IFS=" "
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m jina search "$@";  return ;;
+
+            # -i 1,2,3
+            # -i|--index)   index="$2"
+
+            -j|--json)      datamode="json" ;                   shift ;;
+            -c|--csv)       datamode="csv"  ;                   shift ;;
+            -y|--yml)       datamode="yml"  ;                   shift ;;
+            --app)          datamode="app"  ;                   shift ;;
+
+            *)              if [ -z "$search" ]; then
+                                search="$1"
+                            else
+                                search="${search}%20$1"
+                            fi
+                            shift
+                            ;;
+        esac
+    done
+    [ -n "$search" ] || N=jina M='Please provide a value for the query' log:ret:1
+    ___x_cmd_jina_search___"$datamode" "$search"
+}
+
+___x_cmd_jina_search___app(){
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___X_CMD_SHBIN_CODE='
+            xrc jina ;
+            "$@"
+        ' ___x_cmd_antizshbin ___x_cmd_jina_search___app_ "$@"
+    else
+        ___x_cmd_jina_search___raw "$@"
+    fi
+}
+
+
+___x_cmd_jina_search___csv(){
+    ___x_cmd_jina_search___json "$@" \
+        | ___x_cmd jo 2c            .title .url .markdown \
+        | ___x_cmd csv header --add  title  url  content
+}
+
+___x_cmd_jina_search___json(){
+    ___x_cmd_jina_search___yml "$@" | ___x_cmd y2j
+}
+
+___x_cmd_jina_search___yml(){
+    ___x_cmd_jina_search___raw "$@" | ___x_cmd_cmds awk -f "${___X_CMD_ROOT_MOD}/jina/lib/awk/search.awk"
+}
+
+___x_cmd_jina_search___raw(){
+    local search="$1"
+    ___x_cmd ccmd 10m -- ___x_cmd_jina_search___curl "$search"
+}
+
+___x_cmd_jina_search___curl(){
+    local search="$1"
+    local url="https://s.jina.ai/$search"
+    jina:info "Search from -> $url"
+    ___x_cmd curl --fail -s "$url" || N=jina M="Fail to search from -> $url" log:ret:1
+}
+
+___x_cmd_jina_search___app_(){
+    local ___X_CMD_CSV_APP_DATA_url
+    local ___X_CMD_CSV_APP_DATA_title
+    local ___X_CMD_CSV_APP_DATA_content
+
+    ___x_cmd csv app --return var --clear           \
+        --width "30%,-,-"                           \
+        --preview content                           \
+        --table-width 60%                           \
+        --action o Open 'Open on website'           \
+        --processor ___x_cmd_jina_search___app_open \
+        ___x_cmd_jina_search___csv "$@"
+
+    [ -n "$___X_CMD_CSV_APP_DATA_title" ] || return 0
+    [ -n "$___X_CMD_CSV_APP_DATA_url" ] || return 0
+    local url="$___X_CMD_CSV_APP_DATA_url"
+    local title="$___X_CMD_CSV_APP_DATA_title"
+    local content="$___X_CMD_CSV_APP_DATA_content"
+
+    jina:info --m:title "$title"
+    local id=
+    ___x_cmd ui select id "Next:"   \
+        "view detailed content"     \
+        "browse page to view"       \
+        "EXIT"
+
+    case "$id" in
+        1)      printf "%s\n" "$content" | ___x_cmd bat -l md
+                ;;
+        2)      jina:info x open "$url"
+                ___x_cmd open "$url"
+                ;;
+        *)      return 0
+                ;;
+    esac
+}
+
+___x_cmd_jina_search___app_open(){
+    local op="$*"
+    local url
+    local tmp
+    case "$op" in
+        x:request:o*)
+            op="${op##*"$___X_CMD_UNSEENCHAR_001"}"
+            tmp="${op#*,\"}"
+            url="${tmp%%\",*}"
+            url="${url%%\\n}"
+            ___x_cmd open "$url"
+            ;;
+    esac
+}

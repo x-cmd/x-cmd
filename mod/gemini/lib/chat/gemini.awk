@@ -38,8 +38,8 @@ function gemini_gen_safe_setting_str(             _safe_setting){
     return _safe_setting
 }
 
-function gemini_req_from_creq(history_obj, minion_obj, question,         str, i, l, _history_str, promote_content, \
-    promote_system_json, _filelist_str, _safe_setting, _temperature, config ){
+function gemini_req_from_creq(history_obj, minion_obj, question, creq_obj, creq_kp,         str, i, l, _history_str, promote_content, \
+    promote_system_json, _filelist_str, _safe_setting, _temperature, config, _media_str ){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
         str = gemini_gen_history_str(history_obj, i)
@@ -62,8 +62,10 @@ function gemini_req_from_creq(history_obj, minion_obj, question,         str, i,
 
     _safe_setting = gemini_gen_safe_setting_str()
 
-    return sprintf("{ %s \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s}],\"role\":\"user\"}] %s }\n", \
-        _safe_setting, _history_str, promote_system_json, _filelist_str, jqu(USER_LATEST_QUESTION), config)
+    _media_str      = gemini_gen_media_str(creq_obj, creq_kp)
+
+    return sprintf("{ %s \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s} %s ],\"role\":\"user\"}] %s }\n", \
+        _safe_setting, _history_str, promote_system_json, _filelist_str, jqu(USER_LATEST_QUESTION), _media_str, config)
 }
 
 # extract ...
@@ -91,3 +93,30 @@ function gemini_parse_response(gemini_resp_o, ret_o,        _kp, str, code){
     ret_o[ "text" ] = str
     ret_o[ "code" ] = code
 }
+
+
+function gemini_gen_media_str(creq_obj, creq_kp,      _kp_media, i, l, _type, _url, _kp_key, _type_msg, _str, _msg, _base64){
+    _kp_media = creq_kp SUBSEP "\"media\""
+    l = creq_obj[ _kp_media L ]
+    if (l <= 0) return
+    for (i=1; i<=l; ++i){
+        _kp_key = _kp_media SUBSEP "\""i"\""
+        _type   = creq_obj[ _kp_key, "\"type\"" ]
+        _url    = creq_obj[ _kp_key, "\"url\"" ]
+        if ( _type == "\"image\"" ) {
+            _type = "\"image_url\""
+            _type_msg = "image/" msg
+        }
+
+        if ( _url != "" ) {
+            _str    = _str sprintf(",{ \"inline_data\": { \"mime_type\": %s, \"data\" : %s } }", _type, jqu(_url))
+        } else {
+            _msg    = _type_msg juq(creq_obj[ _kp_key, "\"msg\"" ])
+            _base64 = juq(creq_obj[ _kp_key, "\"base64\"" ])
+            _str    = _str sprintf(",{ \"inline_data\": { \"mime_type\": %s, \"data\" : %s } }", jqu(_type_msg), jqu(_base64) )
+        }
+
+    }
+    return _str
+}
+

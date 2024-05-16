@@ -6,7 +6,7 @@ function swrap( s ){  return "\"" s "\""; }
 
 function generate_advise_json_value_candidates_by_rules( optarg_id, advise_map,        op, _default, i, l ){
     AJADD("{");
-    AJADD( swrap("#desc") ); AJADD( ":" ); AJADD( swrap(option_desc_get( optarg_id )) );
+    generate_advise_json___desc_str( swrap(option_desc_get( optarg_id )) );
 
     _default = optarg_default_get( optarg_id )
     if (_default != "" && ! optarg_default_value_eq_require( _default ) ) {
@@ -69,6 +69,12 @@ function generate_advise_json_init_advise_map(advise_map,   i, tmp, _option_id, 
     }
 }
 
+function generate_advise_json___desc_str(str){
+    AJADD( swrap("#desc") ); AJADD( ":" ); AJADD( "{" );
+    AJADD( swrap("en") ); AJADD( ":" ); AJADD( str );
+    AJADD( "}" )
+}
+
 function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc, advise_map, _synopsis_str ){
     generate_advise_json_init_advise_map( advise_map )
 
@@ -83,7 +89,7 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
         AJADD( swrap("#subcmd") ); AJADD( ":" ); AJADD( "true" ); AJADD(",");
     }
 
-    AJADD( swrap("#desc") ); AJADD( ":" ); AJADD( swrap( arg_arr[2] ) );
+    generate_advise_json___desc_str( swrap( arg_arr[2] ) );
 
     for (i=1; i <= namedopt_len(); ++i) {
         _option_id       = namedopt_get( i )
@@ -91,7 +97,7 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
 
         AJADD(","); AJADD( swrap(get_option_key_by_id(_option_id)) ); AJADD( ":" );
         AJADD( "{" );
-        AJADD( swrap("#desc") ); AJADD(":"); AJADD( swrap( option_desc_get( _option_id ) ) )
+        generate_advise_json___desc_str( swrap( option_desc_get( _option_id ) ) )
 
         if ( _option_argc > 0 ) {
             if ( (_synopsis_str = get_option_synopsis_str(_option_id)) != "") {
@@ -113,7 +119,9 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
     for (i=1; i <= flag_len(); ++i) {
         _option_id = flag_get( i )
         AJADD(","); AJADD( swrap(get_option_key_by_id(_option_id)) ); AJADD(":");
-        AJADD("{"); AJADD( swrap("#desc") ); AJADD(":"); AJADD( swrap(option_desc_get( _option_id )) ); AJADD("}")
+        AJADD("{");
+        generate_advise_json___desc_str( swrap(option_desc_get( _option_id )) )
+        AJADD("}")
     }
 
     for (i=1; i <= restopt_len(); ++i) {
@@ -122,7 +130,7 @@ function generate_advise_json_except_subcmd(      i, j, _option_id, _option_argc
         if ( match(_option_id, "^#([0-9]+|n)\\|") ) {
             AJADD( swrap( substr(_option_id, RSTART+RLENGTH) ) ); AJADD( ":" );
             AJADD( "{" );
-            AJADD( swrap("#desc") ); AJADD(":"); AJADD( swrap( option_desc_get( _option_id ) ) );
+            generate_advise_json___desc_str( swrap( option_desc_get( _option_id ) ) )
             AJADD(","); AJADD( swrap( "#1" ) ); AJADD( ":" );                   generate_advise_json_value_candidates_by_rules(_option_id, advise_map )
             AJADD( "}" );
         } else {

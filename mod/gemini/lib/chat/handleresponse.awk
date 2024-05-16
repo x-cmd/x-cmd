@@ -33,3 +33,5 @@ END{
         print cres_dump( cres_o, SUBSEP "cres" ) > (GEMINI_CONTENT_DIR "/chat.response.yml")
     }
 }
+
+

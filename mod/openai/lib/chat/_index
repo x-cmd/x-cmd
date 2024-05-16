@@ -24,19 +24,20 @@ ___x_cmd_openai_chat_request___launch(){
 
     ___x_cmd_openai_chat_request___trapexit(){
         openai:debug "Remove chat.running file"
-        x rmrf "$content_dir/chat.running"
+        ___x_cmd rmrf "$content_dir/chat.running"
     }
 
     printf "%s\n" $$ >"$content_dir/chat.running"
     trap '___x_cmd_openai_chat_request___trapexit' EXIT
 
     {
+        local model
         read -r model
 
-        local requestbody
-        read -r requestbody
+        local request_body_file="$content_dir/openai.request.body.yml"
+        [ -f "$request_body_file" ] || return
 
-        x retry --max 2 --interval 3 ___x_cmd_openai_chat_request___try
+        ___x_cmd retry --max 2 --interval 3 ___x_cmd_openai_chat_request___try
     } || {
         ___x_cmd_openai_chat_request___trapexit
         return 1
@@ -46,36 +47,42 @@ ___x_cmd_openai_chat_request___launch(){
 ___x_cmd_openai_chat_request___try(){
     openai:debug "Sending request to openai server"
     [ -z "$confirm_before_send" ] || {
-        printf "%s\n" "$requestbody" | x j2y | x bat -l yml
-        x ui yesno "Do your want to send this message?" || return 0
+        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >/dev/tty
+        ___x_cmd ui yesno "Do your want to send this message?" || return 0
     }
 
     {
+        local _sha512; _sha512="$( < "$request_body_file" ___x_cmd sha512 )"
+
+        request_body_file="$request_body_file" \
         ___x_cmd ccmd "$cache_time" -- \
-            ___x_cmd_openai_request_generaxwtecontent "$requestbody" "$model"
+            ___x_cmd_openai_request_generaxwtecontent "$model" "$_sha512"
     } | {
         local interative=
         if ___x_cmd_is_interactive; then interative=1; fi
 
         local errcode=0
-        x cawk  -E content_dir,interative         \
+        ___x_cmd cawk  -E content_dir,interative         \
                 -m j/json,j/jiter,j/jcp                                     \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"            \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"               \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"             \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"               \
+                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"               \
                 -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai.awk"           \
                 -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai_stream_output_util.awk"    \
                 -f "$___X_CMD_ROOT_MOD/openai/lib/awk/handle_response.awk" || errcode=$?
 
         case $errcode in
-            0)      ;;
-            *)  x rmrf "$content_dir/openai.response.yml" "$content_dir/chat.response.yml" ;;
+            0)  ;;
+            2)  ___X_CMD_RETRY_ABORT=1; errcode=1 ;;
+            *)  ___x_cmd rmrf "$content_dir/openai.response.yml" "$content_dir/chat.response.yml" ;;
         esac
         return "$errcode"
     }
 }
 
-# x openai chat --model gpt4 -n 3 --file a.md -f b.md -f c.md --prompt english ''
+# ___x_cmd openai chat --model gpt4 -n 3 --file a.md -f b.md -f c.md --prompt english ''
 
 # @gpt3 -n 3 -f a.md -f b.md -p en --
 # @gpt3 -n 3 -f a.md -f c.jd -p cn --
@@ -83,16 +90,16 @@ ___x_cmd_openai_chat_request___try(){
 
 # using control command for this like vscode
 
-# x chat start
+# ___x_cmd chat start
 
-# x chat start ==> create a new thread
-# x chat set 3 ==> set history to 3
+# ___x_cmd chat start ==> create a new thread
+# ___x_cmd chat set 3 ==> set history to 3
 # @gpt3 how to understand
 
 # @ws /start
 # @ws /set 3
 
-# x chat history cp ''
+# ___x_cmd chat history cp ''
 
 # @en
 # @cn
