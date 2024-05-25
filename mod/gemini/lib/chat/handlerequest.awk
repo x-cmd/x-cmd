@@ -28,11 +28,12 @@ END{
 
     chat_history_load( history_obj, SESSIONDIR, HISTORY_NUM, CHATID)
 
+    creq_create( creq_obj, minion_obj, MINION_KP,     TYPE, MODEL, QUESTION, CHATID, HISTORY_NUM, IMAGELIST)
+    chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj))
+
     gemini_request_body_json            = gemini_req_from_creq( history_obj, minion_obj,  QUESTION, creq_obj, CREQ_KP)    # Notice: it's must before creq_create
     gemini_request_body_json            = chat_str_replaceall(  gemini_request_body_json)
 
-    creq_create( creq_obj, minion_obj, MINION_KP,     TYPE, MODEL, USER_LATEST_QUESTION, CHATID, HISTORY_NUM, IMAGELIST)
-    chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj))
 
     print chat_request_json             > (SESSIONDIR "/" CHATID "/chat.request.yml")
 
