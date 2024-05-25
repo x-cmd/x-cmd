@@ -1,4 +1,5 @@
 function parse_item(v, w, sep,       item, s, _res){
+    if (match( v, "\n" )) v = substr(v, 1, RSTART-1) "…"
     item = wcstruncate(v, w)
     s = space_str(w)
     if (v == item)  return wcstruncate(item s, w) sep

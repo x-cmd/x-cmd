@@ -8,6 +8,7 @@ BEGIN{
     ___X_CMD_CSV_APP_RET_STYLE = ENVIRON[ "___X_CMD_CSV_APP_RET_STYLE" ]
     ___X_CMD_CSV_APP_IS_HIDE_INDEX = ENVIRON[ "___X_CMD_CSV_APP_IS_HIDE_INDEX" ]
     ___X_CMD_CSV_APP_PREVIEW = ENVIRON[ "___X_CMD_CSV_APP_PREVIEW" ]
+    ___X_CMD_CSV_APP_TABLE_VIEW = ENVIRON[ "___X_CMD_CSV_APP_TABLE_VIEW" ]
 
     ___X_CMD_CSV_APP_TABLE_WIDTH = tui_parse_width_num( ENVIRON[ "___X_CMD_CSV_APP_TABLE_WIDTH" ], COLS, 70, 30 )
     CSVAPP_POSITION = ENVIRON[ "___X_CMD_TUI_CSV_POSITION" ]
@@ -111,27 +112,48 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
         if ( _width > ___X_CMD_CSV_APP_TABLE_WIDTH ) _width = ___X_CMD_CSV_APP_TABLE_WIDTH
     }
 
-    for (i=1; i<=l; ++i){
+    if (___X_CMD_CSV_APP_TABLE_VIEW != "") {
+        l = o[ kp, "TABLE_VIEW" L ]
+        for (i=1; i<=l; ++i){
+            _cell = o[ kp, "TABLE_VIEW", i ]
+            for (j=1; j<=c; ++j){
+                if (_cell == CSV_DATA[ S 1, j ]) {
+                    o[ kp, "TABLE_VIEW", i, "COL_ID" ] = j
+                    TABLE_ADD( _cell )
+                    break
+                }
+            }
+        }
+    } else {
         cl = 0
         for (j=1; j<=c; ++j){
             if (_skip[ j ] == 1) continue
-            _cell = CSV_DATA[ S i, j ]
-            if (i == 1) TABLE_ADD( _cell )
-            else TABLE_CELL_DEF( i-1, ++cl, _cell )
+            _cell = CSV_DATA[ S 1, j ]
+            TABLE_ADD( _cell )
+            o[ kp, "TABLE_VIEW", ++cl, "COL_ID" ] = j
+        }
+        o[ kp, "TABLE_VIEW" L ] = cl
+    }
+
+    cl = o[ kp, "TABLE_VIEW" L ]
+    l = CSV_DATA[ L ]
+    for (i=2; i<=l; ++i){
+        for (j=1; j<=cl; ++j){
+            _cell = CSV_DATA[ S i, o[ kp, "TABLE_VIEW", j, "COL_ID" ] ]
+            TABLE_CELL_DEF( i-1, j, _cell )
 
             if (CSV_WIDTH[j, "CUSTOM_WIDTH"]) continue
-            w = wcswidth_cache( draw_text_first_line(_cell) )
+            w = wcswidth_cache( draw_unit_text_first_line(_cell) )
             if (CSV_WIDTH[j, "width"] < w) CSV_WIDTH[j, "width"] = w
         }
     }
 
     _width = int(_width * 0.3)
-    cl = 0
-    for (i=1; i<=c; ++i) {
-        if (_skip[ i ] == 1) continue
-        w = CSV_WIDTH[i, "width"] + 1
-        if (w > _width) TABLE_LAYOUT( ++cl, _width, w )
-        else TABLE_LAYOUT( ++cl, w )
+    cl = o[ kp, "TABLE_VIEW" L ]
+    for (j=1; j<=cl; ++j){
+        w = CSV_WIDTH[j, "width"] + 1
+        if (w > _width) TABLE_LAYOUT( j, _width, w )
+        else TABLE_LAYOUT( j, w )
     }
 
     comp_table_current_position_set(o, kp)
@@ -163,8 +185,12 @@ function user_table_model_init(){
     table_statusline_init(o, TABLE_KP)
     comp_table_current_position_var(o, TABLE_KP, CSVAPP_POSITION)
     if ( ___X_CMD_CSV_APP_PREVIEW != "" ) {
-        user_parse_preview_str(o, TABLE_KP, ___X_CMD_CSV_APP_PREVIEW )
+        user_parse_view_str(o, TABLE_KP SUBSEP "PREVIEW_VIEW", ___X_CMD_CSV_APP_PREVIEW )
         comp_textbox_init(o, PREVIEW_KP, "scrollable")
+    }
+
+    if( ___X_CMD_CSV_APP_TABLE_VIEW != "" ) {
+        user_parse_view_str(o, TABLE_KP SUBSEP "TABLE_VIEW", ___X_CMD_CSV_APP_TABLE_VIEW)
     }
 
     ctrl_sw_init(o, TABLE_KP SUBSEP "COMP_CTRL_SW_TOGGLE" )
@@ -179,15 +205,15 @@ function user_parse_action_statusline(o, kp, arr,        i, l){
     for (i=1; i<=l; i+=3) table_statusline_add(o, kp, arr[i], arr[i+1], arr[i+2])
 }
 
-function user_parse_preview_str(o, kp, str,             i, l, c, _){
+function user_parse_view_str(o, kp, str,             i, l, c, _){
     if (str == "") return
     l = split(str, _, ",")
     for (i=1; i<=l; ++i) {
         c = _[ i ]
-        o[ kp, "PREVIEW_VIEW", i ] = c
-        o[ kp, "PREVIEW_VIEW", "HEADER_ID",  c ] = i # tmp_id
+        o[ kp, i ] = c
+        o[ kp, "HEADER_ID",  c ] = i # tmp_id
     }
-    return o[ kp, "PREVIEW_VIEW" L ] = l
+    return o[ kp L ] = l
 }
 
 function user_change_set_all(){
@@ -217,7 +243,10 @@ function user_preview_view_paint(o, kp, x1, x2, y1, y2,         r, l, i, c, _res
     is_ctrl = user_comp_ctrl_sw_get()
     for (i=1; i<=l; ++i){
         c = o[ kp, "PREVIEW_VIEW", i ]
-        _res = _res th(TH_THEME_MINOR_COLOR, c) ":\n  " CSV_DATA[ S r, o[ kp, "PREVIEW_VIEW", "HEADER_ID", c ] ] "\n"
+        msg = "\n" CSV_DATA[ S r, o[ kp, "PREVIEW_VIEW", "HEADER_ID", c ] ]
+        gsub( "\t", "    ", msg )
+        gsub( "[\n\r\v]", "\n  ", msg )
+        _res = _res th(TH_THEME_MINOR_COLOR, c) ":" msg "\n"
     }
 
     comp_textbox_put( o, PREVIEW_KP, _res )

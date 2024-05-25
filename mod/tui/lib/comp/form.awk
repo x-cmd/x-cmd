@@ -9,10 +9,12 @@ function comp_form_init(o, kp, exit_strategy, tf){
 }
 
 # Section: ctrl handle
-function comp_form_handle(o, kp, char_value, char_name, char_type,          _has_no_handle, r, v){
+function comp_form_handle(o, kp, char_value, char_name, char_type,          _has_no_handle, r, v, _is_sel){
     if ( o[ kp, "TYPE" ] != "form" ) return false
     if (!comp_form_is_ctrl_exit_strategy(o, kp)) {
-        if (comp_form___ctrl_lineeditadvise( o, kp, char_value, char_name, char_type )) {
+        _is_sel = ctrl_sw_get(o, kp SUBSEP "ctrl.form.sel")
+        if ( (! _is_sel || ((char_name != U8WC_NAME_LEFT) && (char_name != U8WC_NAME_RIGHT))) && \
+            comp_form___ctrl_lineeditadvise( o, kp, char_value, char_name, char_type ) ) {
             r = comp_form_get_cur_row(o, kp)
             if (comp_form_data_is_select(o, kp, r) && ctrl_sw_get(o, kp SUBSEP "ctrl.form.sel")){
                 comp_form_data_lineedit_put_sel(o, kp, r)
@@ -21,9 +23,45 @@ function comp_form_handle(o, kp, char_value, char_name, char_type,          _has
             change_set( o, kp, "form.body" )
             return true
         }
-        else if (ctrl_sw_get(o, kp SUBSEP "ctrl.form.sel")){
+        else if (_is_sel) {
             r = comp_form_get_cur_row(o, kp)
             if (char_name == U8WC_NAME_CARRIAGE_RETURN) ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
+            else if (char_name == U8WC_NAME_UP) {
+                ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
+
+                ctrl_num_rdec(o, kp SUBSEP "ctrl.form.row")
+                comp_form___ctrl_sel( o, kp )
+                change_set( o, kp, "form.body" )
+                return true
+            }
+            else if (char_name == U8WC_NAME_DOWN) {
+                ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
+
+                if (comp_form_get_cur_row(o, kp) == comp_form_get_data_len(o, kp)) {
+                    comp_form_exit_strategy_toggle(o, kp)
+                    change_set( o, kp, "form.button" )
+                }
+                else {
+                    ctrl_num_inc(o, kp SUBSEP "ctrl.form.row")
+                    comp_form___ctrl_sel( o, kp )
+                }
+                change_set( o, kp, "form.body" )
+                return true
+            }
+            else if (char_name == U8WC_NAME_LEFT) {
+                comp_gsel_ctrl_page_dec(o, kp SUBSEP r SUBSEP "comp.gsel")
+                change_set( o, kp SUBSEP r SUBSEP "comp.gsel", "gsel.body")
+                change_set( o, kp, "form.sel" )
+                change_set( o, kp, "form.body" )
+                return true
+            }
+            else if (char_name == U8WC_NAME_RIGHT) {
+                comp_gsel_ctrl_page_inc(o, kp SUBSEP r SUBSEP "comp.gsel")
+                change_set( o, kp SUBSEP r SUBSEP "comp.gsel", "gsel.body")
+                change_set( o, kp, "form.sel" )
+                change_set( o, kp, "form.body" )
+                return true
+            }
             else if (comp_gsel_handle(o, kp SUBSEP r SUBSEP "comp.gsel", char_value, char_name, char_type)) _has_no_handle = false
             else _has_no_handle = true
 

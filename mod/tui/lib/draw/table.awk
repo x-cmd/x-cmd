@@ -163,7 +163,7 @@ function draw_table___on_header(o, kp, x1, x2, y1, y2, opt,               _num_w
     for (i=_lc; i<=_rc; ++i){
         w = layout_avg_get_size(o, kp, i)
         v = table_arr_head_get(o, kp, layout_avg_get_item(o, kp, i))
-        v = draw_text_first_line(v)
+        v = draw_unit_text_first_line(v)
         if ( i != _cur_col ) v = th( TH_TABLE_HEADER_ITEM_NORMAL, space_restrict_or_pad_utf8(v, w) )
         else {
             icon_w = wcswidth_cache(TH_TABLE_ICON)

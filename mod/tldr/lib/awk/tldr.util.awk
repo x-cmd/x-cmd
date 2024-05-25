@@ -123,11 +123,8 @@ function comp_tldr_parse_ignorelang(arr, str, sep,      _, i, l ){
 }
 
 function comp_tldr_init_of_mdfile(col, no_color, no_background){
-    COMP_TLDR_COL = col
-    COMP_TLDR_NEWLINE = UI_END "\n"
-    TH_TLDR_CMD_KEY_SEP_LEFT  = SUBSEP "TH_TLDR_CMD_KEY_SEP_LEFT" SUBSEP
-    TH_TLDR_CMD_KEY_SEP_RIGHT = SUBSEP "TH_TLDR_CMD_KEY_SEP_RIGHT" SUBSEP
-    if (no_color != 1) {
+    if (no_color == 1) UI_END = ""
+    else {
         if (no_background != 1) COMP_TLDR_BACKGROUND = UI_BG_BLACK
         COMP_TLDR_TILTE = UI_TEXT_BOLD UI_FG_GREEN COMP_TLDR_BACKGROUND
         COMP_TLDR_DESC  = UI_TEXT_BOLD UI_FG_YELLOW COMP_TLDR_BACKGROUND
@@ -143,6 +140,11 @@ function comp_tldr_init_of_mdfile(col, no_color, no_background){
         COMP_TLDR_CMD_KEY_COLOR_LONG  = UI_TEXT_BOLD UI_FG_YELLOW COMP_TLDR_BACKGROUND
         COMP_TLDR_CMD_INFO_COLOR_LONG = UI_TEXT_BOLD UI_FG_CYAN COMP_TLDR_BACKGROUND
     }
+
+    COMP_TLDR_COL = int(col)
+    COMP_TLDR_NEWLINE = UI_END "\n"
+    TH_TLDR_CMD_KEY_SEP_LEFT  = SUBSEP "TH_TLDR_CMD_KEY_SEP_LEFT" SUBSEP
+    TH_TLDR_CMD_KEY_SEP_RIGHT = SUBSEP "TH_TLDR_CMD_KEY_SEP_RIGHT" SUBSEP
 
     COMP_TLDR_SPACE_LINE = th(COMP_TLDR_BACKGROUND, space_rep(COMP_TLDR_COL)) "\n"
 }

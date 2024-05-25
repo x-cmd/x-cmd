@@ -10,7 +10,7 @@ function draw_unit_page_end( v, page_row, data_max ) {
 }
 
 function draw_unit_truncate_string( str, w,      v ){
-    str = draw_text_first_line( str )
+    str = draw_unit_text_first_line( str )
     v = wcstruncate_cache( str, w )
     if (v == str)  return str space_rep(w - wcswidth_cache( str ))
     return wcstruncate_cache( v, w-1 ) "…"
@@ -22,4 +22,9 @@ function draw_unit_cell_match_highlight( s, v, style,           sl, id ){
     return style substr(v, 1, id-1) \
         UI_FG_YELLOW substr(v, id, sl) UI_END \
         style substr(v, id+sl) UI_END
+}
+
+function draw_unit_text_first_line( s,     i ){
+    if ( (i = index(s, "\n")) <=0 ) return s
+    return substr( s, 1, i-1 ) "…"
 }

@@ -1,0 +1,79 @@
+# shellcheck shell=dash
+
+# In the future we will support the next-token
+
+# x osv q --name --ecosyste --version --
+
+___x_cmd_osv_query(){
+    [ "$#" -gt 0 ] || M='Provide a package or commit' N=osv log:ret:1
+
+    local op="$1"; shift
+    case "$op" in
+        --json)         ___x_cmd_osv_query___json        "$@" ;;
+        --yml)          ___x_cmd_osv_query___yml         "$@" ;;
+
+        *)              ___x_cmd_osv_query___json  "$op" "$@" ;;
+    esac
+}
+
+# TODO:
+#     fail:
+#         - x osv q -p "mruby"
+#     success:
+#         - x osv q -p "pkg:generic/mruby"
+#         - x osv q -p "mruby" -v "2.1.2rc"
+#         - x osv q -p "OSS-Fuzz,mruby"
+___x_cmd_osv_query___inner_(){
+    local line=""
+
+    local f=
+    local q=""
+    local t=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -p|--pkg)
+                    case "$2" in
+                        *,*)    t='{"ecosystem": "'${2%%,*}'", "name": "'${2##*,}'"}'   ;;
+                        *:*)    t='{"purl": "'${2}'"}'                                  ;;
+                        *)      t='{"name": "'${2}'"}'                                  ;;
+                    esac
+                    q="$q"'"package": '${t}','
+                    f=1
+                    shift 2;;
+            -c|--commit)
+                    q="$q"'"commit": "'${2}'",'
+                    f=1
+                    shift 2;;
+            -v|-version)
+                    q="$q"'"version": "'${2}'",'
+                    shift 2;;
+            --next_page_token)
+                    q="$q"'"next_page_token": "'${2}'",'
+                    shift 2;;
+            *)      shift 1;;
+        esac
+    done
+    [ -n "$f" ] || M='Provide a package or commit. e.g.x osv q -p OSS-Fuzz,jq' N=osv log:ret:1
+
+    # TODO：Verify that the Request content complies with the specification
+    # If only the package name is provided, the ecosystem or version must be specified for the request to succeed.
+
+    local api_url="https://api.osv.dev/v1/query"
+    local api_query='{ '$q' }'
+    osv:debug --api_url "$api_url" --query "$api_query" "run cmd -> curl -d $api_query $api_url"
+    ___x_cmd curl -d "$api_query" "$api_url"
+}
+
+
+___x_cmd_osv_query___yml(){
+    ___x_cmd_osv_query___raw "$@" | ___x_cmd j2y
+}
+
+___x_cmd_osv_query___json(){
+    ___x_cmd_osv_query___raw "$@" | ___x_cmd jo fmt
+}
+
+___x_cmd_osv_query___raw(){
+    # using jo to handle regular the json
+    ___x_cmd_osv_query___inner_ "$@" | ___x_cmd jo 1.vulns
+}

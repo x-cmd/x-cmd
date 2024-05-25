@@ -23,12 +23,13 @@ function user_form_data_parse(o, kp, argstr,        i, j, l, _l, _, argarr, arr,
     comp_form_data_desc_width(o, kp, _desc_mw)
     comp_form_model_end(o, kp)
 
-    if ( l < ( tapp_canvas_rowsize_get() - 4))  ROW_RECALULATE = l + 4 + ((has_select) ? 4 : 0)
-    else if ((l+4) < ROWS - 1)                  ROW_RECALULATE = l + 4
+    if ( l < ( tapp_canvas_rowsize_get() - 5))  ROW_RECALULATE = l + 5 + ((has_select) ? 4 : 0)
+    else if ((l+5) < ROWS - 1)                  ROW_RECALULATE = l + 5
     else                                        ROW_RECALULATE = ROWS - 1
     tapp_canvas_has_changed()
 }
 function tapp_init(){
+    ___X_CMD_TUI_FORM_RETURN_STYLE = ENVIRON[ "___X_CMD_TUI_FORM_RETURN_STYLE" ]
     ___X_CMD_TUI_FORM_ARGSTR = ENVIRON[ "___X_CMD_TUI_FORM_ARGSTR" ]
     ___X_CMD_TUI_FORM_VAR_PREFIX = ENVIRON[ "___X_CMD_TUI_FORM_VAR_PREFIX" ]
     if (___X_CMD_TUI_FORM_ARGSTR == "") panic("The tui form data is empty")
@@ -74,16 +75,25 @@ function tapp_handle_exit( exit_code,       v, e, i, l, _unset ){
         if (!comp_form_already_exit_strategy_get(o, FORM_KP)) return
         e = comp_form_exit_strategy_get(o, FORM_KP, comp_form_get_cur_exit_strategy(o, FORM_KP))
         if (e != "execute") return
-        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_FORM_FINAL_COMMAND", e ) )
-        _unset = "unset ___X_CMD_TUI_FORM_FINAL_COMMAND ;"
-        l = comp_form_get_data_len(o, FORM_KP)
-        for (i=1; i<=l; ++i){
-            var = ___X_CMD_TUI_FORM_VAR_PREFIX comp_form_get_data_var(o, FORM_KP, i)
-            val = comp_form_data_val(o, FORM_KP, i)
-            tapp_send_finalcmd( sh_varset_val( var, val ) )
-            _unset = _unset "\nunset " var " ;"
+        if ( ___X_CMD_TUI_FORM_RETURN_STYLE == "print" ) {
+            l = comp_form_get_data_len(o, FORM_KP)
+            for (i=1; i<=l; ++i){
+                var = comp_form_get_data_var(o, FORM_KP, i)
+                val = comp_form_data_val(o, FORM_KP, i)
+                tapp_send_finalcmd( sh_printf_varset_val( var, val ) )
+            }
+        } else {
+            tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_FORM_FINAL_COMMAND", e ) )
+            _unset = "unset ___X_CMD_TUI_FORM_FINAL_COMMAND ;"
+            l = comp_form_get_data_len(o, FORM_KP)
+            for (i=1; i<=l; ++i){
+                var = ___X_CMD_TUI_FORM_VAR_PREFIX comp_form_get_data_var(o, FORM_KP, i)
+                val = comp_form_data_val(o, FORM_KP, i)
+                tapp_send_finalcmd( sh_varset_val( var, val ) )
+                _unset = _unset "\nunset " var " ;"
+            }
+            tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_FORM_UNSET", _unset ) )
         }
-        tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_FORM_UNSET", _unset ) )
     }
 }
 

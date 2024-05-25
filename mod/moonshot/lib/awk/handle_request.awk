@@ -3,6 +3,7 @@ BEGIN{
     CHATID              = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE   = ENVIRON[ "minion_json_cache" ]
     SESSIONDIR          = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
+    def_model           = ENVIRON[ "def_model" ]
     MINION_KP           = SUBSEP "\"1\""
 
     minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE, "moonshot" )
@@ -20,7 +21,7 @@ BEGIN{
     chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj ) )
     print chat_request_json             > (SESSIONDIR "/" CHATID "/chat.request.yml")
 
-    moonshot_request_body_json            = moonshot_req_from_creq( history_obj, minion_obj, MINION_KP )
+    moonshot_request_body_json            = moonshot_req_from_creq( history_obj, minion_obj, MINION_KP, def_model )
     moonshot_request_body_json            = chat_str_replaceall( moonshot_request_body_json )
     print moonshot_request_body_json      > (SESSIONDIR "/" CHATID "/moonshot.request.body.yml")
 

@@ -185,8 +185,10 @@ function minion_load_from_jsonfile( o, prefix, jsonfilepath, provider ){
     if ( provider !~ "^\"" )            provider = jqu(provider)
     if ( chat_str_is_null( provider ))  provider = o[ prefix S "\"provider\"" S "\"default\"" ]
 
-    cp_cover(o, prefix, o, prefix S "\"provider\"" S provider)
-    jdict_rm(o, prefix, "\"provider\"")
+    if ( ! chat_str_is_null( o[ prefix S "\"provider\"" S provider ] ) ) {
+        cp_cover(o, prefix, o, prefix S "\"provider\"" S provider)
+        jdict_rm(o, prefix, "\"provider\"")
+    }
 }
 
 

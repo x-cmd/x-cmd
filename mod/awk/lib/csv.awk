@@ -97,24 +97,25 @@ BEGIN{
     CSV_CELL_NEXT_PAT = "^" ___CSV_CELL_PAT_STR_RIGHT "(,|$)"
 }
 
-function csv_parse_iter_all___record( buffer, arr, kp,    l, b, c, i, _lastcell, line, _tmp, _tmpl,d ){
+function csv_parse_iter_all___record( buffer, arr, kp,          l, b, c, i, _lastcell, line, _tmp, _tmpl ){
     l = 0
     while (CSV_ITER_DATA != "") {
         line = csv_trim(CSV_ITER_DATA)
-        gsub( CSV_CELL_PAT, "&\n", line )
+        gsub( CSV_CELL_PAT, "\n&", line )
 
-        _tmpl = split(line, _tmp, ",\n")
-        for (i=1; i<_tmpl; ++i) {
+        _tmpl = split(line, _tmp, "(^|,)\n")
+        for (i=2; i<_tmpl; ++i) {
             csv_parse_iter_all___put( arr, kp SUBSEP (++l), _tmp[i] )
         }
 
-        # Tip: 若最后一个元素是个空值，切分出来只是个空值，不会有\n
-        # Tip: 若最后一个元素是完整的（非空值），那必然是加了\n
-        # Tip: 若最后一个元素是不完整的，有\n
-        # Tip: 所以，需要判断最后一个元素是否是半个quote-string
+        # Tip: 判断最后一个元素是否是半个quote-string
         _lastcell = _tmp[_tmpl]
-        if ( _lastcell !~ "^\"" ___CSV_CELL_PAT_STR_CONTENT "$" ) {
-            csv_parse_iter_all___put( arr, kp SUBSEP (++l), csv_trim(_lastcell) )
+        if ( _lastcell !~ "^" ___CSV_CELL_PAT_STR_LEFT_HALF ) {
+            if ( ! match(_lastcell, ",$" ) ) csv_parse_iter_all___put( arr, kp SUBSEP (++l), _lastcell )
+            else {
+                csv_parse_iter_all___put( arr, kp SUBSEP (++l), substr( _lastcell, 1, RSTART-1 ) )
+                csv_parse_iter_all___put( arr, kp SUBSEP (++l), "" )
+            }
             break
         }
 

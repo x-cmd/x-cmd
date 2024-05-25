@@ -1,0 +1,87 @@
+# shellcheck shell=dash
+
+# Just using the query batch api ...
+# In the future we will support the next-token
+
+# x osv q --name --ecosyste --version --
+
+___x_cmd_osv_querybatch(){
+    [ "$#" -gt 0 ] || {
+        :
+    }
+
+    local op="$1"; shift
+    case "$op" in
+        --csv)          ___x_cmd_osv_querybatch___csv         "$@" ;;
+        --json)         ___x_cmd_osv_querybatch___json        "$@" ;;
+        --yml)          ___x_cmd_osv_querybatch___yml         "$@" ;;
+
+        *)              ___x_cmd_osv_querybatch___csv  "$op"  "$@" ;;
+    esac
+}
+
+___x_cmd_osv_querybatch___inner_(){
+    local line=""
+
+    local q=""
+    local t=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -p|--pkg)
+                    case "$2" in
+                        *,*)    t='{"ecosystem": "'${2%%,*}'", "name": "'${2##*,}'"}'   ;;
+                        *)      t='{"purl": "'${2}'"}'                                  ;;
+                    esac
+                    q="$q"'"package": '${t}',';
+                    shift 2;;
+            -c|--commit)
+                    q="$q"'"commit": "'${2}'",';
+                    shift 2;;
+            -v|-version)
+                    q="$q"'"version": "'${2}'",';
+                    shift 2;;
+            --)
+                    line="${line}${___X_CMD_UNSEENCHAR_NEWLINE}{ $q }";
+                    q=""
+                    shift 2;;
+        esac
+    done
+    [ -z "$q" ] || line="${line}${___X_CMD_UNSEENCHAR_NEWLINE}{ $q }${___X_CMD_UNSEENCHAR_NEWLINE}"
+
+    local api_url="https://api.osv.dev/v1/querybatch"
+___x_cmd_cmds cat <<EOF | ___x_cmd curl -d @- "$api_url"
+{
+  "queries": [
+    $line
+  ]
+}
+EOF
+}
+
+___x_cmd_osv_query___pipe(){
+    :
+
+    # ecosystem,name,version
+
+    :
+}
+
+
+___x_cmd_osv_querybatch___csv(){
+    :
+    # TODO: querybatch api - Returns vulnerability ids and modified field only.
+    # ___x_cmd_osv_querybatch___raw "$@"
+}
+
+___x_cmd_osv_querybatch___yml(){
+    ___x_cmd_osv_querybatch___raw "$@" | ___x_cmd j2y
+}
+
+___x_cmd_osv_querybatch___json(){
+    ___x_cmd_osv_querybatch___raw "$@" | ___x_cmd jo fmt
+}
+
+___x_cmd_osv_querybatch___raw(){
+    # using jo to handle regular the json
+    ___x_cmd_osv_querybatch___inner_ "$@" | ___x_cmd jo 1.results.1.vulns
+}

@@ -27,7 +27,7 @@ function mistral_gen_minion_content_str(minion_obj, minion_kp,      context, exa
     return mistral_gen_unit_str( "user", context example content )
 }
 
-function mistral_req_from_creq(history_obj, minion_obj, minion_kp,          i, l, str, \
+function mistral_req_from_creq(history_obj, minion_obj, minion_kp, def_model,          i, l, str, \
     _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken, _seed, _temperature, _data_str){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
@@ -44,7 +44,7 @@ function mistral_req_from_creq(history_obj, minion_obj, minion_kp,          i, l
     _content_str    = mistral_gen_minion_content_str(minion_obj, minion_kp)
     _messages_str   = _history_str _system_str _filelist_str _content_str
 
-    _mode           = jqu(minion_model( minion_obj, minion_kp ))
+    _mode           = jqu(minion_model( minion_obj, minion_kp, def_model ))
     _maxtoken       = minion_maxtoken( minion_obj, minion_kp )
     _seed           = minion_seed( minion_obj, minion_kp )
     _temperature    = minion_temperature( minion_obj, minion_kp )

@@ -1,14 +1,15 @@
 
-{ jiparse_after_tokenize(o, $0); }
-END{
-    _selectcmd = "___x_cmd ui select ,_cmd \"Select the command statement you want to execute\" "
+BEGIN{
+    msg = ( msg != "" ) ? msg : "Select the command statement you want to execute"
+    _selectcmd = "___x_cmd ui select ,_cmd " qu1(msg) " "
+}
 
-    kp = SUBSEP "\"1\"" SUBSEP "\"answer\""
-    l = o[ kp L ]
-    for (i=1; i<=l; ++i){
-        cmd = o[ kp, "\""i"\"", "\"cmd\"" ]
-        cmd = qu1( juq(cmd) )
-        _selectcmd = _selectcmd cmd " "
-    }
-    print _selectcmd "\"return 0\""
+{
+    _cmd = $0
+    if ( _cmd ~ "^\"" ) _cmd = juq(_cmd)
+    _selectcmd = _selectcmd qu1(_cmd) " "
+}
+
+END{
+    print _selectcmd "\"return 1\""
 }

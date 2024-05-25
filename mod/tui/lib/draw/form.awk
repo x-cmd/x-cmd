@@ -10,26 +10,37 @@ function draw_form_style_init(){
     TH_FORM_INTERVAL_WIDTH     = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_INTERVAL_WIDTH" ]      : int(wcswidth_cache(str_remove_esc(TH_FORM_INTERVAL_STYLE)))
     TH_FORM_BUTTON_SELECTED    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_BUTTON_SELECTED" ]     : TH_THEME_COLOR UI_TEXT_UNDERLINE
     TH_FORM_BUTTON_UNSELECTED  = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_BUTTON_UNSELECTED" ]   : ""
-    TH_FORM_BUTTON_FOCUSED_SELECTED    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_BUTTON_FOCUSED_SELECTED" ]     : UI_TEXT_REV TH_THEME_COLOR
+    TH_FORM_BUTTON_FOCUSED_SELECTED    = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_BUTTON_FOCUSED_SELECTED" ]     : UI_TEXT_REV TH_THEME_MINOR_COLOR UI_TEXT_BLINK
     TH_FORM_BUTTON_FOCUSED_UNSELECTED  = ( IS_TH_CUSTOM ) ? ENVIRON[ "___X_CMD_TUI_TH_FORM_BUTTON_FOCUSED_UNSELECTED" ]   : UI_TEXT_DIM TH_THEME_COLOR
 }
 
 function draw_form(o, kp, x1, x2, y1, y2, opt, \
-    _padding, _draw_box, _draw_body, _draw_button, _draw_sel){
+    _padding, _draw_box, _draw_body, _draw_button, _draw_sel, _draw_foot){
+
+    _draw_foot      = draw_form___on_foot( o, kp, x1, x1, y1, y2, opt )
+    x1++
 
     if ( opt_getor( opt, "form.box.enable", false ) ){
-        _draw_box = draw_form___on_box(o, kp, x1, x2, y1, y2, opt)
+        _draw_box   = draw_form___on_box(o, kp, x1, x2, y1, y2, opt)
         x1++; x2--; y1++; y2--
     }
 
     _padding = opt_get( opt, "form.padding" )
     x1+=_padding; x2-=_padding; y1+=_padding; y2-=_padding
 
-    _draw_body    = draw_form___on_body( o, kp, x1, x2-1, y1, y2, opt )
-    _draw_sel     = draw_form___on_select( o, kp, x1, x2-1, y1, y2, opt )
-    _draw_button  = draw_form___on_button( o, kp, x2, x2, y1, y2, opt )
+    _draw_body      = draw_form___on_body( o, kp, x1, x2-1, y1, y2, opt )
+    _draw_sel       = draw_form___on_select( o, kp, x1, x2-1, y1, y2, opt )
+    _draw_button    = draw_form___on_button( o, kp, x2, x2, y1, y2, opt )
 
-    return _draw_box _draw_body _draw_button _draw_sel
+    return _draw_box _draw_body _draw_button _draw_sel _draw_foot
+}
+
+function draw_form___on_foot(o, kp, x1, x2, y1, y2, opt,             s){
+    if ( ! opt_get( opt, "form.body.change" ) ) return
+    s = "<↓/↑>:Change Edit Row"
+    if (opt_get( opt, "form.is_ctrl_form_sel" )) s = s "    <←/→>:Select Option    <Enter>:Confirm Selection"
+    s = th( UI_TEXT_DIM, s )
+    return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) s
 }
 
 function draw_form___on_box(o, kp, x1, x2, y1, y2, opt,         _color){
@@ -146,7 +157,7 @@ function draw_form___on_button( o, kp, x1, x2, y1, y2, opt, \
         _unselected = TH_FORM_BUTTON_FOCUSED_UNSELECTED
     }
     for (i=1; i<=l; ++i){
-        v = form_arr_exit_strategy_get(o, kp, i)
+        v = " " form_arr_exit_strategy_get(o, kp, i) " "
         s = s "   " ((i!=ci) ? th(_unselected, v) : th(_selected, v))
     }
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) s

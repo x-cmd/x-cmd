@@ -8,7 +8,7 @@ END{
     nl = o[ Q2_1 L ]
     if (nl <= 0) exit(1)
 
-    printf("%s\n", "name,version,quant,format,bits,method,size,max_ram_required,usecase,hf")
+    printf("%s\n", "Name,Version,Quant,Format,Bits,Method,Size,Max-Ram-Required,Usecase,href")
     for (i=1; i<=nl; ++i){
         name = o[ Q2_1, i ]
         vl = o[ Q2_1, name L ]

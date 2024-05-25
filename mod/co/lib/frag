@@ -1,0 +1,134 @@
+# shellcheck shell=dash
+
+
+___x_cmd_co_frag(){
+    local try_again
+    local context_command_result="$context_command_result"
+    local x_
+    while true; do
+        try_again=""
+        x_=; ___x_cmd_co_frag_ "$@" || return
+        ___x_cmd_co_frag_app "$x_" || return
+        [ -n "$try_again" ] || break
+    done
+}
+
+# ___X_CMD_CO_FRAG_CONTEXT_CMD=
+
+# x gh repo ,
+# ___X_CMD_CO_FRAG_CONTEXT_CMD='___x_cmd gh repo --help ' x co frag
+___x_cmd_co_frag_(){
+    local ___X_CMD_TLDR_LANG_PREFERED=en
+    [ -z "$___X_CMD_CO_FRAG_CONTEXT_CMD" ] || {
+        context_command_result="${context_command_result}
+$(eval "$___X_CMD_CO_FRAG_CONTEXT_CMD")"
+    } || return
+    [ -z "$context_command_result" ] || set -- -e context_command_result "$@"
+
+    local LOCALSHELL=
+    local OS=
+
+    ___x_cmd os name_
+
+    # --type "co"
+    x_="$(LOCALSHELL="$___X_CMD_SHELL" OS="$x_" ___x_cmd chat --send --type "co-frag" \
+        --minion "$___X_CMD_ROOT_MOD/co/lib/minion/frag.yml" "$@")"
+}
+
+___x_cmd_co_frag_app(){
+    local data="$1"
+    # Just preserve the json data which only asked
+    data="${data#*\{}"
+    data="${data%\}*}"
+    [ -n "$data" ] || return
+    data="{$data}"
+
+    printf "%s\n" "$data" | ___x_cmd j2y >/dev/tty || N=co M="Response data format error or empty" log:ret:1
+
+    # if there is answer, then print it
+    # if there is information-collector, then print it
+
+    local answerlist; answerlist="$( printf "%s\n" "$data" | ___x_cmd jo '.answer.*' .cmd )"
+    local questionlist; questionlist="$( printf "%s\n" "$data" | ___x_cmd jo '.information-collector.*' .cmd )"
+
+    if [ -n "$answerlist" ] && [ -n "$questionlist" ]; then
+        ___x_cmd_co_frag___answer_question
+    elif [ -n "$answerlist" ]; then
+        ___x_cmd_co_frag___answer
+    elif [ -n "$questionlist" ]; then
+        ___x_cmd_co_frag___question
+    else
+        return 1
+    fi
+
+}
+
+___x_cmd_co_frag___answer_question(){
+    local id=
+    ___x_cmd ui select "id" "Next"  \
+        "Executing the command"     \
+        "Collect information"       \
+        "return 1"
+
+    case "$id" in
+        1)  ___x_cmd_co_frag___answer   ;;
+        2)  ___x_cmd_co_frag___question ;;
+        *)  return 1
+    esac
+}
+
+___x_cmd_co_frag___answer(){
+    local _selectcmd
+    local _cmd
+    local x_=
+    _selectcmd="$( SELECT_TITLE="Select the command to execute" ___x_cmd cawk -f "$___X_CMD_ROOT_MOD/co/lib/awk/gen_exec_uiselect.awk" <<A
+$answerlist
+# None of them are correct, try again
+A
+)"
+    ___x_cmd ui sep
+    eval "$_selectcmd" || return
+    [ -n "$_cmd" ] || return
+    case "$_cmd" in
+        \#*)    ___x_cmd chat --wrap_ "Notice, Incorrect shell command Answer" "$answerlist"
+                context_command_result="${context_command_result}
+${x_}
+"
+                try_again=1
+                ;;
+        *)      eval "$_cmd"
+                ;;
+    esac
+}
+
+___x_cmd_co_frag___question(){
+    local _selectcmd
+    local _cmd
+    local x_=
+
+    _selectcmd="$( SELECT_TITLE="Select the command execution to collect information" ___x_cmd cawk -f "$___X_CMD_ROOT_MOD/co/lib/awk/gen_exec_uiselect.awk" <<A
+$questionlist
+# None of them are correct, try again
+A
+)"
+    ___x_cmd ui sep
+    eval "$_selectcmd" || return
+    [ -n "$_cmd" ] || return
+    case "$_cmd" in
+        \#*)    ___x_cmd chat --wrap_ "Notice, Incorrect shell command used to gather information" "$questionlist" ;;
+        *)      x_="$( eval "$_cmd" )" || return
+                ___x_cmd chat --wrap_ "The information previously asked to collect by AI: $_cmd" "$x_"
+                ;;
+    esac
+    context_command_result="${context_command_result}
+${x_}
+"
+    try_again=1
+}
+
+# context-command:
+
+# 1. x gh , create a new private repo
+# 2. x gh , create a repo with wiki enable
+# 3. x gh , enable the x-cmd/gh repo's wiki
+
