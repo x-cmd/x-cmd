@@ -93,6 +93,15 @@ function minion_temperature( o, prefix,         v ){
     return ENVIRON[ "cfg_temperature" ]
 }
 
+function minion_ctx( o, prefix,         v ){
+    v = ENVIRON[ "ctx" ]
+    if ( ! chat_str_is_null(v) )    return v
+
+    v = o[ prefix S "\"ctx\"" ]
+    if ( ! chat_str_is_null(v) )    return ((v ~ "^\"") ? juq(v) : v)
+    return ENVIRON[ "cfg_ctx" ]
+}
+
 function minion_is_jsonmode( o, prefix,         v ){
     v = o[ prefix S "\"json\"" ]
     if ( ! chat_str_is_null(v) )    v = ((v ~ "^\"") ? juq(v) : v)

@@ -3,7 +3,7 @@ function all_line_char_is_blank( charpos,   i, line, ch ){
     for (i=1; i<=gli_buffer_len(); ++i) {
         line = gli_buffer_get(i)
         ch = substr(line, charpos, 1)
-        if ((ch!=" ") && (ch!="")) {
+        if ((ch!=" ") && (ch!="") && (ch != "\t")) {
             # print "0 === " ch "\t" line
             return 0
         }

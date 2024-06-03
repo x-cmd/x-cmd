@@ -82,7 +82,7 @@ function parse_case_gpae_tldr_data( o, kp, key,     i, l, _kp, _kp_tldr ){
 # EndSection
 
 END{
-    if (o[L] != 0) {
+    if (o[L] > 0) {
         cp_cover_merge(o, obj)
         parse_special_fields_value(o, Q2_1)
         print jstr0(o, Q2_1)

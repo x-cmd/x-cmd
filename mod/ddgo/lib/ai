@@ -1,0 +1,120 @@
+# shellcheck shell=bash disable=SC2034
+
+___x_cmd_ddgo_ai(){
+    local format=app;
+    local IFS=" "
+    case "$1" in
+        --json)     format="json";      shift   ;;
+        --yml)      format="yml" ;      shift   ;;
+        --csv)      format="csv" ;      shift   ;;
+        --app)      format="app" ;      shift   ;;
+        --llm)      format="llm" ;      shift   ;;
+
+        -h|--help)  ___x_cmd help -m ddgo --ai  "$@"; return 1 ;;
+    esac
+
+    ddgo:info "Data is being organized with the help of AI. Please be patient"
+    "___x_cmd_ddgo_ai___${format}" "$@"
+}
+
+___x_cmd_ddgo_ai___json(){
+    N=ddgo M="Support json model in the future" log:ret:1
+}
+
+___x_cmd_ddgo_ai___yml(){
+    N=ddgo M="Support yml model in the future" log:ret:1
+}
+
+___x_cmd_ddgo_ai___app(){
+    if { [ -t 1 ] && ___x_cmd_is_interactive ;}; then
+        ___X_CMD_CSV_APP_SHBIN_CODE="xrc ddgo" \
+        ___x_cmd_ddgo_ai___app___ "$@"
+    else
+        ___x_cmd_ddgo_ai___csv "$@"
+    fi
+}
+
+___x_cmd_ddgo_ai___app___(){
+    local ___X_CMD_CSV_APP_DATA_Update=; local ___X_CMD_CSV_APP_DATA_Msg=
+    local ___X_CMD_CSV_APP_DATA_Url=;    local ___X_CMD_CSV_APP_DATA_Title=
+    local ___X_CMD_CSV_APP_DATA_AI_headline=; local ___X_CMD_CSV_APP_DATA_AI_comment=
+    local ___X_CMD_CSV_APP_DATA_AI_Mark
+    ___x_cmd csv --app --clear                                           \
+                --return var                                             \
+                --action o Open 'Open on website'                        \
+                --action c Copy 'Copy URL'                               \
+                --processor '___x_cmd_ddgo_dump___ai_app_open'           \
+                --table-view AI_Mark,AI_headline                         \
+                --preview AI_headline,AI_comment,Title,Msg,Url,Update    \
+                ___x_cmd_ddgo_ai___csv "$@"
+
+    [ -n "$___X_CMD_CSV_APP_DATA_Msg" ] || return 1
+
+    local id=
+    ___x_cmd ui select id "Next move for ddgo information:"   \
+        "Dump current line information"                       \
+        "Open url on website"                                 \
+        "Exit"
+
+    case "$id" in
+        1)      ___x_cmd_ddgo_dump___dump_current_line ;;
+        2)      ___x_cmd browse open "$___X_CMD_CSV_APP_DATA_Url" ;;
+        3)      return
+    esac
+}
+
+___x_cmd_ddgo_ai___llm(){
+    N=ddgo M="Support llm model in the future" log:ret:1
+}
+
+# ::
+# x ddgo --ai
+
+___x_cmd_ddgo_ai___csv(){
+    ___x_cmd ccmd 1d -- ___x_cmd_ddgo_ai___csv_raw "$@"
+}
+
+___x_cmd_ddgo_ai___csv_raw(){
+    local data; local RAW_DATA=
+
+    data="$(___x_cmd_ddgo___dump_llm "$@")" || return
+    data="$( printf "%s" "$data" | RAW_DATA=1 ___x_cmd cawk -f "$___X_CMD_ROOT_MOD/ddgo/lib/awk/pretreatment.awk" )"
+    [ -n "$data" ] || N=ddgo M="csv data is null" log:ret:1
+
+    local aidata=
+    aidata="$(
+        printf "%s" "$data" |\
+          ___x_cmd chat --send --type evaluation \
+            --minion "$___X_CMD_ROOT_MOD/ddgo/lib/minion/evaluator.minion.yml"
+    )"
+
+    [ -n "$aidata" ] || N=ddgo M="csv data is null" log:ret:1
+
+    ddgo:info "Evaluating the relevance([1-5], 5 is highly relevant and 1 is irrelevant) of search results using AI ..."
+    aidata="$(
+        printf "%s" "$aidata" | ___x_cmd cawk -f "$___X_CMD_ROOT_MOD/ddgo/lib/awk/pretreatment.awk" |\
+                                ___x_cmd ja 2c .Headline .Rating .Comment | \
+                                ___x_cmd csv header --add AI_headline AI_Mark AI_comment
+    )"
+
+    ___x_cmd_csv_merge2 "$aidata" "$data"
+}
+
+
+___x_cmd_ddgo_dump___ai_app_open(){
+    local op="$*"; local url=
+    case "$op" in
+        x:request:o*)
+            op="${op##*"$___X_CMD_UNSEENCHAR_001"}"
+            url="$(___x_cmd_cmds printf "%s" "$op" | ___x_cmd csv awk '{printf("%s", cval(3))}')"
+            ___x_cmd browse open "$url"
+            ;;
+        x:request:c*)
+            op="${op##*"$___X_CMD_UNSEENCHAR_001"}"
+            url="$(___x_cmd_cmds printf "%s" "$op" | ___x_cmd  csv awk '{printf("%s", cval(3))}')"
+            ___x_cmd pb --cp "$url"
+            ;;
+    esac
+}
+
+

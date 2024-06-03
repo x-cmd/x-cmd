@@ -43,7 +43,7 @@ function u8wc( ch ) {
     }
 
     if ( 1 == U8WC_ESC_MODE ) {
-        if (ch =="q") {
+        if (ch == "q") {
             U8WC_NAME     =  "QUIT"     # Original is quit
             U8WC_TYPE     =  U8WC_TYPE_SPECIAL
             U8WC_VALUE    =  "\033" ch
@@ -52,7 +52,7 @@ function u8wc( ch ) {
             return true
         }
 
-        if (ch =="[") {
+        if ((ch == "[") || (ch == "O")) {
             U8WC_ESC_MODE = 2
             return false
         }

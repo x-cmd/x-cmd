@@ -3,6 +3,7 @@ BEGIN{
     CHATID              = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE   = ENVIRON[ "minion_json_cache" ]
     SESSIONDIR          = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
+    CFG_CTX             = ENVIRON[ "cfg_ctx" ]
     MINION_KP           = SUBSEP "\"1\""
 
     minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE, "ollama" )

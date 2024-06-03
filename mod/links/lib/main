@@ -28,13 +28,12 @@ ___x_cmd_links___auto(){
 }
 
 ___x_cmd_links___exec(){
-    local cmd='x cosmo links'
     local proxy=
     while [ $# -gt 0 ]; do
         case "$1" in
-            --http_proxy)   proxy=1; cmd="$cmd -http-proxy ${2#*://}" ; shift 2; ;;
-            --https_proxy)  proxy=1; cmd="$cmd -https-proxy ${2#*://}"; shift 2; ;;
-            --socks_proxy)  proxy=1; cmd="$cmd -socks-proxy ${2#*://}"; shift 2; ;;
+            --http_proxy)   proxy=1; set -- -http-proxy   "${2#*://}" "$@" ; shift 2; ;;
+            --https_proxy)  proxy=1; set -- -https-proxy  "${2#*://}" "$@" ; shift 2; ;;
+            --socks_proxy)  proxy=1; set -- -socks-proxy  "${2#*://}" "$@" ; shift 2; ;;
             *)              break
         esac
     done
@@ -44,16 +43,32 @@ ___x_cmd_links___exec(){
 
     if [ -z "$proxy" ]; then
         if   [ -n "${proxy:=${HTTPS_PROXY:-$https_proxy}}" ]; then
-            cmd="$cmd -https-proxy ${proxy#*://}"
+            set -- -https-proxy "${proxy#*://}" "$@"
         elif [ -n "${proxy:="${HTTP_PROXY:-$http_proxy}"}" ]; then
-            cmd="$cmd -http-proxy ${proxy#*://}"
+            set -- -http-proxy "${proxy#*://}"  "$@"
         elif [ -n "${proxy:="${ALL_PROXY:-$all_proxy}"}"   ]; then
-            cmd="$cmd -socks-proxy ${proxy#*://}"
+            set -- -socks-proxy "${proxy#*://}" "$@"
         fi
     fi
 
-    cmd="$cmd \"\$@\""
-    eval "$cmd"
+    [ -n "$___X_CMD_LINKS_TIMEOUT" ] || {
+        ___x_cmd cosmo links "$@"
+        return
+    }
+
+    if ! ___x_cmd cosmo -w links >/dev/null; then
+        ___x_cmd cosmo --add links || return 1
+    fi
+
+    set -- "$___X_CMD_LINKS_TIMEOUT" "/bin/sh" "$___X_CMD_ROOT_MOD/cosmo/lib/bin/exec.sh" links "$@"
+
+    if ___x_cmd_hascmd timeout; then
+        ___X_CMD_ROOT_CODE="$___X_CMD_ROOT_CODE" \
+        ___x_cmd_cmds timeout       "$@"
+    else
+        ___X_CMD_ROOT_CODE="$___X_CMD_ROOT_CODE" \
+        ___x_cmd cosmo timeout      "$@"
+    fi
 }
 
 # ___x_cmd_links___proxy(){

@@ -20,29 +20,34 @@ ___x_cmd_ollama_chat_request(){
 }
 
 ___x_cmd_ollama_chat_exec(){
+
     [ -n "$model" ] || {
-        ___x_cmd_ollama_cur model:=  2>/dev/null
+        local model=
+        [ -n "$model" ] || model="$(___x_cmd_ollama_current_model 2>/dev/null )"
         [ -n "$model" ] || model="llama3"
     }
 
-    ___x_cmd_ollama_model_has_model "$model" || {
-        if ! ___x_cmd_is_interactive; then
-            ollama:error --cmd "x ollama model download $model" "Please download the model in advance"
-        else
-            ___x_cmd ui yesno "Not found [MODEL ==> $model]. Do you want to install $model ?" || return 1
-            ___x_cmd_ollama_model_download "$model" || return
-        fi
-    }
+    local endpoint_tmp=
+    ___x_cmd_ollama_cur endpoint_tmp:=endpoint 2>/dev/null
 
-    local cfg_model=;
-    ___x_cmd_ollama_cfg --var cfg_model=model  2>/dev/null
-    ollama:debug --cfg_model "$cfg_model" --model "$model" "chat exec"
+    if [ -z "$endpoint_tmp" ]; then
+        ___x_cmd_ollama_model_has_model "$model" || N=ollama M="[MODLE ==> $model] not found, try pulling it first" log:ret:64
+    fi
+
+    local cfg_temperature=; local cfg_ctx=
+
+    # TODO: add cfg_numctx, cfg_temperature
+    ___x_cmd_ollama_cfg --var cfg_temperature=temperature  cfg_ctx=ctx  2>/dev/null
+    ollama:debug  --model "$model" "chat exec"
+
+    [ -n "$cfg_ctx" ]         || cfg_ctx=8000
+    [ -n "$cfg_temperature" ] || cfg_temperature=0.3
 
     {
         userlang="${cfg_userlang:-$LANG}" \
         BODY="$question" \
         ___x_cmd cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach   \
-                -E cfg_history_num,cfg_session,cfg_minion,cfg_model,cfg_maxtoken,cfg_seed,cfg_temperature \
+                -E cfg_history_num,cfg_session,cfg_minion,cfg_maxtoken,cfg_seed,cfg_temperature,cfg_ctx \
                 -m j/json,j/jiter,j/jcp \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"        \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"           \

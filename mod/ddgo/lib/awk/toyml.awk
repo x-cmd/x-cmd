@@ -29,12 +29,12 @@ function dump2text(short, long, url, update){
     idx += 1
     printf("- idx: %s\n",  idx)
     printf("  short: %s\n", jqu(short))
-    printf("  long: |\n  %s\n", long)
+    printf("  long: %s\n", jqu(long))
     printf("  url: %s\n" , url)
 
     if (update != ""){
         printf("  update: %s%s%s\n\n", DDGO_UI_FG_BLUE, update, DDGO_UI_END)
-    }
+    }else printf "\n"
 
     if(idx == TOP) exit(0)
 }
@@ -83,8 +83,8 @@ function handle_content(content, l,      i, long, url, arr, len, update){
         url = content[ l -1 ]
     }
 
-    if(content[ l ] !~ "^[20].*") for (i=1; i<=l-1; ++i) long = long  " " str_trimspace2(str_trimspace(content[i]))
-    else                          for (i=1; i<=l-2; ++i) long = long  " " str_trimspace2(str_trimspace(content[i]))
+    if(content[ l ] !~ "^[20].*") for (i=1; i<=l-1; ++i) long = long   str_trimspace2(str_trimspace(content[i]))
+    else                          for (i=1; i<=l-2; ++i) long = long   str_trimspace2(str_trimspace(content[i])) 
 
     if (HAS_COLOR == 1){
         dump2tty(short, long, url, update)

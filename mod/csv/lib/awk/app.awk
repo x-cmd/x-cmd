@@ -39,14 +39,14 @@ function tapp_handle_wchar( value, name, type,          i, l, v, r, c, _cur_data
     if (user_comp_ctrl_sw_get() == 1) {
         if (comp_textbox_handle( o, PREVIEW_KP, value, name, type ))    change_set(o, PREVIEW_KP)
         else if (value == "q")                                          exit(0)
-        else if (name == U8WC_NAME_LEFT)                                user_comp_ctrl_sw_toggle()
+        else if ((value == "h") || (name == U8WC_NAME_LEFT))            user_comp_ctrl_sw_toggle()
     }
     else{
         if ( table_handle_wchar( o ,TABLE_KP, value, name, type ) )     {
             change_set(o, PREVIEW_KP)
             return
         }
-        else if ( name == U8WC_NAME_RIGHT )                             user_comp_ctrl_sw_toggle()
+        else if ((value == "l") || (name == U8WC_NAME_RIGHT))           user_comp_ctrl_sw_toggle()
     }
 
     if ( value == "r" )                                                 user_table_model_init()
@@ -79,7 +79,7 @@ function tapp_handle_exit( exit_code,       r, _cur_row, i, l, k, v ){
             l = CSV_DATA[ L L ]
             for (i=1; i<=l; ++i){
                 k = CSV_DATA[ SUBSEP 1, i ]
-                gsub("[\\.\\|:/]", "_", k)
+                gsub("[ \\-\\.\\|:/\\(\\)\\[\\]\\}\\{]", "_", k)
                 v = CSV_DATA[ SUBSEP r, i ]
                 tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_CSV_APP_DATA_" k, v ) )
             }
@@ -101,11 +101,11 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
     if (___X_CMD_CSV_APP_WIDTH != "") csv_parse_width(CSV_WIDTH, ___X_CMD_CSV_APP_WIDTH, _width, ",")
 
     _widths_l = CSV_WIDTH[L]
-    c = (_widths_l != 0) ? _widths_l : c
+    c = (_widths_l > 0) ? _widths_l : c
     if (___X_CMD_CSV_APP_PREVIEW != "") {
         for (j=1; j<=c; ++j){
             _cell = CSV_DATA[ S 1, j ]
-            if (o[ kp, "PREVIEW_VIEW", "HEADER_ID", _cell ] <= 0 ) continue
+            if (o[ kp, "PREVIEW_VIEW", "HEADER_ID", _cell ] == 0 ) continue
             o[ kp, "PREVIEW_VIEW", "HEADER_ID", _cell ] = j
             _skip[ j ] = 1
         }
@@ -116,10 +116,11 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
         l = o[ kp, "TABLE_VIEW" L ]
         for (i=1; i<=l; ++i){
             _cell = o[ kp, "TABLE_VIEW", i ]
+            TABLE_ADD( _cell )
+            if (! CSV_WIDTH[i, "CUSTOM_WIDTH"]) CSV_WIDTH[i, "width"] = wcswidth_cache( draw_unit_text_first_line(_cell) )
             for (j=1; j<=c; ++j){
                 if (_cell == CSV_DATA[ S 1, j ]) {
                     o[ kp, "TABLE_VIEW", i, "COL_ID" ] = j
-                    TABLE_ADD( _cell )
                     break
                 }
             }
@@ -131,6 +132,7 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
             _cell = CSV_DATA[ S 1, j ]
             TABLE_ADD( _cell )
             o[ kp, "TABLE_VIEW", ++cl, "COL_ID" ] = j
+            if (! CSV_WIDTH[cl, "CUSTOM_WIDTH"]) CSV_WIDTH[cl, "width"] = wcswidth_cache( draw_unit_text_first_line(_cell) )
         }
         o[ kp, "TABLE_VIEW" L ] = cl
     }
@@ -211,7 +213,8 @@ function user_parse_view_str(o, kp, str,             i, l, c, _){
     for (i=1; i<=l; ++i) {
         c = _[ i ]
         o[ kp, i ] = c
-        o[ kp, "HEADER_ID",  c ] = i # tmp_id
+        o[ kp, "HEADER_ID",  c ] = -1 # tmp_id
+        o[ kp, i, "COL_ID" ] = -1
     }
     return o[ kp L ] = l
 }
@@ -236,14 +239,26 @@ function user_comp_ctrl_sw_get(){
 
 # Section: user view
 
-function user_preview_view_paint(o, kp, x1, x2, y1, y2,         r, l, i, c, _res, is_ctrl){
+function user_preview_view_paint(o, kp, x1, x2, y1, y2,         r, l, i, c, _res, is_ctrl, _kp){
     if ( ! change_is(o, PREVIEW_KP) ) return
     r = comp_table_get_cur_row(o, kp) + 1
     l = o[ kp, "PREVIEW_VIEW" L ]
     is_ctrl = user_comp_ctrl_sw_get()
     for (i=1; i<=l; ++i){
         c = o[ kp, "PREVIEW_VIEW", i ]
-        msg = "\n" CSV_DATA[ S r, o[ kp, "PREVIEW_VIEW", "HEADER_ID", c ] ]
+        msg = CSV_DATA[ S r, o[ kp, "PREVIEW_VIEW", "HEADER_ID", c ] ]
+        if (msg ~ /(^\[.*\]$)|(^\{.*\}$)/) {
+            _kp = r SUBSEP c
+            if ( obj_preview[ _kp L ] <= 0 ) {
+                JITER_CURLEN = 0
+                jiparse2leaf_init( _kp )
+                jiparse2leaf_after_tokenize( obj_preview, msg )
+                JITER_CURLEN = 0
+            }
+            msg = jstr(obj_preview, _kp)
+        }
+
+        msg = "\n" msg
         gsub( "\t", "    ", msg )
         gsub( "[\n\r\v]", "\n  ", msg )
         _res = _res th(TH_THEME_MINOR_COLOR, c) ":" msg "\n"
@@ -259,7 +274,10 @@ function user_preview_view_paint(o, kp, x1, x2, y1, y2,         r, l, i, c, _res
 
 function user_view( x1, x2, y1, y2,         kp, _res, _color ){
     kp = TABLE_KP
-    if (ROWS_COLS_HAS_CHANGED == true) table_change_set_all( o, kp )
+    if (ROWS_COLS_HAS_CHANGED == true) {
+        table_change_set_all( o, kp )
+        change_set(o, PREVIEW_KP)
+    }
     if (! comp_statusline_isfullscreen(o, kp SUBSEP "statusline")){
         if (( o[ kp, "PREVIEW_VIEW" L ] <= 0 ) || ((y2 - y1) < ___X_CMD_CSV_APP_TABLE_WIDTH)){
             _res = \

@@ -15,12 +15,13 @@ function ollama_gen_history_str(history_obj, i,        _text_req, _text_res){
     return "{\"role\": \"user\" , \"content\":" _text_req "}, {\"role\": \"assistant\" , \"content\":" _text_res "}"
 }
 
-function ollama_gen_options_str(seed, temperature,     _str){
-    if( (seed == "") && (temperature == "") ) return
+function ollama_gen_options_str(seed, temperature, num_ctx,    _str){
+    if( (seed == "") && (temperature == "") && (num_ctx == "")) return
     if( seed != "") _str = "\"seed\":"  seed
-    if( temperature != "") _str = _str ", \"temperature\": \"" temperature"\""
+    if( temperature != "") _str = _str ", \"temperature\": " temperature
+    if( num_ctx != "") _str = _str ", \"num_ctx\": " num_ctx
 
-    return ", \"option\" : {" _str "}"
+    return ", \"options\" : {" _str "}"
 
 }
 
@@ -35,7 +36,7 @@ function ollama_gen_minion_content_str(minion_obj, minion_kp,      context, exam
 }
 
 function ollama_req_from_creq(history_obj, minion_obj, minion_kp,          i, l, str, _history_str, _system_str, \
-_filelist_str, _content_str, _messages_str, _mode, _seed, _temperature, _option_str, _data_str){
+_filelist_str, _content_str, _messages_str, _mode, _seed, _temperature, _option_str, _data_str, _num_ctx){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
         str = ollama_gen_history_str(history_obj, i)
@@ -56,9 +57,8 @@ _filelist_str, _content_str, _messages_str, _mode, _seed, _temperature, _option_
     _temperature    = minion_temperature( minion_obj, minion_kp )
 
     _seed           = (_seed != "") ?  int(_seed)  : ""
-    _temperature    = (_temperature != "") ?  _temperature  : ""
 
-    _option_str     = ollama_gen_options_str( _seed, _temperature )
+    _option_str     = ollama_gen_options_str( _seed, _temperature, CFG_CTX )
 
     _data_str = sprintf( "{ \"model\": %s, \"messages\": [ %s ] %s }", \
                      _mode, _messages_str, _option_str  )

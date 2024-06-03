@@ -1,0 +1,98 @@
+# shellcheck shell=dash
+___x_cmd_osv_sarif___npm(){
+
+    local project_dir=
+    local format=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                    ___x_cmd help -m osv sarif npm  ; return 0;;
+            --csv|--json|--yml|--llm)
+                    format="${1#--}"                ; shift 1 ;;
+
+            --*)    M="Unknown option: $1"   N=osv  log:ret:1 ;;
+            *)      project_dir="${1}"              ; shift 1 ;;
+        esac
+    done
+
+    local x_=
+    ___x_cmd_osv_sarif___npm_which_lockfile_ "$project_dir" || {
+        osv:info "Cannot find any lockfile for npm project."
+        return 1
+    }
+    local lockfile="$x_"
+    osv:info "Scan $lockfile."
+    if [ -z "$format" ] && [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___x_cmd_osv_sarif___npm___app          "$lockfile"
+    else
+        [ -n "$format" ] || format=raw
+        ___x_cmd_osv_sarif___npm___"$format"    "$lockfile"
+    fi
+}
+
+___x_cmd_osv_sarif___npm_which_lockfile_(){
+    x_=
+    local project_dir="$1"; [ -n "$project_dir" ] || project_dir="."
+    local lockfile=
+    if [ -f "$project_dir/package-lock.json" ];then
+        lockfile="$project_dir/package-lock.json"
+    elif [ -f "$project_dir/pnpm-lock.yaml" ];then
+        lockfile="$project_dir/pnpm-lock.yaml"
+    elif [ -f "$project_dir/yarn.lock" ];then
+        lockfile="$project_dir/yarn.lock"
+    else
+        return 1
+    fi
+    x_="$lockfile"
+}
+
+
+___x_cmd_osv_sarif___npm___csv(){
+    # ___x_cmd_osv_sarif___npm___json "$@" | ___x_cmd jo '.runs.*.results' | \
+    #     ___x_cmd jo 2c .ruleId .level .message.text | ___x_cmd csv header --add ruleId,level,message
+
+    ___x_cmd_osv_sarif___npm___json "$@" | ___x_cmd cawk -m j/json,j/jiter,csv \
+        -f "$___X_CMD_ROOT_MOD/osv/lib/awk/sarif.csv.awk"
+}
+
+___x_cmd_osv_sarif___npm___llm(){
+    : # add comment about this document
+    # ___x_cmd_osv_sarif___npm___yml "$2"
+    # ___x_cmd_osv_sarif___npm___json "$@" | \
+    #     ___x_cmd jq '.runs[].tool.driver.rules[] |= del(.help)' | \
+    #     ___x_cmd jq '.runs[].tool.driver.rules[] |= del(.fullDescription.markdown)' | ___x_cmd j2y
+    # ___x_cmd jq '.runs[]'
+
+    ___x_cmd_osv_sarif___npm___csv "$@"
+}
+
+___x_cmd_osv_sarif___npm___yml(){
+    ___x_cmd_osv_sarif___npm___json "$@" | ___x_cmd j2y
+}
+
+___x_cmd_osv_sarif___npm___json(){
+    ___x_cmd_osv_sarif___npm___raw "$@"
+}
+
+___x_cmd_osv_sarif___npm___raw(){
+    local lockfile="$1"
+    ___x_cmd ccmd 1h -- \
+        ___x_cmd_osv_sarif___md5exec "$(___x_cmd_md5 "$lockfile")"  \
+        ___x_cmd_osv_sarif___raw "$lockfile"
+}
+
+
+___x_cmd_osv_sarif___npm___app(){
+    local data=
+    local line_count=
+    data="$(___x_cmd_osv_sarif___npm___csv "$@")"
+    line_count="$(printf "%s" "$data" | wc -l)"
+
+    if [ "$line_count" -gt 1 ]; then
+        printf "%s\n" "$data" | ___x_cmd csv app \
+            --table-view Id,Level,Message \
+            --preview Message,shortDescription,fullDescription,Helps
+    else
+        osv:info "Not issue found."
+    fi
+}

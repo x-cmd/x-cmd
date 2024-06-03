@@ -53,7 +53,7 @@ BEGIN{
 }
 
 function subcmd_add_line( line_trimed, subcmd_funcname,                 _id, _name_arr, _name_arr_len, i, idx){
-    if (! match(line_trimed, "^[A-Za-z0-9_\\|-]+")) {
+    if (! match(line_trimed, "^[A-Za-z0-9_:\\|-]+")) {
         panic_param_define_error( "Expect subcommand in the first token, but get:\n" line_trimed )
     }
 

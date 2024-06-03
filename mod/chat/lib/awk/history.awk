@@ -27,7 +27,7 @@ function chat_history_load( o, session_dir, history_num, chatid,      _cmd, t, i
         jdict_put(o, kp_i, "\"creq\"", "{" )
         jdict_put(o, kp_i, "\"cres\"", "{" )
 
-        t = _[ j ]
+        t = _[ i - j + 1 ]
         creq_loadfromjsonfile( o, kp_i SUBSEP "\"creq\"",  session_dir "/" t "/chat.request.yml" )
         cres_loadfromjsonfile( o, kp_i SUBSEP "\"cres\"",  session_dir "/" t "/chat.response.yml" )
     }

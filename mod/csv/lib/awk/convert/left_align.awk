@@ -2,7 +2,10 @@
 
 NR==1{
     analyse_header( attr )
-    print_utf8()
+    # print "abc" >"/dev/stderr"
+    # print_utf8()
+    # print "aaa " attrl
+    print_normal()
 }
 
 function print_normal(){
@@ -13,11 +16,11 @@ function print_normal(){
             e = attr[i+1]
             if (i<attrl-1) {
                 elem = substr(line, b, e-b)
-                gsub("[ ]+$", "", elem)
+                gsub("[ \t]+$", "", elem)
                 printf("%s,", csv_quote_ifmust(elem))
             } else {
                 elem = substr(line, b)
-                gsub("[ ]+$", "", elem)
+                gsub("[ \t]+$", "", elem)
                 printf("%s\n", csv_quote_ifmust(elem))
             }
         }
@@ -34,11 +37,11 @@ function print_utf8(){
             if (i<attrl-1) {
                 elem = wcstruncate(line, attr[i+1] - attr[i])
                 line = substr(line, length(elem)+1)
-                gsub("[ ]+$", "", elem)
+                gsub("[ \t]+$", "", elem)
                 printf("%s,", csv_quote_ifmust(elem))
             } else {
                 elem = substr(line, b)
-                gsub("[ ]+$", "", elem)
+                gsub("[ \t]+$", "", elem)
                 printf("%s\n", csv_quote_ifmust(elem))
             }
         }

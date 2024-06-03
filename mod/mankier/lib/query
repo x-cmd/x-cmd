@@ -1,0 +1,106 @@
+# shellcheck shell=dash
+
+___x_cmd_mankier_query(){
+    [ $# -gt 0 ] ||     set - --help
+
+    local format=app
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m mankier query; return 0 ;;
+            -j|--json)     shift; format=json ;;
+            -y|--yml)      shift; format=yml  ;;
+            -c|--csv)      shift; format=csv  ;;
+            --raw)         shift; format=raw  ;;
+
+            *)             break ;;
+        esac
+    done
+
+    ___x_cmd_mankier_query___"$format" "$@"
+}
+
+___x_cmd_mankier_query___app(){
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___x_cmd_mankier_query___app_ "$@"
+    else
+        ___x_cmd_mankier_query___csv "$@"
+    fi
+}
+
+
+___x_cmd_mankier_query___app_(){
+    local ___X_CMD_CSV_APP_DATA_url
+    local ___X_CMD_CSV_APP_DATA_name
+    local ___X_CMD_CSV_APP_DATA_section
+    local ___X_CMD_CSV_APP_DATA_description
+
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc mankier"          \
+    ___x_cmd csv app --return var --clear              \
+        --width "-,-,-,-"                            \
+        --action o Open 'Open on website'              \
+        --processor ___x_cmd_mankier_query___app_open  \
+        ___x_cmd_mankier_query___csv "$@"
+
+    [ -n "$___X_CMD_CSV_APP_DATA_name" ] || return
+    local name="$___X_CMD_CSV_APP_DATA_name"
+    local section="$___X_CMD_CSV_APP_DATA_section"
+
+    local id=
+
+    ___x_cmd ui select id "Next:"   \
+        "x mankier page '$name.$section'    # get man page details " \
+        "x mankier ref  '$name.$section'    # get man page ref " \
+        "browse page of \"$name.$section\"" \
+        "EXIT"
+
+    case "$id" in
+        1)      mankier:info "cmd -> x mankier page $name.$section"
+                ___x_cmd_mankier page "${name}.${section}"        ;;
+        2)      mankier:info "cmd -> x mankier ref $name.$section"
+                ___x_cmd_mankier ref  "${name}.${section}"        ;;
+        3)      mankier:info "cmd -> x browse open $___X_CMD_CSV_APP_DATA_url"
+                ___x_cmd browse open "$___X_CMD_CSV_APP_DATA_url" ;;
+        *)      return 0
+                ;;
+    esac
+}
+
+___x_cmd_mankier_query___app_open(){
+    local op="$*"; local url=
+    case "$op" in
+        x:request:o*)
+            op="${op##*"$___X_CMD_UNSEENCHAR_001"}"
+            url="$(___x_cmd_cmds printf "%s" "$op" | ___x_cmd csv awk '{printf("%s", cval(4))}')"
+            ___x_cmd browse open "$url"
+            ;;
+    esac
+}
+
+___x_cmd_mankier_query___csv(){
+    ___x_cmd_mankier_query___json "$@" \
+        | ___x_cmd jo .results         \
+        | ___x_cmd jo 2c            .name .section .description .url    \
+        | ___x_cmd csv header --add  name  section  description  url
+}
+
+___x_cmd_mankier_query___yml(){
+    ___x_cmd_mankier_query___json "$@" | ___x_cmd j2y
+}
+
+___x_cmd_mankier_query___json(){
+    ___x_cmd_mankier_query___raw "$@" \
+        | ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/mankier/lib/awk/parse.awk"
+}
+
+___x_cmd_mankier_query___raw(){
+    local query="$1";
+    local section="$2"
+    [ -n "$query" ]     || N=man M="Exepct name" log:ret:64
+
+    local qstr="?q=$query"
+    [ -z "$section" ]   || qstr="${qstr}&sections=${section}"
+    ___x_cmd ccmd 1d -- ___x_cmd curl -s "${___X_CMD_MANKIER_ENDPOINT}/mans/${qstr}"
+}
+
+

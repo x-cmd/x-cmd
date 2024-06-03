@@ -1,0 +1,88 @@
+# shellcheck shell=dash
+
+___x_cmd_shodan_cve_search(){
+    local format=auto
+
+    local cpe23=
+    local kev=
+    local epss=
+    local product=
+    local skip=
+    local limit=
+    local start=
+    local end=
+
+    local IFS=' '
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --cpe23)            cpe23=$2;           shift 2 ;;
+            --product)          product=$2;         shift 2 ;;
+            --kev)              kev=$2;             shift 2 ;;
+            --epss)             epss=$2;            shift 2 ;;
+            --skip)             skip=$2;            shift 2 ;;
+            --limit)            limit=$2;           shift 2 ;;
+            --start)            start=$2;           shift 2 ;;
+            --end)              end=$2;             shift 2 ;;
+
+
+            --json)             format=json;         shift 1 ;;
+            --yml)              format=yml;          shift 1 ;;
+            --csv)              format=csv;          shift 1 ;;
+            --app)              format=app;          shift 1 ;;
+
+            -h|--help)          ___x_cmd help -m shodan cve search;
+                                return  ;;
+
+            *)                  product="$*"
+                                break ;;
+        esac
+    done
+
+    ___x_cmd_shodan_cve_search___"$format"
+}
+
+___x_cmd_shodan_cve_search___csv(){
+    ___x_cmd_shodan_cve_search___json | \
+        ___x_cmd ja 2c .cve_id .summary .cvss .cvss_version .cvss_v2 .cvss_v3 .epss .ranking_epss .kev .propose_action .ransomware_campaign .references .published_time | \
+        ___x_cmd csv header --add cve_id summary cvss cvss_version cvss_v2 cvss_v3 epss ranking_epss kev propose_action ransomware_campaign references published_time
+}
+
+___x_cmd_shodan_cve_search___yml(){
+    ___x_cmd_shodan_cve_search___json | ___x_cmd j2y
+}
+
+___x_cmd_shodan_cve_search___json(){
+    ___x_cmd_shodan_cve_search___raw | ___x_cmd jo .cves
+}
+
+___x_cmd_shodan_cve_search___raw(){
+    [ -z "$cpe23"   ]  ||  set -- "$@" --data-urlencode "cpe23=${cpe23}"
+    [ -z "$product" ]  ||  set -- "$@" --data-urlencode "product=${product}"
+    [ -z "$kev"     ]  ||  set -- "$@" --data-urlencode "is_kev=${kev}"
+    [ -z "$epss"    ]  ||  set -- "$@" --data-urlencode "sort_by_epss=${epss}"
+    [ -z "$skip"    ]  ||  set -- "$@" --data-urlencode "skip=${skip}"
+    [ -z "$limit"   ]  ||  set -- "$@" --data-urlencode "limit=${limit}"
+    [ -z "$start"   ]  ||  set -- "$@" --data-urlencode "start_date=${start}"
+    [ -z "$end"     ]  ||  set -- "$@" --data-urlencode "end_date=${end}"
+
+    ___x_cmd ccmd 1h -- \
+        ___x_cmd curl --silent --get \
+            https://cvedb.shodan.io/cves "$@"
+}
+
+
+___x_cmd_shodan_cve_search___auto(){
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___x_cmd_shodan_cve_search___app "$@"
+    else
+        ___x_cmd_shodan_cve_search___csv "$@"
+    fi
+}
+
+___x_cmd_shodan_cve_search___app(){
+    ___x_cmd_shodan_cve_search___csv | \
+        ___x_cmd csv app --clear \
+                --table-view cve_id,summary,cvss,epss \
+                --preview epss,summary,cvss_version,cvss_v2,cvss_v3,ranking_epss,kev,propose_action,ransomware_campaign,references,published_time
+}

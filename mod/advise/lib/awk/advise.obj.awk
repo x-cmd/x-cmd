@@ -98,7 +98,7 @@ function aobj_get_optargc( obj, obj_prefix, option_id,  _res, i, l, v ){
     }
     if (i != 1 ) return obj[ obj_prefix, option_id L "argc" ] = --i
     else {
-        if ( obj[ obj_prefix ] == "[") return obj[ obj_prefix L "argc" ] = ( obj[ obj_prefix, option_id L ] != 0 )
+        if ( obj[ obj_prefix ] == "[") return obj[ obj_prefix L "argc" ] = ( obj[ obj_prefix, option_id L ] > 0 )
         l = obj[ obj_prefix L]
         for (i=1; i<=l; ++i) {
             v = obj[ obj_prefix, i ]

@@ -38,6 +38,7 @@ function tapp_handle_wchar( value, name, type ){
     if ( table_handle_wchar( o ,TABLE_KP, value, name, type ) ) return
     else if (value == "r")                            user_table_model_init()
     else if (value == "i")                            exit_with_elegant(value)
+    else if (value == "c")                            exit_with_elegant(value)
     # else if (value == "v")                          exit_with_elegant(value)
 }
 
@@ -85,6 +86,7 @@ function user_table_model_init(){
     TABLE_LAYOUT( TABLE_COL_EVENT,             10, 20 )
     TABLE_LAYOUT( TABLE_COL_BRANCH,            10, 20 )
     TABLE_LAYOUT( TABLE_COL_CREATE,            10, 20 )
+    TABLE_STATUSLINE_ADD( "c", "Cancel", "Press 'c' to cancel workflow run" )
     TABLE_STATUSLINE_ADD( "i", "Log info", "Press 'i' to get action detail" )
     TABLE_STATUSLINE_ADD( "r", "Refresh", "Press 'r' to refresh table data" )
     table_statusline_init(o, TABLE_KP)
