@@ -6,7 +6,7 @@
 
 <h1 align="center"><a target="_blank" href="https://x-cmd.com/">X-CMD</a></h1>
 
-<p align="center">Let's forge your Excalibur in Cloud.</p>
+<p align="center">Your AI-Powered Excalibur in Cloud.</p>
 
 <p align="center">
   <a target="_blank" href="https://x-cmd.com/">
