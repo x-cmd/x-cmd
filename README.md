@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-Currently in beta testing (v0.3.9), please do not use it in production environments. We plan to iterate forward at a rate of three versions per month in the next three months.
+For <bold>source code</bold>, please swtich to <a href="https://github.com/x-cmd/x-cmd/tree/main">main</a> branch. This branch is for action and demo.
 <br>
 If you like x-cmd, please give us a star ⭐.
 <br>
