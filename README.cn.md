@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-现在处于 beta 阶段（v0.3.9 版本），请勿用于生产环境。我们计划在未来三个月以每个月3个版本的速度往前迭代。
+查看<bold>源码</bold>请切换到<a href="https://github.com/x-cmd/x-cmd/tree/main">main</a> 分支；X 分支用作 demo 和 action。
 <br>
 如果你觉得 x-cmd 不错，请给我们一个 star ⭐
 <br>
