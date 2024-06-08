@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-For <bold>source code</bold>, please swtich to <a href="https://github.com/x-cmd/x-cmd/tree/main">main</a> branch. This branch is for action and demo.
+For <bold>source code</bold>, please swtich to <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> branch. This branch is for action and demo.
 <br>
 If you like x-cmd, please give us a star ⭐.
 <br>
