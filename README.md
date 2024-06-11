@@ -28,6 +28,8 @@ If you like x-cmd, please give us a star ⭐.
 Your support is our biggest motivation.
 </p>
 
+![x osv demo gif](https://github.com/x-bash/osv/assets/81027382/2cf8be39-0481-4996-aaeb-3ede309afcce)
+
 ![x theme demo gif](https://user-images.githubusercontent.com/112856271/276805596-08998349-eda3-4107-93ff-61daade67032.gif)
 
 
