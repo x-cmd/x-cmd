@@ -14,17 +14,17 @@ function x
 end
 
 function ___x_cmd
-    setenv ___X_CMD_XBINEXP_FP $HOME/.x-cmd.root/local/data/xbinexp/fish/$status/$(random)
+    setenv ___X_CMD_XBINEXP_FP $HOME/.x-cmd.root/local/data/xbinexp/fish/$status/(random)
     mkdir -p $___X_CMD_XBINEXP_FP
     bash "$HOME/.x-cmd.root/bin/xbinexp" $argv
 
     if [ -f "$___X_CMD_XBINEXP_FP/PWD" ]
-        cd "$(cat $___X_CMD_XBINEXP_FP/PWD)"
+        cd (cat $___X_CMD_XBINEXP_FP/PWD)
         rm "$___X_CMD_XBINEXP_FP/PWD"
     end
 
     if [ -f "$___X_CMD_XBINEXP_FP/PATH" ]
-        setenv PATH "$(cat $___X_CMD_XBINEXP_FP/PATH)"
+        setenv PATH (cat $___X_CMD_XBINEXP_FP/PATH)
         rm "$___X_CMD_XBINEXP_FP/PATH"
     end
 
@@ -33,7 +33,7 @@ function ___x_cmd
 
         set varname (string replace -r '^[^_]+_' '' (basename $file))
         # set -g "$varname" "$(cat $file)"
-        setenv "$varname" "$(cat $file)"
+        setenv "$varname" (cat $file)
     end
 
     if [ (count $rmlist) -gt 0 ]
@@ -58,7 +58,7 @@ if status is-interactive
     setenv ___X_CMD_IS_INTERACTIVE_FORCE 1
     # setenv ___X_CMD_CO_EXEC_SHELL=fish
 
-    eval "$("$HOME/.x-cmd.root/bin/xbin" chat --aliasinit --code)"
+    eval ("$HOME/.x-cmd.root/bin/xbin" chat --aliasinit --code)
 
     # chat, writer, w
     # eval "$("$HOME/.x-cmd.root/bin/xbin" aliasinit --code)"
