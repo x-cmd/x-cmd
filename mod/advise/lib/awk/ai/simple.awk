@@ -11,16 +11,16 @@ function expand_list(o, kp,        i, l){
     }
 }
 function expand_dict(o, kp,        i, l, msg, key, delarr, delnum, val, j){
-    if ((msg = comp_advise_get_ref( o, kp )) != true) return advise_error( msg )
+    if ((msg = comp_advise_get_ref( o, kp )) != true) exit(1)
     l = o[ kp L ]
     for (i=1; i<=l; ++i) {
         key = o[ kp, i ]
         expand_value(o, kp SUBSEP key)
-        if (( key ~ "^\"#" ) && ( key !~ "^\"#("RESERVED_FIELD")" )) {
+        if ((( key ~ "^\"#[^0-9]" ) && ( key !~ "^\"#("RESERVED_FIELD")" )) || (key == "\"--co|,\"")) {
             delarr[++delnum] = key
             continue
         }
-        else if (aobj_is_option(o, kp SUBSEP key) || ((key ~ "^\"-") && (!aobj_is_subcmd(o, kp SUBSEP key)))) {
+        else if ( (IS_DFS != 1) && (aobj_is_option(o, kp SUBSEP key) || ((key ~ "^\"-") && (!aobj_is_subcmd(o, kp SUBSEP key)))) ) {
             delarr[++delnum] = key
             continue
         }
@@ -41,7 +41,7 @@ function expand_dict(o, kp,        i, l, msg, key, delarr, delnum, val, j){
     }
 }
 
-function trim_obj_of_args(o, argstr,            args, argl, kp, nextkp, i, delnum, l, optarg_id, delarr){
+function trim_obj_of_args(o, argstr,            args, argl, kp, nextkp, i, delnum, l, optarg_id, delarr, trigger){
     comp_advise_prepare_argarr(argstr, args, " ")
     kp = nextkp = Q2_1
     argl = args[ L ]
@@ -49,32 +49,59 @@ function trim_obj_of_args(o, argstr,            args, argl, kp, nextkp, i, delnu
         delnum = 0
         kp = nextkp
         l = aobj_len( o, kp )
+        trigger = 0
         for (j=1; j<=l; ++j) {
             optarg_id = aobj_get( o, kp SUBSEP j)
             if ("|"juq(optarg_id)"|" ~ "\\|"args[i]"\\|") {
                 nextkp = kp SUBSEP optarg_id
+                trigger = 1
             } else if ( optarg_id !~ "\"#" ) {
                 delarr[ ++delnum ] = optarg_id
             }
         }
-        if ( l == n ) break
+        if ( trigger == 0 ) {
+            if ( IS_FAILFAST == 1 ) exit(1)
+            else break
+        }
         for (j=1; j<=delnum; ++j){
             jdict_rm(o, kp, delarr[ j ])
         }
     }
+
+    if (IS_DFS != 1){
+        kp = nextkp
+        FINAL_KP = kp
+        l = aobj_len( o, kp )
+        for (i=1; i<=l; ++i){
+            optarg_id = aobj_get( o, kp SUBSEP i)
+            if ( optarg_id !~ "\"#" ) {
+                delnum = 0
+                jl = aobj_len( o, kp SUBSEP optarg_id )
+                for (j=1; j<=jl; ++j){
+                    key = aobj_get( o, kp SUBSEP optarg_id SUBSEP j )
+                    if ( key !~ "\"#" ) delarr[ ++delnum ] = key
+                }
+
+                for (j=1; j<=delnum; ++j){
+                    jdict_rm(o, kp SUBSEP optarg_id, delarr[ j ])
+                }
+            }
+        }
+    }
 }
 BEGIN{
-    RESERVED_FIELD = ENVIRON[ "RESERVED_FIELD" ]
-    if ( RESERVED_FIELD == "" ) RESERVED_FIELD = "name|desc|tldr|other|tip"
+    RESERVED_FIELD  = ENVIRON[ "RESERVED_FIELD" ]
+    IS_DFS          = ENVIRON[ "IS_DFS" ]
+    IS_FAILFAST     = ENVIRON[ "IS_FAILFAST" ]
+    ARGSTR          = ENVIRON[ "ARGSTR" ]
 }
 
 { if ($0 != "") jiparse_after_tokenize(o, $0); }
 END{
-    Q2_1 = SUBSEP "\"1\""
+    FINAL_KP = Q2_1 = SUBSEP "\"1\""
     expand_value(o, Q2_1)
 
-    ARGSTR = ENVIRON[ "ARGSTR" ]
-    if (ARGSTR != "") trim_obj_of_args(o, ARGSTR)
+    trim_obj_of_args(o, ARGSTR)
 
-    print jstr(o, Q2_1)
+    print jstr(o, FINAL_KP)
 }

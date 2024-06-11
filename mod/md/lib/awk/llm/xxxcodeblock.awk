@@ -4,6 +4,7 @@ function hd_codeblock( arr,     i,  _firstline ){
     while (arr[ ARR_I ]<=ARR_L) {
         i = arr[ ARR_I ]
         line = arr[i]
+        line = HD_BLANK "  " line
         if (line ~ /^[ ]*```$/) {
             larr_advance()
             break
@@ -12,8 +13,6 @@ function hd_codeblock( arr,     i,  _firstline ){
         hd_codeblock_1( line, _firstline )
     }
     printf("\n")
-
-    larr_advance()
 }
 
 # public private protected static final synchronized native abstract strictfp transient volatile
@@ -21,9 +20,9 @@ function hd_codeblock( arr,     i,  _firstline ){
 # ( ) { } [ ]
 # number ...
 function hd_codeblock_1( line, _firstline ){
-    gsub("[0-9]{2,}", HD_STYLE_NUMBER_0 "&" HD_STYLE_NUMBER_1, line)
+    gsub("[0-9]+", HD_STYLE_NUMBER_0 "&" HD_STYLE_NUMBER_1, line)
     gsub("[\\(\\)\\{\\}]", HD_STYLE_BRACKET_0 "&" HD_STYLE_BRACKET_1, line)
-    printf(HD_BLANK"%s \n", line)
+    printf("%s \n", line)
     # if (_firstline ~ "^```bash$") {
     # }
 }

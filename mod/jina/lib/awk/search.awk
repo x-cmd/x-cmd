@@ -50,7 +50,7 @@ function parse_jina_search(     _title, _url, _markdown_content, _content, o, i,
 
     getline
     while (true) {
-        delete(o)
+        delete o
 
         o["title"] = _remove_key( $0 )
         while (getline) {

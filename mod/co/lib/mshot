@@ -1,0 +1,88 @@
+# shellcheck shell=dash
+
+# x gh , 'add collaborator ljh to repo x-cmd/abc ( push permission )'
+# ___x_cmd_co --mshot "<USER-REQUSET>" [ "command seed" ... ]
+
+
+___x_cmd_co___mshot(){
+    [ $# -gt 0 ]    ||  set -- -h
+    case "$1" in
+        -h|--help)      return 0 ;;
+    esac
+
+    local user_request="$1";
+    [ -n "$user_request" ] || {
+        { [ -t 1 ] && ___x_cmd_is_interactive; } || N=co M="Please provide user request" log:ret:64
+        user_request="$(___x_cmd ted)" || return
+    }
+    shift
+
+
+    local x_
+    x_=; ___x_cmd_co___mshot_prepare_context_ "$user_request" "$@" || return
+    local help_document="$x_"
+
+    local options_before_argument="
+Note: The commands you generate must put OPTIONS before ARGS. Do not put ARGS before OPTIONS.
+"
+
+    local data; data="$(
+        basic_cmd="$*" \
+        help_document="$help_document" \
+        task="$user_request" \
+        options_before_argument="$options_before_argument" \
+        ___x_cmd_co___mshot_llm --minion "$___X_CMD_ROOT_MOD/co/lib/minion/mshot.yml"
+    )" || return
+
+    ___x_cmd_co___parse_llm_result "$data" "$help_document" "$options_before_argument"
+}
+
+___x_cmd_co___mshot_prepare_context_(){
+    ___x_cmd_co___mshot_prepare_context___dfs_ "$@"
+}
+
+___x_cmd_co___mshot_prepare_context___dfs_(){
+    local user_request="$1";    shift
+
+    local IFS=" "
+
+    while true; do
+        # __x_cmd advise hascmd "$@"                              || break
+        context="$( ___x_cmd advise simple --field 'desc|tldr|subcmd' --failfast "$@" )"   || break
+        result="$(
+            help_document="$context" \
+            task="$user_request" \
+            ___x_cmd_co___mshot_llm --minion "$___X_CMD_ROOT_MOD/co/lib/minion/mshot.dfs.yml" --silent
+        )" || return
+
+        case "$result" in
+            *"<SUBCMD>"*"</SUBCMD>"*)
+                result="${result##*"<SUBCMD>"}"
+                result="${result%"</SUBCMD>"*}"
+                ;;
+            *)  return ;;
+        esac
+
+        case "$result" in
+            null|NULL)      break ;;
+        esac
+
+        # jsut preserve
+        # [ "$result" = "${result##* }" ] || break
+        result="${result%%|*}"
+        set -- "$@" "$result"
+
+        co:info "Now dig deeper for context with command -> $*"
+    done
+
+    co:info "Now generate the context based on -> $*"
+    x_="$( ___x_cmd advise simple --dfs "$@" | ___x_cmd_cmds head -n 500 )"
+}
+
+___x_cmd_co___mshot_prepare_context___embs(){
+    :
+}
+
+___x_cmd_co___mshot_llm(){
+    ___x_cmd chat --send --type "co-mshot" "$@"
+}

@@ -36,7 +36,19 @@ function generate_advise_json_value_candidates_by_rules( optarg_id, advise_map, 
 function generate_advise_json_subcmd(       i, l, subcmd_name, subcmd_true, subcmd_funcname, subcmd_invocation, _name_arr, _ret ){
     l = subcmd_len()
     if ( l <= 0 ) return
-    AJADD("',"); AJADD( swrap("#subcmd_help_tip") ); AJADD(":"); AJADD("true"); AJADD("'");
+    AJADD("',"); AJADD( swrap("#subcmd_help_tip") ); AJADD(":"); AJADD("true");
+
+    AJADD(","); AJADD( swrap("--help|-h") ); AJADD(":"); AJADD("{");
+    AJADD( swrap("#subcmd") ); AJADD( ":" ); AJADD( "true" ); AJADD(",");
+    generate_advise_json___desc_str(swrap("Show help documentation"), swrap("展示 help 文档"))
+    AJADD("}");
+
+    AJADD(","); AJADD( swrap("--co|,") ); AJADD(":"); AJADD("{");
+    AJADD( swrap("#subcmd") ); AJADD( ":" ); AJADD( "true" ); AJADD(",");
+    generate_advise_json___desc_str(swrap("Use AI code copilot function"), swrap("使用 AI code copilot 功能"))
+    AJADD("}");
+
+    AJADD("'");
     for ( i=1; i<=l; ++i ) {
         split(subcmd_id( i ), _name_arr, "|") # get the subcmd name list
         subcmd_name = _name_arr[ 1 ]
@@ -69,9 +81,12 @@ function generate_advise_json_init_advise_map(advise_map,   i, tmp, _option_id, 
     }
 }
 
-function generate_advise_json___desc_str(str){
+function generate_advise_json___desc_str(str, str_cn){
     AJADD( swrap("#desc") ); AJADD( ":" ); AJADD( "{" );
     AJADD( swrap("en") ); AJADD( ":" ); AJADD( str );
+    if ( str_cn != "" ) {
+        AJADD( "," ); AJADD( swrap("cn") ); AJADD( ":" ); AJADD( str_cn );
+    }
     AJADD( "}" )
 }
 

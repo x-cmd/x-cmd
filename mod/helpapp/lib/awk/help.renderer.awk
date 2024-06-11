@@ -59,7 +59,7 @@ function comp_helpdoc_unit_line(ls, lw, li, rs, rw, ri,     o, _right_indent, _r
 
 function get_option_string( obj, kp, v,         _str, _synopsis_str){
     _str = juq(v)
-    gsub("\\|", ",", _str)
+    # gsub("\\|", ",", _str)
     _synopsis_str = aobj_get_special_value(obj, kp SUBSEP v, "synopsis")
     if ( (! aobj_str_is_null(_synopsis_str)) && (_synopsis_str != "[")) _str = _str " " aobj_uq( _synopsis_str )
     return _str

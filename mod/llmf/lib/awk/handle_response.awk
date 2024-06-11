@@ -5,6 +5,7 @@ END{
 
     if ( LLMF_HAS_RESPONSE_CONTENT == 0 ) {
         log_error("llmf", "The response content is empty")
+        log_warn("llmf", "x llmf serve --nobrowser")
         print                                       > (LLMF_CONTENT_DIR "/chat.error.yml")
         exit(2)
     }

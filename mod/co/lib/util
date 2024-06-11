@@ -1,0 +1,78 @@
+# shellcheck shell=dash disable=2154
+
+___x_cmd_co___parse_llm_result(){
+    local data="$1"
+    local help_document="$2"
+    local options_before_argument="$3"
+    local _cmd=; local _desc=;
+    case "$data" in
+        *"<ANSWER>"*"</ANSWER>"*)
+            data="${data#*"<ANSWER>"}"
+            data="${data%"</ANSWER>"*}"
+
+            ;;
+        *)  co:error "The response data format is incorrect or empty"
+            return 1
+            ;;
+    esac
+
+    local _id=
+    eval "$( msg="$data" ___x_cmd cawk -f "$___X_CMD_ROOT_MOD/co/lib/awk/parse_llm_data.awk" )" || return
+    co:debug --cmdnum "$_cmd_num"
+    if [ "$_cmd_num" -le 0 ]; then
+        return 1
+    elif [ "$_cmd_num" = 1 ]; then
+        _cmd="$_cmd_1"
+        _desc="$_desc_1"
+    else
+        _id=1
+        set -- ___x_cmd ui select _id,_cmd "\"Select the command statement you want to execute or chat\""
+        while [ "$_id" -le "$_cmd_num" ]; do
+            eval 'set -- "$@" "\"\$_cmd_'$_id'"\"'
+            _id=$((_id + 1))
+        done
+        _id=; eval "$@" "\"return 1\"" || return
+        [ "$_id" -le "$_cmd_num" ] || return
+        eval '_desc="$_desc_'"$_id"'"'
+    fi
+
+    co:debug --cmd "$_cmd" --desc "$_desc" Response
+
+    _id=;
+
+    local _content
+    set -- \
+        "copy this command to pastboard"    \
+        "chat with this command"            \
+        "return 1"
+
+    [ -n "$___X_CMD_CO_NOEVAL" ] || set -- "execute this command" "$@"
+
+    ___x_cmd ui select _id,_content NEXT "$@" || return
+
+    case "$_content" in
+        "execute"*)
+            if [ -z "$___X_CMD_XBINEXP_FP" ]; then
+                printf "\033[90m$ %s\033[0m\n" "$_cmd" >&2
+                eval "$_cmd"
+            else
+                ___X_CMD_XBINEXP_EVAL="$_cmd"
+                ___x_cmd_xbinexp___add ___X_CMD_XBINEXP_EVAL
+            fi
+            ;;
+
+        "copy"*)
+            printf "%s" "$_cmd" | ___x_cmd pb
+            ;;
+
+        "chat"*)
+            {
+                [ -z "$options_before_argument" ] || printf "%s\n" "$options_before_argument"
+                [ -z "$help_document" ] || printf "<--HELP-DOCUMENT-->\n%s\n<--HELP-DOCUMENT--/>\n" "$help_document"
+                printf "command: %s\ndescribe: %s" "$_cmd" "$_desc"
+            } | ___x_cmd chat --send -p ""
+            ;;
+
+        *)  return 1 ;;
+    esac
+}

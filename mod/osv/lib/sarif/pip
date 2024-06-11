@@ -7,9 +7,10 @@ ___x_cmd_osv_sarif___pip(){
         case "$1" in
             -h|--help)
                     ___x_cmd help -m osv sarif pip  ; return 0;;
-            --csv|--json|--yml|--llm)
+            --csv|--json|--yml|--llm|--app)
                     format="${1#--}"                ; shift 1 ;;
-
+            --co|,)
+                    shift; ___x_cmd co --mshot "$*" x osv sarif pip; return ;;
             --*)    M="Unknown option: $1"   N=osv  log:ret:1 ;;
             *)      project_dir="${1}"              ; shift 1 ;;
         esac
@@ -20,28 +21,33 @@ ___x_cmd_osv_sarif___pip(){
         osv:info "Cannot find any lockfile for pip project."
         return 1
     }
+
     local lockfile="$x_"
     osv:info "Scan $lockfile."
-    if [ -z "$format" ] && [ -t 1 ] && ___x_cmd_is_interactive; then
-        ___x_cmd_osv_sarif___pip___app          "$lockfile"
-    else
-        [ -n "$format" ] || format=raw
-        ___x_cmd_osv_sarif___pip___"$format"    "$lockfile"
-    fi
+
+    [ -z "$format" ] || {
+        if [ -t 1 ] && ___x_cmd_is_interactive; then
+            format=app
+        else
+            format=raw
+        fi
+    }
+
+    ___x_cmd_osv_sarif___pip___"$format"    "$lockfile"
 }
 
 ___x_cmd_osv_sarif___pip_which_lockfile_(){
     x_=
     local project_dir="$1"; [ -n "$project_dir" ] || project_dir="."
     local lockfile=
-    if [ -f "$project_dir/requirements.txt" ];then
-        lockfile="$project_dir/requirements.txt"
+    if [ -f "$project_dir/pdm.lock" ];then
+        lockfile="$project_dir/pdm.lock"
     elif [ -f "$project_dir/Pipfile.lock" ];then
         lockfile="$project_dir/Pipfile.lock"
     elif [ -f "$project_dir/poetry.lock" ];then
         lockfile="$project_dir/poetry.lock"
-    elif [ -f "$project_dir/pdm.lock" ];then
-        lockfile="$project_dir/pdm.lock"
+    elif [ -f "$project_dir/requirements.txt" ];then
+        lockfile="$project_dir/requirements.txt"
     else
         return 1
     fi
@@ -74,15 +80,26 @@ ___x_cmd_osv_sarif___pip___json(){
 }
 
 ___x_cmd_osv_sarif___pip___raw(){
+    local askcache=
+    case "$1" in
+        --askcache)     shift 1; askcache=1; ;;
+    esac
     local lockfile="$1"
-    ___x_cmd ccmd 1h -- \
-        ___x_cmd_osv_sarif___md5exec "$(___x_cmd_md5 "$lockfile")"  \
+
+    if [ -z "$askcache" ]; then
         ___x_cmd_osv_sarif___raw "$lockfile"
+        return
+    fi
+
+    # ___x_cmd ccmd v1hascache --expiration 1h --md5file
+    ___x_cmd ccmd v1 --expiration 1h \
+        --md5file "$lockfile" -- ___x_cmd_osv_sarif___raw "$lockfile"
 }
 
 ___x_cmd_osv_sarif___pip___app(){
     local data=
     local line_count=
+
     data="$(___x_cmd_osv_sarif___pip___csv "$@")"
     line_count="$(printf "%s" "$data" | wc -l)"
 

@@ -7,6 +7,13 @@ function exec_help(idx,         _str, i){
     exit_now(exit_code) # TODO: should I return 0?
 }
 
+function exec_co(idx,         _str, i){
+    for (i=idx+1; i<=arg_arr[ L ]; ++i) _str = _str " " arg_arr[i]
+    print "___x_cmd_param_int _x_cmd_co " _str ";"
+    print "return 0"
+    exit_now(0)
+}
+
 BEGIN {
     HAS_SPE_ARG = false
     _X_CMD_PARAM_ARG_ = "_X_CMD_PARAM_ARG_"
@@ -24,6 +31,7 @@ NR==4 {
 
     if ( arg_arr[1] == "help" )             if (! subcmd_exist_by_id( subcmd_id_by_name("help") ))      exec_help( 1 )
     if ( arg_arr[1] ~ /^(--help|-h)$/ )     if (! option_exist_by_alias( arg_arr[ 1 ] ))                exec_help( 1 )
+    if ( arg_arr[1] ~ /^(--co|,)$/ )        if (! option_exist_by_alias( arg_arr[ 1 ] ))                exec_co( 1 )
 }
 
 # Section: Defaults As Map
@@ -151,7 +159,8 @@ function handle_arguments___(   i, j, _arg_name, _arg_name_short, _arg_val, _opt
         _arg_name = arg_arr[ i ]
         # ? Notice: EXIT: Consider unhandled arguments are rest_argv
         if ( _arg_name == "--" )  break
-        if ( ( _arg_name == "--help") || ( _arg_name == "-h") )   exec_help( i )
+        if ( ( _arg_name == "--help") || ( _arg_name == "-h") ) exec_help( i )
+        if ( ( _arg_name == "--co") || ( _arg_name == "," ) )   exec_co( i )
 
         _option_id = option_get_id_by_alias( _arg_name )
         if ( _option_id == ""  ) {
