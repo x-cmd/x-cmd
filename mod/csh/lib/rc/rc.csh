@@ -27,7 +27,11 @@ if ($?status && $status == 0) then
     # chat, writer, w
 
     alias xw 'x ws'
+
+    # TODO: Consider how to implement c -
+    setenv ___X_CMD_XBINEXP_INITENV_OLDPWD "$OLDPWD"
     alias c 'x cd'
+
     alias xg 'x git'
 
     alias , 'x csh --sysco'

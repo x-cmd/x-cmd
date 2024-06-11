@@ -13,31 +13,41 @@ function x
     ___x_cmd $argv
 end
 
+function c
+    if [ "$argv[1]" = "-" ]
+        cd -
+        return
+    end
+    ___x_cmd cd $argv
+end
+
 function ___x_cmd
-    setenv ___X_CMD_XBINEXP_FP $HOME/.x-cmd.root/local/data/xbinexp/fish/$status/(random)
+    setenv ___X_CMD_XBINEXP_FP "$HOME/.x-cmd.root/local/data/xbinexp/fish/$status"_(random)
     mkdir -p $___X_CMD_XBINEXP_FP
+    setenv ___X_CMD_XBINEXP_INITENV_OLDPWD $OLDPWD
+
     bash "$HOME/.x-cmd.root/bin/xbinexp" $argv
 
     if [ -f "$___X_CMD_XBINEXP_FP/PWD" ]
         cd (cat $___X_CMD_XBINEXP_FP/PWD)
-        rm "$___X_CMD_XBINEXP_FP/PWD"
     end
 
     if [ -f "$___X_CMD_XBINEXP_FP/PATH" ]
         setenv PATH (cat $___X_CMD_XBINEXP_FP/PATH)
-        rm "$___X_CMD_XBINEXP_FP/PATH"
     end
 
+    setenv ___X_CMD_XBINEXP_EVAL ""
     for file in $___X_CMD_XBINEXP_FP/*
-        set rmlist $rmlist $file
-
-        set varname (string replace -r '^[^_]+_' '' (basename $file))
-        # set -g "$varname" "$(cat $file)"
-        setenv "$varname" (cat $file)
+        set _filename (basename $file)
+        if string match -q "*_*" "$_filename"
+            set varname (string replace -r '^[^_]+_' '' "$_filename")
+            # set -g "$varname" "$(cat $file)"
+            setenv "$varname" (cat $file)
+        end
     end
 
-    if [ (count $rmlist) -gt 0 ]
-        rm -f $rmlist
+    if string match -q "*xbinexp/fish*" "$___X_CMD_XBINEXP_FP"
+        rm -rf "$___X_CMD_XBINEXP_FP"
     end
 
     if [ -n "$___X_CMD_XBINEXP_EVAL" ]
@@ -64,7 +74,6 @@ if status is-interactive
     # eval "$("$HOME/.x-cmd.root/bin/xbin" aliasinit --code)"
 
     alias xw='x ws'
-    alias c='x cd'
     alias xg='x git'
     # alias xd='x docker'
 

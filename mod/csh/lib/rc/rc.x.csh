@@ -1,5 +1,5 @@
 
-setenv  ___X_CMD_XBINEXP_FP     "$HOME/.x-cmd.root/local/data/xbinexp/csh/$$."`/bin/sh -c 'echo $PPID'`
+setenv  ___X_CMD_XBINEXP_FP     "$HOME/.x-cmd.root/local/data/xbinexp/csh/$$"_`/bin/sh -c 'echo $PPID'`
 
 mkdir -p "$___X_CMD_XBINEXP_FP"
 
@@ -22,7 +22,6 @@ if ( -f "$___X_CMD_XBINEXP_FP/PWD" ) then
     set ___X_CMD_CSH_RC_data=""
     set ___X_CMD_CSH_RC_data=`cat "$___X_CMD_XBINEXP_FP/PWD"`
     if ( "$___X_CMD_CSH_RC_data" != "" ) cd "$___X_CMD_CSH_RC_data"
-    rm -f "$___X_CMD_XBINEXP_FP/PWD"
 endif
 
 
@@ -30,7 +29,6 @@ if ( -f "$___X_CMD_XBINEXP_FP/PATH" ) then
     set ___X_CMD_CSH_RC_data=""
     set ___X_CMD_CSH_RC_data=`cat "$___X_CMD_XBINEXP_FP/PATH"`
     if ( "$___X_CMD_CSH_RC_data" != "" ) setenv PATH "$___X_CMD_CSH_RC_data"
-    rm -f "$___X_CMD_XBINEXP_FP/PATH"
 endif
 
 
@@ -54,8 +52,6 @@ if ( $#___X_CMD_CSH_RC_allvar > 0 ) then
         if ( "$___X_CMD_CSH_RC_data" != "" ) eval "set $name = "'"$___X_CMD_CSH_RC_data"'
     end
 
-    rm -f "$___X_CMD_XBINEXP_FP"/*
-
     if ( "$___X_CMD_XBINEXP_EVAL" != "" ) then
         set ___X_CMD_CSH_RC_eval = "$___X_CMD_XBINEXP_EVAL"
         set ___X_CMD_XBINEXP_EVAL = ""
@@ -69,3 +65,4 @@ if ( $#___X_CMD_CSH_RC_allvar > 0 ) then
 
 endif
 
+if ( "$___X_CMD_XBINEXP_FP" =~ "*xbinexp/csh*" )    rm -rf "$___X_CMD_XBINEXP_FP"

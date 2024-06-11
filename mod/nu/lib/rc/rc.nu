@@ -12,8 +12,9 @@ export-env {
 }
 
 export def --env x [ ...args ] {
-    $env.___X_CMD_XBINEXP_FP = $"($env.HOME)/.x-cmd.root/local/data/xbinexp/nu/($nu.pid)/(random int)"
+    $env.___X_CMD_XBINEXP_FP = $"($env.HOME)/.x-cmd.root/local/data/xbinexp/nu/($nu.pid)_(random int)"
     mkdir $env.___X_CMD_XBINEXP_FP
+    $env.___X_CMD_XBINEXP_INITENV_OLDPWD = $env.OLDPWD
 
     $env.___X_CMD_IS_INTERACTIVE_FORCE = 1
     $env.___X_CMD_THEME_RELOAD_DISABLE = 1
@@ -56,7 +57,7 @@ export def --env x [ ...args ] {
         rm ...(ls $env.___X_CMD_XBINEXP_FP | each { |i| $i.name } )
     }
 
-    return $exit_code
+    rm -f $env.___X_CMD_XBINEXP_FP
 }
 
 export alias xw     = x ws
@@ -72,6 +73,10 @@ export def --env c [ ...args ] {
     }
     if ($args | get 0) == "-" {
         cd -
+        return
+    }
+    if ($args | get 0) == "~" {
+        cd ~
         return
     }
     x cd ...$args
