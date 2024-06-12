@@ -30,7 +30,7 @@ Your support is our biggest motivation.
 
 ![x osv demo gif](https://github.com/x-cmd/x-cmd/assets/40693636/f7c8c503-3d77-4939-8932-f2c03ed8f263)
 
-![x theme demo gif](https://foruda.gitee.com/images/1697770832734408357/545a3160_11092596.gif "theme.gif")
+![x theme demo gif](https://user-images.githubusercontent.com/112856271/276805596-08998349-eda3-4107-93ff-61daade67032.gif)
 
 
 ## [Introduction](https://x-cmd.com)
