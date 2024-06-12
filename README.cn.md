@@ -42,7 +42,9 @@
     </tr>
 </table>
 
-![x-cmd demo gif](https://foruda.gitee.com/images/1718078629588146457/5d067d31_9641432.gif)
+![x osv demo gif](https://foruda.gitee.com/images/1718078629588146457/5d067d31_9641432.gif)
+
+![x theme demo gif](https://foruda.gitee.com/images/1697770832734408357/545a3160_11092596.gif "theme.gif")
 
 
 ## [介绍](https://x-cmd.com)
