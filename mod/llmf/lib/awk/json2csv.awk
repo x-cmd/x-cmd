@@ -42,5 +42,5 @@ function llmf_get_content(o, kp, name, version, quant,              format, hf, 
 
 function llmf_csv_quote(s){
     if (s ~ "\"") s = juq(s)
-    return csv_quote(s)
+    return csv_quote_ifmust(s)
 }

@@ -1,3 +1,5 @@
+# ref: https://github.com/lukesampson/psutils/blob/master/sudo.ps1
+
 Set-StrictMode -Off;
 # Write-Output args:$args
 if(!$args) { exit 1 }

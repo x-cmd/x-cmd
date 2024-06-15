@@ -57,7 +57,7 @@ ___x_cmd_advise_run___ltrim_maxitem(){
 }
 
 ___x_cmd_advise_run___fix_mac_zsh(){
-    x os is darwin || return
+    ___x_cmd os is darwin || return
     local n="${#candidate_arr[@]}"
     [ $n = 2 ] || return
     candidate_arr=( $( printf "%s\n" "${candidate_arr[@]}" | ___x_cmd_cmds sort -r ) )

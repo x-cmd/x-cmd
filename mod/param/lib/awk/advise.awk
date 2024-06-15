@@ -45,6 +45,7 @@ function generate_advise_json_subcmd(       i, l, subcmd_name, subcmd_true, subc
 
     AJADD(","); AJADD( swrap("--co|,") ); AJADD(":"); AJADD("{");
     AJADD( swrap("#subcmd") ); AJADD( ":" ); AJADD( "true" ); AJADD(",");
+    AJADD( swrap("\\$ref") ); AJADD( ":" ); AJADD( swrap("x-advise://co/data/mshot.jso") ); AJADD(",");
     generate_advise_json___desc_str(swrap("Use AI code copilot function"), swrap("使用 AI code copilot 功能"))
     AJADD("}");
 

@@ -57,7 +57,7 @@ function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr, v){
         _rootkp = arr[1];   gsub( "^data:item:local:", "", _rootkp )
         _log = arr[2];      gsub( "^data:log:", "", _log )
         if ((l == 3) && (_log == "")) _log = "Directory is empty"
-        o[ LS_KP, _rootkp, "log" ] = _log
+        o[ LS_KP, _rootkp, "log" ] = str_trim(_log)
         comp_navi_data_init( o, LS_KP, _rootkp )
         for (i=4; i<=l; ++i) {
             v = arr[i]

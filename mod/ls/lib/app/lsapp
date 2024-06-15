@@ -25,7 +25,7 @@ ___x_cmd_ls_app_handle(){
     local fp="$1"
     local id=""
     if [ -d "$fp" ]; then
-        x ui select id "Action for [dir=$fp]"   \
+        ___x_cmd ui select id "Action for [dir=$fp]"   \
             "cd to the directory"               \
             "open directory using Explorer"     \
             "x stat <dir>"                      \
@@ -34,18 +34,18 @@ ___x_cmd_ls_app_handle(){
             "EXIT" || return
 
         case "$id" in
-            1)      x cd "$fp" ;;
-            2)      x open "$fp" ;;
+            1)      ___x_cmd cd "$fp" ;;
+            2)      ___x_cmd open "$fp" ;;
             3)      x:info "Stat of [dir=$fp]"
-                    x stat "$fp" ;;
-            4)      ! x ui yesno -r "Confirm to recursively removing [dir=$fp] ?" \
-                        || x rmrf "$fp"
+                    ___x_cmd stat "$fp" ;;
+            4)      ! ___x_cmd ui yesno -r "Confirm to recursively removing [dir=$fp] ?" \
+                        || ___x_cmd rmrf "$fp"
                     ;;
             5)      printf "%s\n" "$fp" ;;
             *)      return 1 ;;
         esac
     elif [ -f "$fp" ]; then
-        x ui select id "Action for [file=$fp]"              \
+        ___x_cmd ui select id "Action for [file=$fp]"              \
             "cd to ${fp%/*}"                                \
             "open containing folder -> ${fp%/*}"            \
             "x stat $fp"                                    \
@@ -55,12 +55,12 @@ ___x_cmd_ls_app_handle(){
             "EXIT" || return
 
         case "$id" in
-            1)      x cd "${fp%/*}"             ;;
-            2)      x open "${fp%/*}"           ;;
+            1)      ___x_cmd cd "${fp%/*}"             ;;
+            2)      ___x_cmd open "${fp%/*}"           ;;
             3)      x:info "Stat of [file=$fp]"
-                    x stat "$fp"                ;;
-            4)      x open "$fp"                ;;
-            5)      ! x ui yesno -r "Confirm to removing [file=$fp] ?" \
+                    ___x_cmd stat "$fp"                ;;
+            4)      ___x_cmd open "$fp"                ;;
+            5)      ! ___x_cmd ui yesno -r "Confirm to removing [file=$fp] ?" \
                         || ___x_cmd_cmds rm -f "$fp"
                     ;;
             6)      printf "%s\n" "$fp" ;;
@@ -80,12 +80,12 @@ ___x_cmd_ls_app_(){
 ___x_cmd_ls_app___(){
     local basepath=; local x_=;
     if [ -z "$___X_CMD_LS_APP_BASEDATA" ]; then
-        x_=; x abspath_ "${1:-"$PWD"}"
+        x_=; ___x_cmd abspath_ "${1:-"$PWD"}"
         [ -d "$x_" ] || return
         basepath="$x_"
     fi
 
-    x_=; x tui position get_ lsapp
+    x_=; ___x_cmd tui position get_ lsapp
     local position="$x_"
     local position_isfuzzy=1    # not case sensitive
 
@@ -96,13 +96,13 @@ ___x_cmd_ls_app___(){
     ___X_CMD_LS_APP_BASEDATA="$___X_CMD_LS_APP_BASEDATA" \
     ___X_CMD_TUI_NAVI_POSITION="$position" \
     ___X_CMD_TUI_NAVI_POSITION_ISFUZZY="$position_isfuzzy" \
-    x tui bigapp --clear-on-exit \
+    ___x_cmd tui bigapp --clear-on-exit \
         -f "$___X_CMD_ROOT_MOD/tui/lib/eg.comp/navi.comp.awk"  \
         -f "$___X_CMD_ROOT_MOD/ls/lib/app/lsapp.awk"
     ___X_CMD_LS_APP_TMP_EXITCODE="$?"
 
     unset -f ___x_cmd_tui_app_processer
-    x tui position store lsapp "$___X_CMD_TUI_CURRENT_NAVI_POSITION"
+    ___x_cmd tui position store lsapp "$___X_CMD_TUI_CURRENT_NAVI_POSITION"
 
     return "$___X_CMD_LS_APP_TMP_EXITCODE"
 }
@@ -116,24 +116,29 @@ ___x_cmd_ls_app_processer(){
             dirpath="${item#*"$___X_CMD_UNSEENCHAR_NEWLINE"}"
             item="${item%%"$___X_CMD_UNSEENCHAR_NEWLINE"*}"
             printf "data:item:local:%s\n" "$item"
-            command_log="$( ___x_cmd_cmds_cd "$dirpath" 2>&1 )"
+            command_log="$( ___x_cmd_cmds_cd "$dirpath" 2>&1 )" || command_log="${command_log#*"cd:"}"
             (
                 if ___x_cmd_cmds_cd "$dirpath" 2>/dev/null; then
-                    content="$(___x_cmd_cmds_ls -lAhLS 2>/dev/null)" || command_log="Fail to list $dirpath"
+                    content="$(___x_cmd_cmds_ls -lAhLS 2>/dev/null)" || {
+                        command_log="$( exec 3>&1; { ___x_cmd_cmds_ls -lAhLS 2>&3 1>/dev/null; }; exec 3>&-; )"
+                        if [ -z "$command_log" ]; then  command_log="Fail to list $dirpath"
+                        else                            command_log="${command_log#*"ls:"}"
+                        fi
+                    }
                 fi
                 printf "data:log:%s\n" "$command_log"
                 printf "%s\n" "$content"
             )
             ___x_cmd_ls_app_processer___fix_gitbash "$dirpath"
             ;;
-        x:open:*)   x open      "${1#x:open:}"   ;;
-        x:browse:*) x browse    "${1#x:browse:}" ;;
+        x:open:*)   ___x_cmd open      "${1#x:open:}"   ;;
+        x:browse:*) ___x_cmd browse    "${1#x:browse:}" ;;
     esac
 }
 
 ___x_cmd_ls_app_processer___fix_gitbash(){
     local dir="$1"
-    { x os is win && [ "$dir" = "/" ] ; } || return 0
+    { [ "$dir" = "/" ] && ___x_cmd os is win ; } || return 0
     local fp
     [ "$PWD" = "/" ] || {
         fp="${PWD%%/"${PWD#/*/}"*}"

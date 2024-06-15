@@ -1,20 +1,32 @@
 
-export-env {
-    if not ($"($env.HOME)/.x-cmd.root/bin" in $env.PATH) {
-        $env.PATH = ( $env.PATH | prepend $"($env.HOME)/.x-cmd.root/bin" )
-    }
 
-    if not ($"($env.HOME)/.x-cmd.root/global/data/bin/l/j/h/bin" in $env.PATH) {
-        $env.PATH = ( $env.PATH | prepend $"($env.HOME)/.x-cmd.root/global/data/bin/l/j/h/bin" )
+export def --env ___x_cmd_nu_nurc_addpath [ element ] {
+    if not ( $element in $env.PATH ) {
+        # $env.PATH = ( $env.PATH | prepend args )
+        $env.PATH = ( $env.PATH | split row (char esep) | prepend $element )
     }
-
-    $env.___X_CMD_CO_NOEVAL = 1
 }
 
-export def --env x [ ...args ] {
+export-env {
+    ___x_cmd_nu_nurc_addpath $"($env.HOME)/.x-cmd.root/bin"
+    ___x_cmd_nu_nurc_addpath $"($env.HOME)/.x-cmd.root/global/data/bin/l/j/h/bin"
+
+    $env.___X_CMD_CO_NOEVAL = 1
+    $env.___X_CMD_IS_INTERACTIVE_FORCE = 1
+    $env.___X_CMD_THEME_RELOAD_DISABLE = 1
+
+    $env.___X_CMD_CD_RELM_0 = $env.PWD
+}
+
+export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
     $env.___X_CMD_XBINEXP_FP = $"($env.HOME)/.x-cmd.root/local/data/xbinexp/nu/($nu.pid)_(random int)"
-    mkdir $env.___X_CMD_XBINEXP_FP
-    $env.___X_CMD_XBINEXP_INITENV_OLDPWD = $env.OLDPWD
+    # mkdir $env.___X_CMD_XBINEXP_FP
+
+    if OLDPWD in $env {
+        $env.___X_CMD_XBINEXP_INITENV_OLDPWD = $env.OLDPWD
+    } else {
+        $env.___X_CMD_XBINEXP_INITENV_OLDPWD = $env.PWD
+    }
 
     $env.___X_CMD_IS_INTERACTIVE_FORCE = 1
     $env.___X_CMD_THEME_RELOAD_DISABLE = 1
@@ -25,18 +37,9 @@ export def --env x [ ...args ] {
 
     # bash -c $"ls  ($env.___X_CMD_XBINEXP_FP)"
 
-    let fp_pwd = $"($env.___X_CMD_XBINEXP_FP)/PWD"
-    if ( $fp_pwd | path exists  ) {
-        let pwd: string = ( open $fp_pwd --raw )
-        cd $pwd
-        rm -f $fp_pwd
-    }
-
-    let fp_path = $"($env.___X_CMD_XBINEXP_FP)/PATH"
-    if ( $fp_path | path exists  ) {
-        let pathstr: string = ( open $fp_path --raw )
-        $env.PATH = $pathstr
-        rm -f $fp_path
+    if not ( $env.___X_CMD_XBINEXP_FP | path exists ) {
+        $env.LAST_EXIT_CODE = exit_code
+        return
     }
 
     let data = ls $env.___X_CMD_XBINEXP_FP | each { |i|
@@ -48,7 +51,15 @@ export def --env x [ ...args ] {
 
     # TODO: load-env on ...
     for $i in $data {
-        load-env { $i.key: $i.value }
+        if ( $i.key == "PWD" ) {
+            cd $i.value
+        } else if ($i.key == "PATH") {
+            $env.PATH = ( $i.value | split row : )
+            # TODO: We might need to handle the PATH in windows git-bash ...
+        } else {
+            # Check whether is write to add path
+            load-env { $i.key: $i.value }
+        }
     }
 
     let all_file = (ls $env.___X_CMD_XBINEXP_FP | each { |i| $i.name } )
@@ -58,7 +69,14 @@ export def --env x [ ...args ] {
     }
 
     rm -f $env.___X_CMD_XBINEXP_FP
+
+    $env.___X_CMD_XBINEXP_FP = ""
+
+    $env.LAST_EXIT_CODE = exit_code
 }
+
+export alias x     = bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"
+# bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"
 
 export alias xw     = x ws
 export alias xg     = x git
@@ -66,55 +84,29 @@ export alias xg     = x git
 
 export alias ","    = x nu "--sysco"
 
-export def --env c [ ...args ] {
+export def --env --wrapped c [ ...args ] {
     if  ($args | length) == 0 {
-        x cd
+        ___x_cmd_nu_rc_xbinexp cd
         return
     }
-    if ($args | get 0) == "-" {
-        cd -
-        return
+
+    let arg1 = ($args | get 0)
+
+    if $arg1 == "-" {                   cd -
+    } else if $arg1 == "~" {            cd ~
+    } else if ($arg1 | path exists) {   cd $arg1
+    } else {
+        ___x_cmd_nu_rc_xbinexp cd ...$args
     }
-    if ($args | get 0) == "~" {
-        cd ~
-        return
-    }
-    x cd ...$args
 }
 
-export def --env @ [ ...args ] {
-    $env.___X_CMD_CHAT_NORMAL_ALIAS = ""
-    x chat "--send" ...$args
-}
+export alias @          = x chat --sendalias ""
+export alias @o         = x chat --sendalias o
 
-export def --env @o [ ...args ] {
-    $env.___X_CMD_CHAT_NORMAL_ALIAS = o
-    x chat "--send" ...$args
-}
+export alias @gpt       = x chat --sendalias gpt
+export alias @gpt3      = x chat --sendalias gpt3
+export alias @gpt4      = x chat --sendalias gpt4
 
-export def --env @gemini [ ...args ] {
-    $env.___X_CMD_CHAT_NORMAL_ALIAS = gemini
-    x chat "--send" ...$args
-}
-
-export def --env @kimi [ ...args ] {
-    $env.___X_CMD_CHAT_NORMAL_ALIAS = kimi
-    x chat "--send" ...$args
-}
-
-export def --env @gpt [ ...args ] {
-    $env.___X_CMD_CHAT_NORMAL_ALIAS = gpt
-    x chat "--send" ...$args
-}
-
-export def --env @gpt3 [ ...args ] {
-    $env.___X_CMD_CHAT_NORMAL_ALIAS = gpt3
-    x chat "--send" ...$args
-}
-
-export def --env @gpt4 [ ...args ] {
-    $env.___X_CMD_CHAT_NORMAL_ALIAS = "gpt4"
-    x chat "--send" ...$args
-}
-
-
+export alias @kimi      = x chat --sendalias kimi
+export alias @gemini    = x chat --sendalias gemini
+export alias @mistral   = x chat --sendalias mistral

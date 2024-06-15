@@ -1,25 +1,34 @@
 # shellcheck shell=dash
 
 # x gh , 'add collaborator ljh to repo x-cmd/abc ( push permission )'
-# ___x_cmd_co --mshot "<USER-REQUSET>" [ "command seed" ... ]
+# X_CO_MSHOT_CMD="command seed ..." ___x_cmd_co --mshot "<USER-REQUSET>"
 
 
 ___x_cmd_co___mshot(){
+    local X_CO_MSHOT_CMD="$X_CO_MSHOT_CMD"
+    local provider=""
+    local model=""
     [ $# -gt 0 ]    ||  set -- -h
-    case "$1" in
-        -h|--help)      return 0 ;;
-    esac
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --provider)     provider="$2"; [ -n "$2" ] || N=co M="Please provide provider value" log:ret:64;    shift 2 ;;
+            --model)        model="$2";    [ -n "$2" ] || N=co M="Please provide model value" log:ret:64;       shift 2 ;;
+            -h|--help)      ___x_cmd help -m co --mshot; return 0 ;;
+            *)              break ;;
+        esac
+    done
 
-    local user_request="$1";
+    [ -n "$X_CO_MSHOT_CMD" ] || N=co M="Please provide command seed, X_CO_MSHOT_CMD is empty" log:ret:64
+
+    local user_request="$*";
     [ -n "$user_request" ] || {
         { [ -t 1 ] && ___x_cmd_is_interactive; } || N=co M="Please provide user request" log:ret:64
         user_request="$(___x_cmd ted)" || return
     }
-    shift
-
+    eval set -- "$X_CO_MSHOT_CMD"
 
     local x_
-    x_=; ___x_cmd_co___mshot_prepare_context_ "$user_request" "$@" || return
+    x_=; ___x_cmd_co___mshot_prepare_context_ "$provider" "$model" "$user_request" "$@" || return
     local help_document="$x_"
 
     local options_before_argument="
@@ -31,7 +40,7 @@ Note: The commands you generate must put OPTIONS before ARGS. Do not put ARGS be
         help_document="$help_document" \
         task="$user_request" \
         options_before_argument="$options_before_argument" \
-        ___x_cmd_co___mshot_llm --minion "$___X_CMD_ROOT_MOD/co/lib/minion/mshot.yml"
+        ___x_cmd_co___mshot_llm "$provider" "$model" --minion "$___X_CMD_ROOT_MOD/co/lib/minion/mshot.yml"
     )" || return
 
     ___x_cmd_co___parse_llm_result "$data" "$help_document" "$options_before_argument"
@@ -42,7 +51,9 @@ ___x_cmd_co___mshot_prepare_context_(){
 }
 
 ___x_cmd_co___mshot_prepare_context___dfs_(){
-    local user_request="$1";    shift
+    local provider="$1";
+    local model="$2"
+    local user_request="$3";    shift 3
 
     local IFS=" "
 
@@ -52,7 +63,7 @@ ___x_cmd_co___mshot_prepare_context___dfs_(){
         result="$(
             help_document="$context" \
             task="$user_request" \
-            ___x_cmd_co___mshot_llm --minion "$___X_CMD_ROOT_MOD/co/lib/minion/mshot.dfs.yml" --silent
+            ___x_cmd_co___mshot_llm "$provider" "$model" --minion "$___X_CMD_ROOT_MOD/co/lib/minion/mshot.dfs.yml" --silent
         )" || return
 
         case "$result" in
@@ -84,5 +95,10 @@ ___x_cmd_co___mshot_prepare_context___embs(){
 }
 
 ___x_cmd_co___mshot_llm(){
-    ___x_cmd chat --send --type "co-mshot" "$@"
+    local provider="$1";
+    local model="$2";   shift 2
+    set -- --type "co-mshot" "$@"
+    [ -z "$model" ] || set -- --model "$model" "$@"
+    [ -z "$provider" ] || set -- --provider "$provider" "$@"
+    ___x_cmd chat --send "$@"
 }
