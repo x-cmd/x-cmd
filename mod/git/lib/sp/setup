@@ -1,0 +1,78 @@
+# shellcheck shell=dash
+
+
+# x git sp --proxy localhost:9999
+# equivalent to:
+# x git sp --http http://localhost:9999 --ssh localhost:9999
+
+
+# x git sp --http http://localhost:9999 --ssh localhost:5050
+# x git sp --http socks5://localhost:9999 --ssh localhost:9999
+
+
+___x_cmd_git_sp_setup(){
+    local http_proxy=
+    local ssh_proxy=
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --http)     http_proxy="$2";    [ -n "$2" ] || N=git M="Please provide http_proxy value" log:ret:64;    shift 2 ;;
+            --ssh)      ssh_proxy="$2";     [ -n "$2" ] || N=git M="Please provide ssh_proxy value" log:ret:64;     shift 2 ;;
+
+            --proxy)    [ -n "$ssh_proxy" ]     || ssh_proxy="$2"
+                        [ -n "$http_proxy" ]    || http_proxy="$2"
+                        [ -n "$2" ] || N=git M="Please provide proxy value" log:ret:64
+                        shift 2  ;;
+
+            -h|--help)  ___x_cmd help -m git sp setup;      return ;;
+            # *)          ___x_cmd help -m git sp setup >&2;  return 64
+            *)          [ -n "$ssh_proxy" ]     || ssh_proxy="$1"
+                        [ -n "$http_proxy" ]    || http_proxy="$1"
+                        [ -n "$1" ] || N=git M="Please provide proxy value" log:ret:64
+                        break
+                        ;;
+        esac
+    done
+
+    if [ -n "$http_proxy" ]; then
+        git:info "Setting global git proxy for bitbucket codeberg github gitlab -> $http_proxy"
+
+        command git config --global http.https://bitbucket.com.proxy   "$http_proxy"
+        command git config --global http.https://codeberg.org.proxy    "$http_proxy"
+        command git config --global http.https://github.com.proxy      "$http_proxy"
+        command git config --global http.https://gitlab.com.proxy      "$http_proxy"
+    fi
+
+    if [ -n "$ssh_proxy" ]; then
+        ssh_proxy="${ssh_proxy#*://}"
+        git:info "Setting ssh proxy for bitbucket codeberg github gitlab -> $ssh_proxy"
+
+        ___x_cmd ensurefp "$HOME/.ssh"
+        ___x_cmd_git_sp_delete
+
+        local x_=; ___x_cmd rat_ "$HOME/.ssh/config" 2>/dev/null
+        {
+            printf "%s\n" 'Include x-cmd/*.x-cmd    # boot up x-cmd git config'
+            printf "%s\n" "$x_"
+        } > "$HOME/.ssh/config"
+
+        local fp="$HOME/.ssh/x-cmd/_.sp.git.x-cmd"
+
+        ___x_cmd ensurefp "$fp"
+        [ ! -e "$fp" ] || ___x_cmd rm "$fp"
+        ___x_cmd_cmds cp "$___X_CMD_ROOT_MOD/git/lib/sp/_.sp.git.x-cmd" "$fp"
+
+        local str=""
+        if [ -z "$MSYSTEM" ] && ___x_cmd_hascmd nc; then    str="ProxyCommand nc -x $ssh_proxy %h %p"
+        elif ___x_cmd_hascmd connect.exe; then              str="ProxyCommand connect.exe -H $ssh_proxy %h %p"
+        else                                                git:warn "Unable to set proxy becuase neither nc nor connect.exe is available."
+        fi
+
+        ___x_cmd sed -i.xbak "s|%proxy%|$str|g" "$fp"
+    fi
+
+    git:info "Running -> x git sp status"
+    ___x_cmd_git_sp_status
+}
+
+

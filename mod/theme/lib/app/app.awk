@@ -15,8 +15,10 @@ function tapp_init(){
     comp_navi_current_position_var(o, APPKP, THEME_NAVI_POSITION)
 }
 
-function user_request_data(o, kp, rootkp,               _content, width, i, j, k, m, _kp, _l_layout, _l_theme, _l_scheme, k_layout, k_theme, v_scheme, view_layout_data, layout, theme, scheme){
-    _content = cat( ENVIRON[ "classify_fp" ] )
+function user_request_data(o, kp, rootkp,               _content, fp, width, i, j, k, m, _kp, _l_layout, _l_theme, _l_scheme, k_layout, k_theme, v_scheme, view_layout_data, layout, theme, scheme){
+    fp = ENVIRON[ "classify_fp" ]
+    if ( fp == "" ) panic( "Not found theme classify_fp" )
+    _content = cat( fp )
     yml_parse( _content, obj )
     width = int(tapp_canvas_colsize_get()/3)
     comp_navi_data_init( o, kp )

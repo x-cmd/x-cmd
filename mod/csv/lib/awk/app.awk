@@ -9,7 +9,7 @@ BEGIN{
     ___X_CMD_CSV_APP_IS_HIDE_INDEX = ENVIRON[ "___X_CMD_CSV_APP_IS_HIDE_INDEX" ]
     ___X_CMD_CSV_APP_PREVIEW = ENVIRON[ "___X_CMD_CSV_APP_PREVIEW" ]
     ___X_CMD_CSV_APP_TABLE_VIEW = ENVIRON[ "___X_CMD_CSV_APP_TABLE_VIEW" ]
-    ___X_CMD_CSV_APP_CELL_WIDTH_EXTRA = 2
+    ___X_CMD_CSV_APP_CELL_WIDTH_EXTRA = 3
 
     ___X_CMD_CSV_APP_TABLE_WIDTH = tui_parse_width_num( ENVIRON[ "___X_CMD_CSV_APP_TABLE_WIDTH" ], COLS, 70, 30 )
     CSVAPP_POSITION = ENVIRON[ "___X_CMD_TUI_CSV_POSITION" ]
@@ -242,7 +242,7 @@ function user_comp_ctrl_sw_get(){
 
 function user_preview_view_paint(o, kp, x1, x2, y1, y2,         r, l, i, c, _res, is_ctrl, _kp){
     if ( ! change_is(o, PREVIEW_KP) ) return
-    r = comp_table_get_cur_row(o, kp) + ___X_CMD_CSV_APP_CELL_WIDTH_EXTRA
+    r = comp_table_get_cur_row(o, kp) + 1
     l = o[ kp, "PREVIEW_VIEW" L ]
     is_ctrl = user_comp_ctrl_sw_get()
     for (i=1; i<=l; ++i){

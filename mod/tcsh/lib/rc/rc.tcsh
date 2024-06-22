@@ -23,8 +23,14 @@ setenv ___X_CMD_THEME_RELOAD_DISABLE 1
 
 # "$HOME/.x-cmd.root/bin/xbin" prepare alias
 if ($?status && $status == 0) then
-    eval "`___x_cmd chat --aliasinit --cshcode`"
-
+    # eval "`___x_cmd chat --aliasinit --cshcode`"
+    alias @o         'x chat --sendalias o'
+    alias @gpt       'x chat --sendalias gpt'
+    alias @gpt3      'x chat --sendalias gpt3'
+    alias @gpt4      'x chat --sendalias gpt4'
+    alias @kimi      'x chat --sendalias kimi'
+    alias @gemini    'x chat --sendalias gemini'
+    alias @mistral   'x chat --sendalias mistral'
     # chat, writer, w
 
     alias xw 'x ws'

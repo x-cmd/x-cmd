@@ -24,16 +24,16 @@ function navi_statusline_normal( o, kp,       l, i, v ){
         comp_statusline_data_put( o, kp, v, o[ kp, "custom", v, "short-help"], o[ kp, "custom", v, "long-help"])
     }
     comp_statusline_data_put( o, kp, "q", "Quit", "Press 'q' to quit table" )
-    comp_statusline_data_put( o, kp, "/", "Search", "Press '/' to search items" )
+    comp_statusline_data_put( o, kp, "/", "Filter", "Press '/' to filter items" )
     comp_statusline_data_put( o, kp, "Ctrl x", "", "Change the display screen size" )
     comp_statusline_data_put( o, kp, "Tab", "Open help", "Close help" )
 }
 
-function navi_statusline_search(o, kp){
+function navi_statusline_filter(o, kp){
     kp = kp SUBSEP "statusline"
     comp_statusline_data_clear( o, kp )
     comp_statusline_data_put( o, kp, "←↓↑→/hjkl", "Move focus","Press keys to move focus"  )
-    comp_statusline_data_put( o, kp, "enter", "Close search", "Press '/' to close search items" )
+    comp_statusline_data_put( o, kp, "enter", "Close filter", "Press '/' to close filter items" )
 }
 
 function navi_statusline_add( o, kp, v, s, l ){
@@ -89,7 +89,7 @@ function navi_handle_wchar( o, kp, value, name, type,          _has_no_handle ){
 
         # update statusline
         if ((_has_no_handle == true) && (comp_statusline_handle( o, kp SUBSEP "statusline", value, name, type ))) _has_no_handle = false
-        else if (ctrl_navi_sel_sw_get( o, kp ))                                         navi_statusline_search( o, kp )
+        else if (ctrl_navi_sel_sw_get( o, kp ))                                         navi_statusline_filter( o, kp )
         else                                                                            navi_statusline_normal( o, kp )
     }
 

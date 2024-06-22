@@ -5,14 +5,22 @@ function user_request_data( o, kp, rootkp ){
 }
 
 # Section: parse json
-function user_parse_json_data(o, kp, obj,       i, l, _kp, jl, j){
+function user_parse_json_data(o, kp, obj,       i, l, _kp, jl, j, v){
     l = obj[L]
     comp_navi_data_init( o, kp )
     if (l == 1){
         _kp = SUBSEP "\"1\""
         l = obj[ _kp L ]
-        for (i=1; i<=l; ++i) {
-            user_parse_json_data_value(o, kp, "", obj, _kp SUBSEP obj[ _kp, i ] )
+        v = obj[ _kp ]
+        if ( v == "{" ) {
+            for (i=1; i<=l; ++i) {
+                user_parse_json_data_value(o, kp, "", obj, _kp SUBSEP obj[ _kp, i ] )
+            }
+        }
+        else if (v == "[") {
+            for (i=1; i<=l; ++i) {
+                user_parse_json_data_value(o, kp, "", obj, _kp SUBSEP "\""i"\"", true  )
+            }
         }
     }
     else {

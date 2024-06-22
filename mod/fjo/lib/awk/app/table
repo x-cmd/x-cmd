@@ -1,0 +1,70 @@
+# shellcheck shell=dash
+___x_cmd_fjo_tui_app_processer(){
+    case "$1" in
+        data:total_count)   printf "data:total_count:%s\n" "$(___x_cmd_fjo_resp_header "total_count")" ;;
+        data:request:workflow_view:*)  ___x_cmd_fjo_action_workflow_app_datarequest "${1#*data:request:workflow_view:}";;
+        data:request:*)     ___x_cmd_fjo_tui_app_datarequest "${1#*data:request:}"  ;;
+    esac
+}
+
+___x_cmd_fjo_tui_app_datarequest(){
+    local signal; local page; local start; local content
+    signal="$1"
+    page=$(( (signal-1)/limit  + 1 ))
+    start=$(( (page-1)*limit  + 1 ))
+
+    content="$( eval "$___X_CMD_FJO_TUI_TABLE_REQUSET_DATA" )" || {
+        printf "errexit:%s\n" "${___fjo_error_msg:-"Failed to get data"}"
+        return 1
+    }
+
+    printf "data:start:%s\n%s\n" "$start" "$content"
+}
+
+
+___x_cmd_fjo_get_multi___get_data(){
+    ___x_cmd_fjo_curl get "$@" page limit
+}
+
+___x_cmd_fjo_tui_app(){
+    ___X_CMD_SHBIN_CODE='
+        xrc fjo ;
+        "$@"
+    ' ___x_cmd_antizshbin ___x_cmd_fjo_tui_app___ "$@"
+}
+
+___x_cmd_fjo_tui_app___(){
+    ___x_cmd_tui_app_processer(){ ___x_cmd_fjo_tui_app_processer "$@"; }
+    local ___fjo_error_msg=
+    local hook_end=
+    local hook_begin=
+    local ___X_CMD_FJO_TUI_TABLE_REQUSET_DATA="$___X_CMD_FJO_TUI_TABLE_REQUSET_DATA"
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --begin)        hook_begin="$2";                            shift 2 ;;
+            --end)          hook_end="$2";                              shift 2 ;;
+            --error-msg)    ___fjo_error_msg="$2";                       shift 2 ;;
+            --request-code) ___X_CMD_FJO_TUI_TABLE_REQUSET_DATA="$2";    shift 2 ;;
+            --*)
+                            if [ -n "$2" ]; then
+                                # eval fjo:info "${1#--}=\$2"
+                                eval "local ${1#--}=\$2 >/dev/null 2>&1"
+                            fi
+                            shift 2 ;;
+            *)              break ;;
+        esac
+    done
+
+    local fp="$___X_CMD_ROOT_MOD/fjo/lib/awk/app/${1:?Provide a file name}"
+    [ -f "$fp" ] || return
+    local _exitcode=0
+    x tui bigapp --clear-on-exit \
+        ${hook_begin:+"--end"}  ${hook_begin:+"$hook_begin"}    \
+        ${hook_end:+"--end"}    ${hook_end:+"$hook_end"}        \
+        -f "$___X_CMD_ROOT_MOD/tui/lib/eg.comp/table.comp.awk"  \
+        -f "$fp"
+    _exitcode="$?"
+    unset -f ___x_cmd_tui_app_processer
+    return "$_exitcode"
+}

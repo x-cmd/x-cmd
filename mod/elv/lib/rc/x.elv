@@ -2,7 +2,6 @@ var ___X_CMD_ELV_RC_XBINEXP = $E:HOME/.x-cmd.root/bin/xbinexp
 
 use re
 use os
-use readline-binding
 
 fn x {  |@a|
     if ( not (has-env OLDPWD) ) {
@@ -82,6 +81,11 @@ fn c {
     x cd $@a
 }
 
+fn co {
+    |@a|
+    x:x elv --sysco $@a
+}
+
 fn init {
     set-env OLDPWD $pwd
     set-env ___X_CMD_CD_RELM_0 $pwd
@@ -96,12 +100,34 @@ fn init {
 
     if (has-value $paths $E:HOME/.x-cmd.root/bin) {
         # set E:PATH = $E:HOME/.x-cmd.root/bin:$E:PATH
-        # conj $paths $E:HOME/.x-cmd.root/bin:$E:PATH
         set paths = [ $E:HOME/.x-cmd.root/bin                         $@paths ]
     }
 
     if (has-value $paths $E:HOME/.x-cmd.root/global/data/bin/l/j/h/bin) {
         set paths = [ $E:HOME/.x-cmd.root/global/data/bin/l/j/h/bin   $@paths ]
     }
-}
 
+    if ( os:is-regular $E:HOME/.config/elvish/lib/a.elv ) {
+        use a
+        edit:add-var a: $a:
+    }
+
+    if (not (os:is-regular $E:HOME/.x-cmd.root/local/data/elv/config/readline-binding.disable ) ) {
+        use readline-binding
+        edit:add-var readline-binding $readline-binding:
+    }
+
+    # TODO: activate advise
+    # TODO: activate theme
+
+    edit:add-vars [
+        &x1~=$x~
+        &x~=$x~
+        &c~=$c~
+        &xw~=$xw~
+        &xg~=$xg~
+        &xd~=$xd~
+        &init~=$init~
+        &,=$co~
+    ]
+}

@@ -1,0 +1,264 @@
+# shellcheck shell=bash disable=SC2034,SC2154
+# shellcheck disable=SC2039,3043,2120
+# shellcheck disable=SC2046
+
+# Section: Help
+_____x_cmd_fjo_help__token_setting(){
+    printf "\n%s %s \n%s\n" \
+        "$(___x_cmd_ui yellow 'Run command to add|repleace token:')" \
+        "$(___x_cmd_ui bold cyan "\`x fjo token <token>\`")"   \
+        "$(___x_cmd_ui "$(___x_cmd_fjo___get_web_endpoint)/user/settings/applications")"
+}
+
+_____x_cmd_fjo_help__owner_setting(){
+    printf "|\n    %s %s\n    %s %s\n" \
+        "$(___x_cmd_ui yellow 'Run current command to setup default owner in the current session:')" \
+        "$(___x_cmd_ui bold cyan "\`x fjo --cur owner=<owner>\`")" \
+        "$(___x_cmd_ui yellow 'Run config  command to save default owner to local configure file:')" \
+        "$(___x_cmd_ui bold cyan "\`x fjo --cfg owner=<owner>\`")"
+}
+
+_____x_cmd_fjo_help(){
+    ___x_cmd help -m tea "$@"
+}
+# EndSection
+
+# Section: HTTP header & body & request
+___x_cmd_fjo_resp_header() {
+    local fp="$___X_CMD_FJO_TMP/.____x_cmd_fjo_curl_header.$$"
+     [ -f "$fp" ] || return
+    if [ "$#" -le 0 ]; then
+        x rat "$fp"
+    else
+        ___x_cmd_cmds_awk '
+            ( match($0, "^x-total-count") ){
+                FJO_MATCH_LINK = 1
+                if($2 > 0) printf("%s\n" , $2)
+                else       printf("%s\n" , "1")
+            }
+            END{
+                if (FJO_MATCH_LINK == 0) printf("%s\n" , "1")
+            }
+        ' <"$fp"
+    fi
+}
+
+___x_cmd_fjo_resp_code(){
+    ___x_cmd_fjo_resp_header | _____x_cmd_gx_get_resp_code_by_header
+}
+
+___x_cmd_fjo_curl(){
+    local op="$1"
+    local _api_url="$2"
+    shift 2
+    local ___X_CMD_API_TEA_HEADER="-s -H \"accept: application/json\" -H \"Content-Type: application/json\" -D \"$___X_CMD_FJO_TMP/.____x_cmd_fjo_curl_header.$$\""
+
+    local _curl_host_tmp=""
+
+    # TODO: ...
+    # ___X_CMD_FJO_API_VENDOR=${___X_CMD_FJO_API_VENDOR:-tea}
+
+    local ___X_CMD_API_TEA_TOKEN=""
+    local ___X_CMD_API_TEA_ENDPOINT=""
+    ___x_cmd_fjo_cur   ___X_CMD_API_TEA_TOKEN:=token ___X_CMD_API_TEA_ENDPOINT:=endpoint 2>/dev/null
+
+    local ___X_CMD_FJO_SHOW_HTTP_CODE=1
+    case "$op" in
+        get)
+            if [ -n "$NO_CACHE" ]; then
+                ___x_cmd_api_tea get "$_api_url" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_fjo_curl___use_query_data "$@"))")
+            else
+                x ccmd 10s --         eval "___X_CMD_API_TEA_ENDPOINT=$___X_CMD_API_TEA_ENDPOINT ___X_CMD_API_TEA_TOKEN=$___X_CMD_API_TEA_TOKEN ___x_cmd_api_tea get \"$_api_url\" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_fjo_curl___use_query_data "$@"))")"
+            fi
+            ___x_cmd_fjo_http_error   eval "___X_CMD_API_TEA_ENDPOINT=$___X_CMD_API_TEA_ENDPOINT ___X_CMD_API_TEA_TOKEN=$___X_CMD_API_TEA_TOKEN ___x_cmd_api_tea get \"$_api_url\" $(eval "printf '%s ' $(x curl gencode $(___x_cmd_fjo_curl___use_query_data "$@"))")"
+            ;;
+        post|put|patch|del)
+            ___x_cmd_api_tea "$op" "$_api_url" "$(x curl gencode "$@")"
+            ___x_cmd_fjo_http_error
+            ;;
+    esac
+}
+
+___x_cmd_fjo_curl___use_query_data(){
+    [ $# -gt 0 ] || return
+    printf "%s " "-G"
+    local name=""
+    for name in "$@"; do
+        case "$name" in
+            p)          [ -z "$p" ]   || printf "%s " "path==$p"    ;;
+            sta)        [ -z "$sta" ] || printf "%s " "status==$sta";;
+            *)                           printf "%s " "$name=="     ;;
+        esac
+    done
+}
+
+___x_cmd_fjo_http_error(){
+     if [ "$op" = get ] && [ -n "$___X_CMD_CCMD_AGE" ] && [ "$___X_CMD_CCMD_AGE" -ne -1 ]; then
+        fjo:debug "Is cache data"
+        return 0
+    fi
+    local http_resp_code=""
+    http_resp_code=$(___x_cmd_fjo_resp_code)
+    if [ -n "$http_resp_code" ] && [ "$http_resp_code" -ge 200 ] && [ "$http_resp_code" -le 303 ]; then
+        return 0
+    else
+        [ $# -eq 0 ] || {
+            fjo:debug "Cache Clear"
+            x ccmd invalidate "$@" 1>/dev/null 2>&1
+        }
+        [ -z "$___X_CMD_FJO_SHOW_HTTP_CODE" ] || {
+            fjo:error "HTTP Code is $http_resp_code"
+            if command -v unset 1>/dev/null; then
+                unset ___X_CMD_FJO_SHOW_HTTP_CODE
+            fi
+        }
+        return 1
+    fi
+}
+
+___x_cmd_fjo____handle_resp(){
+    [ -z "$fjo_resp_err" ] || [ "$fjo_resp_err" = "null" ] || ___x_cmd_gx_printf_error "$fjo_resp_err"
+    [ -z "$fjo_resp_msg" ] || [ "$fjo_resp_msg" = "null" ] || ___x_cmd_gx_printf_error "$fjo_resp_msg"
+}
+# EndSection
+
+# Section: Resolve pagination
+___x_cmd_fjo_get_multi() {
+    if [ -n "$page" ] || [ -n "$limit" ]; then
+        ___x_cmd_fjo_curl get "$@" page limit
+        return
+    fi
+
+    local page=1
+    local limit=100
+    local NO_CACHE=1
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_fjo_get_multi___json_prt "$@"
+    else
+        ___x_cmd_fjo_get_multi___ui_table "$@"
+    fi
+
+}
+___x_cmd_fjo_get_multi___ui_table(){
+    ___x_cmd_fjo_curl get "$@" page limit
+    printf "\n"
+    local next_url
+    _____x_cmd_fjo_next_url
+    [ -n "$next_url" ] || return
+
+    while [ -n "$next_url" ]; do
+        ___x_cmd_fjo_curl get "$next_url" || return
+        printf "\n"
+        _____x_cmd_fjo_next_url
+    done
+}
+
+___x_cmd_fjo_get_multi___json_prt(){
+    local tmp
+    tmp=$(mktemp)
+    ___x_cmd_fjo_curl get "$@" page limit > "$tmp"
+    printf "\n" >> "$tmp"
+
+    local next_url
+    _____x_cmd_fjo_next_url
+    if [ -z "$next_url" ]; then
+        ___x_cmd_cmds_cat "$tmp"
+        x rmrf "$tmp"
+        return
+    fi
+
+    while [ -n "$next_url" ]; do
+        ___x_cmd_fjo_curl get "$next_url" >> "$tmp"
+        printf "\n" >> "$tmp"
+        _____x_cmd_fjo_next_url
+    done
+    < "$tmp" x jo q0 \*.\* . | ___x_cmd_gx_merge_multi_page_json_array
+    x rmrf "$tmp"
+}
+
+_____x_cmd_fjo_next_url() {
+    next_url="$(command grep "link:" "$___X_CMD_FJO_TMP/.____x_cmd_fjo_curl_header.$$")"
+    next_url="${next_url#*'rel="prev", <'}"
+    local tmp_url="${next_url%%'>; rel="next"'*}"
+    if [ "$next_url" != "$tmp_url" ]; then
+        local _split_host=""
+        if ! _split_host="$(___x_cmd_fjo___get_web_endpoint)"; then
+            _split_host="https://gitea.com/api/v1"
+        fi
+        next_url="${tmp_url#*"$_split_host"}"
+    else
+        next_url=""
+    fi
+}
+
+# EndSection
+
+# Section: Parameter Utilities
+alias ___x_cmd_fjo_param_init_owner_repo='
+    local owner_repo=""
+    ___x_cmd_fjo_param_normalize_repo  || return
+'
+
+# shellcheck disable=SC2154,SC2034
+___x_cmd_fjo_param_normalize_repo() {
+    local op="$repo"
+    [ -n "$op" ] || op="$1"
+    case "$op" in
+    */*)
+        owner_repo="$op"
+        ;;
+    "")
+        local owner=""; local repo="";
+        ___x_cmd_fjo_cur owner:=owner repo:=repo 2>/dev/null
+        case "$repo" in
+            */*) owner_repo="$repo"    ;;
+            "")  owner_repo="$(___x_cmd_gx_get_owner_repo)" ;;
+            *)
+                if [ -n "$owner" ]; then
+                    owner_repo="${owner}/${repo}"
+                else
+                    fjo:error -h "$(_____x_cmd_fjo_help__owner_setting)" "The <owner>/<repo> ${repo}. No owner provided. And default owner not set."
+                    return 1
+                fi
+            ;;
+        esac
+        ;;
+    *)
+        local x_=""; ___x_cmd_fjo_cur get_ owner 2>/dev/null
+        if [ -z "$x_" ]; then
+            fjo:error -h "$(_____x_cmd_fjo_help__owner_setting)" "The <owner>/<repo> ${repo}. No owner provided. And default owner not set."
+            return 1
+        fi
+        owner_repo="${x_}/${op}"
+        ;;
+    esac
+}
+# EndSection
+
+# Section: tea util
+# NOTE: remove prefix: _host_tmp="${_host_tmp#*'://'}";
+___x_cmd_fjo___get_web_endpoint(){
+
+    local _endpoint_tmp=""
+    _endpoint_tmp="$(___x_cmd_fjo_cur get web_endpoint 2>/dev/null)"
+   if [ -n "$_endpoint_tmp" ]; then
+        printf "%s" "$_endpoint_tmp"
+    else
+        local vendor="${___X_CMD_FCT_API_VENDOR:-"fjo"}"
+        case "$vendor" in
+            cb)           printf "%s" "https://codeberg.org" ;;
+            tea)          printf "%s"  "https://gitea.com"   ;;
+            fjo)
+                        local web_endpoint=
+                        ___x_cmd_fjo_cur web_endpoint:= 2>/dev/null
+                        if [ -n "$web_endpoint" ]; then printf "%s" "$web_endpoint"
+                        else  N=fjo  M='Please set your forgejo host firstly' arg:ret:64
+                        fi
+                                 ;;
+            *)          return 1 ;;
+        esac
+
+    fi
+}
+# EndSection
+

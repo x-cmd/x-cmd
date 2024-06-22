@@ -96,6 +96,8 @@ function draw_navi___paint_preview_sel(o, kp, rootkp, x1, x2, y1, y2, opt,      
 function draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, is_dim, is_preview, opt,          gkp, _draw_gsel, _no_title ) {
     gkp = navi_arr_data_sel_kp_get( kp, rootkp )
     draw_gsel_change_set_all( o, gkp )
+
+    TH_CSEL_ITEM_TRIM_CUSTOM_SRTYLE = false
     if (is_dim == true) {
         TH_GSEL_ITEM_UNFOCUSED = UI_TEXT_DIM
         TH_GSEL_ITEM_FOCUSED = UI_TEXT_BOLD

@@ -10,6 +10,7 @@ function draw_gsel_style_init(){
     TH_GSEL_ITEM_UNSELECTED_PREFIX  = ""
     TH_GSEL_ITEM_SELECTED_PREFIX    = ""
     TH_GSEL_ITEM_PREFIX_WIDTH       = 0
+    TH_CSEL_ITEM_TRIM_CUSTOM_SRTYLE = 1
 }
 
 function draw_gsel_multiple_style_init(){
@@ -113,7 +114,7 @@ function draw_gsel___on_cell( o, kp, i, w, opt,         v, ri, s, sl, id ){
     w = w - TH_GSEL_ITEM_PREFIX_WIDTH
     ri = model_arr_get(o, kp, "view-row" SUBSEP i)
     v = model_arr_data_get(o, kp, ri)
-    v = str_remove_esc(v)
+    if ( TH_CSEL_ITEM_TRIM_CUSTOM_SRTYLE ) v = str_remove_esc(v)
 
     if (draw_gsel_cell_selected( o, kp, ri )) {
         v = space_restrict_or_pad_utf8_esc(v, w)

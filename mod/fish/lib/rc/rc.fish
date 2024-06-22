@@ -9,7 +9,7 @@ if ! contains -- $HOME/.x-cmd.root/global/data/bin/l/j/h/bin $path
     set -g PATH $HOME/.x-cmd.root/global/data/bin/l/j/h/bin $PATH
 end
 
-setenv ___X_CMD_CD_RELM_0 $PWD
+set -g ___X_CMD_CD_RELM_0 $PWD
 
 function x
     ___x_cmd $argv
@@ -24,24 +24,32 @@ function c
 end
 
 function ___x_cmd
-    setenv ___X_CMD_XBINEXP_FP "$HOME/.x-cmd.root/local/data/xbinexp/fish/$fish_pid"_(random)
+    set -x ___X_CMD_CD_RELM_0               "$___X_CMD_CD_RELM_0"
+    set -x ___X_CMD_THEME_RELOAD_DISABLE    "$___X_CMD_THEME_RELOAD_DISABLE"
+    set -x ___X_CMD_IS_INTERACTIVE_FORCE    "$___X_CMD_IS_INTERACTIVE_FORCE"
+    set -x ___X_CMD_XBINEXP_FP              "$HOME/.x-cmd.root/local/data/xbinexp/fish/$fish_pid"_(random)
+    set -x ___X_CMD_XBINEXP_INITENV_OLDPWD  "$OLDPWD"
     # mkdir -p $___X_CMD_XBINEXP_FP
-    setenv ___X_CMD_XBINEXP_INITENV_OLDPWD $OLDPWD
 
     bash "$HOME/.x-cmd.root/bin/xbinexp" $argv
     set exit_status $status
+
+    set -u ___X_CMD_CD_RELM_0               "$___X_CMD_CD_RELM_0"
+    set -u ___X_CMD_THEME_RELOAD_DISABLE    "$___X_CMD_THEME_RELOAD_DISABLE"
+    set -u ___X_CMD_XBINEXP_FP              "$___X_CMD_XBINEXP_FP"
+    set -u ___X_CMD_XBINEXP_INITENV_OLDPWD  "$___X_CMD_XBINEXP_INITENV_OLDPWD"
 
     if [ ! -d "$___X_CMD_XBINEXP_FP" ]
         return $exit_status
     end
 
-    setenv ___X_CMD_XBINEXP_EVAL ""
+    set -g ___X_CMD_XBINEXP_EVAL ""
     for file in $___X_CMD_XBINEXP_FP/*
         set varname (string replace -r '^.*/[^_]+_' '' "$file")
         if [ $varname = PWD ]
             cd (cat $file)
         else
-            setenv "$varname" (cat $file)
+            set -g "$varname" (cat $file)
         end
     end
 
@@ -65,9 +73,9 @@ end
 # TODO: in the future, adding the advise
 
 # "$HOME/.x-cmd.root/bin/xbin" prepare alias
-setenv ___X_CMD_THEME_RELOAD_DISABLE 1
 if status is-interactive
-    setenv ___X_CMD_IS_INTERACTIVE_FORCE 1
+    set -g ___X_CMD_THEME_RELOAD_DISABLE 1
+    set -g ___X_CMD_IS_INTERACTIVE_FORCE 1
     # setenv ___X_CMD_CO_EXEC_SHELL=fish
 
     eval ("$HOME/.x-cmd.root/bin/xbin" chat --aliasinit --code)

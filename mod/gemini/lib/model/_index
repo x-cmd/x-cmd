@@ -1,0 +1,68 @@
+# shellcheck shell=dash
+
+___x_cmd_gemini_model(){
+    [ $# -gt 0 ]    ||  set - ls
+
+    local op="$1";      shift
+    case "$op" in
+        ls|ll|set|get)          ___x_cmd_gemini_model_"$op" "$@"            ;;
+        -h|--help)              ___x_cmd help -m gemini model               ;;
+        *)                      ___x_cmd help -m gemini model >&2; return 1 ;;
+    esac
+}
+
+___x_cmd_gemini_model_ll(){
+    ___x_cmd_gemini_model_ls_csv | ___x_cmd csv static_tab
+}
+
+
+___x_cmd_gemini_model_ls(){
+    [ $# -gt 0 ]    ||  set - --app
+
+    local op="$1";      shift
+    case "$op" in
+        --app|--csv|--json)
+                        ___x_cmd_gemini_model_ls_"${op#*--}" "$@" ;;
+        -h|--help)      ___x_cmd help -m gemini model ;;
+    esac
+}
+
+___x_cmd_gemini_model_ls_app(){
+    ___x_cmd_gemini_model_ls_csv | ___x_cmd csv app --return print
+}
+
+___x_cmd_gemini_model_ls_csv(){
+    ___x_cmd_gemini_model_request    | ___x_cmd jo .models \
+                                     | ___x_cmd jo 2c .name .description .supportedGenerationMethods  .inputTokenLimit .outputTokenLimit .temperature .topP .topK  \
+                                     | ___x_cmd cawk -m csv -f "$___X_CMD_ROOT_MOD/csv/lib/awk/csva.awk" \
+                                                            -f "$___X_CMD_ROOT_MOD/gemini/lib/model/model_ls.awk"
+
+}
+
+___x_cmd_gemini_model_ls_json(){
+    ___x_cmd_gemini_model_request
+}
+
+
+___x_cmd_gemini_model_get(){
+    ___x_cmd_gemini_cur model:=  2>/dev/null
+    printf "%s\n" "$model"
+}
+
+
+___x_cmd_gemini_model_set(){
+    local model="$1"
+    ___x_cmd gemini --cfg set model="$model"
+}
+
+# https://ai.google.dev/api/rest/v1beta/models/list?hl=zh-cn
+___x_cmd_gemini_model_request(){
+    local apikey
+    ___x_cmd_gemini_cur apikey:= 2>/dev/null
+    [ -n "$apikey" ] || {
+        gemini:error "Please setting up your apikey first ==> 'x gemini --cfg apikey=<your apikey>'"
+        return 1
+    }
+
+    x ccmd 1d -- ___x_cmd curl -s --fail "${___X_CMD_GEMINI_ENDPOINT}/v1beta/models?key=${apikey}"
+}

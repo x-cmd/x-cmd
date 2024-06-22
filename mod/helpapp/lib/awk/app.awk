@@ -7,7 +7,7 @@ function user_comp_ctrl_sw_toggle( o, kp ){
 # Section: statusline
 function user_statusline_set( o, kp ){
     if ( ! ctrl_sw_get( o, kp ) ) {
-        if (ctrl_navi_sel_sw_get( o, NAVI_KP )) user_statusline_navi_search( o, STATUSLINE_KP )
+        if (ctrl_navi_sel_sw_get( o, NAVI_KP )) user_statusline_navi_filter( o, STATUSLINE_KP )
         else user_statusline_navi_normal( o, STATUSLINE_KP )
     }
     else user_statusline_help(o, STATUSLINE_KP)
@@ -17,17 +17,17 @@ function user_statusline_navi_normal(o, kp){
     comp_statusline_data_clear( o, kp )
     comp_statusline_data_put( o, kp, "Tab", "Switch view", "Switch view to control" )
     comp_statusline_data_put( o, kp, "q", "Quit", "Press 'q' to quit table" )
-    comp_statusline_data_put( o, kp, "/", "Search", "Press '/' to search items" )
+    comp_statusline_data_put( o, kp, "/", "Filter", "Press '/' to filter items" )
     comp_statusline_data_put( o, kp, "←↓↑→/hjkl", "Move focus","Press keys to move focus" )
     comp_statusline_data_put( o, kp, "n/p", "Next/Previous page", "Press 'n' to table next page, 'p' to table previous page" )
     comp_statusline_data_put( o, kp, "?", "Open help", "Close help" )
 }
 
-function user_statusline_navi_search(o, kp) {
+function user_statusline_navi_filter(o, kp) {
     comp_statusline_data_clear( o, kp )
     comp_statusline_data_put( o, kp, "←↓↑→/hjkl", "Move focus" )
     # comp_statusline_data_put( o, kp, "ctrl n/p", "Next/Previous page" )
-    comp_statusline_data_put( o, kp, "/", "Close search" )
+    comp_statusline_data_put( o, kp, "/", "Close filter" )
 }
 
 function user_statusline_help(o, kp){
