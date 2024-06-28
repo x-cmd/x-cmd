@@ -1,12 +1,17 @@
-# shellcheck shell=bash disable=SC2034,SC2154
+# shellcheck shell=dash disable=SC2034,SC2154
 # shellcheck disable=SC2039,3043
 
-xrc:mod:lib fjo     repo/release/attachment repo/release/ls  repo/release/rm repo/release/edit repo/release/info
+xrc:mod:lib fjo     repo/release/attachment/_index \
+                    repo/release/ls                \
+                    repo/release/rm                \
+                    repo/release/edit              \
+                    repo/release/info              \
+                    repo/release/create
 
 ___x_cmd_fjo_repo_release(){
     param:subcmd ___x_cmd_fjo_repo_release                          \
         "ls"                "list repo release"                     \
-        "create|c"          "create repo release"                   \
+        "create"            "create repo release"                   \
         rm                  "Remove repo release"                   \
         "edit|ed"           "update release information"            \
         "info"             "Show detailed information of repo"
@@ -24,8 +29,8 @@ ___x_cmd_fjo_repo_get_release_by_tag() {
     param:scope     ___x_cmd_fjo
     param:dsl    '
 options:
-    #1              "tag name"                                                          <>
-    --repo|-r          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
+    #1              "tag name"                                      <>
+    --repo|-r       "<owner_path>/<repo_path>"                      <>:RepoName
 
     --json|-j       "output json data"
 '
@@ -35,28 +40,6 @@ options:
     ___x_cmd_fjo_curl get "/repos/${owner_repo}/releases/tags/${1}"
 }
 
-# https://gitea.com/api/swagger#/repository/repoCreateRelease
-___x_cmd_fjo_repo_release_create() {
-    param:scope  ___x_cmd_fjo
-    param:dsl    '
-options:
-    --name              "Release name"                                                      <>
-    --tag               "Please provide tag name"                                           <>
-    --repo|-r              "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-    --body              "Release Description"                                               <>=""
-    --target_commitish  "Default is main"                                                   <>:name="main"
-    --draft             "create a draft release"                                            <>:Bool=""
-    --prerelease        "Is release version"                                                <>:Bool=""
-
-    --json|-j           "output json data"
-'
-    param:run
-    ___x_cmd_fjo_param_init_owner_repo
-
-    local gen_fjo_json
-    gen_fjo_json="$(param:option2json -tag tag_name=tag)"
-    ___x_cmd_fjo_curl post "/repos/${owner_repo}/releases" "gen_fjo_json" | _____x_cmd_fjo_release_ui_utils Creating
-}
 
 # Assume pr and owner_repo are environments
 ___x_cmd_fjo_repo_release_init_owner_repo_and_release_main(){
@@ -70,35 +53,36 @@ alias ___x_cmd_fjo_repo_release_init_owner_repo_and_release="
 
 
 # Section: release utils
-_____x_cmd_fjo_release_ui_utils()(
+___x_cmd_fjo_release____ui_handler(){
     if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
         ___x_cmd_cmds_cat
         ___x_cmd_fjo_http_error
         return
     fi
+    (
+        local data
+        local msg
+        local error_msg
+        case "$1" in
+            Creating|Edit)
+                msg="$1 repo release success."
+                error_msg="$1 repo release Fail."
+                ;;
+            Info)
+                msg="Successfully get repo release info."
+                error_msg="Get repo release info failure."
+                ;;
+        esac
+        ___x_cmd jo env . id=.id name=.name tag_name=.tag_name    \
+            branch=.target_commitish html_url=.html_url         \
+            author=.author.login fjo_resp_err=.message
+        if [ -n "$id" ]; then
+            ___x_cmd_ui_tf true "$msg" "Id: $id" ${name+"Name: $name"} ${tag_name+"TagName: $tag_name"}  ${branch+"TargetCommitish: $branch"} ${author+"Author: $author"} ${html_url+"Url: $html_url"}
+        else
+            ___x_cmd_ui_tf false "$error_msg"
+            ___x_cmd_fjo____handle_resp
+            return 1
+        fi
+    )
+}
 
-    local data
-    local msg
-    local error_msg
-    case "$1" in
-        Creating|Edit)
-            msg="$1 repo release success."
-            error_msg="$1 repo release Fail."
-            ;;
-        Info)
-            msg="Successfully get repo release info."
-            error_msg="Get repo release info failure."
-            ;;
-    esac
-    eval x jo env . id=.id name=.name tag_name=.tag_name    \
-        branch=.target_commitish html_url=.html_url         \
-        author=.author.login fjo_resp_err=.message "$data"
-    if [ -n "$id" ]; then
-        ___x_cmd_ui_tf true "$msg" "Id: $id" ${name+"Name: $name"} ${tag_name+"TagName: $tag_name"}  ${branch+"TargetCommitish: $branch"} ${author+"Author: $author"} ${html_url+"Url: $html_url"}
-    else
-        ___x_cmd_ui_tf false "$error_msg"
-        ___x_cmd_fjo____handle_resp
-        return 1
-    fi
-)
-# EndSection

@@ -1,53 +1,70 @@
 # shellcheck shell=dash
 
 ___x_cmd_docker_images(){
-    local op="$1";  [ "$#" -eq 0 ] || shift
+    [ $# -gt 0 ] || set -- app
+
+    local op="$1"; shift
     case "$op" in
-        app|"")     ___x_cmd_docker_images_app "$@" ;;
-        *)          ___x_cmd_docker_images_main "$op" "$@"
+        -h|--help)  ___x_cmd help -m docker images          ;;
+        app|"")     ___x_cmd_docker_images_app              ;;
+
+        *)          ___x_cmd_docker_images_main "$op" "$@"  ;;
     esac
 }
 
 ___x_cmd_docker_images_app(){
-    ___x_cmd_docker_images_main --csv | \
-        x csv tab - 6,9,5,3,11 | command sed -e 's/\\u003c/</g' -e 's/\\u003e/>/g' | x csv app
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___x_cmd_docker_images_app_
+    else
+        ___x_cmd_docker_images_main
+    fi
 }
 
-___x_cmd_docker_images_main(){
-    local format=""
+# TODO: export image, rm image, info image, push image
+___x_cmd_docker_images_app_(){
+    local image_id=
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
+        ___x_cmd csv app --return var ___x_cmd_docker_images_main --csv || return 1
+    image_id="$___X_CMD_CSV_APP_DATA_IMAGE_ID"
 
-    local IMAGE_OPTS=""
+    [ -n "$image_id" ] || return 0
+
+    local id=
+    local cmd=
+    ___x_cmd ui select id,cmd \
+        "Next for image: $___X_CMD_CSV_APP_DATA_REPOSITORY"     \
+        "x docker rmi $image_id"                                \
+        "x docker rmi -f $image_id"                             \
+        "x docker inspect $image_id"                            \
+        "return 1"                                              || return 1
+    docker:debug "run command -> $cmd"
+    eval "$cmd"
+}
+
+
+___x_cmd_docker_images_main(){
+    local IMAGE_OPTS=
     while [ $# -gt 0 ]; do
         case "$1" in
             -j|--json)
-                x cmdstr IMAGE_OPTS --format '{{json .}}'
+                ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
                 shift ;;
             --csv)
-                format=csv
-                shift
-                ;;
-            -a|--all|--digests|--no-trunc|--quiet)
-                x cmdstr IMAGE_OPTS "$1"
+                ___x_cmd cmdstr IMAGE_OPTS --format 'table {{.Repository}},{{.Tag}},{{.ID}},{{.CreatedSince}},{{.Size}},{{.Containers}},{{.CreatedAt}},{{.Digest}},{{.SharedSize}},{{.UniqueSize}}'
+                shift ;;
+            -a|--all|--digests|--no-trunc|-q|--quiet)
+                ___x_cmd cmdstr IMAGE_OPTS "$1"
                 shift ;;
             -f|--filter|--format)
-                x cmdstr IMAGE_OPTS "$1" "$2"
+                [ -n "$2" ] || {
+                    docker:error "The '$1' parameter cannot be empty."
+                    return 1
+                }
+                ___x_cmd cmdstr IMAGE_OPTS "$1" "$2"
                 shift 2 ;;
-            -h|--help)
-                x help -m docker images;        return 0 ;;
-            "")
-                x help -m docker images 1>&2;   return 64 ;;
             *)
-                docker:error "Unkown options ==> $1";
-                return 64
-                ;;
+                docker:error "Unkown options ==> $1";  return 64 ;;
         esac
     done
-
-    case "$format" in
-        csv)    ___x_cmd___docker_origin image ls --format '{{json .}}' | \
-                    x ja jl2c .Containers .CreatedAt .CreatedSince .Digest .ID .Repository .SharedSize .Size .Tag .UniqueSize .VirtualSize | \
-                    x csv header --add Containers,CreatedAt,CreatedSince,Digest,ID,Repository,SharedSize,Size,Tag,UniqueSize,VirtualSize
-                ;;
-        *)      eval ___x_cmd___docker_origin image ls "$IMAGE_OPTS" ;;
-    esac
+    eval ___x_cmd___docker_origin image ls "$IMAGE_OPTS"
 }

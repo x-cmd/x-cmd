@@ -48,7 +48,7 @@ function ___jqparse_list(obj, kp,     token_arrl, token_arr,  idx,              
         idx = ___jqparse_value( obj, kp SUBSEP "\"" (++l) "\"", token_arrl, token_arr, idx )
         if ( token_arr[ idx ] == ",")     idx ++
     }
-    # return 11111111
+    return idx
 }
 
 function ___jqparse_dict(obj, kp,     token_arrl, token_arr,  idx,                 l, t ){
@@ -65,5 +65,5 @@ function ___jqparse_dict(obj, kp,     token_arrl, token_arr,  idx,              
         idx = ___jqparse_value( obj, kp SUBSEP t, token_arrl, token_arr, idx + 2 )
         if ( token_arr[ idx ] == "," )     idx ++
     }
-    # return 11111111
+    return idx
 }

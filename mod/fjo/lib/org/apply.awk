@@ -4,6 +4,7 @@ NR==1{  parse_replace_info($0); }
 # EndSection
 
 # Section: Parse local target yml info
+# TODO:
 
 NR==2{
     jiparse_and_replace_field_after_tokenize( LOCAL_OBJ, $0 );       JITER_CURLEN = 0
@@ -16,6 +17,7 @@ NR==2{
 # EndSection
 
 # Section: Parse remote org info
+# TODO:
 
 NR==3{
     gh_api_init(REMOTE_OBJ)
@@ -26,6 +28,7 @@ NR==3{
 }
 
 # EndSection
+# TODO:
 
 # Section: Parse remote org membership admin info
 
@@ -38,6 +41,7 @@ NR==4{
 }
 
 # EndSection
+# TODO:
 
 # Section: Parse remote org membership member info
 

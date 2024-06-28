@@ -1,4 +1,6 @@
 BEGIN{
+    PROVIDER_NAME       = ENVIRON[ "provider_name" ]
+    PROVIDER_NAME       = (PROVIDER_NAME != "") ? PROVIDER_NAME : "openai"
     QUESTION            = ENVIRON[ "BODY" ]
     CHATID              = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE   = ENVIRON[ "minion_json_cache" ]
@@ -29,7 +31,7 @@ END{
 
     openai_request_body_json            = openai_req_from_creq( history_obj, minion_obj, MINION_KP, creq_obj, CREQ_KP, def_model )
     openai_request_body_json            = chat_str_replaceall( openai_request_body_json )
-    print openai_request_body_json      > (SESSIONDIR "/" CHATID "/openai.request.body.yml")
+    print openai_request_body_json      > (SESSIONDIR "/" CHATID "/" PROVIDER_NAME ".request.body.yml")
 
     print SESSIONDIR "/" CHATID
     print MODEL

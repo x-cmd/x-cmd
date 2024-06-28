@@ -1,18 +1,79 @@
 # shellcheck shell=dash
 ___x_cmd_docker_network(){
+    [ $# -gt 0 ] || set -- app
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)  ___x_cmd help -m docker network              ;;
+        app|"")     ___x_cmd_docker_network_app             "$@" ;;
+        ls)         ___x_cmd_docker_network_ls              "$@" ;;
+
+        *)          ___x_cmd___docker_origin network "$op"  "$@" ;;
+    esac
+}
+
+___x_cmd_docker_network_ls(){
     [ $# -gt 0 ] || {
         ___x_cmd_docker_network_app
         return
     }
 
-    local op="$1"; shift
-    case "$op" in
-        app|"")     ___x_cmd_docker_network_app "$@" ;;
-        *)          ___x_cmd___docker_origin network "$op" "$@"
-    esac
+    ___x_cmd_docker_network_ls_main "$@"
 }
 
 ___x_cmd_docker_network_app(){
-    ___x_cmd___docker_origin network ls --format '{{json .}}' | x ja jl2c .ID .Name .Driver .Scope \
-    | x csv app --width "10%,10%,10%,-" --header 'NETWORK ID,NAME,DRIVER,SCOPE'
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___x_cmd_docker_network_app_
+    else
+        ___x_cmd_docker_network_ls_main
+    fi
 }
+
+___x_cmd_docker_network_app_(){
+    local network_id=
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
+        ___x_cmd csv app --return var ___x_cmd_docker_network_ls_main --csv || return 1
+    network_id="$___X_CMD_CSV_APP_DATA_NETWORK_ID"
+
+    [ -n "$network_id" ] || return 0
+
+    local id=
+    local cmd=
+    ___x_cmd ui select id,cmd \
+        "Next for network: $___X_CMD_CSV_APP_DATA_NAME"     \
+        "x docker network rm $network_id"                       \
+        "x docker network rm -f $network_id"                    \
+        "x docker network inspect $network_id"                  \
+        "return 1"                                              || return 1
+    docker:debug "run command -> $cmd"
+    eval "$cmd"
+}
+
+___x_cmd_docker_network_ls_main(){
+    local IMAGE_OPTS=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -j|--json)
+                ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
+                shift ;;
+            --csv)
+                ___x_cmd cmdstr IMAGE_OPTS --format 'table {{.ID}},{{.Name}},{{.Driver}},{{.Scope}},{{.IPv6}},{{.Internal}},{{.Labels}},{{.CreatedAt}}'
+                shift ;;
+            --no-trunc|-q|--quiet)
+                ___x_cmd cmdstr IMAGE_OPTS "$1"
+                shift ;;
+            -f|--filter|--format)
+                [ -n "$2" ] || {
+                    docker:error "The '$1' parameter cannot be empty."
+                    return 1
+                }
+                ___x_cmd cmdstr IMAGE_OPTS "$1" "$2"
+                shift 2 ;;
+            *)
+                docker:error "Unkown options ==> $1";  return 64 ;;
+        esac
+    done
+    eval ___x_cmd___docker_origin network ls "$IMAGE_OPTS"
+}
+
+# TODO: info, rm, rename, ...

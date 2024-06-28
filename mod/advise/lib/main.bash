@@ -5,7 +5,7 @@ ___x_cmd_advise_run(){
     local x_=;  ___x_cmd_advise_run_filepath_ "$___X_CMD_ADVISE_RUN_CMD" "$name" || return
 
     # Only different from main.3.bash, for words in COMP_WORDBREAKS
-    if [ -z "$___X_CMD_ADVSIE_SHELL_BASH_LT_4_2" ]; then
+    if [ -z "$___X_CMD_ADVISE_SHELL_BASH_LT_4_2" ]; then
         local last="${COMP_WORDS[COMP_CWORD]}"
         local tmp=
         case "$last" in

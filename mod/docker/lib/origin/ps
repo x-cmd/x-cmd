@@ -1,14 +1,74 @@
 # shellcheck shell=dash
 
 ___x_cmd_docker_ps(){
-    local op="$1";  [ $# -eq 0 ] || shift
+    [ $# -gt 0 ] || set -- app
+
+    local op="$1"; shift
     case "$op" in
-        app|"")     ___x_cmd_docker_ps_app "$@" ;;
-        *)          ___x_cmd___docker_origin ps "$op" "$@"
+        -h|--help)  ___x_cmd help -m docker ps          ;;
+        app|"")     ___x_cmd_docker_ps_app "$@"         ;;
+
+        *)          ___x_cmd_docker_ps_main "$op" "$@"  ;;
     esac
 }
 
+# TODO: rm, stop, exec, logs ...
 ___x_cmd_docker_ps_app(){
-    ___x_cmd___docker_origin ps --format '{{json .}}' | x ja jl2c .ID .Image .Command .RunningFor .Status .Ports .Names \
-    | x csv app --header 'CONTAINER ID,IMAGE,COMMAND,CREATED,STATUS,PORTS,NAMES' --width "10%,10%,10%,10%,10%,10%,-"
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___x_cmd_docker_ps_app_
+    else
+        ___x_cmd_docker_ps_main
+    fi
+}
+
+___x_cmd_docker_ps_app_(){
+    local container_id=
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
+        ___x_cmd csv app --return var ___x_cmd_docker_ps_main --csv || return 1
+    container_id="$___X_CMD_CSV_APP_DATA_CONTAINER_ID"
+
+    [ -n "$container_id" ] || return 0
+
+    local id=
+    local cmd=
+    ___x_cmd ui select id,cmd \
+        "Next for container: $___X_CMD_CSV_APP_DATA_REPOSITORY"     \
+        "x docker container stats   $container_id"                  \
+        "x docker container start   $container_id"                  \
+        "x docker container restart $container_id"                  \
+        "x docker container pause   $container_id"                  \
+        "x docker container stop    $container_id"                  \
+        "x docker container rm      $container_id"                  \
+        "x docker container rm -f   $container_id"                  \
+        "x docker container inspect $container_id"                  \
+        "return 1"                                              || return 1
+    docker:debug "run command -> $cmd"
+    eval "$cmd"
+}
+
+___x_cmd_docker_ps_main(){
+    local IMAGE_OPTS=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -j|--json)
+                ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
+                shift ;;
+            --csv)
+                ___x_cmd cmdstr IMAGE_OPTS --format 'table {{.ID}},{{.Image}},{{.Command}},{{.RunningFor}},{{.Status}},{{.Ports}},{{.Names}},{{.Size}},{{.State}},{{.LocalVolumes}},{{.Labels}},{{.CreatedAt}},{{.Mounts}}'
+                shift ;;
+            -s|--size|-l|--latest|-a|--all|--no-trunc|-q|--quiet)
+                ___x_cmd cmdstr IMAGE_OPTS "$1"
+                shift ;;
+            -f|--filter|--format|-n|--last)
+                [ -n "$2" ] || {
+                    docker:error "The '$1' parameter cannot be empty."
+                    return 1
+                }
+                ___x_cmd cmdstr IMAGE_OPTS "$1" "$2"
+                shift 2 ;;
+            *)
+                docker:error "Unkown options ==> $1";  return 64 ;;
+        esac
+    done
+    eval ___x_cmd___docker_origin ps "$IMAGE_OPTS"
 }

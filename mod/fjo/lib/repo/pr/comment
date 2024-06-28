@@ -1,13 +1,13 @@
 # shellcheck shell=bash disable=SC2034,SC2154
+# https://codeberg.org/api/swagger#/repository/repoGetPullReviewComments
 ___x_cmd_fjo_repo_pr_comments(){
     param:subcmd ___x_cmd_fjo_repo_pr_comments   \
         "ls"            "list pull requests comments"   \
-        "info|i"        "pull request comments info"    \
-        "create|c"      "create pull request comments"  \
-        "edit|ed"       "edit pull requests comments"
+        "info"          "pull request comments info"    \
+        "create"        "create pull request comments"  \
+        "rm"            "Delete a pull review comment"
     param:subcmd:try
     param:run
-
 
     ___x_cmd_fjo_repo_pr_comments _param_help_doc
     return 1
@@ -19,52 +19,76 @@ ___x_cmd_fjo_repo_pr_comments_ls() {
     param:scope     ___x_cmd_fjo
     param:dsl       '
 options:
-    --repo|-r      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-    --pr        "pr number."                                                        <>
+    --repo|-r   "<owner_path>/<repo_path>"                              <>:RepoName
+    --pr        "index of the pull request"                             <>:NatureNumber
+    --id        "id of the review"                                      <>:NatureNumber
 '
     param:run
     ___x_cmd_fjo_param_init_owner_repo
     # ___X_CMD_UI_STATIC=1 ___tea_ui_mutual '___ui_table_json id=.id body=.body url=.url -- $@' \
     #     ___x_cmd_fjo_curl get "/repos/${owner_repo}/pulls/$pr/comments"
-    ___x_cmd_fjo_curl get "/repos/${owner_repo}/pulls/$pr/comments"
+    ___x_cmd_fjo_curl get "/repos/${owner_repo}/pulls/$pr/reviews/$id/comments"
 }
 
 ___x_cmd_fjo_repo_pr_comments_create(){
     param:scope     ___x_cmd_fjo
     param:dsl       '
 options:
-    --repo|-r          "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-    --number        "pr number"                                                         <>
-    --body          "The text of the review comment."                                   <>
-    --commit_id     "The SHA of the commit needing a comment"                           <>=""
-    -p|--path       "The relative path to the file"                                     <>=""
-    --position      "The position in the diff where you want to add a review comment"   <>=""
-    --side          ""                                                                  <>=""
-    --line          ""                                                                  <>=""
-    --start_line    ""                                                                  <>=""
-    --start_side    ""                                                                  <>=""
-    --in_reply_to   ""                                                                  <>=""
+    --repo|-r       "<owner_path>/<repo_path>"                                          <>:RepoName
+    --pr            "pr number"                                                         <>:NatureNumber
+    --id            "id of the review"                                                  <>:NatureNumber
+    --body          "The text of the review comment."                                   <>=""
+    --new_position  "if comment to new file line or 0"                                  <>:NatureNumber=0
+    --old_position  "if comment to old file line or 0"                                  <>:NatureNumber=0
+    --path          "the tree path"                                                     <>=""
 '
     param:run
     ___x_cmd_fjo_param_init_owner_repo
     local gen_fjo_json
-    gen_fjo_json="$(param:option2json -repo)"
-    ___x_cmd_fjo_curl post "/repos/${owner_repo}/pulls/$number/comments" "gen_fjo_json"
+    gen_fjo_json="$(param:option2json -repo -pr -id)"
+    ___x_cmd_fjo_curl post "/repos/${owner_repo}/pulls/$pr/reviews/$id" "gen_fjo_json"
+}
+
+___x_cmd_fjo_repo_pr_comments_info(){
+    param:scope     ___x_cmd_fjo
+    param:dsl       '
+options:
+    #1              "The unique identifier of the comment."                             <>:NatureNumber
+    --repo|-r       "<owner_path>/<repo_path>"                                          <>:RepoName
+    --pr            "pr number"                                                         <>:NatureNumber
+    --id            "id of the review"                                                  <>:NatureNumber
+'
+    param:run
+    ___x_cmd_fjo_param_init_owner_repo
+
+    ___x_cmd_fjo_curl get "/repos/${owner_repo}/pulls/$pr/reviews/$id/comments/$1"
 }
 
 ___x_cmd_fjo_repo_pr_comments_rm(){
     param:scope     ___x_cmd_fjo
     param:dsl       '
 options:
-    --repo|-r      "Provide owner name and repo name.(default:the current user repo)"  <>:RepoName
-    #1          "The unique identifier of the comment."                             <>
+    #1              "The unique identifier of the comment."                             <>:NatureNumber
+    --repo|-r       "<owner_path>/<repo_path>"                                          <>:RepoName
+    --pr            "pr number"                                                         <>:NatureNumber
+    --id            "id of the review"                                                  <>:NatureNumber
+
     --yes|-y    "Ignore remove prompt interception"
 '
     param:run
     ___x_cmd_fjo_param_init_owner_repo
-    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove user: $(___x_cmd_ui bold red "$username") ?" || return
-    ___x_cmd_fjo_curl delete "/repos/${owner_repo}/pulls/comments/$1" | (
-        x jo env . fjo_resp_err=.message
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure $org to remove review comment: $(___x_cmd_ui bold red "$1") ?" || return
+    ___x_cmd_fjo_curl del "/repos/${owner_repo}/pulls/$pr/reviews/$id/comments/$1" | ___x_cmd_fjo_pr_comment____ui_handler
+}
+
+___x_cmd_fjo_pr_comment____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        ___x_cmd_cmds_cat
+        ___x_cmd_fjo_http_error
+        return
+    fi
+    (
+        ___x_cmd jo env . fjo_resp_err=.message
         if ___x_cmd_fjo_http_error; then
             ___x_cmd_ui_tf  true "Delete repo pr comment successful"
         else
@@ -72,12 +96,7 @@ options:
             ___x_cmd_fjo____handle_resp
             return 1
         fi
+
     )
 }
 
-___x_cmd_fjo_repo_pr_comments_edit(){
-    param:void
-    :
-}
-
-# EndSection
