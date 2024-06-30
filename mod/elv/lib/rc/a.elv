@@ -1,6 +1,6 @@
 
 fn o        { |@a| use x; x:x chat --sendalias o         $@a ; }
-
+fn lms      { |@a| use x; x:x chat --sendalias lms       $@a ; }       
 fn gemini   { |@a| use x; x:x chat --sendalias gemini    $@a ; }
 fn mistral  { |@a| use x; x:x chat --sendalias mistral   $@a ; }
 fn kimi     { |@a| use x; x:x chat --sendalias kimi      $@a ; }
