@@ -1,0 +1,98 @@
+# shellcheck shell=dash
+
+# x lsio server start -p 2023 --name xxx --image server
+# x lsio server stop --name xxx
+# x lsio server ps
+
+# x lsio ls
+
+
+___x_cmd_lsio_ls(){
+    [ "$#" -gt 0 ] || set -- --app
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            ___x_cmd help -m lsio ls;          return ;;
+        --csv|--json|--yml|--app)
+            ___x_cmd_lsio_ls___"${op#--}"       "$@"  ;;
+        *)  N=lsio M="Not such [option=$op]" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_lsio_ls___raw(){
+    ___x_cmd ccmd 1d -- ___x_cmd curl "https://fleet.linuxserver.io/api/v1/images"
+}
+
+___x_cmd_lsio_ls___json(){
+    ___x_cmd_lsio_ls___raw \
+        | ___x_cmd jo .data.repositories.linuxserver
+}
+
+___x_cmd_lsio_ls___yml(){
+    ___x_cmd_lsio_ls___json \
+        | ___x_cmd yml j2y
+}
+
+___x_cmd_lsio_ls___csv(){
+    printf "%s,%s,%s,%s,%s,%s,%s\n" \
+        'Name' 'PullCount' 'Version' 'Category' 'Stable' 'Deprecated' 'TemplateSpec'
+    ___x_cmd_lsio_ls___json \
+        | ___x_cmd jo tocsv .name .pullCount .version .category .stable .deprecated .templateSpec
+}
+
+___x_cmd_lsio_ls___info(){
+    local name="$1"
+
+    local cmd=".[] | select(.name == \"${name}\")"
+    ___x_cmd_lsio_ls___yml | ___x_cmd yq eval "$cmd"
+}
+
+___x_cmd_lsio_ls___app(){
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___x_cmd_lsio_ls___app_
+    else
+        ___x_cmd_lsio_ls___csv
+    fi
+}
+
+___x_cmd_lsio_ls___app_(){
+    local ___X_CMD_CSV_APP_DATA_Name
+    local ___X_CMD_CSV_APP_DATA_PullCount
+    local ___X_CMD_CSV_APP_DATA_Version
+    local ___X_CMD_CSV_APP_DATA_Category
+    local ___X_CMD_CSV_APP_DATA_Stable
+    local ___X_CMD_CSV_APP_DATA_Deprecated
+    local ___X_CMD_CSV_APP_DATA_TemplateSpec
+
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc lsio; "    \
+        ___x_cmd csv app --return var --clear   \
+            ___x_cmd_lsio_ls___csv || return 1
+
+    local name="$___X_CMD_CSV_APP_DATA_Name"
+    [ -n "$name" ] || return 0
+
+    lsio:info "Select Docker Image ==> $name"
+    local id=
+    ___x_cmd ui select id "Next for image -> linuxserver/$name" \
+        "x docker pull linuxserver/$name"               \
+        "x lsio init $name"                             \
+        "x lsio open $name"                             \
+        "x open github.com/linuxserver/docker-$name"    \
+        "Open Dockerhub for linuxserver/$name"          \
+        "Show info"                                     \
+        "view README.md"                                \
+        "return 0"                                      \
+    || return 1
+
+    case "$id" in
+        1)  ___x_cmd docker pull "linuxserver/$name"                    ;;
+        2)  ___x_cmd lsio init "$name"                                  ;;
+        3)  ___x_cmd lsio open "$name"                                  ;;
+        4)  ___x_cmd open "https://github.com/linuxserver/docker-$name" ;;
+        5)  ___x_cmd open "https://hub.docker.com/r/linuxserver/$name"  ;;
+        6)  ___x_cmd_lsio_ls___info "$name"                             ;;
+        7)  ___x_cmd lsio readme --app "$name"                          ;;
+        *)  return                                                      ;;
+    esac
+}

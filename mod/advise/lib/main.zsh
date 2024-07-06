@@ -28,7 +28,7 @@ ___x_cmd_advise_run(){
     ___x_cmd_advise_run___ltrim_maxitem
     ___x_cmd_advise_run___fix_mac_zsh
 
-    [ -z "${candidate_arr[*]}" ]            || LC_ALL="$_UTF8" LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_arr
+    [ -z "${candidate_arr[*]}" ]            || LC_ALL="$_UTF8" LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_arr || return
     [ -z "${candidate_nospace_arr[*]}" ]    || LC_ALL="$_UTF8" LANG="$_UTF8" ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___describe 'commands' candidate_nospace_arr
 }
 
@@ -40,7 +40,9 @@ ___x_cmd_advise_run___describe(){
             "$@"
 	}
 	_describe "$@"
+    local _exitcode="$?"
 	unset -f compadd
+    return "$_exitcode"
 }
 
 ___x_cmd_advise_run___ltrim_maxitem(){

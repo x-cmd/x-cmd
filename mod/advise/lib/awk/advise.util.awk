@@ -3,10 +3,18 @@ function advise_error(msg){
     return false
 }
 
-function str_escape_special_char(s){
-    if (ZSHVERSION != "") gsub(":", "\\:", s)
-    # if (ZSHVERSION == "") gsub(" ", "\\\\ ", s)
-    return s
+function comp_advise_str_style(v, d,      _res){
+    if ( ___X_CMD_SHELL == "zsh" ){
+        gsub(":", "\\:", v)
+        if ((d != "") && ( ADVISE_WITHOUT_DESC != 1 ))  _res = v ":" d
+        else                                            _res = v
+    } else if ( ___X_CMD_SHELL == "bash") {
+        if ((d != "") && ( ADVISE_WITHOUT_DESC != 1 ))  _res = v "\002" d
+        else                                            _res = v
+    } else {
+        _res = v
+    }
+    return qu1(_res)
 }
 
 function comp_advise_parse_candidate_arr( arr,      s, i, l, _, v, d, _cand_exec, _cand_msg, _ui_warn, _ui_end, kp ){
@@ -37,8 +45,7 @@ function comp_advise_parse_candidate_arr( arr,      s, i, l, _, v, d, _cand_exec
             d = arr[ "CODE", v ]
             v = juq(v)
             gsub(" ", "\\ ", v)
-            if (d != "\"\"") s = s qu1( str_escape_special_char(v) ":" juq(d) ) "\n"
-            else s = s qu1( str_escape_special_char(v) ) "\n"
+            s = s comp_advise_str_style(v, juq(d)) "\n"
         }
         s = s ")\n"
     }
@@ -49,8 +56,7 @@ function comp_advise_parse_candidate_arr( arr,      s, i, l, _, v, d, _cand_exec
             d = arr[ "NOSPACE", v ]
             v = juq(v)
             gsub(" ", "\\ ", v)
-            if (d != "\"\"") s = s qu1( str_escape_special_char(v) ":" juq(d) ) "\n"
-            else s = s qu1( str_escape_special_char(v) ) "\n"
+            s = s comp_advise_str_style(v, juq(d)) "\n"
         }
         s = s ")\n"
     }

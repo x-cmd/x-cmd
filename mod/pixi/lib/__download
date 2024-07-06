@@ -1,0 +1,147 @@
+# shellcheck shell=dash
+
+___x_cmd_pixi___download(){
+    ___x_cmd_pixi___download_inner "$@"
+
+    ___x_cmd_pixi___is_activated || {
+        pixi:info \
+            --tip 'Add pixi to the PATH environment -> x pixi --activate' \
+            "To use softwares installed globally by pixi, you have to add pixi bin folder to PATH"
+    }
+}
+
+___x_cmd_pixi___download_inner(){
+    local version="${1:-latest}"
+
+    local x_=
+    local urlprefix=
+    local packagename=
+
+    x_=; ___x_cmd_pixi___download_packagename_              || return
+    local packagename="$x_"
+
+    # TODO-BEGIN: ___x_cmd [cb|gh] repo release attachment download [--latest|--version $version] "binary-name"
+    # TODO-BEGIN: ___x_cmd [cb|gh] repo release attachment downloadpublic [--latest|--version $version] "binary-name"
+
+    x_=; ___x_cmd_pixi___download_urlprefix_ "$version"     || return
+    local urlprefix="$x_"
+
+    local url="${urlprefix}/${packagename}"
+    local ball="$___X_CMD_PIXI_DOWNLOAD_PATH/$version/$packagename"
+
+    pixi:info "Trying download ==> 'pixi $version'"
+    ___x_cmd rmrf "$ball"
+    ___x_cmd_pixi___download___ball "$url" "$ball"      || N=pixi M="Download failed." log:ret:1
+    # TODO-END
+
+    pixi:info "Trying populate ==> 'pixi $version'"
+    ___x_cmd_pixi___download_populate___ball "$ball"    || N=pixi M="Populate failed." log:ret:1
+
+    pixi:info "pixi $version download successfully!"
+}
+
+___x_cmd_pixi___download___ball(){
+    local url="$1";  [ -n "$url" ]  || return
+    local ball="$2"; [ -n "$ball" ] || return
+    ___x_cmd ensurefp "$ball"
+
+    pixi:info \
+        -m "Download pixi, thanks to the courtesy of ${url%/"${url#*//*/}"}" \
+        --url "$url" --ball "$ball" --name "pixi"
+
+    (
+        trap '___x_cmd_pixi___download_remove___ball "$ball"; return 130;' INT
+        ___x_cmd curl --progress-bar --location --retry-max-time 10 --retry 0 "$url" > "$ball" || {
+            ___x_cmd_pixi___download_remove___ball "$ball"
+            return 1
+        }
+    )
+
+    # ___x_cmd curl -I "$url" | {
+    #     trap 'printf "\r\n"; pixi:error "Download interrupted"; ___x_cmd_pixi___download_remove___ball $ball ; return 130;' INT
+    #     read -r head;
+    #     head="${head#* }"; head="${head%% *}"
+    #     case "$head" in
+    #         2??|3??)
+    #             if ! ___x_cmd curl --progress-bar --location --retry-max-time 10 --retry 0 "$url" --output "$ball"; then
+    #                 pixi:error "Fail to download from $url"
+    #                 ___x_cmd rmrf "$ball"
+    #                 return 1
+    #             fi
+    #             ;;
+    #         *)
+    #             printf "\r"
+    #             pixi:error "resource invalid => $url"
+    #             return 1
+    #             ;;
+    #     esac
+    # } || return
+}
+
+___x_cmd_pixi___download_remove___ball(){
+    local ball="$1"
+    pixi:info "Trying to remove $ball"
+    [ ! -f "$ball" ] || ___x_cmd rmrf "$ball"                    || N=pixi M="Remove $ball failed"    log:ret:1
+}
+
+___x_cmd_pixi___download_populate___ball(){
+    local ball="$1"
+
+    local bin_suffix=
+    local x_=; ___x_cmd os name_
+    [ "$x_" != "win" ] || bin_suffix=".exe"
+
+    local bin_dir="$HOME/.pixi/bin"
+    local bin_path="$bin_dir/pixi${bin_suffix}"
+    ___x_cmd ensurefp "$bin_path"
+
+    pixi:info  --ball "$ball" --target_dir "$bin_dir" "Unpacking"
+    [ ! -f "$bin_path" ] || ___x_cmd mv "$bin_path" "$bin_path.back"
+    ___X_CMD_ZUZ_QUIET=1 ___x_cmd uzr "$ball" "$bin_dir"  || {
+        [ ! -f "$bin_path.back" ] || ___x_cmd mv "$bin_path.back" "$bin_path"
+        N=pixi M="Fail to unzip $ball" log:ret:1
+    }
+    [ ! -f "$bin_path.back" ] || ___x_cmd rmrf "$bin_path.back"
+    ___x_cmd_cmds chmod +x "$bin_dir/pixi${bin_suffix}"
+
+    pixi:info "The 'pixi' binary is installed into '${bin_dir}'."
+}
+
+
+___x_cmd_pixi___download_urlprefix_(){
+    local version="$1"
+    # official: https://github.com/prefix-dev/pixi/releases
+    if ! ___x_cmd websrc is cn; then
+        x_="https://github.com/x-cmd/pixi/releases"
+        if [ "$version" = latest ]; then    x_="${x_}/latest/download"
+        else                                x_="${x_}/download/$version"
+        fi
+    else
+        x_="https://codeberg.org/x-cmd/pixi/releases"
+        x_="${x_}/download/$version"
+    fi
+}
+
+___x_cmd_pixi___download_packagename_(){
+    x_=""
+
+    local arch_suffix=
+    ___x_cmd os arch_
+    case "$x_" in
+        x64|x86)    arch_suffix=x86_64  ;;
+        arm64)      arch_suffix=aarch64 ;;
+        *)          N=pixi M="Unsupported ARCH: $___X_CMD_OS_ARCH_" log:ret:1 ;;
+    esac
+
+    ___x_cmd os name_
+    case "$x_" in
+        linux)      x_=unknown-linux-musl.tar.gz    ;;
+        darwin)     x_=apple-darwin.tar.gz          ;;
+        win)        x_=pc-windows-msvc.zip          ;;
+        *)          N=pixi M="Unsupported OS: $___X_CMD_OS_NAME_" log:ret:1
+    esac
+
+    x_="pixi-${arch_suffix}-${x_}"
+}
+
+

@@ -1,4 +1,11 @@
-BEGIN{  if (___X_CMD_HELP_LANGUAGE != "cn") ___X_CMD_HELP_LANGUAGE = "en";  ___X_CMD_HELP_LANGUAGE = jqu(___X_CMD_HELP_LANGUAGE);  }
+BEGIN{
+    if (___X_CMD_HELP_LANGUAGE != "cn") {
+        if (___X_CMD_HELP_LANGUAGE == "zh" ) ___X_CMD_HELP_LANGUAGE = "cn"
+        else ___X_CMD_HELP_LANGUAGE = "en"
+    }
+    ___X_CMD_HELP_LANGUAGE = jqu(___X_CMD_HELP_LANGUAGE);
+}
+
 function aobj_get_value_with_local_language(o, kp, language){
     return o[ aobj_get_kp_with_local_language(o, kp, language) ]
 }

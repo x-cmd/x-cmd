@@ -1,26 +1,43 @@
 
-# add path to .x-cmd.root/bin and .x-cmd.root/global/data/bin/l/j/h
-
-if ! contains -- $HOME/.x-cmd.root/bin $PATH
-    set -g PATH $HOME/.x-cmd.root/bin $PATH
+function ___x_cmd___rcfish_addp
+    if ! contains -- "$argv[1]" "$PATH"
+        set -g PATH "$argv[1]" "$PATH"
+    end
 end
 
-if ! contains -- $HOME/.x-cmd.root/global/data/bin/l/j/h/bin $path
-    set -g PATH $HOME/.x-cmd.root/global/data/bin/l/j/h/bin $PATH
+function ___x_cmd___rcfish_addpifh
+    if command -v "$argv[1]" >/dev/null 2>&1
+        ___x_cmd___rcfish_addp "$argv[2]"
+    end
 end
+
+function ___x_cmd___rcfish_addpifd
+    if [ -d "$argv[1]" ]
+        ___x_cmd___rcfish_addp "$argv[1]"
+    end
+end
+
+if [ -f "$HOME/.x-cmd.root/ctrl/pixi" ]
+    set -g PATH "$PATH"             "$HOME/.pixi/bin"
+end
+
+___x_cmd___rcfish_addp              "$HOME/.x-cmd.root/bin"
+___x_cmd___rcfish_addp              "$HOME/.x-cmd.root/local/data/bin/l/j/h/bin"
+
+___x_cmd___rcfish_addpifd           "$HOME/.cargo/bin"
+___x_cmd___rcfish_addpifh  go       "$HOME/go/bin"
+
+___x_cmd___rcfish_addpifh  python   "$HOME/.local/bin"
+
+___x_cmd___rcfish_addpifh  deno     "$HOME/.deno/bin"
+___x_cmd___rcfish_addpifh  bun      "$HOME/.bun/bin"
+___x_cmd___rcfish_addpifh  npm      "$HOME/.npm/bin"
+
 
 set -g ___X_CMD_CD_RELM_0 $PWD
 
 function x
     ___x_cmd $argv
-end
-
-function c
-    if [ "$argv[1]" = "-" ]
-        cd -
-        return
-    end
-    ___x_cmd cd $argv
 end
 
 function ___x_cmd
@@ -78,15 +95,28 @@ if status is-interactive
     set -g ___X_CMD_IS_INTERACTIVE_FORCE 1
     # setenv ___X_CMD_CO_EXEC_SHELL=fish
 
+    function c
+        if [ "$argv[1]" = "-" ]
+            cd -
+            return
+        end
+        ___x_cmd cd $argv
+    end
+
+    alias xx='___x_cmd xx'
+    alias xw='___x_cmd ws'
+
+    alias xd='___x_cmd docker'
+    alias xg='___x_cmd git'
+    alias xp="___x_cmd pwsh"
+
+    alias ,="___x_cmd fish --sysco"
+    alias "，"="___x_cmd fish --sysco"
+
+    alias ,,="___x_cmd fish --syscoco"
+    alias "，，"="___x_cmd fish --syscoco"
+
+
     eval ("$HOME/.x-cmd.root/bin/xbin" chat --aliasinit --code)
     eval ("$HOME/.x-cmd.root/bin/xbin" writer --aliasinit --fishcode)
-
-    # chat, writer, w
-    # eval "$("$HOME/.x-cmd.root/bin/xbin" aliasinit --code)"
-
-    alias xw='x ws'
-    alias xg='x git'
-    # alias xd='x docker'
-
-    alias ,="x fish --sysco"
 end

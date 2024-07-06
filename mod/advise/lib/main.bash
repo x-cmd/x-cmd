@@ -1,6 +1,8 @@
 # shellcheck shell=bash disable=SC2207,2206,2034
 
 ___x_cmd_advise_run(){
+    ___x_cmd_awk___get_utf8_
+    local _UTF8="$___X_CMD_AWK_LANGUAGE_UTF8"
     local name="${1:-${COMP_WORDS[0]}}"
     local x_=;  ___x_cmd_advise_run_filepath_ "$___X_CMD_ADVISE_RUN_CMD" "$name" || return
 
@@ -18,6 +20,10 @@ ___x_cmd_advise_run(){
         esac
         # [ "${COMP_LINE% }" = "${COMP_LINE}" ] || tmp+=( "" )        # Ends with space
     fi
+
+    # Reduce trigger times
+    [ "$___X_CMD_ADVISE_LAST_BASH_COMP_LINE" != "$COMP_LINE" ] || return 0
+    ___X_CMD_ADVISE_LAST_BASH_COMP_LINE="$COMP_LINE"
 
     # Used in `eval "$candidate_exec"`
     local cur="${COMP_WORDS[COMP_CWORD]}"
@@ -40,23 +46,15 @@ ___x_cmd_advise_run(){
     local maxitem="${___X_CMD_ADVISE_MAX_ITEM:-0}"
     COMPREPLY=( "${COMPREPLY[@]:0:$maxitem}" )
     maxitem="$(( maxitem - ${#COMPREPLY[@]} ))"
-    [ -z "${candidate_arr[*]}" ]            || COMPREPLY+=( $( ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_arr[@]}" ) )
 
-    maxitem="$(( maxitem - ${#COMPREPLY[@]} ))"
-    [ -z "${candidate_nospace_arr[*]}" ]    || COMPREPLY+=( $( ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___compgen_wordlist "$cur" "${candidate_nospace_arr[@]}" ) )
+    LC_ALL="$_UTF8" LANG="$_UTF8" COMPREPLY+=( $(
+        {
+            [ -z "${candidate_arr[*]}" ] || printf " \002%s\n" "${candidate_arr[@]}"
+            [ -z "${candidate_nospace_arr[*]}" ] || printf "\002%s\n" "${candidate_nospace_arr[@]}"
+        } | ___x_cmd_cmds_awk -v FS="\002" -v current="$cur" -v maxitem="$maxitem" \
+            -v ADVISE_WITHOUT_DESC="$___X_CMD_ADVISE_WITHOUT_DESC" -v candidate_prefix="$candidate_prefix" \
+            -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.bash.compgen_wordlist.awk"
+    ) )
+
     ___x_cmd_advise___ltrim_bash_completions "$old_cur" "@" ":" "="
 }
-
-___x_cmd_advise_run___compgen_wordlist(){
-    local cur="$1"; shift
-    local i=; for i in "$@"; do
-        [ "$maxitem" -gt 0 ] || break
-        [ -n "$i" ] || continue
-        [ -n "$___X_CMD_ADVISE_RUN_SET_NOSPACE" ] || i="${i} "
-        [[ "$i" == $cur* ]] || continue
-        [ -z "$candidate_prefix" ] || i="${candidate_prefix}${i}"
-        printf "%s\n" "${i}"
-        maxitem=$(( maxitem - 1 ))
-    done | command uniq 2>/dev/null
-}
-

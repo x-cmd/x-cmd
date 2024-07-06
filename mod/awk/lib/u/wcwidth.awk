@@ -138,7 +138,8 @@ function wcscolumns(_str,    _length, _max, _min, _offset, _rl, _rs, _total,
         if (_width != -1) {
             _total += _width
         } else if (WCWIDTH_POSIX_MODE) {
-            _total = -1
+            # _total = -1
+            _total += length(_wchar)
             break
         } else {
             # Ignore non-printable ASCII characters.

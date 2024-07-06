@@ -11,7 +11,10 @@ function expand_list(o, kp,        i, l){
     }
 }
 function expand_dict(o, kp,        i, l, msg, key, delarr, delnum, val, j){
-    if ((msg = comp_advise_get_ref( o, kp )) != true) exit(1)
+    if ((msg = comp_advise_get_ref( o, kp )) != true) {
+        log_warn( "advise", msg )
+        exit(1)
+    }
     l = o[ kp L ]
     for (i=1; i<=l; ++i) {
         key = o[ kp, i ]

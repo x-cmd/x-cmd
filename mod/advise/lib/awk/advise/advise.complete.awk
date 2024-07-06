@@ -23,7 +23,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k,
                 v = aobj_get_cand_value( obj, _cand_kp)
                 _cand_kp = _cand_kp SUBSEP v
                 _is_cand_nospace = aobj_is_nospace(obj, _cand_kp)
-                _desc = ( ZSHVERSION != "" ) ? aobj_get_description(obj, _cand_kp) : ""
+                _desc = aobj_get_description(obj, _cand_kp)
                 if (v ~ "^\"") v = juq(v)
                 _arr_valuel = split( v, _arr_value, "|" )
                 for (k=1; k<=_arr_valuel; ++k) {
@@ -37,7 +37,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k,
                             advise_complete___generic_value( substr( curval, length(v)+1 ), genv, lenv, obj, _cand_kp )
                             continue
                         }
-                        else if (index(v, curval) != 1) continue
+                        else if (index(v, curval) <= 0) continue
                     }
                     if (_is_cand_nospace) {
                         jdict_put( CAND, "NOSPACE", jqu(v), jqu(_desc) )
@@ -49,11 +49,11 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k,
         }
         if ( _option_id ~ "^\"#" ) continue
 
-        _desc = ( ZSHVERSION != "" ) ? aobj_get_description(obj, kp SUBSEP _option_id) : ""
+        _desc = aobj_get_description(obj, kp SUBSEP _option_id)
         _arr_valuel = split( juq( _option_id ), _arr_value, "|" )
         for ( j=1; j<=_arr_valuel; ++j) {
             v =_arr_value[j]
-            if ((curval != "") && (index(v, curval) != 1)) continue
+            if ((curval != "") && (index(v, curval) <= 0)) continue
             if ( ! aobj_is_multiple(obj, kp SUBSEP _option_id) && (lenv[ _option_id ] != "")) continue
             if (( curval == "" ) && ( v ~ "^-" )) if ( ! aobj_is_subcmd(obj, kp SUBSEP _option_id ) ) continue
             if (( curval == "-" ) && ( v ~ "^--." )) continue

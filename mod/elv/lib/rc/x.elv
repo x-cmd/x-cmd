@@ -56,10 +56,6 @@ fn x {  |@a|
 }
 
 
-fn xw { |@a| x ws               $@a ; }
-fn xg { |@a| x git              $@a ; }
-fn xd { |@a| x docker           $@a ; }
-
 fn c {
     |@a|
 
@@ -81,10 +77,21 @@ fn c {
     x cd $@a
 }
 
-fn co {
-    |@a|
-    x:x elv --sysco $@a
-}
+fn xx   { |@a| x xx               $@a ; }
+fn xw   { |@a| x ws               $@a ; }
+
+fn xd   { |@a| x docker           $@a ; }
+fn xg   { |@a| x git              $@a ; }
+fn xp   { |@a| x pwsh             $@a ; }
+
+fn co   { |@a| x:x elv --sysco    $@a ; }
+fn coco { |@a| x:x elv --syscoco  $@a ; }
+
+fn addp {       |p|         if ( not (has-value $paths $p) )    {   set paths = [ $p $@paths ] } }
+fn addpifh {    |bin p|     if ( has-external $bin )            {   addp $p     } }
+fn addpifd {    |p|         if ( os:is-dir $p )                 {   addp $p     } }
+
+# defintion of @<xxx> is in module a
 
 fn init {
     set-env OLDPWD $pwd
@@ -98,14 +105,22 @@ fn init {
         $@before-chdir
     ]
 
-    if (has-value $paths $E:HOME/.x-cmd.root/bin) {
-        # set E:PATH = $E:HOME/.x-cmd.root/bin:$E:PATH
-        set paths = [ $E:HOME/.x-cmd.root/bin                         $@paths ]
+    if ( os:is-regular $E:HOME/.x-cmd.root/ctrl/pixi ) {
+        set paths = [ $@paths $E:HOME/.pixi/bin ]
     }
 
-    if (has-value $paths $E:HOME/.x-cmd.root/global/data/bin/l/j/h/bin) {
-        set paths = [ $E:HOME/.x-cmd.root/global/data/bin/l/j/h/bin   $@paths ]
-    }
+    addp                $E:HOME/.x-cmd.root/bin
+    addp                $E:HOME/.x-cmd.root/local/data/bin/l/j/h/bin
+
+    # TODO: foreach pkg/path pkg/env, then add path and env
+    addpifd             $E:HOME/.cargo/bin
+    addpifh  go         $E:HOME/go/bin
+
+    addpifh  python     $E:HOME/.local/bin
+
+    addpifh  deno       $E:HOME/.deno/bin
+    addpifh  bun        $E:HOME/.bun/bin
+    addpifh  npm        $E:HOME/.npm/bin
 
     if ( os:is-regular $E:HOME/.config/elvish/lib/a.elv ) {
         use a
@@ -125,9 +140,14 @@ fn init {
         &x~=$x~
         &c~=$c~
         &xw~=$xw~
-        &xg~=$xg~
+        &xx~=$xx~
         &xd~=$xd~
+        &xg~=$xg~
+        &xp~=$xp~
         &init~=$init~
         &,=$co~
+        &，=$co~
+        &,,=$coco~
+        &，，=$coco~
     ]
 }
