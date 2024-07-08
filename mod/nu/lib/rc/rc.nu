@@ -25,7 +25,7 @@ export-env {
     }
 
     ___x_cmd_nu_nurc_addpath            $"($env.HOME)/.x-cmd.root/bin"
-    ___x_cmd_nu_nurc_addpath            $"($env.HOME)/.x-cmd.root/local/data/bin/l/j/h/bin"
+    ___x_cmd_nu_nurc_addpath            $"($env.HOME)/.x-cmd.root/local/data/pkg/sphere/X/l/j/h/bin"
     ___x_cmd_nu_nurc_addpifd            $"($env.HOME)/.cargo/bin"
 
     ___x_cmd_nu_nurc_addpifh go         $"($env.HOME)/go/bin"

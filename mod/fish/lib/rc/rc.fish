@@ -22,7 +22,7 @@ if [ -f "$HOME/.x-cmd.root/ctrl/pixi" ]
 end
 
 ___x_cmd___rcfish_addp              "$HOME/.x-cmd.root/bin"
-___x_cmd___rcfish_addp              "$HOME/.x-cmd.root/local/data/bin/l/j/h/bin"
+___x_cmd___rcfish_addp              "$HOME/.x-cmd.root/local/data/pkg/sphere/X/l/j/h/bin"
 
 ___x_cmd___rcfish_addpifd           "$HOME/.cargo/bin"
 ___x_cmd___rcfish_addpifh  go       "$HOME/go/bin"

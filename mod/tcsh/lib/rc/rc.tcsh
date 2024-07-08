@@ -2,7 +2,7 @@
 
 # TODO: improve this ...
 if ( "$PATH" !~ *$HOME/.x-cmd.root/bin* ) then
-    setenv PATH $HOME/.x-cmd.root/bin:$HOME/.x-cmd.root/local/data/bin/l/j/h/bin:$PATH
+    setenv PATH $HOME/.x-cmd.root/bin:$HOME/.x-cmd.root/local/data/pkg/sphere/X/l/j/h/bin:$PATH
 endif
 
 setenv  ___X_CMD_CD_RELM_0      "$PWD"

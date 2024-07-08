@@ -41,9 +41,8 @@ function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, 
     _width = y2-y1+1
     navi_arr_data_maxview_width( o, kp, int(_width/3))
     l = opt_get( opt, "cur.col" )
-    draw_navi_layout_init( o, kp, _width, l, opt)
 
-    _start = o[ kp, "viewcol.begin" ]
+    _start = draw_navi_layout_init( o, kp, _width, l, opt)
     for (i=_start; i<=l; ++i) {
         _rootkp = navi_arr_data_trace_col_val( o, kp, i )
         if (!draw_navi_data_available(o, kp, _rootkp)) {
@@ -155,7 +154,7 @@ function draw_navi_layout_init( o, kp, w, l, opt,       i, _colw, _viewcol_begin
         if (w < 0) break
         _viewcol_begin = i
     }
-    o[ kp, "viewcol.begin" ] = _viewcol_begin
+    return o[ kp, "viewcol.begin" ] = _viewcol_begin
 }
 
 function draw_navi_curcol_preview_is_null(opt){

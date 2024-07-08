@@ -110,7 +110,7 @@ fn init {
     }
 
     addp                $E:HOME/.x-cmd.root/bin
-    addp                $E:HOME/.x-cmd.root/local/data/bin/l/j/h/bin
+    addp                $E:HOME/.x-cmd.root/local/data/pkg/sphere/X/l/j/h/bin
 
     # TODO: foreach pkg/path pkg/env, then add path and env
     addpifd             $E:HOME/.cargo/bin
