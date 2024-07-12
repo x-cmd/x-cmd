@@ -21,11 +21,9 @@
 </p>
 
 <p align="center">
-For <bold>source code</bold>, please swtich to <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> branch. This branch is for action and demo.
+For <bold>source code</bold>, please swtich to <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> branch.
 <br>
-If you like x-cmd, please give us a star ⭐.
-<br>
-Your support is our biggest motivation.
+X branch is for demo and action ⭐
 </p>
 
 ![x osv demo gif](https://github.com/x-cmd/x-cmd/assets/40693636/f7c8c503-3d77-4939-8932-f2c03ed8f263)

@@ -21,11 +21,9 @@
 </p>
 
 <p align="center">
-查看<bold>源码</bold>请切换到 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支；X 分支用作 demo 和 action。
+查看<bold>源码</bold>请切换到 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支
 <br>
-如果你觉得 x-cmd 不错，请给我们一个 star ⭐
-<br>
-你的支持是我们不断改进的动力 ~
+X 分支用作 demo 和 action ⭐
 </p>
 
 <table align="center">
