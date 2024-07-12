@@ -1,0 +1,106 @@
+
+# x gh repo fs cat -r x-cmd/carapace go.mod
+# x gh repo pfs cat -r x-cmd/carapace go.mod
+
+# 不需要
+# x gh ls -r x-cmd/carapace src
+# x gh cat -r x-cmd/carapace go.mod
+
+
+# Using
+# x cat gh:x-cmd/carapace src
+# x ls gh:x-cmd/carapace go.mod
+# shellcheck shell=dash disable=SC2154
+
+___x_cmd_gh_repo_fs(){
+    param:scope  ___x_cmd_github
+    param:subcmd ___x_cmd_gh_repo_fs              \
+        cat              "download repo file"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_repo_fs _param_help_doc
+    return 1
+}
+
+___x_cmd_gh_repo_fs_cat(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "repo path parameter"                                                   <>
+    --repo|-r       "<owner_path>/<repo_path>"                                              <>:RepoName
+    --ref           "The name of the commit/branch/tag. Default using default branch"       <>=""
+    --dir|-d        "file save path"                                                        <>=""
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+
+    [ -n "$1" ]          || M='Please provide a file name' arg:ret:64
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    local fname
+    local download_url
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/contents/${1}" ref | {
+        ___x_cmd jo env . fname=.name download_url=.download_url
+        ___x_cmd_gh_repo_fsp_cat___download
+    }
+}
+
+___x_cmd_gh_repo_fsp(){
+    param:scope  ___x_cmd_github
+    param:subcmd ___x_cmd_gh_repo_fsp              \
+        cat              "download repo file"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_repo_fsp _param_help_doc
+    return 1
+}
+
+___x_cmd_gh_repo_fsp_cat(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "repo path parameter"                                                   <>
+    --repo|-r       "<owner_path>/<repo_path>"                                              <>:RepoName
+    --ref           "The name of the commit/branch/tag. Default using default branch"       <>=""
+    --dir|-d        "file save path"                                                        <>=""
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+
+    [ -n "$1" ]          || M='Please provide a file name' arg:ret:64
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    local fname
+    local download_url
+    ___x_cmd_gh_repo_fsp_cat___curl "$1" | {
+        ___x_cmd jo env . fname=.name download_url=.download_url
+        ___x_cmd_gh_repo_fsp_cat___download
+    }
+}
+
+___x_cmd_gh_repo_fsp_cat___download(){
+    local targetfp
+    [ -n "$download_url" ] || N=gh M="not found download path" log:ret:1
+    if [ -n "$dir" ]; then
+        targetfp="$dir/$fname"
+        ___x_cmd ensurefp "$targetfp"
+    else
+        targetfp="./$fname"
+    fi
+    [ ! -f "$targetfp" ] || ___x_cmd ui yesno "file already exists. Do you want to overwrite it?" || return
+    gh:info "download [file=$fname] to [save_path=${targetfp%\/*}]"
+    ___x_cmd curl -o "$targetfp" "$download_url"
+}
+
+___x_cmd_gh_repo_fsp_cat___curl(){
+    local _file="$1"
+    ___x_cmd_gh_cur    _curl_endpoint_tmp:=endpoint 2>/dev/null
+    [ -n "$_curl_endpoint_tmp" ] || return 1
+    [ -z "$ref" ] || ref="?ref=$ref"
+
+    local _url="$_curl_endpoint_tmp/repos/${owner_repo}/contents/${_file}${ref}"
+    gh:debug --url "$_url" "get download url"
+    ___x_cmd curl -s "$_url" -H "Accept:application/vnd.github.v3+json"
+}

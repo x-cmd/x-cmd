@@ -14,7 +14,7 @@ function parse_item(v, w, sep,       item, s, _res){
 
 function output(s){
     printf UI_LINEWRAP_DISABLE > "/dev/stderr"
-    print s
+    print TH_THEME_COLOR s UI_END
     printf UI_LINEWRAP_ENABLE > "/dev/stderr"
 }
 
@@ -26,6 +26,17 @@ function space_str(w,       s){
 BEGIN{
     PROPORTION = ENVIRON[ "PROPORTION" ]
     COLUMNS = ENVIRON[ "COLUMNS" ]
+    IS_SHOW_COLOR = ENVIRON[ "IS_SHOW_COLOR" ]
+    NO_COLOR = ENVIRON[ "NO_COLOR" ]
+
+    if (( IS_SHOW_COLOR != "" ) && ( NO_COLOR != 1 )){
+        UI_END = "\033[0m"
+        if ( IS_SHOW_COLOR == "auto" ) {
+            TH_THEME_COLOR = ENVIRON[ "___X_CMD_THEME_COLOR_CODE" ]
+            TH_THEME_COLOR = (TH_THEME_COLOR) ? "\033[" TH_THEME_COLOR "m" : "\033[36m"
+        }
+    }
+
     SEP = "   "
 
     if (PROPORTION != "") IS_STREAM = csv_parse_width(arr, PROPORTION, COLUMNS, ",")

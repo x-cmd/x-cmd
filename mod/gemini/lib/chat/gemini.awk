@@ -59,7 +59,7 @@ function gemini_req_from_creq(history_obj, minion_obj, question, creq_obj, creq_
 
     if ( ! chat_str_is_null(promote_content))  USER_LATEST_QUESTION = promote_content
     else USER_LATEST_QUESTION = question
-    
+
     _safe_setting = gemini_gen_safe_setting_str()
 
     _media_str      = gemini_gen_media_str(creq_obj, creq_kp)

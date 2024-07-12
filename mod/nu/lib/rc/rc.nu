@@ -20,7 +20,7 @@ export def --env ___x_cmd_nu_nurc_addpifh [ cmd, element ] {
 }
 
 export-env {
-    if ( $"($env.HOME)/.x-cmd.root/ctrl/pixi" | path exists ) {
+    if ( $"($env.HOME)/.x-cmd.root/boot/pixi" | path exists ) {
         ___x_cmd_nu_nurc_addpath $"($env.HOME)/.pixi/bin"
     }
 

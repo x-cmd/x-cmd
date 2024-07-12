@@ -210,7 +210,7 @@ function generate_subcmd_help_unit( obj, kp, arr, arr_kp,        i, v, l, _str, 
     return _str
 }
 
-function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _str_footer, l, i, k) {
+function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _str_footer, _str_unit, l, i, k) {
     if (! arr_group[ ADVISE_HAS_TAG ]) return
     _str_title = generate_title("SUBCOMMANDS:") "\n"
     if (arr_len(arr_group, ADVISE_NULL_TAG)) _str = _str generate_subcmd_help_unit( obj, kp, arr_group, ADVISE_NULL_TAG)
@@ -219,7 +219,8 @@ function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _s
         k = arr_group[ i ]
         if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
         if (! aobj_len( arr_group, k )) continue
-        _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" generate_subcmd_help_unit( obj, kp, arr_group, k)
+        _str_unit = generate_subcmd_help_unit( obj, kp, arr_group, k)
+        if ( _str_unit != "" ) _str = _str "    " COMP_HELPDOC_TAG_LEFT juq(k) COMP_HELPDOC_TAG_RIGHT "\n" _str_unit
     }
     _str_footer = generate_subcmd_help_tip( obj, kp )
     if (_str != "") return _str_title _str "\n" _str_footer
@@ -349,7 +350,7 @@ function generate_tip_help(arr,         _str, i, l, kp, color, title){
 }
 
 function help_get_ref(obj, kp,        msg){
-    if ((msg = comp_advise_get_ref(obj, kp)) != true) return panic( msg )
+    if ((msg = comp_advise_get_ref(obj, kp)) != true) return false # panic( msg )
 }
 
 function comp_parse_position_order(str, arr,        i, l){

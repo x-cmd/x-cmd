@@ -17,7 +17,7 @@ function ___x_cmd___rcfish_addpifd
     end
 end
 
-if [ -f "$HOME/.x-cmd.root/ctrl/pixi" ]
+if [ -f "$HOME/.x-cmd.root/boot/pixi" ]
     set -g PATH "$PATH"             "$HOME/.pixi/bin"
 end
 
@@ -95,28 +95,33 @@ if status is-interactive
     set -g ___X_CMD_IS_INTERACTIVE_FORCE 1
     # setenv ___X_CMD_CO_EXEC_SHELL=fish
 
-    function c
-        if [ "$argv[1]" = "-" ]
-            cd -
-            return
+    [ -f "$HOME/.x-cmd.root/boot/alias/c.disable"     ]   ||  begin
+        function c
+            if [ "$argv[1]" = "-" ]
+                cd -
+                return
+            end
+            ___x_cmd cd $argv
         end
-        ___x_cmd cd $argv
     end
 
-    alias xx='___x_cmd xx'
-    alias xw='___x_cmd ws'
+    [ -f "$HOME/.x-cmd.root/boot/alias/xx.disable"      ]  ||  alias xx='___x_cmd xx'
+    [ -f "$HOME/.x-cmd.root/boot/alias/xw.disable"      ]  ||  alias xw='___x_cmd ws'
+    [ -f "$HOME/.x-cmd.root/boot/alias/xd.disable"      ]  ||  alias xd='___x_cmd docker'
+    [ -f "$HOME/.x-cmd.root/boot/alias/xg.disable"      ]  ||  alias xg='___x_cmd git'
+    [ -f "$HOME/.x-cmd.root/boot/alias/xp.disable"      ]  ||  alias xp="___x_cmd pwsh"
 
-    alias xd='___x_cmd docker'
-    alias xg='___x_cmd git'
-    alias xp="___x_cmd pwsh"
+    [ -f "$HOME/.x-cmd.root/boot/alias/co.disable"      ]  ||  begin
+        alias ,="___x_cmd fish --sysco"
+        alias "，"="___x_cmd fish --sysco"
+    end
 
-    alias ,="___x_cmd fish --sysco"
-    alias "，"="___x_cmd fish --sysco"
+    [ -f "$HOME/.x-cmd.root/boot/alias/coco.disable"    ]  ||  begin
+        alias ,,="___x_cmd fish --syscoco"
+        alias "，，"="___x_cmd fish --syscoco"
+    end
 
-    alias ,,="___x_cmd fish --syscoco"
-    alias "，，"="___x_cmd fish --syscoco"
+    [ -f "$HOME/.x-cmd.root/boot/alias/chat.disable"    ]  ||  eval ("$HOME/.x-cmd.root/bin/xbin" chat --aliasinit --code)
+    [ -f "$HOME/.x-cmd.root/boot/alias/writer.disable"  ]  ||  eval ("$HOME/.x-cmd.root/bin/xbin" writer --aliasinit --fishcode)
 
-
-    eval ("$HOME/.x-cmd.root/bin/xbin" chat --aliasinit --code)
-    eval ("$HOME/.x-cmd.root/bin/xbin" writer --aliasinit --fishcode)
 end

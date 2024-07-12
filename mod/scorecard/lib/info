@@ -1,0 +1,81 @@
+# shellcheck shell=dash
+
+___x_cmd_scorecard_info(){
+    [ "$#" -gt 0 ] ||   set - --help
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m scorecard info;    return 0 ;;
+        --app)          ___x_cmd_scorecard_info___app           "$@" ;;
+        --csv)          ___x_cmd_scorecard_info___csv           "$@" ;;
+        --yml)          ___x_cmd_scorecard_info___yml           "$@" ;;
+        --json)         ___x_cmd_scorecard_info___json          "$@" ;;
+
+        --preview)      ___x_cmd_scorecard_info___preview       "$@" ;;
+        --raw)          ___x_cmd_scorecard_info___raw           "$@" ;;
+        *)              ___x_cmd_scorecard_info___app "$op"     "$@" ;;
+    esac
+}
+
+___x_cmd_scorecard_info___csv(){
+    ___x_cmd_scorecard_info___raw "$@"  \
+        | ___x_cmd jo 1.checks          \
+        | ___x_cmd jo 2c                \
+            .score .name .reason .details .documentation \
+        | ___x_cmd csv header --add     \
+            SCORE NAME REASON DETAILS DOCUMENTATION
+}
+
+___x_cmd_scorecard_info___yml(){
+    ___x_cmd_scorecard_info___raw "$@" | ___x_cmd j2y
+}
+
+___x_cmd_scorecard_info___json(){
+    ___x_cmd_scorecard_info___raw "$@" | ___x_cmd jo fmt
+}
+
+# https://api.scorecard.dev/#/
+___x_cmd_scorecard_info___raw(){
+    local proj="${1%%,*}"; [ -n "$proj" ] || M='Provide a project address.' N=pkg log:ret:1
+    ___x_cmd ccmd 1d -- ___x_cmd curl -s "https://api.scorecard.dev/projects/${proj}"
+}
+
+
+___x_cmd_scorecard_info___app(){
+    # using json
+    # to output the metadata
+    # to output the csv data
+    if [ -t 1 ] && ___x_cmd_is_interactive ; then
+        ___x_cmd_scorecard_info___app_ "$@"
+    else
+        ___x_cmd_scorecard_info___raw "$@"
+    fi
+}
+
+___x_cmd_scorecard_info___app_(){
+    ___x_cmd_scorecard_info___raw "$@"  | ___x_cmd yq 'del(.checks)' -P
+    ___x_cmd_scorecard_info___check2csv "$@" | ___x_cmd csv app
+}
+
+
+___x_cmd_scorecard_info___check2csv(){
+    ___x_cmd_scorecard_info___raw "$@"  \
+        | ___x_cmd jo 1.checks          \
+        | ___x_cmd jo 2c                \
+            .score .name .reason .documentation.url \
+        | ___x_cmd csv header --add     \
+            SCORE NAME REASON DOCUMENTATION/REMEDIATION
+}
+
+___x_cmd_scorecard_info___preview(){
+    local data=
+    data="$(___x_cmd_scorecard_info___raw "$@")"
+    xrc pkg
+    printf "%s" "$data" | ___x_cmd yq eval --colors 'del(.checks)' -P
+    printf "%s" "$data" \
+        | ___x_cmd jo 1.checks          \
+        | ___x_cmd jo 2c                \
+            .score .name .reason \
+        | ___x_cmd csv header --add     \
+            SCORE NAME REASON           \
+        | ___x_cmd csv static_tab
+}

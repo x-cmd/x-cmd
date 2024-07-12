@@ -1,4 +1,4 @@
-# shellcheck shell=dash disable=2034,2016
+# shellcheck shell=dash disable=2034,2016,2120
 
 # @gemini -a file -t 0 -p
 # Enter into REPL mode
@@ -52,7 +52,10 @@ ___x_cmd_chat___exec_repl_loop(){
     local id
     local history_num=10
     local ___X_CMD_MD_LLM_LESS_DISABLE=1
+    local history_record_file="$___X_CMD_CHAT_SESSION_DIR/$session/.history"
     local x_=""
+    local question=""
+    local initial_value=""
 
     x_=; ___x_cmd_chat___exec_repl___session_runid_ "$session"
     local run_id="$x_";
@@ -61,8 +64,9 @@ ___x_cmd_chat___exec_repl_loop(){
         question=
 
         printf "[%s] %s\n" "$session"  "$run_id" >/dev/tty
-        x_=; ___x_cmd_chat___exec_repl___ted_ || break
+        x_=; ___x_cmd_chat___exec_repl___ted_ "$initial_value" || break
         printf "\033[1;7m>>> %s \033[0m\n" "$x_" > /dev/tty
+        initial_value=
 
         case "$x_" in
             # /attach)
@@ -80,7 +84,15 @@ ___x_cmd_chat___exec_repl_loop(){
                     # store the session data ...
                     ___x_cmd_chat_init
                     ;;
-
+            /l)
+                    [ -f "$history_record_file" ] || {
+                        chat:debug "Not found file -> $history_record_file"
+                        chat:info "Not found history record"
+                        continue
+                    }
+                    initial_value="$( < "$history_record_file" ___x_cmd pick --limit no-limit )"
+                    [ -z "$initial_value" ] || ___x_cmd pb -c "$initial_value"
+                    ;;
             "")
                     ___x_cmd ui select id   "Next"      \
                         "/h         | show help"        \
@@ -98,8 +110,11 @@ ___x_cmd_chat___exec_repl_loop(){
                     ;;
 
             *)
+                    ___x_cmd ensurefp "$history_record_file"
+                    printf "%s\n" "$x_" >> "$history_record_file"
                     question="$x_"
                     ___x_cmd_chat___exec_inner_ || {
+                        chat:debug "Execution failed"
                         continue
                     }
                     run_id=$(( run_id + 1 ))
@@ -121,6 +136,7 @@ ___x_cmd_chat___exec_repl___printhelp(){
     ___x_cmd ui style info "Commands:
     /h          | show help
     /exit       | exit the loop
+    /l          | list the current session history record and select
     = <command> | execute the shell command
 
 Other inputs continue the loop, use \ to start multi-line input content
@@ -131,15 +147,17 @@ Other inputs continue the loop, use \ to start multi-line input content
 ___x_cmd_chat___exec_repl___ted_(){
     local style="${___X_CMD_CHAT_EXEC_REPL_TED_STYLE:-gum}"
     case "$style" in
-        gum)    ___x_cmd_chat___exec_repl___gum_    ;;
-        *)      ___x_cmd_chat___exec_repl___read_   ;;
+        gum)    ___x_cmd_chat___exec_repl___gum_    "$@" ;;
+        *)      ___x_cmd_chat___exec_repl___read_   "$@" ;;
     esac
 }
 
 ___x_cmd_chat___exec_repl___read_(){
     x_="$( ___x_cmd_chat___exec_repl___read )"
 }
+
 ___x_cmd_chat___exec_repl___read(){
+    local initial_value="$1"    # TODO
     trap 'return 130' INT
     printf "\0337>>> " >/dev/tty
     local x_=""
@@ -163,10 +181,15 @@ ___x_cmd_chat___exec_repl___read(){
 }
 
 ___x_cmd_chat___exec_repl___gum_(){
-    x_="$(___x_cmd gum input --prompt=">>> " --width 0 --placeholder="Enter to end the input, Ctrl-C to exit, /h for help")" || return
-    [ "$x_" = "${x_%\\}" ] || {
-        x_="$(___x_cmd gum write --width 0 --header "Press Ctrl-D to end the input" --value "${x_%\\}")"
-    }
+    local initial_value="$1"
+    if [ "$initial_value" != "${initial_value#*"${___X_CMD_UNSEENCHAR_NEWLINE}"}" ]; then
+        x_="$(___x_cmd gum write --width 0 --header "Press Ctrl-D to end the input" --value "$initial_value")"
+    else
+        x_="$(___x_cmd gum input --prompt=">>> " --width 0 --value "$initial_value" --placeholder="Enter to end the input, Ctrl-C to exit, /h for help")" || return
+        [ "$x_" = "${x_%\\}" ] || {
+            x_="$(___x_cmd gum write --width 0 --header "Press Ctrl-D to end the input" --value "${x_%\\}")"
+        }
+    fi
 }
 
 # EndSection

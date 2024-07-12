@@ -77,15 +77,15 @@ fn c {
     x cd $@a
 }
 
-fn xx   { |@a| x xx               $@a ; }
-fn xw   { |@a| x ws               $@a ; }
+fn xx   { |@a| x xx             $@a ; }
+fn xw   { |@a| x ws             $@a ; }
 
-fn xd   { |@a| x docker           $@a ; }
-fn xg   { |@a| x git              $@a ; }
-fn xp   { |@a| x pwsh             $@a ; }
+fn xd   { |@a| x docker         $@a ; }
+fn xg   { |@a| x git            $@a ; }
+fn xp   { |@a| x pwsh           $@a ; }
 
-fn co   { |@a| x:x elv --sysco    $@a ; }
-fn coco { |@a| x:x elv --syscoco  $@a ; }
+fn co   { |@a| x elv --sysco    $@a ; }
+fn coco { |@a| x elv --syscoco  $@a ; }
 
 fn addp {       |p|         if ( not (has-value $paths $p) )    {   set paths = [ $p $@paths ] } }
 fn addpifh {    |bin p|     if ( has-external $bin )            {   addp $p     } }
@@ -105,7 +105,7 @@ fn init {
         $@before-chdir
     ]
 
-    if ( os:is-regular $E:HOME/.x-cmd.root/ctrl/pixi ) {
+    if ( os:is-regular $E:HOME/.x-cmd.root/boot/pixi ) {
         set paths = [ $@paths $E:HOME/.pixi/bin ]
     }
 
@@ -135,19 +135,35 @@ fn init {
     # TODO: activate advise
     # TODO: activate theme
 
-    edit:add-vars [
-        &x1~=$x~
-        &x~=$x~
-        &c~=$c~
-        &xw~=$xw~
-        &xx~=$xx~
-        &xd~=$xd~
-        &xg~=$xg~
-        &xp~=$xp~
-        &init~=$init~
-        &,=$co~
-        &，=$co~
-        &,,=$coco~
-        &，，=$coco~
-    ]
+    edit:add-var            x~      $x~
+
+
+    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/c.disable    )) {
+        edit:add-var        c~      $c~
+    }
+
+
+    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xx.disable   )) {
+        edit:add-var        xx~     $xx~
+    }
+    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xw.disable   )) {
+        edit:add-var        xw~     $xw~
+    }
+    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xd.disable   )) {
+        edit:add-var        xd~     $xd~
+    }
+    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xg.disable   )) {
+        edit:add-var        xg~     $xg~
+    }
+    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xp.disable   )) {
+        edit:add-var        xp~     $xp~
+    }
+
+
+    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/co.disable   )) {
+        edit:add-vars [     &,~=$co~        &，~=$co~       ]
+    }
+    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/coco.disable )) {
+        edit:add-vars [     &,,~=$coco~     &，，~=$coco~   ]
+    }
 }

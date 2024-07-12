@@ -6,7 +6,7 @@ function user_request_data( o, kp, rootkp ){
 function tapp_init(){
     LSENV_KP = "ls_kp"
     navi_init(o, LSENV_KP)
-    navi_statusline_add( o, LSENV_KP, "b", "Browse", "Press 'b' to open the x-cmd/pkg URL with browser" )
+    navi_statusline_add( o, LSENV_KP, "o/b", "Open browse", "Press 'o' or 'b' to open the x-cmd/pkg URL with browser" )
     navi_statusline_init( o, LSENV_KP )
     comp_textbox_init(o, "CUSTOM_FILEINFO_KP")
     comp_navi_current_position_var(o, LSENV_KP, ENVIRON[ "___X_CMD_ENV_NAVI_POSITION" ])
@@ -22,7 +22,7 @@ function tapp_handle_clocktick( idx, trigger, row, col ){
 
 function tapp_handle_wchar( value, name, type,           kp, d, s, url, l, _ ){
     if ( ! navi_handle_wchar( o, LSENV_KP, value, name, type ) ) {
-        if (value == "b") {
+        if ((value == "o") || (value == "b")) {
             s = comp_navi_get_cur_rootkp(o, LSENV_KP)
             url = "https://x-cmd.com/pkg"
             l = split( s, _, " ")
