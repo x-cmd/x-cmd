@@ -8,9 +8,8 @@ function comp_advise_str_style(v, d,      _res){
         gsub(":", "\\:", v)
         if ((d != "") && ( ADVISE_WITHOUT_DESC != 1 ))  _res = v ":" d
         else                                            _res = v
-    } else if ( ___X_CMD_SHELL == "bash") {
-        if ((d != "") && ( ADVISE_WITHOUT_DESC != 1 ))  _res = v "\002" d
-        else                                            _res = v
+    } else if ((d != "") && ( ADVISE_WITHOUT_DESC != 1 )) {
+        _res = v "\002" d
     } else {
         _res = v
     }

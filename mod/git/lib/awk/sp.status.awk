@@ -14,12 +14,12 @@ BEGIN{
     gitlab_text     = ENVIRON[ "gitlab_text" ]
     ssh_text        = ENVIRON[ "ssh_text" ]
 
-    print_status("proxy for bitbucket http protocl", bitbucket_text)
-    print_status("proxy for codeberg http protocl", codeberg_text)
-    print_status("proxy for github http protocl", github_text)
-    print_status("proxy for gitlab http protocl", gitlab_text)
-    print_status("proxy for ssh protocl service provider", ssh_text)
+    print_status("proxy for http protocol to bitbucket(bb)",    bitbucket_text)
+    print_status("proxy for http protocol to codeberg(cb)",     codeberg_text)
+    print_status("proxy for http protocol to github(gh)",       github_text)
+    print_status("proxy for http protocol to gitlab(gl)",       gitlab_text)
 
+    print_status("proxy for ssh  protocol to bb cb gh gl", ssh_text)
 }
 
 function print_status( k, v,        indent ) {
@@ -29,5 +29,5 @@ function print_status( k, v,        indent ) {
         v = UI_POST "|\n" UI_END v
         gsub( "\n", "\n  ", v )
     }
-    printf( "%s: %s\n", k, v)
+    printf( "%-52s:   %s\n", k, v)
 }

@@ -1,5 +1,5 @@
 BEGIN{
-    printf("%s %s %s %s %s %s \n", \
+    printf("%s,%s,%s,%s,%s,%s \n", \
             "Ip","Is_alive","City/Country","min_rtt/avg_rtt/max_rtt","rtts", "latlon")
 }
 
@@ -17,8 +17,8 @@ END{
         country  = juq(O[ keypath S "\"from_loc\"" S "\"country\"" ])
         rtts     = get_geoping_value(O, keypath, i)
 
-        printf("%s %s %s/%s %s/%s/%s %s %s\n", \
-                ip, alive, city, country , min, avg, max, rtts, latlon )
+        printf("%s,%s,%s/%s,%s/%s/%s,%s,%s\n", \
+                ip, alive, city, country , min, avg, max, "\""rtts"\"", "\""latlon"\"" )
     }
 
     if (ip == "") panic("Not found data [hostname or ip="hostname"]")

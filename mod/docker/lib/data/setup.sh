@@ -21,40 +21,10 @@ ___x_cmd_docker_setup___getinfo()(
     }
 )
 
-___x_cmd_docker_setup___set_startup_inner(){
-    local file="$1"
-    local X_STR='if [ -f "$HOME/.x-cmd.root/X" ]; then . "$HOME/.x-cmd.root/X"; else eval "$(x init)"; fi # boot up x-cmd'
-    x log :x info "Setting startup in $file"
-    [ ! -f "$file" ] || {
-        ! command grep -F "$X_STR" "$file" >/dev/null || return 0
-        command cp "$file" "$file.origin"
-    }
-    printf "\n%s\n" "$X_STR" >> "$file"
-}
-
-___x_cmd_docker_setup___set_startup(){
-    ___x_cmd_docker_setup___set_startup_inner "$HOME/.shinit"
-
-    if [ -n "$BASH_VERSION" ] || [ -f "$HOME/.bashrc" ] || [ -f "$HOME/.bash_profile" ] || command -v bash >/dev/null 2>&1; then
-        ___x_cmd_docker_setup___set_startup_inner "$HOME/.bashrc"
-        ___x_cmd_docker_setup___set_startup_inner "$HOME/.bash_profile"
-    fi
-
-    if [ -n "$ZSH_VERSION" ] || [ -f "$HOME/.zshrc" ] || command -v zsh >/dev/null 2>&1; then
-        ___x_cmd_docker_setup___set_startup_inner "$HOME/.zshrc"
-    fi
-
-    if [ -n "$KSH_VERSION" ] || [ -f "$HOME/.kshrc" ] || command -v ksh >/dev/null 2>&1; then
-        ___x_cmd_docker_setup___set_startup_inner "$HOME/.kshrc"
-    fi
-
-    # [ ! -d /etc/profile.d ] || ___x_cmd_docker_setup___set_startup_inner /etc/profile.d/x-cmd.startup.sh
-}
-
 ___x_cmd_docker_setup___init(){
     eval "$(x init)"
     x websrc set "$___X_CMD_WEBSRC_REGION"
-    ___x_cmd_docker_setup___set_startup
+    x boot init
 }
 
 ___x_cmd_os_arch_() {

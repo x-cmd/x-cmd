@@ -142,10 +142,12 @@ export alias @o         = ___x_cmd chat --sendalias o
 export alias @gpt       = ___x_cmd chat --sendalias gpt
 export alias @gpt3      = ___x_cmd chat --sendalias gpt3
 export alias @gpt4      = ___x_cmd chat --sendalias gpt4
+export alias @gpt4t     = ___x_cmd chat --sendalias gpt4t
+export alias @gpt4om    = ___x_cmd chat --sendalias gpt4om
 
-export alias @kimi      = ___x_cmd chat --sendalias kimi
 export alias @gemini    = ___x_cmd chat --sendalias gemini
 export alias @mistral   = ___x_cmd chat --sendalias mistral
+export alias @kimi      = ___x_cmd chat --sendalias kimi
 
 # writer
 export alias @zh        = ___x_cmd writer --sendalias zh

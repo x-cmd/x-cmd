@@ -85,10 +85,12 @@ if ($?status && $status == 0) then
         alias @gpt       '___x_cmd chat --sendalias gpt'
         alias @gpt3      '___x_cmd chat --sendalias gpt3'
         alias @gpt4      '___x_cmd chat --sendalias gpt4'
+        alias @gpt4t     '___x_cmd chat --sendalias gpt4t'
+        alias @gpt4om    '___x_cmd chat --sendalias gpt4om'
 
-        alias @kimi      '___x_cmd chat --sendalias kimi'
         alias @gemini    '___x_cmd chat --sendalias gemini'
         alias @mistral   '___x_cmd chat --sendalias mistral'
+        alias @kimi      '___x_cmd chat --sendalias kimi'
     endif
     # eval "`___x_cmd chat --aliasinit --cshcode`"
 

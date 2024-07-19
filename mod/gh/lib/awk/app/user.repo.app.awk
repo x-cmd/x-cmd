@@ -9,7 +9,6 @@ function user_table_comp_init(){
     TABLE_COL_VISIBILITY       = TABLE_ADD( "Visibility" )
     TABLE_COL_URL              = TABLE_ADD( "Url" )
 }
-# EndSection
 
 # Section: user controler -- tapp definition
 function tapp_init(){
@@ -17,8 +16,9 @@ function tapp_init(){
 }
 
 function tapp_canvas_rowsize_recalulate( rows ){
-    if (rows < 10) return false
-    return rows -1  # Assure the screen size
+    # 10
+    if (rows < 8) return false
+    return (ROW_RECALULATE == "") ? 8 : ROW_RECALULATE # rows -1  # Assure the screen size
 }
 
 function tapp_canvas_colsize_recalulate( cols ){
@@ -38,6 +38,7 @@ function tapp_handle_wchar(value, name, type){
     else if (value == "c")                          exit_with_elegant(value)
     else if (value == "u")                          exit_with_elegant(value)
 }
+
 function tapp_handle_exit( exit_code){
     if (exit_is_with_cmd()){
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_TABLE_FINAL_COMMAND", FINALCMD ) )
@@ -45,7 +46,7 @@ function tapp_handle_exit( exit_code){
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_TABLE_CUR_LINE", table_result_cur_line(o, TABLE_KP) ) )
     }
 }
-# EndSection
+
 
 function user_table_data_set( o, kp, text, data_offset,      obj, i, j, il, jl, _key, _dkp ){
     jiparse_after_tokenize(obj, text)
@@ -63,8 +64,12 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, j, il, jl, 
             ++ data_offset
         }
     }
+
+    if( data_offset < (ROWS - 1 - table_paint_necessary_rows())) ROW_RECALULATE = data_offset + table_paint_necessary_rows() - 1
+    else ROW_RECALULATE = ROWS - 1
+    tapp_canvas_has_changed()
 }
-# EndSection
+
 
 # Section
 function user_table_model_init(){
@@ -86,13 +91,10 @@ function user_table_model_init(){
     table_statusline_init(o, TABLE_KP)
 }
 
-# EndSection
 # Section: user view
 function user_view( x1, x2 ,y1, y2 ){
     table_paint(o,TABLE_KP, x1, x2, y1, y2, ROWS_COLS_HAS_CHANGED )
 }
-
-# EndSection
 
 # Section: respond
 function tapp_handle_response(fp, content){
@@ -105,8 +107,4 @@ function user_table_juq(str){
     if (str !~ /^".*"$/) return str
     else return juq(str)
 }
-
-
-# EndSection
-
 

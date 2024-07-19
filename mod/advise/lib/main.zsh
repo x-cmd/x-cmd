@@ -8,7 +8,7 @@ ___x_cmd_advise_run(){
     local COMP_CWORD="$(( CURRENT-1 ))"
 
     local name="${1:-${COMP_WORDS[1]}}"
-    local x_=;  ___x_cmd_advise_run_filepath_ "$___X_CMD_ADVISE_RUN_CMD" "$name" || return
+    local x_=;  ___x_cmd_advise_run_filepath_ ${___X_CMD_ADVISE_RUN_CMD} "$name" || return
 
     local cur="${COMP_WORDS[CURRENT]}"
     local candidate_arr=(); local candidate_exec_arr=(); local candidate_nospace_arr=();
@@ -28,8 +28,12 @@ ___x_cmd_advise_run(){
     ___x_cmd_advise_run___ltrim_maxitem
     ___x_cmd_advise_run___fix_mac_zsh
 
-    [ -z "${candidate_arr[*]}" ]            || LC_ALL="$_UTF8" LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_arr || return
-    [ -z "${candidate_nospace_arr[*]}" ]    || LC_ALL="$_UTF8" LANG="$_UTF8" ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___describe 'commands' candidate_nospace_arr
+    if [ -n "${candidate_arr[*]}" ]; then
+        candidate_arr+=( "${candidate_nospace_arr[@]}" )
+        LC_ALL="$_UTF8" LANG="$_UTF8" ___x_cmd_advise_run___describe 'commands' candidate_arr
+    elif [ -n "${candidate_nospace_arr[*]}" ]; then
+        LC_ALL="$_UTF8" LANG="$_UTF8" ___X_CMD_ADVISE_RUN_SET_NOSPACE=1 ___x_cmd_advise_run___describe 'commands' candidate_nospace_arr
+    fi
 }
 
 ___x_cmd_advise_run___describe(){

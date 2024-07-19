@@ -17,8 +17,9 @@ function tapp_init(){
 }
 
 function tapp_canvas_rowsize_recalulate( rows ){
-    if (rows < 10) return false
-    return rows -1  # Assure the screen size
+    # 10
+    if (rows < 8) return false
+    return (ROW_RECALULATE == "") ? 8 : ROW_RECALULATE # rows -1  # Assure the screen size
 }
 
 function tapp_canvas_colsize_recalulate( cols ){
@@ -64,6 +65,10 @@ function user_table_data_set( o, kp, text, data_offset,      obj, i, j, il, jl, 
             ++ data_offset
         }
     }
+
+    if( data_offset < (ROWS - 1 - table_paint_necessary_rows())) ROW_RECALULATE = data_offset + table_paint_necessary_rows() - 1
+    else ROW_RECALULATE = ROWS - 1
+    tapp_canvas_has_changed()
 }
 # EndSection
 

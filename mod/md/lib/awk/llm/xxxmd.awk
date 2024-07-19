@@ -1,5 +1,5 @@
-function _regex_head( key ){
-    return "^[ ]*" key " [^#]+$"
+function _regex_head( key, n, m){
+    return "^[ ]*" re_interval_expression(key, n, m) " [^#]+$"
 }
 
 # upper blankline
@@ -46,24 +46,26 @@ function larr_advance( offset ) {
     arr[ ARR_I ] = arr[ ARR_I ] + ( (offset == "") ? 1 : offset )
 }
 
-function hd_main( arr,      i, l, line ){
+function hd_main( arr,      i, l, line, re_line ){
     l = ARR_L
     arr[ ARR_I ] = 0
     while (arr[ ARR_I ]<=l) {
         i = arr[ ARR_I ]
         line = arr[i]
-        if ( line ~ "^[-|*|_]{3,}[ ]*$" ) {
-            gsub("^[-|*|_]{3,}[ ]*$", "----------", line)
+
+        re_line = "^(---[-]*|___[_]*|\\*\\*\\*[\\*]*)[ ]*$"
+        if ( line ~ re_line  ) {
+            gsub(re_line, "----------", line)
             printf(HD_BLANK "%s\n", "\033[2m" line "\033[0m")
             larr_advance()
             continue
         }
 
-        if ( line ~ _regex_head( "#" ) )     { hd_head1( line ); continue }
+        if ( line ~ _regex_head( "#", 1 ) )    { hd_head1( line ); continue }
 
-        if ( line ~ _regex_head( "##" ) )    { hd_head2( line ); continue }
+        if ( line ~ _regex_head( "#", 2 ) )    { hd_head2( line ); continue }
 
-        if ( line ~ _regex_head( "#{3,6}" )) { hd_head3( line ); continue }
+        if ( line ~ _regex_head( "#", 3, 6 ))  { hd_head3( line ); continue }
 
         if ( line ~ "^[ ]*```[A-Za-z0-9]+$" ) {
             hd_codeblock( arr )
@@ -85,6 +87,6 @@ function hd_main( arr,      i, l, line ){
 }
 
 END{
-    printf("\n")
+    if ( arr[0] !~ "^$" )   printf("\n")
     hd_main( arr )
 }

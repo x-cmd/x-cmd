@@ -42,6 +42,14 @@ function gemini_dsiplay_response_text_stream( obj, kp,      _kp, str ){
 }
 
 END{
+
+    _current_kp = Q2_1 SUBSEP "\""obj[ Q2_1 L ]"\""
+    if ( obj[ _current_kp, "\"error\"" ] != "" ) {
+        o_error[ L ] = 1
+        cp( o_error, Q2_1, obj, _current_kp )
+    }
+
+
     if (GEMINI_HAS_RESPONSE_CONTENT == 0) {
         msg_str = "The response content is empty"
         log_error("gemini", msg_str)
@@ -58,7 +66,6 @@ END{
         exit(1)
     } else {
         o_response[ L ] = 1
-        _current_kp = Q2_1 SUBSEP "\""obj[ Q2_1 L ]"\""
         cp( o_response, Q2_1, obj, _current_kp )
         o_response[ Q2_1 SUBSEP KP_CONTENT ] = jqu( GEMINI_RESPONSE_CONTENT )
         gemini_res_to_cres( o_response, cres_o , SUBSEP "cres"  )

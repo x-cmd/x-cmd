@@ -66,7 +66,7 @@ function ui_rotate_render( o, prefix,      i, n, str ){
     n = ring_size( o )
     counter = ring_counter( o )
     for (i=1; i<=n; ++i) {
-        str = sprintf("%4d  %s", (counter - n + i), ring_get( o, i ))
+        str = sprintf("%4d  ", (counter - n + i)) ring_get( o, i )
         printf("%s%s%s\n", prefix, th(TH_THEME_COLOR, "│ "), th(UI_FG_DARKGRAY, str)) > "/dev/stderr"
     }
 }

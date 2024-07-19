@@ -2,6 +2,7 @@ var ___X_CMD_ELV_RC_XBINEXP = $E:HOME/.x-cmd.root/bin/xbinexp
 
 use re
 use os
+use platform
 
 fn x {  |@a|
     if ( not (has-env OLDPWD) ) {
@@ -38,7 +39,11 @@ fn x {  |@a|
             set varname = ( re:replace &longest=$true "^.*/[^_]*_" "" $fp )
             set val = (slurp <$fp)
             if ( eq $varname "PWD" ) {
-                set pwd = $val
+                if (and $platform:is-windows (re:match "^/[A-Za-z]/" $val) ) {
+                    set pwd = $val[1]:/$val[3..]
+                } else {
+                    set pwd = $val
+                }
             } else {
                 set-env $varname $val
             }

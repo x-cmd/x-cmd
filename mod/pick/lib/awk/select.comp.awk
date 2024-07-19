@@ -43,7 +43,8 @@ function pick_exit_without_clear(c){
     exit(int(c))
 }
 
-function pick_data_set( o, kp, arr, obj,        i, l, w, max_w, title_width ){
+function pick_data_set( o, kp, arr, obj,        i, l, w, max_w, title_width, limit ){
+    limit = obj[ "LIMIT" ]
     if (obj[ "WIDTH_ADAPTIVE" ] == 1) {
         l = arr[L]
         for (i=1; i<=l; ++i){
@@ -53,6 +54,7 @@ function pick_data_set( o, kp, arr, obj,        i, l, w, max_w, title_width ){
         title_width = wcswidth_cache( obj[ "TITLE" ] )
         if (max_w < title_width) max_w = title_width
         max_w = max_w + 1
+        if ( limit != 1 ) max_w += 4
         comp_gsel_item_width(o, kp, (obj[ "WIDTH" ] = max_w))
         obj[ "WIDTH_ADAPTIVE" ] = 0
     }
