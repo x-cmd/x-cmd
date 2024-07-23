@@ -1,0 +1,75 @@
+
+___x_cmd_hua_qianjiashi(){
+    [ $# -gt 0 ]    ||      set -- -help
+    local fmt=auto
+
+    local op="$1";  shift
+    case "$op" in
+        --csv|--json|--app|--fzf|--fzfinfo)     fmt=${op#--} ;;
+    esac
+
+    ___x_cmd_hua_qianjiashi___"$fmt" "$@"
+}
+
+
+___x_cmd_hua_qianjiashi___auto(){
+    if [ -t 1 ] && ___x_cmd_is_interactive; then
+        ___x_cmd_hua_qianjiashi___fzf
+    else
+        ___x_cmd_hua_qianjiashi___tsv
+    fi
+}
+
+___x_cmd_hua_qianjiashi___app(){
+    ___x_cmd_hua_qianjiashi___csv | ___x_cmd csv --app
+}
+
+___x_cmd_hua_qianjiashi___csv(){
+    printf "%s,%s,%s,%s\n" chapter author content
+    ___x_cmd_hua_qianjiashi___json | \
+        ___x_cmd jq -r '.content[]  |  .type as $type | .content[] | [ .chapter, .author, $type, ( .paragraphs | @text ) ) ] | @csv'
+}
+
+___x_cmd_hua_qianjiashi___tsv(){
+    printf "%s,%s,%s,%s\n" chapter author content
+    ___x_cmd_hua_qianjiashi___json | \
+        ___x_cmd jq -r '.content[]  |  .type as $type | .content[] | [ .chapter, .author, $type, ( .paragraphs | @text ) ] | @tsv'
+}
+
+___x_cmd_hua_qianjiashi___json(){
+    ___x_cmd_hua___cat "蒙学/qianjiashi.json"
+}
+
+
+___x_cmd_hua_qianjiashi___fzfinfo(){
+    local data="$1"
+    data="${data%%"$___X_CMD_UNSEENCHAR_011"*}"
+
+    ___x_cmd_hua_qianjiashi___tsv   | \
+        ___x_cmd_hua___tsvlabel     | \
+        a="$data" command awk 'NR==ENVIRON["a"]{
+            print $5
+        }' | ___x_cmd j2y
+        # ___x_cmd_hua_qianjiashi___fzfinfo___color
+}
+
+___x_cmd_hua_qianjiashi___fzfinfo___color(){
+    a="$data" command awk -f "$___X_CMD_ROOT_MOD/hua/lib/awk/fzfinfo.awk"
+}
+
+
+___x_cmd_hua_qianjiashi___fzf(){
+    local data; data="$( ___x_cmd_hua_qianjiashi___fzf_run )" || return
+    [ -z "$data" ] || ___x_cmd_hua_qianjiashi___fzfinfo "$data"
+}
+
+___x_cmd_hua_qianjiashi___fzf_run(){
+    ___x_cmd_hua_qianjiashi___tsv           \
+        |   ___x_cmd_hua___tsvlabel         \
+        |   ___x_cmd_hua___fzfpretty        \
+        |   command awk -v FS='\t' '{
+                printf("\033[2m" "%s\t" "\033[0;32m" "%-12s\t" "\033[2;33m"  "%s\t" "\033[2;37m" "%s\t"  "\033[0;36m" "%s\n", $1, $2, $3, $4, $5)
+            }' \
+        |   ___x_cmd_hua___fzf --preview="x hua qianjiashi --fzfinfo '{1}' 2>/dev/null" --preview-window="right:20%,wrap"
+}
+
