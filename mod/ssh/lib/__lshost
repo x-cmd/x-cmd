@@ -1,0 +1,75 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_ssh___lshost(){
+    ___x_cmd_ssh___lshost___raw
+}
+
+___x_cmd_ssh___lshost___raw(){
+    ___x_cmd_ssh___lshost_lscfg
+    ___x_cmd_ssh___lshost_knownhost |
+        ___x_cmd_cmds rev
+}
+
+# We will have a cache for this function
+___x_cmd_ssh___lshost_lscfg(){
+    ___x_cmd_ssh___lshost_printcfg "$HOME/.ssh/config" 0 \
+        | ___x_cmd_cmds grep -v '*'     \
+        | ___x_cmd_cmds sort            \
+        | ___x_cmd_cmds uniq
+}
+
+# depth for 3 level
+___x_cmd_ssh___lshost_printcfg(){
+    local fp="$1"
+    local level="$2"
+
+    (
+        ___x_cmd_cmds cd "${fp%/*}"     || return 0
+
+        ssh:debug "printcfg -> $PWD"
+        [ "$level" -lt 3 ]              || return 0
+
+        <"${fp##*/}" \
+        ___x_cmd_cmds awk '{
+            gsub("#.*", "", $0)
+            gsub(/[ ]+$/, "", $0)
+            gsub(/^[ ]+/, "", $0)
+            print
+            }
+        ' | \
+        while read -r line; do
+            case "$line" in
+                host\ *|Host\ *|HOST*)
+                    printf "%s\n" "${line#* }"
+                    ;;
+                Include\ *|include\ *|INCLUDE\ *)
+                    ssh:debug "try -> ${line#* }"
+                    [ -f "${line#* }" ] || {
+                        # Currently, we don't support the * grammar ...
+                        continue
+                    }
+                    ___x_cmd_ssh___lshost_printcfg "${line#* }" "$((level+1))"
+                    ;;
+            esac
+        done
+    )
+}
+
+___x_cmd_ssh___lshost_knownhost(){
+    [ -f "$HOME/.ssh/known_hosts" ] || return
+
+    while read -r line; do
+        line="${line%% *}"
+        case "$line" in
+            *:*)
+                    line="${line%%\]:*}"
+                    line="${line#\[}"
+                    printf "%s\n" "$line"
+                    ;;
+
+            '')     continue ;;
+            *)      printf "%s\n" "$line" ;;
+        esac
+    done <"$HOME/.ssh/known_hosts" # | sort | uniq
+}
+

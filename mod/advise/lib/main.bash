@@ -49,11 +49,11 @@ ___x_cmd_advise_run(){
 
     LC_ALL="$_UTF8" LANG="$_UTF8" COMPREPLY+=( $(
         {
-            [ -z "${candidate_arr[*]}" ] || printf " \002%s\n" "${candidate_arr[@]}"
             [ -z "${candidate_nospace_arr[*]}" ] || printf "\002%s\n" "${candidate_nospace_arr[@]}"
+            [ -z "${candidate_arr[*]}" ] || printf " \002%s\n" "${candidate_arr[@]}"
         } | ___x_cmd_cmds_awk -v FS="\002" -v current="$cur" -v maxitem="$maxitem" \
             -v ADVISE_WITHOUT_DESC="$___X_CMD_ADVISE_WITHOUT_DESC" -v candidate_prefix="$candidate_prefix" \
-            -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.bash.compgen_wordlist.awk"
+            -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.compgen_wordlist.bash.awk"
     ) )
 
     ___x_cmd_advise___ltrim_bash_completions "$old_cur" "@" ":" "="

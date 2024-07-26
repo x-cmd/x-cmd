@@ -53,6 +53,16 @@ BEGIN{
             continue
         }
 
+        if ( arg[i] == "--urlencode" ){
+            code = code urlencode( arg[++i] )
+            continue
+        }
+
+        if ( arg[i] == "--urldecode" ){
+            code = code urldecode( arg[++i] )
+            continue
+        }
+
         if ( arg[i] != "") code = code " -d " "\"$" arg[i] "\""
     }
 

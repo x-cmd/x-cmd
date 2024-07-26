@@ -137,7 +137,6 @@ fn init {
         edit:add-var readline-binding $readline-binding:
     }
 
-    # TODO: activate advise
     # TODO: activate theme
 
     edit:add-var            x~      $x~
@@ -170,5 +169,10 @@ fn init {
     }
     if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/coco.disable )) {
         edit:add-vars [     &,,~=$coco~     &，，~=$coco~   ]
+    }
+
+    # advise
+    if ( eq $E:___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL '1' ) {
+        eval ( x advise complete elv code | slurp )
     }
 }

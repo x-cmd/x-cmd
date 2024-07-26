@@ -101,3 +101,11 @@ if ($?status && $status == 0) then
     endif
 
 endif
+
+# advise
+if ( $?___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL ) then
+    if ( "$___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL" == 1 ) then
+        eval `___x_cmd advise complete tcsh code`
+    endif
+endif
+

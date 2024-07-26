@@ -1,0 +1,159 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_jq_repl(){
+    case "$1" in
+        --preview)      shift;  ___x_cmd_jq_repl___preview  "$@" ; return ;;
+        --header)       shift;  ___x_cmd_jq_repl___header   "$@" ; return ;;
+    esac
+
+    ___x_cmd_jq_repl_app "$@"
+}
+
+___x_cmd_jq_repl_app(){
+    local fp="$1"
+
+    ___x_cmd jq --preparecmd
+    ___x_cmd yq --preparecmd
+
+    (
+        trap 'command rm -rf "${fp}.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d"' EXIT
+
+        case "$fp" in
+            -|"")
+                fp="$___X_CMD_ROOT_TMP/${___X_CMD_JQ_REPL_CMD:-jq}/$(___x_cmd pidofsubshell).jq"
+                ___x_cmd ensurefp "$fp"
+                ___x_cmd_cmds cat > "$fp"
+        esac
+        ___x_cmd mkdirp "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d"
+
+        local filter=.
+        while true; do
+            filter="$(___x_cmd_jq_repl___actual "$fp" ".")"
+
+            local id=
+            ___x_cmd ui select id "Next for $filter"            \
+                "Copy this filter to pastboard"                 \
+                "Copy this part of the data to pastboard"       \
+                "Renter"                                        \
+                "Exit"
+            case "$id" in
+                1)      printf "%s" "$filter" | ___x_cmd pb
+                        return 0 ;;
+                2)      ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" "$filter" <"$fp" | ___x_cmd pb
+                        return 0 ;;
+                3)      continue ;;
+                *)      return 0 ;;
+            esac
+        done
+    )
+
+}
+
+___x_cmd_jq_repl___actual(){
+    local fp="$1"
+    local filter="${2:-.}"
+
+    fp="$fp" fpfolder="$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d"    \
+    ___x_cmd fzf                                                        \
+        --header="<Please type ${___X_CMD_JQ_REPL_CMD:-jq} filter>"     \
+        --reverse --no-info --height='80%'                              \
+        --query="$filter" --print-query                                 \
+        --bind='change:transform-header(cat "$fpfolder/$(cat "$fpfolder/header").header" )'     \
+        --preview-window='down,99%' --preview 'x jq repl --preview "$fp" {q} 2>/dev/null' <<A
+A
+
+}
+
+___x_cmd_jq_repl___preview_check(){
+    command awk -v res=1 '
+    NR>1{
+        res = 0
+        exit(0)
+    }
+    END {
+        exit(res)
+    }
+    '
+}
+
+___x_cmd_jq_repl___header(){
+    local fp="$1";  shift
+    [ ! -f "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/res" ] || fp="$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/res"
+    ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" -r '. | keys | join(" ")' <"$fp"
+}
+
+___x_cmd_jq_repl___preview(){
+    ___x_cmd_jq_repl___preview_ "$@" 2>/dev/stdout
+}
+
+___x_cmd_jq_repl___preview_(){
+    local fp="$1";  shift
+
+    # In the future we could add yml mode ...
+    if [ "${___X_CMD_JQ_REPL_REPVIEW_MODE:-yml}" = yml ] && [ "${___X_CMD_JQ_REPL_CMD:-jq}" = jq ]; then
+        ___x_cmd_jq_repl___preview___partial(){
+            ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" "$1" | ___x_cmd yq -C -pj -oy . | ___x_cmd_cmds head -n 1000
+        }
+    else
+        ___x_cmd_jq_repl___preview___partial(){
+            ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" -C "$1" | ___x_cmd_cmds head -n 1000
+        }
+    fi
+
+    local md5sum; md5sum="$(___x_cmd str md5 "$1")"
+
+    # [ ! -f "$fp.repl.jq.x-cmd.d/${md5sum}" ] || {
+    #     ___x_cmd cat "$fp.repl.jq.x-cmd.d/${md5sum}"
+    #     # TODO: write header
+    #     return
+    # }
+
+    if ___x_cmd tee "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/${md5sum}" --  ___x_cmd_jq_repl___preview___partial "$1" <"$fp"; then
+        if ___x_cmd_jq_repl___preview_check <"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/${md5sum}"; then
+
+            ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" "$1" <"$fp" | ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" -r '. | keys | join(" ")' >"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/${md5sum}.header"
+            printf "%s\n" "${md5sum}" >"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/header"
+            ___x_cmd_jq_repl___preview_history_add "$fp" "$md5sum" "$1"
+            return
+        fi
+    else
+        ___x_cmd rmrf "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/${md5sum}"
+    fi
+
+    printf "%s\n" "${md5sum}" >"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/header"
+
+    ___x_cmd_jq_repl___preview_history_dump_parent_result "$fp" "$1"
+}
+
+___x_cmd_jq_repl___preview_history_add(){
+    local fp="$1"
+    local md5="$2"
+    local query="$3"
+    printf "%s  %s\n"       "$md5"  "$query" >>"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/history"
+}
+
+___x_cmd_jq_repl___preview_history_dump_parent_result(){
+    local fp="$1"
+    local fail_query="$2"
+
+    {
+        printf "%s  %s\n"   "///"         "$fail_query"
+        ___x_cmd_cmds cat "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/history"
+    } | ___x_cmd_cmds sort -r -k 2 | ___x_cmd_cmds awk -v q="$fail_query" -v dir="$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d" '
+    # {  print }
+    ($0~"^///"){
+
+        while (getline) {
+            md5sum = $1
+            $1 = ""
+            gsub("^[ ]+", "", $0)
+            if (index(q, $0) > 0) break
+        }
+
+        printf("\n=== parent filter  ->  %s\n", $0)
+        while ( getline line <(dir "/" md5sum) ){  print line; }
+        print md5sum > (dir "/header")
+        exit
+    }
+    '
+}

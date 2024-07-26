@@ -1,5 +1,5 @@
 
-$0~/\*\*\*[ ]START[ ]OF[ ].+PROJECT[ ]GUTENBERG[ ]EBOOK/{
+$0~/\*\*\*[ ]?START[ ]OF[ ].+PROJECT[ ]GUTENBERG[ ]EBOOK/{
     state = 1
     while ($0 !~ /\*\*\*[\t \r\n]?*$/) { getline }
     getline
@@ -8,7 +8,7 @@ $0~/\*\*\*[ ]START[ ]OF[ ].+PROJECT[ ]GUTENBERG[ ]EBOOK/{
     while ($0 ~ /^[\t \r\n]*$/) {  getline }
 }
 
-$0~/\*\*\*[ ]END[ ]OF[ ].+PROJECT[ ]GUTENBERG[ ]EBOOK/{
+$0~/\*\*\*[ ]?END[ ]OF[ ].+PROJECT[ ]GUTENBERG[ ]EBOOK/{
     exit(0)
 }
 

@@ -1,7 +1,7 @@
 # Section: user model
 function user_tldr_init(){
     TLDR_APP_BASEPATH = ENVIRON[ "___X_CMD_TLDR_APP_BASEPATH" ]
-    TLDR_NO_BACKGROUND = ENVIRON[ "NO_BACKGROUND" ]
+    TLDR_NO_BACKGROUND = ENVIRON[ "___X_CMD_TLDR_NO_BACKGROUND" ]
     comp_tldr_parse_ignorelang( TLDR_IGNORELANG_ARR, ENVIRON[ "___X_CMD_TLDR_LANG_IGNORE" ], "," )
     TLDR_KP = "ls_kp"
     navi_init(o, TLDR_KP)

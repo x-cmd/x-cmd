@@ -99,8 +99,16 @@ export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
     $env.LAST_EXIT_CODE = exit_code
 }
 
-export alias ___x_cmd   = bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"
-export alias x          = bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"
+# export alias ___x_cmd   = bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"
+# export alias x          = bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"
+
+export def --env --wrapped ___x_cmd [ ...args ] {
+    bash $"($env.HOME)/.x-cmd.root/bin/xbinexp" ...$args
+}
+
+export def --env --wrapped x [ ...args ] {
+    bash $"($env.HOME)/.x-cmd.root/bin/xbinexp" ...$args
+}
 
 export def --env --wrapped c [ ...args ] {
     if  ($args | length) == 0 {

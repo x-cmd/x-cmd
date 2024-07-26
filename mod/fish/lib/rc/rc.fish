@@ -1,4 +1,3 @@
-
 function ___x_cmd___rcfish_addp
     if ! contains -- "$argv[1]" "$PATH"
         set -g PATH "$argv[1]" "$PATH"
@@ -124,4 +123,9 @@ if status is-interactive
     [ -f "$HOME/.x-cmd.root/boot/alias/chat.disable"    ]  ||  eval ("$HOME/.x-cmd.root/bin/xbin" chat --aliasinit --code)
     [ -f "$HOME/.x-cmd.root/boot/alias/writer.disable"  ]  ||  eval ("$HOME/.x-cmd.root/bin/xbin" writer --aliasinit --fishcode)
 
+
+    # advise
+    if [ "$___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL" = '1' ]
+        ___x_cmd advise complete fish code | source
+    end
 end
