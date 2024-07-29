@@ -1,0 +1,56 @@
+# shellcheck shell=dash disable=2016
+
+___x_cmd_chat___exec_repl_history(){
+    local op="$1"
+    case "$op" in
+        add|ls|get)  shift; ___x_cmd_chat___exec_repl_history_"$op" "$@" ;;
+        *) ;;
+    esac
+}
+
+___x_cmd_chat___exec_repl_history_add(){
+    local text="$1"
+    [ -n "$text" ] || return
+    local sep="${___X_CMD_UNSEENCHAR_001}${___X_CMD_UNSEENCHAR_002}${___X_CMD_UNSEENCHAR_003}"
+    local id; id="$(___x_cmd date timestamp)"
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history"
+    ___x_cmd ensurefp "$fp"
+    printf "%s:%s %s\n" "$sep" "$id" "$text" >> "$fp"
+}
+
+___x_cmd_chat___exec_repl_history_ls(){
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history"
+    [ -f "$fp" ] || return
+    < "$fp" ___x_cmd_cmds awk '
+        $1~"^\001\002\003:"{
+            id = substr($1, 5)
+            $1 = ""
+            print "\033[90m" id "\033[0m" $0
+        }
+    '
+}
+
+___x_cmd_chat___exec_repl_history_get(){
+    local prefix="$1"
+    [ -n "$prefix" ] || return
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history"
+    [ -f "$fp" ] || return
+
+    < "$fp" ___x_cmd_cmds awk -v prefix="$prefix" '
+    BEGIN{
+        STR_TERMINAL_ESCAPE033 = "\033\\[[^A-Za-z]*(dh|[A-Za-z=])"
+        TRIM033 = "(" STR_TERMINAL_ESCAPE033 ")+"
+        gsub( "^[ ]+",  "", prefix )
+        gsub( "[ ].*", "", prefix )
+        gsub( TRIM033,  "", prefix )
+        prefix = "\001\002\003:" prefix
+    }
+    match( $0, "^" prefix " " ){
+        print substr( $0, RLENGTH+1 )
+        while (getline) {
+            if ($0 ~ "^\001\002\003:") exit
+            else print $0
+        }
+    }
+    '
+}
