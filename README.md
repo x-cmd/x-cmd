@@ -26,7 +26,19 @@ For <bold>source code</bold>, please swtich to <a href="https://github.com/x-cmd
 X branch is for demo and action ⭐
 </p>
 
+## osv
+
 ![x osv demo gif](https://github.com/x-cmd/x-cmd/assets/40693636/f7c8c503-3d77-4939-8932-f2c03ed8f263)
+
+## jq/yq - Quickly test JQ expressions
+
+![jq_r en](https://github.com/user-attachments/assets/758b8d5c-b123-491b-ada3-820592625464)
+
+## man - Preview enhancement based on fzf
+
+![man en](https://github.com/user-attachments/assets/e8b439f1-de9c-438a-9a57-d4caa2962139)
+
+## theme - Compatible with a variety of Bosix Scheer theme beautification
 
 ![x theme demo gif](https://user-images.githubusercontent.com/112856271/276805596-08998349-eda3-4107-93ff-61daade67032.gif)
 
