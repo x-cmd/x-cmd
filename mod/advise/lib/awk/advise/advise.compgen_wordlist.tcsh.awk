@@ -21,13 +21,13 @@ function comp_advise_str_style_bash(v, d, sep,      _res){
         w = arr[ id, "WIDTH" ] = arr[ id, "WIDTH" ] + length(v) + 4
     } else {
         NUM ++
-        if ( NUM > maxitem ) exit(0)
         w = length(v)
         arr[ NUM, "VAL", (arr[ NUM, "VALL" ] = 1) ] = v
         arr[ NUM, "DESC" ] = d
         arr[ NUM, "END_SEP" ] = end_sep
         arr[ NUM, "WIDTH" ] = w
         arr[ d, "DESC_ID" ] = NUM
+        if ( NUM >= maxitem ) exit(0)
     }
 
     if (MAX_W < w) MAX_W = w

@@ -1,11 +1,22 @@
 BEGIN{
-    QUESTION            = ENVIRON[ "BODY" ]
+    QUESTION            = ""
+    IMAGELIST           = ""
     CHATID              = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE   = ENVIRON[ "minion_json_cache" ]
     SESSIONDIR          = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
     CFG_CTX             = ENVIRON[ "cfg_ctx" ]
     MINION_KP           = SUBSEP "\"1\""
-
+}
+{
+    if ($0 == "\001\002\003:image") {
+        while( getline ) {
+            IMAGELIST = IMAGELIST $0 "\n"
+        }
+    } else {
+        QUESTION = QUESTION $0 "\n"
+    }
+}
+END{
     minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE, "ollama" )
     TYPE                = minion_type( minion_obj, MINION_KP )
     MODEL               = minion_model( minion_obj, MINION_KP )
@@ -26,5 +37,5 @@ BEGIN{
 
     print SESSIONDIR "/" CHATID
     print MODEL
-    print ollama_request_body_json
+    # print ollama_request_body_json
 }

@@ -45,7 +45,6 @@ ___x_cmd_ollama_chat_exec(){
 
     {
         userlang="${cfg_userlang:-$LANG}" \
-        BODY="$question" \
         ___x_cmd cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach   \
                 -E cfg_history_num,cfg_session,cfg_minion,cfg_maxtoken,cfg_seed,cfg_temperature,cfg_ctx \
                 -m j/json,j/jiter,j/jcp \
@@ -55,13 +54,16 @@ ___x_cmd_ollama_chat_exec(){
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"           \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"           \
                 -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/ollama.awk"       \
-                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/handle_request.awk"
+                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/handle_request.awk" <<A
+${question}
+A
     } | ( ___x_cmd_ollama_chat_request___launch )
 }
 
 ___x_cmd_ollama_chat_request___launch(){
     local content_dir
     read -r content_dir
+    [ -d "$content_dir" ] || return 1
 
     ___x_cmd_ollama_chat_request___trapexit(){
         ___x_cmd rmrf "$content_dir/chat.running"
@@ -73,8 +75,8 @@ ___x_cmd_ollama_chat_request___launch(){
     {
         read -r model
 
-        local requestbody
-        read -r requestbody
+        local request_body_file="$content_dir/ollama.request.body.yml"
+        [ -f "$request_body_file" ] || return
 
         ___x_cmd retry --max 2 --interval 3 ___x_cmd_ollama_chat_request___try
     } || {
@@ -85,7 +87,7 @@ ___x_cmd_ollama_chat_request___launch(){
 
 ___x_cmd_ollama_chat_request___try(){
     [ -z "$confirm_before_send" ] || {
-        printf "%s\n" "$requestbody" | ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >/dev/tty
+        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >/dev/tty
         ___x_cmd ui yesno "Do your want to send this message?" || {
             ___X_CMD_RETRY_ABORT=1
             return 1
@@ -93,9 +95,11 @@ ___x_cmd_ollama_chat_request___try(){
         confirm_before_send=
     }
 
+    local _md5; _md5="$( < "$request_body_file" ___x_cmd str md5 )"
     {
+        request_body_file="$request_body_file" \
         ___x_cmd ccmd "$cache_time" -- \
-            ___x_cmd_ollama_api_chat "$requestbody" "$model"
+            ___x_cmd_ollama_api_chat "$model" "$_md5"
     } | {
         local interative=
         if ___x_cmd_is_interactive; then interative=1; fi
@@ -109,7 +113,12 @@ ___x_cmd_ollama_chat_request___try(){
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"               \
                 -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/ollama.awk"           \
                 -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/ollama_stream_output_util.awk"    \
-                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/handle_response.awk"
+                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/handle_response.awk" || errcode="$?"
+        case $errcode in
+            0)      ;;
+            *)  ___x_cmd rmrf "$content_dir/ollama.response.yml" "$content_dir/chat.response.yml" ;;
+        esac
+        return "$errcode"
     }
 }
 

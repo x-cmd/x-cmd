@@ -10,42 +10,103 @@ ___x_cmd_rg___fzfapp(){
     local fp="$1"
     local pidofsubshell; pidofsubshell="$(___x_cmd pidofsubshell)"
 
-    local ___X_CMD_SED_FZF_APP_DIR=
+    local ___X_CMD_RG_FZF_APP_DIR=
+    local _rg_fp=
+
     case "${fp}" in
         -)
-            ___X_CMD_SED_FZF_APP_DIR="$___X_CMD_ROOT_TMP/rg.${pidofsubshell}.d"
-            ___x_cmd mkdirp "$___X_CMD_SED_FZF_APP_DIR"
-            ___x_cmd_cmds cat               > "$___X_CMD_SED_FZF_APP_DIR/source"
+            ___X_CMD_RG_FZF_APP_DIR="$___X_CMD_ROOT_TMP/rg.${pidofsubshell}.d"
+            ___x_cmd mkdirp "$___X_CMD_RG_FZF_APP_DIR"
+            ___x_cmd_cmds cat            > "$___X_CMD_RG_FZF_APP_DIR/source"
+            _rg_fp="$___X_CMD_RG_FZF_APP_DIR/source"
             ;;
         *)
-            ___X_CMD_SED_FZF_APP_DIR="${fp}.rg.${pidofsubshell}.d"
-            ___x_cmd mkdirp "$___X_CMD_SED_FZF_APP_DIR"
-            ___x_cmd_cmds cat   "${fp}"     > "$___X_CMD_SED_FZF_APP_DIR/source"
+            if [ -f "$fp" ]; then
+                ___X_CMD_RG_FZF_APP_DIR="${fp}.rg.${pidofsubshell}.d"
+                ___x_cmd mkdirp "$___X_CMD_RG_FZF_APP_DIR"
+                ___x_cmd_cmds cat "${fp}"    > "$___X_CMD_RG_FZF_APP_DIR/source"
+                _rg_fp="$___X_CMD_RG_FZF_APP_DIR/source"
+            elif [ -d "$fp" ];then
+                ___X_CMD_RG_FZF_APP_DIR="${fp}.rg.${pidofsubshell}.d"
+                ___x_cmd mkdirp "$___X_CMD_RG_FZF_APP_DIR"
+                _rg_fp="$fp"
+            else
+                M="The specified file or directory does not exist --> $fp" N=rg log:ret:1
+            fi
+            ;;
     esac
 
     (
-        trap '___x_cmd rmrf "$___X_CMD_SED_FZF_APP_DIR";' EXIT
+        trap '___x_cmd rmrf "$___X_CMD_RG_FZF_APP_DIR";' EXIT
+        local filter=
+        local result=
+        while true; do
+            result="$(___x_cmd_rg___fzfapp___actual "$_rg_fp" "$filter")"
 
-        fpfolder="$___X_CMD_SED_FZF_APP_DIR"        \
-        ___x_cmd fzf                                \
-            --header="<Please type rg arguments>"  \
-            --reverse --no-info --height='80%'      \
-            --query="" --print-query               \
-            --preview-window='down,99%'             \
-            --preview='x rg --fzfapppreview "$fpfolder" {q} 2>/dev/null' <<A
-A
+            filter="$(printf "%s" "$result" | ___x_cmd_cmds head -n 1)"
+            result="$(printf "%s" "$result" | ___x_cmd_cmds tail -n +2)"
+            [ -n "$filter" ] || return
+            local id=
+            ___x_cmd ui select id "Next for filter: $filter"    \
+                "Copy this filter to pastboard"                 \
+                "Copy this part of the data to pastboard"       \
+                "Print filter"                                  \
+                "Print data"                                    \
+                "Modify the filter"                             \
+                "Exit"
+            case "$id" in
+                1)      printf "%s" "$filter" | ___x_cmd pb
+                        return 0 ;;
+                2)      printf "%s" "$result" | ___x_cmd pb
+                        return 0 ;;
+                3)      printf "%s" "$filter"
+                        return 0 ;;
+                4)      printf "%s" "$result"
+                        return 0 ;;
+                5)      continue ;;
+                *)      return 0 ;;
+            esac
+        done
     )
 
 }
 
-___x_cmd_rg___fzfapppreview(){
-    local fp="$1";  shift
-    {
-        eval ___x_cmd rg --cmd "$1" <"$fp/source" 2>&1 || {
-            printf "\n\n[ERR=%d]\n=== %s ===\n\n" \
-                "$?"    "Content of file : $fp/source"
-            ___x_cmd_cmds cat "$fp/source"
-        }
-    } 2>&1 | ___x_cmd_cmds head -n 2000
+___x_cmd_rg___fzfapp___actual(){
+    local _rg_fp="${1:-.}"
+    local filter="${2:-""}"
+
+    local ___X_CMD_RG___FZF_RELOAD="reload:sleep 0.05; x rg --cmd --line-number --color=always {q} ${_rg_fp} || :"
+    local ___X_CMD_RG___FZF_PREVIEW='x rg --fzfapppreview {2} {1}'
+    local ___X_CMD_RG___FZF_EDIT='
+        if [[ $FZF_SELECT_COUNT -eq 0 ]]; then
+            x vim {1} +{2} ;
+        else
+            x vim +cw -q {+f};
+        fi
+    '
+    local ___X_CMD_RG___FZF_MODEL='
+        if [[ ! $FZF_PROMPT =~ ripgrep ]]; then
+            printf "rebind(change)+change-prompt(1.ripgrep> )+disable-search+transform-query:printf \{q}";
+        else
+            printf "unbind(change)+change-prompt(2.fzf> )+enable-search+transform-query:printf \{q}";
+        fi
+    '
+    ___x_cmd fzf --disabled --ansi --multi --prompt '1.ripgrep> '           \
+        --reverse --no-info --height='90%'                                  \
+        --bind "start:$___X_CMD_RG___FZF_RELOAD"                            \
+        --bind "change:$___X_CMD_RG___FZF_RELOAD"                           \
+        --bind 'alt-a:select-all,alt-d:deselect-all,ctrl-/:toggle-preview'  \
+        --bind "ctrl-o:execute:$___X_CMD_RG___FZF_EDIT"                     \
+        --bind "ctrl-t:transform:$___X_CMD_RG___FZF_MODEL"                  \
+        --color "hl:-1:underline,hl+:-1:underline:reverse"                  \
+        --delimiter ':' --query "$filter" --print-query                     \
+        --preview "$___X_CMD_RG___FZF_PREVIEW"                              \
+        --preview-window='down,60%,border-bottom,+{2}+3/3,~3'
 }
 
+
+___x_cmd_rg___fzfapppreview(){
+    local line="$1"
+    local fp="$2"
+    ___x_cmd bat --color=always --highlight-line "$line" "$fp"
+}

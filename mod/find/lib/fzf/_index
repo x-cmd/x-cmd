@@ -7,34 +7,59 @@ ___x_cmd_find___fzf(){
 }
 
 ___x_cmd_find___fzfapp(){
-    [ $# -gt 0 ] || set -- -
+    local filter=.
+    while true; do
+        filter="$(___x_cmd_find___fzfapp___actual "$filter")"
 
-    local pidofsubshell; pidofsubshell="$(___x_cmd pidofsubshell)"
+        [ -n "$filter" ] || return
+        local id=
+        ___x_cmd ui select id "Next for $filter"            \
+            "Copy this filter to pastboard"                 \
+            "Copy this part of the data to pastboard"       \
+            "Print filter"                                  \
+            "Print data"                                    \
+            "Modify the filter"                             \
+            "Exit"
+        case "$id" in
+            1)      printf "%s" "$filter" | ___x_cmd pb
+                    return 0 ;;
+            2)      ___x_cmd_find___query "$filter" | ___x_cmd pb
+                    return 0 ;;
+            3)      printf "%s" "$filter"
+                    return 0 ;;
+            4)      ___x_cmd_find___query "$filter"
+                    return 0 ;;
+            5)      continue ;;
+            *)      return 0 ;;
+        esac
+    done
+}
 
-    local ___X_CMD_FIND_FZF_APP_DIR=
-    ___X_CMD_FIND_FZF_APP_DIR="$___X_CMD_ROOT_TMP/find/fzfapp.${pidofsubshell}.d"
-    ___x_cmd mkdirp "$___X_CMD_FIND_FZF_APP_DIR"
-
-    (
-        trap '___x_cmd rmrf "$___X_CMD_FIND_FZF_APP_DIR";' EXIT
-
-        fpfolder="$___X_CMD_FIND_FZF_APP_DIR"           \
-        ___x_cmd fzf                                    \
-            --header="<Please type find arguments>"     \
-            --reverse --no-info --height='80%'          \
-            --query="." --print-query                   \
-            --preview-window='down,99%'                 \
-            --preview='x find --fzfapppreview {q} 2>/dev/null' <<A
+___x_cmd_find___fzfapp___actual(){
+    local filter=
+    ___x_cmd fzf                                    \
+        --header="<Please type find arguments>"     \
+        --reverse --no-info --height='80%'          \
+        --query="${filter:-.}" --print-query        \
+        --preview-window='down,99%'                 \
+        --preview='x find --fzfapppreview {q} 2>/dev/null' <<A
 A
-    )
-
 }
 
 ___x_cmd_find___fzfapppreview(){
+    local arg="$*"
     {
-        eval ___x_cmd_cmds find "$1" || {
-            :
-        }
+       if [ "$arg" = "${arg#*-exec}" ];then
+            ___x_cmd_find___query "$arg" || {
+                printf "\n[ERR=%d]\n" "$?"
+            }
+        else
+            printf "Disable auto-execution: Dangerous operations were detected in the command.\n"
+            printf "=== -exec %s ===\n" "${arg#*-exec}"
+        fi
     } 2>&1 | ___x_cmd_cmds head -n 2000
 }
 
+___x_cmd_find___query(){
+    eval ___x_cmd_cmds find "$*"
+}

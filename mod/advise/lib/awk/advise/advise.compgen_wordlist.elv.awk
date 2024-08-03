@@ -22,13 +22,13 @@ BEGIN{
     if (( v == "" ) || ( arr[ v ] == 1 ) || ((current != "") && index(v, current) <= 0)) next
 
     NUM ++
-    if ( NUM > maxitem ) exit(0)
     w = length(v)
     arr[ NUM, "VAL" ] = v
     arr[ NUM, "DESC" ] = d
     arr[ NUM, "END_SEP" ] = end_sep
 
     if (MAX_W < w) MAX_W = w
+    if ( NUM >= maxitem ) exit(0)
 }
 
 END{

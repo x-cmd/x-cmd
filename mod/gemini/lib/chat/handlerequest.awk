@@ -3,18 +3,25 @@
 
 BEGIN{
 
-    QUESTION          = ENVIRON[ "BODY" ]
     CHATID            = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE = ENVIRON[ "minion_json_cache" ]
     SESSIONDIR        = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
-    IMAGELIST         = ENVIRON[ "imagelist" ]
+    QUESTION          = ""
+    IMAGELIST         = ""
+    IS_IMAGE_DATA     = 0
 
     Q2_1               = SUBSEP "\"1\""
     MINION_KP          = Q2_1
     CREQ_KP            = Q2_1
 }
 {
-    IMAGELIST = IMAGELIST $0 "\n"
+    if ($0 == "\001\002\003:image") {
+        while( getline ) {
+            IMAGELIST = IMAGELIST $0 "\n"
+        }
+    } else {
+        QUESTION = QUESTION $0 "\n"
+    }
 }
 
 END{

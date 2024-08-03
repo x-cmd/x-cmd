@@ -1,5 +1,6 @@
 
-{ if ($0 != "") jiparse_after_tokenize(obj, $0); }
+# { if ($0 != "") jiparse_after_tokenize(obj, $0); }
+{ if ($0 != "") jiparse(obj, $0); }
 END{
     prepare_argarr( ENVIRON[ "ARGSTR" ], parsed_argarr )
     parse_args_to_env( parsed_argarr, obj, SUBSEP "\"1\"" )

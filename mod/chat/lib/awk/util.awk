@@ -13,7 +13,8 @@ function chat_str_replaceall( src,          _name, ans ){
     ans = ""
     while (match(src, "%{[A-Za-z0-9_]+}%")) {
         _name = substr(src, RSTART+2, RLENGTH-4)
-        _name = ENVIRON[ _name ]
+        if ( _name ~ "^(BODY|QUESTION)$" ) _name = QUESTION
+        else _name = ENVIRON[ _name ]
         gsub( "\\\\", "&\\", _name )
         gsub( "\"", "\\\"", _name )
         gsub( "\n", "\\n", _name )

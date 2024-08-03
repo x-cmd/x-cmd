@@ -1,17 +1,24 @@
 BEGIN{
     PROVIDER_NAME       = ENVIRON[ "provider_name" ]
     PROVIDER_NAME       = (PROVIDER_NAME != "") ? PROVIDER_NAME : "openai"
-    QUESTION            = ENVIRON[ "BODY" ]
     CHATID              = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE   = ENVIRON[ "minion_json_cache" ]
     def_model           = ENVIRON[ "def_model" ]
     SESSIONDIR          = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
+    QUESTION            = ""
+    IMAGELIST           = ""
     Q2_1                = SUBSEP "\"1\""
     MINION_KP           = Q2_1
     CREQ_KP             = Q2_1
 }
 {
-    IMAGELIST = IMAGELIST $0 "\n"
+    if ($0 == "\001\002\003:image") {
+        while( getline ) {
+            IMAGELIST = IMAGELIST $0 "\n"
+        }
+    } else {
+        QUESTION = QUESTION $0 "\n"
+    }
 }
 END{
     minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE, "openai" )

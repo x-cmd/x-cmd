@@ -22,6 +22,7 @@ ___x_cmd_mistral_chat_request(){
 ___x_cmd_mistral_chat_request___launch(){
     local content_dir
     read -r content_dir
+    [ -d "$content_dir" ] || return 1
 
     ___x_cmd_mistral_chat_request___trapexit(){
         mistral:debug "Remove chat.running file"
@@ -32,10 +33,11 @@ ___x_cmd_mistral_chat_request___launch(){
     trap '___x_cmd_mistral_chat_request___trapexit' EXIT
 
     {
+        local model
         read -r model
 
-        local requestbody
-        read -r requestbody
+        local request_body_file="$content_dir/mistral.request.body.yml"
+        [ -f "$request_body_file" ] || return
 
         ___x_cmd retry --max 2 --interval 3 ___x_cmd_mistral_chat_request___try
     } || {
@@ -48,7 +50,7 @@ ___x_cmd_mistral_chat_request___launch(){
 ___x_cmd_mistral_chat_request___try(){
     mistral:debug "Sending request to mistral server"
     [ -z "$confirm_before_send" ] || {
-        printf "%s\n" "$requestbody" | ___x_cmd j2y | ___x_cmd bat -l yml >/dev/tty
+        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml >/dev/tty
         ___x_cmd ui yesno "Do your want to send this message?" || {
             ___X_CMD_RETRY_ABORT=1
             return 1
@@ -56,9 +58,11 @@ ___x_cmd_mistral_chat_request___try(){
         confirm_before_send=
     }
 
+    local _md5; _md5="$( < "$request_body_file" ___x_cmd str md5 )"
     {
+        request_body_file="$request_body_file" \
         ___x_cmd ccmd "$cache_time" -- \
-            ___x_cmd_mistral_request_generaxwtecontent "$requestbody"
+            ___x_cmd_mistral_request_generaxwtecontent "$model" "$_md5"
     } | {
         local interative=
         if ___x_cmd_is_interactive; then interative=1; fi

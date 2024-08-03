@@ -1,5 +1,4 @@
-
-
+# shellcheck shell=dash
 
 ___x_cmd_sed___fzf(){
     ___x_cmd_sed___fzfapp "$@"
@@ -19,33 +18,79 @@ ___x_cmd_sed___fzfapp(){
             ___x_cmd_cmds cat               > "$___X_CMD_SED_FZF_APP_DIR/source"
             ;;
         *)
+            [ -f "$fp" ] || N=sed M="The specified file does not exist --> $fp" log:ret:1
             ___X_CMD_SED_FZF_APP_DIR="${fp}.sed.${pidofsubshell}.d"
             ___x_cmd mkdirp "$___X_CMD_SED_FZF_APP_DIR"
             ___x_cmd_cmds cat "${fp}"       > "$___X_CMD_SED_FZF_APP_DIR/source"
     esac
 
+    ___x_cmd_cmds sync -f "$___X_CMD_SED_FZF_APP_DIR/source" 2>/dev/null
+
     (
     trap '___x_cmd rmrf "$___X_CMD_SED_FZF_APP_DIR";' EXIT
+    while true; do
+        local expression
+        expression="$( ___x_cmd_sed___fzfapprun "$expression")"
 
+        [ -n "$expression" ] || return
+        local id=
+        ___x_cmd ui select id "Next for [expression=$expression]"   \
+            "Copy this expression to pastboard"                     \
+            "Print preview data"                                    \
+            "Modify the file content using this expression"         \
+            "Modify the expression"                                 \
+            "Exit"
+        case "$id" in
+            1)      sed:info "run command =>  x pb -c '$expression'"
+                    ___x_cmd pb -c "$expression"
+                    return 0 ;;
+            2)      ___x_cmd_cmds sed "$expression" <"$___X_CMD_SED_FZF_APP_DIR/source"
+                    return 0 ;;
+            3)      [ -f "$fp" ] || N=sed M="file not exist."  log:ret:1
+                    sed:info "run command =>  sed -i $expression  $fp"
+                    ___x_cmd_cmds sed -i "$expression"  "$fp"
+                    return 0 ;;
+            4)      continue ;;
+            *)      break
+                    return 0 ;;
+        esac
+    done
+    )
+}
+
+___x_cmd_sed___fzfapprun(){
+    local expression="$1"
     fpfolder="$___X_CMD_SED_FZF_APP_DIR"        \
     ___x_cmd fzf                                \
         --header="<Please type sed arguments>"  \
         --reverse --no-info --height='80%'      \
-        --query="" --print-query               \
+        --query="$expression" --print-query                \
         --preview-window='down,99%'             \
         --preview='x sed --fzfapppreview "$fpfolder" {q} 2>/dev/null' <<A
 A
-    )
-
 }
 
 ___x_cmd_sed___fzfapppreview(){
     local fp="$1";  shift
+    local modified_content
     {
-        eval ___x_cmd_cmds sed "$1" <"$fp/source" || {
-            printf "\n\n=== %s ===\n\n" "Content of file : $fp/source"
-            ___x_cmd_cmds cat "$fp/source"
-        }
+        case "$1" in
+            "")
+                ___x_cmd_sed___fzfapppreview___error  "$fp"
+                ;;
+            *)
+                if ! modified_content="$( eval ___x_cmd_cmds sed "$1" <"$fp/source" )"; then
+                    ___x_cmd_sed___fzfapppreview___error "$fp"
+                else
+                    printf "%s\n" "$modified_content" |  ___x_cmd_cmds diff -u --color=always "$fp/source" -
+                fi
+                ;;
+        esac
     } 2>&1 | ___x_cmd_cmds head -n 2000
 }
 
+___x_cmd_sed___fzfapppreview___error(){
+    local fp="$1"
+    printf "\n=== %s ===\n\n" "Content of file : $fp/source"
+    ___x_cmd_cmds cat "$fp/source"
+}

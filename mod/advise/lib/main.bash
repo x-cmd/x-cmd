@@ -31,7 +31,7 @@ ___x_cmd_advise_run(){
 
     local candidate_arr=(); local candidate_exec_arr=(); local candidate_nospace_arr=();
     local candidate_exec=; local offset=; local ___X_CMD_ADVISE_RUN_SET_NOSPACE=; local candidate_prefix=
-    local candidate_exec_stdout=;   local candidate_exec_stdout_nospace=
+    local candidate_exec_stdout=;   local candidate_exec_stdout_nospace=; local _message_str=
     eval "$(___x_cmd_advise_get_result_from_awk "$x_")" 2>/dev/null
 
     local IFS="$___X_CMD_ADVISE_IFS_INIT"

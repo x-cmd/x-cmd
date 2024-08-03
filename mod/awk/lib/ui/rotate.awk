@@ -3,7 +3,12 @@ BEGIN{
     if (IS_TH_NO_COLOR != 1) {
         TH_THEME_COLOR = ENVIRON[ "___X_CMD_THEME_COLOR_CODE" ]
         TH_THEME_COLOR = (TH_THEME_COLOR) ? "\033[" TH_THEME_COLOR "m" : UI_FG_CYAN
+        TH_TEXT_COLOR  = UI_TEXT_DIM # UI_FG_DARKGRAY
     }
+}
+
+END{
+    ui_rotate_render_restore()
 }
 
 function ui_rotate1( screensize, fp,     line,     d, i ){
@@ -54,7 +59,7 @@ function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end, outp
     if ( _has_content == 1 ) {
         ui_rotate_render_prompt( o, prefix, prompt_end )
         if ( exitclear == 1 )       ui_rotate_render_clear()
-        printf ("%s", UI_LINEWRAP_ENABLE) > "/dev/stderr"
+        ui_rotate_render_restore()
     }
     for (i=1; i<=OUTPUT_ARRL; ++i) print OUTPUT_ARR[i]
     return _c
@@ -67,7 +72,7 @@ function ui_rotate_render( o, prefix,      i, n, str ){
     counter = ring_counter( o )
     for (i=1; i<=n; ++i) {
         str = sprintf("%4d  ", (counter - n + i)) ring_get( o, i )
-        printf("%s%s%s\n", prefix, th(TH_THEME_COLOR, "│ "), th(UI_FG_DARKGRAY, str)) > "/dev/stderr"
+        printf("%s%s%s\n", prefix, th(TH_THEME_COLOR, "│ "), th(TH_TEXT_COLOR, str)) > "/dev/stderr"
     }
 }
 
@@ -80,6 +85,10 @@ function ui_rotate_render_clear(){
     printf( "%s", UI_CURSOR_RESTORE \
         UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
         "\r" UI_CURSOR_RESTORE UI_CURSOR_SAVE ) > "/dev/stderr"
+}
+
+function ui_rotate_render_restore(){
+    printf ("%s", UI_LINEWRAP_ENABLE UI_CURSOR_NORMAL UI_CURSOR_SHOW ) > "/dev/stderr"
 }
 
 function ui_rotate_render_prompt( o, prefix, prompt,    n ){

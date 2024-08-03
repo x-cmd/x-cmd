@@ -28,7 +28,7 @@ BEGIN{
         JITER_LEVEL = JITER_CURLEN = 0
     } else {
         $1 = ""
-        jiparse_after_tokenize( o_response, $0 )
+        openai_dsiplay_response_text_stream( $0 )
         JITER_LEVEL = JITER_CURLEN = 0
     }
 }

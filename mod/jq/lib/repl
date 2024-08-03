@@ -12,39 +12,52 @@ ___x_cmd_jq_repl(){
 }
 
 ___x_cmd_jq_repl_app(){
-    local fp="$1"
-
     ___x_cmd jq --preparecmd
     ___x_cmd yq --preparecmd
 
-    (
-        trap 'command rm -rf "${fp}.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d"' EXIT
+    local fp="$1"
+    local pidofsubshell; pidofsubshell="$(___x_cmd pidofsubshell)"
 
-        case "$fp" in
-            -|"")
-                fp="$___X_CMD_ROOT_TMP/${___X_CMD_JQ_REPL_CMD:-jq}/$(___x_cmd pidofsubshell).jq"
-                ___x_cmd ensurefp "$fp"
-                ___x_cmd_cmds cat > "$fp"
-        esac
-        ___x_cmd mkdirp "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d"
+    local ___X_CMD_SED_FZF_APP_DIR=
+    case "${fp}" in
+        -|"")
+            ___X_CMD_SED_FZF_APP_DIR="$___X_CMD_ROOT_TMP/${___X_CMD_JQ_REPL_CMD:-jq}.${pidofsubshell}.d"
+            ___x_cmd mkdirp "$___X_CMD_SED_FZF_APP_DIR"
+            ___x_cmd_cmds cat            > "$___X_CMD_SED_FZF_APP_DIR/source"
+            ;;
+        *)
+            [ -f "$fp" ] || M="File does not exist --> $fp" N="${___X_CMD_JQ_REPL_CMD:-jq}" log:ret:1
+            ___X_CMD_SED_FZF_APP_DIR="${fp}.${___X_CMD_JQ_REPL_CMD:-jq}.${pidofsubshell}.d"
+            ___x_cmd mkdirp "$___X_CMD_SED_FZF_APP_DIR"
+            ___x_cmd_cmds cat "${fp}"    > "$___X_CMD_SED_FZF_APP_DIR/source"
+    esac
+
+    (
+        trap '___x_cmd rmrf "$___X_CMD_SED_FZF_APP_DIR";' EXIT
 
         local filter=.
         while true; do
-            filter="$(___x_cmd_jq_repl___actual "$fp" ".")"
+            filter="$(___x_cmd_jq_repl___actual ".")"
 
             [ -n "$filter" ] || return
             local id=
             ___x_cmd ui select id "Next for $filter"            \
                 "Copy this filter to pastboard"                 \
                 "Copy this part of the data to pastboard"       \
+                "Print filter"                                  \
+                "Print data"                                    \
                 "Modify the filter"                             \
                 "Exit"
             case "$id" in
                 1)      printf "%s" "$filter" | ___x_cmd pb
                         return 0 ;;
-                2)      ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" "$filter" <"$fp" | ___x_cmd pb
+                2)      ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" "$filter" <"$___X_CMD_SED_FZF_APP_DIR/source" | ___x_cmd pb
                         return 0 ;;
-                3)      continue ;;
+                3)      printf "%s" "$filter"
+                        return 0 ;;
+                4)      ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" "$filter" <"$___X_CMD_SED_FZF_APP_DIR/source"
+                        return 0 ;;
+                5)      continue ;;
                 *)      return 0 ;;
             esac
         done
@@ -53,17 +66,17 @@ ___x_cmd_jq_repl_app(){
 }
 
 ___x_cmd_jq_repl___actual(){
-    local fp="$1"
-    local filter="${2:-.}"
+    local filter="${1:-.}"
+    local fpfolder="$___X_CMD_SED_FZF_APP_DIR"
+    local repl_cmd="${___X_CMD_JQ_REPL_CMD:-jq}"
 
-    local _x_fp=; local fpfolder=
-    _x_fp="$fp" fpfolder="$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d"    \
-    ___x_cmd fzf                                                        \
-        --header="<Please type ${___X_CMD_JQ_REPL_CMD:-jq} filter>"     \
-        --reverse --no-info --height='80%'                              \
-        --query="$filter" --print-query                                 \
+    ___X_CMD_SED_FZF_APP_DIR="$___X_CMD_SED_FZF_APP_DIR" ___X_CMD_JQ_REPL_CMD="$repl_cmd" fpfolder="$fpfolder" \
+    ___x_cmd fzf                                                                                \
+        --header="<Please type $repl_cmd filter>"                                               \
+        --reverse --no-info --height='80%'                                                      \
+        --query="$filter" --print-query                                                         \
         --bind='change:transform-header(cat "$fpfolder/$(cat "$fpfolder/header").header" )'     \
-        --preview-window='down,99%' --preview 'x jq repl --preview "$_x_fp" {q} 2>/dev/null' <<A
+        --preview-window='down,99%' --preview 'x jq repl --preview "$fpfolder/source" {q} 2>/dev/null' <<A
 A
 
 }
@@ -82,7 +95,7 @@ ___x_cmd_jq_repl___preview_check(){
 
 ___x_cmd_jq_repl___header(){
     local fp="$1";  shift
-    [ ! -f "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/res" ] || fp="$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/res"
+    [ ! -f "$___X_CMD_SED_FZF_APP_DIR/res" ] || fp="$___X_CMD_SED_FZF_APP_DIR/res"
     ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" -r '. | keys | join(" ")' <"$fp"
 }
 
@@ -112,19 +125,19 @@ ___x_cmd_jq_repl___preview_(){
     #     return
     # }
 
-    if ___x_cmd tee "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/${md5sum}" --  ___x_cmd_jq_repl___preview___partial "$1" <"$fp"; then
-        if ___x_cmd_jq_repl___preview_check <"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/${md5sum}"; then
+    if ___x_cmd tee "$___X_CMD_SED_FZF_APP_DIR/${md5sum}" --  ___x_cmd_jq_repl___preview___partial "$1" <"$fp"; then
+        if ___x_cmd_jq_repl___preview_check <"$___X_CMD_SED_FZF_APP_DIR/${md5sum}"; then
 
-            ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" "$1" <"$fp" | ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" -r '. | keys | join(" ")' >"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/${md5sum}.header"
-            printf "%s\n" "${md5sum}" >"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/header"
+            ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" "$1" <"$fp" | ___x_cmd "${___X_CMD_JQ_REPL_CMD:-jq}" -r '. | keys | join(" ")' >"$___X_CMD_SED_FZF_APP_DIR/${md5sum}.header"
+            printf "%s\n" "${md5sum}" >"$___X_CMD_SED_FZF_APP_DIR/header"
             ___x_cmd_jq_repl___preview_history_add "$fp" "$md5sum" "$1"
             return
         fi
     else
-        ___x_cmd rmrf "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/${md5sum}"
+        ___x_cmd rmrf "$___X_CMD_SED_FZF_APP_DIR/${md5sum}"
     fi
 
-    printf "%s\n" "${md5sum}" >"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/header"
+    printf "%s\n" "${md5sum}" >"$___X_CMD_SED_FZF_APP_DIR/header"
 
     ___x_cmd_jq_repl___preview_history_dump_parent_result "$fp" "$1"
 }
@@ -133,7 +146,7 @@ ___x_cmd_jq_repl___preview_history_add(){
     local fp="$1"
     local md5="$2"
     local query="$3"
-    printf "%s  %s\n"       "$md5"  "$query" >>"$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/history"
+    printf "%s  %s\n"       "$md5"  "$query" >>"$___X_CMD_SED_FZF_APP_DIR/history"
 }
 
 ___x_cmd_jq_repl___preview_history_dump_parent_result(){
@@ -142,8 +155,8 @@ ___x_cmd_jq_repl___preview_history_dump_parent_result(){
 
     {
         printf "%s  %s\n"   "///"         "$fail_query"
-        ___x_cmd_cmds cat "$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d/history"
-    } | ___x_cmd_cmds sort -r -k 2 | ___x_cmd_cmds awk -v q="$fail_query" -v dir="$fp.repl.${___X_CMD_JQ_REPL_CMD:-jq}.x-cmd.d" '
+        ___x_cmd_cmds cat "$___X_CMD_SED_FZF_APP_DIR/history"
+    } | ___x_cmd_cmds sort -r -k 2 | ___x_cmd_cmds awk -v q="$fail_query" -v dir="$___X_CMD_SED_FZF_APP_DIR" '
     # {  print }
     ($0~"^///"){
 

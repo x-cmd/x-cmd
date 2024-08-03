@@ -3,7 +3,10 @@
 
 # get the candidate value
 function advise_get_ref_and_group(obj, kp,        msg, subcmd_group, option_group, flag_group){
-    if ((msg = comp_advise_get_ref(obj, kp)) != true) return false # advise_error( msg )
+    if ((msg = comp_advise_get_ref(obj, kp)) != true) {
+        if ( ___X_CMD_ADVISE_DEV_MOD == 1 ) advise_error( msg )
+        else return false
+    }
     comp_advise_parse_group(obj, kp, subcmd_group, option_group, flag_group)
     comp_advise_remove_dev_tag_of_arr_group(obj, kp, subcmd_group)
     comp_advise_remove_dev_tag_of_arr_group(obj, kp, option_group)

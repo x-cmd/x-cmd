@@ -1,7 +1,7 @@
 
 # Section: prepare argument
 function prepare_argarr( argstr, arr,      l, i, _arg ){
-    if ( argstr == "" ) argstr = "" # "." "\002"
+    # if ( argstr == "" ) argstr = "" # "." "\002"
 
     gsub("\n", "\001", argstr)
     gsub("\\\\ ", " ", argstr)
