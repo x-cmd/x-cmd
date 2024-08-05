@@ -32,11 +32,11 @@ X branch is for demo and action ⭐
 
 ## jq/yq - Quickly test JQ expressions
 
-![jq_r](https://github.com/user-attachments/assets/4cf3cc2b-504b-4de5-a4b0-0dd30da66402)
+![jq_r](https://github.com/user-attachments/assets/87ea8277-b6d0-4140-ac48-f21e852c4714)
 
 ## man - Preview enhancement based on fzf
 
-![man en](https://github.com/user-attachments/assets/4c481cfc-7a0b-444b-b883-84c4f02702cf)
+![man en](https://github.com/user-attachments/assets/3eefcc80-592f-4724-b910-1f0fe611d451)
 
 ## theme - Compatible with a variety of Bosix Scheer theme beautification
 
