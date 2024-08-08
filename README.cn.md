@@ -40,17 +40,17 @@ X 分支用作 demo 和 action ⭐
     </tr>
 </table>
 
-## osv
+## man - 基于 fzf 的 预览 增强
 
-![x osv demo gif](https://foruda.gitee.com/images/1718078629588146457/5d067d31_9641432.gif)
+![man.cn.gif](https://foruda.gitee.com/images/1722606367684957086/3e06c8f8_8841942.gif "man.cn.gif")
 
 ## jq/yq - 快速测试 JQ 表达式
 
 ![jq_r](https://foruda.gitee.com/images/1722588625707099785/131a0613_8841942.gif "jq_r.gif")
 
-## man - 基于 fzf 的 预览 增强
+## osv
 
-![man.cn.gif](https://foruda.gitee.com/images/1722606367684957086/3e06c8f8_8841942.gif "man.cn.gif")
+![x osv demo gif](https://foruda.gitee.com/images/1718078629588146457/5d067d31_9641432.gif)
 
 ## theme - 兼容多种 posix shell 的主题美化
 
