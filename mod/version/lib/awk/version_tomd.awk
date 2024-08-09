@@ -3,7 +3,7 @@ function parse_changelog(O, version, key,       i, j, h, len, _len, __len, key_k
     for (i=1; i<=len; ++i)  {
         key_k = O[ kp("1", version, key, i) ]
         _len = O[ kp("1", version, key, juq(key_k) ) L ]
-        printf("%s%s\n\n", "## ", juq(key_k))
+        printf("%s%s\n\n", "### ", juq(key_k))
 
         for (j=1; j<=_len; ++j) {
             key_t = O[kp("1", version, key, juq(key_k), j)]
@@ -41,10 +41,10 @@ END{
         printf("%s%s\n\n", "[👉 Version compare: " compare "]", "(https://github.com/x-cmd/x-cmd/compare/" compare ")" )
     }
 
-    if( change[ "latest" ] == "true" )   printf("%s\n\n%s\n\n", "# ✅Upgrade Guide", "```bash \nx upgrade \n```")
+    if( change[ "latest" ] == "true" )   printf("%s\n\n%s\n\n", "## ✅ Upgrade Guide", "```bash \nx upgrade \n```")
 
     if( change[ "change" ] != "" ) {
-        printf("%s\n\n", "# 📃Changelog")
+        printf("%s\n\n", "## 📃 Changelog")
         parse_changelog(O, version, "change")
     }
 }

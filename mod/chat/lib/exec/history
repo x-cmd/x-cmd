@@ -3,54 +3,108 @@
 ___x_cmd_chat___exec_repl_history(){
     local op="$1"
     case "$op" in
-        add|ls|get)  shift; ___x_cmd_chat___exec_repl_history_"$op" "$@" ;;
+        add|ls|get|clear|init|app)
+            shift; ___x_cmd_chat___exec_repl_history_"$op" "$@" ;;
         *) ;;
     esac
+}
+
+___x_cmd_chat___exec_repl_history_app(){
+    local cmd
+    ___x_cmd ui select ,cmd "Next"          \
+        "Initialize repl history record"    \
+        "Clear all repl history record"     \
+        "Continue the loop"    || return
+
+    case "$cmd" in
+        Clear*) ___x_cmd_chat___exec_repl_history_clear ;;
+        Init*)  ___x_cmd_chat___exec_repl_history_init  ;;
+        *)      return ;;
+    esac
+}
+
+___x_cmd_chat___exec_repl_history_clear(){
+    printf "\n" > "$___X_CMD_CHAT_SESSION_DIR/.history.repl"
 }
 
 ___x_cmd_chat___exec_repl_history_add(){
     local text="$1"
     [ -n "$text" ] || return
-    local sep="${___X_CMD_UNSEENCHAR_001}${___X_CMD_UNSEENCHAR_002}${___X_CMD_UNSEENCHAR_003}"
-    local id; id="$(___x_cmd date timestamp)"
-    local fp="$___X_CMD_CHAT_SESSION_DIR/.history"
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
     ___x_cmd ensurefp "$fp"
-    printf "%s:%s %s\n" "$sep" "$id" "$text" >> "$fp"
+    [ ! -f "$fp" ] || ___x_cmd mv "$fp" "${fp}.tmp"
+    printf "\001\002\003 %s\n" "$text" > "$fp"
+    [ ! -f "${fp}.tmp" ] || {
+        < "${fp}.tmp" text="$text" ___x_cmd_cmds awk -v RS='\001\002\003' '
+        BEGIN{ text = " " ENVIRON["text"] "\n"; }
+        (NR >= 5000){ exit(0); }
+        (($0 != "" ) && ($0 != text)){ printf("%s", RS $0) ; }
+        ' >> "$fp"
+        ___x_cmd rmrf "${fp}.tmp"
+    }
+}
+
+___x_cmd_chat___exec_repl_history_init(){
+    local dir="$___X_CMD_CHAT_SESSION_DIR"
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+    ___x_cmd ensurefp "$fp"
+    printf "\001\002\003 %s\n" /h /help /history /exit > "$fp"
+
+    [ -d "$dir" ] || return 0
+    local fplist; fplist="$(
+        ___x_cmd_cmds find "$dir" -type f -name 'chat.response.yml' 2>/dev/null | while read -r l; do
+            [ "$l" = "${l#"$dir/X/"}" ] || continue
+            d="${l%"/chat.response.yml"}"
+            l="${d}/chat.request.yml"
+            [ -f "$l" ] || continue
+            printf "%s %s\n" "${d##*/}" "$l"
+        done | ___x_cmd_cmds sort -r
+    )"
+    [ -n "$fplist" ] || return 0
+    ___x_cmd cawk -m j/json,j/jiter '
+    {
+        fp = $2
+        jiparse2leaf_fromfile( o, fp, fp )
+        if ( ! cat_is_filenotfound() ) {
+            text = str_trim(juq(o[ fp, "\"question\"" ]))
+            if ( arr[ text ] != 1 ) {
+                arr[ text ] = 1
+                printf("\001\002\003 %s\n", text)
+            }
+        }
+        delete o
+    }
+    ' >> "$fp" <<A
+${fplist}
+A
 }
 
 ___x_cmd_chat___exec_repl_history_ls(){
-    local fp="$___X_CMD_CHAT_SESSION_DIR/.history"
-    [ -f "$fp" ] || return
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+    [ -f "$fp" ] || ___x_cmd_chat___exec_repl_history_init || return
     < "$fp" ___x_cmd_cmds awk '
-        $1~"^\001\002\003:"{
-            id = substr($1, 5)
+        ($1 == "\001\002\003"){
             $1 = ""
-            print id $0
+            printf("\033[90m%04s\033[0m%s\n", ++id, $0)
         }
-    '   | ___x_cmd_cmds sort -r \
-        | ___x_cmd_cmds awk '{ id = $1; $1 = ""; print "\033[90m" id "\033[0m" $0; }'
+    '
 }
 
 ___x_cmd_chat___exec_repl_history_get(){
-    local prefix="$1"
-    [ -n "$prefix" ] || return
-    local fp="$___X_CMD_CHAT_SESSION_DIR/.history"
+    local id="$1"
+    [ -n "$id" ] || return
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
     [ -f "$fp" ] || return
 
-    < "$fp" ___x_cmd_cmds awk -v prefix="$prefix" '
-    BEGIN{
-        STR_TERMINAL_ESCAPE033 = "\033\\[[^A-Za-z]*(dh|[A-Za-z=])"
-        TRIM033 = "(" STR_TERMINAL_ESCAPE033 ")+"
-        gsub( "^[ ]+",  "", prefix )
-        gsub( "[ ].*", "", prefix )
-        gsub( TRIM033,  "", prefix )
-        prefix = "\001\002\003:" prefix
-    }
-    match( $0, "^" prefix " " ){
-        print substr( $0, RLENGTH+1 )
-        while (getline) {
-            if ($0 ~ "^\001\002\003:") exit
-            else print $0
+    < "$fp" ___x_cmd_cmds awk -v id="$id" '
+    ( $1 == "\001\002\003" ){
+        if (++num == id) {
+            $1 = ""
+            print substr( $0, 2 )
+            while (getline) {
+                if ($1 == "\001\002\003") exit
+                else print $0
+            }
         }
     }
     '

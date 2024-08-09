@@ -1,0 +1,126 @@
+
+
+## Section: cd origin
+
+# c gh://x-bash/advise
+
+___x_cmd_cd_origin(){
+    [ "$#" -gt 0 ]  ||      set - "$HOME"
+
+    local ppp="$1";         local domain
+    case "$ppp" in
+        gh:*)               domain=github.com   ;;
+        gt:*)               domain=gitee.com    ;;
+        gl:*)               domain=gitlab.com   ;;
+        gcode:*)            domain=gitcode.net  ;;
+        *)                  ___x_cmd_cd_origin___chdir "$@"; return ;;
+    esac
+
+    ppp="${ppp#*:}"
+    shift
+    ___x_cmd_cd_origin___git "${ppp#//}" "$@"
+}
+
+___X_CMD_CD_GIT_STORE="$___X_CMD_ROOT_DATA/git"
+
+# domain=github.com
+___x_cmd_cd_origin___git(){
+    local dir="$1"; shift
+    if [ ! -d "$___X_CMD_CD_GIT_STORE/$domain/$dir" ]; then
+        local store="$___X_CMD_CD_GIT_STORE/$domain/${dir%/*}"
+        # NOTICE: The reason using subshell is to make sure current dir unchanged when ctrl-c interrupt.
+        ___x_cmd ui yesno "git clone git@${domain}:$dir -> $store" || return
+        (
+            trap '___x_cmd rmrf "$store"' EXIT
+            ___x_cmd mcd "$store"
+            ___x_cmd_cmds git clone "git@${domain}:$dir"
+        ) || return
+    fi
+
+    ___x_cmd_cd_origin___chdir "$___X_CMD_CD_GIT_STORE/$domain/$dir" "$@"
+}
+
+___x_cmd_cd_origin___chdir(){
+    local dir="$1"; shift
+
+    local ret=0
+    if [ "$#" -gt 0 ]; then
+        local ___X_CMD_CD_ORIGIN_PWD="$PWD"
+        ___x_cmd_cd_origin___chdir0 "$dir"
+        cd:debug -c "$*" "chdir to exec"
+        "$@" || ret=$?
+        ___x_cmd_cd_origin___chdir0 "$___X_CMD_CD_ORIGIN_PWD"
+        return $ret
+    fi
+
+    cd:debug "chdir to $dir, [PWD=$PWD]"
+    ___x_cmd_cmds_cd "$dir" 2>/dev/null || N=cd M="Invalid directory [path=$dir]" log:ret:1
+
+    # if [ "${-#*i}${___X_CMD_FS_DEBUG}" != "$-" ] && [ -t 1 ] ; then
+    if { ___x_cmd_is_interactive || [ -n "$___X_CMD_FS_DEBUG" ]; } && [ -t 1 ]; then
+        ___x_cmd_cd_history___top "$PWD"
+    fi
+}
+
+___x_cmd_cd_origin___chdir0(){
+    local dir="$1"
+    ___x_cmd_cd0 "$dir" 2>/dev/null || N=cd M="Invalid directory [path=$dir]" log:ret:1
+}
+
+___x_cmd_cd_origin___file(){
+    local p="$1";   shift
+    [ -f "$p" ] || return 1
+    p="${p%/*}"
+
+    local id
+    ___x_cmd ui select id "cd into folder -> $p"    \
+        "YES" \
+        "NO" || return
+
+    case "$id" in
+        1)      ___x_cmd_cd_origin "${p}" ;;
+        *)      return 0
+    esac
+}
+
+___x_cmd_cd_origin___mcd(){
+    case "$1" in
+        '~')    ___x_cmd_cd_origin "$HOME";             return ;;
+        '~'/*)  ___x_cmd_cd_origin "$HOME"/"${1#*/}";   return ;;
+
+        /*)     ;;
+        ../*)   ;;
+        ./*)    ;;
+        *)      return 1 ;;
+    esac
+
+    local id
+    ___x_cmd ui select id "mkdir and then cd into folder -> $1"  \
+        "YES" \
+        "NO" || return
+
+    case "$id" in
+        1)          ___x_cmd mcd "$1" ;;
+        *)          return 1
+    esac
+
+}
+
+___x_cmd_cd_origin___mcd_or_pick(){
+    local p="$1"
+    local rootp="$2"
+    local iterp="$3"
+    shift 3
+
+    local id
+    ___x_cmd ui select id "Next for $p"     \
+        "mkdir and cd into ${p}"           \
+        "search and pick from ${rootp} -> ${iterp}"  \
+        "return"    || return
+
+    case "$id" in
+        1)      ___x_cmd mcd "$p" ;;
+        2)      ___x_cmd_cd_goto___pickfromiter "$rootp" "$iterp"    "$@" ;;
+        *)      return ;;
+    esac
+}

@@ -152,6 +152,7 @@ function user_parse_basedata( o, kp, pathlist,      i, l, _, str, w, max_w, v ){
 function tapp_handle_exit( exit_code,       p, v ){
     if (exit_is_with_cmd()){
         p = comp_navi_get_cur_rootkp(o, LS_KP)
+        gsub("/+", "/", p)
         tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_TUI_NAVI_CUR_FILE", p ) )
         tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_TUI_NAVI_FINAL_COMMAND", FINALCMD ) )
         v = comp_navi_current_position_get(o, LS_KP)
@@ -175,13 +176,13 @@ function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, i
     return comp_textbox_paint(o, CUSTOM_FILEINFO_KP, x1, x2, y1, y2)
 }
 
-function user_paint_status( o, kp, x1, x2, y1, y2,      s, _log, _path ) {
+function user_paint_status( o, kp, x1, x2, y1, y2,      s, _log ) {
     if ( ! change_is(o, kp, "navi.footer") ) return
     change_unset(o, kp, "navi.footer")
     s = comp_navi_get_cur_rootkp(o, kp)
     _log = o[ kp, s, "log" ]
-    _path = s
-    s = th( UI_TEXT_BOLD TH_THEME_COLOR, "Path: " ) _path
+    gsub("/+", "/", s)
+    s = th( UI_TEXT_BOLD TH_THEME_COLOR, "Path: " ) s
     if ( _log != "" ) s = s "\n" th( UI_FG_YELLOW, "Log: " ) _log
 
     comp_textbox_put( o, kp SUBSEP "navi.footer" , s )

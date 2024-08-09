@@ -1,6 +1,6 @@
 # shellcheck shell=dash
 
-xrc:mod:lib cd  util back pick relm/_index search history/_index
+xrc:mod:lib cd  util back pick relm/_index search history/_index main_origin
 
 ! ___x_cmd_is_suitable_advise_env || xrc:mod:lib cd  advise
 
@@ -34,6 +34,15 @@ ___x_cmd_cd___main(){
         ___x_cmd_cd_origin "$p" "$@";
         return
     fi
+
+    if [ -f "$p" ]; then
+        ___x_cmd_cd_origin___file "${p}"
+        return
+    fi
+
+    # if ___x_cmd_cd_origin___mcd "$p"; then
+    #     return 0
+    # fi
 
     case "$p" in
         -h|--help)          M='cd' help:ret:0 ;;
@@ -70,12 +79,32 @@ ___x_cmd_cd___main(){
         # %*)                 ___x_cmd_cd_search___xcmdroot   "${p#*%}"   "$@" ;;      # consider
         # ,*)                 ___x_cmd_cd_search___home       "${p#*,}"   "$@" ;;      # = is not support in zsh, that's why we use ,
 
-        *)                  [ -z "$___X_CMD_CD_COMPATIBLE" ] ||  N=cd M="Invalid path -> $p" log:ret:1
-                            case "$p" in
-                                /*)     ___x_cmd_cd_goto___pickfromiter / "${p#/}"    "$@" ;;
-                                */*)    ___x_cmd_cd_goto___pickfromiter . "${p}"      "$@" ;;
-                                *)      ___x_cmd_cd_goto___pickfromiter . "${p}"      "$@" ;;
-                            esac
+        *)                  ___x_cmd_cd_main___other "$p"       "$@" ;;
+    esac
+}
+
+___x_cmd_cd_main___other(){
+    local p="$1";           shift
+    [ -z "$___X_CMD_CD_COMPATIBLE" ] ||  {
+        # N=cd M="Invalid path -> $p" log:ret:1
+        ___x_cmd_cd_origin___mcd "./$p"
+        return
+    }
+
+    case "$p" in
+        /*)
+                ___x_cmd_cd_origin___mcd_or_pick    "$p"    /   "${p#/}"    "$@"
+                ;;
+
+        ./*)
+                ___x_cmd_cd_origin___mcd_or_pick    "$p"    .   "${p#"./"}" "$@"
+                ;;
+        ../*)
+                ___x_cmd_cd_origin___mcd_or_pick    "$p"    ..  "${p#"../"}" "$@"
+                ;;
+        *)
+                ___x_cmd_cd_origin___mcd_or_pick    "$p"    .   "$p"        "$@"
+                ;;
     esac
 }
 
@@ -86,71 +115,6 @@ ___x_cmd_cd_init(){
 ___x_cmd_cd_init
 
 ___x_cmd_cd_forward(){
-    [ "$#" -gt 0 ] || N=cd M="Please provide the keyword forward" log:ret:64
+    [ "$#" -gt 0 ] || set -- .
     ___x_cmd_cd_search___path "$@"
 }
-
-## Section: cd origin
-
-# c gh://x-bash/advise
-
-___x_cmd_cd_origin(){
-    [ "$#" -gt 0 ]  ||      set - "$HOME"
-
-    local ppp="$1";         local domain
-    case "$ppp" in
-        gh:*)               domain=github.com   ;;
-        gt:*)               domain=gitee.com    ;;
-        gl:*)               domain=gitlab.com   ;;
-        gcode:*)            domain=gitcode.net  ;;
-        *)                  ___x_cmd_cd_origin___chdir "$@"; return ;;
-    esac
-
-    ppp="${ppp#*:}"
-    shift
-    ___x_cmd_cd_origin___git "${ppp#//}" "$@"
-}
-
-___X_CMD_CD_GIT_STORE="$___X_CMD_ROOT_DATA/git"
-
-# domain=github.com
-___x_cmd_cd_origin___git(){
-    local dir="$1"; shift
-    if [ ! -d "$___X_CMD_CD_GIT_STORE/$domain/$dir" ]; then
-        # NOTICE: The reason using subshell is to make sure current dir unchanged when ctrl-c interrupt.
-        (
-            ___x_cmd mcd "$___X_CMD_CD_GIT_STORE/$domain/${dir%/*}"
-            ___x_cmd_cmds git clone "git@${domain}:$dir"
-        ) || return
-    fi
-
-    ___x_cmd_cd_origin___chdir "$___X_CMD_CD_GIT_STORE/$domain/$dir" "$@"
-}
-
-___x_cmd_cd_origin___chdir(){
-    local dir="$1"; shift
-
-    local ret=0
-    if [ "$#" -gt 0 ]; then
-        local ___X_CMD_CD_ORIGIN_PWD="$PWD"
-        ___x_cmd_cd_origin___chdir0 "$dir"
-        cd:debug -c "$*" "chdir to exec"
-        "$@" || ret=$?
-        ___x_cmd_cd_origin___chdir0 "$___X_CMD_CD_ORIGIN_PWD"
-        return $ret
-    fi
-
-    cd:debug "chdir to $dir, [PWD=$PWD]"
-    ___x_cmd_cmds_cd "$dir" 2>/dev/null || N=cd M="Invalid directory [path=$dir]" log:ret:1
-
-    # if [ "${-#*i}${___X_CMD_FS_DEBUG}" != "$-" ] && [ -t 1 ] ; then
-    if { ___x_cmd_is_interactive || [ -n "$___X_CMD_FS_DEBUG" ]; } && [ -t 1 ]; then
-        ___x_cmd_cd_history___top "$PWD"
-    fi
-}
-
-___x_cmd_cd_origin___chdir0(){
-    local dir="$1"
-    ___x_cmd_cd0 "$dir" 2>/dev/null || N=cd M="Invalid directory [path=$dir]" log:ret:1
-}
-
