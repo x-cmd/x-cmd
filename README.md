@@ -26,19 +26,19 @@ For <bold>source code</bold>, please swtich to <a href="https://github.com/x-cmd
 X branch is for demo and action ⭐
 </p>
 
-## man - Preview enhancement based on fzf
+## [x man](https://x-cmd.com/mod/man) - Preview enhancement based on fzf
 
 ![man en](https://github.com/user-attachments/assets/3eefcc80-592f-4724-b910-1f0fe611d451)
 
-## jq/yq - Quickly test JQ expressions
+## [x jq](https://x-cmd.com/mod/jq)/[x yq](https://x-cmd.com/mod/yq) - Quickly test JQ expressions
 
 ![jq_r](https://github.com/user-attachments/assets/87ea8277-b6d0-4140-ac48-f21e852c4714)
 
-## osv
+## [x osv](https://x-cmd.com/mod/osv)
 
 ![x osv demo gif](https://github.com/x-cmd/x-cmd/assets/40693636/f7c8c503-3d77-4939-8932-f2c03ed8f263)
 
-## theme - Compatible with a variety of Bosix Scheer theme beautification
+## [x theme](https://x-cmd.com/theme) - Compatible with a variety of Bosix Scheer theme beautification
 
 ![x theme demo gif](https://user-images.githubusercontent.com/112856271/276805596-08998349-eda3-4107-93ff-61daade67032.gif)
 
