@@ -6,9 +6,36 @@
 
 ___x_cmd_version___release_sync(){
     local repo="x-cmd/x-cmd"
-    local mod="${1:-"all"}"
-    local version="$2"
-    [ -n "$version" ] || version="$(___x_cmd_version_ls_json | ___x_cmd jq -r '. | keys | sort | reverse | .[0]')"
+    local title
+    local version
+    while [ $# -gt 0 ];do
+        case "${1}" in
+            --title)
+                        title="${2}"
+                        [ $# -ge 2 ] || M="Please provide title"  log:ret:64
+                        shift 2 ;;
+            *)          break ;;
+        esac
+    done
+
+    local mod="all"
+    local latest
+    latest="$(___x_cmd_version_ls_json | ___x_cmd jq -r '. | keys | sort | reverse | .[0]')"
+    mod="${1:-"$mod"}"
+    version="${2:-"$latest"}"
+    ___x_cmd_version___release_sync_ "$version" "$title"
+    [ "$version" != "$latest" ] || {
+        ___x_cmd_version___release_sync_ "$( ___x_cmd_version_ls_json | ___x_cmd jq -r '. | keys | sort | reverse | .[1]')"
+    }
+}
+
+___x_cmd_version___release_sync_(){
+    local version="$1"
+    local title="$2"
+    if [ -z "$title" ]; then
+        title="$(___x_cmd gh repo release ls --csv --repo "$repo" \
+            | ___x_cmd csv awk -v version="$version" '{ if( cval(3) ~ version ) print cval(2) }')"
+    fi
     local desc
     desc="$(___x_cmd version release tomd "$version")"
     ___x_cmd_version___release_sync_"${mod}"
@@ -17,23 +44,25 @@ ___x_cmd_version___release_sync(){
 ___x_cmd_version___release_sync_gh(){
     local release_id
     ___x_cmd_version___release_sync_getid "gh" || return 1
-    ___x_cmd gh repo release edit --repo "$repo" --body "$desc" "$release_id"
+    ___x_cmd gh repo release edit --repo "$repo" --body "$desc" --name "$title" "$release_id"
 }
 
 ___x_cmd_version___release_sync_gt(){
     local release_id
     ___x_cmd_version___release_sync_getid "gt" || return 1
-    desc="$(printf "%s" "$desc" \
+    local gt_desc
+    gt_desc="$(printf "%s" "$desc" \
         | ___x_cmd_cmds awk '{ gsub("github.com/x-cmd/x-cmd/compare", "gitee.com/x-cmd/x-cmd/compare", $0); print $0 }')"
-    ___x_cmd gt repo release edit --repo "$repo" --body "$desc" --name "$version" --tag "$version" "$release_id"
+    ___x_cmd gt repo release edit --repo "$repo" --body "$gt_desc" --name "$title" --tag "$version" "$release_id"
 }
 
 ___x_cmd_version___release_sync_cb(){
     local release_id
     ___x_cmd_version___release_sync_getid "cb" || return 1
-    desc="$(printf "%s" "$desc" \
+    local cb_desc
+    cb_desc="$(printf "%s" "$desc" \
         | ___x_cmd_cmds awk '{ gsub("github.com/x-cmd/x-cmd/compare", "codeberg.org/x-cmd/x-cmd/compare", $0); print $0 }')"
-    ___x_cmd cb repo release edit --repo "$repo" --body "$desc" "$release_id"
+    ___x_cmd cb repo release edit --repo "$repo" --body "$cb_desc" --name "$title" "$release_id"
 }
 
 ___x_cmd_version___release_sync_getid(){

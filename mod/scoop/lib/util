@@ -1,67 +1,108 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=2016
 ___X_CMD_SCOOP_IS_AVAILABLE=
 ___x_cmd_scoop___env_available(){
-
-    [ -z "$___X_CMD_SCOOP_IS_AVAILABLE" ] || return 0
-
-    [ -f "/proc/version" ] || return 1
-
-    local x_=; x os name_
-
-    if [ "$x_" = "win" ]; then
-        ___X_CMD_SCOOP_IS_AVAILABLE=1
-        return 0
-    fi
-
-    local wsl=; read -r wsl </proc/version
-    case "$wsl" in
-        *WSL2*)
+    if [ -z "$___X_CMD_SCOOP_IS_AVAILABLE" ]; then
+        if ___x_cmd os is win || ___x_cmd os is wsl; then
+            ___X_CMD_SCOOP_IS_AVAILABLE=0
+        else
             ___X_CMD_SCOOP_IS_AVAILABLE=1
-            return 0 ;;
-    esac
-
-    return 1
-}
-
-___x_cmd_scoop_path_add___scoop2path(){
-    local user_file=; local scoop_path=
-    user_file="$(x pwsh -Command Write-Host \$env:USERPROFILE)" 2>/dev/null
-    user_file="${user_file##*\\}"
-
-    if [ -d /mnt ]; then
-        scoop_path="/mnt/c/Users/$user_file/scoop/shims"
-    else
-        scoop_path="/c/Users/$user_file/scoop/shims"
+        fi
     fi
-    [ -d "$scoop_path" ] || return 1
-    x path add_existed_folder "$scoop_path"
+    return "$___X_CMD_SCOOP_IS_AVAILABLE"
 }
 
-___x_cmd_scoop_path_add___scoop(){
+___x_cmd_scoop___path_add(){
+    local x_=; ___x_cmd_scoop___path_shim_ || return
+    local scoop_path="$x_"
+    if [ ! -d "$scoop_path" ]; then
+        if [ -d "/mnt" ]; then
+            local scoop_global="/mnt/c/ProgramData/scoop"
+        else
+            local scoop_global="c/ProgramData/scoop"
+        fi
 
-    ! ___x_cmd_scoop_path_add___scoop2path || return
+        for i in "$SCOOP" "$SCOOP_GLOBAL" "$scoop_global" ; do
+            [ -d "$i" ] || continue
+            ___x_cmd path add_existed_folder "$i"
+            break
+        done
 
-    local userprofile
-    scoop:info "Loading scoop for the first time"
-
-    userprofile="$(x pwsh "echo \$env:USERPROFILE"|sed 's/^\([A-Z]\):/\L\1/' )"
-    userprofile="$(x pwsh path win_to_linux "$userprofile" )"
-
-    if [ -d "/mnt" ]; then
-        local scoop_path="/mnt/$userprofile/scoop/shims"
-        local scoop_global="/mnt/c/ProgramData/scoop"
-    else
-        local scoop_path="$userprofile/scoop/shims"
-        local scoop_global="c/ProgramData/scoop"
+        [ -d "$i" ] || ___x_cmd_scoop___install || return 1
+        ___x_cmd mkdirp "$scoop_path"
     fi
-
-    for i in "$SCOOP" "$SCOOP_GLOBAL" "$scoop_path" "$scoop_global" ; do
-        [ -d "$i" ] || continue
-        x path add_existed_folder "$i"
-        break
-    done
-
-    [ -d "$i" ] || ___x_cmd_scoop___install || return 1
-    x path add_existed_folder "$scoop_path"
+    ___x_cmd path add_existed_folder "$scoop_path"
 }
 
+___x_cmd_scoop___path_shim_(){
+    x_=; ___x_cmd_scoop___home_
+    x_="${x_}/shims"
+}
+
+___x_cmd_scoop___home_(){
+    if [ -n "$___X_CMD_SCOOP_ROOT_PATH" ]; then
+        x_="$___X_CMD_SCOOP_ROOT_PATH"
+    else
+        local root_path=
+        root_path="$( ___x_cmd_scoop___bin config root_path )" 2>/dev/null
+        if [ -z "$root_path" ] || { [ "$root_path" = "${root_path#*/}" ] && [ "$root_path" = "${root_path#*\\}" ]; }; then
+            root_path="$( ___x_cmd pwsh -Command Write-Host \$Env:UserProfile\\scoop )" 2>/dev/null || return
+        fi
+        root_path="$( ___x_cmd pwsh path win_to_linux "$root_path" )" || return
+        ___X_CMD_SCOOP_ROOT_PATH="$root_path"
+        x_="$root_path"
+    fi
+}
+
+___x_cmd_scoop___fzf_(){
+    x_=; ___x_cmd_scoop___home_
+    [ -d "$x_" ] || N=scoop M="Not found scoop root path" log:ret:1
+
+    # prepare yq for fzfinfo
+    ___x_cmd yq --version >/dev/null || return
+
+    local mod="${___X_CMD_SCOOP_FZF_MOD:-scoop}"
+    x_="$( "$@" | ___X_CMD_SCOOP_ROOT_PATH="$___X_CMD_SCOOP_ROOT_PATH" \
+        ___x_cmd fzf --ansi --reverse --cycle --exit-0 \
+            --height 50% --preview-window right:70% \
+            --preview="x ${mod} --fzfinfo '{1}' '{2}'"
+    )"
+}
+
+___x_cmd_scoop___fzfinfo(){
+    local software="$1"
+    local bucket="$2"
+    local x_=; ___x_cmd_scoop___home_
+    [ -d "$x_" ] || N=scoop M="Not found scoop root path" log:ret:1
+    local fp="${x_}/buckets/${bucket}/bucket/${software}.json"
+    [ -f "$fp" ] || return
+    printf "file: %s\n" "$fp"
+    < "$fp" ___x_cmd j2y | ___x_cmd yq -C
+}
+
+___x_cmd_scoop___parse_scoop_list(){
+    "$@" | ___x_cmd_cmds awk  '
+            IS_PKG != 1{
+                if($1 == "----"){ IS_PKG = 1 };
+                next;
+            }
+            (IS_PKG == 1) && ($0 ~ "^[a-zA-Z0-9_-]"){
+                printf("%-29s %-9s %s\n", $1, $3, $2)
+            }
+    '
+}
+
+___x_cmd_scoop___parse_qs_list(){
+    ___x_cmd_cmds awk '
+($0 ~ "^[^ ]"){
+    bucket = $1
+    bucket = substr( bucket, 2, length(bucket)-2 )
+    next
+}
+($0 != ""){
+    name = $1
+    $1 = ""
+    info = $0
+    printf("%-29s %s%s\n", name, bucket, info)
+}
+'
+}
