@@ -9,7 +9,7 @@
 <p align="center">Your AI-Powered Excalibur in Cloud.</p>
 
 <p align="center">
-  <a target="_blank" href="https://x-cmd.com/">
+  <a target="_blank" href="https://x-cmd.com/v">
     <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/github/v/release/x-cmd/x-cmd?label=latest&labelColor=107fbc">
   </a>
 </p>
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-For <bold>source code</bold>, please swtich to <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> branch.
+For <bold>source code</bold>, please switch to <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> branch.
 <br>
 X branch is for demo and action ⭐
 </p>

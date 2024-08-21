@@ -9,7 +9,7 @@
 <p align="center">在云上 施展 弹指神通 ～</p>
 
 <p align="center">
-  <a target="_blank" href="https://cn.x-cmd.com">
+  <a target="_blank" href="https://cn.x-cmd.com/v">
     <img style="display:inline-block;margin:0.2em;" alt="x-cmd-version" src="https://img.shields.io/github/v/release/x-cmd/x-cmd?label=latest&labelColor=107fbc">
   </a>
 </p>
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-查看<bold>源码</bold>请切换到 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支
+查看<bold>源码</bold>请移步至 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支
 <br>
 X 分支用作 demo 和 action ⭐
 </p>
