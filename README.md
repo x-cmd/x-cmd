@@ -23,7 +23,7 @@
 <p align="center">
 For <bold>source code</bold>, please switch to <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> branch.
 <br>
-<a href="https://github.com/x-cmd/x-cmd/tree/X/mod">X</a> branch is for demo and action ⭐
+<a href="https://github.com/x-cmd/x-cmd/tree/X/README.md">X</a> branch is for demo and action ⭐
 </p>
 
 ## [x man](https://x-cmd.com/mod/man) - Preview enhancement based on fzf
