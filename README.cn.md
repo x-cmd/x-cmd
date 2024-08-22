@@ -23,7 +23,7 @@
 <p align="center">
 查看<bold>源码</bold>请移步至 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支
 <br>
-X 分支用作 demo 和 action ⭐
+<a href="https://github.com/x-cmd/x-cmd/tree/X/mod">X</a> 分支 用作 demo 和 action ⭐
 </p>
 
 <table align="center">
