@@ -1,9 +1,16 @@
 
 BEGIN{
     if (IS_TH_NO_COLOR != 1) {
-        TH_THEME_COLOR = ENVIRON[ "___X_CMD_THEME_COLOR_CODE" ]
-        TH_THEME_COLOR = (TH_THEME_COLOR) ? "\033[" TH_THEME_COLOR "m" : UI_FG_CYAN
-        TH_TEXT_COLOR  = UI_TEXT_DIM # UI_FG_DARKGRAY
+        TH_THEME_COLOR  = ENVIRON[ "___X_CMD_THEME_COLOR_CODE" ]
+        TH_THEME_COLOR  = (TH_THEME_COLOR) ? "\033[" TH_THEME_COLOR "m" : UI_FG_CYAN
+        TH_BORDER_COLOR = ENVIRON[ "___X_CMD_UI_ROTATE_BORDER_COLOR" ]
+
+        if ( TH_BORDER_COLOR != "" ) gsub( "\\\\033", "\033", TH_BORDER_COLOR )
+        else TH_BORDER_COLOR = TH_THEME_COLOR
+
+        TH_TEXT_COLOR   = ENVIRON[ "___X_CMD_UI_ROTATE_TEXT_COLOR" ]
+        if ( TH_TEXT_COLOR != "" )  gsub( "\\\\033", "\033", TH_TEXT_COLOR )
+        else TH_TEXT_COLOR = UI_TEXT_DIM # UI_FG_DARKGRAY
     }
 }
 
@@ -72,7 +79,7 @@ function ui_rotate_render( o, prefix,      i, n, str ){
     counter = ring_counter( o )
     for (i=1; i<=n; ++i) {
         str = sprintf("%4d  ", (counter - n + i)) ring_get( o, i )
-        printf("%s%s%s\n", prefix, th(TH_THEME_COLOR, "│ "), th(TH_TEXT_COLOR, str)) > "/dev/stderr"
+        printf("%s%s%s\n", prefix, th(TH_BORDER_COLOR, "│ "), th(TH_TEXT_COLOR, str)) > "/dev/stderr"
     }
 }
 
@@ -96,5 +103,5 @@ function ui_rotate_render_prompt( o, prefix, prompt,    n ){
     printf("%s", UI_CURSOR_RESTORE "\033[" n "B" \
         UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR) > "/dev/stderr"
 
-    printf("%s%s%s\n", PREFIX, th(TH_THEME_COLOR, "└ "), prompt) > "/dev/stderr"
+    printf("%s%s%s\n", PREFIX, th(TH_BORDER_COLOR, "└ "), prompt) > "/dev/stderr"
 }

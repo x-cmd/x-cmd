@@ -1,16 +1,16 @@
-function parse_changelog(O, version, key,       i, j, h, len, _len, __len, key_k, key_t, value){
+function parse_changelog(O, version, key,       i, j, h, len, _len, __len, mod, mod_type, value){
     len = O[ kp("1", version, key) L ]
     for (i=1; i<=len; ++i)  {
-        key_k = O[ kp("1", version, key, i) ]
-        _len = O[ kp("1", version, key, juq(key_k) ) L ]
-        printf("%s%s\n\n", "### ", juq(key_k))
+        mod = O[ kp("1", version, key, i) ]
+        _len = O[ kp("1", version, key, juq(mod) ) L ]
+        printf("%s%s\n\n", "### ", "[" juq(mod) "]" "(https://x-cmd.com/mod/" juq(mod) ")")
 
         for (j=1; j<=_len; ++j) {
-            key_t = O[kp("1", version, key, juq(key_k), j)]
-            __len = O[ kp("1", version, key, juq(key_k), juq(key_t)) L ]
+            mod_type = O[kp("1", version, key, juq(mod), j)]
+            __len = O[ kp("1", version, key, juq(mod), juq(mod_type)) L ]
 
             for (h=1; h<=__len; ++h) {
-                value = O[ kp("1", version, key, juq(key_k), juq(key_t), h, "en") ]
+                value = O[ kp("1", version, key, juq(mod), juq(mod_type), h, "en") ]
                 gsub(/\\n/, "\n", value)
                 printf("%s%s\n", "  - ", juq(value))
             }

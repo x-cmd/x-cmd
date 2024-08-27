@@ -7,57 +7,127 @@ ___x_cmd_find___fzf(){
 }
 
 ___x_cmd_find___fzfapp(){
-    local filter=
-    while true; do
-        filter="$(___x_cmd_find___fzfapp___actual "$filter")"
+    local pidofsubshell; pidofsubshell="$(___x_cmd pidofsubshell)"
+    local ___X_CMD_FIND_FZF_APP_DIR="$___X_CMD_ROOT_TMP/find.${pidofsubshell}.d"
+    ___x_cmd mkdirp "$___X_CMD_FIND_FZF_APP_DIR"
 
-        [ -n "$filter" ] || return
-        local id=
-        ___x_cmd ui select id "Next for $filter"            \
-            "Copy this filter to pastboard"                 \
-            "Copy this part of the data to pastboard"       \
-            "Print filter"                                  \
-            "Print data"                                    \
-            "Modify the filter"                             \
-            "Exit"
-        case "$id" in
-            1)      printf "%s" "$filter" | ___x_cmd pb
-                    return 0 ;;
-            2)      ___x_cmd_find___query "$filter" | ___x_cmd pb
-                    return 0 ;;
-            3)      printf "%s" "$filter"
-                    return 0 ;;
-            4)      ___x_cmd_find___query "$filter"
-                    return 0 ;;
-            5)      continue ;;
-            *)      return 0 ;;
-        esac
-    done
+    (
+        trap '___x_cmd rmrf "$___X_CMD_FIND_FZF_APP_DIR";' EXIT
+
+        local filter=
+        while true; do
+            filter="$(___x_cmd_find___fzfapp___actual "$filter")"
+
+            [ -n "$filter" ] || return
+            local id=
+            ___x_cmd ui select id "Next for $filter"            \
+                "Copy this filter to pastboard"                 \
+                "Copy this part of the data to pastboard"       \
+                "Print filter"                                  \
+                "Print data"                                    \
+                "Modify the filter"                             \
+                "Exit"
+            case "$id" in
+                1)      printf "%s" "$filter" | ___x_cmd pb
+                        return 0 ;;
+                2)      ___x_cmd_find___query "$filter" | ___x_cmd pb
+                        return 0 ;;
+                3)      printf "%s" "$filter"
+                        return 0 ;;
+                4)      ___x_cmd_find___query "$filter"
+                        return 0 ;;
+                5)      continue ;;
+                *)      return 0 ;;
+            esac
+        done
+    )
 }
 
 ___x_cmd_find___fzfapp___actual(){
     local filter=
-    ___x_cmd fzf                                    \
-        --header="<Please type find arguments>"     \
-        --reverse --no-info --height='80%'          \
-        --query="${filter:-.}" --print-query        \
-        --preview-window='down,99%'                 \
+    ___X_CMD_FIND_FZF_APP_DIR="$___X_CMD_FIND_FZF_APP_DIR"  \
+    ___x_cmd fzf                                            \
+        --header="<Please type find arguments>"             \
+        --reverse --no-info --height='80%'                  \
+        --query="${filter:-.}" --print-query                \
+        --preview-window='down,99%'                         \
         --preview='x find --fzfapppreview {q} 2>/dev/null' <<A
 A
 }
 
 ___x_cmd_find___fzfapppreview(){
+    ___x_cmd_find___fzfapppreview_ "$@" 2>/dev/stdout
+}
+
+___x_cmd_find___fzfapppreview_(){
     local arg="$*"
-    {
-       if [ "$arg" = "${arg#*-exec}" ];then
-            ___x_cmd_find___query "$arg" || {
-                printf "\n[ERR=%d]\n" "$?"
-            }
+    local md5sum; md5sum="$(___x_cmd str md5 "$arg")"
+
+    ___x_cmd touch "$___X_CMD_FIND_FZF_APP_DIR/history"
+    if [ "$arg" = "${arg#*-exec}" ];then
+        if ___x_cmd tee "$___X_CMD_FIND_FZF_APP_DIR/${md5sum}" -- ___x_cmd_find___fzf___preview___partial "$@";then
+            if ___x_cmd_find___fzf___preview_check <"$___X_CMD_FIND_FZF_APP_DIR/${md5sum}"; then
+                ___x_cmd_find___fzf___preview_history_add "$md5sum" "$1"
+                return
+            fi
         else
-            printf "Disable auto-execution: Dangerous operations were detected in the command.\n"
-            printf "=== -exec %s ===\n" "${arg#*-exec}"
+            ___x_cmd rmrf "$___X_CMD_FIND_FZF_APP_DIR/${md5sum}"
         fi
-    } 2>&1 | ___x_cmd_cmds head -n 2000
+    else
+        printf "Disable auto-execution: Dangerous operations were detected in the command.\n"
+        printf "=== -exec %s ===\n" "${arg#*-exec}"
+    fi
+    ___x_cmd_find___fzf___preview_history_dump_parent_result "$arg"
+}
+
+___x_cmd_find___fzf___preview_history_add(){
+    local md5="$1"
+    local query="$2"
+    printf "%s  %s\n"       "$md5"  "$query" >>"$___X_CMD_FIND_FZF_APP_DIR/history"
+}
+
+___x_cmd_find___fzf___preview_check(){
+    command awk -v res=1 '
+    NR>1{
+        res = 0
+        exit(0)
+    }
+    END {
+        exit(res)
+    }
+    '
+}
+
+___x_cmd_find___fzf___preview_history_dump_parent_result(){
+    local find_arg="$1"
+
+    {
+        printf "%s  %s\n"   "///"         "$find_arg"
+        ___x_cmd_cmds cat "$___X_CMD_FIND_FZF_APP_DIR/history"
+    } | ___x_cmd_cmds sort -r -k 2 | ___x_cmd_cmds awk -v q="$find_arg" -v dir="$___X_CMD_FIND_FZF_APP_DIR" '
+    # {  print }
+    ($0~"^///"){
+
+        while (getline) {
+            md5sum = $1
+            $1 = ""
+            gsub("^[ ]+", "", $0)
+            if (index(q, $0) > 0) break
+        }
+
+        printf("\n=== parent filter  ->  %s\n", $0)
+        if (md5sum != ""){
+            while ( getline line <(dir "/" md5sum) ){  print line; }
+        } else {
+            printf("\n=== The data format is incorrect.\n")
+        }
+        exit
+    }
+    '
+}
+
+___x_cmd_find___fzf___preview___partial(){
+    ___x_cmd_find___query "$@" | ___x_cmd_cmds head -n 2000
 }
 
 ___x_cmd_find___query(){
