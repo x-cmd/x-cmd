@@ -44,6 +44,14 @@
 
 ![man.cn.gif](https://foruda.gitee.com/images/1722606367684957086/3e06c8f8_8841942.gif "man.cn.gif")
 
+## [x gemini](https://cn.x-cmd.com/mod/gemini) - 使用 Gemini AI 模型
+
+![gemini.cn.gif](https://foruda.gitee.com/images/1724991830376126475/c04d94fb_8841942.gif "gemini.cn.gif")
+
+## [x env](https://cn.x-cmd.com/pkg/) - 环境管理管理
+
+![env.cn.gif](https://foruda.gitee.com/images/1724991931565701591/fa35de65_8841942.gif "env.cn.gif")
+
 ## [x jq](https://x-cmd.com/mod/jq)/[x yq](https://x-cmd.com/mod/yq) - 快速测试 JQ 表达式
 
 ![jq_r](https://foruda.gitee.com/images/1722588625707099785/131a0613_8841942.gif "jq_r.gif")

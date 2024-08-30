@@ -30,6 +30,14 @@ For <bold>source code</bold>, please switch to <a href="https://github.com/x-cmd
 
 ![man en](https://github.com/user-attachments/assets/3eefcc80-592f-4724-b910-1f0fe611d451)
 
+## [x gemini](https://www.x-cmd.com/mod/gemini) - Use Gemini AI models
+
+![gemini_en](https://github.com/user-attachments/assets/1c97706a-b56b-42c7-ab63-d3792b125558)
+
+## [x env](https://www.x-cmd.com/pkg/) - Environment Management
+
+![env_en](https://github.com/user-attachments/assets/6a9bbf9c-2f6b-4bd5-85dc-20aab408df4e)
+
 ## [x jq](https://x-cmd.com/mod/jq)/[x yq](https://x-cmd.com/mod/yq) - Quickly test JQ expressions
 
 ![jq_r](https://github.com/user-attachments/assets/87ea8277-b6d0-4140-ac48-f21e852c4714)
