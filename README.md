@@ -32,11 +32,11 @@ For <bold>source code</bold>, please switch to <a href="https://github.com/x-cmd
 
 ## [x gemini](https://www.x-cmd.com/mod/gemini) - Use Gemini AI models
 
-![gemini_en](https://github.com/user-attachments/assets/1c97706a-b56b-42c7-ab63-d3792b125558)
+![gemini en](https://github.com/user-attachments/assets/f09fe096-60a6-4c90-8ab1-cd47d13d4e73)
 
 ## [x env](https://www.x-cmd.com/pkg/) - Environment Management
 
-![env_en](https://github.com/user-attachments/assets/6a9bbf9c-2f6b-4bd5-85dc-20aab408df4e)
+![env en](https://github.com/user-attachments/assets/c5a441fa-9a1a-4d2b-bb04-88cd528820e6)
 
 ## [x jq](https://x-cmd.com/mod/jq)/[x yq](https://x-cmd.com/mod/yq) - Quickly test JQ expressions
 
