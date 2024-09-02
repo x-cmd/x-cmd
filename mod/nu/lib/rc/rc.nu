@@ -55,14 +55,14 @@ export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
     $env.___X_CMD_IS_INTERACTIVE_FORCE = 1
     $env.___X_CMD_THEME_RELOAD_DISABLE = 1
 
-    bash $"($env.HOME)/.x-cmd.root/bin/xbinexp" ...$args
+    ___x_cmd ...$args
 
     let exit_code = $env.LAST_EXIT_CODE
 
     # bash -c $"ls  ($env.___X_CMD_XBINEXP_FP)"
 
     if not ( $env.___X_CMD_XBINEXP_FP | path exists ) {
-        $env.LAST_EXIT_CODE = exit_code
+        $env.LAST_EXIT_CODE = $exit_code
         return
     }
 
@@ -96,7 +96,7 @@ export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
 
     $env.___X_CMD_XBINEXP_FP = ""
 
-    $env.LAST_EXIT_CODE = exit_code
+    $env.LAST_EXIT_CODE = $exit_code
 }
 
 # export alias ___x_cmd   = bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"

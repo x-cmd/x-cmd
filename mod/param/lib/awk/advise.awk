@@ -63,7 +63,8 @@ function generate_advise_json_subcmd(       i, l, subcmd_name, subcmd_true, subc
         if ( subcmd_funcname != "" )    subcmd_funcname = subcmd_funcname "_" subcmd_name
         else                            subcmd_funcname = "${X_CMD_ADVISE_FUNC_NAME}_" subcmd_name
 
-        subcmd_invocation = sprintf("\\$( B=\"\\$( PARAM_SUBCMD_DEF=''; %s X_CMD_ADVISE_FUNC_NAME=%s %s _x_cmd_advise_json %s)\"; if [ -n \"\\$B\" ]; then printf \"%%s\" \"\\$B\"; else return 1; fi; )", subcmd_true, subcmd_funcname, subcmd_funcname, qu1( subcmd_desc(i) ) )
+        # subcmd_invocation = sprintf("\\$( B=\"\\$( PARAM_SUBCMD_DEF=''; %s X_CMD_ADVISE_FUNC_NAME=%s %s _x_cmd_advise_json %s)\"; if [ -n \"\\$B\" ]; then printf \"%%s\" \"\\$B\"; else return 1; fi; )", subcmd_true, subcmd_funcname, subcmd_funcname, qu1( subcmd_desc(i) ) )
+        subcmd_invocation = sprintf("\\$( B=\"\\$( PARAM_SUBCMD_DEF=''; %s X_CMD_ADVISE_FUNC_NAME=%s %s _x_cmd_advise_json %s)\"; if [ -n \"\\$B\" ]; then printf \"%%s\" \"\\$B\"; else printf \"\\${___X_CMD_LOG_YML_INDENT}- E|param: %%s\\n\" \"The '%s' function might not support the '_x_cmd_advise_json' parameter\" >&2; return 1; fi; )", subcmd_true, subcmd_funcname, subcmd_funcname, qu1( subcmd_desc(i) ), subcmd_funcname )
 
         _ret = "'," SSS swrap(subcmd_id( i )) SSS ":" SSS "'"
         ADVISE_JSON = ADVISE_JSON SSS "A=\"\\${A}\"" _ret "\"" subcmd_invocation "\""
