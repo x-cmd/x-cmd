@@ -35,7 +35,7 @@ BEGIN{
 function yml_format_log(ARR, num,           _res, i){
     if ( num <= 0 ) return
     indent = "  "
-    _res = yml_style_key "answer" yml_style_end ":"
+    _res = "- " yml_style_key "answer" yml_style_end ":"
     for (i=1; i<=num; ++i){
         _res = _res "\n" indent "- " yml_style_key "cmd" yml_style_end ": " yml_format_log_item(ARR[ i, "cmd" ]) "\n" \
             indent indent yml_style_key "desc" yml_style_end ": " yml_format_log_item(ARR[ i, "desc" ])
