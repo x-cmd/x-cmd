@@ -1,16 +1,17 @@
 function parse_changelog(O, version, key,       i, j, h, len, _len, __len, mod, mod_type, value){
     len = O[ kp("1", version, key) L ]
     for (i=1; i<=len; ++i)  {
-        mod = O[ kp("1", version, key, i) ]
-        _len = O[ kp("1", version, key, juq(mod) ) L ]
-        printf("%s%s\n\n", "### ", "[" juq(mod) "]" "(https://x-cmd.com/mod/" juq(mod) ")")
+        mod = juq( O[ kp("1", version, key, i) ] )
+        _len = O[ kp("1", version, key, mod ) L ]
+
+        print_mod(mod)
 
         for (j=1; j<=_len; ++j) {
-            mod_type = O[kp("1", version, key, juq(mod), j)]
-            __len = O[ kp("1", version, key, juq(mod), juq(mod_type)) L ]
+            mod_type = O[kp("1", version, key, mod, j)]
+            __len = O[ kp("1", version, key, mod, juq(mod_type)) L ]
 
             for (h=1; h<=__len; ++h) {
-                value = O[ kp("1", version, key, juq(mod), juq(mod_type), h, "en") ]
+                value = O[ kp("1", version, key, mod, juq(mod_type), h, "en") ]
                 gsub(/\\n/, "\n", value)
                 printf("%s%s\n", "  - ", juq(value))
             }
@@ -19,6 +20,18 @@ function parse_changelog(O, version, key,       i, j, h, len, _len, __len, mod, 
     }
 }
 
+function print_mod(mod,         i, l, sep, arr){
+    printf("%s", "### ")
+    if ( mod ~ "\\|") {
+        l = split(mod, arr, "|")
+        for(i=1; i<=l; ++i) {
+            sep = ( i != l ) ? "|" : ""
+            printf("%s%s", "[" arr[i] "]" "(https://x-cmd.com/mod/" arr[i] ")", sep)
+        }
+        print "\n"
+    } else printf("%s\n\n",  "[" mod "]" "(https://x-cmd.com/mod/" mod ")")
+
+}
 END{
     l = O[ kp("1") L ]
     for(i=1; i<=l; ++i){

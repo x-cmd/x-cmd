@@ -166,7 +166,9 @@ function generate_advise_json(){
     CDADD( " A=" ADVISE_JSON )
 
     gsub("\"", "\\\"", CODE)
-    CODE = sprintf("( set -o errexit; %s printf \\\"%%s\\n\\\" \\\"\\$A\\\"; )", CODE  )
+    # mawk sprintf buffer size=8192
+    # CODE = sprintf("( set -o errexit; %s printf \\\"%%s\\n\\\" \\\"\\$A\\\"; )", CODE  )
+    CODE = "( set -o errexit; "CODE" printf \\\"%s\\n\\\" \\\"\\$A\\\"; )"
     CODE = "eval \"" CODE "\""
     # debug(CODE)
     printf("%s", CODE)

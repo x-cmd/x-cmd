@@ -1,0 +1,56 @@
+# shellcheck shell=dash disable=SC2154,SC2034
+# https://gitee.com/api/v5/swagger#/postV5OrgsOrgRepos
+___x_cmd_gt_org_repo_create(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+option:
+    #1                      "repo names"                        <>:RepoPath
+
+    --org                   "organization space path"           <>:OrgSpaceName=""
+    -p|--path               "repo path"                         <>=""
+    --access                "repo access"                       <>:RepoAccess=private
+    --description           "description"                       <>=""
+    --homepage              "homepage"                          <>=""
+    --gitignore_template    "git ignore"                        <>:Ignore=""
+    --license_template      "license"                           <>:License=""
+    --no_issue              "Ban repo issue"
+    --no_wiki               "Ban repo wiki"
+    --no_comment            "Ban repo can_comment"
+    --auto_init             "auto init repo"
+    --json|-j               "output origin json data"
+'
+    param:run
+    [ "$#" -ne 0 ] || M='accepts 1 arg(s) (<ownerPath>/<RepoPath>), received empty' arg:ret:64
+
+    local name=""
+    [ -n "$org" ] || {
+        for name in "$@"; do
+            case "$name" in
+                */*)    ;;
+                *)      gt:error "Please provide --org or add origanization prefix before reponame"
+                        return 1
+                        ;;
+            esac
+        done
+    }
+
+    local private=true
+    [ "$access" = "public" ] && private=false
+
+    name="${___X_CMD_TX}"
+    local gen_gt_json
+    gen_gt_json="$(
+        param:option2json +name +private "${p:+"path=p"}" -access -p \
+            'has_issues=^no_issue'            'has_wiki=^no_wiki' \
+            'can_comment=^no_comment'         'auto_init=^^auto_init'
+    )"
+
+    for name in "$@"; do
+        local this_org="${name%%/*}"
+        [ "$this_org" != "$name" ] || this_org="$org"
+        gt:debug "$(___x_cmd tmpl "$gen_gt_json" "${name##*/}")"
+        ___x_cmd tmpl "$gen_gt_json" "${name##*/}" | \
+            ___x_cmd_gt_curl post "/orgs/${this_org}/repos" "@-" | \
+            ___x_cmd_gt_repo____ui_handler Creating
+    done
+}

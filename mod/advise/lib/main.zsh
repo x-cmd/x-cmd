@@ -37,6 +37,42 @@ ___x_cmd_advise_run(){
 }
 
 ___x_cmd_advise_run___describe(){
+    local func_content; func_content="$( type -f compadd 2>/dev/null )"
+    case "$func_content" in
+        compadd\ \(\)*)
+            local dir="$___X_CMD_ROOT_CACHE/advise"
+            [ -d "$dir" ] || ___x_cmd mkdirp "$dir"
+            printf "%s\n" "$func_content" > "${dir}/user_compadd"
+            < "${dir}/user_compadd" ___x_cmd_cmds sed 's/compadd ()/___x_cmd_advise_run___custom_compadd ()/g' > "${dir}/advise_compadd"
+            . "${dir}/advise_compadd" 2>/dev/null
+            ___x_cmd_advise_run___describe(){
+                ___x_cmd_advise_run___describe___custom "$@"
+            }
+            ;;
+        *)
+            ___x_cmd_advise_run___describe(){
+                ___x_cmd_advise_run___describe___raw "$@"
+            }
+            ;;
+    esac
+
+    ___x_cmd_advise_run___describe "$@"
+}
+
+___x_cmd_advise_run___describe___custom(){
+    compadd(){
+        ___x_cmd_advise_run___custom_compadd \
+            ${___X_CMD_ADVISE_RUN_SET_NOSPACE:+"-S"} ${___X_CMD_ADVISE_RUN_SET_NOSPACE:+""} \
+            ${candidate_prefix:+"-P"} ${candidate_prefix:+"$candidate_prefix"} \
+            "$@"
+    }
+    _describe "$@"
+    local _exitcode="$?"
+    . "$___X_CMD_ROOT_CACHE/advise/user_compadd" 2>/dev/null
+    return "$_exitcode"
+}
+
+___x_cmd_advise_run___describe___raw(){
 	compadd(){
 		builtin compadd \
             ${___X_CMD_ADVISE_RUN_SET_NOSPACE:+"-S"} ${___X_CMD_ADVISE_RUN_SET_NOSPACE:+""} \
@@ -63,8 +99,7 @@ ___x_cmd_advise_run___ltrim_maxitem(){
 }
 
 ___x_cmd_advise_run___fix_mac_zsh(){
-    ___x_cmd os is darwin || return
-    local n="${#candidate_arr[@]}"
-    [ $n = 2 ] || return
+    ___x_cmd os is darwin || return 0
+    [ "${#candidate_arr[@]}" -gt 0 ] || return 0
     candidate_arr=( $( printf "%s\n" "${candidate_arr[@]}" | ___x_cmd_cmds sort -r ) )
 }

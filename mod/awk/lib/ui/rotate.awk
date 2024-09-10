@@ -18,19 +18,19 @@ END{
     ui_rotate_render_restore()
 }
 
-function ui_rotate1( screensize, fp,     line,     d, i ){
-    i = IFS
-    IFS = "\n"
+# function ui_rotate1( screensize, fp,     line,     d, i ){
+#     i = IFS
+#     IFS = "\n"
 
-    printf("%s", UI_LINEWRAP_DISABLE) > "/dev/stderr"  # This must be  the default ...
-    printf("\033[?7l") > "/dev/stderr"
+#     printf("%s", UI_LINEWRAP_DISABLE) > "/dev/stderr"  # This must be  the default ...
+#     printf("\033[?7l") > "/dev/stderr"
 
-    while (getline line <fp ) {
-        printf("\r%s") > "/dev/stderr"
-    }
+#     while (getline line <fp ) {
+#         printf("\r%s") > "/dev/stderr"
+#     }
 
-    IFS = i
-}
+#     IFS = i
+# }
 
 function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end, output_raw,    i, o, _line, l, arr, _c, _has_content, OUTPUT_ARR, OUTPUT_ARRL ){
     prompt_run = ( prompt_run != "") ? prompt_run : "Running ..."
@@ -72,20 +72,20 @@ function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end, outp
     return _c
 }
 
-function ui_rotate_render( o, prefix,      i, n, str ){
+function ui_rotate_render( o, prefix,      i, n, str, counter ){
     ui_rotate_render_clear()
 
     n = ring_size( o )
     counter = ring_counter( o )
     for (i=1; i<=n; ++i) {
         str = sprintf("%4d  ", (counter - n + i)) ring_get( o, i )
-        printf("%s%s%s\n", prefix, th(TH_BORDER_COLOR, "│ "), th(TH_TEXT_COLOR, str)) > "/dev/stderr"
+        printf("%s%s%s\n", prefix, th(TH_BORDER_COLOR, "│ "), UI_LINEWRAP_DISABLE th(TH_TEXT_COLOR, str) UI_LINEWRAP_ENABLE) > "/dev/stderr"
     }
 }
 
 function ui_rotate_render_begin(n,      i){
     for (i=0; i<=n; ++i)    printf("%s", "\r\n") > "/dev/stderr"
-    printf("%s", "\033["int(n+1)"A" UI_CURSOR_SAVE UI_LINEWRAP_DISABLE) > "/dev/stderr"
+    printf("%s", "\033["int(n+1)"A" UI_CURSOR_SAVE) > "/dev/stderr"
 }
 
 function ui_rotate_render_clear(){
@@ -95,7 +95,7 @@ function ui_rotate_render_clear(){
 }
 
 function ui_rotate_render_restore(){
-    printf ("%s", UI_LINEWRAP_ENABLE UI_CURSOR_NORMAL UI_CURSOR_SHOW ) > "/dev/stderr"
+    printf ("%s", UI_CURSOR_NORMAL UI_CURSOR_SHOW ) > "/dev/stderr"
 }
 
 function ui_rotate_render_prompt( o, prefix, prompt,    n ){

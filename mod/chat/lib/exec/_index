@@ -44,6 +44,7 @@ ___x_cmd_chat___exec(){
 
     local cache_time=1h
     local is_silent=""
+    local modellist=""
 
     local x_=""
     while [ $# -gt 0 ]; do
@@ -120,7 +121,12 @@ ___x_cmd_chat___exec(){
             --model)        if [ $# -ge 2 ]; then
                                 model="$2"; shift 2; continue
                             elif ___x_cmd_is_interactive ; then
-                                model="$( ___x_cmd_chat_model_ls "$provider" | ___x_cmd pick --ask "Select the model value" )" || return
+                                modellist="$( ___x_cmd_chat_model_ls "$provider" )" || return
+                                [ -n "$modellist" ] || return
+                                model="$( ___x_cmd pick --ask "Select the model value" <<A
+$modellist
+A
+)" || return
                                 shift
                             fi
 
@@ -204,7 +210,7 @@ ___x_cmd_chat___exec_inner_(){
     chat:debug --chatid "$chatid" --model "$model" --question "$question" --history_num "$history_num" --confirm_before_send "$confirm_before_send" "chat exec"
     [ -z "$imagelist" ] || {
         case "$provider" in
-            openai|gemini)  ;;
+            openai|gemini|gh)  ;;
             *)  chat:error "Currently, only openai or gemini support multimodal model, while [provider=$provider] does not support"
                 return 1
                 ;;
@@ -213,12 +219,19 @@ ___x_cmd_chat___exec_inner_(){
 
 
     (
-        [ -z "$is_silent" ] || ___x_cmd log "$provider"/warn 2>/dev/null
         if [ -t 1 ] && ___x_cmd_is_interactive; then
-            ___x_cmd "$provider" chat exec | ___x_cmd md llm --rotate
+            ___x_cmd_chat___exec_inner_raw_ | ___x_cmd md llm --rotate
         else
-            ___x_cmd "$provider" chat exec
+            ___x_cmd_chat___exec_inner_raw_
         fi
     )
 
+}
+
+___x_cmd_chat___exec_inner_raw_(){
+    [ -z "$is_silent" ] || ___x_cmd log "$provider"/warn 2>/dev/null
+    case "$provider" in
+        gh) ___x_cmd "$provider" model chat exec ;;
+        *)  ___x_cmd "$provider" chat exec ;;
+    esac
 }

@@ -82,7 +82,7 @@ function user_data_navi_subcmd( o, kp, rootkp,       _filepath, _obj_kp, i, l, _
         l = arr_len(subcmd_group)
         for (i=0; i<=l; ++i){
             k = subcmd_group[i]
-            if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
+            if ((k == "") || (ADVISE_DEV_TAG[ SUBSEP k ])) continue
             _l = subcmd_group[ k L ]
             comp_navi_data_init( o, kp, rootkp )
             for (j=1; j<=_l; ++j){

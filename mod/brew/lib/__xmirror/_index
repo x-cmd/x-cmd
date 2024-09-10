@@ -5,19 +5,14 @@ ___x_cmd_brew___xmirror(){
     local op="$1";      shift
     case "$op" in
         ls|set|unset|current)
-            ___x_cmd_brew___mirror "$op" "$@" ;;  # In the future, we will put the mirror code here ...
+            ___x_cmd_brew___mirror "$op"                "$@" ;;  # In the future, we will put the mirror code here ...
         -h|--help)
-            ___x_cmd help -m brew mirror "$@" ;;
+            ___x_cmd help -m brew mirror                "$@" ;;
+        *)  N=brew M="subcommand not found." log:ret:1       ;;
     esac
 }
 
-
-# Cannot works well because of this
-# https://e.gitee.com/lteam18/issues/list?is%5Bsearch%5D=mirror&issue=I3YXC0
-
-# Reference: https://brew.idayer.com/guide/change-source/
-# Reference: https://zhuanlan.zhihu.com/p/90508170
-
+# reference: https://docs.brew.sh/Manpage#environment
 ___x_cmd_brew___mirror(){
     [ "$#" -gt 0 ] || { ___x_cmd_brew___mirror___app ; return ; }
 
@@ -58,6 +53,7 @@ ___x_cmd_brew___mirror___app(){
 ___x_cmd_brew___mirror_ls(){
     printf "%s\n" \
         "Code          Url                                   Name"                    \
+        "official      https://github.com/Homebrew           Homebrew 官方源"          \
         "bfsu          https://mirrors.bfsu.edu.cn           北京外国语大学开源软件镜像站" \
         "tuna          https://mirrors.tuna.tsinghua.edu.cn  清华大学开源软件镜像站"      \
         "ustc          https://mirrors.ustc.edu.cn           中国科学技术大学开源镜像站"   \
@@ -75,29 +71,20 @@ ___x_cmd_brew___mirror___url(){
 }
 
 ___x_cmd_brew___mirror_current(){
-    printf "%s\n" \
-        "HOMEBREW_API_DOMAIN=$HOMEBREW_API_DOMAIN"           \
-        "HOMEBREW_BOTTLE_DOMAIN=$HOMEBREW_BOTTLE_DOMAIN"     \
-        "HOMEBREW_BREW_GIT_REMOTE=$HOMEBREW_BREW_GIT_REMOTE" \
-        "HOMEBREW_CORE_GIT_REMOTE=$HOMEBREW_CORE_GIT_REMOTE" \
-        "GIT_DIR=$(git -C "$(___x_cmd_brew___exec --repo)" config --get remote.origin.url)"
+    ___x_cmd_brew_envfile read
 }
 
-# shellcheck disable=SC2120
 ___x_cmd_brew___mirror_set(){
-    [ "$#" -gt 0 ] ||   set -- bfsu
+    ___x_cmd_brew___mirror_init4comp
+
+    [ "$#" -gt 0 ] ||   set -- tuna
     case "$1" in
         -h|--help)
             ___x_cmd help -m brew mirror replace "$@"
             return   ;;
     esac
 
-    if [ "$1" = "official" ] ; then
-        ___x_cmd_brew___mirror_unset
-        return
-    fi
-
-    local url
+    local url=
     url="$(___x_cmd_brew___mirror___url "${1}")" || return 1
     brew:info "Setting brew mirror $url"
 
@@ -116,67 +103,41 @@ ___x_cmd_brew___mirror_set(){
             X_homebrew_brew_git_remote="$url/homebrew/brew.git"
             X_homebrew_core_git_remote="$url/homebrew/homebrew-core.git"
             ;;
+        official)
+            X_homebrew_api_domain="https://formulae.brew.sh/api"
+            X_homebrew_bottle_domain="https://ghcr.io/v2/homebrew/core"
+            X_homebrew_brew_git_remote="$url/brew.git"
+            X_homebrew_core_git_remote="$url/homebrew-core.git"
+            ;;
     esac
 
-    export HOMEBREW_API_DOMAIN="$X_homebrew_api_domain"
-    export HOMEBREW_BOTTLE_DOMAIN="$X_homebrew_bottle_domain"
-    export HOMEBREW_BREW_GIT_REMOTE="$X_homebrew_brew_git_remote"
-    export HOMEBREW_CORE_GIT_REMOTE="$X_homebrew_core_git_remote"
-
-    brew:info "Add HOMEBREW_API_DOMAIN HOME_BOTTLE_DOMAIN HOMEBREW_BREW_GIT_REMOTE HOMEBREW_CORE_GIT_REMOTE to boot rc"
-
-    ___x_cmd boot rc add homebrew-api-domain "export HOMEBREW_API_DOMAIN=$X_homebrew_api_domain"
-    ___x_cmd boot rc add homebrew-bottle-domain "export HOMEBREW_BOTTLE_DOMAIN=$X_homebrew_bottle_domain"
-    ___x_cmd boot rc add homebrew-brew-git-remote "export HOMEBREW_BREW_GIT_REMOTE=$X_homebrew_brew_git_remote"
-    ___x_cmd boot rc add homebrew-core-git-remote "export HOMEBREW_CORE_GIT_REMOTE=$X_homebrew_core_git_remote"
+    ___x_cmd_brew_envfile write                                           \
+        HOMEBREW_API_DOMAIN         "$X_homebrew_api_domain"              \
+        HOMEBREW_BOTTLE_DOMAIN      "$X_homebrew_bottle_domain"           \
+        HOMEBREW_BREW_GIT_REMOTE    "$X_homebrew_brew_git_remote"         \
+        HOMEBREW_CORE_GIT_REMOTE    "$X_homebrew_core_git_remote"         || return 1
 
     brew:info "Now brew update"
-    ___x_cmd_brew___exec update --verbose
+    ___x_cmd_brew___exec update --verbose || return 1
+    brew:info "brew update done."
 }
 
 ___x_cmd_brew___mirror_unset(){
-    brew:info "Reset the brew mirror to the original official"
-    unset HOMEBREW_BOTTLE_DOMAIN
+    ___x_cmd_brew___mirror_set official || return 1
+    ___x_cmd_brew_envfile clear
+}
+
+___x_cmd_brew___mirror_init4comp(){
+    brew:debug "Reset the brew mirror to the original official"
     unset HOMEBREW_API_DOMAIN
+    unset HOMEBREW_BOTTLE_DOMAIN
     unset HOMEBREW_BREW_GIT_REMOTE
     unset HOMEBREW_CORE_GIT_REMOTE
 
     brew:info "Remove HOMEBREW_API_DOMAIN HOME_BOTTLE_DOMAIN HOMEBREW_BREW_GIT_REMOTE HOMEBREW_CORE_GIT_REMOTE from boot rc"
-
     ___x_cmd boot rc del homebrew-bottle-domain
     ___x_cmd boot rc del homebrew-api-domain
     ___x_cmd boot rc del homebrew-brew-git-remote
     ___x_cmd boot rc del homebrew-core-git-remote
-
-    # brew 程序本身，Homebrew / Linuxbrew 相同
-    ___x_cmd_cmds git -C "$(___x_cmd_brew___exec --repo)" remote set-url origin https://github.com/Homebrew/brew
-
-    # 以下针对 Linux 系统上的 Linuxbrew
-    brew:info "Now brew reset origin tap"
-    unset HOMEBREW_API_DOMAIN
-    unset HOMEBREW_CORE_GIT_REMOTE
-
-    # reference: https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/
-    if ___x_cmd os is darwin ; then
-        local BREW_TAPS
-        BREW_TAPS="$(___x_cmd_brew___exec tap 2>/dev/null | tr '\n' ':')"
-        for tap in core cask-fonts cask-versions command-not-found services; do
-            if printf "%s" "$BREW_TAPS" | grep -q ":homebrew/${tap}:"; then
-                ___x_cmd_brew___exec tap --custom-remote "homebrew/${tap}" "https://github.com/Homebrew/homebrew-${tap}"
-            fi
-        done
-
-
-    elif ___x_cmd os is linux ; then
-        ___x_cmd_brew___exec tap --custom-remote homebrew/core https://github.com/Homebrew/homebrew-core
-        ___x_cmd_brew___exec tap --custom-remote homebrew/command-not-found https://github.com/Homebrew/homebrew-command-not-found
-        ___x_cmd_brew___exec tap --custom-remote homebrew/services https://github.com/Homebrew/homebrew-services
-    else
-        brew:warn "Unknown os"
-    fi
-
-
-    brew:info "Now brew update"
-    ___x_cmd_brew___exec update --verbose
 }
 

@@ -1,0 +1,64 @@
+# shellcheck shell=dash disable=SC2034
+# https://docs.github.com/en/rest/repos/repos#create-an-organization-repository
+___x_cmd_gh_org_repo_create() {
+    param:scope     ___x_cmd_github
+    param:dsl       <<A
+type:
+    Access  =   private public internal
+option:
+    #1                          "repo names"                                                           <>
+    --org                       "organization create repo"                                             <>=""
+
+    --access                    "Can be public or private."                                            <>:Access=private
+    --description               "A short description of the repository."                               <>:Org_Description=""
+    --homepage                  "A URL with more information about the repository."                    <>:URL=""
+    --team_id                   "the id of the team that will be granted access to this repository"    <>=""
+    --gitignore_template        "Desired language or platform"                                         <>:Ignore=""
+    --license_template          "The license keyword of the open source license for this repository."  <>:License=""
+
+    --no_wiki                   "Whether to disable wiki"
+    --no_issues                 "Whether to disable issue"
+    --no_projects               "Whether to disable has_projects"
+    --no_squash_merge           "Whether to allow squash merges for pull requests."
+    --no_merge_commit           "Whether to allow merge commits for pull requests."
+    --no_rebase_merge           "Whether to allow rebase merges for pull requests."
+    --auto_init                 "Disable auto init README"
+    --is_template               "make this repo available as a template,Default:false"
+    --allow_auto_merge          "Whether to allow Auto-merge to be used on pull requests,Default:false"
+    --delete_branch_on_merge    "Either to allow automatically deleting head branches when pull requests are merged,Default:false"
+    --json|-j                   "output json data"
+A
+    param:run
+
+    local private=""
+    local visibility=""
+    case "$access" in
+        private)        private=true            ;;
+        public)         private=false           ;;
+        internal)       visibility=internal     ;;
+    esac
+
+    local name=""
+    [ -n "$org" ] || {
+        for name in "$@"; do
+            case "$name" in
+                */*)    ;;
+                *)      gh:error "Please provide --org or add organization prefix before reponame"
+                        return 1 ;;
+            esac
+        done
+    }
+
+    name="${___X_CMD_TX}"
+    local gen_gh_json=""
+    gen_gh_json="$(param:option2json +name ${private:+"+private"} ${visibility:+"+visibility"} -access -org     \
+        'has_issues=^no_issues'                   'allow_merge_commit=^no_merge_commit'     'has_projects=^no_projects'   \
+        'allow_rebase_merge=^no_rebase_merge'     'allow_squash_merge=^no_squash_merge'     'has_wiki=^no_wiki')"
+
+    for name in "$@"; do
+        local this_org="${name%%/*}"
+        [ "$this_org" != "$name" ] || this_org="$org"
+        gh:debug "$(x tmpl "$gen_gh_json"  "${name##*/}")"
+        x tmpl "$gen_gh_json"  "${name##*/}" | ___x_cmd_gh_curl post "/orgs/$this_org/repos" "@-" | ___x_cmd_gh_repo____ui_handler Creating
+    done
+}

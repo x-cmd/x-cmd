@@ -155,6 +155,10 @@ function csv_unquote( e ){
     return e
 }
 
+function csv_unquote_ifmust( e ){
+    return (e ~ "^\"") ? csv_unquote( e ) : e
+}
+
 function csv_dump( o, kp, seqstr, col_seqstr ){
     return csv_tostr( o, kp, seqstr, col_seqstr )
 }
