@@ -152,6 +152,9 @@ export alias @gpt3      = ___x_cmd chat --sendalias gpt3
 export alias @gpt4      = ___x_cmd chat --sendalias gpt4
 export alias @gpt4t     = ___x_cmd chat --sendalias gpt4t
 export alias @gpt4om    = ___x_cmd chat --sendalias gpt4om
+export alias @gpto1     = ___x_cmd chat --sendalias gpto1
+export alias @gpto1m    = ___x_cmd chat --sendalias gpto1m
+export alias @gh        = ___x_cmd chat --sendalias gh
 
 export alias @gemini    = ___x_cmd chat --sendalias gemini
 export alias @mistral   = ___x_cmd chat --sendalias mistral

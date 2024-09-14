@@ -87,6 +87,9 @@ if ($?status && $status == 0) then
         alias @gpt4      '___x_cmd chat --sendalias gpt4'
         alias @gpt4t     '___x_cmd chat --sendalias gpt4t'
         alias @gpt4om    '___x_cmd chat --sendalias gpt4om'
+        alias @gpto1     '___x_cmd chat --sendalias gpto1'
+        alias @gpto1m    '___x_cmd chat --sendalias gpto1m'
+        alias @gh        '___x_cmd chat --sendalias gh'
 
         alias @gemini    '___x_cmd chat --sendalias gemini'
         alias @mistral   '___x_cmd chat --sendalias mistral'
