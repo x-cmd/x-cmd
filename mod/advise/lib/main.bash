@@ -1,6 +1,7 @@
 # shellcheck shell=bash disable=SC2207,2206,2034
 
 ___x_cmd_advise_run(){
+    local ___X_CMD_ADVISE_RUN=1
     ___x_cmd_awk___get_utf8_
     local _UTF8="$___X_CMD_AWK_LANGUAGE_UTF8"
     local name="${1:-${COMP_WORDS[0]}}"

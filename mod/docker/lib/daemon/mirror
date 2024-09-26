@@ -1,0 +1,100 @@
+# shellcheck shell=dash
+
+# Provide a list of mirrors
+
+___x_cmd_docker_daemon_mirror(){
+    [ "$#" -gt 0 ] || set - --help
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)              ___x_cmd help -m docker daemon mirror;  return  ;;
+        ls|set|unset|info)      ___x_cmd_docker_daemon_mirror_"$op" "$@" ;;
+    esac
+}
+
+
+# Refer: https://blog.csdn.net/m0_37282062/article/details/115770314
+# x docker daemon mirror -> app -> set a mirror
+___x_cmd_docker_daemon_mirror_ls(){
+    printf "%s\n" \
+        "Code          Url                                        Name"                \
+        "sjtu          https://docker.mirrors.sjtug.sjtu.edu.cn   上海交通大学"         \
+        "ustc          https://docker.mirrors.ustc.edu.cn         中国科学技术大学"     \
+        "netease       https://hub-mirror.c.163.com               网易开源镜像站"       \
+        "docker-cn     https://registry.docker-cn.com             docker-cn"           \
+        "ali           https://mirrors.aliyun.com/docker-ce       阿里云镜像站"
+}
+
+___x_cmd_docker_daemon_mirror_set(){
+    ___x_cmd_docker_daemon_check || return 1
+    [ "$#" -gt 0 ] ||  set - --help
+
+    local mirror=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m docker daemon mirror set "$@"; return ;;
+            *)
+                        # It's not good, use awk or jq to parse it
+                        if [ -n "$mirror" ]; then
+                            mirror="$mirror,"\"$1\"""
+                        else
+                            mirror="\"$1\""
+                        fi
+                        shift ;;
+        esac
+    done
+
+    local daemon_json=""
+    local daemon_file="/etc/docker/daemon.json"
+    if ( ___x_cmd_cmds grep "{" "$daemon_file" 2>/dev/null 1>&2 ); then
+        daemon_json="$(___x_cmd jq '. + { "registry-mirrors": [ '"$mirror"' ] }' "$daemon_file" )"
+    else
+        daemon_json="$( printf  "%s\n"   '{ "registry-mirrors": [ '"$mirror"' ] }' | ___x_cmd jo fmt )"
+    fi
+
+    if [ "$(___x_cmd_cmds id -u)" -ne 0 ]; then
+        docker:info "using sudo update [file=$daemon_file]"
+        ___x_cmd sudo tee "$daemon_file" >/dev/null <<A
+$daemon_json
+A
+    else
+        printf "%s\n" "$daemon_json" > "$daemon_file"
+    fi
+
+    docker:info --cmd "x docker daemon restart" "Restart the Docker and the daemon for the new configuration to be loaded."
+}
+
+
+___x_cmd_docker_daemon_mirror_unset(){
+    case "$1" in
+        -h|--help)  ___x_cmd help -m docker daemon mirror unset; return ;;
+    esac
+
+    local daemon_file="/etc/docker/daemon.json"
+    ___x_cmd_docker_daemon_check || return 1
+    [ -f "$daemon_file" ]        || return 0
+
+    local mirror
+    mirror="$(< "$daemon_file" ___x_cmd jo .registry-mirrors.1)"
+    [ -n "$mirror" ] || {
+        docker:warn "not set mirror"
+        return 0
+    }
+
+    if [ "$(___x_cmd_cmds id -u)" -ne 0 ]; then
+        docker:info "using sudo update [file=$daemon_file]"
+        ___x_cmd jq '. + { "registry-mirrors": [ ] }' "$daemon_file" \
+            | ___x_cmd sudo tee "$daemon_file" >/dev/null
+    else
+        ___x_cmd jq '. + { "registry-mirrors": [ ] }' "$daemon_file" \
+            | ___x_cmd_cmds tee "$daemon_file" >/dev/null
+    fi
+
+    docker:info --cmd "x docker daemon restart" "Restart the Docker and the daemon for the new configuration to be loaded."
+}
+
+___x_cmd_docker_daemon_mirror_info(){
+    ___x_cmd_docker_daemon_check     || return 1
+    [ -f "/etc/docker/daemon.json" ] || return 0
+    ___x_cmd jq '.["registry-mirrors"]' /etc/docker/daemon.json
+}

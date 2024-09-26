@@ -2,6 +2,7 @@
 
 xrc awk
 ___x_cmd_advise_run(){
+    local ___X_CMD_ADVISE_RUN=1
     ___x_cmd_awk___get_utf8_
     local _UTF8="$___X_CMD_AWK_LANGUAGE_UTF8"
     local COMP_WORDS=("${words[@]:0:$CURRENT}")

@@ -12,7 +12,8 @@ ___x_cmd_boot_rc(){
         load)   [ ! -f "$___X_CMD_BOOT_RC" ] || . "$___X_CMD_BOOT_RC" ;;
         add|+)  ___x_cmd_boot_rc_add "$@" ;;
         del|-)  ___x_cmd_boot_rc_del "$@" ;;
-        ls|*)   ___x_cmd_cmds_cat "$___X_CMD_BOOT_RC" ;;
+        has)    ___x_cmd_boot_rc_has "$@" ;;
+        ls|*)   [ ! -f "$___X_CMD_BOOT_RC" ] || ___x_cmd_cmds_cat "$___X_CMD_BOOT_RC" ;;
     esac
 }
 
@@ -52,8 +53,7 @@ ___x_cmd_boot_rc_del(){
     [ -f "$___X_CMD_BOOT_RC" ] || return 0
 
     local text
-    text="$(___x_cmd_cmds_cat "$___X_CMD_BOOT_RC")"
-    printf "%s" "$text" | ___x_cmd_cmds_awk -v code="$*" -v keyword="$keyword" '
+    text="$( < "$___X_CMD_BOOT_RC" ___x_cmd_cmds_awk -v code="$*" -v keyword="$keyword" '
 BEGIN {
     COMMENT = "# auto generated: " keyword
     COMMENT_LEN = length(COMMENT)
@@ -64,17 +64,43 @@ BEGIN {
 
     if ( (s <= 0) || (s+COMMENT_LEN-1)!=len ) {
         print $0
-    } else {
-        done = 1
     }
 }
-END {
-    if (done == 1) {
+'
+)"
+    if [ -n "$text" ]; then
+        printf "%s\n" "$text" > "$___X_CMD_BOOT_RC"
+    else
+        ___x_cmd rmrf "$___X_CMD_BOOT_RC"
+    fi
+}
+
+___x_cmd_boot_rc_has(){
+    local keyword="${1:?Provide keyword}"; shift
+
+    [ -f "$___X_CMD_BOOT_RC" ] || return 1
+    < "$___X_CMD_BOOT_RC" ___x_cmd_cmds_awk -v code="$*" -v keyword="$keyword" '
+BEGIN {
+    COMMENT = "# auto generated: " keyword
+    COMMENT_LEN = length(COMMENT)
+}
+{
+    len = length($0)
+    s = index($0, COMMENT)
+
+    if ( (s <= 0) || (s+COMMENT_LEN-1)!=len ) {
+        next
+    } else {
+        has_keyword = 1
+    }
+}
+END{
+    if (has_keyword == 1) {
         exit(0)
     } else {
         exit(1)
     }
-}' >"$___X_CMD_BOOT_RC"
-
+}
+'
 }
 # EndSection
