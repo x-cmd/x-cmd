@@ -1,10 +1,6 @@
-# shellcheck shell=dash disable=SC1091,SC2034,SC2154
+# shellcheck shell=dash disable=SC1091,SC2034,SC2154,SC1090
 
 xrc:mod:lib theme       style/_index
-___x_cmd_theme_control_use_default(){
-    [ -z "$___X_CMD_THEME_RELOAD_DISABLE" ] || return 0
-    [ ! -f "${___X_CMD_ROOT_CFG}/theme/default" ] || . "${___X_CMD_ROOT_CFG}/theme/default"
-}
 
 # Section: try or use theme
 ___x_cmd_theme_control_use(){
@@ -13,7 +9,49 @@ ___x_cmd_theme_control_use(){
         xrc:mod:lib theme app/_index
         ___x_cmd_theme_control_app "$@"
     else
-        ___x_cmd_theme_control_try_main --save "$@"
+        ___x_cmd_theme_boot___check_use "$@"
+    fi
+}
+
+___x_cmd_theme_control_unuse(){
+    local X_help_cmd=; X_help_cmd='x help -m theme unuse' help:arg:parse
+    local terminal=default
+    local vendor=theme
+    local all=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
+                    terminal="${1#--}"; shift ;;
+            --vendor)
+                    vendor="$2"
+                    ___x_cmd_theme_boot___check_vendor "$vendor" || return
+                    shift 2
+                    ;;
+            --fallback)
+                    fallback=1; shift ;;
+            all)    all=1; break ;;
+            *)      theme:error -h 'x theme unuse --help' "Invalid argument"
+                    return 64 ;;
+        esac
+    done
+
+    ___x_cmd_theme_control___discarded_rcfile_data_migrate    # temp
+
+    if [ -n "$fallback" ]; then
+        ___x_cmd_theme_boot___configfile_unset posix fallback
+        theme:info "Unset fallback prompt theme successfully."
+        return
+    elif [ -n "$all" ]; then
+        ___x_cmd_theme_boot___configdir_unset posix
+        ___x_cmd_theme_boot___unexport_boot_vendor
+        ___x_cmd_theme_boot___unexport_try_vendor
+        theme:info "Unuse the all prompt theme successfully."
+        theme:info "To apply the configuration, you can reopen a new shell environment."
+        return
+    fi
+
+    if ___x_cmd_theme_boot___check_unuse "$vendor" "--${terminal}"; then
+        ___x_cmd_theme_control_untry_inner
     fi
 }
 
@@ -23,147 +61,68 @@ ___x_cmd_theme_control_try(){
         xrc:mod:lib theme app/_index
         ___x_cmd_theme_control_app "$@"
     else
-        ___x_cmd_theme_control_try_main "$@"
+        local name="${1:-l}"
+        [ -z "$2" ] || {
+            if [ "$name" != "random" ]; then    name="$name/$2"
+            else                                name="random,$2"
+            fi
+        }
+        ___x_cmd_theme_boot___check_and_apply_vendor default theme try "$name"
     fi
-}
-
-___x_cmd_theme_control_try_main(){
-    local termtype=default
-    local save=
-    case "$1" in
-        --save)   save=1; shift ;;
-    esac
-
-    case "$1" in
-        --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
-            termtype="${1#--}"
-            shift
-            ;;
-        --*)
-            N=theme M="Unknown subcmd ==> $1" log:ret:64
-            ;;
-    esac
-
-    local name="${1:-l}"
-    [ -z "$2" ] || {
-        if [ "$name" != "random" ]; then    name="$name/$2"
-        else                                name="random,$2"
-        fi
-    }
-
-    if [ -n "$save" ];then
-        theme:info "Use theme ==> $name"
-    else
-        theme:info "Try theme ==> $name"
-    fi
-    eval export ___X_CMD_THEME_NAME_"$termtype"="$name"
-    ___x_cmd_theme_control_try_inner || return
-
-    # use theme
-    [ -z "$save" ] || ___x_cmd_theme_control___rcfile_modify "$termtype" "$name"
-}
-
-___x_cmd_theme_control_try_inner(){
-    xrc:mod:lib     theme       widget/_index       theme/mini/_index
-
-    local name=; eval name=\"\$___X_CMD_THEME_NAME_"${___X_CMD_THEME_TERM_VENDOR}"\" 2>/dev/null
-
-    name="${name:-$___X_CMD_THEME_NAME_default}"
-    [ -n "$name" ] || return 0
-
-    ___x_cmd_theme_feature_reload
-
-    # TODO: Using hub ...
-    local x_file=
-    ___x_cmd_theme_which___getfile_ "$name" || N=theme M="Not found theme '$name' file" log:ret:64
-    ___x_cmd_theme_load_format "$x_file" || return
-}
-# EndSection
-
-___x_cmd_theme_control_unuse(){
-    local X_help_cmd=; X_help_cmd='x help -m theme unuse' help:arg:parse
-    local termtype=default
-    [ $# -ne 0 ] || set -- --default
-
-    case "$1" in
-        --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
-            ___x_cmd_theme_control_untry_ "$1"
-            ___x_cmd_theme_control___rcfile_modify "${1#--}" ""
-            ___x_cmd boot rc del "x-theme"
-            theme:info "Unuse the theme successfully. ${___X_CMD_UNSEENCHAR_033}[1;33mNow you can restart your terminal.${___X_CMD_UNSEENCHAR_033}[0m"
-            ;;
-
-        all)
-            ___x_cmd boot rc del "x-theme"
-            ___x_cmd boot rc del "x-zsh-plugin"
-            ___x_cmd rmrf "${___X_CMD_ROOT_CFG}/theme/default"
-            ___x_cmd_theme_control_untry_all
-            theme:info "Unuse the theme successfully. ${___X_CMD_UNSEENCHAR_033}[1;33mNow you can restart your terminal.${___X_CMD_UNSEENCHAR_033}[0m"
-            ;;
-        *)
-            theme:error -h 'x theme unuse --help' "Invalid argument"
-            return 1
-            ;;
-    esac
-}
-
-___x_cmd_theme_control_untry_all(){
-    local IFS=" "; local i; for i in default vscode gnome iterm apple kde ide windows konsole; do
-        eval export ___X_CMD_THEME_NAME_"$i"=
-    done
-    ___x_cmd_theme_feature_off
-    ___x_cmd_theme_control_try_inner
 }
 
 ___x_cmd_theme_control_untry(){
-    ___x_cmd_theme_control_untry_ "$@"
-    theme:info "Untry the theme successfully."
-}
-
-___x_cmd_theme_control_untry_(){
     local X_help_cmd=; X_help_cmd='x help -m theme untry' help:arg:parse
-    local termtype=default
-    case "$1" in
-        --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
-            termtype="${1#--}"
-            shift
-            ;;
-    esac
-
-    eval export ___X_CMD_THEME_NAME_"$termtype"=
-    [ ! -f "${___X_CMD_ROOT_CFG}/theme/default" ] || {
-        local x_=; x_="$( ___x_cmd_cmds grep "export ___X_CMD_THEME_NAME_default=" < "${___X_CMD_ROOT_CFG}/theme/default" )"
-        eval "$x_"
-        ___x_cmd_unexport ___X_CMD_THEME_NAME_default
-    }
-    ___x_cmd_theme_feature_off
-    ___x_cmd_theme_control_try_inner
+    if ___x_cmd_theme_boot___check_untry theme; then
+        ___x_cmd_theme_control_untry_inner "$@"
+        theme:info "Untry the theme successfully."
+    fi
 }
 
-___x_cmd_theme_control___rcfile_modify(){(
-    local termtype="$1"
-    local name="$2"
+___x_cmd_theme_control_untry_inner(){
+    local name=l
+    ___x_cmd_theme_feature_off
+    local x_file=
+    ___x_cmd_theme_which___getfile_ "$name" || N=theme M="Not found theme '$name' file" log:ret:64
+    ___x_cmd_theme_feature_reload
+    ___x_cmd_theme_load_format "$x_file"
 
-    ___x_cmd touch "${___X_CMD_ROOT_CFG}/theme/default"
-    ___X_CMD_THEME_DISABLE=1
-    . "${___X_CMD_ROOT_CFG}/theme/default"
+    ___x_cmd_theme_boot___current_vendor_unset
+}
+# EndSection
 
-    eval export ___X_CMD_THEME_NAME_"$termtype"="$name"
 
-    if [ -z "${___X_CMD_THEME_NAME_default}${___X_CMD_THEME_NAME_vscode}${___X_CMD_THEME_NAME_gnome}${___X_CMD_THEME_NAME_iterm}${___X_CMD_THEME_NAME_apple}${___X_CMD_THEME_NAME_kde}${___X_CMD_THEME_NAME_ide}${___X_CMD_THEME_NAME_windows}${___X_CMD_THEME_NAME_konsole}" ]; then
-        ___x_cmd rmrf "${___X_CMD_ROOT_CFG}/theme/default"
-    else
-        >"${___X_CMD_ROOT_CFG}/theme/default" \
-        printf "%s\n" \
-            "export ___X_CMD_THEME_NAME_default=${___X_CMD_THEME_NAME_default}"     \
-            "export ___X_CMD_THEME_NAME_windows=${___X_CMD_THEME_NAME_windows}"     \
-            "export ___X_CMD_THEME_NAME_konsole=${___X_CMD_THEME_NAME_konsole}"     \
-            "export ___X_CMD_THEME_NAME_vscode=${___X_CMD_THEME_NAME_vscode}"       \
-            "export ___X_CMD_THEME_NAME_apple=${___X_CMD_THEME_NAME_apple}"         \
-            "export ___X_CMD_THEME_NAME_iterm=${___X_CMD_THEME_NAME_iterm}"         \
-            "export ___X_CMD_THEME_NAME_gnome=${___X_CMD_THEME_NAME_gnome}"         \
-            "export ___X_CMD_THEME_NAME_kde=${___X_CMD_THEME_NAME_kde}"             \
-            "export ___X_CMD_THEME_NAME_ide=${___X_CMD_THEME_NAME_ide}"             \
-            "[ -n \"\$___X_CMD_THEME_DISABLE\" ] || ___x_cmd_theme_control_try_inner"
-    fi
-)}
+___x_cmd_theme_control_try_inner(){
+    :
+}
+___x_cmd_theme_control___discarded_rcfile_data_migrate(){
+    local rcfile="${___X_CMD_ROOT_CFG}/theme/default"
+    [ -f "$rcfile" ] || return 0
+    theme:debug "Migrating discarded theme rcfile data"
+    (
+        local ___X_CMD_THEME_DISABLE=1
+        . "$rcfile"
+        local terminal=; local name=
+        for terminal in default vscode gnome iterm apple kde ide windows konsole; do
+            eval name=\"\$___X_CMD_THEME_NAME_"${terminal}"\" 2>/dev/null
+            [ -n "$name" ] || continue
+            ___x_cmd_theme_boot___configfile_set posix "$terminal" theme "$name"
+        done
+    )
+    ___x_cmd rmrf "$rcfile"
+}
+
+___x_cmd_theme_control___discarded_rcfile_load(){
+    theme:debug "Loading discarded theme rcfile"
+    local rcfile="${___X_CMD_ROOT_CFG}/theme/default"
+    [ -f "$rcfile" ] || return 0
+    local ___X_CMD_THEME_DISABLE=1
+    . "$rcfile" || return
+
+    local name=; eval name=\"\$___X_CMD_THEME_NAME_"${___X_CMD_THEME_TERM_VENDOR}"\" 2>/dev/null
+    name="${name:-$___X_CMD_THEME_NAME_default}"
+    [ -n "$name" ] || return 0
+
+    ___x_cmd_theme_boot_load_default___fast theme "$name"
+}
+

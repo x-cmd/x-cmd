@@ -86,6 +86,7 @@ function user_local_data_add( o, kp, rootkp, str,          _, name, l, i, _kp, _
         else                    _update = _[7] " " _[8] " " _[9]
         _regex = _update
         gsub(" +", " +", _regex)
+        gsub("\\]|\\[|\\)|\\(|\\}|\\{", "\\\\&", _regex)
     }
 
     if (! match(str, _regex))   return

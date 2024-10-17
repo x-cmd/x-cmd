@@ -1,0 +1,151 @@
+# shellcheck shell=dash disable=2016,2034
+
+___X_CMD_OHMYPOSH_CONFIG_DIR="$___X_CMD_ROOT_DATA/ohmyposh/config"
+___X_CMD_OHMYPOSH_PREVIEW_DIR="$___X_CMD_ROOT_DATA/ohmyposh/preview"
+___x_cmd_ohmyposh_ls(){
+    ___x_cmd_ohmyposh___check_config || return
+    local i
+    for i in "$___X_CMD_OHMYPOSH_CONFIG_DIR"/*; do
+        i="${i%".omp.json"}"
+        i="${i%".omp.yaml"}"
+        printf "%s\n" "${i#"$___X_CMD_OHMYPOSH_CONFIG_DIR/"}"
+    done
+}
+
+# Section: fz
+___x_cmd_ohmyposh_fz(){
+    if [ ! -t 1 ] || ! ___x_cmd_is_interactive; then
+        ___x_cmd_ohmyposh_ls
+    else
+        local x_=; ___x_cmd_ohmyposh_fz_ || return
+        local id=;
+        ___x_cmd ui select id "Next for ohmyposh theme -> $x_"  \
+            "x ohmyposh use $x_     # Apply globally"           \
+            "x ohmyposh try $x_     # Apply only in current shell env" \
+            "Return"
+
+        case "$id" in
+            1)
+                ohmyposh:info "cmd -> x ohmyposh use $x_"
+                ___x_cmd ohmyposh use "$x_"
+                ;;
+            2)
+                ohmyposh:info "cmd -> x ohmyposh try $x_"
+                ___x_cmd ohmyposh try "$x_"
+                ;;
+            *)  return 0
+                ;;
+        esac
+    fi
+}
+
+___x_cmd_ohmyposh_fz_(){
+    x_=""
+    ___x_cmd_ohmyposh_fz___check_preview || return
+    x_="$(
+    ___x_cmd fsiter "$___X_CMD_OHMYPOSH_PREVIEW_DIR" | ___x_cmd fzf --ansi --reverse --cycle --exit-0 \
+            --height 50% --preview-window right:70% \
+            --preview="x ohmyposh --fzfinfo '{1}'"
+    )"
+    [ -n "$x_" ]
+}
+
+___x_cmd_ohmyposh_fz_info(){
+    local name="$1";
+    [ -n "$name" ]  || N=ohmyposh M="Please provide ohmyposh theme name" log:ret:64
+    ___x_cmd_ohmyposh_fz___check_preview || return
+    local fp; fp="$___X_CMD_OHMYPOSH_PREVIEW_DIR/$name"
+    [ -f "$fp" ]    || N=ohmyposh M="Not found ohmyposh theme [name=$name] preview file" log:ret:1
+    ___x_cmd_cmds cat "$fp"
+}
+
+___x_cmd_ohmyposh_fz___check_preview(){
+    local dir="$___X_CMD_OHMYPOSH_PREVIEW_DIR"
+    [ ! -d "$dir" ] || return 0
+
+    local url; local tarname="ohmyposh.preview.tar.xz"
+    if [ -n "$___X_CMD_THEME_DEV_MOD" ]; then
+        ohmyposh:warn "Download form github x-cmd-theme/release, ___X_CMD_THEME_DEV_MOD=$___X_CMD_THEME_DEV_MOD"
+        url="https://raw.githubusercontent.com/x-cmd-theme/release/main/dist/${tarname}"
+    elif ! ___x_cmd websrc is cn; then
+        url="https://raw.githubusercontent.com/x-cmd/theme/main/dist/${tarname}"
+    else
+        url="https://oss.resource.x-cmd.com/x-cmd/theme/dist/${tarname}"
+    fi
+
+    local cache="$___X_CMD_ROOT_DATA/ohmyposh/$tarname"
+    ___x_cmd ensurefp "$cache"
+    ohmyposh:info --url "$url" "Download $tarname"
+    ___x_cmd curl -L -sS --speed-time 5 --speed-limit 100 "$url" --output "${cache}.tmp" || {
+        ohmyposh:error "Fail to download ${cache}"
+        return 1
+    }
+
+    ___x_cmd mv -f "${cache}.tmp" "${cache}" || return
+    ___x_cmd rmrf "$dir" || return
+    ___X_CMD_ZUZ_QUIET=1 ___x_cmd uz "$cache" "$dir" || {
+        ohmyposh:error "Fail to extract $cache"
+        ___x_cmd rmrf "$cache" "$dir"
+        return 1
+    }
+}
+
+# EndSection
+
+___x_cmd_ohmyposh_which_(){
+    local name="$1"
+    ___x_cmd_ohmyposh___check_config || return
+    local fp="$___X_CMD_OHMYPOSH_CONFIG_DIR/${name}.omp.json"
+    [ -f "$fp" ] || fp="$___X_CMD_OHMYPOSH_CONFIG_DIR/${name}.omp.yaml"
+    [ -f "$fp" ] || fp="$name"
+    [ -f "$fp" ] || {
+        ohmyposh:error "Not found such config file -> $name"
+        return 1
+    }
+    x_="$fp"
+}
+
+___x_cmd_ohmyposh_which(){
+    local x_=; ___x_cmd_ohmyposh_which_ "$@" || return
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_ohmyposh___check_config(){
+    [ ! -d "$___X_CMD_OHMYPOSH_CONFIG_DIR" ] || return 0
+    local url=; local shaurl=
+    if ___x_cmd websrc is cn; then
+        url="https://codeberg.org/x-cmd-sourcecode/oh-my-posh/releases/download/latest/themes.zip"
+        shaurl="https://codeberg.org/x-cmd-sourcecode/oh-my-posh/releases/download/latest/themes.zip.sha256"
+    else
+        url='https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest/download/themes.zip'
+        shaurl='https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest/download/themes.zip.sha256'
+    fi
+
+    local tmpdir="$___X_CMD_ROOT_TMP/ohmyposh"
+    ___x_cmd mkdirp "$tmpdir"
+    ohmyposh:info "Download themes.zip from $url"
+    ___x_cmd curl -L -sS --speed-time 5 --speed-limit 100 "$url" --output "$tmpdir/themes.zip" || {
+        ohmyposh:error "Download themes.zip failed"
+        ___x_cmd rmrf "$tmpdir"
+        return 1
+    }
+
+    ohmyposh:info "Download themes.zip.sha256 from $shaurl"
+    ___x_cmd curl -L -sS --speed-time 5 --speed-limit 100 "$shaurl" --output "$tmpdir/themes.zip.sha256" || {
+        ohmyposh:error "Download themes.zip.sha256 failed"
+        ___x_cmd rmrf "$tmpdir"
+        return 1
+    }
+
+    local hash_value; hash_value="$( < "$tmpdir/themes.zip.sha256" ___x_cmd_cmds awk '{ v=$1; gsub("\r", "", v); print tolower(v); }' )"
+    local file_hash; file_hash="$(___x_cmd sha256 "$tmpdir/themes.zip")"
+    [ "$file_hash" = "$hash_value" ] || {
+        ohmyposh:debug --file_hash "[$file_hash]" --hash_value "[$hash_value]" "sha256 value"
+        ohmyposh:error "File corrupted, sha256 match fail"
+        # ___x_cmd rmrf "$tmpdir"
+        return 1
+    }
+
+    ___x_cmd uz "$tmpdir/themes.zip" "$___X_CMD_OHMYPOSH_CONFIG_DIR" || return
+    ___x_cmd rmrf "$tmpdir"
+}

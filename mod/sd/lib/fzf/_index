@@ -58,32 +58,59 @@ ___x_cmd_sd___fzfapp(){
     )
 }
 
+___x_cmd_sd___fzfprompt(){
+    case "$FZF_PROMPT" in
+        "diff>"*)
+            printf "%s\n" "raw> "
+            ;;
+        *)
+            printf "%s\n" "diff> "
+            ;;
+    esac
+}
 
 ___x_cmd_sd___fzfapprun(){
     local expression="$1"
-    fpfolder="$___X_CMD_SD_FZF_APP_DIR"        \
+    fpfolder="$___X_CMD_SD_FZF_APP_DIR"         \
     ___x_cmd fzf                                \
-        --header="<Please type sd arguments>"  \
+        --header="<Please type sd arguments> Use ctrl-s to switch preview mode"  \
+        --bind='ctrl-s:transform-prompt(x sd --fzfprompt)+refresh-preview'     \
+        --prompt='raw> '                        \
         --reverse --no-info --height='80%'      \
-        --query="$expression" --print-query                \
+        --query="$expression" --print-query     \
         --preview-window='down,99%'             \
         --preview='x sd --fzfapppreview "$fpfolder" {q} 2>/dev/null' <<A
 A
 }
 
 ___x_cmd_sd___fzfapppreview(){
+    local mode="$FZF_PROMPT"
     local fp="$1";  shift
+    local modified_content
     {
         case "$1" in
             "")
-                ___x_cmd_cmds cat "$fp/source"
+                ___x_cmd_sd___fzfapppreview___error "$fp"
                 ;;
             *)
-                eval ___x_cmd_sd___cmd "$1" <"$fp/source" || {
-                    printf "\n\n\033[34m[ERR=%d]\033[0m\n=== %s ===\n\n" \
-                        "$?"    "Content of file or directory : $fp/source"
-                    ___x_cmd_cmds cat "$fp/source"
-                }
+                case "$mode" in
+                    diff\>*)
+                        if ! modified_content="$( eval ___x_cmd_sd___cmd "$1" <"$fp/source" )"; then
+                            ___x_cmd_sd___fzfapppreview___error "$fp"
+                        else
+                            printf "%s\n" "$modified_content" | ___x_cmd_cmds diff -u --color=always "$fp/source" -
+                        fi
+                        ;;
+                    *)
+                        eval ___x_cmd_sd___cmd --preview "$1" "$fp/source" || ___x_cmd_sd___fzfapppreview___error "$fp"
+                esac
+                ;;
         esac
     } 2>&1 | ___x_cmd_cmds head -n 2000
+}
+
+___x_cmd_sd___fzfapppreview___error(){
+    local fp="$1"
+    printf "\n=== %s ===\n\n" "Content of file : $fp/source"
+    ___x_cmd_cmds cat "$fp/source"
 }

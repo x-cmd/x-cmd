@@ -1,0 +1,213 @@
+# shellcheck shell=dash
+
+xrc:mod     theme/lib/boot/configfile
+xrc:mod     theme/lib/boot/current
+
+___x_cmd_theme_boot___unexport_boot_vendor(){
+    ___x_cmd unexport ___X_CMD_THEME_BOOT_VENDOR
+    ___x_cmd unexport ___X_CMD_THEME_BOOT_NAME
+}
+
+___x_cmd_theme_boot___unexport_try_vendor(){
+    ___x_cmd unexport ___X_CMD_THEME_BOOT_TRY_VENDOR
+    ___x_cmd unexport ___X_CMD_THEME_BOOT_TRY_NAME
+}
+
+# ___x_cmd_theme_boot___check_and_apply_vendor      default starship use pastel-powerline
+___x_cmd_theme_boot___check_and_apply_vendor(){
+    local terminal="$1"
+    local nvendor="$2"                              # next vendor
+    local cvendor="$___X_CMD_THEME_CURRENT_VENDOR"  # current vendor
+    local cname="$___X_CMD_THEME_CURRENT_NAME"      # current theme name
+    local degree="$3"                               # use/try
+    local name="$4"                                 # theme name
+
+    ___x_cmd log :theme debug \
+        --terminal "$terminal" --nvendor "$nvendor" --cvendor "$cvendor" --degree "$degree" --name "$name" \
+        "Checking and apply"
+
+    ___x_cmd_theme_boot___check_vendor "$nvendor" || return
+    case "$degree" in
+        use|try)    ;;
+        *)          return 1 ;;
+    esac
+
+    if [ "$degree" = use ]; then
+        ___x_cmd_theme_boot___configfile_set posix "$terminal" "$nvendor" "$name" || return
+
+        if [ "$terminal" = default ]; then
+            ___x_cmd log ":${nvendor}" info "The default theme setting has been successfully updated in the configuration file -> [$nvendor] ==> [$name]"
+            ___x_cmd log ":${nvendor}" info "From now on, any newly opened shell will apply the default theme unless a specific theme is set."
+        else
+            ___x_cmd log ":${nvendor}" info "Successfully, the user configuration file for [terminal=$terminal] has been assigned the specified theme -> [$nvendor] ==> [$name]"
+        fi
+
+        if [ "$terminal" != "$___X_CMD_THEME_TERM_VENDOR" ]; then
+            # Different terminal
+            if ___x_cmd_theme_boot___configfile_check posix "$___X_CMD_THEME_TERM_VENDOR"; then
+                # Has been assinged a specific theme
+                if [ "$terminal" = default ]; then
+                    ___x_cmd log ":${nvendor}" warn "Current [terminal=$___X_CMD_THEME_TERM_VENDOR] has been assinged a specific theme -> [$cvendor] ==> [$cname]"
+                    ___x_cmd log ":${nvendor}" info "To check out the default theme in action, you can open any shell that doesn't have a specific theme assigned."
+                else
+                    ___x_cmd log ":${nvendor}" warn "The theme is assigned only to the [terminal=$terminal]. However, current terminal is -> $___X_CMD_THEME_TERM_VENDOR"
+                    ___x_cmd log ":${nvendor}" info "To check out it in action, you can reopen a new shell in the [terminal=$terminal]"
+                fi
+                return
+            else
+                # No specific theme
+                if [ "$terminal" = default ]; then
+                    ___x_cmd log ":${nvendor}" info "Current [terminal = $___X_CMD_THEME_TERM_VENDOR] has not been assigned a specific theme, so the default theme will be applied."
+                else
+                    ___x_cmd log ":${nvendor}" info "Current [terminal = $___X_CMD_THEME_TERM_VENDOR] has not been assigned a specific theme."
+                    ___x_cmd log ":${nvendor}" info "To check out it in action, you can reopen a new shell in the [terminal=$terminal]"
+                    return
+                fi
+            fi
+        fi
+    fi
+
+    if [ -n "$cvendor" ] && [ "$cvendor" != "$nvendor" ]; then
+        ___x_cmd log ":${nvendor}" info "x-cmd using prompt theme [vendor=$cvendor] in current shell env"
+        ___x_cmd log ":${nvendor}" info "Please open a new [shell=${SHELL:-/bin/sh}] to avoid collision"
+
+        if ! ___x_cmd ui yesno "Opening a new shell to avoid collision ?"; then
+            return 1
+        fi
+
+        local try_vendor=
+        local try_name=
+        [ "$degree" = use ] || {
+            try_vendor="$nvendor"
+            try_name="$name"
+        }
+        ___X_CMD_THEME_BOOT_TRY_VENDOR="$try_vendor" \
+            ___X_CMD_THEME_BOOT_TRY_NAME="$try_name" "${SHELL:-/bin/sh}"
+
+    else
+        ___x_cmd "$nvendor" --rc-load "$name" || return
+        ___x_cmd_theme_boot___current_vendor_set "$nvendor"
+        ___x_cmd_theme_boot___current_name_set "$name"
+    fi
+}
+
+___x_cmd_theme_boot___check_vendor(){
+    local vendor="$1"
+    case "$vendor" in
+        theme|starship|ohmyposh)  ;;
+        *)  N=theme M="Unknown [vendor=$vendor]" log:ret:1 ;;
+    esac
+}
+
+___x_cmd_theme_boot___check_use(){
+    local terminal=default
+    local vendor=theme
+    local fallback=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
+                    terminal="${1#--}"; shift ;;
+            --vendor)
+                    vendor="$2"
+                    ___x_cmd_theme_boot___check_vendor "$vendor" || return
+                    shift 2
+                    ;;
+            --fallback)
+                    fallback=1; shift ;;
+            --*)    N=theme M="Unknown subcmd ==> $1" log:ret:64 ;;
+            *)      break ;;
+        esac
+    done
+
+    local name="$1"
+    case "$vendor" in
+        theme)
+            name="${name:-l}"
+            if [ -n "$2" ] && [ "$name" = "random" ]; then
+                name="random,$2"
+            fi
+            ;;
+        *)
+            [ -n "$name" ] || {
+                ___x_cmd log ":${vendor}" error "Please provide the prompt theme name"
+                return 64
+            }
+            ;;
+    esac
+
+    if [ -n "$fallback" ]; then
+        ___x_cmd log ":${vendor}" info "Set the fallback prompt theme using -> [$vendor ==> $name]"
+        ___x_cmd_theme_boot___configfile_set posix fallback "$vendor" "$name"
+    else
+        ___x_cmd_theme_control___discarded_rcfile_data_migrate
+        ___x_cmd_theme_boot___check_and_apply_vendor "$terminal" "$vendor" use "$name"
+    fi
+}
+
+___x_cmd_theme_boot___check_unuse(){
+    local cvendor="$1"; shift
+    local terminal=default
+    case "$1" in
+        --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
+            terminal="${1#--}"; shift ;;
+        "") ;;
+        *)  N="$cvendor" M="Unknown subcmd ==> $1" log:ret:64 ;;
+    esac
+
+    local vendor=; local name=
+    ___x_cmd_theme_boot___configfile_get_ posix "$terminal" || {
+        if [ "$terminal" = default ]; then
+            ___x_cmd log ":${cvendor}" warn "Has not been assigned the default prompt theme."
+        else
+            ___x_cmd log ":${cvendor}" warn "The [terminal=$terminal] has not been assigned a specific prompt theme."
+        fi
+        return 1
+    }
+
+    if [ "$vendor" != "$cvendor" ]; then
+        if [ "$terminal" = default ]; then
+            ___x_cmd log ":${cvendor}" warn "The default terminal prompt theme has been set by [vendor=$vendor], not by [vendor=$cvendor]"
+        else
+            ___x_cmd log ":${cvendor}" warn "The [terminal=$terminal] prompt theme has been set by [vendor=$vendor], not by [vendor=$cvendor]"
+        fi
+        return 1
+    fi
+
+    ___x_cmd_theme_boot___configfile_unset posix "$terminal"
+    if [ "$terminal" = default ]; then
+        ___x_cmd log ":${cvendor}" info "Unuse the default prompt theme successfully."
+        ___x_cmd log ":${cvendor}" info "To check out it in action, you can reopen a new shell in a terminal that does not have a specified theme."
+    else
+        ___x_cmd log ":${cvendor}" info "Unuse the [terminal=$terminal] prompt theme successfully."
+        ___x_cmd log ":${cvendor}" info "To check out it in action, you can reopen a new shell in the [terminal=$terminal]."
+    fi
+
+    if [ "$terminal" != "$___X_CMD_THEME_TERM_VENDOR" ]; then
+        if [ "$terminal" = default ]; then
+            vendor=; name=
+            if ___x_cmd_theme_boot___configfile_get_ posix "$___X_CMD_THEME_TERM_VENDOR"; then
+                ___x_cmd log ":${cvendor}" warn "However, the current [terminal=$___X_CMD_THEME_TERM_VENDOR] has a specific theme assigned -> [$vendor ==> $name]"
+                return 1
+            else
+                ___x_cmd log ":${cvendor}" info "Current [terminal = $___X_CMD_THEME_TERM_VENDOR] has not been assigned a specific theme, so it will be affected by the unset of the default theme."
+                return 0
+            fi
+        fi
+    fi
+}
+
+___x_cmd_theme_boot___check_untry(){
+    local vendor="$1"               # starship
+    ___x_cmd_theme_boot___check_vendor "$vendor" || return
+    if ___x_cmd_theme_boot___current_vendor_eq "$vendor"; then
+        return 0
+    fi
+
+    if ___x_cmd_theme_boot___current_vendor_isempty; then
+        ___x_cmd log ":${vendor}" info "The prompt theme currently in use is not provided by x-cmd in the current shell environment."
+    else
+        ___x_cmd log ":${vendor}" info "The prompt theme has been set by [vendor=$___X_CMD_THEME_CURRENT_VENDOR], not by [vendor=$vendor]"
+        ___x_cmd log ":${vendor}" info "cmd -> x ${___X_CMD_THEME_CURRENT_VENDOR} untry"
+    fi
+    return 1
+}

@@ -1,64 +1,33 @@
 # shellcheck shell=dash
 
 ___x_cmd_docker_ps(){
-    [ $# -gt 0 ] || set -- app
+    [ $# -gt 0 ]    || set -- --app
 
-    local op="$1"; shift
+    local op="$1";  shift
     case "$op" in
         -h|--help)  ___x_cmd help -m docker ps          ;;
-        app|"")     ___x_cmd_docker_ps_app "$@"         ;;
-
         *)          ___x_cmd_docker_ps_main "$op" "$@"  ;;
     esac
 }
 
-# TODO: rm, stop, exec, logs ...
-___x_cmd_docker_ps_app(){
-    if [ -t 1 ] && ___x_cmd_is_interactive; then
-        ___x_cmd_docker_ps_app_
-    else
-        ___x_cmd_docker_ps_main
-    fi
-}
-
-___x_cmd_docker_ps_app_(){
-    local container_id=
-    ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
-        ___x_cmd csv app --return var ___x_cmd_docker_ps_main --csv || return 1
-    container_id="$___X_CMD_CSV_APP_DATA_CONTAINER_ID"
-
-    [ -n "$container_id" ] || return 0
-
-    local id=
-    local cmd=
-    ___x_cmd ui select id,cmd \
-        "Next for container: $___X_CMD_CSV_APP_DATA_REPOSITORY"     \
-        "x docker container stats   $container_id"                  \
-        "x docker container start   $container_id"                  \
-        "x docker container restart $container_id"                  \
-        "x docker container pause   $container_id"                  \
-        "x docker container stop    $container_id"                  \
-        "x docker container rm      $container_id"                  \
-        "x docker container rm -f   $container_id"                  \
-        "x docker container inspect $container_id"                  \
-        "return 1"                                              || return 1
-    docker:debug "run command -> $cmd"
-    eval "$cmd"
-}
-
 ___x_cmd_docker_ps_main(){
     local IMAGE_OPTS=
+
+    local datamode=auto
+    local X_KASM_PREFIX="$X_KASM_PREFIX"
+
     while [ $# -gt 0 ]; do
         case "$1" in
-            -j|--json)
-                ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
-                shift ;;
-            --csv)
-                ___x_cmd cmdstr IMAGE_OPTS --format 'table {{.ID}},{{.Image}},{{.Command}},{{.RunningFor}},{{.Status}},{{.Ports}},{{.Names}},{{.Size}},{{.State}},{{.LocalVolumes}},{{.Labels}},{{.CreatedAt}},{{.Mounts}}'
-                shift ;;
+            -j|--json)      datamode=json;  shift   ;;
+            --csv)          datamode=csv;   shift   ;;
+            --app)          datamode=app;   shift   ;;
+
+            -p|--prefix)    X_KASM_PREFIX="$2";    shift 2 ;;
+
             -s|--size|-l|--latest|-a|--all|--no-trunc|-q|--quiet)
                 ___x_cmd cmdstr IMAGE_OPTS "$1"
                 shift ;;
+
             -f|--filter|--format|-n|--last)
                 [ -n "$2" ] || {
                     docker:error "The '$1' parameter cannot be empty."
@@ -70,5 +39,102 @@ ___x_cmd_docker_ps_main(){
                 docker:error "Unkown options ==> $1";  return 64 ;;
         esac
     done
-    eval ___x_cmd___docker_origin ps "$IMAGE_OPTS"
+
+    if [ "$datamode" = auto ]; then
+        datamode=app
+        { [ -t 1 ] && ___x_cmd_is_interactive; } || datamode=json
+    fi
+
+    case "$datamode" in
+        app)                X_KASM_PREFIX="$X_KASM_PREFIX" eval ___x_cmd_docker_ps_app_ "$IMAGE_OPTS" ;;
+        csv|json)           X_KASM_PREFIX="$X_KASM_PREFIX" ___x_cmd_docker_ps___"$datamode" ;;
+    esac
 }
+
+___x_cmd_docker_ps_app_(){
+    local container_id=
+
+    # TODO: X_KASM_PREFIX should be exported ...
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
+    X_KASM_PREFIX="$X_KASM_PREFIX" \
+        ___x_cmd csv app --return var ___x_cmd_docker_ps_main "$@" --csv || return 1
+    container_id="$___X_CMD_CSV_APP_DATA_ID"
+
+    [ -n "$container_id" ] || return 0
+
+    if [ -z "$___x_cmd_docker_ps_app_next" ]; then
+        ___x_cmd_docker_ps_app_next(){
+            local container_id="$1"
+            local name="$2"
+
+            local id=
+            local cmd=
+            ___x_cmd ui select id,cmd \
+                "Next for container: $name"     \
+                "x docker container stats   $container_id"                  \
+                "x docker container start   $container_id"                  \
+                "x docker container restart $container_id"                  \
+                "x docker container pause   $container_id"                  \
+                "x docker container stop    $container_id"                  \
+                "x docker container rm      $container_id"                  \
+                "x docker container rm -f   $container_id"                  \
+                "x docker container inspect $container_id"                  \
+                "return 1"                                              || return 1
+            docker:debug "run command -> $cmd"
+            eval "$cmd"
+        }
+    fi
+
+    ___x_cmd_docker_ps_app_next "$container_id" "$___X_CMD_CSV_APP_DATA_Name"
+}
+
+___x_cmd_docker_ps___json(){
+    ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
+
+    eval ___x_cmd___docker_origin ps "$IMAGE_OPTS" | {
+        if [ -z "$X_KASM_PREFIX" ]; then
+            ___x_cmd jq -s .
+        else
+            ___x_cmd jq --arg prefix "$X_KASM_PREFIX" -s '.[] | select(.Names | startswith( $prefix ))' | ___x_cmd jq -s .
+        fi
+    } | {
+        # filter the keywords ...
+        ___x_cmd_cmds cat
+    }
+}
+
+# prefix, using attribute filter
+___x_cmd_docker_ps___parse_json2csv(){
+    ___x_cmd jo .\* | \
+    ___x_cmd ja jl2c  .ID .Names .Ports .Image .Command .CreatedAt .Labels .LocalVolumes .Mounts .Networks .RunningFor .Size .State .Status |\
+        ___x_cmd csv header --add  ID Name Port Image Command CreatedAt Label LocalVolume Mount Network RunningFor Size State Status
+}
+
+# TODO:
+# awk expression filter ...
+# xd ps --when 'Command~//' --when 'Ports>1024' --when 'Size>100G'
+# ___x_cmd_docker_ps___parse_json2csv2(){
+#     # consider using the filter: prefix filter, numeric filter, ...
+#     ___x_cmd ja jsonlist2csv  .Command .CreatedAt .ID .Image .Labels .LocalVolumes .Mounts .Names .Networks .Ports .RunningFor .Size .State .Status
+# }
+
+# consider using jq ?
+
+___x_cmd_docker_ps___csv(){
+    # TODO: json to csv ...
+
+    # local SEP="\",\""
+    # ___x_cmd cmdstr IMAGE_OPTS --format \
+    #                 "table \"{{.ID}}$SEP{{.Image}}$SEP{{.Command}}$SEP{{.RunningFor}}$SEP{{.Status}}$SEP{{.Ports}}$SEP{{.Names}}$SEP{{.Size}}$SEP{{.State}}$SEP{{.LocalVolumes}}$SEP{{.Labels}}$SEP{{.CreatedAt}}$SEP{{.Mounts}}\""
+
+    # ___x_cmd_docker_ps_prefix
+    ___x_cmd_docker_ps___json | ___x_cmd_docker_ps___parse_json2csv
+}
+
+# ___x_cmd_docker_ps___tsv(){
+#     local SEP="\t"
+#     ___x_cmd cmdstr IMAGE_OPTS --format \
+#                     "table {{.ID}}$SEP{{.Image}}$SEP{{.Command}}$SEP{{.RunningFor}}$SEP{{.Status}}$SEP{{.Ports}}$SEP{{.Names}}$SEP{{.Size}}$SEP{{.State}}$SEP{{.LocalVolumes}}$SEP{{.Labels}}$SEP{{.CreatedAt}}$SEP{{.Mounts}}"
+#     ___x_cmd_docker_ps_prefix
+# }
+
