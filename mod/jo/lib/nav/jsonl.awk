@@ -98,6 +98,7 @@ function user_parse_action_statusline(o, kp, arr,        i, l){
 BEGIN{
     JO_NAV_POSITION = ENVIRON[ "___X_CMD_JO_NAV_JSONL_POSITION" ]
     JO_NAV_JSONL_ACTION = ENVIRON[ "___X_CMD_JO_NAV_JSONL_ACTION" ]
+    JO_NAV_JSONL_RET_STYLE = ENVIRON[ "___X_CMD_JO_NAV_JSONL_RET_STYLE" ]
 }
 # Section: user model
 function tapp_init(){
@@ -156,13 +157,17 @@ function tapp_handle_response(fp,       _content){
 
 function tapp_handle_exit( exit_code,       p, v ){
     if (exit_is_with_cmd()){
-        p = comp_navi_get_cur_rootkp(o, JONAV_KP)
-        tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_JO_NAV_FINAL_COMMAND", FINALCMD ) )
-        tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_JO_NAV_KP", p ) )
-        v = OBJ[ p ]
-        if (( v == "{" ) || ( v == "[" ))   v = jstr1(OBJ, p)
-        else if ( v ~ "^\"" )               v = juq(v)
-        tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_JO_NAV_VALUE", v ) )
+        if ( FINALCMD == "ENTER" ) {
+            if ( JO_NAV_JSONL_RET_STYLE == "var" ) {
+                p = comp_navi_get_cur_rootkp(o, JONAV_KP)
+                tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_JO_NAV_FINAL_COMMAND", FINALCMD ) )
+                tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_JO_NAV_KP", p ) )
+                v = OBJ[ p ]
+                if (( v == "{" ) || ( v == "[" ))   v = jstr1(OBJ, p)
+                else if ( v ~ "^\"" )               v = juq(v)
+                tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_JO_NAV_VALUE", v ) )
+            }
+        }
 
         v = comp_navi_current_position_get(o, JONAV_KP)
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_JO_NAV_CURRENT_POSITION", v) )

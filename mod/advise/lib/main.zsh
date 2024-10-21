@@ -1,6 +1,5 @@
 # shellcheck shell=zsh
 
-xrc awk
 ___x_cmd_advise_run(){
     local ___X_CMD_ADVISE_RUN=1
     ___x_cmd_awk___get_utf8_

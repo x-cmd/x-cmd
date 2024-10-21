@@ -1,0 +1,63 @@
+
+
+# refit a image ...
+
+
+# x docker refit ubuntu ubuntu-x -- x env use jq yq
+# x docker refit ubuntu ubuntu-x -- x ljh:refit/devinit
+
+# x docker refit ubuntu ubuntu-x dev.init.sh
+
+___x_cmd_docker_refit(){
+    local baseimage="$1"
+    local newimage="$2"
+    local script="$3"
+
+    case "$script" in
+        --)     shift 3 ;;
+        *)      [ -f "$script" ] || N=docker M="Unexisted script -> $script" log:ret:64 ;;
+    esac
+
+    ___x_cmd_docker mirror pull --noupdate "$baseimage" || {
+        local errcode="$?"
+        case "$errcode" in
+            130)    docker:warn "Intterrupted during pulling image -> $baseimage"; return 130 ;;
+            *)      N=docker M="Fail to pull image -> $baseimage" log:ret:1 ;;
+        esac
+    }
+
+    local dir="$PWD/.x-cmd.docker.refit.ws.$$"
+    ___x_cmd mkdirp "$dir"
+    (
+        ___x_cmd_cmds_cd "$dir"
+        {
+            printf "FROM %s\n" "$baseimage"
+            if [ "$script" != -- ]; then
+                ___x_cmd_cmds cp "$script" "$dir"
+                printf "ADD %s /refit/script\n" "${script##*/}"
+                printf "RUN /bin/sh /refit/script\n"
+            else
+                printf "RUN %s\n" "$@"
+            fi
+        } > Dockerfile
+
+        # TODO: because docker build doesn't rec 130, so we have to trap sigint
+
+        ___x_cmd docker build -t "$newimage" . || {
+            local errcode="$?"
+            case "$errcode" in
+                130)    docker:warn "Intterrupted during refit image -> $newimage" ;;
+                *)      docker:warn "[ERR=$errcode] Fail to refit image -> $newimage" ;;
+            esac
+
+            # TODO: add --dev to preserve the directory
+            docker:info "[ERR=$errcode] Removing temporary workspace directory -> $dir"
+            ___x_cmd rmrf "$dir"
+            return "$errcode"
+        }
+    )
+
+    docker:info "[ERR=0] Removing temporary workspace directory -> $dir"
+    ___x_cmd rmrf "$dir"
+}
+

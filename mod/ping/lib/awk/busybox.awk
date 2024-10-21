@@ -9,11 +9,11 @@ $0~/(timeout|no answer)/{
     next
 }
 
-$0~/icmp_seq=/{
+$0~/ttl=/{
     byte = $1
     ip = $4
     gsub( ":", "", ip )
-    if ( $0 !~ /ttl=/ )    next
+
     # ... Find out the diffs ...
     seq         = trim_key( $(NF-3) )
     ttl         = trim_key( $(NF-2) )

@@ -1,27 +1,48 @@
 # shellcheck shell=dash
 
 ___x_cmd_docker_images(){
-    [ $# -gt 0 ] || set -- app
+    [ $# -gt 0 ]    || set -- --app
 
     local op="$1"; shift
     case "$op" in
-        -h|--help)  ___x_cmd help -m docker images          ;;
-        app|"")     ___x_cmd_docker_images_app              ;;
+        -h|--help)      ___x_cmd help -m docker images          ;;
 
-        *)          ___x_cmd_docker_images_main "$op" "$@"  ;;
+        *)              ___x_cmd_docker_images_main "$op" "$@"  ;;
     esac
 }
 
-___x_cmd_docker_images_app(){
-    if [ -t 1 ] && ___x_cmd_is_interactive; then
-        ___x_cmd_docker_images_app_
-    else
-        ___x_cmd_docker_images_main
-    fi
+___x_cmd_docker_images_main(){
+    local IMAGE_OPTS=
+    local format=app
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --app)      format=app;     shift ;;
+            -j|--json)  format=json;    shift ;;
+            --csv)      format=csv;     shift ;;
+
+            -a|--all|--digests|--no-trunc|-q|--quiet)
+                        ___x_cmd cmdstr IMAGE_OPTS "$1"
+                        shift ;;
+            -f|--filter|--format)
+                        [ -n "$2" ] || N=docker M="The '$1' parameter cannot be empty." log:ret:64
+                        ___x_cmd cmdstr IMAGE_OPTS "$1" "$2"
+                        shift 2 ;;
+
+            *)          N=docker M="Unkown options ==> $1" log:ret:64 ;;
+        esac
+    done
+
+    ___x_cmd_docker_images___"$format"
 }
 
+
 # TODO: export image, rm image, info image, push image
-___x_cmd_docker_images_app_(){
+___x_cmd_docker_images___app(){
+    if [ ! -t 1 ] || ! ___x_cmd_is_interactive; then
+        ___x_cmd_docker_images___csv
+        return
+    fi
+
     local image_id=
     ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
         ___x_cmd csv app --return var ___x_cmd_docker_images_main --csv || return 1
@@ -41,30 +62,28 @@ ___x_cmd_docker_images_app_(){
     eval "$cmd"
 }
 
+___x_cmd_docker_images___json(){
+    ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
 
-___x_cmd_docker_images_main(){
-    local IMAGE_OPTS=
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -j|--json)
-                ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
-                shift ;;
-            --csv)
-                ___x_cmd cmdstr IMAGE_OPTS --format 'table {{.Repository}},{{.Tag}},{{.ID}},{{.CreatedSince}},{{.Size}},{{.Containers}},{{.CreatedAt}},{{.Digest}},{{.SharedSize}},{{.UniqueSize}}'
-                shift ;;
-            -a|--all|--digests|--no-trunc|-q|--quiet)
-                ___x_cmd cmdstr IMAGE_OPTS "$1"
-                shift ;;
-            -f|--filter|--format)
-                [ -n "$2" ] || {
-                    docker:error "The '$1' parameter cannot be empty."
-                    return 1
-                }
-                ___x_cmd cmdstr IMAGE_OPTS "$1" "$2"
-                shift 2 ;;
-            *)
-                docker:error "Unkown options ==> $1";  return 64 ;;
-        esac
-    done
-    eval ___x_cmd___docker_origin image ls "$IMAGE_OPTS"
+    eval ___x_cmd___docker_origin images "$IMAGE_OPTS" | {
+        if [ -z "$___X_CMD_DOCKER_IMAGES_PREFIX" ]; then
+            ___x_cmd jq -s .
+        else
+            ___x_cmd jq --arg prefix "$___X_CMD_DOCKER_IMAGES_PREFIX" -s '.[] | select(.Repository | startswith( $prefix ))' | ___x_cmd jq -s .
+        fi
+    } | {
+        # filter the keywords ...
+        ___x_cmd_cmds cat
+    }
+}
+
+___x_cmd_docker_images___csv(){
+    ___x_cmd_docker_images___json | \
+    ___x_cmd jo .\* | \
+    ___x_cmd ja jl2c  .Repository .Tag .ID .UniqueSize .VirtualSize .CreatedAt .CreatedSince |\
+        ___x_cmd csv header --add  Repository Tag ID Image UniqueSize VirtualSize CreatedAt CreatedSince
+
+    # ___x_cmd cmdstr IMAGE_OPTS --format 'table {{.Repository}},{{.Tag}},{{.ID}},{{.CreatedSince}},{{.Size}},{{.Containers}},{{.CreatedAt}},{{.Digest}},{{.SharedSize}},{{.UniqueSize}}'
+
+    # eval ___x_cmd___docker_origin images "$IMAGE_OPTS"
 }

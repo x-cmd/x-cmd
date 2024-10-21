@@ -52,7 +52,7 @@ function print_heatmap( seq, byte, ttl, ip, time,   e ){
     printnl_fflush( "\033[5A" LINEDATA "\n" BLANK_80_LN BLANK_80_LN REPORT_INFO BOTTOM_INFO )
 }
 
-function print_xsv_header( S ){     printf("%s" S "%s" S "%s" S "%s" S S "%s\n", "seq", "byte", "ttl", "ip", "time"); }
+function print_xsv_header( S ){     printf("%s" S "%s" S "%s" S "%s" S "%s\n", "seq", "byte", "ttl", "ip", "time"); }
 BEGIN{
     sample_init()
 
@@ -73,5 +73,5 @@ function print_auto( seq, byte, ttl, ip, time ){
     if      ( mode == "bar" )       print_bar(          seq, byte, ttl, ip, time )
     else if ( mode == "verbose" )   print_verbose(      seq, byte, ttl, ip, time )
     else if ( mode == "heatmap" )   print_heatmap(      seq, byte, ttl, ip, time )
-    else                            printf(item_fmt,    seq, byte, ttl, ip, time )
+    else                            printf(item_fmt,    seq, byte, ttl, ip, time );  fflush();
 }

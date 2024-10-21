@@ -30,7 +30,7 @@ function print_auto( seq, dns, time, local_ip, local_port, ip, port ){
     if      (mode == "normal" )     print_normal(       seq, dns, time, local_ip, local_port, ip, port )
     else if (mode == "heatmap" )    print_heatmap(      seq, dns, time, local_ip, local_port, ip, port )
     else if (mode == "bar" )        print_bar(          seq, dns, time, local_ip, local_port, ip, port )
-    else                            printf(fmt,         seq, dns, time, local_ip, local_port, ip, port )
+    else                            printf(fmt,         seq, dns, time, local_ip, local_port, ip, port ); fflush();
 }
 
 

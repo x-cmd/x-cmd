@@ -123,7 +123,7 @@ function sh_var_local( var ){
 
 function sh_varset( var, token, is_local,       _local ){
     if (is_local == true) _local = sh_var_local( var )
-    return _local sprintf("%s=%s", var, token)
+    return _local var "=" token
 }
 
 function sh_varset_val( var, val, is_local,       _local ){
@@ -138,7 +138,7 @@ function sh_varset_var( var, var1, is_local,       _local ){
 
 function sh_printf_varset_val( var, val, is_local,          str ){
     str = sh_varset_val(var, val, is_local)
-    return sprintf("printf \"%%s\\n\" %s", shqu1(str))
+    return "printf \"%s\\n\" " shqu1(str)
 }
 
 # EndSection
