@@ -40,6 +40,10 @@
     </tr>
 </table>
 
+## [x ping](https://x-cmd.com/ping) - ping 命令增强
+
+![x ping](https://foruda.gitee.com/images/1730451947678480208/ad63805f_8841942.gif "ping.gif")
+
 ## [x man](https://x-cmd.com/mod/man) - 基于 fzf 的 预览 增强
 
 ![man.cn.gif](https://foruda.gitee.com/images/1722606367684957086/3e06c8f8_8841942.gif "man.cn.gif")
@@ -63,7 +67,6 @@
 ## [x theme](https://x-cmd.com/theme) - 兼容多种 posix shell 的主题美化
 
 ![x theme demo gif](https://foruda.gitee.com/images/1697770832734408357/545a3160_11092596.gif "theme.gif")
-
 
 ## [介绍](https://x-cmd.com)
 

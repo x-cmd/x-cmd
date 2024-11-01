@@ -26,6 +26,10 @@ For <bold>source code</bold>, please switch to <a href="https://github.com/x-cmd
 <a href="https://github.com/x-cmd/x-cmd/tree/X/README.md">X</a> branch is for demo and action ⭐
 </p>
 
+## [x ping](https://x-cmd.com/mod/ping) - Enhanced modules for ping
+
+![x ping](https://github.com/user-attachments/assets/1edf908f-2b90-407c-bb8b-dec461790f34)
+
 ## [x man](https://x-cmd.com/mod/man) - Preview enhancement based on fzf
 
 ![man en](https://github.com/user-attachments/assets/3eefcc80-592f-4724-b910-1f0fe611d451)
@@ -49,7 +53,6 @@ For <bold>source code</bold>, please switch to <a href="https://github.com/x-cmd
 ## [x theme](https://x-cmd.com/theme) - Compatible with a variety of Bosix Scheer theme beautification
 
 ![x theme demo gif](https://user-images.githubusercontent.com/112856271/276805596-08998349-eda3-4107-93ff-61daade67032.gif)
-
 
 ## [Introduction](https://x-cmd.com)
 
