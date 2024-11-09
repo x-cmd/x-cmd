@@ -21,9 +21,9 @@
 </p>
 
 <p align="center">
-查看<bold>源码</bold>请移步至 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支
+查看 <bold>源码</bold> 请移步至 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支
 <br>
-<a href="https://github.com/x-cmd/x-cmd/tree/X/README.cn.md">X</a> 分支 用作 demo 和 action ⭐
+<a href="https://github.com/x-cmd/x-cmd/tree/X/README.cn.md">X</a> 分支 仅用于 演示及构建 ⭐
 </p>
 
 <table align="center">
