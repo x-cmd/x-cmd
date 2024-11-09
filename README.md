@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-For <bold>source code</bold>, please switch to <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> branch.
+For <bold>source code</bold>, please visit <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> branch.
 <br>
 <a href="https://github.com/x-cmd/x-cmd/tree/X/README.md">X</a> branch is for demo and action ⭐
 </p>
