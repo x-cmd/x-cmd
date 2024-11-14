@@ -26,15 +26,15 @@ For <bold>source code</bold>, please visit <a href="https://github.com/x-cmd/x-c
 <a href="https://github.com/x-cmd/x-cmd/tree/X/README.md">X</a> branch is for demo and action ⭐
 </p>
 
-## [x ping](https://x-cmd.com/mod/ping) - Enhanced modules for ping
+## [x ping](https://x-cmd.com/mod/ping) - Visual Enhancement of the Ping Command
 
 ![x ping](https://github.com/user-attachments/assets/1edf908f-2b90-407c-bb8b-dec461790f34)
 
-## [x man](https://x-cmd.com/mod/man) - Preview enhancement based on fzf
+## [x man](https://x-cmd.com/mod/man) - Preview Enhancement based on FZF
 
 ![man en](https://github.com/user-attachments/assets/3eefcc80-592f-4724-b910-1f0fe611d451)
 
-## [x gemini](https://www.x-cmd.com/mod/gemini) - Use Gemini AI models
+## [x gemini](https://www.x-cmd.com/mod/gemini) - Chat with Gemini AI models
 
 ![gemini en](https://github.com/user-attachments/assets/f09fe096-60a6-4c90-8ab1-cd47d13d4e73)
 
@@ -50,7 +50,7 @@ For <bold>source code</bold>, please visit <a href="https://github.com/x-cmd/x-c
 
 ![x osv demo gif](https://github.com/x-cmd/x-cmd/assets/40693636/f7c8c503-3d77-4939-8932-f2c03ed8f263)
 
-## [x theme](https://x-cmd.com/theme) - Compatible with a variety of Bosix Scheer theme beautification
+## [x theme](https://x-cmd.com/theme) - Terminal Themes for  Posix Shells
 
 ![x theme demo gif](https://user-images.githubusercontent.com/112856271/276805596-08998349-eda3-4107-93ff-61daade67032.gif)
 
