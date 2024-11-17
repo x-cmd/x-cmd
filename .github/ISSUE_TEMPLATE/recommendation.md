@@ -1,47 +1,52 @@
 ---
 name: Recommendation
 about: Supercharge x-cmd with more pkgs and installations recipes
-title: "[荐] name"
+title: "[REC] name"
 labels: install
 assignees: edwinjhlee
 
 ---
 
-**website**
+## website
 
-code:      https://github.com/?/?
-official:   
+https://github.com/?/?
 
-**Screenshot**:
+
+## Screenshot
 
 <!-- A picture is worth a thousand words -->
 
 
-**Is the tool ready to be included [x-cmd pkg](https://x-cmd.com/pkg)**
+## Is the tool ready to be included [x-cmd pkg](https://x-cmd.com/pkg)
 
 YES|NO
 
 
-**How to install**
+## How to install
 
 apt install <name>
 scoop install <name>
 
 !! We will review and put it into [x install recipes](https://x-cmd.com/install).
 
-**Provide a TLDR like example to help us understand**
+## TLDR
 
-<!-- Don't hesitate ~ The more the better ! -->
+```bash
+# Provide a TLDR like example to help us understand
+# Don't hesitate ~ The more the better !!!
 
-- desc:
-   cmd:
-- desc:
-   cmd:
-- desc:
-   cmd:
+# <desc-1>
+<command-1>
+
+# <desc-2>
+<command-2>
+
+# <desc-3>
+<command-3>
+```
 
 
-**Highlights of this tool**:
+## Highlights
 
 <!-- Help us find the best way to promote this tool to users.  ! -->
 <!-- We will launch it on our official website and channels.  ! -->
