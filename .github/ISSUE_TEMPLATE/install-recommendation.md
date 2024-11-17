@@ -1,6 +1,8 @@
 ---
 name: INSTALL recommendation
-about: Recommend an INSTALL recipe to make X-CMDER more powerful. Usually It will take us 1-5 days to review. To see all install recipes avaiable please visit https://x-cmd.com/install. Thank you.
+about: Recommend an INSTALL recipe to make X-CMDER more powerful. Usually It will
+  take us 1-5 days to review. To see all install recipes avaiable please visit https://x-cmd.com/install.
+  Thank you.
 title: "[INSTALL] <name of recipe, like openssh, tmux>"
 labels: install
 assignees: edwinjhlee
@@ -37,4 +39,3 @@ source code website: [e.g. https://github.com/x-cmd/x-cmd]
 
 **Additional context**
 Add any other context or screenshots about the feature request here.
-

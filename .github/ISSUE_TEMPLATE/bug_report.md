@@ -1,7 +1,7 @@
 ---
 name: Bug report
 about: Create a bug report to help us improve. Thank you.
-title: '[BUG]'
+title: "[BUG]"
 labels: bug
 assignees: edwinjhlee
 
@@ -34,5 +34,3 @@ A clear and concise description of what you expected to happen.
 
 **Additional context**
 Add any other context about the problem here.
-
-

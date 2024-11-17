@@ -1,7 +1,7 @@
 ---
 name: Feature Request
 about: Ideas to make x-cmd better. Thank you for your attention, star, and support.
-title: '[FEATURE]'
+title: "[FEATURE]"
 labels: feature
 assignees: edwinjhlee
 
@@ -20,5 +20,3 @@ But we value x-cmd and our users greatly, and always do our best.
 
 **Additional context**
 Add any other context about the problem here.
-
-
