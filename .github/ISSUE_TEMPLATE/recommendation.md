@@ -7,7 +7,7 @@ assignees: edwinjhlee
 
 ---
 
-## website
+## Website
 
 https://github.com/?/?
 
@@ -17,10 +17,9 @@ https://github.com/?/?
 <!-- A picture is worth a thousand words -->
 
 
-## Is the tool ready to be included [x-cmd pkg](https://x-cmd.com/pkg)
+## Ready to be included in [x-cmd pkg](https://x-cmd.com/pkg) ?
 
-YES|NO
-
+YES or NO
 
 ## How to install
 
