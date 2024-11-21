@@ -1,13 +1,13 @@
 ---
 name: Document
 about: Help us improve documents
-title: "[Doc] request or refine"
+title: "[DOC] request or refine"
 labels: doc
-assignees: edwinjhlee
+assignees: Zhengqbbb
 
 ---
 
-## Website
+## Url
 
 https://x-cmd.com/<doc>
 
