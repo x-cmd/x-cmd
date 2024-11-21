@@ -13,8 +13,8 @@ function sample( v ){
     } else {
         sample_data[ ++ sample_succ ] = v
         sample_sum = sample_sum + v
-        if (v < sample_min) { sample_min = v };
-        if (v > sample_max) { sample_max = v };
+        if (int(v) < int(sample_min) ) { sample_min = v };
+        if (int(v) > int(sample_max) ) { sample_max = v };
     }
 }
 

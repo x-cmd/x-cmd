@@ -29,11 +29,11 @@ function expand_dict(o, kp,        i, l, msg, key, delarr, delnum, val, j){
         }
         else if (key ~ "^\"#") {
             val = o[ kp, key ]
-            if (val == "{") jdict_rm(o, kp SUBSEP key, "\"cn\"")
+            if (val == "{") jdict_rm(o, kp SUBSEP key, RM_DATA_LANG)
             else if (val == "[") {
                 val_l = o[ kp, key L ]
                 for (j=1; j<=val_l; ++j){
-                    jdict_rm(o, kp SUBSEP key SUBSEP "\"" j "\"", "\"cn\"")
+                    jdict_rm(o, kp SUBSEP key SUBSEP "\"" j "\"", RM_DATA_LANG)
                 }
             }
         }
@@ -97,6 +97,12 @@ BEGIN{
     IS_DFS          = ENVIRON[ "IS_DFS" ]
     IS_FAILFAST     = ENVIRON[ "IS_FAILFAST" ]
     ARGSTR          = ENVIRON[ "ARGSTR" ]
+    DATA_LANG       = ENVIRON[ "DATA_LANG" ]
+    if ((DATA_LANG == "cn") || (DATA_LANG =="zh")) {
+        RM_DATA_LANG = "\"en\""
+    } else {
+        RM_DATA_LANG = "\"cn\""
+    }
 }
 
 { if ($0 != "") jiparse_after_tokenize(o, $0); }

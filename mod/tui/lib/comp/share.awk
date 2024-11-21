@@ -221,7 +221,12 @@ function exit_with_elegant(command){
 }
 
 function exit_is_with_cmd(){
-    return (FINALCMD == "") ? false : true
+    if ( FINALCMD != "" ) {
+        if (( FINALCMD != "CTRL-C" ) && ( FINALCMD != "CTRL-D" )) {
+            return true
+        }
+    }
+    return false
 }
 # EndSection
 

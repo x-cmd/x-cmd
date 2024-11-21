@@ -7,7 +7,8 @@ BEGIN{
 
     POSITION_SEP = "\001\002\003"
 
-    ___TAPP_SW_CLEAR_ON_EXIT = ENVIRON[ "___TAPP_SW_CLEAR_ON_EXIT" ]
+    ___TAPP_SW_CLEAR_ON_EXIT    = ENVIRON[ "___TAPP_SW_CLEAR_ON_EXIT" ]
+    ___TAPP_SW_CLEAR_ON_CTRL_C  = ENVIRON[ "___TAPP_SW_CLEAR_ON_CTRL_C" ]
     TUI_PANIC_EXIT = 0
 }
 
@@ -69,21 +70,38 @@ function ___tapp_exit_screen_recover(){
 # EndSection
 
 # Section: exit and panic
-function panic( s, c ){
-    TUI_PANIC_EXIT = (c != "") ? int(c) : 1
-    TUI_PANIC_TEXT = s
+function panic( str, exitcode, exitcmd ){
+    TUI_PANIC_EXIT = (exitcode != "") ? int(exitcode) : 1
+    TUI_PANIC_TEXT = str
+    if ( exitcmd != "" ) FINALCMD = exitcmd
     exit(TUI_PANIC_EXIT)
 }
 
+function ___tapp_exit_screen_clear(){
+    ___tapp_exit_screen_recover()
+    printf("%s", UI_CURSOR_RESTORE \
+        space_screen(CANVAS_ROWSIZE+1, COLS) "\r" painter_up(CANVAS_ROWSIZE) \
+        UI_CURSOR_RESTORE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR) >"/dev/stderr"
+}
+
+function ___tapp_exit_screen_noclear(){
+    printf("%s", UI_CURSOR_RESTORE \
+        "\r" painter_down(CANVAS_ROWSIZE) UI_LINE_CLEAR) >"/dev/stderr"
+}
+
 END{
-    if (___TAPP_SW_CLEAR_ON_EXIT == true) {
-        ___tapp_exit_screen_recover()
-        printf("%s", UI_CURSOR_RESTORE \
-            space_screen(CANVAS_ROWSIZE+1, COLS) "\r" painter_up(CANVAS_ROWSIZE) \
-            UI_CURSOR_RESTORE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR) >"/dev/stderr"
+    if (FINALCMD == "CTRL-C") {
+        if (___TAPP_SW_CLEAR_ON_CTRL_C == true) {
+            ___tapp_exit_screen_clear()
+        } else {
+            ___tapp_exit_screen_noclear()
+        }
     } else {
-        printf("%s", UI_CURSOR_RESTORE \
-            "\r" painter_down(CANVAS_ROWSIZE) UI_LINE_CLEAR) >"/dev/stderr"
+        if (___TAPP_SW_CLEAR_ON_EXIT == true) {
+            ___tapp_exit_screen_clear()
+        } else {
+            ___tapp_exit_screen_noclear()
+        }
     }
 
     printf("%s", UI_CURSOR_NORMAL UI_CURSOR_SHOW UI_LINEWRAP_ENABLE) >"/dev/stderr"

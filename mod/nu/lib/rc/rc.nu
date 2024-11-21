@@ -1,39 +1,60 @@
 
 
-export def --env ___x_cmd_nu_nurc_addpath [ element ] {
+export def --env ___x_cmd___rcnu_addp_prepend [ element ] {
+    if not ( $element in $env.PATH ) {
+        $env.PATH = ( $element | append $env.PATH | str join (char esep) )
+    }
+}
+
+export def --env ___x_cmd___rcnu_addp_append [ element ] {
     if not ( $element in $env.PATH ) {
         # $env.PATH = ( $env.PATH | prepend args )
-        $env.PATH = ( $env.PATH | split row (char esep) | prepend $element )
+        $env.PATH = ( $env.PATH | split row (char esep) | append $element )
     }
 }
 
-export def --env ___x_cmd_nu_nurc_addpifd [ element ] {
+export def --env ___x_cmd___rcnu_addpifd [ element ] {
     if ( $element | path exists ) {
-        ___x_cmd_nu_nurc_addpath $element
+        ___x_cmd___rcnu_addp_prepend $element
     }
 }
 
-export def --env ___x_cmd_nu_nurc_addpifh [ cmd, element ] {
+export def --env ___x_cmd___rcnu_addpifh [ cmd, element ] {
     if not ( which $cmd | is-empty ) {
-        ___x_cmd_nu_nurc_addpath $element
+        ___x_cmd___rcnu_addp_prepend $element
     }
 }
+
+export def --env ___x_cmd___rcnu_addpython [ ...args ] {
+    ___x_cmd___rcnu_addpifh python     $"($env.HOME)/.local/bin"
+    let singleton_fp = $"($env.HOME)/.x-cmd.root/local/data/pkg/sphere/X/.x-cmd/singleton/python"
+    if ( $singleton_fp | path exists ) {
+        let tgtdir = $"($env.HOME)/.x-cmd.root/local/data/pkg/sphere/X/(cat $singleton_fp)"
+        if ( $nu.os-info.name == "windows" ) {
+            let binpath = ( $tgtdir | path join Scripts)
+            ___x_cmd___rcnu_addpifd $binpath
+            } else {
+            let binpath = ( $tgtdir | path join bin)
+            ___x_cmd___rcnu_addpifd $binpath
+        }
+    }
+}
+
 
 export-env {
     if ( $"($env.HOME)/.x-cmd.root/boot/pixi" | path exists ) {
-        ___x_cmd_nu_nurc_addpath $"($env.HOME)/.pixi/bin"
+        ___x_cmd___rcnu_addp_append $"($env.HOME)/.pixi/bin"
     }
 
-    ___x_cmd_nu_nurc_addpath            $"($env.HOME)/.x-cmd.root/bin"
-    ___x_cmd_nu_nurc_addpath            $"($env.HOME)/.x-cmd.root/local/data/pkg/sphere/X/l/j/h/bin"
-    ___x_cmd_nu_nurc_addpifd            $"($env.HOME)/.cargo/bin"
+    ___x_cmd___rcnu_addp_prepend       $"($env.HOME)/.x-cmd.root/bin"
+    ___x_cmd___rcnu_addp_prepend       $"($env.HOME)/.x-cmd.root/local/data/pkg/sphere/X/l/j/h/bin"
 
-    ___x_cmd_nu_nurc_addpifh go         $"($env.HOME)/go/bin"
-    ___x_cmd_nu_nurc_addpifh python     $"($env.HOME)/.local/bin"
-    ___x_cmd_nu_nurc_addpifh done       $"($env.HOME)/.done/bin"
-    ___x_cmd_nu_nurc_addpifh bun        $"($env.HOME)/.bun/bin"
-    ___x_cmd_nu_nurc_addpifh npm        $"($env.HOME)/.npm/bin"
-
+    ___x_cmd___rcnu_addpifd            $"($env.HOME)/.cargo/bin"
+    ___x_cmd___rcnu_addpifh go         $"($env.HOME)/go/bin"
+    ___x_cmd___rcnu_addpifh done       $"($env.HOME)/.done/bin"
+    ___x_cmd___rcnu_addpifh bun        $"($env.HOME)/.bun/bin"
+    ___x_cmd___rcnu_addpifh npm        $"($env.HOME)/.npm/bin"
+    ___x_cmd___rcnu_addpython
 
     $env.___X_CMD_CO_NOEVAL = 1
     $env.___X_CMD_IS_INTERACTIVE_FORCE = 1
@@ -73,6 +94,20 @@ export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
         }
     }
 
+    let data = ls $env.___X_CMD_XBINEXP_FP | each { |i|
+        if ( $nu.os-info.name == "windows" ) {
+            {
+                key: ( $i.name | str replace --regex "^.+\\\\" "" | str replace --regex "^.*?_" ""),
+                value: ( ( open $i.name --raw | path split | get 0 ) + :\ + ( open $i.name --raw | path split | skip 1 | path join ) )
+            }
+        } else {
+            {
+                key:($i.name | str replace --regex "^.+/" "" | str replace --regex "^.*?_" ""),
+                value: ( open $i.name --raw )
+            }
+        }
+    }
+
     # TODO: load-env on ...
     for $i in $data {
         if ( $i.key == "PWD" ) {
@@ -103,11 +138,19 @@ export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
 # export alias x          = bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"
 
 export def --env --wrapped ___x_cmd [ ...args ] {
-    bash $"($env.HOME)/.x-cmd.root/bin/xbinexp" ...$args
+    if ( $nu.os-info.name == "windows" ) {
+        ~/.x-cmd.root/bin/___x_cmdexe_exp.bat ...$args
+    } else {
+        bash $"($env.HOME)/.x-cmd.root/bin/xbinexp" ...$args
+    }
 }
 
 export def --env --wrapped x [ ...args ] {
-    bash $"($env.HOME)/.x-cmd.root/bin/xbinexp" ...$args
+    if ( $nu.os-info.name == "windows" ) {
+        ~/.x-cmd.root/bin/___x_cmdexe_exp.bat ...$args
+    } else {
+        bash $"($env.HOME)/.x-cmd.root/bin/xbinexp" ...$args
+    }
 }
 
 export def --env --wrapped c [ ...args ] {
@@ -133,6 +176,7 @@ export alias xw         = ___x_cmd ws
 export alias xd         = ___x_cmd docker
 export alias xg         = ___x_cmd git
 export alias xp         = ___x_cmd pwsh
+export alias xwt        = ___x_cmd webtop
 
 
 export alias ","        = ___x_cmd nu "--sysco"

@@ -1,0 +1,98 @@
+# shellcheck shell=dash
+
+# Add backup,
+xrc:mod:lib     webtop  home/ls
+
+___x_cmd_webtop_home(){
+    [ $# -gt 0 ] || set -- ls
+
+    local op="$1"; shift
+    case "$op" in
+        # cp
+        cd|get|ls|rm)
+            ___x_cmd_webtop_home_"$op" "$@" ;;
+        *)
+            ___x_cmd help -m webtop home    ;;
+    esac
+}
+
+___x_cmd_webtop_home___app(){
+    ___x_cmd_is_interactive || {
+        # if provided a port, get into it
+        ___x_cmd_webtop_home_get
+        return
+    }
+
+    # Provide an interactive app,
+}
+
+___x_cmd_webtop_home_get(){
+    printf "%s\n" "$___X_CMD_WEBTOP_HOME_DIR"
+}
+
+___x_cmd_webtop_home_cd(){
+    if [ $# -eq 0 ]; then
+        ___x_cmd_cmds_cd "$___X_CMD_WEBTOP_HOME_DIR"
+    else
+        ___x_cmd_cmds_cd "$___X_CMD_WEBTOP_HOME_DIR/$1"
+    fi
+}
+
+___x_cmd_webtop_home_rm(){
+    local id="$1"
+    local homefp="${___X_CMD_WEBTOP_HOME_DIR}/${id}"
+    [ -d "$homefp" ] || N=webtop M="Folder not found -> $homefp" log:ret:1
+
+    ___x_cmd os name_
+    [ "$___X_CMD_OS_NAME_" != 'darwin' ] || ___x_cmd_cmds chmod -R 744 "$___X_CMD_WEBTOP_HOME_DIR/${id}"
+
+    ___x_cmd rmrf "${___X_CMD_WEBTOP_HOME_DIR}/${id}"
+    # ___x_cmd docker run --rm -v "$___X_CMD_WEBTOP_HOME_DIR":/data alpine rm -rf "/data/$id"
+}
+
+___x_cmd_webtop_home_cp(){
+    local id_src="$1"
+    local id_tgt="$2"
+
+    local homefp_src="${___X_CMD_WEBTOP_HOME_DIR}/${id_src}"
+    [ -d "$homefp_src" ] || N=webtop M="Folder not found -> $homefp_src" log:ret:1
+
+    local homefp_tgt="${___X_CMD_WEBTOP_HOME_DIR}/${id_tgt}"
+    [ ! -e "$homefp_tgt" ] || N=webtop M="Target folder already exists -> $homefp_tgt" log:ret:1
+
+    ___x_cmd docker run --rm -v "$___X_CMD_WEBTOP_HOME_DIR":/data alpine cp -r "/data/$id_src" "/data/$id_tgt"
+}
+
+___x_cmd_webtop_home_export(){
+    local id="$1"
+    local homefp="${___X_CMD_WEBTOP_HOME_DIR}/${id}"
+    [ -d "$homefp" ] || N=webtop M="Folder not found -> $homefp" log:ret:1
+
+    local tgtfp="$2"
+
+    local tmptar="webtop.$$.tar.xz"
+
+    local uid; uid="$(___x_cmd_cmds id -u)"         ||  N=webtop M="Fail to fetch user id."     log:ret:1
+    local gid; gid="$(___x_cmd_cmds id -g)"         ||  N=webtop M="Fail to fetch group id."    log:ret:1
+
+    #
+    ___x_cmd docker run --rm -e "uid=$uid" -e "gid=$gid "-e tmptar="$tmptar" -v "$___X_CMD_WEBTOP_HOME_DIR/$id":/src -v "${PWD}:/bak" alpine \
+        bash -c 'cd /src; tar -cJf "/bak/$tmptar" .; chown "$uid:$gid" "$tmptar"'
+
+}
+
+___x_cmd_webtop_home_import(){
+    local tar="$1"
+
+    local id="$2"
+    local homefp="${___X_CMD_WEBTOP_HOME_DIR}/${id}"
+    [ -d "$homefp" ] || N=webtop M="Folder not found -> $homefp" log:ret:1
+
+
+    local uid; uid="$(___x_cmd_cmds id -u)"         ||  N=webtop M="Fail to fetch user id."     log:ret:1
+    local gid; gid="$(___x_cmd_cmds id -g)"         ||  N=webtop M="Fail to fetch group id."    log:ret:1
+
+
+    # Using tar gz
+    ___x_cmd docker run --rm -v "$___X_CMD_WEBTOP_HOME_DIR":/data alpine rm -rf "/data/$id"
+}

@@ -1,0 +1,76 @@
+# shellcheck shell=dash
+
+___x_cmd_tz_fz(){
+    ___x_cmd_tz_ls___tsv_colored |      \
+        ___x_cmd fzf                    \
+            --ansi --preview='___x_cmdexe tz --fzhandle {1} {2} {3}'  \
+            --reverse --height='80%' --preview-window="right:50%,wrap"
+}
+
+___x_cmd_tz_fzhandle(){
+    local abbr="${1}"
+    local originoffset="${2}"
+    local offset="${2}"
+    local zone="${3}"
+
+    local hour;
+    local utchour;      utchour="$(___x_cmd_cmds date -u +%H)"
+    local minute;       minute="$(___x_cmd_cmds date +%M)"
+
+    utchour="${utchour#0}"
+    minute="${minute#0}"
+
+    local half=
+    case "$offset" in
+        *:30*)  half=1 ;;
+    esac
+
+    offset="${offset%:*}"
+    offset="${offset#*(}"
+
+    case "$offset" in
+        \+*)    offset="${offset#?}"
+                offset="${offset#0}"
+
+                [ -z "$half" ] || {
+                    minute="$(( minute + 30 ))"
+                    if [ "$minute" -ge 60 ]; then
+                        minute=$((minute - 60))
+                        utchour=$((utchour + 1))
+                    fi
+                }
+                hour="$(( (utchour + offset + 24) % 24 ))"
+                ;;
+
+        \-*)    offset="${offset#?}"
+                offset="${offset#0}"
+
+                [ -z "$half" ] || {
+                    minute="$(( minute - 30 ))"
+                    if [ "$minute" -lt 0 ]; then
+                        minute=$((minute + 60))
+                        utchour=$((utchour - 1))
+                    fi
+                }
+
+                hour="$(( (utchour - offset + 24) % 24 ))"
+                ;;
+    esac
+
+    local localhour;        localhour="$(___x_cmd_cmds date +%H)"
+    local localmiunute;     localmiunute="$(___x_cmd_cmds date +%M)"
+
+    printf "local: %2d:%02d\n" "$localhour" "$localmiunute"
+    printf "%s\n" "---"
+    printf "time:  %2d:%02d\n" "$hour" "$minute"
+    printf "zone:  %s\n" "$zone"
+    printf "abbr:  %s\n" "$abbr"
+
+    printf "%s\n" "---"
+    # TODO: provide same timezone names ...
+
+    ___x_cmd_tz_ls___tsv | ___x_cmd_cmds awk -v offset="$originoffset" '($2==offset){ printf("%s\t%s\n", $1, $3); }' | ___x_cmd_cmds sort -k 2
+
+    # TZ_LIST="$zone" command script /dev/null tz -q # 1>/dev/stdout
+    # TZ_LIST="$zone" tz -q # 1>/dev/stdout
+}

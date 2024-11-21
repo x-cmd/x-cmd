@@ -39,6 +39,7 @@ function print_install_cmd(O, kp,          i, len, key, os_or_release, installer
         else if( key != "/"){
             split(key, arr, "/")
             os_or_release = arr[1]
+            # TODO: If the system name contains a hyphen character (like opensuse-tumbleweed), it will be impossible to determine
             if ( (split(os_or_release, arr2, "-") == 1) && (os_or_release != "" ) )  os_or_release = os_or_release "-" ARCH
             installer = arr[2]
             if(( os_or_release == "" ) || ( OS "-" ARCH ~ "^"os_or_release ))        print_install_cmd_style(str, reference)

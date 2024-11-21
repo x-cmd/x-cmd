@@ -14,7 +14,8 @@ BEGIN{
     } else if ( mode == "bar" ) {       printf("\n\n\n\n\n\n\n")
     } else if ( mode == "heatmap" ) {   printf("\n\n\n\n\n\n\n")
     } else {
-        item_fmt = "%5d   %7.3f   %8.3f   %16s %2d   %16s %2d"
+        item_fmt        = "%5d   %7.3f   %8.3f   %16s %2d   %16s %2d"
+        item_fmt_fail   = "%5d   %7s   %8s   %16s %2d   %16s %2d"
         printf("\n\n\n\n\n")
         INDENT_SPACE = ""
     }
@@ -42,7 +43,7 @@ function get_normal_header(){
 
 function print_normal( seq, dns, time, local_ip, local_port, ip, port   ){
     LINEDATA =  sprintf( colrmap( time ) item_fmt "\033[0m" , seq, dns, time, local_ip, local_port, ip, port )
-    if ( time == -1 ) LINEDATA = sprintf( colrmap( time ) item_fmt "\033[0m", dns, "XXX", seq, local_ip, local_port, ip, port )
+    if ( time == -1 ) LINEDATA = sprintf( colrmap( time ) item_fmt_fail "\033[0m", seq, "XXX", "XXX", local_ip, local_port, ip, port )
     LINEDATA    = line_dec_cleanup( INDENT_SPACE LINEDATA )
 
     HEADER_INFO = line_dec_cleanup( INDENT_SPACE get_normal_header() )

@@ -9,7 +9,7 @@ ___x_cmd_pkg_sphere_link(){
     case "$op" in
         --help|-h)
                 ___x_cmd help -m pkg link;              return ;;
-        rm|add|exist|ls)
+        rm|add|exist|ls|get_version_)
                 shift; ___x_cmd_pkg_sphere_link_"$op"   "$@" ;;
         list_all_path_dir|list_all_path_expand)
                 shift; ___x_cmd_pkg_sphere_link___"$op" "$@" ;;
@@ -50,7 +50,7 @@ ___x_cmd_pkg_sphere_link_add(){
         sociality="$x_"
     }
 
-    ___x_cmd fslock run "pkg_sphere_link_${sphere_name}_${name}_${version}" ___x_cmd_pkg_sphere_link_add___run
+    ___x_cmd fslock run "pkg_sphere_link_${sphere_name}_${name}_${version}" ___x_cmd_pkg_sphere_link_add___run || return
 
     if [ "$sociality" = intrusive ] || [ "$sociality" = dev ]; then
         pkg:info "Loading boot script file of $name $version [sociality=$sociality]"
@@ -60,7 +60,6 @@ ___x_cmd_pkg_sphere_link_add(){
         pkg:info "Other sessions need to boot \`x pkg sphere boot ${name} ${version}\`"
     fi
 
-    pkg:info "Recording bootrc of $name $version"
     ___x_cmd_pkg_sphere_bootrc add  \
         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
         --osarch "$osarch" --sociality "$sociality" "$name" "$version"
@@ -170,7 +169,20 @@ ___x_cmd_pkg_sphere_link_rm(){
             --osarch "$osarch" "$name" "$version" || return
         sociality="$x_"
     }
-    ___x_cmd fslock run "pkg_sphere_link_${sphere_name}_${name}_${version}" ___x_cmd_pkg_sphere_link_rm___run
+
+    ___x_cmd fslock run "pkg_sphere_link_${sphere_name}_${name}_${version}" ___x_cmd_pkg_sphere_link_rm___run || return
+
+    if [ "$sociality" = intrusive ] || [ "$sociality" = dev ]; then
+        pkg:info "Loading unboot script file of $name $version"
+        ___x_cmd_pkg_sphere_unboot  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || return
+        pkg:info "Other sessions need to unboot \`x pkg sphere unboot ${name} ${version}\`"
+    fi
+
+    ___x_cmd_pkg_sphere_bootrc rm   \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+        --osarch "$osarch" "$name"
 }
 ___x_cmd_pkg_sphere_link_rm___run(){
     local link_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/${name}_${version}"
@@ -188,18 +200,6 @@ ___x_cmd_pkg_sphere_link_rm___run(){
         ___x_cmd rmrf "$link_file"
         ! ___x_cmd fsiter --dirempty "$link_dir" || ___x_cmd rmrf "$link_dir"
     fi
-
-    if [ "$sociality" = intrusive ] || [ "$sociality" = dev ]; then
-        pkg:info "Loading unboot script file of $name $version"
-        ___x_cmd_pkg_sphere_unboot  \
-            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
-            --osarch "$osarch" "$name" "$version" || return
-        pkg:info "Other sessions need to unboot \`x pkg sphere unboot ${name} ${version}\`"
-    fi
-
-    ___x_cmd_pkg_sphere_bootrc rm   \
-        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
-        --osarch "$osarch" "$name"
 }
 
 # EndSection
@@ -209,6 +209,21 @@ ___x_cmd_pkg_sphere_link_exist(){
     local link_dir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/${name}_${version}"
     local link_file="$link_dir/association"
     [ -f "$link_file" ]
+}
+
+___x_cmd_pkg_sphere_link_get_version_(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-X}"
+    local name="$1";    [ -n "$name" ] || N=pkg M="Provide a package name" log:ret:1
+    local i; local version=""; x_=""
+    for i in "$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/"*; do
+        version="${i#"$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/${name}_"}"
+        [ "$i" = "$version" ] || {
+            x_="$version"
+            return 0
+        }
+    done
+    return 1
 }
 
 ___x_cmd_pkg_sphere_link_ls(){

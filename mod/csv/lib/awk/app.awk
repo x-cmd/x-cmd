@@ -292,7 +292,7 @@ function user_view( x1, x2, y1, y2,         kp, _res, _color ){
                 comp_statusline_paint( o, kp SUBSEP "statusline", x2, x2, y1+1, y2 )
         }
         paint_screen( _res )
-    }else{
+    } else{
         comp_statusline_set_fullscreen( o, kp SUBSEP "statusline", x1, x2, y1, y2 )
         paint_screen( comp_statusline_paint(o, kp SUBSEP "statusline") )
     }

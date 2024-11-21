@@ -1,7 +1,7 @@
 # add path to .x-cmd.root/bin and .x-cmd.root/global/data/bin/l/j/h
 
 if ( -f "$HOME/.x-cmd.root/boot/pixi" ) then
-    if ( "$PATH" !~ *$HOME/.pixi/bin* )  setenv PATH $HOME/.pixi/bin:"$PATH"
+    if ( "$PATH" !~ *$HOME/.pixi/bin* )  setenv PATH "$PATH":$HOME/.pixi/bin
 endif
 
 # TODO: improve this ...
@@ -13,24 +13,41 @@ if ( -d "$HOME/.cargo/bin" ) then
     if ( "$PATH" !~ *$HOME/.cargo/bin* )  setenv PATH $HOME/.cargo/bin:"$PATH"
 endif
 
-if ( "$PATH" !~ *$HOME/go/bin* ) then
-    setenv PATH $HOME/go/bin:"$PATH"
-endif
+foreach prog ( go deno bun npm python )
+    which $prog > /dev/null
+    if ( $? == 0 ) then
+        switch ($prog)
+            case go:
+                if ( "$PATH" !~ *$HOME/go/bin* )        setenv PATH $HOME/go/bin:"$PATH"
+                breaksw
+            case deno:
+                if ( "$PATH" !~ *$HOME/.deno/bin* )     setenv PATH $HOME/.deno/bin:"$PATH"
+                breaksw
+            case bun:
+                if ( "$PATH" !~ *$HOME/.bun/bin* )      setenv PATH $HOME/.bun/bin:"$PATH"
+                breaksw
+            case npm:
+                if ( "$PATH" !~ *$HOME/.npm/bin* )      setenv PATH $HOME/.npm/bin:"$PATH"
+                breaksw
+            case python:
+                if ( "$PATH" !~ *$HOME/.local/bin* )    setenv PATH $HOME/.local/bin:"$PATH"
+                breaksw
+        endsw
+    endif
+end
 
-if ( "$PATH" !~ *$HOME/.local/bin* ) then
-    setenv PATH $HOME/.local/bin:"$PATH"
-endif
-
-if ( "$PATH" !~ *$HOME/.deno/bin* ) then
-    setenv PATH $HOME/.deno/bin:"$PATH"
-endif
-
-if ( "$PATH" !~ *$HOME/.bun/bin* ) then
-    setenv PATH $HOME/.bun/bin:"$PATH"
-endif
-
-if ( "$PATH" !~ *$HOME/.npm/bin* ) then
-    setenv PATH $HOME/.npm/bin:"$PATH"
+set ___X_CMD_TCSH_RC_python_singleton_fp = "$HOME/.x-cmd.root/local/data/pkg/sphere/X/.x-cmd/singleton/python"
+if ( -f "$___X_CMD_TCSH_RC_python_singleton_fp" ) then
+    set ___X_CMD_TCSH_RC_python_tgtdir = "$HOME/.x-cmd.root/local/data/pkg/sphere/X/`cat $___X_CMD_TCSH_RC_python_singleton_fp`"
+    set ___X_CMD_TCSH_RC_os = `uname`
+    if ( $___X_CMD_TCSH_RC_os =~ *MINGW* || $___X_CMD_TCSH_RC_os =~ *CYGWIN* || $___X_CMD_TCSH_RC_os =~ *MSYS* ) then
+        set ___X_CMD_TCSH_RC_python_binpath = "$___X_CMD_TCSH_RC_python_tgtdir/Scripts"
+    else
+        set ___X_CMD_TCSH_RC_python_binpath = "$___X_CMD_TCSH_RC_python_tgtdir/bin"
+    endif
+    if ( -d "$___X_CMD_TCSH_RC_python_binpath" ) then
+        if ( "$PATH" !~ *$___X_CMD_TCSH_RC_python_binpath* )  setenv PATH "$___X_CMD_TCSH_RC_python_binpath":"$PATH"
+    endif
 endif
 
 setenv  ___X_CMD_CD_RELM_0      "$PWD"
@@ -67,6 +84,7 @@ if ($?status && $status == 0) then
     [ -f "$HOME/.x-cmd.root/boot/alias/xd.disable"      ]  ||  alias xd    '___x_cmd docker'
     [ -f "$HOME/.x-cmd.root/boot/alias/xg.disable"      ]  ||  alias xg    '___x_cmd git'
     [ -f "$HOME/.x-cmd.root/boot/alias/xp.disable"      ]  ||  alias xp    '___x_cmd pwsh'
+    [ -f "$HOME/.x-cmd.root/boot/alias/xwt.disable"     ]  ||  alias xwt   '___x_cmd webtop'
 
     if ( ! -f "$HOME/.x-cmd.root/boot/alias/co.disable" )  then
         alias ,     '___x_cmd tcsh --sysco'

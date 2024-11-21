@@ -1,4 +1,4 @@
-# shellcheck shell=dash disable=SC2142
+# shellcheck shell=dash disable=SC2142,2016
 
 # winget source remove winget; winget source add winget https://mirrors.ustc.edu.cn/winget-source
 # winget source reset winget
@@ -9,7 +9,7 @@ ___x_cmd_pwsh_admin(){
     pwsh:debug -c "$cmd" admin
     WSLENV="${WSLENV}:admin_file/p" \
     admin_file="$___X_CMD_ROOT_MOD/pwsh/lib/ps1/util/admin.ps1" \
-    ___x_cmd_pwsh_bin -noprofile -ExecutionPolicy unrestricted -Command "& \$env:admin_file '$cmd';exit \$lastexitcode"
+    ___x_cmd_pwsh_bin -ExecutionPolicy unrestricted -NoProfile -Command "& \$env:admin_file '$cmd';exit \$lastexitcode"
 }
 
 ___x_cmd_pwsh___exec(){
@@ -27,14 +27,16 @@ ___x_cmd_pwsh___exec_admin(){
 }
 
 ___x_cmd_pwsh___exec_to_result(){(
-    local TgtDir="$___X_CMD_ROOT_DATA/pwsh/$$/"
+    local TgtDir="$___X_CMD_ROOT_TMP/pwsh/$$"
+    trap '___x_cmd rmrf "$TgtDir"' EXIT
+
     ___x_cmd mkdirp "$TgtDir"
-    ___x_cmd rmrf result
-    ___x_cmd_inner_cd "$TgtDir"
+    ___x_cmd_cmds cd "$TgtDir"
     ___x_cmd_pwsh_bin > /dev/null
+
     [ -f "result" ] || return 1
-    sed -i '1 s/^\xef\xbb\xbf//' result
-    ___x_cmd_cmds_cat result
+    ___x_cmd_cmds sed -i '1 s/^\xef\xbb\xbf//' result
+    ___x_cmd_cmds cat result
 )}
 
 
@@ -72,48 +74,36 @@ ___x_cmd_pwsh_slash2backslash(){
     x_="${str}\\$path"
 }
 
-___x_cmd_pwsh___env_is_wsl(){
-    ___x_cmd os name_
-    [ "$x_" = "linux" ] || return 1
-
-    local wsl=; read -r wsl </proc/version
-    case "$wsl" in
-        *WSL2*)     return 0 ;;
-    esac
-
-    return 1
-}
-
 # /usr/bin => <mingws root path in windowstyle>\\usr\\bin
 
-___x_cmd_pwsh_path___linux_to_win_awk(){
-    local win_path="$1"
-    [ "${win_path#*:}" = "${win_path}" ] || {
-            printf "%s" "$win_path"
-            return
-    }
+# /etc/os-release
+# lsb_release -a
+___x_cmd_pwsh___get_wsl_distro_(){
+    ___x_cmd os is wsl || return
 
-    case "$win_path" in
-        .*)
-            win_path="$PWD${win_path#?}"
-            ;;
-    esac
-
-    awk -v win_path="$win_path" 'BEGIN{
-        if(win_path ~"[a-zA-Z]+:"){
-            print win_path
-            exit(1)
-        }
-
-        if( win_path !~ "^/[a-zA-Z]/" ) exit(1)
-
-        if(  win_path ~ "^/mnt/") win_path = substr(win_path, 6)
-        else                      win_path = substr(win_path, 2)
-
-        disk = substr(win_path, 0, index(win_path,"/")-1)
-        main_path = substr(win_path, index(win_path,"/")+1)
-        gsub("/", "\\", main_path)
-        print disk ":\\" main_path
-    }'
-
+    if [ -n "$___X_CMD_PWSH_WSL_DISTRO" ]; then
+        x_="$___X_CMD_PWSH_WSL_DISTRO"
+    elif [ -n "$WSL_DISTRO_NAME" ]; then
+        x_="$WSL_DISTRO_NAME"
+        ___X_CMD_PWSH_WSL_DISTRO="$x_"
+    else
+        x_="$(
+            ___x_cmd pwsh -ExecutionPolicy RemoteSigned -NoProfile -Command 'wsl -l -v' 2>/dev/null | \
+                ___x_cmd_cmds awk '{
+                    s = $0
+                    gsub("[\000-\037]", "", s)
+                    gsub("[\t ]+", " ", s)
+                    if ((id = index( s, " Running" )) > 0 ) {
+                        s = substr( s, 1, id-1 )
+                        id  = index( s, " " )
+                        s = substr( s, id+1 )
+                        print s
+                        exit(0)
+                    }
+                }'
+        )"
+        [ -n "$x_" ] || return
+        ___X_CMD_PWSH_WSL_DISTRO="$x_"
+    fi
 }
+
