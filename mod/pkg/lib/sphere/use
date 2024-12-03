@@ -3,8 +3,10 @@
 ___x_cmd_pkg_sphere_use(){
     local op="$1"
     case "$op" in
-        run|cancel|ls|get_version_)
+        run|cancel|ls|get_version_|upgrade_pkg|upgrade_all)
                 shift; ___x_cmd_pkg_sphere_use_"${op}" "$@" ;;
+        link|unlink)
+                shift; ___x_cmd_pkg_sphere_use___"${op}" "$@" ;;
         *)      N=pkg M="sphere use no such option '$op'" log:ret:1 ;;
     esac
 }
@@ -12,7 +14,7 @@ ___x_cmd_pkg_sphere_use(){
 ___x_cmd_pkg_sphere_use_run(){
     pkg:sphere:parse:args
 
-    log:sub:init -i use pkg "pkg[$name] version[$version]"
+    log:sub:init -i use pkg "Running use pkg [name=$name] [version=$version]"
     pkg:info "Step 1/2, Installing $name $version"
     ___x_cmd_pkg_sphere add --prebuild --protection use \
         --reason "use"  \
@@ -23,12 +25,22 @@ ___x_cmd_pkg_sphere_use_run(){
     }
 
     pkg:info "Step 2/2, Linking $name $version"
-    ___x_cmd_pkg_sphere link add    \
+    ___x_cmd_pkg_sphere_use link    \
         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
         --osarch "$osarch" "$name" "$version" || {
         pkg:error "Cannot link pkg - '$name $version'"
         return 1
     }
+
+    pkg:info "Successfully use pkg [name=$name] [version=$version] in this session"
+    log:sub:fini
+}
+
+___x_cmd_pkg_sphere_use___link(){
+    pkg:sphere:parse:args
+    ___x_cmd_pkg_sphere link add    \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+        --osarch "$osarch" "$name" "$version" || return
 
     case "$name" in
         python|miniconda|pypy)
@@ -39,19 +51,13 @@ ___x_cmd_pkg_sphere_use_run(){
             printf "%s\n" "$x_treename/$name/$version" > "$singleton_fp"
         ;;
     esac
-
-    pkg:info "Successfully use [pkg=$name] [version=$version] in the current environment"
-    log:sub:fini
 }
 
-___x_cmd_pkg_sphere_use_cancel(){
+___x_cmd_pkg_sphere_use___unlink(){
     pkg:sphere:parse:args
-
-    log:sub:init -i unuse pkg "Canceling use [pkg=$name] [version=$version]"
     ___x_cmd_pkg_sphere link rm     \
         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
         --osarch "$osarch" "$name" "$version" || return
-    pkg:info "Success to unuse [pkg=$name] [version=$version] in this session"
 
     case "$name" in
         python|miniconda|pypy)
@@ -60,6 +66,19 @@ ___x_cmd_pkg_sphere_use_cancel(){
             ___x_cmd rmrf "$singleton_fp"
         ;;
     esac
+}
+
+___x_cmd_pkg_sphere_use_cancel(){
+    pkg:sphere:parse:args
+
+    log:sub:init -i unuse pkg "Canceling use pkg [name=$name] [version=$version]"
+    ___x_cmd_pkg_sphere_use unlink  \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+        --osarch "$osarch" "$name" "$version" || {
+        pkg:error "Cannot unlink pkg - '$name $version'"
+        return 1
+    }
+    pkg:info "Successfully unuse pkg [name=$name] [version=$version] in this session"
 
     log:sub:fini
 }
@@ -95,3 +114,92 @@ $( ___x_cmd_pkg_sphere link ls --sphere "$sphere_name" --sphereroot "$___X_CMD_P
 A
 }
 
+___x_cmd_pkg_sphere_use_upgrade_all(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-X}"
+    local upgrade_target="${1:-default}"
+    local listdata; listdata="$( ___x_cmd_pkg_sphere link ls --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" )"
+    [ -n "$listdata" ] || {
+        pkg:info "The current session does not use the pkg"
+        return 0
+    }
+
+    local l=; local name=
+    while read -r l; do
+        [ -n "$l" ] || continue
+        l="${l##*/}"
+        name="${l%%_v*}"
+        ___x_cmd_pkg_sphere_use upgrade_pkg \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+            --osarch "$osarch" "$name" "" "$upgrade_target" || return
+    done <<A
+${listdata}
+A
+}
+
+___x_cmd_pkg_sphere_use_upgrade_pkg(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+    local name="$1";  [ -n "$name" ] || N=pkg M="Provide a package name" log:ret:1
+
+    local x_=""; ___x_cmd_pkg_sphere_use get_version_ \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+        --osarch "$osarch" "$name" || return
+    local oldversion="$x_"
+    [ -n "$oldversion" ] || {
+        pkg:warn "Not use $name in current session"
+        return 0
+    }
+
+    local version="$2"
+    local upgrade_target="${3:-default}"
+    case "$upgrade_target" in
+        latest|default) ;;
+        *)  N=pkg M="Invalid upgrade version target" log:ret:64 ;;
+    esac
+
+    [ -n "$version" ] || {
+        x_=""; ___x_cmd_pkg_"${upgrade_target}"_version_ "$name" "$osarch" || return
+        version="$x_"
+        [ -n "$version" ] || N=pkg M="Not found $name $upgrade_target version" log:ret:1
+    }
+
+    if [ "$oldversion" = "$version" ]; then
+        pkg:info "pkg [name=$name] is already upgraded to the [version=$version]"
+        return 0
+    else
+        log:sub:init -i upgrade pkg "pkg [name=$name] upgrade version [$oldversion -> $version]"
+        pkg:info "Step 1/3, Installing pkg - '$name $version'"
+        ___x_cmd_pkg_sphere add --prebuild --protection use \
+            --reason "use"  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || {
+            pkg:error "Cannot install package - '$name $version'"
+            return 1
+        }
+
+        pkg:info "Step 2/3, Unlinking pkg - '$name $oldversion'"
+        ___x_cmd_pkg_sphere_use unlink  \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$oldversion" || {
+            pkg:error "Cannot unlink pkg - '$name $oldversion'"
+            return 1
+        }
+
+        pkg:info "Step 3/3, Linking pkg - '$name $version'"
+        ___x_cmd_pkg_sphere_use link    \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || {
+            pkg:error "Cannot link pkg - '$name $version'"
+            return 1
+        }
+        pkg:info "Successfully upgraded pkg [name=$name] from version '$oldversion' to '$version'"
+        log:sub:fini
+
+        if ___x_cmd_is_interactive && ___x_cmd ui yesno "Do you want to recycle pkg [name=$name] with the old [version=$oldversion]?"; then
+            log:sub:init -i gc pkg "Recycle pkg [name=$name] with the old [version=$oldversion]"
+            ___x_cmd_pkg_sphere_gc "${name}=${oldversion}"
+            log:sub:fini
+        fi
+    fi
+}

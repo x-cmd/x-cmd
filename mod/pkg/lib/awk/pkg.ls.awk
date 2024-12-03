@@ -26,7 +26,7 @@ function pkg_print_installed_list( name, version, osarch,       _final_version, 
     else s = str_pad_right(osarch, installed_pkg_osarch_max_len) " "
 
     s = s str_pad_right(name, installed_pak_name_max_len) " " str_pad_right(version, installed_pkg_version_max_len)
-    if ( version == _final_version ) s = s TH_THEME_COLOR " (default)\033[0m"
+    if ( version == _final_version ) s = s " " TH_THEME_COLOR "(default)\033[0m"
     print s
 }
 

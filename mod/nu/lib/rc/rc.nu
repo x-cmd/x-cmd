@@ -141,7 +141,7 @@ export def --env --wrapped ___x_cmd [ ...args ] {
     if ( $nu.os-info.name == "windows" ) {
         ~/.x-cmd.root/bin/___x_cmdexe_exp.bat ...$args
     } else {
-        bash $"($env.HOME)/.x-cmd.root/bin/xbinexp" ...$args
+        bash $"($env.HOME)/.x-cmd.root/bin/___x_cmdexe_exp" ...$args
     }
 }
 
@@ -149,7 +149,7 @@ export def --env --wrapped x [ ...args ] {
     if ( $nu.os-info.name == "windows" ) {
         ~/.x-cmd.root/bin/___x_cmdexe_exp.bat ...$args
     } else {
-        bash $"($env.HOME)/.x-cmd.root/bin/xbinexp" ...$args
+        bash $"($env.HOME)/.x-cmd.root/bin/___x_cmdexe_exp" ...$args
     }
 }
 

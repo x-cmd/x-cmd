@@ -1,7 +1,7 @@
 # install
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 # irm -useb get.scoop.sh | iex
-irm https://cdn.jsdelivr.net/gh/duzyn/scoop-cn/install.ps1 | iex
+irm https://ghp.ci/https://raw.githubusercontent.com/duzyn/scoop-cn/master/install.ps1 | iex
 scoop bucket add main
 
 # config

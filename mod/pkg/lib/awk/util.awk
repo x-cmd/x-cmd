@@ -31,10 +31,10 @@ function pkg_init_table( jobj, table, table_kp,
     pkg_add_table( "os", _os_arch[1], table, table_kp )
     pkg_add_table( "arch", _os_arch[2], table, table_kp )
     pkg_add_table( "semantic_version", substr( version, 2 ), table, table_kp )
-
+    pkg_add_table( "latest_version", pkg_get_latest_version(table, table_kp, jobj, pkg_name), table, table_kp )
 }
 
-function pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name,         is_match_osarch, _osarch, _version_osarch, _rule_kp, _rule_l, i ,k, _kpat){
+function pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name,         is_match_osarch, _osarch, _version_osarch, _rule_kp, _rule_l, i, k, _kpat){
     _version_osarch = table_version_osarch( table, pkg_name ) # May define version or osarch (as default) in the meta file
     _osarch = juq(table_osarch( table, pkg_name ))
     _rule_kp = pkg_kp( pkg_name, "meta", "rule" )
@@ -51,6 +51,24 @@ function pkg_modify_table_by_meta_rule( table, table_kp, jobj, pkg_name,        
         }
     }
     return is_match_osarch
+}
+
+function pkg_get_latest_version( table, table_kp, jobj, pkg_name,       _osarch, _version_osarch, _rule_kp, _rule_l, i, k, _kpat, _v, _ret_version ){
+    _osarch = juq(table_osarch( table, pkg_name ))
+    _rule_kp = pkg_kp( pkg_name, "meta", "rule" )
+    _rule_l = jobj[ _rule_kp L ]
+
+    _version_osarch = "latest/" _osarch
+    for (i=1; i<=_rule_l; ++i) {
+        k = jobj[ _rule_kp, i ]
+        _kpat = juq( k )
+        gsub("\\*", "[^/]+", _kpat)
+        if ((_kpat ~ "^latest/") && (_version_osarch ~ "^" _kpat)){
+            _v = jobj[ _rule_kp, k, jqu("version") ]
+            if (_v != "") _ret_version = juq(_v)
+        }
+    }
+    return _ret_version
 }
 
 function pkg_get_version_or_head_version( jobj, table, pkg_name,            _final_version ){

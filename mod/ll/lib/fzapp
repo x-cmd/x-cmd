@@ -1,0 +1,153 @@
+
+
+# It fails if it is zsh ... Ensure it runs on bash or shell ...
+___x_cmd_ll___fzfapp(){
+    local PWD="$PWD"
+    ___x_cmd_antizshintbin ___x_cmd ll --fzfapp_
+}
+
+___x_cmd_ll___fzfapp_(){
+    case "$1" in
+        -h|--help)  ___x_cmd help -m ll --fzfapp;  return 0;;
+    esac
+
+    if [ -t 1 ] && ___x_cmd_is_interactive ; then
+        if [ -d "$1" ];then
+            ___x_cmd_cmds cd "$1" || return
+            ___x_cmd_ll_fzf .
+        else
+            ___x_cmd_ll_fzf "$@"
+        fi
+    else
+        ___x_cmd eza -la "$@"
+    fi
+}
+
+___x_cmd_ll_fz_data(){
+    local pos=""
+    if [ -z "$filter" ]; then
+        ___x_cmd dict is_empty :___x_cmd_ll_fzfapp "$PWD" || filter="$( ___x_cmd dict get :___x_cmd_ll_fzfapp "$PWD" )"
+    fi
+
+    if [ -n "$filter" ]; then
+        pos="$(LC_ALL=C ___x_cmd eza --color=never -a . | ___x_cmd_cmds awk -v filter="$filter" 'filter==$1{ print NR; exit; }')"
+    fi
+
+    [ -n "$pos" ] || pos=1
+
+    {
+        if [ $# -gt 0 ]; then
+            # -aa: show the '.' and '..' directories
+            LC_ALL=C ___x_cmd eza --color=always -a "$@"
+        else
+            LC_ALL=C ___x_cmd eza --color=always -a .
+        fi
+    } | {
+
+        local ppp="$PWD"
+
+        if [ "${#ppp}" -gt 10 ]; then
+            case "$ppp" in
+                */*/*)
+                    ppp="${ppp#"${ppp%/*/*}/"}"
+                ;;
+            esac
+        fi
+
+        ___x_cmd_ll___fzfcmd --prompt="${ppp}/" --bind 'load:pos('"$pos"')' --preview='___x_cmdexe ll --fzfapppreview {1}' --preview-window=right:70%:wrap
+    }
+}
+
+___x_cmd_ll_fzf(){
+    local id=""
+
+    local filter=""
+
+    local d=""
+    while true; do
+        d="$(___x_cmd_antizshintbin ___x_cmd ll --fzdata "$@")" || return
+        read -r d <<A
+$d
+A
+        # d="$(printf "%s\n" "$d" | ___x_cmd_cmds awk '{ $1=$2=$3=$4=$5=$6=""; gsub("^[ ]+", "", $0); print $0 }')"
+
+        [ -n "$d" ]     || return
+        if [ -d "$d" ]; then
+            if [ ! -x "$d" ] || [ ! -r "$d" ]; then
+                x:info "Fail to access folder -> $d"
+            elif ___x_cmd fsiter --dirempty "$d"; then
+                x:info "Empty folder -> $d"
+            else
+                if [ "$d" = .. ]; then
+                    filter="${PWD##*/}"
+                else
+                    filter=""
+                    ___x_cmd dict put :___x_cmd_ll_fzfapp "$PWD" "$d"
+                fi
+
+                ___x_cmd_cmds cd "$d"
+                continue
+            fi
+        fi
+
+        if [ -f "$d" ]; then
+            ___x_cmd_ll___fzfapppreview_file "$d"
+        fi
+
+        # ___x_cmd ui select id "What's next"     \
+        #     "Continue navigate folder -> $PWD" || return
+
+        # case "$id" in
+        #     1)      continue ;;
+        #     2)      return ;;
+        # esac
+
+        # break
+
+        continue
+    done
+
+    return 0
+}
+
+___x_cmd_ll___fzfapppreview_file(){
+    local f="${1}"
+    case "$f" in
+        *.zip|*.7z|*.tar|*.tar.Z|*.tar.gz|*.tar.xz)
+                        ___x_cmd zuz ls "${f}"                              || ___x_cmd stat --item "$f" ;;
+
+        *.json)
+                        ___x_cmd jq -C . "${f}"                             || ___x_cmd stat --item "$f" ;;
+
+        # *.csv)
+        #                 ___x_cmd jq -C . "${f}"                             || ___x_cmd stat --item "$f" ;;
+
+        \.*)            ___x_cmd bat --language bash  --style=plain --paging=always --color always "$f" || ___x_cmd stat --item "$f" ;;
+        *\.*)           ___x_cmd bat                  --style=plain --paging=always --color always "$f" || ___x_cmd stat --item "$f" ;;
+        *)              ___x_cmd bat --language bash  --style=plain --paging=always --color always "$f" || ___x_cmd stat --item "$f" ;;
+    esac
+}
+
+# x stat --item .
+
+___x_cmd_ll___fzfapppreview(){
+    local f="${1:-.}"
+    if      [ -d "$f" ]; then       ___x_cmd eza --color=always -alh --git  "$f"
+    elif    [ -f "$f" ]; then       ___x_cmd_ll___fzfapppreview_file        "$f"
+    else                            ___x_cmd eza --color=always -alh --git  "$f"
+    fi
+}
+
+___x_cmd_ll___fzfcmd(){
+
+    FZF_DEFAULT_OPTS="
+--ansi
+--reverse
+--height='80%'
+--bind='ctrl-w:toggle-preview-wrap'
+--bind='ctrl-r:change-preview-window(right,70%|down,40%,99%,border-horizontal|hidden|right)'
+--bind='left:print(..)+accept'
+--bind='right:accept'
+"   ___x_cmd fzf "$@"
+
+}

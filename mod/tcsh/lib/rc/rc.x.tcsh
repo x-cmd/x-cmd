@@ -5,7 +5,7 @@ setenv  ___X_CMD_XBINEXP_FP     "$HOME/.x-cmd.root/local/data/xbinexp/tcsh/$$"_`
 
 # bash "$HOME/.x-cmd.root/bin/xbinexp" $argv
 
-set ___X_CMD_XBINEXP_EXECFP = "$HOME/.x-cmd.root/bin/xbinexp"
+set ___X_CMD_XBINEXP_EXECFP = "$HOME/.x-cmd.root/bin/___x_cmdexe_exp"
 
 set ___X_CMD_XBINEXP_INVOKE_STR = 'bash "$___X_CMD_XBINEXP_EXECFP"'
 set ___X_CMD_TCSH_RC_i = 1

@@ -1,6 +1,10 @@
 
 BEGIN{ seq = -1 }
 
+$0~/^SSH/{
+    next
+}
+
 {
     seq ++
     ip          = $1

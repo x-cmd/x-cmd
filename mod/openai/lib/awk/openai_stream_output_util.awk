@@ -7,15 +7,18 @@ function openai_dsiplay_response_text_stream(s,       o, item, finish_reason){
     printf( "%s", item )
     fflush()
     finish_reason = o[ KP_FINISH_REASON ]
+    cp_merge( o_response, o )
     if ( finish_reason != "null" ) {
         o_response[ KP_FINISH_REASON ] = finish_reason
         o_response[ KP_CONTENT ] = jqu(OPENAI_RESPONSE_CONTENT)
         exit(0)
     }
+    delete o
 }
 
 BEGIN{
-    KP_CONTENT = S "\"1\"" S "\"choices\"" S "\"1\"" S "\"delta\"" S "\"content\""
+    KP_DELTA = S "\"1\"" S "\"choices\"" S "\"1\"" S "\"delta\""
+    KP_CONTENT = KP_DELTA S "\"content\""
     KP_FINISH_REASON = S "\"1\"" S "\"choices\"" S "\"1\"" S "\"finish_reason\""
     OPENAI_RESPONSE_CONTENT = ""
     OPENAI_HAS_RESPONSE_CONTENT = 0
