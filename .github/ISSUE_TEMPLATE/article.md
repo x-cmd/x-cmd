@@ -20,12 +20,12 @@ or
 
 Request:
 
-**Is is urgent**
+## Is is urgent**
 Could you elaborate on the urgency of this request?
 
 We're a small team and may not be able to respond immediately.
 But we value x-cmd and our users greatly, and always do our best.
 
-**Additional context**
+## **Additional context**
 
 Add any other context about the problem here.
