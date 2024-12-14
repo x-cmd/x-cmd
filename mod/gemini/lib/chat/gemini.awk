@@ -6,7 +6,7 @@ BEGIN{
 function gemini_gen_unit_str(str){
     if( ! chat_str_is_null(str)) {
         if (str !~ "^\"")  str = jqu(str)
-        return sprintf("{\"text\": %s} ," , str)
+        return "{\"text\":" str "} ,"
     }
 }
 function gemini_gen_generationConfig(temperature,         _temperature){
@@ -64,8 +64,11 @@ function gemini_req_from_creq(history_obj, minion_obj, question, creq_obj, creq_
 
     _media_str      = gemini_gen_media_str(creq_obj, creq_kp)
 
-    return sprintf("{ %s \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s} %s ],\"role\":\"user\"}] %s }\n", \
-        _safe_setting, _history_str, promote_system_json, _filelist_str, jqu(USER_LATEST_QUESTION), _media_str, config)
+    # return sprintf("{ %s \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s} %s ],\"role\":\"user\"}] %s }\n", \
+    #     _safe_setting, _history_str, promote_system_json, _filelist_str, jqu(USER_LATEST_QUESTION), _media_str, config)
+
+    # FIX: mawk sprintf buffer size=8192
+    return "{" _safe_setting " \"contents\":[ " _history_str " {\"parts\":[ " promote_system_json " " _filelist_str " {\"text\": " jqu(USER_LATEST_QUESTION) "} " _media_str " ],\"role\":\"user\"}] " config " }\n"
 }
 
 # extract ...
@@ -109,11 +112,11 @@ function gemini_gen_media_str(creq_obj, creq_kp,      _kp_media, i, l, _type, _u
         }
 
         if ( _url != "" ) {
-            _str    = _str sprintf(",{ \"inline_data\": { \"mime_type\": %s, \"data\" : %s } }", _type, jqu(_url))
+            _str    = _str ",{ \"inline_data\": { \"mime_type\": "_type", \"data\" : "jqu(_url)" } }"
         } else {
             _msg    = _type_msg juq(creq_obj[ _kp_key, "\"msg\"" ])
             _base64 = juq(creq_obj[ _kp_key, "\"base64\"" ])
-            _str    = _str sprintf(",{ \"inline_data\": { \"mime_type\": %s, \"data\" : %s } }", jqu(_type_msg), jqu(_base64) )
+            _str    = _str ",{ \"inline_data\": { \"mime_type\": "jqu(_type_msg)", \"data\" : "jqu(_base64)" } }"
         }
 
     }

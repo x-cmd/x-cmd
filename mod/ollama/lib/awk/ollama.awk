@@ -60,8 +60,7 @@ _filelist_str, _content_str, _messages_str, _mode, _seed, _temperature, _option_
 
     _option_str     = ollama_gen_options_str( _seed, _temperature, CFG_CTX )
 
-    _data_str = sprintf( "{ \"model\": %s, \"messages\": [ %s ] %s }", \
-                     _mode, _messages_str, _option_str  )
+    _data_str = "{ \"model\": " _mode ", \"messages\": [ " _messages_str " ] " _option_str " }"
 
     return _data_str
 }

@@ -11,7 +11,7 @@ BEGIN{
 function ollama_dsiplay_response_text_stream(s, o_response,      item, finish_reason, finish_status){
     jiparse_after_tokenize(o_response, s)
     JITER_LEVEL = JITER_CURLEN = 0
-    item = sprintf("%s", juq(o_response[ KP_CONTENT ]))
+    item = juq(o_response[ KP_CONTENT ])
     OLLAMA_RESPONSE_CONTENT = OLLAMA_RESPONSE_CONTENT item
     printf( "%s", item )
     fflush()

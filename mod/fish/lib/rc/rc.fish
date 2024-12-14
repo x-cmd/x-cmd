@@ -33,6 +33,7 @@ function ___x_cmd
     for file in $___X_CMD_XBINEXP_FP/*
         set varname (string replace -r '^.*/[^_]+_' '' "$file")
         if [ $varname = PWD ]
+            set -x  OLDPWD  "$PWD"
             cd (cat $file)
         else
             set -g "$varname" (cat $file)
@@ -67,10 +68,7 @@ if status is-interactive
     [ -f "$HOME/.x-cmd.root/boot/alias/c.disable"     ]   ||  begin
         function c
             if [ "$argv[1]" = "-" ]
-                cd -
-                return
-            else if [ -d "$argv[1]" ]
-                cd "$argv[1]"
+                ___x_cmd cd $OLDPWD
                 return
             end
             ___x_cmd cd $argv

@@ -1,53 +1,89 @@
 # shellcheck shell=dash
 ___x_cmd_winget_ls(){
-    [ "$#" -gt 0 ] ||       set -- --app
+    [ "$#" -gt 0 ] ||       set -- -i
 
     case "$1" in
         -i|--installed)     shift; ___x_cmd_winget_ls___install         ;;
         -a|--all)           shift; ___x_cmd_winget_ls___all             ;;
 
-        -A|--available)     shift; ___x_cmd_winget_ls___available       ;;
-        -l|--local)         shift; ___x_cmd_winget_ls___local           ;;
-        --app)              shift; ___x_cmd_winget_ls___app             ;;
-        -h|--help)          shift; x help -m winget ls                  ;;
-        *)                  ___x_cmd_winget___exec ls              "$@" ;;
+        -h|--help)          shift; ___x_cmd help -m winget ls           ;;
+        *)                  ___x_cmd help -m winget ls >&2; return 64   ;;
     esac
 }
 
+
+___x_cmd_winget_ls___parse_list_data(){
+    ___x_cmd_cmds awk -F '  +|--' 'DATA!=1{ if($0 ~ "^----------") DATA=1; next }DATA==1{if($1 !~ "^[(]") print $1}' | ___x_cmd_cmds sort
+}
+
+___x_cmd_winget_ls___install_raw(){
+    ___x_cmd_winget___bin list | \
+        ___x_cmd_winget_ls___parse_list_data
+}
+
 ___x_cmd_winget_ls___install(){
-    x ccmd 1d -- x winget list | ___x_cmd_cmds awk -F '  +|--' 'DATA!=1{ if($0 ~ "^----------") DATA=1; next }DATA==1{if($1 !~ "^[(]") print $1}' | ___x_cmd_cmds sort
+    { [ -t 1 ] && ___x_cmd_is_interactive; } || {
+        ___x_cmd_winget_ls___install_raw
+        return
+    }
+    winget:info "Find installed software"
+    local x_=; ___x_cmd_winget___fzf_ ___x_cmd_winget_ls___install_raw || return
+    [ -n "$x_" ] || {
+        winget:error "Nor found software"
+        return 1
+    }
+
+    local software="$x_"
+    local _cmd=
+    ___x_cmd ui select ,_cmd "NEXT"   \
+        "x winget uninstall --exact \"$software\""      \
+        "x winget find      --exact \"$software\""      \
+        "x winget view      --exact \"$software\""      \
+        "return"     || return
+
+    [ -n "$_cmd" ] || return
+    winget:info "cmd -> $_cmd"
+    eval "$_cmd"
+}
+
+___x_cmd_winget_ls___all_raw(){
+    ___x_cmd_winget___bin search --accept-source-agreements "" | \
+        ___x_cmd_winget_ls___parse_list_data
 }
 
 ___x_cmd_winget_ls___all(){
-   ___x_cmd_winget___lsraw
+    { [ -t 1 ] && ___x_cmd_is_interactive; } || {
+        ___x_cmd_winget_ls___all_raw
+        return
+    }
+    winget:info "Find all software"
+    local x_=; ___x_cmd_winget___fzf_ ___x_cmd_winget_ls___all_raw || return
+    [ -n "$x_" ] || {
+        winget:error "Nor found software"
+        return 1
+    }
+
+    local software="$x_"
+    local _cmd=
+    ___x_cmd ui select ,_cmd "NEXT"   \
+        "x winget install   --exact \"$software\""      \
+        "x winget uninstall --exact \"$software\""      \
+        "x winget find      --exact \"$software\""      \
+        "x winget view      --exact \"$software\""      \
+        "return"     || return
+
+    [ -n "$_cmd" ] || return
+    winget:info "cmd -> $_cmd"
+    eval "$_cmd"
 }
 
-___x_cmd_winget_ls___app(){
-    ___x_cmd_winget_ls___local
+
+___x_cmd_winget___fzf_(){
+    x_="$( ___x_cmd_antizshintbin ___x_cmd winget --fzfdata "$@" )"
 }
 
-___x_cmd_winget_ls___local(){
-    if [ -t 1 ] && ___x_cmd_is_interactive ; then
-        winget:info "Find installed software"
-        ___X_CMD_PICK_SHBIN_CODE="xrc winget ;" \
-        x pick --width 40 --col 10 ___x_cmd_winget_ls___install
-    else
-        ___x_cmd_winget_ls___install
-    fi
+___x_cmd_winget___fzfdata(){
+    "$@" | ___x_cmd fzf --ansi --reverse --cycle --exit-0 \
+            --height 50% --preview-window right:70% \
+            --preview='___x_cmdexe winget view {1}'
 }
-
-___x_cmd_winget_ls___available(){
-    if [ -t 1 ] && ___x_cmd_is_interactive ; then
-        winget:info "Find installable software"
-        ___X_CMD_PICK_SHBIN_CODE="xrc winget ;" \
-        x pick --width 40 --col 10 ___x_cmd_winget_ls___all
-        # ___x_cmd_winget_install___app "$@"
-    else
-        ___x_cmd_winget_ls___all
-    fi
-}
-
-___x_cmd_winget_la(){
-    ___x_cmd_winget_ls___available
-}
-

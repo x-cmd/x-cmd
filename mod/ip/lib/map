@@ -1,0 +1,89 @@
+
+# usage: x ip map 192.168.1.{1..255}
+# usage: x ip map 192.168.{0..255}.1
+
+# TODO: x ip map -t ping,22 192.168.1.{1..255}
+
+# using the parse valu
+# x dsv foreach v
+# x dsv parse
+# ___x_cmd_dsv_toline_(){
+#     local v=$1
+#     while [ -z "$v" ]; do
+#         case "$v" in
+#             ,*)     x_="${x_}
+# " ;;
+#             *,*)    x_="${x_}
+# " ;;
+#         esac
+#     done
+# }
+
+___x_cmd_ip_map(){
+    [ $# -gt 0 ] ||     set -- --help
+
+    local pipe=""
+    local suite=ping
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m ip map "$@"; return 0 ;;
+            -|--pipe)       pipe=1;         shift ;;
+            -s|--suite)     suite="${2}";   shift 2 ;;
+            *)              break ;;
+        esac
+    done
+
+    # TODO: in the future using the dsv
+    suite="$( ___x_cmd_cmds tr ',' '\n' <<A
+$suite
+A
+)"
+
+    if [ -n "$pipe" ]; then
+        ___x_cmd_ip_map___pipe
+        return
+    fi
+
+    [ $# -gt 0 ] || N=ip M="Require argument" log:ret:64
+
+    printf "%s\n" "$@" | ___x_cmd_ip_map___pipe
+}
+
+___x_cmd_ip_map___pipe(){
+    if ___x_cmd ping isbusybox; then
+        ___x_cmd sudo echo "prepare" 1>/dev/null || N="ip" M="Fail to ask sudo permission" log:ret:1
+    fi
+
+    local ip
+    (
+        while read -r ip; do
+            ___x_cmd is ip "$ip" || continue
+            (   ___x_cmd_ip_map___test "$ip" "$suite"   ) &
+            ___x_cmd_cmds sleep 0.005
+        done
+
+        wait
+    ) 2>/dev/null
+}
+
+___x_cmd_ip_map___test(){
+    local ip="$1"
+    local suite="$2"
+
+    local protocol
+    while read -r protocol; do
+        case "$protocol" in
+            "")     continue ;;
+            ping)   ___x_cmd ping     test "$ip"                    || continue ;;
+            */tcp)  ___x_cmd tping    test "$ip" "${protocol%/t*}"  || continue ;;
+            *)      ___x_cmd tping    test "$ip" "$protocol"        || continue ;;
+        esac 1>/dev/null 2>/dev/null
+        printf "%s\n" "$ip"
+        return 0
+    done <<A
+$suite
+A
+
+    return 1
+}

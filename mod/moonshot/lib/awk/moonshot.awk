@@ -54,8 +54,7 @@ function moonshot_req_from_creq(history_obj, minion_obj, minion_kp,def_model,   
     _temperature    = (_temperature != "") ? "\"temperature\": " _temperature "," : ""
     _jsonmode       = (_jsonmode) ? "\"response_format\": { \"type\": \"json_object\" }," : ""
 
-    _data_str = sprintf( "{ \"model\": %s, \"messages\": [ %s ], %s \"stream\": true }", \
-                    _mode, _messages_str, _jsonmode _maxtoken _temperature )
+    _data_str = "{ \"model\": " _mode ", \"messages\": [ " _messages_str " ], " _jsonmode _maxtoken _temperature " \"stream\": true }"
 
     return _data_str
 }

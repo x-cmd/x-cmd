@@ -1,34 +1,119 @@
 # shellcheck shell=dash
 ___x_cmd_brew_ls(){
-    [ $# -gt 0 ]    ||  set - --local
+    [ $# -gt 0 ]    ||  set - --install
 
     case "$1" in
-        --local)        ___x_cmd_brew_ls___local    ;;
-        -a|--all)       ___x_cmd_brew_la            ;;
-        --app)          ___x_cmd_brew_ls___app "$@" ;;
-        *)              ___x_cmd_brew list     "$@" ;;
+        -a|--all)       ___x_cmd_brew_ls___all      "$@" ;;
+        -i|--install)   ___x_cmd_brew_ls___install  "$@" ;;
+        # --app)        ___x_cmd_brew_ls___app "$@" ;;
+        -h|--help)      ___x_cmd help -m brew ls         ;;
+        *)              ___x_cmd help -m brew ls >&2; return 64 ;;
     esac
 }
 
-___x_cmd_brew_la(){
+___x_cmd_brew_ls___all_raw(){
     # TODO: Provide the data
-    ___x_cmd_brew___exec formulae
+    local line
+    ___x_cmd_brew___exec formulae | {
+        read -r line
+        ___x_cmd_cmds cat
+    }
 }
 
-___x_cmd_brew_ls___app(){
-    # TODO: The data of app is 'list -i' or 'list -a'
-    ___x_cmd_brew_install___app "$@"
-}
+___x_cmd_brew_ls___all(){
+    local is_raw=
+    case "$1" in
+        --raw) is_raw=1 ;;
+    esac
 
-___x_cmd_brew_ls___local(){
-    if [ -t 1 ]; then
-        ___x_cmd_brew_ls___app
+    if [ -n "$is_raw" ] || ! ___x_cmd_brew_is_interactive_env; then
+        ___x_cmd_brew_ls___all_raw
     else
-        ___x_cmd_brew___exec list --vesion
+
+        brew:info "Find all software"
+        local x_=; ___x_cmd_brew___fzf_ ___x_cmd_brew_ls___all_raw || return
+        [ -n "$x_" ] || {
+            brew:error "Nor found software"
+            return 1
+        }
+
+        local software="$x_"
+        local id=
+        ___x_cmd ui select id "NEXT"   \
+            "x brew install   $software"    \
+            "x brew reinstall $software"    \
+            "x brew info      $software"    \
+            "x install        $software"    \
+            "browse repo of   $software"    \
+            "return"     || return
+
+        case "$id" in
+            1)      ___x_cmd brew install   "$software" ;;
+            2)      ___x_cmd brew reinstall "$software" ;;
+            3)      ___x_cmd brew info      "$software" ;;
+            4)      ___x_cmd install        "$software" ;;
+            5)      ___x_cmd browse "https://formulae.brew.sh/formula/${software}" ;;
+            *)      return 0 ;;
+        esac
     fi
 }
 
-___x_cmd_brew_ls___available(){
-    ___x_cmd_brew___exec ls -i
+___x_cmd_brew_ls___install_raw(){
+    ___x_cmd_brew___exec list
 }
+
+___x_cmd_brew_ls___install(){
+    local is_raw=
+    case "$1" in
+        --raw) is_raw=1 ;;
+    esac
+
+    if [ -n "$is_raw" ] || ! ___x_cmd_brew_is_interactive_env; then
+        ___x_cmd_brew_ls___install_raw
+    else
+
+        brew:info "Find installed software"
+        local x_=; ___x_cmd_brew___fzf_ ___x_cmd_brew_ls___install_raw || return
+        [ -n "$x_" ] || {
+            brew:error "Nor found software"
+            return 1
+        }
+
+        local software="$x_"
+        local id=
+        ___x_cmd ui select id "NEXT"   \
+            "x brew uninstall $software"    \
+            "x brew reinstall $software"    \
+            "x brew info      $software"    \
+            "browse repo of   $software"    \
+            "return"     || return
+
+        case "$id" in
+            1)      ___x_cmd brew uninstall "$software" ;;
+            2)      ___x_cmd brew reinstall "$software" ;;
+            3)      ___x_cmd brew info      "$software" ;;
+            4)      ___x_cmd browse "https://formulae.brew.sh/formula/${software}" ;;
+            *)      return 0 ;;
+        esac
+    fi
+}
+
+___x_cmd_brew___fzf_(){
+    x_="$( ___x_cmd_antizshintbin ___x_cmd brew --fzdata "$@" )"
+}
+
+___x_cmd_brew___fzdata_(){
+    "$@" | FZF_DEFAULT_OPTS="
+--ansi
+--reverse
+--height='80%'
+--bind='ctrl-w:toggle-preview-wrap'
+--bind='ctrl-r:change-preview-window(right,70%|down,40%,99%,border-horizontal|hidden|right)'
+"   ___x_cmd fzf --preview='HOMEBREW_COLOR=1 HOMEBREW_NO_EMOJI=0 ___x_cmdexe brew info {1} 2>/dev/null ' \
+            --preview-window=right:70%:wrap
+}
+
+# ___x_cmd_brew_ls___available(){
+#     ___x_cmd_brew___exec list -i
+# }
 

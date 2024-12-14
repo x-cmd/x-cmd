@@ -71,13 +71,8 @@ fn c {
     if ( == $c 1 ) {
         if ( eq $a[0] "-" ) {
             if (has-env OLDPWD) {
-                cd $E:OLDPWD
+                x cd $E:OLDPWD
             }
-            return
-        }
-
-        if ( os:is-dir $a[0] ) {
-            cd $a[0]
             return
         }
     }

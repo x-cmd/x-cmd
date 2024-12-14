@@ -26,7 +26,7 @@ function openai_gen_minion_content_str(minion_obj, minion_kp, media_str,      co
     content = context example content
 
     if( media_str != "" ){
-        return sprintf( "{ \"role\": \"user\", \"content\": [ { \"type\": \"text\", \"text\": %s } %s ] }", jqu(content), media_str )
+        return "{ \"role\": \"user\", \"content\": [ { \"type\": \"text\", \"text\": " jqu(content) " } " media_str " ] }"
     }
     return openai_gen_unit_str( "user", content )
 
@@ -46,12 +46,12 @@ function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key
         }
 
         if ( _url != "" ) {
-            _str    = _str sprintf(",{ \"type\": %s, \"image_url\": { \"url\": %s } }", _type, jqu(_url))
+            _str    = _str ",{ \"type\": " _type ", \"image_url\": { \"url\": " jqu(_url) " } }"
         } else {
             _base64 = juq(creq_obj[ _kp_key, "\"base64\"" ])
             _msg    = juq(creq_obj[ _kp_key, "\"msg\"" ])
             _msg    = "data:" _type_msg _msg ";base64,{" _base64 "}"
-            _str    = _str sprintf(",{ \"type\": %s, \"image_url\": { \"url\": %s } }", _type, jqu( _msg ))
+            _str    = _str ",{ \"type\": " _type ", \"image_url\": { \"url\": " jqu( _msg ) " } }"
         }
 
     }
@@ -88,8 +88,7 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq
     _temperature    = (_temperature != "") ? "\"temperature\": " _temperature "," : ""
     _jsonmode       = (_jsonmode) ? "\"response_format\": { \"type\": \"json_object\" }," : ""
 
-    _data_str = sprintf( "{ \"model\": %s, \"messages\": [ %s ], %s \"stream\": true }", \
-                    _mode, _messages_str, _jsonmode _maxtoken _seed _temperature )
+    _data_str = "{ \"model\": " _mode " , \"messages\": [ " _messages_str " ], " _jsonmode _maxtoken _seed _temperature " \"stream\": true }"
 
     return _data_str
 }
