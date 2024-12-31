@@ -1,10 +1,10 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=2016
 ___x_cmd_winget_ls(){
     [ "$#" -gt 0 ] ||       set -- -i
 
     case "$1" in
-        -i|--installed)     shift; ___x_cmd_winget_ls___install         ;;
-        -a|--all)           shift; ___x_cmd_winget_ls___all             ;;
+        -i|--installed)     shift; ___x_cmd_winget_ls___install "$@"    ;;
+        -a|--all)           shift; ___x_cmd_winget_ls___all     "$@"    ;;
 
         -h|--help)          shift; ___x_cmd help -m winget ls           ;;
         *)                  ___x_cmd help -m winget ls >&2; return 64   ;;
@@ -13,21 +13,36 @@ ___x_cmd_winget_ls(){
 
 
 ___x_cmd_winget_ls___parse_list_data(){
-    ___x_cmd_cmds awk -F '  +|--' 'DATA!=1{ if($0 ~ "^----------") DATA=1; next }DATA==1{if($1 !~ "^[(]") print $1}' | ___x_cmd_cmds sort
+    ___x_cmd_cmds awk -F '  +|--' '
+DATA!=1{
+    if ($0 ~ "^----------") DATA=1
+    next
+}
+DATA==1{
+    if ($1 !~ "^\\[\\(\\]\\)") {
+        n = $1
+        gsub( " [0-9].*$", "", n )
+        if (arr[n] == 1) next
+        print n
+        arr[n] = 1
+    }
+}
+'
 }
 
 ___x_cmd_winget_ls___install_raw(){
-    ___x_cmd_winget___bin list | \
+    ___x_cmd_winget___bin list "$@" | \
         ___x_cmd_winget_ls___parse_list_data
 }
 
 ___x_cmd_winget_ls___install(){
-    { [ -t 1 ] && ___x_cmd_is_interactive; } || {
-        ___x_cmd_winget_ls___install_raw
+    local X_help_cmd; X_help_cmd='___x_cmd help -m winget ls -i' help:arg:parse
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; } || {
+        ___x_cmd_winget_ls___install_raw "$@"
         return
     }
     winget:info "Find installed software"
-    local x_=; ___x_cmd_winget___fzf_ ___x_cmd_winget_ls___install_raw || return
+    local x_=; ___x_cmd_winget___fzf_ ___x_cmd_winget_ls___install_raw "$@" || return $?
     [ -n "$x_" ] || {
         winget:error "Nor found software"
         return 1
@@ -39,29 +54,33 @@ ___x_cmd_winget_ls___install(){
         "x winget uninstall --exact \"$software\""      \
         "x winget find      --exact \"$software\""      \
         "x winget view      --exact \"$software\""      \
-        "return"     || return
+        "return"     || return $?
 
-    [ -n "$_cmd" ] || return
+    [ -n "$_cmd" ] || return $?
     winget:info "cmd -> $_cmd"
     eval "$_cmd"
 }
 
 ___x_cmd_winget_ls___all_raw(){
-    ___x_cmd_winget___bin search --accept-source-agreements "" | \
+    [ "$#" -gt 0 ] || set -- ''
+    ___x_cmd_winget___bin search --accept-source-agreements "$@" | \
         ___x_cmd_winget_ls___parse_list_data
 }
 
 ___x_cmd_winget_ls___all(){
-    { [ -t 1 ] && ___x_cmd_is_interactive; } || {
-        ___x_cmd_winget_ls___all_raw
+    local X_help_cmd; X_help_cmd='___x_cmd help -m winget ls -a' help:arg:parse
+    [ "$#" -gt 0 ] || winget:info "Perhaps you can include parameters refine your search for better accuracy, e.g. \`x winget la 'zip'\`"
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; } || {
+        ___x_cmd_winget_ls___all_raw "$@"
         return
     }
     winget:info "Find all software"
-    local x_=; ___x_cmd_winget___fzf_ ___x_cmd_winget_ls___all_raw || return
+    local x_=; ___x_cmd_winget___fzf_ ___x_cmd_winget_ls___all_raw "$@" || return $?
     [ -n "$x_" ] || {
         winget:error "Nor found software"
         return 1
     }
+
 
     local software="$x_"
     local _cmd=
@@ -70,16 +89,19 @@ ___x_cmd_winget_ls___all(){
         "x winget uninstall --exact \"$software\""      \
         "x winget find      --exact \"$software\""      \
         "x winget view      --exact \"$software\""      \
-        "return"     || return
+        "return"     || return $?
 
-    [ -n "$_cmd" ] || return
+    [ -n "$_cmd" ] || return $?
     winget:info "cmd -> $_cmd"
     eval "$_cmd"
 }
 
 
 ___x_cmd_winget___fzf_(){
-    x_="$( ___x_cmd_antizshintbin ___x_cmd winget --fzfdata "$@" )"
+    x_="$(
+        ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" \
+        ___x_cmdexe winget --fzfdata "$@"
+    )"
 }
 
 ___x_cmd_winget___fzfdata(){

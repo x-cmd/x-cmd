@@ -1,24 +1,32 @@
 # shellcheck shell=dash
 
-___x_cmd_docker_images(){
-    [ $# -gt 0 ]    || set -- --app
+# ___X_CMD_DOCKER_IMAGE_PREFIX
 
-    local op="$1"; shift
+___x_cmd_docker_images(){
+    [ $# -gt 0 ]        || set -- --auto
+
+    local op="$1";      shift
     case "$op" in
         -h|--help)      ___x_cmd help -m docker images          ;;
-
         *)              ___x_cmd_docker_images_main "$op" "$@"  ;;
     esac
 }
 
 ___x_cmd_docker_images_main(){
     local IMAGE_OPTS=
-    local format=app
+    local format=auto
+
     while [ $# -gt 0 ]; do
         case "$1" in
-            --app)      format=app;     shift ;;
-            -j|--json)  format=json;    shift ;;
-            --csv)      format=csv;     shift ;;
+            --auto|--app)       format="${1#--}";   shift ;;
+
+            --tsv)              format=tsv;         shift ;;
+            --csv)              format=csv;         shift ;;
+
+            -j|--json)          format=json;        shift ;;
+            --jlist)            format=jlist;       shift ;;
+
+            -r|--raw)           format=raw;         shift ;;
 
             -a|--all|--digests|--no-trunc|-q|--quiet)
                         ___x_cmd cmdstr IMAGE_OPTS "$1"
@@ -32,60 +40,88 @@ ___x_cmd_docker_images_main(){
         esac
     done
 
-    ___x_cmd_docker_images___"$format"
+    ___x_cmd_docker_images___"$format" "$@"
 }
 
 
+___x_cmd_docker_images___auto(){
+    if ___x_cmd_is_stdout2tty; then     ___x_cmd_docker_images___app "$@"
+    else                                ___x_cmd_docker_images___tsv "$@"
+    fi
+}
+
+___x_cmd_docker_images___raw(){
+    eval ___x_cmd___docker_origin images "$IMAGE_OPTS" "\"\$@\""
+}
+
+___x_cmd_docker_images___jlist(){
+    if [ -z "$___X_CMD_DOCKER_IMAGE_PREFIX" ]; then
+        ___x_cmd_docker_images___raw --format '{{json .}}' "$@"
+    else
+        ___x_cmd_docker_images___raw --format '{{json .}}' "$@" | \
+            ___x_cmd jq --arg prefix "$___X_CMD_DOCKER_IMAGE_PREFIX" -s '.[] | select(.Repository | startswith( $prefix ))'
+    fi
+}
+
+___x_cmd_docker_images___json(){
+    ___x_cmd_docker_images___jlist "$@" | ___x_cmd jq -s .
+
+    # ___x_cmd jo .\*
+    # ___x_cmd jq -s .
+}
+
+
+___x_cmd_docker_images___tsv(){     ___x_cmd_docker_images___xsv tsv "$@" ; }
+___x_cmd_docker_images___csv(){     ___x_cmd_docker_images___xsv csv "$@" ; }
+___x_cmd_docker_images___xsv(){
+    local format="${1:-tsv}"; shift  # tsv|csv
+
+    ___x_cmd_docker_images___jlist "$@" | \
+    ___x_cmd ja jlist "to${format}"     .ID .Repository     .Tag         .UniqueSize   .VirtualSize   .CreatedAt   .CreatedSince |\
+        ___x_cmd "$format" header --add  id repository     tag           unique_size   virtual_size   created_at   created_since
+}
+
 # TODO: export image, rm image, info image, push image
 ___x_cmd_docker_images___app(){
-    if [ ! -t 1 ] || ! ___x_cmd_is_interactive; then
-        ___x_cmd_docker_images___csv
-        return
-    fi
 
-    local image_id=
+    local ___X_CMD_CSV_APP_DATA_id=""
+    local ___X_CMD_CSV_APP_DATA_repository=""
+    local ___X_CMD_CSV_APP_DATA_tag=""
+    local ___X_CMD_CSV_APP_DATA_unique_size=""
+    local ___X_CMD_CSV_APP_DATA_virtual_size=""
+    local ___X_CMD_CSV_APP_DATA_created_at=""
+    local ___X_CMD_CSV_APP_DATA_created_since=""
+
+    ___x_cmd_docker_images___app_ "$@"
+}
+
+___x_cmd_docker_images___app_(){
+    local image_id=""
+    local repository=""
+    local tag=""
+
     local ___X_CMD_CSV_APP_SHBIN_CODE=
-    local ___X_CMD_CSV_APP_DATA_IMAGE_ID=
     ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
         ___x_cmd csv app --return var ___x_cmd_docker_images_main --csv || return 1
-    image_id="$___X_CMD_CSV_APP_DATA_IMAGE_ID"
+
+    image_id="$___X_CMD_CSV_APP_DATA_id"
+    repository="$___X_CMD_CSV_APP_DATA_repository"
+    tag="$___X_CMD_CSV_APP_DATA_tag"
+
+    local name="${repository}:${tag:-latest}"
 
     [ -n "$image_id" ] || return 0
 
     local id=
     local cmd=
-    ___x_cmd ui select id,cmd \
-        "Next for image: $___X_CMD_CSV_APP_DATA_REPOSITORY"     \
-        "x docker rmi $image_id"                                \
-        "x docker rmi -f $image_id"                             \
-        "x docker inspect $image_id"                            \
-        "return 1"                                              || return 1
+    ___x_cmd ui select id,cmd           \
+        "Next for image: ${name}"       \
+        "x docker inspect  $image_id"   \
+        "x docker image pull ${name}"   \
+        "x docker rmi      $image_id"   \
+        "x docker rmi -f   $image_id"   \
+        "return 1"                      || return 1
+
     docker:debug "run command -> $cmd"
     eval "$cmd"
-}
-
-___x_cmd_docker_images___json(){
-    ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
-
-    eval ___x_cmd___docker_origin images "$IMAGE_OPTS" | {
-        if [ -z "$___X_CMD_DOCKER_IMAGES_PREFIX" ]; then
-            ___x_cmd jq -s .
-        else
-            ___x_cmd jq --arg prefix "$___X_CMD_DOCKER_IMAGES_PREFIX" -s '.[] | select(.Repository | startswith( $prefix ))' | ___x_cmd jq -s .
-        fi
-    } | {
-        # filter the keywords ...
-        ___x_cmd_cmds cat
-    }
-}
-
-___x_cmd_docker_images___csv(){
-    ___x_cmd_docker_images___json | \
-    ___x_cmd jo .\* | \
-    ___x_cmd ja jl2c  .Repository .Tag .ID .UniqueSize .VirtualSize .CreatedAt .CreatedSince |\
-        ___x_cmd csv header --add  Repository Tag ID UniqueSize VirtualSize CreatedAt CreatedSince
-
-    # ___x_cmd cmdstr IMAGE_OPTS --format 'table {{.Repository}},{{.Tag}},{{.ID}},{{.CreatedSince}},{{.Size}},{{.Containers}},{{.CreatedAt}},{{.Digest}},{{.SharedSize}},{{.UniqueSize}}'
-
-    # eval ___x_cmd___docker_origin images "$IMAGE_OPTS"
 }

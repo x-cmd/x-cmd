@@ -57,7 +57,13 @@ export-env {
     ___x_cmd___rcnu_addpython
 
     $env.___X_CMD_CO_NOEVAL = 1
-    $env.___X_CMD_IS_INTERACTIVE_FORCE = 1
+
+    if $nu.is-interactive {
+        $env.___X_CMD_RUNMODE = 9
+    } else {
+        $env.___X_CMD_RUNMODE = 0
+    }
+
     $env.___X_CMD_THEME_RELOAD_DISABLE = 1
 
     $env.___X_CMD_CD_RELM_0 = $env.PWD
@@ -73,7 +79,12 @@ export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
         $env.___X_CMD_XBINEXP_INITENV_OLDPWD = $env.PWD
     }
 
-    $env.___X_CMD_IS_INTERACTIVE_FORCE = 1
+    if $nu.is-interactive {
+        $env.___X_CMD_RUNMODE = 9
+    } else {
+        $env.___X_CMD_RUNMODE = 0
+    }
+
     $env.___X_CMD_THEME_RELOAD_DISABLE = 1
 
     ___x_cmd ...$args

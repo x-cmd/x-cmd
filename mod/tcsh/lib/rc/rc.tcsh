@@ -63,7 +63,12 @@ alias x             ___x_cmd
 
 setenv CSH_VERSION "${version}"
 
-setenv ___X_CMD_IS_INTERACTIVE_FORCE 1
+if ( -t 1 ) then
+    setenv ___X_CMD_RUNMODE 9
+else
+    setenv ___X_CMD_RUNMODE 0
+endif
+
 setenv ___X_CMD_THEME_RELOAD_DISABLE 1
 
 # "$HOME/.x-cmd.root/bin/xbin" prepare alias
@@ -75,7 +80,11 @@ if ($?status && $status == 0) then
     # set complete = enhance
 
     # TODO: Consider how to implement c -
-    setenv ___X_CMD_XBINEXP_INITENV_OLDPWD "$OLDPWD"
+    if ( $?OLDPWD ) then
+        setenv ___X_CMD_XBINEXP_INITENV_OLDPWD "$OLDPWD"
+    else
+        setenv ___X_CMD_XBINEXP_INITENV_OLDPWD "$PWD"
+    endif
 
     [ -f "$HOME/.x-cmd.root/boot/alias/c.disable"       ]  ||  alias c     '___x_cmd cd'
 

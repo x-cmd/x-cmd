@@ -39,7 +39,7 @@ function draw_navi_paint( o, kp, x1, x2, y1, y2, is_dim, opt,       _draw_clear,
 
 function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, _start, _width, i, l, w, s, c ){
     _width = y2-y1+1
-    navi_arr_data_maxview_width( o, kp, int(_width/3))
+    navi_arr_data_maxview_width( o, kp, int(_width/2))
     l = opt_get( opt, "cur.col" )
 
     _start = draw_navi_layout_init( o, kp, _width, l, opt)
@@ -66,7 +66,6 @@ function draw_navi___paint_null_data( x1, x2, y1, y2,        v){
 }
 
 function draw_navi___paint_body_sel(o, kp, rootkp, x1, x2, y1, y2, is_dim, opt,        s){
-    # if (!draw_navi_curcol_preview_is_null(opt) || is_dim) s = painter_vline_ends( x1-1, x2+1, y2 ); y2--
     if (draw_navi_curcol_should_preview(opt) || is_dim) s = painter_vline_ends( x1-1, x2+1, y2 ); y2--
     return s draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, ((draw_navi___paint_is_dim(o, kp)) ? true : is_dim), false, opt )
 }
@@ -146,7 +145,6 @@ function draw_navi_unava(o, kp, v, force_set){
 }
 
 function draw_navi_layout_init( o, kp, w, l, opt,       i, _colw, _viewcol_begin ){
-    # if (!draw_navi_curcol_preview_is_null(opt)) w -= navi_arr_data_maxview_width(o, kp)
     if (draw_navi_curcol_should_preview(opt)) w -= navi_arr_data_maxview_width(o, kp)
     for (i=l; i>=1; --i){
         _colw = navi_arr_data_view_width( o, kp, navi_arr_data_trace_col_val(o, kp, i) )

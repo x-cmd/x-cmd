@@ -59,7 +59,7 @@ ___x_cmd_pkg_sphere_gc_exist(){
 
 ___x_cmd_pkg_sphere_gc___defuselock(){
     local gcfp="$1"
-    [ -f "$gcfp" ] || return
+    [ -f "$gcfp" ] || return $?
 
     local bombpid;
     local fingerprint;
@@ -95,7 +95,7 @@ ___x_cmd_pkg_sphere_gc_run(){
         trap '___x_cmd rmrf "$gcfp";' EXIT
 
         if [ -f "$gcfp" ]; then
-            ___x_cmd_pkg_sphere_gc___defuselock "$gcfp" || return
+            ___x_cmd_pkg_sphere_gc___defuselock "$gcfp" || return $?
         fi
 
         ___x_cmd ensurefp "$gcfp";
@@ -106,7 +106,7 @@ ___x_cmd_pkg_sphere_gc_run(){
         ___x_cmd_ps fingerprint get_;   local fingerprint="$x_"
         printf "%s\n" "$spid" "$fingerprint" >"$gcfp"
 
-        ___x_cmd_cmds sync -f "$gcfp"
+        ___x_cmd_compat_syncfs "$gcfp"
         sleep 1 # long enough to make sure file written
 
         local winner_pid
@@ -117,13 +117,13 @@ ___x_cmd_pkg_sphere_gc_run(){
             return
         fi
 
-        if [ -t 1 ] && ___x_cmd_is_interactive; then
-            if [ -z "$noall" ]; then    ___x_cmd_pkg_sphere_gc_run___interactive_all || return
-            else                        ___x_cmd_pkg_sphere_gc_run___interactive_pkg "$@" || return
+        if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
+            if [ -z "$noall" ]; then    ___x_cmd_pkg_sphere_gc_run___interactive_all || return $?
+            else                        ___x_cmd_pkg_sphere_gc_run___interactive_pkg "$@" || return $?
             fi
         fi
-        ___x_cmd_pkg_sphere_gc_run___inner "$gcfp" "$gclist" || return
-    ) || return
+        ___x_cmd_pkg_sphere_gc_run___inner "$gcfp" "$gclist" || return $?
+    ) || return $?
 
     [ -f "$gclist" ] || return 0
     local name
@@ -148,7 +148,7 @@ ___x_cmd_pkg_sphere_gc_run___interactive_all(){
             name="${l%% *}"; l="${l#* }"
             version="${l% *}"
 
-            ___x_cmd_pkg_sphere_gc_run___interactive_unit_ || return
+            ___x_cmd_pkg_sphere_gc_run___interactive_unit_ || return $?
         done
     fi
 }
@@ -165,7 +165,7 @@ ___x_cmd_pkg_sphere_gc_run___interactive_pkg(){
         version="${l%%/*}";
         osarch="${l#*/}"
 
-        ___x_cmd_pkg_sphere_gc_run___interactive_unit_ || return
+        ___x_cmd_pkg_sphere_gc_run___interactive_unit_ || return $?
     done
 }
 
@@ -174,12 +174,12 @@ ___x_cmd_pkg_sphere_gc_run___interactive_unit_(){
         --osarch "$osarch" "$name" "$version" && \
         ___x_cmd_pkg_sphere_safelist exist  --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"  \
         --osarch "$osarch" "${name}=${version}"; then
-        ___x_cmd ui yesno "Do you want to unuse [name=$name] [version=$version] [osarch=$osarch] and remove it from the safelist in [sphere=$sphere_name]?" || return
+        ___x_cmd ui yesno "Do you want to unuse [name=$name] [version=$version] [osarch=$osarch] and remove it from the safelist in [sphere=$sphere_name]?" || return $?
 
         pkg:debug "Unlinked [name=$name] [version=$version] [osarch=$osarch]"
         ___x_cmd_pkg_sphere_link rm     \
             --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
-            --osarch "$osarch" "$name" "$version" || return
+            --osarch "$osarch" "$name" "$version" || return $?
 
         pkg:debug "Removed safelist [name=$name] [version=$version] [osarch=$osarch]"
         ___x_cmd_pkg_sphere_safelist rm     \
@@ -190,16 +190,16 @@ ___x_cmd_pkg_sphere_gc_run___interactive_unit_(){
 
     if ___x_cmd_pkg_sphere_link exist       --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"  \
         --osarch "$osarch" "$name" "$version"; then
-        ___x_cmd ui yesno "Do you want to unuse [name=$name] [version=$version] [osarch=$osarch]?" || return
+        ___x_cmd ui yesno "Do you want to unuse [name=$name] [version=$version] [osarch=$osarch]?" || return $?
         pkg:debug "Unlinked [name=$name] [version=$version] [osarch=$osarch]"
         ___x_cmd_pkg_sphere_link rm     \
             --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
-            --osarch "$osarch" "$name" "$version" || return
+            --osarch "$osarch" "$name" "$version" || return $?
     fi
 
     if ___x_cmd_pkg_sphere_safelist exist   --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"  \
         --osarch "$osarch" "${name}=${version}"; then
-        ___x_cmd ui yesno "Do you want to remove [name=$name] [version=$version] from the safelist in [sphere=$sphere_name]?" || return
+        ___x_cmd ui yesno "Do you want to remove [name=$name] [version=$version] from the safelist in [sphere=$sphere_name]?" || return $?
         pkg:debug "Removed safelist [name=$name] [version=$version] [osarch=$osarch]"
         ___x_cmd_pkg_sphere_safelist rm     \
             --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \

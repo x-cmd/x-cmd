@@ -8,7 +8,7 @@ end
 function ___x_cmd
     set -x ___X_CMD_CD_RELM_0               "$___X_CMD_CD_RELM_0"
     set -x ___X_CMD_THEME_RELOAD_DISABLE    "$___X_CMD_THEME_RELOAD_DISABLE"
-    set -x ___X_CMD_IS_INTERACTIVE_FORCE    "$___X_CMD_IS_INTERACTIVE_FORCE"
+    set -x ___X_CMD_RUNMODE                 "$___X_CMD_RUNMODE"
     set -x ___X_CMD_XBINEXP_FP              "$HOME/.x-cmd.root/local/data/xbinexp/fish/$fish_pid"_(random)
     set -x ___X_CMD_XBINEXP_INITENV_OLDPWD  "$OLDPWD"
     # mkdir -p $___X_CMD_XBINEXP_FP
@@ -60,9 +60,11 @@ end
 # TODO: in the future, adding the advise
 
 # "$HOME/.x-cmd.root/bin/xbin" prepare alias
+set -g ___X_CMD_RUNMODE 0
+
 if status is-interactive
     set -g ___X_CMD_THEME_RELOAD_DISABLE 1
-    set -g ___X_CMD_IS_INTERACTIVE_FORCE 1
+    set -g ___X_CMD_RUNMODE              9
     # setenv ___X_CMD_CO_EXEC_SHELL=fish
 
     [ -f "$HOME/.x-cmd.root/boot/alias/c.disable"     ]   ||  begin

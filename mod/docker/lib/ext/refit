@@ -8,15 +8,130 @@
 
 # x docker refit ubuntu ubuntu-x dev.init.sh
 
-___x_cmd_docker_refit(){
-    local baseimage="$1"
-    local newimage="$2"
-    local script="$3"
+# x docker refit --code
+#    RUN \
+#    --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+#    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+#    rm -f /etc/apt/apt.conf.d/docker-clean \
+#    && apt-get update \
+#    && apt-get -y --no-install-recommends install \
+#        ruby ruby-dev gcc
 
-    case "$script" in
-        --)     shift 3 ;;
-        *)      [ -f "$script" ] || N=docker M="Unexisted script -> $script" log:ret:64 ;;
+# x docker refit --apk 'gcc'
+# x docker refit --apt
+# x docker refit --dnf
+
+___x_cmd_docker_refit_dockerfile(){
+    :
+}
+
+___x_cmd_docker_refit_new(){
+
+
+    local dockerfile_content=$(
+        ___x_cmd_docker_refit_dockerfile ""
+    )
+
+    local dockerfile_fp=""
+    printf "%s\n" "dockerfile_content" >"$dockerfile_fp"
+
+    (
+        cd ""
+        docker build -t ...
+    )
+
+
+}
+
+# x docker refit --from <newimage> --to <newimage>
+# x docker refit --from <newimage> --to <newimage> --cmd apk add
+
+# x docker refit --from <newimage> file
+
+# <newimage> -> default is alpine or ubuntu or kali
+# <toimage>  -> default is x-alpine-apk
+
+___x_cmd_docker_refit(){
+    [ "$#" -gt 0 ] || set - --help
+    case "$1" in
+        -h|--help)  ___x_cmd help -m docker refit; return ;;
     esac
+
+    local debug=""
+
+    local baseimage=""
+    local newimage=""
+
+    local apk=""
+    local apt=""
+    local yum=""
+    local dnf=""
+    local nix=""
+    local pacman=""
+
+    local go=""
+    local cargo=""
+    local zig=""
+
+    local npm=""
+    local deno=""
+    local bun=""
+
+    local pip=""
+    local pixi=""
+    local xenv=""
+
+    local ep=""
+    local cmd=""
+    local workdir=""
+
+    local userabc=""
+    local script=""
+
+    arg:init docker
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --debug)    debug=1;        shift 1 ;;
+
+            --from)     baseimage="$2"; arg:2:shift  ;;
+            --to)       newimage="$2";  arg:2:shift  ;;
+
+            --apk)      apk="$2";       arg:2:shift  ;;
+            --apt)      apt="$2";       arg:2:shift  ;;
+            --yum)      yum="$2";       arg:2:shift  ;;
+            --dnf)      dnf="$2";       arg:2:shift  ;;
+
+            --pacman)   pacman="$2";    arg:2:shift  ;;
+
+            --go)       go="$2";        arg:2:shift  ;;
+            --cargo)    cargo="$2";     arg:2:shift  ;;
+            --zig)      zig="$2";       arg:2:shift  ;;
+
+            --npm)      npm="$2";       arg:2:shift  ;;
+            --deno)     deno="$2";      arg:2:shift  ;;
+            --bun)      bun="$2";       arg:2:shift  ;;
+
+            --pip)      pip="$2";       arg:2:shift  ;;
+
+            --pixi)     pixi="$2";      arg:2:shift  ;;
+            --xenv)     xenv="$2";      arg:2:shift  ;;
+            # --pkgx)     pkgx="$2";      arg:2:shift  ;;  # TODO
+            # --xenv)     xenv="$2";      arg:2:shift  ;;  # TODO
+
+            --userabc)  userabc=1;      shift ;;
+            --workdir)  workdir="$2";   arg:2:shift  ;;
+
+            --ep)       ep="$2";        arg:2:shift  ;;
+            --cmd)      cmd="$2";       arg:2:shift  ;;
+
+            --script)   script="$2";    arg:2:shift  ;;
+
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$baseimage" ] || baseimage="alpine:latest"
+    [ -n "$newimage" ]  || N=docker M="Please from the name of new image after --to" log:ret:64
 
     ___x_cmd_docker mirror pull --noupdate "$baseimage" || {
         local errcode="$?"
@@ -26,23 +141,104 @@ ___x_cmd_docker_refit(){
         esac
     }
 
+    ___x_cmd docker cmdinfo update "$baseimage"
+            [ -z "$bun" ]           || xenv="$xenv bun"
+
+            if ___x_cmd docker cmdinfo hascmd "$baseimage" apk; then
+                [ -z "$go" ]        || apk="$apk go"
+                [ -z "$cargo" ]     || apk="$apk cargo"
+
+                [ -z "$npm" ]       || apk="$apk npm"
+                [ -z "$deno" ]      || apk="$apk deno"
+
+                [ -z "$pip" ]       || apk="$apk py3-pip"
+                # [ -z "$pixi" ]      || apk="$apk python3"
+            elif ___x_cmd docker cmdinfo hascmd "$baseimage" apt; then
+                [ -z "$go" ]        || apt="$apt go"
+                [ -z "$cargo" ]     || apt="$apt cargo"
+
+                [ -z "$npm" ]       || apt="$apt npm"
+                [ -z "$deno" ]      || apt="$apt deno"
+
+                [ -z "$pip" ]       || apt="$apt python3"
+                # [ -z "$pixi" ]      || apk="$apk python3"
+            elif ___x_cmd docker cmdinfo hascmd "$baseimage" dnf; then
+                [ -z "$go" ]        || dnf="$dnf go"
+                [ -z "$cargo" ]     || dnf="$dnf cargo"
+
+                [ -z "$npm" ]       || dnf="$dnf npm"
+                [ -z "$deno" ]      || apk="$dnf deno"
+
+                [ -z "$pip" ]       || dnf="$dnf python3"
+                # [ -z "$pixi" ]      || apk="$apk python3"
+            fi
+
+
     local dir="$PWD/.x-cmd.docker.refit.ws.$$"
     ___x_cmd mkdirp "$dir"
     (
         ___x_cmd_cmds_cd "$dir"
+        ___x_cmd_cmds cp "$___X_CMD_ROOT_MOD/docker/lib/refit"/* ./
+
         {
-            printf "FROM %s\n" "$baseimage"
-            if [ "$script" != -- ]; then
+            ___x_cmd_docker_refit_code_from             "$baseimage"
+
+            ___x_cmd_docker_refit_code_user_workdir     root    /root
+            local USHO=/root
+
+            # Using x-cmd injection ...
+            printf "RUN %s\n" "sh -c '[ -d /root/.x-cmd.root ] || eval \"\$(wget -O- https://get.x-cmd.com)\"'"
+
+            [ -z "$userabc" ]       || ___x_cmd_docker_refit_code_adduser   abc abc     1000
+
+            local xcmd="/root/.x-cmd.root/bin/___x_cmdexe"
+
+            [ -z "$apk" ]   ||        ___x_cmd_docker_refit_code_run_apk    "$USHO" "$apk"
+            [ -z "$apt" ]   ||        ___x_cmd_docker_refit_code_run_apt    "$USHO" "$apt"
+            [ -z "$dnf" ]   ||        ___x_cmd_docker_refit_code_run      "--mount=type=cache,target=/var/cache/dnf dnf install -y $dnf"
+            [ -z "$yum" ]   ||        ___x_cmd_docker_refit_code_run      "--mount=type=cache,target=/var/cache/yum yum install -y $yum"
+
+            ___x_cmd_docker_refit_code_addexe       ./xbin.sh                   /bin/xbin.sh
+            ___x_cmd_docker_refit_code_addexe       ./foreversleep.sh           /bin/foreversleep.sh
+
+            [ -n "$ep" ]    ||  ep="[ \"/bin/xbin.sh\" ]"
+
+            if [ -n "$script" ]; then
                 ___x_cmd_cmds cp "$script" "$dir"
-                printf "ADD %s /refit/script\n" "${script##*/}"
-                printf "RUN /bin/sh -i /refit/script\n"
-            else
-                printf "RUN %s\n" "$@"
+                ___x_cmd_docker_refit_code_add      /refit/script               "${script##*/}"
+                ___x_cmd_docker_refit_code_run      '/bin/sh -i /refit/script'
             fi
-        } > Dockerfile
+
+            [ -z "$userabc" ]       || {
+                ___x_cmd_docker_refit_code_user_workdir     abc     /home/abc
+                USHO=/home/abc
+                ___x_cmd_docker_refit_code_run  "sh -c '[ -d ${USHO}/.x-cmd.root ] || eval \"\$(wget -O- https://get.x-cmd.com)\"'"
+            }
+
+            [ -z "$xenv" ]      ||          ___x_cmd_docker_refit_code_run_xenv     "$USHO"     "$xenv"
+            [ -z "$pixi" ]      ||          ___x_cmd_docker_refit_code_run_pixi     "$USHO"     "$pip"
+
+            # Consider introducing go image
+            [ -z "$go" ]        ||          ___x_cmd_docker_refit_code_run_go       "$USHO"     "$go"
+            [ -z "$cargo" ]     ||          ___x_cmd_docker_refit_code_run_cargo    "$USHO"     "$cargo"
+            # [ -z "$zig" ]   ||          ___x_cmd_docker_refit_code_run_npm      "$USHO"     "$zig"
+
+            [ -z "$npm" ]       ||          ___x_cmd_docker_refit_code_run_npm      "$USHO"     "$npm"
+            [ -z "$deno" ]      ||          ___x_cmd_docker_refit_code_run_deno     "$USHO"     "$deno"
+            [ -z "$bun" ]       ||          ___x_cmd_docker_refit_code_run_bun      "$USHO"     "$bun"
+
+            [ -z "$pip" ]       ||          ___x_cmd_docker_refit_code_run_pip      "$USHO"     "$pip"
+
+            [ -z "$workdir" ]   ||          ___x_cmd_docker_refit_code_workdir   "$workdir"
+            [ $# -eq 0 ]        ||          {   local IFS=' ';  ___x_cmd_docker_refit_code_run "$*";    }
+
+            [ -z "$ep"  ]       ||          printf "ENTRYPOINT %s\n" "$ep"
+            [ -z "$cmd" ]       ||          printf "CMD %s\n" "$cmd"
+        } >Dockerfile
 
         # TODO: because docker build doesn't rec 130, so we have to trap sigint
 
+        docker:info "Refitting image -> $newimage"
         ___x_cmd docker build -t "$newimage" . || {
             local errcode="$?"
             case "$errcode" in
@@ -51,13 +247,215 @@ ___x_cmd_docker_refit(){
             esac
 
             # TODO: add --dev to preserve the directory
-            docker:info "[ERR=$errcode] Removing temporary workspace directory -> $dir"
-            ___x_cmd rmrf "$dir"
+            ___x_cmd_docker_refit_cleanup "$dir"
             return "$errcode"
         }
-    )
 
-    docker:info "[ERR=0] Removing temporary workspace directory -> $dir"
-    ___x_cmd rmrf "$dir"
+        docker:info "Generate cmdinfo for image -> $newimage"
+        ___x_cmd docker cmdinfo update "$newimage" || docker:warn "Fail to generate cmdinfo -> $newimage"
+        return 0
+    ) ||    return $?
+
+    ___x_cmd_docker_refit_cleanup "$dir"
 }
 
+___x_cmd_docker_refit_cleanup(){
+    local dir="$1"
+
+    if [ -n "$debug" ]; then
+        docker:warn "In debug mode, temporary workspace directory is preserved for futher diagnostics."
+    else
+        docker:info "[ERR=0] Removing temporary workspace directory -> $dir"
+        ___x_cmd rmrf "$dir"
+    fi
+}
+
+# Generate the dockerfile content to stdin ...
+___x_cmd_docker_refit_dockerfile(){
+    :
+}
+
+
+___x_cmd_docker_refit_code_from(){
+    printf "FROM %s\n" "$1"
+}
+
+
+___x_cmd_docker_refit_code_adduser(){
+    local group="$1"
+    local user="$2"
+    local uid="$3"
+    if ___x_cmd docker cmdinfo hascmd "$baseimage" adduser; then
+        ___x_cmd_docker_refit_code_run  "[ -d /home/$user ] || adduser -D -u $uid $user"
+    else
+        ___x_cmd_docker_refit_code_run  "[ -d /home/$user ] || useradd -r -u $uid -g $group $user"
+    fi
+}
+
+___x_cmd_docker_refit_code_user_workdir(){
+    ___x_cmd_docker_refit_code_user     "$1"
+    ___x_cmd_docker_refit_code_workdir  "$2"
+}
+
+___x_cmd_docker_refit_code_user(){
+    printf "USER %s\n" "$1"
+}
+
+___x_cmd_docker_refit_code_workdir(){
+    printf "WORKDIR %s\n" "$1"
+}
+
+___x_cmd_docker_refit_code_add(){
+    printf "%s\n" "ADD $1 $2"
+}
+
+___x_cmd_docker_refit_code_addexe(){
+    # printf "%s\n%s\n" "ADD ./xbin.sh            /bin/xbin.sh"           "RUN chmod +x /bin/xbin.sh"
+    printf "%s\n" "ADD $1 $2" "RUN chmod +x $2"
+}
+
+___x_cmd_docker_refit_code_run(){
+    printf "RUN %s\n" "$@"
+}
+
+___x_cmd_docker_refit_code_run_apk(){
+    local USHO="$1"
+    local apk="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    ___x_cmd_docker_refit_code_run      "if $xcmd websrc is cn; then $xcmd apk mirror set ustc; else $xcmd apk mirror set official; fi"
+    printf "RUN %s\n%s\n" \
+        "--mount=type=cache,target=/etc/apk/cache,sharing=locked \\"    \
+        "apk add $apk"
+}
+
+___x_cmd_docker_refit_code_run_apt(){
+    local USHO="$1"
+    local apt="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    ___x_cmd_docker_refit_code_run      'rm -f /etc/apt/apt.conf.d/docker-clean; echo '\''Binary::apt::APT::Keep-Downloaded-Packages "true";'\'' > /etc/apt/apt.conf.d/keep-cache'
+
+    # Consider judge whether need to apt update -- in 30 minutes, no update needed ... Or may be we should using mirror cache ...
+    printf "RUN %s\n%s\n%s\n" \
+        "--mount=type=cache,target=/var/cache/apt,sharing=locked \\"    \
+        "--mount=type=cache,target=/var/lib/apt,sharing=locked \\"      \
+        "apt update && apt --no-install-recommends install --yes $apt"
+}
+
+___x_cmd_docker_refit_code_run_yum(){
+    :
+}
+
+___x_cmd_docker_refit_code_run_dnf(){
+    :
+}
+
+___x_cmd_docker_refit_code_run_go(){
+    local USHO="$1"
+    local go="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    ___x_cmd_docker_refit_code_run  "if $xcmd websrc is cn; then $xcmd go proxy set; else $xcmd go proxy unset; fi || true"
+
+    printf "%s\n" \
+        "RUN --mount=type=cache,target=${USHO}/.cache/go-build,uid=1000,gid=1000 \\"    \
+        "go install $go"
+}
+
+___x_cmd_docker_refit_code_run_cargo(){
+    local USHO="$1"
+    local cargo="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    ___x_cmd_docker_refit_code_run  "mkdir -p ${USHO}/.cargo" # If we don't do this, it will fail with os-permission
+
+    printf "%s\n" \
+        "RUN --mount=type=cache,target=${USHO}/.cargo/registry,uid=1000,gid=1000 \\"    \
+        "cargo install $cargo"
+}
+
+___x_cmd_docker_refit_code_run_zig(){
+    local USHO="$1"
+    local zig="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    printf "%s\n" \
+        "RUN --mount=type=cache,target=${USHO}/.cache/zig,uid=1000,gid=1000 \\"    \
+        "zig fetch $zig"
+}
+
+___x_cmd_docker_refit_code_run_pip(){
+    local USHO="$1"
+    local pip="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    ___x_cmd_docker_refit_code_run      "if $xcmd websrc is cn; then $xcmd mirror pip set ali; else $xcmd mirror pip unset; fi || true"
+    printf "%s\n" \
+        "RUN --mount=type=cache,target=${USHO}/.cache/pip,uid=1000,gid=1000 \\"    \
+        "python3 -m venv p && . p/bin/activate && pip3 install $pip"
+}
+
+___x_cmd_docker_refit_code_run_pixi(){
+    local USHO="$1"
+    local pixi="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    ___x_cmd_docker_refit_code_run      "if $xcmd websrc is cn; then $xcmd mirror pip set ali; else $xcmd mirror pip unset; fi || true"
+    ___x_cmd_docker_refit_code_run      "[ -d $USHO/.pixi ] || $xcmd pixi --install"
+
+    # "RUN --mount=type=cache,target=${USHO}/.cache/rattler/cache,uid=1000,gid=1000 \\"    \
+    ___x_cmd_docker_refit_code_run      "$xcmd pixi global install $pixi"
+}
+
+___x_cmd_docker_refit_code_run_xenv(){
+    local USHO="$1"
+    local pixi="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    # "RUN --mount=type=cache,target=${USHO}/.cache/rattler/cache,uid=1000,gid=1000 \\"    \
+    ___x_cmd_docker_refit_code_run      "$xcmd env use $xenv"
+}
+
+
+___x_cmd_docker_refit_code_run_npm(){
+    local USHO="$1"
+    local npm="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    ___x_cmd_docker_refit_code_run  "if $xcmd websrc is cn; then $xcmd mirror npm set npmmirror; else $xcmd mirror npm unset; fi || true"
+    printf "%s\n" \
+        "RUN --mount=type=cache,target=${USHO}/.npm,uid=1000,gid=1000 \\"    \
+        "npm install $npm"
+}
+
+___x_cmd_docker_refit_code_run_deno(){
+    local USHO="$1"
+    local deno="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    # TODO: When installing globally, permission parameters need to be added.
+                    # "RUN --mount=type=cache,target=${USHO}/.cache/deno,uid=1000,gid=1000 \\"    \
+    ___x_cmd_docker_refit_code_run  "deno install -g -A $deno"
+}
+
+___x_cmd_docker_refit_code_run_bun(){
+    local USHO="$1"
+    local bun="$2"
+
+    local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
+
+    printf "%s\n" \
+            "RUN --mount=type=cache,target=${USHO}/.bun/install/cache,uid=1000,gid=1000 \\"    \
+            "bun install -g $bun"
+}

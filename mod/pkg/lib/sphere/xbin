@@ -7,7 +7,7 @@ ___x_cmd_pkg_sphere_xbin(){
     local X_help_cmd='___x_cmd help -m pkg xbin';   help:arg-null:parse
 
     # TODO: Need to be removed in the future
-    ___x_cmd_pkg_update___check || return
+    ___x_cmd_pkg_update___check || return $?
     local op="$1"
     case "$op" in
         init|path|remove_cache|get_binmod_name_|exec)
@@ -30,22 +30,25 @@ ___x_cmd_pkg_sphere_xbin_path(){
         version="$x_";
     }
 
-    local tree=; local tgt=;
-    ___x_cmd_pkg___attr "$pkg_name" "$version" "$osarch" "tree" || return
-    local x_treename=; ___x_cmd_pkg_treename_get_form_tree_ "$osarch" "$tree" || return
-    tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$pkg_name/$version"
+    pkg:debug --bin_mod_name "$bin_mod_name" --package "$pkg_name" --version "$version" xbin_path
 
-    pkg:debug "INSTALL_PATH => $tgt"
-    local datalist; datalist="$( ___x_cmd_pkg___all_info --non-version "$pkg_name" "$version" "$osarch" )" || return
+    local datalist; datalist="$( ___x_cmd_pkg___all_info --non-version "$pkg_name" "$version" "$osarch" )" || return $?
+    local bin_rpath; bin_rpath="$(
     printf "%s\n\n" "$datalist" | ___x_cmd_cmds_awk \
-        -v INSTALL_PATH="$tgt" \
-        -v BIN_MOD_NAME="${bin_mod_name:-$pkg_name}" \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk" \
+        -v BIN_MOD_NAME="$bin_mod_name" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk"        \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"      \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk"   \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk"    \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk"   \
         -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.xbin.awk"
+    )"
+    [ -n "$bin_rpath" ] || N=pkg M="Not found bin path of $bin_mod_name" log:ret:1
+
+    local x_treename=; ___x_cmd_pkg_treename_ "$pkg_name" "$version" "$osarch" || return $?
+    local tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$pkg_name/$version"
+    pkg:debug "INSTALL_PATH => $tgt"
+    printf "%s\n" "$tgt/$bin_rpath"
 }
 
 ___x_cmd_pkg_sphere_xbin_exec(){
@@ -71,7 +74,7 @@ ___x_cmd_pkg_sphere_xbin_exec(){
     ___x_cmd hascmd "$bin_mod_func_name" || {
         ___x_cmd_pkg_sphere_xbin_init \
             --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
-            --osarch "$osarch" "$bin_mod_name" "$bin_mod_func_name" || return
+            --osarch "$osarch" "$bin_mod_name" "$bin_mod_func_name" || return $?
     }
 
     shift
@@ -94,7 +97,7 @@ ___x_cmd_pkg_sphere_xbin_init(){
     # TODO: Need to be removed in the future
     ___x_cmd_pkg_update___check # ensure existense of "$___X_CMD_PKG_FP_UPDATED_DONE"
     ___x_cmd depend run "$xbin_cachepath" -- "$___X_CMD_PKG_FP_UPDATED_DONE" -- ___x_cmd_pkg_sphere_xbin_init___cache
-    [ -f "$xbin_cachepath" ] || return
+    [ -f "$xbin_cachepath" ] || return $?
     pkg:debug "xbin cache path => $xbin_cachepath"
     . "$xbin_cachepath"
 }
@@ -109,7 +112,7 @@ ___x_cmd_pkg_sphere_xbin_init___cache(){
     bin_path="$(___x_cmd_pkg_sphere_xbin_path --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$bin_mod_name" "$version")"
     pkg:debug --bin_mod_name "$bin_mod_name" --package "$pkg_name" --version "$version" --binpath "$bin_path" xbin_init
 
-    [ -f "$bin_path" ] || ___x_cmd_pkg_sphere_add --prebuild --protection use --reason "use,xbin-init" --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$pkg_name" "$version" || return
+    [ -f "$bin_path" ] || ___x_cmd_pkg_sphere_add --prebuild --protection use --reason "use,xbin-init" --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$pkg_name" "$version" || return $?
     [ -f "$bin_path" ] || N=pkg M="Not found $pkg_name $version bin path" log:ret:1
     ___x_cmd_cmds chmod +x "$bin_path" || N=pkg M="chmod $bin_path - Operation not permitted" log:ret:1
 
@@ -145,7 +148,7 @@ ___x_cmd_pkg_sphere_xbin_ensurefp_and_exec(){
     [ -f "$bin_fp" ] || ___x_cmd pkg sphere add --prebuild  \
         --protection use --reason "use,xbin-init"           \
         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
-        --osarch "$osarch" "$name" "$version" || return
+        --osarch "$osarch" "$name" "$version" || return $?
 
     shift 5
     "${bin_fp}" "$@"
@@ -161,7 +164,7 @@ ___x_cmd_pkg_sphere_xbin_remove_cache(){
     local pkg_name="${1}";  [ -n "$pkg_name" ]  || N=pkg    M='Provide a pkg name'              log:ret:1
     local version="$2";     [ -n "$version" ]   || N=pkg    M="Not found $pkg_name version"     log:ret:1
 
-    local x_=; ___x_cmd_pkg_default_version_ "$pkg_name" "$osarch" || return
+    local x_=; ___x_cmd_pkg_default_version_ "$pkg_name" "$osarch" || return $?
     local default_version="$x_"
     [ "$default_version" = "$version" ] || return 0
 
@@ -192,7 +195,7 @@ ___x_cmd_pkg_sphere_xbin_get_binmod_name_(){
     [ -n "$bin_mod_name" ] || M='Provide bin mod name' N=pkg log:ret:1
 
     # TODO: Need to be removed in the future
-    ___x_cmd_pkg_update___check || return
+    ___x_cmd_pkg_update___check || return $?
     if [ -z "$___X_CMD_PKG_BINMOD_MAP" ]; then
         ___X_CMD_PKG_BINMOD_MAP="$(___x_cmd_cmds_cat "$___X_CMD_PKG_METADATA_PATH/binmod.txt")"
     fi

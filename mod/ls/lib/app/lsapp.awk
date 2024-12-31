@@ -48,7 +48,7 @@ function tapp_handle_wchar( value, name, type ){
     }
 }
 
-function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr, v){
+function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr, v, v_len, max_w){
     _content = cat(fp)
     if( match( _content, "^errexit:")) panic(substr(_content, RSTART+RLENGTH))
     else if ( match( _content, "^data:item:local:" ) ){
@@ -63,8 +63,11 @@ function tapp_handle_response(fp,       _content, _rootkp, _log, l, i, arr, v){
             v = arr[i]
             if ((v == "") || (arr[ v, "processed" ])) continue
             arr[ v, "processed" ] = true
-            user_local_data_add( o, LS_KP, _rootkp, v )
+            v_len = user_local_data_add( o, LS_KP, _rootkp, v )
+            if ( max_w < v_len ) max_w = v_len
         }
+        max_w = max_w + 2
+        comp_navi_data_view_width( o, LS_KP, _rootkp, max_w )
         comp_navi_data_end( o, LS_KP, _rootkp )
     }
 }
@@ -106,6 +109,7 @@ function user_local_data_add( o, kp, rootkp, str,          _, name, l, i, _kp, _
         jdict_put( o, kp SUBSEP _kp, "Group", _[4] )
         jdict_put( o, kp SUBSEP _kp, "Update", _update )
     }
+    return wcswidth_without_style_cache(name)
 }
 
 function user_parse_basepath(o, kp, pwd, position,       i, l, pa, a, v, s, str, col){

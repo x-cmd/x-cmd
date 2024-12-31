@@ -2,13 +2,23 @@
 use re
 use os
 use platform
+use runtime
+
+# if repl set-env ___X_CMD_RUNMODE 9 # chatty
+# if repl but less chatty set-env ___X_CMD_RUNMODE 5 # manual
+# if script ___X_CMD_RUNMODE 0
+
+if (eq $runtime:effective-rc-path $nil) {
+    set-env ___X_CMD_RUNMODE    9
+} else {
+    set-env ___X_CMD_RUNMODE    0
+}
 
 fn x {  |@a|
     if ( not (has-env OLDPWD) ) {
         set-env OLDPWD $E:PWD
     }
 
-    set-env ___X_CMD_IS_INTERACTIVE_FORCE   1
     set-env ___X_CMD_THEME_RELOAD_DISABLE   1
 
     set-env ___X_CMD_XBINEXP_FP $E:HOME/.x-cmd.root/local/data/xbinexp/elv/$"pid"_(randint 65535)

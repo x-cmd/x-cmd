@@ -1,4 +1,8 @@
 BEGIN{
+    PRINT_FMT = (format == "tsv") ? \
+        "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" : \
+        "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\"\n"
+
     mount_data = ENVIRON[ "mount_data" ]
     l = split(mount_data, mount, "\n")
     for (i = 1; i <= l; i++) {
@@ -10,9 +14,8 @@ BEGIN{
 }
 
 NR==1{
-    OFS=","
     t = index($0, "Type")
-    print $1, $2, $3, $4, $5, $6, $7, $8, $9, "Mounted_path", "Mounted_attr"
+    printf( PRINT_FMT,  $1, $2, $3, $4, $5, $6, $7, $8, $9, MOUNTED_PATH, MOUNTED_ATTR )
     next
 }
 
@@ -22,6 +25,5 @@ NR==1{
     $0 = substr($0, t)
 
     attr = mount_attr[ $9 ]
-    printf( "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",  first, $1, $2, $3, $4, $5, $6, $7, $8, $9, "\""attr"\"" )
+    printf( PRINT_FMT,  first, $1, $2, $3, $4, $5, $6, $7, $8, $9, attr )
 }
-

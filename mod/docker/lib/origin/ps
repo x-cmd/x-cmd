@@ -22,6 +22,7 @@ ___x_cmd_docker_ps_main(){
             --csv)          datamode=csv;   shift   ;;
             --tsv)          datamode=tsv;   shift   ;;
             --app)          datamode=app;   shift   ;;
+            --auto)         datamode=auto;  shift   ;;
 
             -p|--prefix)    X_KASM_PREFIX="$2";    shift 2 ;;
 
@@ -41,38 +42,77 @@ ___x_cmd_docker_ps_main(){
         esac
     done
 
-    if [ "$datamode" = auto ]; then
-        datamode=app
-        { [ -t 1 ] && ___x_cmd_is_interactive; } || datamode=json
-    fi
-
-    case "$datamode" in
-        app)                ___x_cmd_docker_ps___app ;;
-        csv|json|tsv)       X_KASM_PREFIX="$X_KASM_PREFIX" ___x_cmd_docker_ps___"$datamode" ;;
-    esac
+    X_KASM_PREFIX="$X_KASM_PREFIX" ___x_cmd_docker_ps___"$datamode"
 }
+
+___x_cmd_docker_ps___auto(){
+    if ___x_cmd_is_stdout2tty; then     ___x_cmd_docker_ps___app
+    else                                ___x_cmd_docker_ps___csv
+    fi
+}
+
+___x_cmd_docker_ps___json(){
+    ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
+
+    eval ___x_cmd___docker_origin ps "$IMAGE_OPTS" | {
+        if [ -z "$X_KASM_PREFIX" ]; then
+            ___x_cmd jq -s .
+        else
+            ___x_cmd jq --arg prefix "$X_KASM_PREFIX" -s '.[] | select(.Names | startswith( $prefix ))' | ___x_cmd jq -s .
+        fi
+    }
+}
+
+# prefix, using attribute filter
+___x_cmd_docker_ps___parse_json2csv(){
+    ___x_cmd jo .\* | \
+    ___x_cmd ja jl2c  \
+            .ID .Names  .Status .Image  .Command    .Ports  .Networks   .CreatedAt      .RunningFor .Size   .State  .Labels .LocalVolumes   .Mounts |\
+        ___x_cmd csv header --add  \
+            id  name    status  image   command     port    network     created_at      running_for  size    state   label   local_volume     mount
+}
+
+___x_cmd_docker_ps___csv(){
+    ___x_cmd_docker_ps___json | ___x_cmd_docker_ps___parse_json2csv
+}
+
+___x_cmd_docker_ps___tsv(){
+    ___x_cmd_docker_ps___csv "$@" | ___x_cmd csv totsv
+}
+
 
 ___x_cmd_docker_ps___app(){
-    if ___x_cmd_is_interactive && [ -t 1 ]; then
-        X_KASM_PREFIX="$X_KASM_PREFIX" eval ___x_cmd_docker_ps_app_ "$IMAGE_OPTS"
-    else
-        X_KASM_PREFIX="$X_KASM_PREFIX" ___x_cmd_docker_ps___csv
-    fi
+    eval ___x_cmd_docker_ps___app_ "$IMAGE_OPTS"
 }
 
-___x_cmd_docker_ps_app_(){
-    local container_id=
-
+___x_cmd_docker_ps___app_(){
     # TODO: X_KASM_PREFIX should be exported ...
     # TODO: --clear -- ctrl-d clear, ctrl-c don't clear
 
     docker:info "Ctrl-D to exit. Ctrl-C to interrupt."
     local ___X_CMD_CSV_APP_SHBIN_CODE=
-    local ___X_CMD_CSV_APP_DATA_ID=
+
+    local ___X_CMD_CSV_APP_DATA_id=""
+    local ___X_CMD_CSV_APP_DATA_name=""
+    local ___X_CMD_CSV_APP_DATA_status=""
+    local ___X_CMD_CSV_APP_DATA_image=""
+    local ___X_CMD_CSV_APP_DATA_command=""
+    local ___X_CMD_CSV_APP_DATA_port=""
+    local ___X_CMD_CSV_APP_DATA_network=""
+    local ___X_CMD_CSV_APP_DATA_created_at=""
+    local ___X_CMD_CSV_APP_DATA_running_for=""
+    local ___X_CMD_CSV_APP_DATA_size=""
+    local ___X_CMD_CSV_APP_DATA_state=""
+    local ___X_CMD_CSV_APP_DATA_label=""
+    local ___X_CMD_CSV_APP_DATA_local_volume=""
+    local ___X_CMD_CSV_APP_DATA_mount=""
+
     ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
     X_KASM_PREFIX="$X_KASM_PREFIX" \
         ___x_cmd csv app --clear --return var ___x_cmd_docker_ps_main "$@" --csv || return 1
-    container_id="$___X_CMD_CSV_APP_DATA_ID"
+
+    local container_id=
+    container_id="$___X_CMD_CSV_APP_DATA_id"
 
     [ -n "$container_id" ] || return 0
 
@@ -111,62 +151,5 @@ ___x_cmd_docker_ps_app_(){
         }
     fi
 
-    ___x_cmd_docker_ps_app_next "$container_id" "$___X_CMD_CSV_APP_DATA_Name" "$___X_CMD_CSV_APP_DATA_State"
+    ___x_cmd_docker_ps_app_next "$container_id" "$___X_CMD_CSV_APP_DATA_name" "$___X_CMD_CSV_APP_DATA_state"
 }
-
-___x_cmd_docker_ps___json(){
-    ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
-
-    eval ___x_cmd___docker_origin ps "$IMAGE_OPTS" | {
-        if [ -z "$X_KASM_PREFIX" ]; then
-            ___x_cmd jq -s .
-        else
-            ___x_cmd jq --arg prefix "$X_KASM_PREFIX" -s '.[] | select(.Names | startswith( $prefix ))' | ___x_cmd jq -s .
-        fi
-    } | {
-        # filter the keywords ...
-        ___x_cmd_cmds cat
-    }
-}
-
-# prefix, using attribute filter
-___x_cmd_docker_ps___parse_json2csv(){
-    ___x_cmd jo .\* | \
-    ___x_cmd ja jl2c  \
-            .ID .Names  .Status .Image  .Command    .Ports  .Networks   .CreatedAt      .RunningFor .Size   .State  .Labels .LocalVolumes   .Mounts |\
-        ___x_cmd csv header --add  \
-            ID  Name    Status  Image   Command     Port    Network     CreatedAt       RunningFor  Size    State   Label   LocalVolume     Mount
-}
-
-# TODO:
-# awk expression filter ...
-# xd ps --when 'Command~//' --when 'Ports>1024' --when 'Size>100G'
-# ___x_cmd_docker_ps___parse_json2csv2(){
-#     # consider using the filter: prefix filter, numeric filter, ...
-#     ___x_cmd ja jsonlist2csv  .Command .CreatedAt .ID .Image .Labels .LocalVolumes .Mounts .Names .Networks .Ports .RunningFor .Size .State .Status
-# }
-
-# consider using jq ?
-
-___x_cmd_docker_ps___csv(){
-    # TODO: json to csv ...
-
-    # local SEP="\",\""
-    # ___x_cmd cmdstr IMAGE_OPTS --format \
-    #                 "table \"{{.ID}}$SEP{{.Image}}$SEP{{.Command}}$SEP{{.RunningFor}}$SEP{{.Status}}$SEP{{.Ports}}$SEP{{.Names}}$SEP{{.Size}}$SEP{{.State}}$SEP{{.LocalVolumes}}$SEP{{.Labels}}$SEP{{.CreatedAt}}$SEP{{.Mounts}}\""
-
-    # ___x_cmd_docker_ps_prefix
-    ___x_cmd_docker_ps___json | ___x_cmd_docker_ps___parse_json2csv
-}
-
-___x_cmd_docker_ps___tsv(){
-    ___x_cmd_docker_ps___csv "$@" | ___x_cmd csv totsv
-}
-
-# ___x_cmd_docker_ps___tsv(){
-#     local SEP="\t"
-#     ___x_cmd cmdstr IMAGE_OPTS --format \
-#                     "table {{.ID}}$SEP{{.Image}}$SEP{{.Command}}$SEP{{.RunningFor}}$SEP{{.Status}}$SEP{{.Ports}}$SEP{{.Names}}$SEP{{.Size}}$SEP{{.State}}$SEP{{.LocalVolumes}}$SEP{{.Labels}}$SEP{{.CreatedAt}}$SEP{{.Mounts}}"
-#     ___x_cmd_docker_ps_prefix
-# }
-

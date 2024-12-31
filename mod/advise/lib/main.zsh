@@ -8,7 +8,7 @@ ___x_cmd_advise_run(){
     local COMP_CWORD="$(( CURRENT-1 ))"
 
     local name="${1:-${COMP_WORDS[1]}}"
-    local x_=;  ___x_cmd_advise_run_filepath_ ${___X_CMD_ADVISE_RUN_CMD} "$name" || return
+    local x_=;  ___x_cmd_advise_run_filepath_ ${___X_CMD_ADVISE_RUN_CMD} "$name" || return $?
 
     local cur="${COMP_WORDS[CURRENT]}"
     local candidate_arr=(); local candidate_exec_arr=(); local candidate_nospace_arr=();

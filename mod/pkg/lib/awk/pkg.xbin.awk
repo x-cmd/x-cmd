@@ -1,5 +1,5 @@
 function print_binpath( binpath ){
-    print INSTALL_PATH "/" binpath
+    print binpath
     exit(0)
 }
 

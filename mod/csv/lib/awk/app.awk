@@ -4,12 +4,14 @@ function TABLE_CELL_DEF( rowid, colid, val ){   table_cell_def( o, TABLE_KP, row
 function TABLE_STATUSLINE_ADD( v, s, l ){       table_statusline_add(o, TABLE_KP, v, s, l);}
 
 BEGIN{
-    ___X_CMD_CSV_APP_WIDTH = ENVIRON[ "___X_CMD_CSV_APP_WIDTH" ]
-    ___X_CMD_CSV_APP_RET_STYLE = ENVIRON[ "___X_CMD_CSV_APP_RET_STYLE" ]
-    ___X_CMD_CSV_APP_IS_HIDE_INDEX = ENVIRON[ "___X_CMD_CSV_APP_IS_HIDE_INDEX" ]
-    ___X_CMD_CSV_APP_PREVIEW = ENVIRON[ "___X_CMD_CSV_APP_PREVIEW" ]
-    ___X_CMD_CSV_APP_TABLE_VIEW = ENVIRON[ "___X_CMD_CSV_APP_TABLE_VIEW" ]
-    ___X_CMD_CSV_APP_CELL_WIDTH_EXTRA = 3
+    ___X_CMD_CSV_APP_WIDTH              = ENVIRON[ "___X_CMD_CSV_APP_WIDTH" ]
+    ___X_CMD_CSV_APP_RET_STYLE          = ENVIRON[ "___X_CMD_CSV_APP_RET_STYLE" ]
+    ___X_CMD_CSV_APP_IS_HIDE_INDEX      = ENVIRON[ "___X_CMD_CSV_APP_IS_HIDE_INDEX" ]
+    ___X_CMD_CSV_APP_PREVIEW            = ENVIRON[ "___X_CMD_CSV_APP_PREVIEW" ]
+    ___X_CMD_CSV_APP_TABLE_VIEW         = ENVIRON[ "___X_CMD_CSV_APP_TABLE_VIEW" ]
+    ___X_CMD_CSV_APP_EXITCODE_NODATA    = ENVIRON[ "___X_CMD_CSV_APP_EXITCODE_NODATA" ]
+    ___X_CMD_CSV_APP_CELL_WIDTH_EXTRA   = 3
+
 
     ___X_CMD_CSV_APP_TABLE_WIDTH = tui_parse_width_num( ENVIRON[ "___X_CMD_CSV_APP_TABLE_WIDTH" ], COLS, 70, 30 )
     CSVAPP_POSITION = ENVIRON[ "___X_CMD_TUI_CSV_POSITION" ]
@@ -98,7 +100,9 @@ function user_table_data_set( o, kp, text, data_id,     arr, l, i, j, c, w, _cel
     l = CSV_DATA[ L ]
     c = CSV_DATA[ L L ]
     _width = tapp_canvas_colsize_get() - table_paint_necessary_cols(l)
-    if (l < 2) panic("The CSV data is empty.")
+
+    if (l < 2) panic("The CSV table is empty. Exiting the interactive application.", ___X_CMD_CSV_APP_EXITCODE_NODATA, "", "info")
+
     if (___X_CMD_CSV_APP_WIDTH != "") csv_parse_width(CSV_WIDTH, ___X_CMD_CSV_APP_WIDTH, _width, ",")
 
     _widths_l = CSV_WIDTH[L]

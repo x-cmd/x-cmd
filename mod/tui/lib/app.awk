@@ -70,8 +70,9 @@ function ___tapp_exit_screen_recover(){
 # EndSection
 
 # Section: exit and panic
-function panic( str, exitcode, exitcmd ){
+function panic( str, exitcode, exitcmd, logmode ){
     TUI_PANIC_EXIT = (exitcode != "") ? int(exitcode) : 1
+    TUI_PANIC_LOGMODE = (logmode != "") ? logmode : "error"
     TUI_PANIC_TEXT = str
     if ( exitcmd != "" ) FINALCMD = exitcmd
     exit(TUI_PANIC_EXIT)
@@ -106,7 +107,17 @@ END{
 
     printf("%s", UI_CURSOR_NORMAL UI_CURSOR_SHOW UI_LINEWRAP_ENABLE) >"/dev/stderr"
     tapp_handle_exit( TUI_PANIC_EXIT )
-    if (TUI_PANIC_TEXT != "") log_error("tui", TUI_PANIC_TEXT)
+    if (TUI_PANIC_TEXT != "") {
+        if (TUI_PANIC_LOGMODE == "info") {
+            log_info("tui", TUI_PANIC_TEXT)
+        } else if (TUI_PANIC_LOGMODE == "warn") {
+            log_warn("tui", TUI_PANIC_TEXT)
+        } else if (TUI_PANIC_LOGMODE == "debug") {
+            log_debug("tui", TUI_PANIC_TEXT)
+        } else {
+            log_error("tui", TUI_PANIC_TEXT)
+        }
+    }
 }
 # EndSection
 

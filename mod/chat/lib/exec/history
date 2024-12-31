@@ -14,7 +14,7 @@ ___x_cmd_chat___exec_repl_history_app(){
     ___x_cmd ui select ,cmd "Next"          \
         "Initialize repl history record"    \
         "Clear all repl history record"     \
-        "Continue the loop"    || return
+        "Continue the loop"    || return $?
 
     case "$cmd" in
         Clear*) ___x_cmd_chat___exec_repl_history_clear ;;
@@ -29,19 +29,23 @@ ___x_cmd_chat___exec_repl_history_clear(){
 
 ___x_cmd_chat___exec_repl_history_add(){
     local text="$1"
-    [ -n "$text" ] || return
+    [ -n "$text" ] || return $?
     local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
     ___x_cmd ensurefp "$fp"
     [ ! -f "$fp" ] || ___x_cmd mv "$fp" "${fp}.tmp"
-    printf "\001\002\003 %s\n" "$text" > "$fp"
-    [ ! -f "${fp}.tmp" ] || {
-        < "${fp}.tmp" text="$text" ___x_cmd_cmds awk -v RS='\001\002\003' '
-        BEGIN{ text = " " ENVIRON["text"] "\n"; }
-        (NR >= 5000){ exit(0); }
-        (($0 != "" ) && ($0 != text)){ printf("%s", RS $0) ; }
-        ' >> "$fp"
-        ___x_cmd rmrf "${fp}.tmp"
-    }
+    {
+        [ ! -f "${fp}.tmp" ] || ___x_cmd_cmds cat "${fp}.tmp"
+    } | text="$text" ___x_cmd_cmds awk -v RS='\001\002\003' '
+BEGIN{
+    text = ENVIRON["text"]
+    gsub( "(\\\\|[ \t\b\v\n])*$", "", text )
+    print RS " " text
+    text = " " text "\n"
+}
+(NR >= 5000){ exit(0); }
+(($0 != "" ) && ($0 != text)){ printf RS $0; }
+'   >> "$fp"
+    [ ! -f "${fp}.tmp" ] || ___x_cmd rmrf "${fp}.tmp"
 }
 
 ___x_cmd_chat___exec_repl_history_init(){
@@ -67,6 +71,7 @@ ___x_cmd_chat___exec_repl_history_init(){
         jiparse2leaf_fromfile( o, fp, fp )
         if ( ! cat_is_filenotfound() ) {
             text = str_trim(juq(o[ fp, "\"question\"" ]))
+            gsub( "(\\\\|[ \t\b\v\n])*$", "", text )
             if ( arr[ text ] != 1 ) {
                 arr[ text ] = 1
                 printf("\001\002\003 %s\n", text)
@@ -81,7 +86,7 @@ A
 
 ___x_cmd_chat___exec_repl_history_ls(){
     local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
-    [ -f "$fp" ] || ___x_cmd_chat___exec_repl_history_init || return
+    [ -f "$fp" ] || ___x_cmd_chat___exec_repl_history_init || return $?
     < "$fp" ___x_cmd_cmds awk '
         ($1 == "\001\002\003"){
             $1 = ""
@@ -92,9 +97,9 @@ ___x_cmd_chat___exec_repl_history_ls(){
 
 ___x_cmd_chat___exec_repl_history_get(){
     local id="$1"
-    [ -n "$id" ] || return
+    [ -n "$id" ] || return $?
     local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
-    [ -f "$fp" ] || return
+    [ -f "$fp" ] || return $?
 
     < "$fp" ___x_cmd_cmds awk -v id="$id" '
     ( $1 == "\001\002\003" ){
