@@ -33,7 +33,7 @@ function parse_busybox_ping(){
 
     byte = $1
     ip = $4
-    gsub( ":", "", ip )
+    gsub( /:$/, "", ip )
     # ... Find out the diffs ...
     seq         = trim_key( $(NF-3) )
     ttl         = trim_key( $(NF-2) )
@@ -52,7 +52,7 @@ function parse_win_ping(){
     if ( $0 ~ /Reply/ )     ip = $3
     else                    ip = $2
 
-    gsub( ":", "", ip )
+    gsub( /:$/, "", ip )
     byte        = trim_key( $(NF-2) )
     time        = trim_key( $(NF-1) )
     ttl         = trim_key( $NF )

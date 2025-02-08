@@ -3,16 +3,24 @@
 
 ___X_CMD_ADVISE_GEN_ADV_ERREXIT="${___X_CMD_UNSEENCHAR_001}${___X_CMD_UNSEENCHAR_002}${___X_CMD_UNSEENCHAR_003}"
 # useparam,name,synopsis,desc,exec,tldr,other,setup,tip,demo,subcmd,option,flag,[0-9]+,n
+___x_cmd_advise_gen_advise(){
+    local op="$1"
+    case "$op" in
+        useparam|exec|parse_adv_data|merge_awk)
+           shift; ___x_cmd_advise_gen_advise__"$op" "$@" ;;
+        *) ___x_cmd_advise_gen_advise__main "$@" ;;
+    esac
+}
 
 ___x_cmd_advise_gen_advise__useparam()(
     local mod_name="$1"
     local mod_path="$2"
-    [ -n "$mod_name" ] || M="Please provide mod name" arg:ret:64
-    [ -d "$mod_path" ] || M="Unexisted directory of path. [path=$mod_path]" arg:ret:64
+    [ -n "$mod_name" ] || N=advise M="Please provide mod name" log:ret:64
+    [ -d "$mod_path" ] || N=advise M="Unexisted directory of path. [path=$mod_path]" log:ret:64
     xrc:mod "$mod_name/latest" || return 1
     local main_func; main_func="$___X_CMD_XRC_SET_MAIN"
     [ "$main_func" != "${main_func%"$mod_name"}" ] || main_func="___x_cmd_$mod_name"
-    command -v "$main_func" >/dev/null || {
+    ___x_cmd hascmd "$main_func" || {
         advise:error "Not found set main function of $mod_name"
         return 1
     }
@@ -24,7 +32,7 @@ ___x_cmd_advise_gen_advise__useparam()(
 
 ___x_cmd_advise_gen_advise__exec()(
     local mod_path="$1"
-    arg:1:nonempty
+    [ -d "$mod_path" ] || N=advise M="Unexisted directory of path. [path=$mod_path]" log:ret:64
     shift
     ___x_cmd_cmds_cd "$mod_path" || return 1
     log:sub:init  -i gen_advise advise 'Executing'
@@ -47,14 +55,15 @@ ___x_cmd_advise_gen_advise__parse_adv_data(){
 
     local mod_name="$1"
     local mod_path="$2"
-    [ -n "$mod_name" ] || M="Please provide mod name" arg:ret:64
-    [ -d "$mod_path" ] || M="Unexisted directory of path. [path=$mod_path]" arg:ret:64
+    [ -n "$mod_name" ] || N=advise M="Please provide mod name" log:ret:64
+    [ -d "$mod_path" ] || N=advise M="Unexisted directory of path. [path=$mod_path]" log:ret:64
     local adv_data="$mod_path/adv/data"
     local res_data="$___X_CMD_ROOT_ADV/$mod_name/data"
+    local res_cookbook="$___X_CMD_ROOT_CODE/cookbook/mod/$mod_name"
     [ -d "$adv_data" ] || return 0
-    ___x_cmd rmrf "$res_data"
+    ___x_cmd rmrf "$res_data" "$res_cookbook"
 
-    command find "$adv_data" | while read -r datafile; do
+    ___x_cmd_cmds find "$adv_data" -type f | while read -r datafile; do
         tagfile="${datafile#*"$adv_data/"}"
         [ "$tagfile" != "$datafile" ] || continue
         [ -f "$datafile" ] || continue
@@ -64,13 +73,23 @@ ___x_cmd_advise_gen_advise__parse_adv_data(){
                     advise:debug "Generate $mod_name data/${tagfile%.yml*}.jso from adv/data/$tagfile"
                     < "$datafile" ___x_cmd scotty yml y2j | ___x_cmd_advise_gen_advise__merge_awk "$build_dev" > "$res_data/${tagfile%.yml*}.jso"
                     ;;
-            *)      [ -n "$build_dev" ] || {
-                        advise:warn "Not supported in normal mode ==> $datafile"
+            */desc.*md)
+                    [ -n "$build_dev" ] || {
+                        advise:debug "Not supported in normal mode ==> $datafile"
                         continue
                     }
                     ___x_cmd ensurefp "$res_data/$tagfile"
-                    advise:info "Copy $datafile"
+                    advise:info "Copy $datafile -> $res_data/$tagfile"
                     ___x_cmd_cmds_cp "$datafile" "$res_data/$tagfile"
+                    ;;
+            *)      [ -n "$build_dev" ] || {
+                        advise:debug "Not supported in normal mode ==> $datafile"
+                        continue
+                    }
+                    tagfile="$res_cookbook/$tagfile"
+                    ___x_cmd ensurefp "$tagfile"
+                    advise:info "Copy $datafile -> $tagfile"
+                    ___x_cmd cp "$datafile" "$tagfile"
                     ;;
         esac
     done
@@ -92,8 +111,7 @@ abstract"
     -f "$___X_CMD_ROOT_MOD/advise/lib/awk/gen.advise/build_merge.awk"
 }
 
-___x_cmd_advise_gen_advise(){
-    arg:init advise
+___x_cmd_advise_gen_advise__main(){
     local build_dev=
     case "$1" in
         --dev) build_dev=1; shift ;;
@@ -101,13 +119,13 @@ ___x_cmd_advise_gen_advise(){
 
     local mod_name="$1"
     local mod_path="$2"
-    [ -n "$mod_name" ] || M="Please provide mod name" arg:ret:64
-    [ -d "$mod_path" ] || M="Unexisted directory of path. [path=$mod_path]" arg:ret:64
+    [ -n "$mod_name" ] || N=advise M="Please provide mod name" log:ret:64
+    [ -d "$mod_path" ] || N=advise M="Unexisted directory of path. [path=$mod_path]" log:ret:64
 
     local adv_dir="$mod_path/adv"
     local index_yml="$adv_dir/index.yml"
 
-    [ -f "$index_yml" ] || M="Not found $adv_dir/index.yml" arg:ret:64
+    [ -f "$index_yml" ] || N=advise M="Not found $adv_dir/index.yml" log:ret:64
 
     local resource;             resource="$___X_CMD_ROOT_ADV/$mod_name";
     ___x_cmd rmrf "$resource";  ___x_cmd mkdirp "$resource"
@@ -148,46 +166,3 @@ ___x_cmd_advise_gen_advise(){
         return 1
     fi
 }
-
-# Section: x-cmd-advise test
-___x_cmd_advise___install_xcmd_dir(){
-    local dir="${1:-$PWD}"
-    local name="$2";
-    [ -n "$name" ] || name="$(basename "$dir")"
-    ___x_cmd_advise___install_xcmd_dir_ "$name" "$dir"
-    ___x_cmd_advise_man_load___xcmd_one "$name"
-}
-
-___x_cmd_advise___install_xcmd_dir_()(
-    local name="$1"
-    local dir="${2:-$PWD}"
-    [ -n "$name" ] || M='Provide command name' N=advise log:ret:64
-    [ -d "$dir" ] || M='Provide x-cmd-advise directory' N=advise log:ret:64
-    ___x_cmd_cmds_cd "$dir" || return $?
-
-    local folder="${3:-"$___X_CMD_ADVISE_MAN_XCMD_FOLDER"}/$name";
-    ___x_cmd rmrf "$folder"
-    ___x_cmd mkdirp "$folder"
-    [ -f advise.yml ] || N=advise M="Not found advise.yml" log:ret:1
-    ____x_cmd_advise___install_y2j advise.yml > "$folder/advise.t.jso" || return $?
-    [ ! -f advise.util ] || ___x_cmd_cmds_cp advise.util "$folder"
-
-    command find _ lib data -type f -name '*advise.yml' 2>/dev/null | while read -r line; do
-        dst="$folder/${line%.yml}.t.jso"
-        ___x_cmd ensurefp "$dst"
-        advise:debug "Install $line => $dst"
-        ____x_cmd_advise___install_y2j "$line" > "$dst" || return $?
-    done
-)
-
-____x_cmd_advise___install_y2j(){
-    [ -f "$1" ] || return $?
-    local tmp="$___X_CMD_ROOT_TMP/advise/tmp.jso";  ___x_cmd ensurefp "$tmp"
-    ___x_cmd scotty yml y2j "$1" > "$tmp" || {
-        x:error "Failed $1 yml to json"
-        return 1
-    }
-    < "$tmp" ___x_cmd_advise_gen_advise__merge_awk # | ___x_cmd jo
-}
-
-# EndSection

@@ -1,0 +1,63 @@
+
+___x_cmd_pkgx_ls(){
+    ___x_cmd_pkgx_ls___auto "$@"
+}
+
+___x_cmd_pkgx_ls___auto(){
+    if ___x_cmd_is_stdout2tty; then
+        ___x_cmd_pkgx_ls___fzf
+    else
+        ___x_cmd_pkgx_ls___name
+    fi
+}
+
+___x_cmd_pkgx_ls___raw(){
+    [ -d "$___X_CMD_PKGX_CACHE_PATH" ] || ___x_cmd_pkgx___cmd pkgx 2>/dev/null
+    ___x_cmd_cmds find "$___X_CMD_PKGX_CACHE_PATH/pantry/projects" -name "package.yml" | \
+        ___x_cmd awk -F 'projects/|/package.yml' '{print $2}'
+}
+
+___x_cmd_pkgx_ls___fzf(){
+    local data; data="$( ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe pkgx --fzdata )" || return $?
+
+    pkgx:info "Package selected ->   $data"
+    ___x_cmd_pkgx___pkginfo "$data"
+}
+
+___x_cmd_pkgx_ls___fz_data(){
+    # left is the list of package
+    # right is the api for the package version and description
+    ___x_cmd_pkgx_ls___name | \
+        ___x_cmd fzf --ansi --height 90% --layout=reverse \
+            --preview='___x_cmdexe pkgx --pkginfo {1}'
+
+}
+
+___x_cmd_pkgx_ls___name(){
+   ___x_cmd ccmd -- ___x_cmd_pkgx_ls___raw | ___x_cmd awk -F'/' '{print $NF}'
+}
+
+___x_cmd_pkgx_ls___name_project_(){
+    x_="$(
+        ___x_cmd ccmd -- ___x_cmd_pkgx_ls___raw | ___x_cmd awk -v name="$1" '{
+            tmp = $0
+            sub(/.*\//, "", tmp)
+            if (tmp == name) {
+                print $0
+                exit 0
+            }
+        }'
+    )"
+}
+
+___x_cmd_pkgx___pkginfo(){
+    local name="$1"
+    local x_=; ___x_cmd_pkgx_ls___name_project_ "$name"
+
+    # https://docs.pkgx.sh/appendix/packaging/pantry-api
+    # dist.pkgx.dev/<PKG>/versions.txt
+    printf "latest_version: %s\n" "$(___x_cmd curl -fs "https://dist.pkgx.dev/$x_/versions.txt" | ___x_cmd awk 'END { print last } { last = $0 }' )"
+
+    ___x_cmd_cmds cat "$___X_CMD_PKGX_CACHE_PATH/pantry/projects/$x_/package.yml"
+}
+

@@ -4,8 +4,7 @@
 # license:      AGPLv3
 
 # Section 0: Prepare source 0
-
-# source only once.
+# sourced only once.
 [ -z "$___X_CMD_ROOT_MOD" ] || {
     ___X_CMD_DEUBG_MSG_LAST="skip because ___X_CMD_ROOT_MOD is set ==> $___X_CMD_ROOT_MOD"
     return 0
@@ -19,51 +18,24 @@ if alias x >/dev/null 2>&1; then
     }
 fi
 
-# Section 0: get ___X_CMD_SHELL and TMPDIR
-___x_cmd_readlink_recursive_(){
-    if [ -L "${1:?Provide link}" ]; then
-        local next_link
-        next_link="$(readlink "${1}")" || return $?
-        if [ "${next_link#/}" = "$next_link" ]; then
-            next_link="$(dirname "${1}")/$next_link"
-        fi
-        ___x_cmd_readlink_recursive_ "$next_link"
-    else
-        [ ! -e "${1}" ] && return 1        # File Not Exists
-        ___X_CMD_READLINK_RECURSIVE_="$1"
-    fi
-}
-
-# Variables defined with the alias can only be used after this point.
 if [ -n "$BASH_VERSION" ]; then
     ___X_CMD_SHELL=bash
     shopt -s expand_aliases
+    export BASH_SILENCE_DEPRECATION_WARNING=1
 elif [ -n "$ZSH_VERSION" ]; then
     ___X_CMD_SHELL=zsh
-    # The same as 'shopt -s expand_aliases' in bash, refer: https://stackoverflow.com/questions/23258413/expand-aliases-in-non-interactive-shells
+    TIMEFMT=$'\nreal\t%E\nuser\t%U\nsys\t%S'
+    trap -- ':' INT
     setopt aliases
     zmodload zsh/system
-    # for pidofsubshell acceleration. not necessary.
-    # <topic:opt/>
-    # <topic:zsh/>
-    # NOTICE: for restricted shell, this might be a problem
 elif [ -n "$KSH_VERSION" ]; then
     case "$KSH_VERSION" in
-        *PD\ KSH*)
-            ___X_CMD_SHELL=ksh
-            # This is the ksh that can run x-bash
-            ;;
-        *)
-            # x(){
-            #     :
-            # }
-            # Only support the xbin, not x-cmd
-            printf "%s\n" "- E|x: Unsupported this shell"
-            return 1
-            ;;
+        *PD\ KSH*)      ___X_CMD_SHELL=ksh ;;
+        *)              printf "%s\n" "- E|x: Unsupported this shell"
+                        return 1 ;;
     esac
-    # ___X_CMD_SHELL=ksh
-    # alias local=typeset
+    ___X_CMD_SHELL=ksh
+    alias local=typeset
 else
     # Just to decide it is dash or ash
     if [ "$RANDOM" = "$RANDOM" ]; then      ___X_CMD_SHELL=dash
@@ -72,10 +44,16 @@ else
 fi
 ___X_CMD_CUR_SHELL="${___X_CMD_SHELL:-sh}"      # TODO: will remove
 
-[ -n "$TMPDIR" ] || TMPDIR="${TEMP:-"$(dirname "$(mktemp -u)")"}/"      # It is posix standard. BUT NOT set in some cases.
+[ -n "$TMPDIR" ] || {
+    if [ -w /tmp ]; then
+        TMPDIR=/tmp
+    else
+        TMPDIR="${TEMP:-"$(dirname "$(mktemp -u)")"}/"      # It is posix standard. BUT NOT set in some cases.
+    fi
+}
 # EndSection
 
-
+# Section 1: alias
 ___x_cmd_help_ret(){
     eval ___x_cmd help -m "${M}"
     return 1
@@ -113,42 +91,6 @@ case "$1" in
 esac
 '
 
-___x_cmd_ensurefp(){
-    if [ "$#" -eq 0 ]; then
-        local srcfile; while read -r srcfile; do
-            case "$srcfile" in
-                */*)        [ -d "${srcfile%/*}" ] || ___x_cmd_cmds_mkdir -p "${srcfile%/*}" || return 1
-            esac
-        done
-        return
-    else
-        while [ $# -gt 0 ]; do
-            case "$1" in
-                */*)        [ -d "${1%/*}" ] || ___x_cmd_cmds_mkdir -p "${1%/*}" || return 1
-            esac
-            shift
-        done
-    fi
-}
-
-
-___x_cmd_touch(){
-    if [ "$#" -eq 0 ]; then
-        local srcfile
-        while read -r srcfile; do
-            [ "$srcfile" = "${srcfile%/*}" ] || [ -d "${srcfile%/*}" ] || ___x_cmd_cmds_mkdir -p "${srcfile%/*}" || return 1
-            ___x_cmd_cmds_touch "$srcfile"
-        done
-    else
-        while [ $# -gt 0 ]; do
-            [ "$1" = "${1%/*}" ] || [ -d "${1%/*}" ] || ___x_cmd_cmds_mkdir -p "${1%/*}" || return 1
-            ___x_cmd_cmds_touch "$1"
-            shift
-        done
-    fi
-}
-
-
 ___x_cmd_unexport(){
     local x_
     local code=
@@ -159,6 +101,30 @@ ___x_cmd_unexport(){
     eval "$code"
 }
 
+___x_cmd_xrc___unexport(){
+    # ___x_cmd_unexport ___X_CMD_VERSION ___X_CMD_ROOT ___X_CMD_ROOT_MOD ___X_CMD_ROOT_CODE \
+    #                         ___X_CMD_XBINEXP_FP ___X_CMD_IS_INTERACTIVE_FORCE ___X_CMD_THEME_RELOAD_DISABLE
+
+    local ___X_CMD_VERSION_BAK="$___X_CMD_VERSION"
+    local ___X_CMD_ROOT_BAK="$___X_CMD_ROOT"
+    local ___X_CMD_ROOT_MOD_BAK="$___X_CMD_ROOT_MOD"
+    local ___X_CMD_ROOT_CODE_BAK="$___X_CMD_ROOT_CODE"
+    local ___X_CMD_XBINEXP_FP_BAK="$___X_CMD_XBINEXP_FP"
+    local ___X_CMD_IS_INTERACTIVE_FORCE_BAK="$___X_CMD_IS_INTERACTIVE_FORCE"
+    local ___X_CMD_THEME_RELOAD_DISABLE_BAK="$___X_CMD_THEME_RELOAD_DISABLE"
+
+    unset ___X_CMD_VERSION ___X_CMD_ROOT ___X_CMD_ROOT_MOD ___X_CMD_ROOT_CODE \
+                            ___X_CMD_XBINEXP_FP ___X_CMD_IS_INTERACTIVE_FORCE ___X_CMD_THEME_RELOAD_DISABLE
+
+    ___X_CMD_VERSION="$___X_CMD_VERSION_BAK"
+    ___X_CMD_ROOT="$___X_CMD_ROOT_BAK"
+    ___X_CMD_ROOT_MOD="$___X_CMD_ROOT_MOD_BAK"
+    ___X_CMD_ROOT_CODE="$___X_CMD_ROOT_CODE_BAK"
+    ___X_CMD_XBINEXP_FP="$___X_CMD_XBINEXP_FP_BAK"
+    ___X_CMD_IS_INTERACTIVE_FORCE="$___X_CMD_IS_INTERACTIVE_FORCE_BAK"
+    ___X_CMD_THEME_RELOAD_DISABLE="$___X_CMD_THEME_RELOAD_DISABLE_BAK"
+}
+
 {
     ___X_CMD_ROOT="${___X_CMD_ROOT:-$HOME/.x-cmd.root}"
 
@@ -167,10 +133,56 @@ ___x_cmd_unexport(){
     esac
 
     ___X_CMD_ROOT_CODE="${___X_CMD_ROOT_CODE:-$___X_CMD_ROOT/v/$___X_CMD_VERSION}"
-    . "$___X_CMD_ROOT_CODE/mod/xrc/lib/root"
 
-    ___x_cmd_unexport ___X_CMD_VERSION ___X_CMD_ROOT ___X_CMD_ROOT_MOD ___X_CMD_ROOT_CODE \
-                            ___X_CMD_XBINEXP_FP ___X_CMD_IS_INTERACTIVE_FORCE ___X_CMD_THEME_RELOAD_DISABLE
+    # running instance
+___x_cmd_root_set(){
+    ___X_CMD_ROOT_V="${___X_CMD_ROOT_V:-"${___X_CMD_ROOT}/v"}"
+    # ___X_CMD_ROOT_V="${___X_CMD_ROOT}/v"
+    # TODO: Remove ___X_CMD_ROOT_V_VERSION
+    ___X_CMD_ROOT_V_VERSION="${___X_CMD_ROOT_V}/${___X_CMD_VERSION}"
+    ___X_CMD_ROOT_METADATA="${___X_CMD_ROOT_CODE}/.x-cmd/metadata"
+
+    ___X_CMD_ROOT_MOD="${___X_CMD_ROOT_CODE}/mod"
+    ___X_CMD_ROOT_ADV="${___X_CMD_ROOT_CODE}/adv"
+    ___X_CMD_ROOT_EXTMETA="${___X_CMD_ROOT_CODE}/extmeta"
+
+    # ___X_CMD_ROOT_MOD="${___X_CMD_ROOT_MOD:-${___X_CMD_ROOT_V_VERSION}/mod}"
+
+    ___X_CMD_ROOT_AWKLIB="${___X_CMD_ROOT_MOD}/awk/lib"
+
+    ___X_CMD_ROOT_CTRL="${___X_CMD_ROOT}/ctrl"          # Deprecated
+    ___X_CMD_ROOT_BOOT="${___X_CMD_ROOT}/boot"
+    ___X_CMD_ROOT_GLOBAL="${___X_CMD_ROOT}/global"
+    ___X_CMD_ROOT_LOCAL="${___X_CMD_ROOT}/local"        # Containr using mapping
+
+    # Global config is the default config. The local config store senstive data.
+    ___X_CMD_ROOT_CFG="${___X_CMD_ROOT_LOCAL}/cfg";         ___X_CMD_ROOT_GCFG="${___X_CMD_ROOT_GLOBAL}/cfg"
+
+    # This data will never be gc for app have full control of it.
+    ___X_CMD_ROOT_DATA="${___X_CMD_ROOT_LOCAL}/data";       ___X_CMD_ROOT_GDATA="${___X_CMD_ROOT_GLOBAL}/data"
+
+    # The log and art, shall never shared. There is global GC for it. It is the result of running X app.
+    ___X_CMD_ROOT_ART="${___X_CMD_ROOT_LOCAL}/art"
+    ___X_CMD_ROOT_LOG="${___X_CMD_ROOT_LOCAL}/log"
+
+    # CACHE might be categoized to data.
+    ___X_CMD_ROOT_CACHE="${___X_CMD_ROOT_LOCAL}/cache"      # Have a specified timeout
+    ___X_CMD_ROOT_TMP="${___X_CMD_ROOT_LOCAL}/tmp";         # Shall be deleted once exited
+
+    ___X_CMD_ROOT_SHARED="${___X_CMD_ROOT_GLOBAL}/shared"
+    ___X_CMD_ROOT_VCACHE="${___X_CMD_ROOT_GLOBAL}/vcache/${___X_CMD_VERSION}"          # This could be just use SHARED instead.
+
+    # Might be deprecated
+    # This is for the login user.
+    ___X_CMD_ROOT_USR="${___X_CMD_ROOT_LOCAL}/usr"
+}
+
+___x_cmd_root_set DEFAULT
+
+}
+
+{
+    ___x_cmd_xrc___unexport
 }
 
 ___x_cmd_source_invoke(){
@@ -204,7 +216,7 @@ alias xrc:mod:lib=___x_cmd_source_inner_lib
 
 # EndSection
 
-# Section 1: special chars
+# Section 2: special chars
 ___X_CMD_UNSEENCHAR_001=""
 ___X_CMD_UNSEENCHAR_002=""
 ___X_CMD_UNSEENCHAR_003=""
@@ -226,22 +238,7 @@ ___X_CMD_UNSEENCHAR_NEWLINE="
 "
 # EndSection
 
-# Section 1: get ___X_CMD_SHELL and TMPDIR
-
-___x_cmd_followlink(){
-    local x_
-    ___x_cmd_followlink_ "$@" || return $?
-    printf "%s\n" "$x_"
-}
-
-___x_cmd_followlink_(){
-    x_=""
-    ___x_cmd_readlink_recursive_ "$@" || return $?
-    x_="$___X_CMD_READLINK_RECURSIVE_"
-}
-# EndSection
-
-# Section 2: xrc: util,ldict
+# Section 3: xrc: util
 xrc:mod log/latest
 ___x_cmd_log init x
 
@@ -257,44 +254,37 @@ alias panic:return='eval "___x_cmd_panic___loginner && return"'
 alias panic:exit='eval "___x_cmd_panic___loginner && exit"'
 
 ___x_cmd_panic___loginner(){ ___x_cmd log ":${N:-x}" "${L:-error}" "$M"; }
-xrc:mod:lib xrc    runmode functor first inner/index inner/whichbin cmds/_index lazy util ldict/posix shgen shcode batcode exitcode which compat/_index
+xrc:mod:lib xrc    util
 
-___x_cmd_mkdirp(){
-    if [ "$#" -eq 0 ]; then
-        local srcdir; while read -r srcdir; do
-            [ -d "${srcdir}" ]  || ___x_cmd_cmds_mkdir -p "$srcdir"   || return 1
-        done
-    else
-        while [ $# -gt 0 ]; do
-            [ -d "${1}" ] || {
-                ___x_cmd_cmds_mkdir -p "$@" || return 1
-                return
-            }
-            shift
-        done
-    fi
-}
-
-___x_cmd_mkdirp "$___X_CMD_ROOT_TMP" || return 1 || exit 1
+[ -d "$___X_CMD_ROOT_TMP" ] ||  ___x_cmd_cmds_mkdir -p "$___X_CMD_ROOT_TMP" || return 1 || exit 1
 
 # EndSection
 
 # Section 4: main entrance helper: cat, source_file
-___x_cmd_xrc_set_main(){
-    ___X_CMD_XRC_SET_MAIN="${1:?Provide function}"
+
+case "$BASH_VERSION" in
+    3.*|"")
+        if [ -z "$ZSH_VERSION" ]; then
+___x_cmd_loadedmod_put(){
+    eval "___X_CMD_MOD_LOADED___${1}=\"\$2\""
 }
 
-___x_cmd_xrc_cat(){
-    while [ $# -ne 0 ]; do
-        local ___X_CMD_LOCAL_XRCPATH="$1";   shift
+___x_cmd_loadedmod_get_(){
+    eval "x_=\"\$___X_CMD_MOD_LOADED___${1}\""
+}
 
-        if ! ___X_CMD_NO_LOCAL=1 ___x_cmd_which_one "$___X_CMD_LOCAL_XRCPATH"; then
-            printf "ERROR: Interrupted because resource not found. %s \n" "$___X_CMD_LOCAL_XRCPATH" >&2
-            return 1
-        fi
+___x_cmd_loadedmod_has(){
+    eval "[ -z \"\$___X_CMD_MOD_LOADED___${1}\" ]"
+}
+        else
+            .  "${___X_CMD_ROOT_MOD}/xrc/lib/loadedmod_bash"
+        fi ;;
+    *)
+        .  "${___X_CMD_ROOT_MOD}/xrc/lib/loadedmod_bash" ;;
+esac
 
-        ___x_cmd_cmds_cat "$___X_CMD_WHICH_ONE_RESULT"
-    done
+___x_cmd_xrc_set_main(){
+    ___X_CMD_XRC_SET_MAIN="${1:?Provide function}"
 }
 
 ___x_cmd_xrc_import(){
@@ -302,42 +292,18 @@ ___x_cmd_xrc_import(){
 }
 
 ___x_cmd_xrc_source_file(){
-    local ___X_CMD_WHICH_ONE_NAMING
-    local ___X_CMD_WHICH_ONE_RESULT
-    local ___X_CMD_LOCAL_XRCPATH
-
+    local mod
     while [ $# -ne 0 ]; do
-        ___X_CMD_LOCAL_XRCPATH="$1";   shift
-
-        ___X_CMD_NO_LOCAL=1 ___x_cmd_which_one_with_naming "$___X_CMD_LOCAL_XRCPATH" || {
-            local code=$?
-            x:error "resource not found. ___x_cmd_xrc_source_file() abort ==> $___X_CMD_LOCAL_XRCPATH"
-            return "$code"
-        }
-
-        # Ask whether using http or outside resource.
-        if [ "$___X_CMD_WHICH_ONE_RESOURCE_TYPE" = http ] && [ -z "$NOWARN" ]; then
-
-            # We should do it before ___x_cmd_which_one
-            printf "Sourcing script from untrusted location: %s\n" "$___X_CMD_LOCAL_XRCPATH"
-            ___x_cmd_cmds_cat >&2 <<A
-SECURITY WARNING! Sourcing script from untrusted location: $___X_CMD_WHICH_ONE_RESULT
-If you confirm this script is secure and want to skip this warning for some purpose, use the following code.
-> NOWARN=1 xrc "$___X_CMD_LOCAL_XRCPATH"
-A
-            printf "Input yes to continue. Otherwise exit > " >&2
-            local ___X_CMD_LOCAL_INPUT
-            read -r ___X_CMD_LOCAL_INPUT
-
-            if [ "$___X_CMD_LOCAL_INPUT" != "yes" ]; then
-                ___x_cmd_cmds_rm "$___X_CMD_WHICH_ONE_RESULT"
-                printf "%s\n" "Exit because of a non yes output received: $___X_CMD_LOCAL_INPUT" >&2
-                printf "%s\n" "return 1"
-                return 1
-            fi
-        fi
-
-        ___x_cmd_xrc_source_file_main "$___X_CMD_WHICH_ONE_RESULT"
+        mod="$1";   shift
+        case "$mod" in
+            /*)     x:warn "Deprecated directly loading -> $mod"
+                    ___x_cmd_xrc_source_file_main "$mod"
+                    ;;
+            */*)    x:warn "Deprecated directly loading -> $mod"
+                    ___x_cmd_xrc_source_file_main "$___X_CMD_ROOT_MOD/$mod"
+                    ;;
+            *)      ___x_cmd_xrc_source_file_main "$___X_CMD_ROOT_MOD/$mod/latest" "$mod" ;;
+        esac
     done
 }
 
@@ -349,29 +315,38 @@ ___x_cmd_xrc_source_file_main_define_by_setmain(){
         }"
 
         if ___x_cmd_is_suitable_advise_repl && [ -n "$___X_CMD_XRC_SET_MAIN" ] && [ -n "$___X_CMD_WHICH_ONE_NAMING" ] ; then
-            ___x_cmd_advise init "$___X_CMD_WHICH_ONE_NAMING"
+            ___x_cmd advise init "$___X_CMD_WHICH_ONE_NAMING"
         fi
     fi
 }
 
 ___x_cmd_xrc_source_file_main_(){
-    ___X_CMD_WHICH_ONE_RESULT="${1:?Provide exact file}"
+    local fp="${1:?Provide exact file}"
+    local key="${2}"
 
-    # Add the transformation here: if the value of ___X_CMD_WHICH_ONE_RESULT is started by $___X_CMD_ROOT_MOD, using % to replace it.
-    local x_dict_key="${___X_CMD_WHICH_ONE_RESULT#"${___X_CMD_ROOT_MOD}"}"
-    [ "${x_dict_key}" = "$___X_CMD_WHICH_ONE_RESULT" ] || x_dict_key="%${x_dict_key}"
+    if [ -z "$key" ]; then
+        ___x_cmd_source_invoke "$fp"
+        ___X_CMD_XRC_SOURCE_FILE_MAIN_="$___X_CMD_XRC_SET_MAIN"
+        return
+    fi
 
+    local x_
     if [ -z "$___X_CMD_XRC_RELOAD" ]; then
-        ___x_cmd_ldict_get_ ___X_CMD_XRC_SET_MAIN_DICT "${x_dict_key}" || true
-        ___X_CMD_XRC_SOURCE_FILE_MAIN_="$___X_CMD_LDICT_GET_"
+        ___x_cmd_loadedmod_get_ "$key"
+        ___X_CMD_XRC_SOURCE_FILE_MAIN_="$x_"
         [ -z "$___X_CMD_XRC_SOURCE_FILE_MAIN_" ] || return 0
+        [ 1 != "$___X_CMD_XRC_SOURCE_FILE_MAIN_" ] || {
+            x:warn "Loading mod is invoking itself -> $key";
+            return 0
+        }
     fi
 
     local ___X_CMD_XRC_SET_MAIN
-    ___x_cmd_source_invoke "$___X_CMD_WHICH_ONE_RESULT"
+    ___x_cmd_loadedmod_put "${key}" 1
+    ___x_cmd_source_invoke "$fp"
 
     if [ -n "$___X_CMD_XRC_SET_MAIN" ]; then
-        ___x_cmd_ldict_put ___X_CMD_XRC_SET_MAIN_DICT "${x_dict_key}" "${___X_CMD_XRC_SET_MAIN}"
+        ___x_cmd_loadedmod_put "${key}" "${___X_CMD_XRC_SET_MAIN}"
         ___X_CMD_XRC_SOURCE_FILE_MAIN_="$___X_CMD_XRC_SET_MAIN"
     fi
 }
@@ -397,127 +372,65 @@ ___x_cmd_xrc_source_file_main(){
 
 # Section 5: main entrance
 
-___x_cmd_xrc_reset(){
-    ___x_cmd_unexport ___X_CMD_ROOT_MOD
-    if [ -n "$SHELL" ]; then                            exec "$SHELL"
-    elif [ -f "/bin/$___X_CMD_SHELL" ]; then            exec "/bin/$___X_CMD_SHELL"
-    elif [ -f "/usr/bin/$___X_CMD_SHELL" ]; then        exec "/usr/bin/$___X_CMD_SHELL"
-    fi
-}
-
 # shellcheck disable=SC1091
 xrc(){
     local IFS=" $___X_CMD_UNSEENCHAR_NEWLINE"
     [ $# -eq 0 ] && set -- ""
     local subcmd="$1";  shift
     case "$subcmd" in
-        cat)
-            if [ $# -gt 0 ]; then
-                ___x_cmd_xrc_cat "$@"
-                return
-            fi
-            ___x_cmd_cmds_cat "$___X_CMD_ROOT_MOD/xrc/lib/help/cat.txt" >&2
-            return 1
-            ;;
-        which)
-            if [ $# -gt 0 ]; then
-                ___X_CMD_NO_LOCAL=1 ___x_cmd_which_one "$@"
-                printf "%s" "$___X_CMD_WHICH_ONE_RESULT"
-                return
-            fi
-            ___x_cmd_cmds_cat "$___X_CMD_ROOT_MOD/xrc/lib/help/which.txt" >&2
-            return 1
-            ;;
+        cat|which|reset|reload)
+                                xrc:mod xrc/lib/xrc/"$subcmd"
+                                ___x_cmd_xrc_"$subcmd"  "$@"
+                                ;;
+
         "")                     ___x_cmd help -m xrc >&2; return 64 ;;
         help|-h|--help)         ___x_cmd help -m xrc ;;
+
         root)                   printf "%s" "$___X_CMD_ROOT" ;;
         --ls)                   ___x_cmd_cmds_ls "$___X_CMD_ROOT_MOD" ;;                      # If tar.gz, using tar ls. If folder, ls $folder
         setmain)                ___x_cmd_xrc_set_main "$@" ;;
-        reload)                 xrc:mod xrc/lib/reload && ___x_cmd_reload "$@" ;;
-        reset)                  ___x_cmd_xrc_reset ;;
+
         *)                      ___x_cmd_xrc_source_file "$subcmd" "$@";    return $?
     esac
 }
 # EndSection
 
-xrc path
-___X_CMD_ROOT_BIN="${___X_CMD_ROOT}/bin"
-[ -d "$___X_CMD_ROOT_BIN" ] || ___x_cmd_mkdirp "$___X_CMD_ROOT_BIN"
-___x_cmd_path_add_existed_folder "$___X_CMD_ROOT_BIN" "$___X_CMD_ROOT_MOD/x-cmd/lib/bin"
-___x_cmd_path_down_or_push "$___X_CMD_ROOT_DATA/triarii/bin"
+xrc arg
 
-
-# Section 6: initialization: x, xws, +, websrc, advise
-
-# This is dangerous
-xrc httpget
 xrc:mod x-cmd/latest
 
-xrc websrc; ___x_cmd_websrc load
+___x_cmd___bootfast(){
+    ___X_CMD_ROOT_BIN="${___X_CMD_ROOT}/bin"
+    [ -d "$___X_CMD_ROOT_BIN" ] || ___x_cmd_cmds_mkdir -p "$___X_CMD_ROOT_BIN" || return 1 || exit 1
+    PATH="${___X_CMD_ROOT_BIN}:${PATH}"
 
-
-[ ! -f "$___X_CMD_ROOT_BOOT/pixi" ] || ___x_cmd pixi --addpath
-
-# EndSection
-
-[ -z "$BASH_VERSION" ] || export BASH_SILENCE_DEPRECATION_WARNING=1
-
-# curl(){
-#     if x hascmd curl; then
-#         command curl "$@"
-#     else
-#         x curl "$@"
-#     fi
-# }
-
-
-___x_cmd_bootrc_run(){
-    [ -d "$___X_CMD_ROOT/bootrc" ] || return 0
-    local i
-    for i in "$___X_CMD_ROOT/bootrc"/*; do
-        [ -f "$i" ] || return 0
-        . "$i"
-    done
+    ___x_cmd_pkgbootfast
+    [ ! -f "$___X_CMD_ROOT_BOOT/pixi" ]     ||      PATH="${PATH}:$HOME/.pixi/bin"      # ___x_cmd pixi --addpath
+    # TODO: pkgx, asdf, mise ...
 }
 
-if ___x_cmd_is_repl; then
-    ___X_CMD_RUNMODE="${___X_CMD_RUNMODE:-"$___X_CMD_RUNMODE_CHATTY"}"
+___x_cmd___bootfast
+case "$PATH" in
+    *:$___X_CMD_ROOT_DATA/triarii/bin)              ___x_cmd __pathuniq ;;
+    *:$___X_CMD_ROOT_DATA/triarii/bin:*)            ___x_cmd __pathuniq ;;
+    *)                                              PATH="${PATH}:$___X_CMD_ROOT_DATA/triarii/bin" ;;
+esac
 
-    # Adding theme boot code here ...
-    xrc:mod theme/lib/boot/theme.load
-
-    # putting the boot code into the xrc
-    xrc pkg/latest
-    xrc:mod boot/latest
-    ___x_cmd_boot_rc  load
-    ___x_cmd_boot_mod load
-
-    # introduce alias
-    if [ -n "$ZSH_VERSION" ]; then
-        alias -- +=___x_cmd_xrc_import
+{
+    {
+___x_cmd_websrc_load(){
+    local fp="${___X_CMD_ROOT_CFG}/websrc/region.setup.sh"
+    if [ -f "$fp" ]; then
+        . "$fp"
     else
-        alias "+=___x_cmd_xrc_import"
+        fp="${___X_CMD_ROOT_GCFG}/websrc/region.setup.sh"
+        [ -f "$fp" ] || ___x_cmd websrc set default -g
+        . "$fp"
     fi
+}
+___x_cmd_websrc_load
+}
+}
 
-    xrc:mod xrc/lib/rcshortcut
 
-    ___x_cmd_bootrc_run
-fi
-
-if [ -n "$ZSH_VERSION" ]; then
-    if ___x_cmd_is_repl; then
-        trap '
-        case "$0" in
-            zsh)        return 130 ;;
-            -zsh)       return 130 ;;
-            _zsh*)      return 130 ;;
-            */zsh)      return 130 ;;
-            */zsh.exe)  return 130 ;;
-        esac
-        ' INT              # Experimental, change the zsh default behavior.
-    else
-        trap -- ':' INT
-    fi
-
-    TIMEFMT=$'\nreal\t%E\nuser\t%U\nsys\t%S'
-fi
+! ___x_cmd_is_repl ||   xrc:mod xrc/lib/repl

@@ -52,8 +52,8 @@ function tapp_handle_wchar( value, name, type,          i, l, v, r, c, _cur_data
         else if ((value == "l") || (name == U8WC_NAME_RIGHT))           user_comp_ctrl_sw_toggle()
     }
 
-    if ( value == "r" )                                                 user_table_model_init()
-    else if ( value != "") {
+    # if ( value == "r" )                                                 user_table_model_init()
+    if ( value != "") {
         l = TABLE_CUSTOM_ACTION[L]
         for (i=1; i<=l; ++i){
             v = TABLE_CUSTOM_ACTION[i]
@@ -66,12 +66,34 @@ function tapp_handle_wchar( value, name, type,          i, l, v, r, c, _cur_data
             tapp_request( _res )
             return true
         }
+
+        l = TABLE_LOOP_ACTION[L]
+        for (i=1; i<=l; ++i){
+            v = TABLE_LOOP_ACTION[i]
+            if ( value != v ) continue
+            ___TAPP_SW_CLEAR_ON_EXIT = true
+            exit_with_elegant("LOOPCMD:" v)
+            return true
+        }
         return false
     }
 }
 
-function tapp_handle_exit( exit_code,       r, _cur_row, i, l, k, v ){
+function tapp_handle_exit( exit_code,       r, c, _cur_row, i, l, k, v ){
     if (exit_is_with_cmd()){
+        if ( FINALCMD ~ "^LOOPCMD:" ) {
+            ___TAPP_SW_CLEAR_ON_EXIT = true
+            tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_CSV_APP_IS_LOOP", 1 ) )
+
+            v = substr(FINALCMD, 9)
+            r = comp_table_get_cur_row(o, TABLE_KP) + 1
+            c = comp_table_get_cur_col(o, TABLE_KP)
+            _cur_data = CSV_DATA[ SUBSEP r, c ]
+            _cur_row  = csv_dump_row(CSV_DATA, "", r, 1, 1, CSV_DATA[ L L ])
+            tapp_send_finalcmd( sh_printf_varset_val( "___X_CMD_CSV_APP_LOOP_PROCESSOR_ARG", "x:loop-request:" v "\001" _cur_data "\001" _cur_row ) )
+            return
+        }
+
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_CSV_POSITION", comp_table_current_position_get(o, TABLE_KP) ) )
         if (___X_CMD_CSV_APP_RET_STYLE == "") return
         r = comp_table_get_cur_row(o, TABLE_KP) + 1
@@ -189,6 +211,12 @@ function user_table_model_init(){
         user_parse_action_to_arr( ___X_CMD_CSV_APP_ACTION, TABLE_CUSTOM_ACTION )
         user_parse_action_statusline(o, TABLE_KP, TABLE_CUSTOM_ACTION)
     }
+    ___X_CMD_CSV_APP_LOOP_ACTION = ENVIRON[ "___X_CMD_CSV_APP_LOOP_ACTION" ]
+    if (___X_CMD_CSV_APP_LOOP_ACTION != "") {
+        user_parse_action_to_arr( ___X_CMD_CSV_APP_LOOP_ACTION, TABLE_LOOP_ACTION )
+        user_parse_action_statusline(o, TABLE_KP, TABLE_LOOP_ACTION)
+    }
+
     table_statusline_init(o, TABLE_KP)
     comp_table_current_position_var(o, TABLE_KP, CSVAPP_POSITION)
     if ( ___X_CMD_CSV_APP_PREVIEW != "" ) {

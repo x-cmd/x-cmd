@@ -4,6 +4,8 @@ function handle(            ipv4 ){
     if (ipv4 == "" ) return
     if (ipv4 == "127.0.0.1" ) return
     printf("%10s\t%s\n", name, ipv4)
+
+    delete prop
 }
 
 $0~/^[^ \t\v\r]/{

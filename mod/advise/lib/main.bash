@@ -1,11 +1,12 @@
 # shellcheck shell=bash disable=SC2207,2206,2034
 
 ___x_cmd_advise_run(){
+    xrc:mod:lib advise  helper
     local ___X_CMD_ADVISE_RUN=1
-    ___x_cmd_awk___get_utf8_
+    ___x_cmd awk get_utf8_
     local _UTF8="$___X_CMD_AWK_LANGUAGE_UTF8"
     local name="${1:-${COMP_WORDS[0]}}"
-    local x_=;  ___x_cmd_advise_run_filepath_ ${___X_CMD_ADVISE_RUN_CMD} "$name" || return $?
+    local x_=;  ___x_cmd_advise___main __run_filepath_ ${___X_CMD_ADVISE_RUN_CMD} "$name" || return $?
 
     # Only different from main.3.bash, for words in COMP_WORDBREAKS
     if [ -z "$___X_CMD_ADVISE_SHELL_BASH_LT_4_2" ]; then

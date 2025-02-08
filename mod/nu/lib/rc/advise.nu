@@ -1,4 +1,9 @@
 # advise
+
+if ___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL in $env and $env.___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL == "0" {
+  return
+}
+
 let ___x_cmd_advise_run_nu = {|spans|
   let alias_check = (scope aliases | where name == $spans.0 | get -i 0 | get -i expansion)
 

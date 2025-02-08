@@ -200,7 +200,6 @@ ___x_cmd___rcpwsh_addpython
 
 
 $env:___X_CMD_CD_RELM_0 = ___x_cmd___rcpwsh_path_win_to_linux $(Get-Location).Path
-$env:___X_CMD_IS_INTERACTIVE_FORCE = 1
 $env:___X_CMD_THEME_RELOAD_DISABLE = 1
 # Using gitbash
 # We cannot use WSL here.
@@ -249,79 +248,87 @@ function x(){
     ___x_cmd @args
 }
 
-function c(){
-    if ( $args[0] -eq "-" ){
-        if ($env:OLDPWD){
-            Set-Location $env:OLDPWD
+if ($Host.Name -ne "ConsoleHost") {
+    # non-interactive
+    $env:___X_CMD_RUNMODE = 0
+} else {
+    # interactive
+    $env:___X_CMD_RUNMODE = 9
+
+    function c(){
+        if ( $args[0] -eq "-" ){
+            if ($env:OLDPWD){
+                Set-Location $env:OLDPWD
+            }
+            return
+        } elseif (-not [string]::IsNullOrWhiteSpace($args[0]) -and (Test-Path $args[0] -PathType Container)){
+            Set-Location $args[0]
+            return
         }
-        return
-    } elseif (-not [string]::IsNullOrWhiteSpace($Path) -and (Test-Path $args[0] -PathType Container)){
-        Set-Location $args[0]
-        return
+
+        ___x_cmd cd @args
     }
 
-    ___x_cmd cd @args
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xx.disable" -PathType Leaf)) {
+        function xx(){
+            ___x_cmd xx @args
+        }
+    }
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xw.disable" -PathType Leaf)) {
+        function xw(){
+            ___x_cmd ws @args
+        }
+    }
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xd.disable" -PathType Leaf)) {
+        function xd(){
+            ___x_cmd docker @args
+        }
+    }
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xg.disable" -PathType Leaf)) {
+        function xg(){
+            ___x_cmd git @args
+        }
+    }
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xp.disable" -PathType Leaf)) {
+        function xp(){
+            ___x_cmd pwsh @args
+        }
+    }
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xwt.disable" -PathType Leaf)) {
+        function xwt(){
+            ___x_cmd webtop @args
+        }
+    }
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\co.disable" -PathType Leaf)) {
+        function co(){
+            ___x_cmd co --exec @args
+        }
+    }
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\coco.disable" -PathType Leaf)) {
+        function coco(){
+            ___x_cmd coco --exec @args
+        }
+    }
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\chat.disable" -PathType Leaf)) {
+        try {
+            if (-not (Test-Path "$HOME\.x-cmd.root\local\cache\chat\bootcode.ps1" -PathType Leaf)) {
+                ___x_cmd pwsh --setup-rcshortcut-file
+            }
+            . "$HOME\.x-cmd.root\local\cache\chat\bootcode.ps1"
+        } catch {
+            Write-Host "- E|x: Failed to load command functions related to the chat module alias init"
+        }
+    }
+    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\writer.disable" -PathType Leaf)) {
+        try {
+            if (-not (Test-Path "$HOME\.x-cmd.root\local\cache\writer\bootcode.ps1" -PathType Leaf)) {
+                ___x_cmd pwsh --setup-rcshortcut-file
+            }
+            . "$HOME\.x-cmd.root\local\cache\writer\bootcode.ps1"
+        } catch {
+            Write-Host "- E|x: Failed to load command functions related to the writer module alias init"
+        }
+    }
 }
 
-
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xx.disable" -PathType Leaf)) {
-    function xx(){
-        ___x_cmd xx @args
-    }
-}
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xw.disable" -PathType Leaf)) {
-    function xw(){
-        ___x_cmd ws @args
-    }
-}
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xd.disable" -PathType Leaf)) {
-    function xd(){
-        ___x_cmd docker @args
-    }
-}
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xg.disable" -PathType Leaf)) {
-    function xg(){
-        ___x_cmd git @args
-    }
-}
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xp.disable" -PathType Leaf)) {
-    function xp(){
-        ___x_cmd pwsh @args
-    }
-}
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xwt.disable" -PathType Leaf)) {
-    function xwt(){
-        ___x_cmd webtop @args
-    }
-}
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\co.disable" -PathType Leaf)) {
-    function co(){
-        ___x_cmd co --exec @args
-    }
-}
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\coco.disable" -PathType Leaf)) {
-    function coco(){
-        ___x_cmd coco --exec @args
-    }
-}
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\chat.disable" -PathType Leaf)) {
-    try {
-        if (-not (Test-Path "$HOME\.x-cmd.root\local\cache\chat\bootcode.ps1" -PathType Leaf)) {
-            ___x_cmd pwsh --setup-rcshortcut-file
-        }
-        . "$HOME\.x-cmd.root\local\cache\chat\bootcode.ps1"
-    } catch {
-        Write-Host "- E|x: Failed to load command functions related to the chat module alias init"
-    }
-}
-if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\writer.disable" -PathType Leaf)) {
-    try {
-        if (-not (Test-Path "$HOME\.x-cmd.root\local\cache\writer\bootcode.ps1" -PathType Leaf)) {
-            ___x_cmd pwsh --setup-rcshortcut-file
-        }
-        . "$HOME\.x-cmd.root\local\cache\writer\bootcode.ps1"
-    } catch {
-        Write-Host "- E|x: Failed to load command functions related to the writer module alias init"
-    }
-}
 

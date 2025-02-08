@@ -1,9 +1,215 @@
 # Author:       Li Junhao   l@x-cmd.com             # xrc
 # shellcheck    shell=sh    disable=SC3043,SC1091
 
-xrc:mod         x-cmd/lib/main
+# Section: util
+___x_cmd_wsroot(){
+    local x_; ___x_cmd wsroot_ "$@" || return
+    printf "%s\n" "$x_"
+}
 
-xrc set
+___x_cmd_wsroot_(){
+    if [ -z "$1" ]; then
+        [ -z "$___X_CMD_WS_CURRENT" ] || {
+            ___X_CMD_WSROOT_="$___X_CMD_WS_CURRENT"
+            x_="$___X_CMD_WS_CURRENT"
+            return 0
+        }
+        set -- .
+    fi
+
+    if [ "$1" = . ]; then
+        local cur="$PWD"
+    else
+        local x_=; ___x_cmd_abspath_ "${1}" || return
+        cur="$x_"
+    fi
+
+    while [ ! "$cur" = "" ]; do
+        if [ -d "$cur/.x-cmd" ]; then
+            ___X_CMD_WSROOT_="$cur"     # Deprecated...
+            x_="$cur"
+            return 0
+        fi
+        cur=${cur%/*}
+    done
+    return 1
+}
+
+___x_cmd_which_panic(){
+    local ___X_CMD_WHICH_ONE_RESULT
+    if ! ___x_cmd_which_one "$p"; then
+        printf "%s\n" "Fail to find path for $p" >&2
+        return 1
+    else
+        printf "%s\n" "$___X_CMD_WHICH_ONE_RESULT"
+    fi
+}
+
+___x_cmd_which(){
+    local p
+    for p in "$@"; do
+        ___x_cmd_which_panic || return 1
+    done
+}
+
+___x_cmd_validenvname(){
+    local IFS=_
+    [ "$*" = "${*#*=}" ] || return 1
+    eval "local ___x_cmd_validenvname$*___=" 2>/dev/null 1>&2 || return 1
+}
+
+___x_cmd_defaultassignvar(){
+    local name="$1"; shift
+    ___x_cmd_defaultassignvar_ "$name" x "$@"
+}
+
+___x_cmd_defaultassignvar_(){
+    local ___x_cmd_defaultassignvar_varname=${1}; shift
+    local x_
+    "$@"
+    eval "$___x_cmd_defaultassignvar_varname=\"\$x_\""
+}
+
+x_(){
+    ___x_cmd_defaultassignvar_ "$@"
+}
+
+# TODO: in other, just using
+# ___X_CMD_UNIXEPOCHSECOND
+___x_cmd_unixepochs_(){
+    x_="$EPOCHSECONDS"
+    [ -n "$x_" ] || x_="$(___x_cmd_cmds date +%s)"
+}
+
+# ___X_CMD_UNIXEPOCHMICROSECOND
+___x_cmd_unixepochms_(){
+    :
+}
+
+
+___x_cmd_wreadl(){
+    local e;
+    case "$1" in
+        \"*\")      while read -r e; do    eval printf '"%s\n"' "$1" ; done ;;
+        *)          while read -r e; do    "$@" ;                      done
+    esac
+}
+
+___x_cmd_reval(){
+    local ___X_CMD_REVAL_CODE
+    while read -r ___X_CMD_REVAL_CODE; do
+        eval "$___X_CMD_REVAL_CODE"      # Notice: If read encountering EOF, return 1
+        [ $# -eq 0 ] || "$@"
+    done
+}
+
+___x_cmd_pipestr(){
+    local data="$1";    shift
+    "$@" <<A
+$data
+A
+}
+# EndSection
+
+# Section: set
+___x_cmd_set_xready_init(){
+    ___X_CMD_SET_XREADY_LEVEL=$((___X_CMD_SET_XREADY_LEVEL+1))
+    [ "$___X_CMD_SET_XREADY_LEVEL" -eq 1 ] || return 0
+
+    case "$-" in
+        *e*)
+            set +o errexit
+            ___X_CMD_SET_XREADY___FLAG_ERREXIT=1 ;;
+    esac
+
+    case "$SHELLOPTS" in
+        *pipefail*)
+            set +o pipefail
+            ___X_CMD_SET_XREADY___FLAG_PIPEFAIL=1 ;;
+    esac
+}
+
+___x_cmd_set_xready_fini(){
+    ___X_CMD_SET_XREADY_LEVEL=$((___X_CMD_SET_XREADY_LEVEL-1))
+    [ "$___X_CMD_SET_XREADY_LEVEL" -eq 0 ] || return 0
+
+    [ -z "$___X_CMD_SET_XREADY___FLAG_ERREXIT" ] || {
+        set -o errexit
+        ___X_CMD_SET_XREADY___FLAG_ERREXIT=
+    }
+
+    [ -z "$___X_CMD_SET_XREADY___FLAG_PIPEFAIL" ] || {
+        set -o pipefail
+        ___X_CMD_SET_XREADY___FLAG_PIPEFAIL=
+    }
+}
+# EndSection
+
+# Section: ___x_cmd_main
+___X_CMD_ENGINE_SUBCMD_NAME=__enginerun
+
+___x_cmd_main(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    local op="$1";          shift
+    case "$op" in
+        log)                ___x_cmd_log                    "$@" ;;        # For efficiency
+        help|--help|-h)     ___x_cmd helpapp                "$@" ;;
+
+        :)                  ___x_cmd ddgo                   "$@" ;;
+
+        *)
+            if command -v "___x_cmd_${op}" 2>/dev/null 1>&2; then
+                "___x_cmd_${op}" "$@" ;         return
+            fi
+
+            [ ! -f "$___X_CMD_ROOT_MOD/x-cmd/lib/lwmod/$op" ] || {
+                . "$___X_CMD_ROOT_MOD/x-cmd/lib/lwmod/$op"
+                "___x_cmd_${op}" "$@" ;         return
+            }
+
+            [ ! -f "$___X_CMD_ROOT_MOD/${op}/latest" ] || {
+                ___x_cmd_loadedmod_put "$op" "___x_cmd_${op}"
+                xrc:mod "$op/latest"
+                "___x_cmd_${op}" "$@" ;         return
+            }
+
+            [ -n "$___X_CMD___OTHERWISE_LOADED" ] || xrc:mod    x-cmd/lib/__otherwise
+            ___x_cmd_main___otherwise "$op" "$@"
+            ;;
+    esac
+}
+
+___x_cmd_source(){
+    local ___x_cmd___source_run_filepath="${1:?filepath}";        shift
+    . "$___x_cmd___source_run_filepath" "$@"
+}
+
+# subshell rc
+___x_cmd_ssrc(){
+    ( ___x_cmd_source "$@" )
+}
+
+___x_cmd_pipevar(){
+    local varname="$1"; shift
+    [ $# -gt 0 ] || {
+        eval 'printf "%s\n" "$'"$varname"'"'
+        return
+    }
+    eval '
+    "$@" <<A
+$'"$varname"'
+A
+'
+}
+
+# TODO: It will be removed.
+___x_cmd_which_one(){
+    ___x_cmd whichone "$@"
+}
+
+# EndSection
+
 ___x_cmd(){
     ___x_cmd_set_xready_init
     local IFS=" $___X_CMD_UNSEENCHAR_NEWLINE"
@@ -16,13 +222,7 @@ ___x_cmd(){
 x(){
     ___x_cmd "$@"
 }
-
 # alias x=___x_cmd
 
-if ___x_cmd_is_suitable_advise_repl; then
-    command -v ___x_cmd_advise >/dev/null || xrc advise/latest
-fi
-
-xrc:mod:lib     x-cmd  replhook/index
-___x_cmd_definelazyloader ___x_cmd_a       alias/latest
-___x_cmd_definelazyloader ___x_cmd_ua      alias/latest
+# ___x_cmd_definelazyloader ___x_cmd_a       alias/latest
+# ___x_cmd_definelazyloader ___x_cmd_ua      alias/latest

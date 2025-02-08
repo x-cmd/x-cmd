@@ -39,7 +39,7 @@ function draw_navi_paint( o, kp, x1, x2, y1, y2, is_dim, opt,       _draw_clear,
 
 function draw_navi___paint_body( o, kp, x1, x2, y1, y2, opt,           _rootkp, _start, _width, i, l, w, s, c ){
     _width = y2-y1+1
-    navi_arr_data_maxview_width( o, kp, int(_width/2))
+    navi_arr_data_maxview_width( o, kp, int( _width / opt_get( opt, "screen.split" ) ))
     l = opt_get( opt, "cur.col" )
 
     _start = draw_navi_layout_init( o, kp, _width, l, opt)

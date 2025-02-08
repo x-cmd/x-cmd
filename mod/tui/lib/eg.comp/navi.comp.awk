@@ -4,8 +4,8 @@ function navi_request_data( o, kp, rootkp, args, sep ){
     tapp_request( "data:request:" rootkp)
 }
 
-function navi_init( o, kp ){
-    comp_navi_init(o, kp)
+function navi_init( o, kp, screen_split ){
+    comp_navi_init(o, kp, screen_split)
     ctrl_sw_init( o, kp SUBSEP "IS_CTRL_CUSTOM_PREVIEW", false)
 }
 

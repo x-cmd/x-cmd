@@ -1,20 +1,26 @@
 # shellcheck shell=dash disable=SC2154
+
 ___x_cmd_gh_repo_release_attachment_download(){
     param:scope     ___x_cmd_github
     param:dsl    '
 options:
-    #1          "Release Attachment ID"                     <>:Number
+    #1          "Release Attachment ID or name"             <>:String
     --repo|-r   "<owner_path>/<repo_path>"                  <>:RepoName
-    --dir|-d    "file save path"                    <>=""
+    --tag       "Release tab"                               <>=""
+    --dir|-d    "file save path"                            <>=""
 '
+
     param:run
     ___x_cmd_gh_param_init_owner_repo
+    local asset="$1"
+    ___x_cmd is int "$asset" || asset="$(___x_cmd_gh_avatar____full_search_asset_id)"
+
     local name;
     local targetfp=;
-    local download_url=;
-    ___x_cmd_gh_curl get "/repos/${owner_repo}/releases/assets/${1##*/}" | {
-        ___x_cmd jo env . name=.name download_url=.browser_download_url
-        [ -n "$download_url" ] || return
+    local url=;
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/releases/assets/${asset}" | {
+        ___x_cmd jo env . name=.name url=.url
+        [ -n "$url" ] || return
         if [ -n "$dir" ]; then
             targetfp="$dir/$name"
             ___x_cmd ensurefp "$targetfp"
@@ -22,7 +28,7 @@ options:
             targetfp="./$name"
         fi
         gh:info "download [attachment=$name] to [save_path=$targetfp]"
-         ___x_cmd curl --fail -L -o "$targetfp" "$download_url" || N=gh M="Fail to download [attachment=$name]" log:ret:1
+        ___x_cmd_gh_repo_release_attachment_download___curl "$targetfp" "$url" || N=gh M="Fail to download [attachment=$name]" log:ret:1
     }
 }
 
@@ -52,6 +58,17 @@ options:
                 targetfp="./$name"
             fi
             gh:info "download [attachment=$name] to [save_path=$targetfp]"
-            ___x_cmd curl --fail -L -o "$targetfp" "$download_url" || N=gh M="Fail to download [attachment=$name]" log:ret:1
+            ___x_cmd_gh_repo_release_attachment_download___curl "$targetfp" "$download_url" || N=gh M="Fail to download [attachment=$name]" log:ret:1
         done
+}
+
+___x_cmd_gh_repo_release_attachment_download___curl(){
+    local targetfp="$1"
+    local url="$2"
+    local token=
+    ___x_cmd_gh_cur token:= 2>/dev/null
+    ___x_cmd curl --fail \
+        -H "Accept: application/octet-stream" \
+        -H "Authorization:token $token" \
+        -L -o "$targetfp" "$url"
 }

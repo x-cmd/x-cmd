@@ -8,8 +8,11 @@ use runtime
 # if repl but less chatty set-env ___X_CMD_RUNMODE 5 # manual
 # if script ___X_CMD_RUNMODE 0
 
-if (eq $runtime:effective-rc-path $nil) {
+if (not-eq $runtime:effective-rc-path $nil) {
     set-env ___X_CMD_RUNMODE    9
+    if (not (has-env ___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL)) {
+        set-env ___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL 1
+    }
 } else {
     set-env ___X_CMD_RUNMODE    0
 }

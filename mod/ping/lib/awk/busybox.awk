@@ -12,7 +12,7 @@ $0~/(timeout|no answer)/{
 $0~/ttl=/{
     byte = $1
     ip = $4
-    gsub( ":", "", ip )
+    gsub( /:$/, "", ip )
 
     # ... Find out the diffs ...
     seq         = trim_key( $(NF-3) )

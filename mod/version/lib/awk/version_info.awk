@@ -8,7 +8,7 @@ END{
         v = o[ Q2_1, i ]
         sum = juq( o[ Q2_1, v, "\"sum\"" ] )
         if (sum == ___X_CMD_VERSION_SUM) {
-            printf( "%s: %s\n", "version", juq(v) )
+            printf( "%s: %s\n", "tag", juq(v) )
             printf( "%s: %s\n", "date", o[ Q2_1, v, "\"date\"" ] )
         }
     }

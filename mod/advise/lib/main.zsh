@@ -1,20 +1,25 @@
 # shellcheck shell=zsh
 
 ___x_cmd_advise_run(){
+    xrc:mod:lib advise  helper
+    setopt aliases
+
     local ___X_CMD_ADVISE_RUN=1
-    ___x_cmd_awk___get_utf8_
+    ___x_cmd awk get_utf8_
     local _UTF8="$___X_CMD_AWK_LANGUAGE_UTF8"
+    local LC_ALL="$_UTF8"
+    local LANG="$_UTF8"
+
     local COMP_WORDS=("${words[@]:0:$CURRENT}")
     local COMP_CWORD="$(( CURRENT-1 ))"
 
     local name="${1:-${COMP_WORDS[1]}}"
-    local x_=;  ___x_cmd_advise_run_filepath_ ${___X_CMD_ADVISE_RUN_CMD} "$name" || return $?
+    local x_=;  ___x_cmd_advise___main __run_filepath_ ${___X_CMD_ADVISE_RUN_CMD} "$name" || return $?
 
     local cur="${COMP_WORDS[CURRENT]}"
     local candidate_arr=(); local candidate_exec_arr=(); local candidate_nospace_arr=();
     local candidate_exec=; local offset=; local ___X_CMD_ADVISE_RUN_SET_NOSPACE=; local candidate_prefix=
     local candidate_exec_stdout=;   local candidate_exec_stdout_nospace=; local _message_str=
-    setopt aliases
     eval "$(___x_cmd_advise_get_result_from_awk "$x_")" 2>/dev/null
 
     cur="${cur#"$candidate_prefix"}"
@@ -99,7 +104,8 @@ ___x_cmd_advise_run___ltrim_maxitem(){
 }
 
 ___x_cmd_advise_run___fix_mac_zsh(){
-    ___x_cmd os is darwin || return 0
+    local x_=""; ___x_cmd __osname_
+    [ "$x_" = darwin ]  || return 0
     [ "${#candidate_arr[@]}" -gt 0 ] || return 0
     candidate_arr=( $( printf "%s\n" "${candidate_arr[@]}" | ___x_cmd_cmds sort -r ) )
 }

@@ -1,10 +1,5 @@
 
 
-BEGIN{
-    printf( "%s" OFS "%s" OFS "%s" OFS "%s" "\n", "suspicious", "ip", "mac", "if" )
-    all = (all == "yes") ? 1 : ""
-}
-
 {
     ip = $2
     gsub("[(]|[)]", "", ip)
@@ -16,11 +11,6 @@ BEGIN{
 
     ifname = $NF
 
-    if ((mac != "-") && ( dup[ip] != "" )) {
-        printf( "%s" OFS "%s" OFS "%s" OFS "%s" "\n", dup[ip], ip, mac, ifname)
-    } else {
-        printf( "%s" OFS "%s" OFS "%s" OFS "%s" "\n", "", ip, mac, ifname )
-    }
-
+    printf( FMT,    mac, ip, cal_suspicious( ip, mac ),    ifname, scope, "" )
 }
 

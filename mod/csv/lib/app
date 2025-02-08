@@ -12,6 +12,9 @@
 # x sql select from | x csv header --mod acde=abc b=c | x csv app
 
 # x csv app --width "100,30,20" --header "AAA,BBB,CCC"  --action c "copy" "Press 'c' to copy to clipboard" cat ./.x-cmd/data.csv
+# x csv app --loop-action R "remove" "Remove this" --loop-processor funa -- eval 'ps | x csv convert --col'
+# x:loop-request:*
+
 ___X_CMD_CSV_APP_EXITCODE_NODATA=254
 ___x_cmd_csv_app(){
     # local ___X_CMD_CSV_APP_DATA="${___X_CMD_CSV_APP_DATA:-""}"
@@ -26,6 +29,8 @@ ___x_cmd_csv_app(){
 
     local ___X_CMD_CSV_APP_ACTION="${___X_CMD_CSV_APP_ACTION:-""}"
     local ___X_CMD_CSV_APP_PROCESSOR="${___X_CMD_CSV_APP_PROCESSOR:-""}"
+    local ___X_CMD_CSV_APP_LOOP_ACTION="${___X_CMD_CSV_APP_LOOP_ACTION:-""}"
+    local ___X_CMD_CSV_APP_LOOP_PROCESSOR="${___X_CMD_CSV_APP_LOOP_PROCESSOR:-""}"
 
     local ___X_CMD_CSV_APP_SW_CLEAR_ON_EXIT=
     local ___X_CMD_CSV_APP_SW_CLEAR_ON_CTRL_C=
@@ -82,6 +87,16 @@ ___x_cmd_csv_app(){
             --table-width)  ___X_CMD_CSV_APP_TABLE_WIDTH="$2";
                             [ -n "$___X_CMD_CSV_APP_TABLE_WIDTH" ] || N=csv M="Provide csv app table width" log:ret:64
                             shift 2 ;;
+            --loop-action)
+                            [ -n "$2" ] || N=csv M="Provide the loop action key" log:ret:64
+                            [ -n "$3" ] || N=csv M="Provide a short description about this loop action key" log:ret:64
+                            [ -n "$4" ] || N=csv M="Provide a log description about this loop action key" log:ret:64
+                            ___X_CMD_CSV_APP_LOOP_ACTION="${___X_CMD_CSV_APP_LOOP_ACTION}${2}${NL}${3}${NL}${4}${NL}"
+                            shift 4 ;;
+            --loop-processor)
+                            ___X_CMD_CSV_APP_LOOP_PROCESSOR="$2";
+                            [ -n "$___X_CMD_CSV_APP_LOOP_PROCESSOR" ] || N=csv M="Provide the loop processor function name" log:ret:64
+                            shift 2 ;;
             -h|--help)      M='csv app' help:ret:0 ;;
             --)             shift; break ;;
             --*)            N=csv M="Not support [option=$1]" log:ret:64 ;;
@@ -90,9 +105,24 @@ ___x_cmd_csv_app(){
     done
 
     [ "$___X_CMD_CSV_APP_RET_STYLE" != "print" ] || local ___X_CMD_CSV_APP_DATA_CURROW=
-    local x_=; ___x_cmd_storerat_ ___x_cmd_csv_app_ "$@" || return
-    # x:debug -c "$x_" "after csv app"
-    eval "$x_"
+    local x_=;
+    if [ -z "$___X_CMD_CSV_APP_LOOP_PROCESSOR" ]; then
+        ___x_cmd storerat_ ___x_cmd_csv_app_ "$@" || return $?
+        eval "$x_" || return $?
+    else
+        local ___X_CMD_CSV_APP_IS_LOOP=
+        local ___X_CMD_CSV_APP_LOOP_PROCESSOR_ARG=
+        while true; do
+            ___X_CMD_CSV_APP_IS_LOOP=
+            ___X_CMD_CSV_APP_LOOP_PROCESSOR_ARG=
+            ___X_CMD_CSV_APP_DATA_CURROW=
+            x_=; ___x_cmd storerat_ ___x_cmd_csv_app_ "$@" || return $?
+            eval "$x_" || return $?
+            [ -n "$___X_CMD_CSV_APP_IS_LOOP" ] || break
+            "$___X_CMD_CSV_APP_LOOP_PROCESSOR" "$___X_CMD_CSV_APP_LOOP_PROCESSOR_ARG" || return $?
+        done
+    fi
+
     [ "$___X_CMD_CSV_APP_RET_STYLE" != "print" ] || [ -z "$___X_CMD_CSV_APP_DATA_CURROW" ] || printf "%s\n" "$___X_CMD_CSV_APP_DATA_CURROW";
 }
 
@@ -108,6 +138,8 @@ ___x_cmd_csv_app_(){
     ___X_CMD_CSV_APP_IS_HIDE_INDEX="$___X_CMD_CSV_APP_IS_HIDE_INDEX" \
     ___X_CMD_CSV_APP_ACTION="$___X_CMD_CSV_APP_ACTION" \
     ___X_CMD_CSV_APP_PROCESSOR="$___X_CMD_CSV_APP_PROCESSOR" \
+    ___X_CMD_CSV_APP_LOOP_ACTION="$___X_CMD_CSV_APP_LOOP_ACTION" \
+    ___X_CMD_CSV_APP_LOOP_PROCESSOR="$___X_CMD_CSV_APP_LOOP_PROCESSOR" \
     ___X_CMD_CSV_APP_SW_CLEAR_ON_EXIT="$___X_CMD_CSV_APP_SW_CLEAR_ON_EXIT" \
     ___X_CMD_CSV_APP_SW_CLEAR_ON_CTRL_C="$___X_CMD_CSV_APP_SW_CLEAR_ON_CTRL_C" \
     ___X_CMD_CSV_APP_CONTINUE_NAME="$___X_CMD_CSV_APP_CONTINUE_NAME" \
@@ -119,7 +151,7 @@ ___x_cmd_csv_app_(){
         xrc csv ;
         '"$___X_CMD_CSV_APP_SHBIN_CODE"'
         "$@"
-    ' ___x_cmd_antizshbin ___x_cmd_csv_app___run "$@"
+    ' ___x_cmd antizshbin ___x_cmd_csv_app___run "$@"
 }
 
 ___x_cmd_csv_app___run(){
@@ -132,7 +164,7 @@ ___x_cmd_csv_app___run(){
             else                set - ___x_cmd_cmds_cat
             fi
         }
-        ___X_CMD_CSV_APP_DATA="$("$@" | command tr -d '\0' 2>/dev/null)" || return
+        ___X_CMD_CSV_APP_DATA="$("$@" | command tr -d '\0' 2>/dev/null)" || return $?
         [ -n "$___X_CMD_CSV_APP_DATA" ] || {
             ___x_cmd log :csv info "The CSV table is empty. Exiting the interactive application"
             return "$___X_CMD_CSV_APP_EXITCODE_NODATA"
@@ -154,6 +186,7 @@ ___x_cmd_csv_app___run(){
     ___X_CMD_CSV_APP_WIDTH="$___X_CMD_CSV_APP_WIDTH" \
     ___X_CMD_CSV_APP_RET_STYLTUI_PANIC_TEXTE="$___X_CMD_CSV_APP_RET_STYLE" \
     ___X_CMD_CSV_APP_ACTION="$___X_CMD_CSV_APP_ACTION" \
+    ___X_CMD_CSV_APP_LOOP_ACTION="$___X_CMD_CSV_APP_LOOP_ACTION" \
     ___X_CMD_CSV_APP_EXITCODE_NODATA="$___X_CMD_CSV_APP_EXITCODE_NODATA" \
     ___X_CMD_TUI_CSV_POSITION="$___X_CMD_TUI_CSV_POSITION" \
     ___x_cmd tui bigapp \
@@ -200,7 +233,7 @@ ___x_cmd_csv_tui_app_processer(){
 
         *)
             if [ -n "$___X_CMD_CSV_APP_PROCESSOR" ]; then
-                eval "$___X_CMD_CSV_APP_PROCESSOR" "$@"
+                "$___X_CMD_CSV_APP_PROCESSOR" "$@"
             fi
             ;;
     esac

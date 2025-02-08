@@ -63,8 +63,11 @@ alias x             ___x_cmd
 
 setenv CSH_VERSION "${version}"
 
-if ( -t 1 ) then
+if ($?prompt && -t 0) then
     setenv ___X_CMD_RUNMODE 9
+    if ( ! $?___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL ) then
+        setenv ___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL 1
+    endif
 else
     setenv ___X_CMD_RUNMODE 0
 endif
@@ -129,7 +132,6 @@ if ($?status && $status == 0) then
         alias @zh        '___x_cmd writer --sendalias zh'
         alias @en        '___x_cmd writer --sendalias en'
     endif
-
 endif
 
 # advise

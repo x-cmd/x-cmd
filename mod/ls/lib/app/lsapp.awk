@@ -15,7 +15,7 @@ BEGIN{
 function tapp_init(){
     delete o
     LS_KP = "ls_kp"
-    navi_init(o, LS_KP)
+    navi_init(o, LS_KP, 2)
 
     navi_statusline_add( o, LS_KP, "o", "Open", "Press 'o' to open the file with GUI application" )
     navi_statusline_add( o, LS_KP, "b", "Browse", "Press 'b' to open the file with browser" )

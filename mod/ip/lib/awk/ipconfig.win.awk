@@ -14,6 +14,8 @@ function handle(        ipv4 ){
 
     printf(UI_KEY "%-45s" UI_END "  :  " UI_STR_VAR "%s" UI_END "\n", name, ipv4)
     prop[ "inet" ] = ""
+
+    delete prop
 }
 
 $0~/^[^ \t\v\r]/{

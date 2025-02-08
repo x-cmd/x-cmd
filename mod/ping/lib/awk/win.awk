@@ -8,7 +8,7 @@ $0~/TTL=/{
     if ( $0 ~ /Reply/ )     ip = $3
     else                    ip = $2
 
-    gsub( ":", "", ip )
+    gsub( /:$/, "", ip )
     byte        = trim_key( $(NF-2) )
     time        = trim_key( $(NF-1) )
     ttl         = trim_key( $NF )

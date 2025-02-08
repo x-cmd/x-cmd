@@ -5,10 +5,15 @@
 ___x_cmd_arp_ls(){
     local format=auto
     local all=no
+    local vendor=1
 
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)        ___x_cmd help -m arp ls ; return 0 ;;
+
+            -n|--no-vendor)
+                              vendor="";           shift ;;
+
             -c|--csv)         format=csv;          shift ;;
             -t|--tsv)         format=tsv;          shift ;;
             -r|--raw)         format=raw;          shift ;;
@@ -46,14 +51,36 @@ ___x_cmd_arp_ls_auto(){
 }
 
 ___x_cmd_arp_ls_csv(){
-    ___x_cmd_arp_ls_xsv ","
+    ___x_cmd_arp_ls_tsv | ___x_cmd tsv tocsv
 }
 
 ___x_cmd_arp_ls_tsv(){
-    ___x_cmd_arp_ls_xsv "\t"
+    if [ -z "$vendor" ]; then
+        ___x_cmd_arp_ls_xsv "\t"
+        return
+    fi
+
+    # TODO: A better way to implement no-vendor is, use the cache only and no request.
+
+    # local data;     data="$(___x_cmd_arp_ls_xsv "\t")"
+    # local maclist;  maclist="$(___x_cmd_pipevar data ___x_cmd cutt 2: 2 | ___x_cmd ip macvendor --pipe)"
+    # ___x_cmd tsv merge "$data" "$maclist"
+
+
+    {
+        local data;     data="$(___x_cmd_arp_ls_xsv "\t")"
+        printf "%s\n" "$data"
+
+        printf "%s\n" "===ADD-COL==="
+        # TODO: add region and vendor
+        printf "%s\n" "vendor"
+        ___x_cmd_pipevar data ___x_cmd cutt 2: 1 | ___x_cmd ma --pipe
+    } | ___x_cmd tsv addcol
+
 }
 
 ___x_cmd_arp_ls_xsv(){
+    local x_=""
     ___x_cmd_arp_ls_raw | {
         ___x_cmd os name_
         local parsefp
@@ -62,7 +89,11 @@ ___x_cmd_arp_ls_xsv(){
             darwin)     parsefp="$___X_CMD_ROOT_MOD/arp/lib/ls/parse_darwin_xsv.awk" ;;
             win)        parsefp="$___X_CMD_ROOT_MOD/arp/lib/ls/parse_win_xsv.awk" ;;
         esac
-        ___x_cmd_cmds awk -v OFS="$1" -v all="$all" -f "$parsefp"
+
+        ___x_cmd_cmds awk   \
+            -v OFS="$1"     -v all="$all"   \
+            -f "$___X_CMD_ROOT_MOD/arp/lib/ls/parse___share.awk"    \
+            -f "$parsefp"
     }
 }
 
@@ -70,8 +101,8 @@ ___x_cmd_arp_ls_xsv(){
 ___x_cmd_arp_ls_app(){
     # ___x_cmd_arp_ls_csv | ___x_cmd csv app
     local ___X_CMD_CSV_APP_SHBIN_CODE=
-    ___X_CMD_CSV_APP_SHBIN_CODE="xrc arp; " \
-        ___x_cmd csv app ___x_cmd arp ls --csv  || return 1
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc arp; local vendor=$vendor; local all=$all" \
+        ___x_cmd csv app ___x_cmd_arp_ls_csv  || return 1
 }
 
 

@@ -1,5 +1,6 @@
-function comp_navi_init( o, kp ){
+function comp_navi_init( o, kp, screen_split ){
     o[ kp, "TYPE" ] = "navi"
+    o[ kp, "navi.screen.split" ] = ( int(screen_split) > 0 ) ? int(screen_split) : 3
     comp_navi___cur_col(o, kp, 1)
     navi_arr_data_trace_col_val(o, kp, col, "", true)
     comp_textbox_init(o, kp SUBSEP "navi.footer")
@@ -185,6 +186,7 @@ function comp_navi_paint( o, kp, x1, x2, y1, y2, is_dim,        _opt, c ){
     opt_set( _opt, "cur.rootkp",    comp_navi_get_cur_rootkp(o, kp) )
     opt_set( _opt, "cur.preview_kp",comp_navi_get_cur_rootkp(o, kp) )
     opt_set( _opt, "sel.sw",        ctrl_navi_sel_sw_get(o, kp) )
+    opt_set( _opt, "screen.split",  o[ kp, "navi.screen.split" ] )
     return draw_navi_paint( o, kp, x1, x2, y1, y2, is_dim, _opt )
 }
 

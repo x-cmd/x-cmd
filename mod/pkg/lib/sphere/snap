@@ -7,7 +7,7 @@ xrc:mod:lib pkg     sphere/xbin
 ___x_cmd_pkg_sphere_snap(){
     local op="$1"
     case "$op" in
-        exec|remove_cache)
+        exec|ensure_execfp|gen_execfp)
                     shift; ___x_cmd_pkg_sphere_snap___"$op" "$@" ;;
         *)          ___x_cmd_pkg_sphere_snap___exec "$@" ;;
     esac
@@ -16,8 +16,7 @@ ___x_cmd_pkg_sphere_snap(){
 ___x_cmd_pkg_sphere_snap___exec(){
     local X_help_cmd='___x_cmd help -m pkg sphere snap'
     local sphere_name=; local osarch=
-    local name=; local version=
-    local bin_rpath=; local function_name=; local bin_path_name=
+    local name=; local version=; local sociality
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --sphere)
@@ -39,14 +38,8 @@ ___x_cmd_pkg_sphere_snap___exec(){
             -n|--name)
                     name="$2";          [ -n "$2" ] || N=pkg M="Provide a package name" log:ret:1
                     shift 2 ;;
-            --function-name)
-                    function_name="$2"; [ -n "$2" ] || N=pkg M="Provide function name value" log:ret:1
-                    shift 2 ;;
-            --binpath-name)
-                    bin_path_name="$2"; [ -n "$2" ] || N=pkg M="Provide a variable name" log:ret:1
-                    shift 2 ;;
-            --binpath)
-                    bin_rpath="$2";     [ -n "$2" ] || N=pkg M="Provide relative path of bin name" log:ret:1
+            --sociality)
+                    sociality="$2";     [ -n "$2" ] || N=pkg M="Provide sociality value" log:ret:1
                     shift 2 ;;
             -h|--help)
                     help:show:ret:0 ;;
@@ -60,145 +53,81 @@ ___x_cmd_pkg_sphere_snap___exec(){
     local x_=
     local binname="$1";
     [ -n "$binname" ]   || N=pkg M="Provide a bin name" log:ret:1
+    shift
 
     [ -n "$name" ]      || {
-        x_=""; ___x_cmd_pkg_sphere_xbin_get_binmod_name_ "$binname" || return $?
-        name="$x_"
+        name="$binname"
+        # x_=""; ___x_cmd_pkg_sphere_xbin_get_binmod_name_ "$binname" || return $?
+        # name="$x_"
         [ -n "$name" ]  || N=pkg M="Not found package name for $binname" log:ret:1
     }
-    [ -n "$version" ]   || {
-        x_=""; ___x_cmd_pkg_default_version_ "$name" "$osarch" || return $?
-        version="$x_"
-        [ -n "$version" ] || N=pkg M="Not found $name version" log:ret:1
+
+    local binpath=
+    local execfile="${___X_CMD_ROOT_PKG_EXEC_BINPATH}/${binname}"
+    if [ -f "$execfile" ]; then
+        if read -r binpath <"$execfile" && [ -x "$binpath" ]; then
+            "$binpath" "$@"
+            return
+        fi
+    fi
+
+    ___x_cmd_pkg_sphere_snap___ensure_execfp \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+        --osarch "$osarch" "$name" "$version" "$sociality" || return $?
+
+    [ -f "$execfile" ] || {
+        pkg:error "Not found exec filepath for $binname"
+        return 1
     }
 
-    [ -n "$function_name" ] || {
-        local ___X_CMD_STR___DASH2UNDERLINE=; ___x_cmd_str___dash2underline "$binname"
-        function_name="___x_cmd_pkg_sphere_snap___function_${___X_CMD_STR___DASH2UNDERLINE}"
-    }
-    pkg:debug --binname "$binname" --pkgname "$name" --version "$version" --osarch "$osarch" --function_name "$function_name" --bin_path_name "$bin_path_name" "sphere snap"
-
-    ___x_cmd hascmd "$function_name" || {
-        ___x_cmd_pkg_sphere_snap___gen_function "$name" "$version" "$osarch" "$binname" "$bin_rpath" "$function_name" "$bin_path_name" || return $?
-    }
-
-    shift
-    "$function_name" "$@"
+    if read -r binpath <"$execfile" && [ -x "$binpath" ]; then
+        "$binpath" "$@"
+        return
+    fi
 }
 
-___x_cmd_pkg_sphere_snap___gen_function(){
-    local name="$1"
-    local version="$2"
-    local osarch="$3"
-    local binname=$4
-    local bin_rpath="$5"
-    local function_name="$6"
-    local bin_path_name="$7"
-
-    local bin_cachepath="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/snap/$osarch/$name/$version/$binname/$function_name"
-    # TODO: Need to be removed in the future
-    ___x_cmd_pkg_update___check # ensure existense of "$___X_CMD_PKG_FP_UPDATED_DONE"
-    ___x_cmd depend run "$bin_cachepath" -- "$___X_CMD_PKG_FP_UPDATED_DONE" -- ___x_cmd_pkg_sphere_snap___gen_function_file
-    [ -f "$bin_cachepath" ] || return $?
-    pkg:debug "snap bin function cache path => $bin_cachepath"
-    . "$bin_cachepath"
-}
-___x_cmd_pkg_sphere_snap___gen_function_file(){
-    x_=; ___x_cmd_pkg_sphere_snap___xbin_path_ "$name" "$version" "$osarch" "$binname" "$bin_rpath" || return $?
-    local bin_path="$x_"
-
-    x_=; ___x_cmd_shq1_ "$___X_CMD_PKG_ROOT_SPHERE"
-    local sphere_root="$x_"
-
-    x_=; ___x_cmd_shq1_ "$bin_path"
-    bin_path="$x_"
-
-    local bin_code="
-$function_name(){
-    ___x_cmd_pkg_sphere_snap___ensurefp_and_exec ${bin_path} ${sphere_name} ${sphere_root} ${osarch} ${name} ${version} \"\$@\"
-}
-"
-
-    [ -z "$bin_path_name" ] || {
-        bin_code="$bin_path_name=${bin_path}
-${bin_code}"
-    }
-
-
-    ___x_cmd ensurefp "$bin_cachepath"
-    printf "%s\n" "$bin_code" > "$bin_cachepath"
-}
-
-___x_cmd_pkg_sphere_snap___ensurefp_and_exec(){
-    local bin_path="$1"
-    local sphere_name="$2"
-    local sphere_root="$3"
-    local osarch="$4"
-    local name="$5"
-    local version="$6"
-
-    [ -f "$bin_path" ] || {
-        ___x_cmd pkg sphere add --prebuild  \
-            --reason "snap,protect"   \
-            --sphere "$sphere_name" --sphereroot "$sphere_root" \
-            --osarch "$osarch" "$name" "$version" || return $?
-
-        [ -f "$bin_path" ] || N=pkg M="Not found pkg [name=$name] [version=$version] bin path" log:ret:1
-        ___x_cmd_cmds chmod +x "$bin_path" || N=pkg M="chmod $bin_path - Operation not permitted" log:ret:1
-    }
-
-    shift 6
-    "${bin_path}" "$@"
-}
-
-___x_cmd_pkg_sphere_snap___remove_cache(){
+___x_cmd_pkg_sphere_snap___ensure_execfp(){
     pkg:sphere:parse:args
-    local bin_cachedir="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/snap/$osarch/$name/$version"
-    [ ! -d "$bin_cachedir" ] || {
-        pkg:debug "Removing snap cache => $bin_cachedir"
-        ___x_cmd rmrf "$bin_cachedir"
-    }
+    local sociality="$1"
+
+    ___x_cmd_pkg_sphere add --prebuild  \
+        --reason "snap,protect"   \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+        --osarch "$osarch" "$name" "$version" || return $?
+
+    ___x_cmd_pkg_sphere_snap___gen_execfp \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
+        --osarch "$osarch" "$name" "$version" "$sociality"
 }
 
-___x_cmd_pkg_sphere_snap___xbin_path_(){
-    local name="$1"
-    local version="$2"
-    local osarch="$3"
-    local binname=$4
-    local bin_rpath="$5"
-
-    [ -n "$bin_rpath" ] || {
-        x_=""; ___x_cmd_pkg_sphere_snap___xbin_relative_path_ "$name" "$version" "$osarch" "$binname" || return $?
-        bin_rpath="$x_"
-    }
+___x_cmd_pkg_sphere_snap___gen_execfp(){
+    pkg:sphere:parse:args
+    local sociality="$1"
 
     local x_treename=; ___x_cmd_pkg_treename_ "$name" "$version" "$osarch" || return $?
-    local install_path="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$name/$version"
-    local bin_path="$install_path/$bin_rpath"
-    [ -f "$bin_path" ] || ___x_cmd_pkg_sphere_add --prebuild --reason "snap" --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" --osarch "$osarch" "$name" "$version" || return $?
-    [ -f "$bin_path" ] || N=pkg M="Not found pkg [name=$name] [version=$version] bin path" log:ret:1
-    ___x_cmd_cmds chmod +x "$bin_path" || N=pkg M="chmod $bin_path - Operation not permitted" log:ret:1
-    x_="$bin_path"
+    local tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$name/$version"
+
+    local path_list; path_list="$( ___x_cmd_pkg_sphere_link list_all_path_expand "$name" "$version" "$osarch" "$tgt" bin "$sociality" )" || return $?
+    [ -n "$path_list" ] || {
+        pkg:warn "Not found path list for $name $version"
+        return 1
+    }
+
+    local execdir="$___X_CMD_ROOT_PKG_EXEC_BINPATH"
+    ___x_cmd mkdirp "$execdir"
+
+    local bin_path=
+    local bin_name=
+    while read -r bin_path; do
+        bin_name="${bin_path##*/}"
+        printf "%s\n" "$bin_path" > "$execdir/$bin_name"
+        pkg:info "Generate the exec file for $bin_name"
+        ___x_cmd_cmds chmod +x "$bin_path" || {
+            pkg:error "Cannot use chmod on $bin_path"
+            return 1
+        }
+    done <<A
+$path_list
+A
 }
 
-___x_cmd_pkg_sphere_snap___xbin_relative_path_(){
-    local name="$1"
-    local version="$2"
-    local osarch="$3"
-    local binname=$4
-    local datalist; datalist="$( ___x_cmd_pkg___all_info --non-version "$name" "$version" "$osarch" )" || return $?
-    local bin_rpath; bin_rpath="$(
-    printf "%s\n\n" "$datalist" | ___x_cmd_cmds_awk \
-        -v BIN_MOD_NAME="$binname" \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"      \
-        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk"   \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk"    \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk"   \
-        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.xbin.awk"
-    )"
-
-    # [ -n "$bin_rpath" ] || bin_rpath="bin/$binname"
-    [ -n "$bin_rpath" ] || N=pkg M="Not found bin path of [binname=$binname] from pkg [name=$name] [version=$version]" log:ret:1
-    x_="$bin_rpath"
-}

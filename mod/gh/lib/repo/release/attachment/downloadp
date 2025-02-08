@@ -1,0 +1,61 @@
+# shellcheck shell=dash disable=SC2154
+___x_cmd_gh_repo_release_attachment_downloadp(){
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1          "Release Attachment ID or name"             <>:String
+    --repo|-r   "<owner_path>/<repo_path>"                  <>:RepoName
+    --tag       "Release tab"                               <>=""
+    --dir|-d    "file save path"                            <>=""
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    local asset="$1"
+    ___x_cmd is int "$asset" || asset="$(___x_cmd_gh_avatar____full_search_asset_id)"
+
+    local name;
+    local targetfp=;
+    local download_url=;
+    ___x_cmd_gh_curl get "/repos/${owner_repo}/releases/assets/${asset}" | {
+        ___x_cmd jo env . name=.name download_url=.browser_download_url
+        [ -n "$download_url" ] || return
+        if [ -n "$dir" ]; then
+            targetfp="$dir/$name"
+            ___x_cmd ensurefp "$targetfp"
+        else
+            targetfp="./$name"
+        fi
+        gh:info "download [attachment=$name] to [save_path=$targetfp]"
+         ___x_cmd curl --fail -L -o "$targetfp" "$download_url" || N=gh M="Fail to download [attachment=$name]" log:ret:1
+    }
+}
+
+___x_cmd_gh_repo_release_attachment_downloadallp(){
+    param:scope     ___x_cmd_github
+    param:dsl    '
+options:
+    #1          "Release ID"                        <>:Number
+    --repo|-r   "<owner_path>/<repo_path>"          <>:RepoName
+    --dir|-d    "file save path"                    <>=""
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    local release_id="$1"
+    local name;
+    local targetfp=;
+    local download_url=;
+    ___x_cmd gh repo release attachment ls -j --repo "$owner_repo" --per_page 100 --release_id  "$release_id" \
+        | ___x_cmd jo 2c .name .browser_download_url | while read -r line; do
+            name="${line%,*}"
+            download_url="${line#*,}"
+            [ -n "$download_url" ] || return
+            if [ -n "$dir" ]; then
+                targetfp="$dir/$name"
+                ___x_cmd ensurefp "$targetfp"
+            else
+                targetfp="./$name"
+            fi
+            gh:info "download [attachment=$name] to [save_path=$targetfp]"
+            ___x_cmd curl --fail -L -o "$targetfp" "$download_url" || N=gh M="Fail to download [attachment=$name]" log:ret:1
+        done
+}

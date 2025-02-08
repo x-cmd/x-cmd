@@ -1,0 +1,81 @@
+# shellcheck shell=dash
+
+# x version manager
+
+___x_cmd_version_system(){
+    [ $# -gt 0 ] || set -- --help
+    local op="$1";  shift
+    # download the version
+    case "$op" in
+        -h|--help)      ___x_cmd help -m version system "$@" ;;
+
+        i|install)
+                        ___x_cmd_version_system_install "$@" ;;
+
+        ls)
+                        ___x_cmd_version_system_"$op"   "$@" ;;
+
+        *)              N=vesrion M="Unknown op -> $op" log:ret:64
+    esac
+}
+
+
+# x version system install latest
+___x_cmd_version_system_install(){
+    local X_help_cmd='___x_cmd help -m version system install'
+    help:arg:parse
+
+    local version="${1:-latest}"
+    local exename="${2:-x}"
+
+    local sum=; sum="$( ___x_cmd version sum "$version" )" || N=x M="Not found the [version=$version] sum" log:ret:1
+    local sum8="${sum%"${sum#????????}"}";
+    x:info --exename "$exename" --version "$version" --sum "$sum" "Install system x-cmd"
+
+    local sys_version_dir="/usr/local/share/x-cmd/v"
+
+    [ -d "$sys_version_dir/.${sum8}" ] || {
+        local target="$___X_CMD_ROOT_SHARED/version/archive/.${sum8}.tgz"
+        local tmpdir="$___X_CMD_ROOT_TMP/version/archive/.${sum8}"
+        if [ ! -f "$target" ]; then
+            local url=
+            if ! ___x_cmd websrc is cn; then
+                url="https://raw.githubusercontent.com/x-cmd/release/main"
+            else
+                url="https://oss.resource.x-cmd.com/x-cmd/release"
+            fi
+            url="$url/sum/${sum}.tgz"
+            x:info "Download script archieve from $url"
+            ___x_cmd ensurefp "$target"
+            ___x_cmd curl -L "$url" --output "$target"  || {
+                ___x_cmd rmrf "$target"
+                x:error "Fail to download from $url"
+                return 1
+            }
+            ___x_cmd uz "$target" "$tmpdir"             || {
+                ___x_cmd rmrf "$target"
+                x:error "Fail to extract $target"
+                return 1
+            }
+        fi
+
+        x:info "Create directory -> $sys_version_dir/.${sum8}"
+        ___x_cmd sudo mkdir -p "$sys_version_dir"                               || return $?
+        ___x_cmd sudo mv "$tmpdir" "$sys_version_dir/.${sum8}"                  || return $?
+    }
+
+    x:info "Link $sys_version_dir/latest to $sys_version_dir/.${sum8}"
+    ___x_cmd sudo rm -rf "$sys_version_dir/latest"                              || return $?
+    ___x_cmd sudo ln -sf "$sys_version_dir/.${sum8}" "$sys_version_dir/latest"  || return $?
+
+    [ -f "/usr/local/bin/$exename" ] || {
+        ___x_cmd sudo mv "$___X_CMD_ROOT_MOD/x-cmd/lib/bin/x" "/usr/local/bin/$exename"
+        ___x_cmd sudo chmod +x "/usr/local/bin/$exename"
+    }
+}
+
+___x_cmd_version_system_ls(){
+    local X_help_cmd='___x_cmd help -m version system ls'
+    help:arg:parse
+    ___x_cmd_cmds ls --color=auto -alh "/usr/local/share/x-cmd/v/"
+}

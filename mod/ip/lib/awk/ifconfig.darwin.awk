@@ -13,7 +13,8 @@ function handle(            ipv4 ){
     if (ipv4 == "127.0.0.1" ) return
 
     gsub(":$", "", name)
-    printf(UI_KEY "%-10s" UI_END "  :  " UI_STR_VAR "%s" UI_END "\n", name, ipv4)
+    printf(UI_KEY "%-10s" UI_END "  :  " UI_STR_VAR "%s\t%s" UI_END "\n", name, ipv4, prop[ "mac" ])
+    delete prop
 }
 
 $0~/^[^ \t\v\r]/{

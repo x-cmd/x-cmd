@@ -2,28 +2,34 @@
 
 # reference: https://developer.work.weixin.qq.com/document/path/91770#%E6%96%87%E6%9C%AC%E7%B1%BB%E5%9E%8B
 
-# Section(inner): endpoint, send_json
 ___x_cmd_qywx_bot___send_json() {
-    local x_=;  local request="$1";  [ -n "$1" ] || request="$(___x_cmd_cmds_cat)"
-    request="$( printf "%s\n" "$request" | x jo n | x jo t " " )"
-    ___x_cmd_qywx_cur --get_ webhook
-    [ -n "$x_" ] || {
-        qywx:error "Please setting up your webhook first ==> 'x qywx --cfg webhook=<your webbook url>'"
-        return 1
+    local request="$1"
+    [ -n "$request" ] || request="$(___x_cmd_cmds_cat)"
+    request="$( printf "%s\n" "$request" | ___x_cmd jo n | ___x_cmd jo t " " )"
+
+    [ -n "$webhook" ] || {
+        local webhook
+        ___x_cmd_qywx_cur webhook:= 2>/dev/null
+        [ -n "$webhook" ] || N=qywx M="Please setting up your webhook first ==> 'x qywx --cfg webhook=<your webhook url>'" log:ret:1
     }
-    qywx:debug  --webhook "$x_" --request "$request"
-    ___x_cmd_http post json "$x_" "$request"
+
+    qywx:debug  --webhook "$webhook" --request "$request"
+    ___x_cmd_http post json "$webhook" "$request"
 }
-# EndSection
 
 ___x_cmd_qywx_bot(){
     param:subcmd ___x_cmd_qywx_bot    \
-        send   "send msg"             
+        send   "send msg"
 
     param:subcmd:try
     param:run
-    qywx:error "Subcommand required"
-    ___x_cmd_qywx help
+
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_qywx bot --help
+    else
+        ___x_cmd_qywx bot send "$@"
+    fi
+    return
 }
 
 ___x_cmd_qywx_bot_send() {
@@ -32,28 +38,34 @@ ___x_cmd_qywx_bot_send() {
         --markdown         "send markdown"    \
         --image            "send image"       \
         --raw              "send raw json"    \
-        --news             "send news"        \
-        --file             "send file"           
-        # --textcard         "send textcard"        
+        --richtext         "send richtext"
+        # --file             "send file"
+        # --textcard         "send textcard"
         # --newscard         "send newscard"
 
     param:subcmd:try
     param:run
 
-    ___x_cmd_qywx_bot_send_text "$@"    
-
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_qywx bot send --help
+    else
+        ___x_cmd_qywx_bot_send_text "$@"
+    fi
+    return
 }
+
 ___x_cmd_qywx_bot_send_text() {
     param:scope     qywx
     param:dsl <<A
 option:
-    #1                           "Provide text"      <content>:text
-    --mentioned_list             "A list of userids to alert specified members of the group"                                                <>:userid=""
-    --mentioned_mobile_list      "List of mobile phone numbers, reminding group members corresponding to mobile phone numbers"              <>:phone_number=""
+    #1                           "Provide text"                                                                                         <>:String
+    --mentioned_list             "A list of userids to alert specified members of the group"                                            <>=""
+    --mentioned_mobile_list      "List of mobile phone numbers, reminding group members corresponding to mobile phone numbers"          <>=""
+    --webhook                    "webhook"                                                                                              <>=""
     --json|-j                    "output origin json data"
 A
     param:run
-    
+
     local text="$1"
     local res=; res="$(___x_cmd_qywx_bot___send_json '
 {
@@ -74,7 +86,8 @@ ___x_cmd_qywx_bot_send_raw() {
     param:scope             qywx
     param:dsl <<A
 option:
-    #1            "Provide raw json(If #1 is '-', the json is read from stdin)"      <raw>:json
+    #1            "Provide raw json"                     <raw>:json
+    --webhook     "webhook"                              <>=""
     --json|-j     "output origin json data"
 A
     param:run
@@ -90,6 +103,7 @@ ___x_cmd_qywx_bot_send_markdown() {
     param:dsl <<A
 option:
     #1              "Provide text"              <content>:text
+    --webhook       "webhook"                   <>=""
     --json|-j       "output origin json data"
 A
     param:run
@@ -111,17 +125,16 @@ ___x_cmd_qywx_bot_send_image() {
     param:scope     qywx
     param:dsl <<A
 option:
-    --image_path    "Provide image path"    <image_path>:image_path
+    #1              "Provide image path"              <>:string
+    --webhook       "webhook"                         <>=""
     --json|-j       "output origin json data"
 A
     param:run
-    [ -f "$image_path" ] || {
-        qywx:error "Please provide image path"
-        return 1
-    }
+    local image_path="$1"
+    [ -f "$image_path" ] || N=qywx M="Not found image -> $image_path" log:ret:1
 
-    local md5=;     md5="$(x md5 "$image_path")"
-    local base64=;  base64="$(x base64 -w 0 "$image_path")"
+    local md5=;     md5="$(___x_cmd md5 "$image_path")"
+    local base64=;  base64="$(___x_cmd base64 -w 0 "$image_path")"
     local res=;     res="$(___x_cmd_qywx_bot___send_json '
 {
     "msgtype": "image",
@@ -136,39 +149,36 @@ A
     ___x_cmd_qywx____ui_utils "$res" "Sent image successfully" "$format"
 }
 
-___x_cmd_qywx_bot_send_news() {
+___x_cmd_qywx_bot_send_richtext() {
     param:scope     qywx
     param:dsl <<A
 option:
-    --articles|m        "Provide multiple action tag in following format [ <title> <description> <url> <picurl> ] " 
-        <title>:text
-        <description>:text
-        <url>:url
-        <picurl>:url
-    --json|-j           "output origin json data"
+    --url                   "url"                           <>:string
+    --title                 "title"                         <>:string
+    --picurl                "picurl"                        <>=""
+    --description           "description"                   <>=""
+    --webhook               "webhook"                       <>=""
+    --json|-j               "output origin json data"
 A
     param:run
-    local IFS="
-"
-    local title; local description ; local url ; local picurl ; local all
-    for i in $(param_marg articles); do
-        title=$(param_marg_get articles "$i" 1)
-        description=$(param_marg_get articles "$i" 2)
-        url=$(param_marg_get articles "$i" 3)
-        picurl=$(param_marg_get articles "$i" 4)
-        all="${all}${___X_CMD_UNSEENCHAR_NEWLINE}$(x jo dict "title:$title" "description:$description" "url:$url" "picurl:$picurl")"
-    done
-    local res=; res="$(___x_cmd_qywx_bot___send_json '
+    local res=; res="$(___x_cmd_qywx_bot___send_json <<A
 {
     "msgtype": "news",
     "news": {
-        "articles" : [ '"$all"' ]
+        "articles" : [
+            {
+                "title" : "$title",
+                "description" : "$description",
+                "url" : "$url",
+                "picurl" : "$picurl"
+            }
+        ]
     }
 }
-'
+A
 )"  || return
     local format=; format="${json:+json}"
-    ___x_cmd_qywx____ui_utils "$res" "Sent news successfully" "$format"
+    ___x_cmd_qywx____ui_utils "$res" "Sent richtext successfully" "$format"
 }
 
 
@@ -177,6 +187,7 @@ ___x_cmd_qywx_bot_send_file() {
     param:dsl <<A
 option:
     --media_id      "Provide file id"           <media_id>:media_id
+    --webhook       "webhook"                   <>=""
     --json|-j       "output origin json data"
 A
     param:run
@@ -207,18 +218,20 @@ ___x_cmd_qywx_bot_send_newscard() {
 ___x_cmd_qywx____ui_utils(){
     local res="$1"; local msg="$2"; local format="$3"
     [ -n "$res" ] || return
-    case "$format" in
-        json)   printf "%s\n" "$res" | x jo ; return ;;
-        yml)    printf "%s\n" "$res" | x j2y ; return ;;
-        *) ;;
-    esac
+    if [ -n "$json" ]; then
+        printf "%s\n" "$res"
+        return
+    fi
 
-    printf "%s" "$res" | x jo env . .errmsg -- '
-        if [ "$errmsg" = "ok" ]; then
+    {
+        local statu
+        ___x_cmd jo env . statu=.errmsg
+        if [ "$statu" = "ok" ]; then
             ___x_cmd_ui_tf true "$msg"
         else
-            ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg: $res"
-            return 1 || exit 1
+            ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$res"
         fi
-    '
+    } <<A
+$res
+A
 }

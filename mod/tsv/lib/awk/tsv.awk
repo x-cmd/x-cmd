@@ -4,12 +4,17 @@ function tsv_init(){
     RS = "\n"
 }
 
-function tsv_unesacpe( v ){
+function tsv_unesacpe( v,   _sw ){
     if (v ~ /\\/) {
-        gsub( "\\r", "\r",  v )
-        gsub( "\\n", "\n",  v )
-        gsub( "\\t", "\t",  v )
-        gsub( "\\", "\\\\", v )
+        if (gsub( /\\\\/,   "\n", v ))    _sw = 1
+
+        gsub( /\\r/,    "\r",   v )
+        if (_sw == 1)   gsub( "\n",   "\r", v )
+
+        gsub( /\\n/,    "\n",   v )
+        gsub( /\\t/,    "\t",   v )
+
+        if (_sw == 1)   gsub( "\r",   "\\", v )
     }
     return v
 }

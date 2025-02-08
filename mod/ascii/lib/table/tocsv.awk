@@ -1,3 +1,8 @@
+BEGIN{
+    DELIMETER = ENVIRON["DELIMETER"]
+    if (DELIMETER=="")  DELIMETER = ","
+}
+
 NR==1{
     esc[ NR-1 ] = "^@"
 }
@@ -29,8 +34,8 @@ function chr( o ){
 }
 
 END {
-    printf("%s,%s,%s,%s,%s,%s", "Dec", "Oct", "Hex", "Ctrl",  "Acronym", "Description")
-    if (lang == "zh") printf(",%s\n", "Description-zh")
+    printf("%s" DELIMETER "%s" DELIMETER "%s" DELIMETER "%s" DELIMETER "%s" DELIMETER "%s", "Dec", "Oct", "Hex", "Ctrl",  "Acronym", "Description")
+    if (lang == "zh") printf(DELIMETER "%s\n", "Description-zh")
     else printf "\n"
 
     if (topic == "all")          range = re_range(0, 127)
@@ -49,8 +54,8 @@ END {
         else if (i==44)     en[i] = a[i] = "\",\""
         DESC_ZH = zh[i]
         DESC_EN = en[i]
-        printf( "%d,%03o,0x%02x,%s,%s,%s", i, i, i, CTRL, a[i], DESC_EN )
-        if (lang == "zh") printf(",%s\n", DESC_ZH)
+        printf( "%d " DELIMETER "%03o" DELIMETER "0x%02x" DELIMETER "%s" DELIMETER "%s" DELIMETER "%s", i, i, i, CTRL, a[i], DESC_EN )
+        if (lang == "zh") printf(DELIMETER "%s\n", DESC_ZH)
         else printf "\n"
     }
 }

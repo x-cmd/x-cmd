@@ -1,36 +1,32 @@
 BEGIN{
-    Q2_1 = SUBSEP "\"1\""
-    o[ L ] = 1
-    o[ Q2_1 ] = "["
-    # jlist_put( o, "", "[" )
+    NO_COLOR = ENVIRON[ "NO_COLOR" ]
+    if ( NO_COLOR != 1 ) {
+        UI_KEY = "\033[1;34m"
+        UI_VAL = "\033[1;32m"
+        UI_END = "\033[0m"
+    }
 
-    _v_x_cmd    = ENVIRON[ "_v_x_cmd" ]
-    _v_shell    = ENVIRON[ "_v_shell" ]
-    _v_awk      = ENVIRON[ "_v_awk" ]
-    _v_sed      = ENVIRON[ "_v_sed" ]
-    _v_grep     = ENVIRON[ "_v_grep" ]
-    _v_find     = ENVIRON[ "_v_find" ]
-    _v_busybox  = ENVIRON[ "_v_busybox" ]
-    _v_release  = ENVIRON[ "_v_release" ]
-
-    add_info( o, "x-cmd",   ENVIRON[ "_v_x_cmd" ] )
-    add_info( o, "shell",   ENVIRON[ "_v_shell" ] )
-    add_info( o, "awk",     ENVIRON[ "_v_awk" ] )
-    add_info( o, "sed",     ENVIRON[ "_v_sed" ] )
-    add_info( o, "grep",     ENVIRON[ "_v_grep" ] )
-    add_info( o, "find",     ENVIRON[ "_v_find" ] )
-    add_info( o, "busybox",     ENVIRON[ "_v_busybox" ] )
-    add_info( o, "release",     ENVIRON[ "_v_release" ] )
-
-
-    print jstr(o)
-
+    stdout_yml_info( "x-cmd",   ENVIRON[ "_v_x_cmd" ] )
+    stdout_yml_info( "shell",   ENVIRON[ "_v_shell" ] )
+    stdout_yml_info( "awk",     ENVIRON[ "_v_awk" ] )
+    stdout_yml_info( "sed",     ENVIRON[ "_v_sed" ] )
+    stdout_yml_info( "grep",    ENVIRON[ "_v_grep" ] )
+    stdout_yml_info( "find",    ENVIRON[ "_v_find" ] )
+    stdout_yml_info( "busybox", ENVIRON[ "_v_busybox" ] )
+    stdout_yml_info( "curl",    ENVIRON[ "_v_curl" ] )
+    stdout_yml_info( "wget",    ENVIRON[ "_v_wget" ] )
+    stdout_yml_info( "release", ENVIRON[ "_v_release" ] )
 }
 
-function add_info( o, name, info,       kp ){
-    jlist_put( o, Q2_1, "{" )
-    kp = Q2_1 SUBSEP "\"" o[ Q2_1 L ] "\""
-    jdict_put( o, kp, "\"name\"", jqu(name) )
-    jdict_put( o, kp, "\"info\"", jqu(info) )
+function stdout_yml_info( name, info,       kp ){
+    printf("- %sname%s: %s%s%s\n", UI_KEY, UI_END, UI_VAL, name, UI_END)
+    if ( info ~ "\n" ) {
+        info = "|-\n" info
+        gsub( "\n", "\n    ", info )
+    } else if ( info ~ ":" ) {
+        info = jqu(info)
+    }
+
+    print "  " UI_KEY "info" UI_END ": " UI_VAL info UI_END
 }
 

@@ -1,0 +1,219 @@
+# shellcheck shell=dash
+
+___x_cmd_pkg_sphere_fastboot(){
+    local op="$1"
+    case "$op" in
+        add|rm|init|cacherc|get_tsv)
+            shift; ___x_cmd_pkg_sphere_fastboot___"$op" "$@" ;;
+        *)  N=pkg M="sphere fastboot no such option '$op'" log:ret:1 ;;
+    esac
+}
+
+___x_cmd_pkg_sphere_fastboot___get_tsv(){
+    pkg:sphere:parse:args
+    local datalist; datalist="$( ___x_cmd_pkg___all_info "$name" "$version" "$osarch" )" || {
+        pkg:error "Not found pkg [name=$name] [version=$version] information data"
+        return 1
+    }
+    local x_treename=; ___x_cmd_pkg_treename_ "$name" "$version" "$osarch" || return $?
+
+    pkg:debug "Generate the TSV information for fastboot $name $version"
+    printf "%s\n" "$datalist" | \
+        ___X_CMD_PKG___META_NAME="$name"    \
+        ___X_CMD_PKG___META_VERSION="$version"  \
+        ___X_CMD_PKG___META_TGT="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$name/$version" \
+        LC_ALL="$___X_CMD_AWK_LANGUAGE" ___x_cmd_cmds_awk \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk" \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"   \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk" \
+            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk" \
+            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk" \
+            -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.fastboot_env_tsv.awk"
+}
+
+___x_cmd_pkg_sphere_fastboot___add(){
+    local sphere_name=; local osarch=; local sociality=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sphere)
+                    sphere_name="$2";
+                    [ -n "$sphere_name" ] || M="Provide a sphere name" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --sphereroot)
+                    local ___X_CMD_PKG_ROOT_SPHERE="$2"
+                    [ -n "$___X_CMD_PKG_ROOT_SPHERE" ] || M="Provide sphere root path" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --osarch)
+                    osarch="$2";    shift 2 ;;
+            --sociality)
+                    sociality="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
+    sphere_name="${sphere_name:-"X"}"
+    pkg:sphere:name-version
+    [ -n "$sociality" ] || {
+        local x_="" >/dev/null 2>&1; ___x_cmd_pkg_sphere_sociality___get_       \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version" || return $?
+        sociality="$x_"
+    }
+
+    [ "$sociality" = intrusive ] || [ "$sociality" = dev ] || {
+        pkg:debug "The sociality[$sociality] of $name $version does not require fastboot"
+        return 0
+    }
+
+    pkg:info "Recording fastboot of $name $version in [sphere=$sphere_name]"
+    ___x_cmd fslock run "pkg_sphere_fastboot_${sphere_name}" ___x_cmd_pkg_sphere_fastboot___add_inner || return 1
+    ___x_cmd_pkg_sphere_fastboot___cacherc \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+        --osarch "$osarch"
+}
+
+___x_cmd_pkg_sphere_fastboot___add_inner(){
+    local newtsv=; newtsv="$(
+        ___x_cmd_pkg_sphere_fastboot___get_tsv \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch" "$name" "$version"
+    )" || return $?
+
+    [ -n "$newtsv" ] || {
+        pkg:debug "Not found the environment variable that needs to be modified"
+        return 0
+    }
+
+    local file="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/env.tsv"
+    if [ ! -f "$file" ]; then
+        ___x_cmd ensurefp "$file"
+        printf "%s\n" "$newtsv" > "$file"
+    else
+        local x_=; ___x_cmd rat_ "$file"
+        {
+            printf "%s\n" "$x_"
+        } | ___x_cmd_cmds_awk -v FS="\t" \
+            -v name="$name"     \
+            -v newtsv="$newtsv" '
+            (name == $1){ next; }
+            ($0 != ""){ print $0; }
+            END{ print newtsv; }
+        ' > "$file"
+    fi
+}
+
+___x_cmd_pkg_sphere_fastboot___rm(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-X}"
+    local name="$1";    [ -n "$name" ] || N=pkg M="Provide a package name" log:ret:1
+    pkg:info "Remove fastboot of $name $version in [sphere=$sphere_name]"
+    ___x_cmd fslock run "pkg_sphere_fastboot_${sphere_name}" ___x_cmd_pkg_sphere_fastboot___rm_inner || return 1
+    ___x_cmd_pkg_sphere_fastboot___cacherc \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+        --osarch "$osarch"
+}
+
+___x_cmd_pkg_sphere_fastboot___rm_inner(){
+    local file="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/env.tsv"
+    [ -f "$file" ] || return 0
+    local x_=;  ___x_cmd rat_ "$file"
+    printf "%s\n" "$x_" | ___x_cmd_cmds_awk -v FS="\t" -v name="$name" '
+        (name == $1){ next; }
+        ($0 != ""){ print $0; }
+    ' > "${file}"
+}
+
+___x_cmd_pkg_sphere_fastboot___init(){
+    local sphere_name=; local osarch=; local sociality=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sphere)
+                    sphere_name="$2";
+                    [ -n "$sphere_name" ] || M="Provide a sphere name" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --sphereroot)
+                    local ___X_CMD_PKG_ROOT_SPHERE="$2"
+                    [ -n "$___X_CMD_PKG_ROOT_SPHERE" ] || M="Provide sphere root path" N=pkg log:ret:1
+                    shift 2
+                    ;;
+            --osarch)
+                    osarch="$2";    shift 2 ;;
+            --sociality)
+                    sociality="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$osarch" ] || { ___x_cmd_pkg_osarch_ || return 1; osarch="$___X_CMD_PKG_OSARCH"; } || N=pkg M="Not found osarch" log:ret:1
+    sphere_name="${sphere_name:-"X"}"
+
+    local file="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/env.tsv"
+    local l=; local name=; local version=;
+    local custom_sociality="$sociality"; local x_=
+
+    ___x_cmd ensurefp "$file"
+
+    local listdate; listdate="$(
+        ___x_cmd_pkg_sphere link ls    \
+            --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+            --osarch "$osarch"
+    )" || return $?
+
+    [ -n "$listdate" ] || {
+        local cahcerc="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/env.rc"
+        printf "%s\n" "" > "$file"
+        printf "%s\n" "" > "$cahcerc"
+        return 0
+    }
+
+    printf "%s\n" "$listdate" | while read -r l; do
+            l="${l##*/}"
+            name="${l%%_*}"
+            version="${l#*_}"
+            sociality="$custom_sociality"
+
+            [ -n "$sociality" ] || {
+                x_=""; ___x_cmd_pkg_sphere_sociality___get_       \
+                    --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+                    --osarch "$osarch" "$name" "$version" || return $?
+                sociality="$x_"
+            }
+
+            [ "$sociality" = intrusive ] || [ "$sociality" = dev ] || {
+                pkg:debug "The sociality[$sociality] of $name $version does not require fastboot"
+                continue
+            }
+
+            ___x_cmd_pkg_sphere_fastboot___get_tsv \
+                --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+                --osarch "$osarch" "$name" "$version" || return 1
+        done > "$file"
+
+    ___x_cmd_pkg_sphere_fastboot___cacherc \
+        --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE"    \
+        --osarch "$osarch"
+}
+
+___x_cmd_pkg_sphere_fastboot___cacherc(){
+    pkg:sphere:parse:option
+    sphere_name="${sphere_name:-"X"}"
+
+    local file="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/env.tsv"
+    local cahcerc="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/.x-cmd/link/env.rc"
+    ___x_cmd ensurefp "$cahcerc"
+    [ -f "$file" ] || {
+        printf "%s\n" "" > "$cahcerc"
+        pkg:debug "Not found env.tsv in [sphere=$sphere_name]"
+        return 0
+    }
+
+
+    < "$file" ___x_cmd_cmds_awk -v FS="\t" \
+        -v ___X_CMD_PKG_ROOT_SPHERE="$___X_CMD_PKG_ROOT_SPHERE" \
+        -v sphere_name="$sphere_name" \
+        -v osarch="$osarch" \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.fastboot_env_rc.awk" > "$cahcerc"
+}

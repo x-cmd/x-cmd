@@ -13,16 +13,6 @@ ___x_cmd_advise_man(){
     esac
 }
 
-___x_cmd_is_suitable_advise_completion_env(){
-    ___x_cmd_is_suitable_advise_env || return 1
-    # bash >= 4.2
-    [ -z "$___X_CMD_ADVISE_SHELL_BASH_LT_4_2" ] || return 1
-}
-
-if [ -n "$BASH_VERSION" ] && ___x_cmd_is_suitable_advise_completion_env ; then  ___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER_SRC="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/completions"
-elif [ -n "$ZSH_VERSION" ]; then ___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER_SRC="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER/src"
-fi
-
 ___x_cmd_advise_man___folder_exist_xcmd(){
     [ -d "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" ]
 }
@@ -31,13 +21,12 @@ ___x_cmd_advise_man___folder_exist_completion(){
 }
 
 # Section: advise man install
-xrc websrc; ___x_cmd_websrc load
 ___x_cmd_advise_man___pkg_download_inner_url_(){
     local owner_repo="$1"
     local version="$2"
     local tar_name="$3"
     # [ -n "$___X_CMD_ADVISE_DEV_MOD" ] ||
-    if [ "$___X_CMD_WEBSRC_REGION" != cn ]; then
+    if ! ___x_cmd websrc is cn; then
         x_url="https://github.com/${owner_repo}/releases/download/${version}/${tar_name}"
     else
         x_url="https://oss.resource.x-cmd.com/releases/${owner_repo#*/}/${version}/${tar_name}"
@@ -118,7 +107,7 @@ ___x_cmd_advise_man___pkg_unzip_xcmd_unit(){
     ___X_CMD_ZUZ_QUIET=1 ___x_cmd uz "$___X_CMD_ADVISE_MAN_XCMD_PKG" "$___X_CMD_ADVISE_MAN_XCMD_FOLDER" || return $?
     advise:debug "Decompress advise/all.tar.xz to $___X_CMD_ADVISE_MAN_XCMD_FOLDER"
     ___x_cmd touch "$___X_CMD_ADVISE_MAN_XCMD_FOLDER/timefile"
-    ___x_cmd_advise___main --rm-bootcode
+    ___x_cmd_advise___main __rm_bootcode
 }
 
 # EndSection
@@ -129,10 +118,10 @@ ___x_cmd_advise_man_update(){
     case "$1" in
         x-cmd)          ___x_cmd_advise_man___pkg_unzip_xcmd --update       ;;
         completion)     ___x_cmd_advise_man___pkg_unzip_completion --update ;;
-        x.advise.jso)   ___x_cmd_advise_man_gen_x_advise_force              ;;
+        x.advise.jso)   ___x_cmd_advise___main gen_x_advise --force         ;;
         all)            ___x_cmd_advise_man___pkg_unzip_xcmd --update
                         ___x_cmd_advise_man___pkg_unzip_completion --update
-                        ___x_cmd_advise_man_gen_x_advise_force
+                        ___x_cmd_advise___main gen_x_advise --force
                         ;;
         *)              ___x_cmd_advise_man___pkg_check_update_completion
                         ___x_cmd_advise_man___pkg_check_update_xcmd
@@ -210,7 +199,10 @@ ___x_cmd_advise_man_which___completion(){
 ___x_cmd_advise_man_which(){
     local X_help_cmd='___x_cmd help -m advise man which'
     help:arg:parse
-    case "$1" in
+    local op="$1"
+    case "$op" in
+        xcmd_|completion_|completion_getfile_)
+                        shift; ___x_cmd_advise_man_which___"$op" "$@" ;;
         x-cmd)          shift; ___x_cmd_advise_man_which___xcmd "$@" ;;
         completion)     ___x_cmd_is_suitable_advise_completion_env || {
                             help:show:ret:64
@@ -254,7 +246,19 @@ ___x_cmd_advise_man_load___xcmd(){
 
 ___x_cmd_advise_man_load___completion(){
     ___x_cmd_is_suitable_advise_completion_env || return $?
-    ___x_cmd_advise_man___folder_exist_completion || ___x_cmd_advise_man___pkg_unzip_completion || return $?
+    ___x_cmd_advise_man___folder_exist_completion || {
+        [ -n "$___X_CMD_ADVISE_MAN_FORCED_LOAD" ] || {
+            if ! ___x_cmd_runmode_allow_chatty; then
+                advise:error "Not found completion folder"
+                return 1
+            else
+                ___x_cmd ui yesno "Not found completion folder, do you want to download it?" || return $?
+            fi
+        }
+
+        ___x_cmd_advise_man___pkg_unzip_completion || return $?
+    }
+
     if [ "$#" -ge 1 ]; then ___x_cmd_advise_man_load___completion_one "$@"
     else ___x_cmd_advise_man_load___completion_all
     fi
@@ -277,7 +281,7 @@ ___x_cmd_advise_man_load___completion_all(){
 
 ___x_cmd_advise_man_load___x(){
     advise:debug "Load x advise of $___X_CMD_ADVISE_MAN_CACHE_X_ADVISE_JSO"
-    ___x_cmd_advise_man_gen_x_advise
+    ___x_cmd_advise___main gen_x_advise
     ___x_cmd_advise_init x "$___X_CMD_ADVISE_MAN_CACHE_X_ADVISE_JSO"
     ___x_cmd_advise_init ___x_cmd "$___X_CMD_ADVISE_MAN_CACHE_X_ADVISE_JSO"
 }
@@ -294,9 +298,9 @@ ___x_cmd_advise_man_load(){
     help:arg:parse
     case "$1" in
         x-cmd)          shift; ___x_cmd_advise_man_load___xcmd "$@" ;;
-        completion)     ___x_cmd_advise_man_load___completion "$@" ;;
-        all)            ___x_cmd_advise_man_load___all ;;
-        x)              ___x_cmd_advise_man_load___x ;;
+        completion)     shift; ___x_cmd_advise_man_load___completion "$@" ;;
+        all)            shift; ___x_cmd_advise_man_load___all ;;
+        x)              shift; ___x_cmd_advise_man_load___x ;;
         *)              advise:error "Not such [option=$1]"
                         help:show:ret:64 ;;
     esac
@@ -321,7 +325,7 @@ ___x_cmd_advise_man_rm(){
         completion)
             shift; X_help_cmd='___x_cmd help -m advise man rm completion' help:arg:parse
             if ___x_cmd_advise_man___folder_exist_completion; then
-                if [ "$#" -eq 0 ]; then x_="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER_SRC"
+                if [ "$#" -eq 0 ]; then x_="$___X_CMD_ADVISE_MAN_COMPLETIONS_FOLDER"
                 else ___x_cmd_advise_man_which___completion_getfile_ "$1"
                 fi
                 [ -e "$x_" ] || return $?
