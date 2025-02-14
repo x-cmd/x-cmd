@@ -21,8 +21,14 @@ function shqu1( s ){
 }
 
 ($2 == "path"){
-    if ( $3 == "unshift" ) prefix_p = $4 ":" prefix_p
-    else if ( $3 == "append" ) suffix_p = suffix_p ":" $4
+    if (( $3 == "unshift" ) && ( path_arr[ $4 ] != 1 )) {
+        path_arr[ $4 ] = 1
+        prefix_p = $4 ":" prefix_p
+    }
+    else if (( $3 == "append" ) && ( path_arr[ $4 ] != 1 )) {
+        path_arr[ $4 ] = 1
+        suffix_p = suffix_p ":" $4
+    }
 }
 ($2 == "var"){
     str = str "export " $3 "=" shqu1($4) "\n"

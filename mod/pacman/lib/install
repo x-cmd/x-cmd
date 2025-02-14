@@ -1,0 +1,81 @@
+
+___x_cmd_pacman___install(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m pacman install ; return 0 ;;
+    esac
+
+    local ___X_CMD_PACMAN___FILTER="${___X_CMD_PACMAN___FILTER}"
+    if [ $# -eq 0 ]; then
+        ___x_cmd_pacman_install___app
+    else
+        ___x_cmd_pacman___exec -S "$@"
+    fi
+}
+
+___x_cmd_pacman_install___app(){
+    [ -f "/var/lib/pacman/sync/core.db" ] || {
+        pacman:info "The first use of pacman is detected and the local software repository list is ready to be updated."
+        ___x_cmd_pacman___exec -Sy && ___x_cmd_pacman___lsraw > "$___X_CMD_PACMAN_CACHE_PATH/lsname"
+        ___x_cmd_pacman___exec -Syyu --noconfirm || return 1
+    }
+
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; } \
+        || {
+            ___x_cmd_pacman___lsraw
+            return 0
+        }
+
+    pacman:info "Use 'x pacman -h' for help."
+    pacman:info "Select a package to install, or view information."
+
+    local software=
+    local x_=
+    if [ "$___X_CMD_PACMAN___FILTER" = "fzf" ];then
+        software="$( ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe pacman --fzdata )" || return $?
+    else
+        ___x_cmd_pacman___lsraw_ || return $?
+        local datafile="$x_"
+        x_=; ___x_cmd storeread_ ___x_cmd pick --width 40 --col 10 --datafile "$datafile"
+        software="$x_"
+    fi
+
+    [ -n "$software" ] || {
+            pacman:info "Exit because no software is selected."
+            return 1
+        }
+
+    local id=
+    ___x_cmd ui select id "What to do NEXT"  \
+        "x pacman -S  $software       # Install or upgrade software"    \
+        "x pacman -Si $software       # View software information"      \
+        "x pacman -R  $software       # Remove software"                \
+        "EXIT"     || return $?
+    case "$id" in
+        1)      ___x_cmd_pacman___exec -S  "$software" ;;
+        2)      ___x_cmd_pacman___exec -Si "$software" ;;
+        3)      ___x_cmd_pacman___exec     "$software" ;;
+        4)      return 0 ;;
+    esac
+}
+
+___x_cmd_pacman_install___fz_data(){
+    ___x_cmd_pacman___lsraw \
+        | ___x_cmd_pacman_install___fzf            \
+            --preview='___x_cmdexe pacman --fzfpreview {1}'  \
+            --preview-window=right:70%:wrap
+}
+
+___x_cmd_pacman_install___fzf_preview(){
+    ___x_cmd pacman -Si "$1"
+}
+
+___x_cmd_pacman_install___fzf(){
+    FZF_DEFAULT_OPTS="
+--ansi
+--reverse
+--height='80%'
+--bind='ctrl-w:toggle-preview-wrap'
+--bind='ctrl-r:change-preview-window(right,70%|down,40%,99%,border-horizontal|hidden|right)'
+"   ___x_cmd fzf "$@"
+}
+

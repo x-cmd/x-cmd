@@ -214,6 +214,7 @@ export alias @gh        = ___x_cmd chat --sendalias gh
 export alias @gemini    = ___x_cmd chat --sendalias gemini
 export alias @mistral   = ___x_cmd chat --sendalias mistral
 export alias @kimi      = ___x_cmd chat --sendalias kimi
+export alias @deepseek  = ___x_cmd chat --sendalias deepseek
 
 # writer
 export alias @zh        = ___x_cmd writer --sendalias zh

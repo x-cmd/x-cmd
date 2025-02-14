@@ -1,17 +1,37 @@
 # shellcheck shell=dash disable=SC2034
 
 ___x_cmd_openai_chat_exec(){
-    ___x_cmd_openai_has_aipkey || return $?
+    local ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER="${___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER:-openai}"
+    local ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME="${___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME:-OpenAI}"
+    local ___X_CMD_OPENAI_CHAT_ACTUAL_ENDPOINT="${___X_CMD_OPENAI_CHAT_ACTUAL_ENDPOINT:-"$___X_CMD_OPENAI_DEFAULT_ENDPOINT"}"
 
+    # x:info --provide "$___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER" --provider_name "$___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME" --endpoint "$___X_CMD_OPENAI_CHAT_ACTUAL_ENDPOINT" "chat exec"
+
+    local act_provider="$___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER"
+    ___x_cmd_openai_chat_provider___validate "$act_provider" || return $?
     local cfg_model=;       local cfg_maxtoken=;    local cfg_seed=;    local cfg_temperature=
-    ___x_cmd_openai_cfg --var cfg_model=model cfg_maxtoken=maxtoken cfg_seed=seed cfg_temperature=temperature 2>/dev/null
 
-    openai:debug --cfg_model "$cfg_model" --cfg_maxtoken "$cfg_maxtoken" --cfg_seed "$cfg_seed" --cfg_temperature "$cfg_temperature" "chat request"
-
-    local def_model="$___X_CMD_OPENAI_DEFAULT_FIRST_MODEL"
+    local x_=; local def_model=
+    case "$act_provider" in
+        lms)
+            ___x_cmd lms --cfg --var cfg_model=model cfg_maxtoken=maxtoken cfg_seed=seed cfg_temperature=temperature 2>/dev/null
+            ;;
+        gh) ___x_cmd gh --cfg --var cfg_model=ai_model cfg_maxtoken=ai_maxtoken cfg_seed=ai_seed cfg_temperature=ai_temperature 2>/dev/null
+            x_=; ___x_cmd gh model chat --def-model_
+            def_model="$x_"
+            ;;
+        *)  ___x_cmd "$act_provider" --has-apikey || return $?
+            ___x_cmd "$act_provider" --cfg --var cfg_model=model cfg_maxtoken=maxtoken cfg_seed=seed cfg_temperature=temperature 2>/dev/null
+            x_=; ___x_cmd "$act_provider" chat --def-model_
+            def_model="$x_"
+    ;;
+    esac
+    ___x_cmd log ":${act_provider}" debug --cfg_model "$cfg_model" --cfg_maxtoken "$cfg_maxtoken" --cfg_seed "$cfg_seed" --cfg_temperature "$cfg_temperature" "chat request"
 
     {
-        ___x_cmd cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach,temperature,def_model   \
+        provider_name="$act_provider" \
+        userlang="${cfg_userlang:-$LANG}" \
+        ___x_cmd cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach,temperature,maxtoken,def_model   \
                 -E cfg_history_num,cfg_session,cfg_minion,cfg_model,cfg_maxtoken,cfg_seed,cfg_temperature \
                 -m j/json,j/jiter,j/jcp \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"        \

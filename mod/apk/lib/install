@@ -1,6 +1,11 @@
 # shellcheck shell=dash
 
 ___x_cmd_apk_install(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m apk install ; return 0 ;;
+    esac
+
+    local ___X_CMD_APK___FILTER="${___X_CMD_APK___FILTER}"
     if [ $# -eq 0 ]; then
         ___x_cmd_apk_install___app
     else
@@ -11,42 +16,61 @@ ___x_cmd_apk_install(){
 ___x_cmd_apk_install___app(){
     local apkfp=;   apkfp="$(___x_cmd_cmds ls -1 /var/cache/apk/APKINDEX.* /etc/apk/cache/APKINDEX.* 2>/dev/null | head -n 1)"
     [ -f "$apkfp" ] || {
-        apk:info "Update the software in the repository."
+        apk:info "The first use of apk is detected and the local software repository list is ready to be updated."
         ___x_cmd apk update || N="apk" M="apk update fail" log:ret:1
+        ___x_cmd_cmds apk search -q > "$___X_CMD_APT_CACHE_PATH/lsname"
     }
 
-    ___x_cmd_is_stdout2tty || {
-        ___x_cmd_apk___lsraw
-        return 0
-    }
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; } \
+        || {
+            ___x_cmd_apk___lsraw
+            return 0
+        }
 
     apk:info "Use 'x apk -h' for help."
     apk:info "Select a package to install, or view information."
 
-    local x_=""
-    ___x_cmd_apk___lsraw_ || return $?
-    local datafile="$x_"
-    x_=; ___x_cmd storeread_ x pick --width 40 --col 10 --datafile "$datafile"
-    local software="$x_"
-    [ -n "$software" ] || {
-            apk:info "Exit because no software is selected."
-            return 0
-        }
+    local software=
+    local x_=
+    if [ "$___X_CMD_APK___FILTER" = "fzf" ];then
+        software="$( ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe apk --fzdata )" || return $?
+    else
+        ___x_cmd_apk___lsraw_ || return $?
+        local datafile="$x_"
+        x_=; ___x_cmd storeread_ ___x_cmd pick --width 40 --col 10 --datafile "$datafile"
+        software="$x_"
+    fi
 
     local id=
     # TODO: Maybe view the source code, or open install information
     ___x_cmd ui select id "What to do NEXT"    \
-        "x apk add       $software"     \
-        "x apk info      $software"     \
-        "browse repo of $software"      \
-        "apk --help"                    \
+        "x apk add   $software              # Install software"             \
+        "x apk apk search -v -e  $software  # View software information"    \
         "EXIT"     || return $?
     case "$id" in
-        1)      x apk add       "$software" ;;
-        2)      x apk info      "$software" ;;
-        3)      ___x_cmd_apk___repo_browse "$software" ;;
-        4)      x help -m apk ;;
-        5)      return 0 ;;
+        1)      ___x_cmd apk add                "$software" ;;
+        2)      ___x_cmd apk apk search -v -e   "$software" ;;
+        3)      return 0 ;;
     esac
 }
 
+___x_cmd_apk_install___fz_data(){
+    ___x_cmd_apk___lsraw \
+        | ___x_cmd_apk_install___fzf            \
+            --preview='___x_cmdexe apk --fzfpreview {1}'  \
+            --preview-window=right:70%:wrap
+}
+
+___x_cmd_apk_install___fzf_preview(){
+    ___x_cmd_cmds apk search -v -e "$@"
+}
+
+___x_cmd_apk_install___fzf(){
+    FZF_DEFAULT_OPTS="
+--ansi
+--reverse
+--height='80%'
+--bind='ctrl-w:toggle-preview-wrap'
+--bind='ctrl-r:change-preview-window(right,70%|down,40%,99%,border-horizontal|hidden|right)'
+"   ___x_cmd fzf "$@"
+}

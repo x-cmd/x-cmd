@@ -5,10 +5,16 @@ ___x_cmd_gh_model_chat(){
     case "$op" in
         request|exec)
             shift; ___x_cmd_gh_model_chat_"$op" "$@" ;;
+        --def-model_)
+            ___x_cmd_gh_model_chat_def_model_ "$@" ;;
         --help|-h)
             shift; ___x_cmd help -m gh model chat ;;
         *)  ___x_cmd help -m gh model chat >&2; return 64 ;;
     esac
+}
+
+___x_cmd_gh_model_chat_def_model_(){
+    x_="$___X_CMD_GH_MODEL_DEFAULT_NAME"
 }
 
 ___x_cmd_gh_model_chat_request(){
@@ -16,74 +22,9 @@ ___x_cmd_gh_model_chat_request(){
     ___x_cmd chat --exec --provider gh "$@"
 }
 
-___x_cmd_gh_model_chat_request___launch(){
-    local content_dir
-    read -r content_dir
-
-    ___x_cmd_gh_model_chat_request___trapexit(){
-        gh:debug "Remove chat.running file"
-        ___x_cmd rmrf "$content_dir/chat.running"
-    }
-
-    printf "%s\n" $$ >"$content_dir/chat.running"
-    trap '___x_cmd_gh_model_chat_request___trapexit' EXIT
-
-    {
-        local model
-        read -r model
-
-        local request_body_file="$content_dir/gh.request.body.yml"
-        [ -f "$request_body_file" ] || return
-
-        ___x_cmd retry --max 2 --interval 3 ___x_cmd_gh_model_chat_request___try
-    } || {
-        ___x_cmd_gh_model_chat_request___trapexit
-        return 1
-    }
+___x_cmd_gh_model_chat_exec(){
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER='gh'   \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME='GitHub Models'  \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_ENDPOINT="https://models.inference.ai.azure.com"    \
+    ___x_cmd openai chat exec "$@"
 }
-
-___x_cmd_gh_model_chat_request___try(){
-    gh:debug "Sending request to github models"
-    [ -z "$confirm_before_send" ] || {
-        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >"$___X_CMD_DEVTTY_FP"
-        ___x_cmd ui yesno "Do your want to send this message?" || {
-            ___X_CMD_RETRY_ABORT=1
-            return 1
-        }
-        confirm_before_send=
-    }
-
-    local _md5; _md5="$( < "$request_body_file" ___x_cmd str md5 )"
-    {
-        request_body_file="$request_body_file" \
-        ___x_cmd ccmd "$cache_time" -- \
-            ___x_cmd_gh_model_chat_send "$model" "$_md5"
-    } | {
-        local interative=
-        if ___x_cmd_runmode_allow_chatty; then interative=1; fi
-
-        local errcode=0
-        provider_name=gh \
-        ___x_cmd cawk  -E content_dir,interative         \
-                -m j/json,j/jiter,j/jcp                                     \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"            \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"               \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"             \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"               \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"               \
-                -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai.awk"           \
-                -f "$___X_CMD_ROOT_MOD/openai/lib/awk/openai_stream_output_util.awk"    \
-                -f "$___X_CMD_ROOT_MOD/openai/lib/awk/handle_response.awk" || {
-            errcode=$?
-            ___x_cmd ccmd - ___x_cmd_gh_model_chat_send "$model" "$_md5"
-        }
-
-        case $errcode in
-            0)  ;;
-            2)  ___X_CMD_RETRY_ABORT=1; errcode=1 ;;
-            *)  ___x_cmd rmrf "$content_dir/gh.response.yml" "$content_dir/chat.response.yml" ;;
-        esac
-        return "$errcode"
-    }
-}
-

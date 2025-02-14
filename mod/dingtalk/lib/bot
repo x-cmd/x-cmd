@@ -2,63 +2,59 @@
 
 # Reference: https://open.dingtalk.com/document/group/custom-robot-access
 
-___x_cmd_dingtalk_bot___send_json() {
-    local req_json ; req_json="$(___x_cmd_cmds_cat)"
-    dingtalk:debug "$(printf "%s" "$req_json" | ___x_cmd jo fmt)"
-
-    local webhook
-    ___x_cmd_dingtalk_cur webhook:= 2>/dev/null
-    [ -n "$webhook" ] || N=dingtalk M="Please setting up your webhook first ==> 'x dingtalk --cfg webhook=<your webhook url>'" log:ret:1
-
-
-    local res ; res="$(___x_cmd_http post json "$webhook" "$req_json")"
-    printf "%s" "$res"
-}
-
 ___x_cmd_dingtalk_bot(){
     param:subcmd ___x_cmd_dingtalk_bot    \
         send   "send msg"
 
     param:subcmd:try
     param:run
-    dingtalk:error "Subcommand required"
-    ___x_cmd_dingtalk help
+
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_dingtalk bot --help
+    else
+        ___x_cmd_dingtalk bot send "$@"
+    fi
+    return
 }
 
 ___x_cmd_dingtalk_bot_send() {
-    param:subcmd ___x_cmd_dingtalk_bot_send    \
-        text             "send text"           \
-        link             "send link msg"       \
-        markdown         "send markdown msg"   \
-        raw              "send raw json"       \
-        action           "send action"         \
-        actioncards      "send card"           \
-        richtext         "send richtext"
+    param:subcmd ___x_cmd_dingtalk_bot_send             \
+        --text             "send text"                  \
+        --link             "send link msg"              \
+        --markdown         "send markdown msg"          \
+        --richtext         "send richtext"              \
+        --raw              "send raw json"              \
+        --sing_action      "send sing action card"      \
+        --multi_action     "send multi action card"
 
     param:subcmd:try
     param:run
 
-    ___x_cmd_dingtalk_bot_send_text "$@"
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_dingtalk bot send --help
+    else
+        ___x_cmd_dingtalk_bot_send_text "$@"
+    fi
+    return
 }
+
 ___x_cmd_dingtalk_bot_send_text() {
     param:scope     dingtalk
     param:dsl <<A
 option:
-    #1                  "Provide text"      <content>:text
+    #1                  "Provide text"                                      <>:text
+    --at_mobile         "The cell phone number of the person being @"       <>=""
+    --at_userid         "The userid of the person being @"                  <>=""
+    --webhook           "webhook"                                           <>=""
     --atall|-a          "Notify all member of the group"
-    --atMobiles         "The cell phone number of the person being @ (in the text content should have @ cell phone number)"
-                                            <atMobiles>:phone_number=""
-    --atUserIds         "The userid of the person being @ (@userid should be included in the text content)"
-                                            <atMobiles>:user_id=""
     --json|-j           "output origin json data"
 
 A
     param:run
     local text="$1"
     local atall="${atall:-false}"
-    local atMobile; local atUserId
-    atMobile=$(___x_cmd_dingtalk___get_mobiles "${atMobiles}")
-    atUserId=$(___x_cmd_dingtalk___get_mobiles "${atUserIds}")
+    at_mobile="$(___x_cmd_dingtalk___get_mobiles "${at_mobile}")"
+    at_userid="$(___x_cmd_dingtalk___get_mobiles "${at_userid}")"
     local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
 {
     "msgtype": "text",
@@ -66,9 +62,9 @@ A
         "content": "$text"
     },
     "at": {
-        "atMobiles":[ ${atMobile} ],
-        "atUserIds":[ ${atUserId} ],
-        "isAtAll": ${atall:-false}
+        "atMobiles":[ ${at_mobile} ],
+        "atUserIds":[ ${at_userid} ],
+        "isAtAll": $atall
     }
 }
 A
@@ -80,7 +76,8 @@ ___x_cmd_dingtalk_bot_send_raw() {
     param:scope             dingtalk
     param:dsl <<A
 option:
-    #1                  "Provide raw json(If #1 is '-', the json is read from stdin)"      <raw>:json
+    #1                  "Provide raw json"              <raw>:json
+    --webhook           "webhook"                       <>=""
     --json|-j           "output origin json data"
 
 A
@@ -98,12 +95,12 @@ ___x_cmd_dingtalk_bot_send_link() {
     param:scope     dingtalk
     param:dsl <<A
 option:
-    --title         "Provide title"     <title>:title
-    --text          "Provide text"      <text>:text
-    --picurl        "Provide picurl"    <picurl>:url
-    --msgurl        "Provide msgurl"    <msgurl>:url
+    --text          "Provide text"                  <>:text
+    --title         "Provide title"                 <>
+    --url           "Provide url"                   <>
+    --picurl        "Provide picurl"                <>=""
+    --webhook       "webhook"                       <>=""
     --json|-j       "output origin json data"
-
 A
     param:run
 
@@ -114,7 +111,7 @@ A
         "text": "${text}",
         "title": "${title}",
         "picUrl": "${picurl}",
-        "messageUrl": "${msgurl}"
+        "messageUrl": "${url}"
     }
 }
 A
@@ -126,20 +123,20 @@ ___x_cmd_dingtalk_bot_send_markdown() {
     param:scope     dingtalk
     param:dsl <<A
 option:
-    --title             "Provide title"     <title>:title
-    --text              "Provide text"      <text>:text
+    #1                  "Provide text"                                      <>
+    --title             "Provide title"                                     <>
+    --at_mobile         "The cell phone number of the person being @"       <>=""
+    --at_userid         "The userid of the person being @"                  <>=""
+    --webhook           "webhook"                                           <>=""
     --atall|-a          "Notify all member of the group"
-    --atMobiles         "The cell phone number of the person being @ (in the text content should have @ cell phone number)"
-                                            <atMobiles>:phone_number=""
-    --atUserIds         "The userid of the person being @ (@userid should be included in the text content)"
-                                            <atMobiles>:user_id=""
     --json|-j           "output origin json data"
 
 A
     param:run
+    local text="$1"
     local atall="${atall:-false}"
-    atMobiles=$(___x_cmd_dingtalk___get_mobiles "${atMobiles}")
-    atUserIds=$(___x_cmd_dingtalk___get_mobiles "${atUserIds}")
+    at_mobile=$(___x_cmd_dingtalk___get_mobiles "${at_mobile}")
+    at_userid=$(___x_cmd_dingtalk___get_mobiles "${at_userid}")
 
     local res; res="$(___x_cmd_dingtalk_bot___send_json <<A
 {
@@ -149,9 +146,9 @@ A
         "text":  "$text"
     },
     "at": {
-        "atMobiles": [ ${atMobiles} ],
-        "atUserIds": [ ${atUserIds} ],
-        "isAtAll": ${atall:-false}
+        "atMobiles": [ ${at_mobile} ],
+        "atUserIds": [ ${at_userid} ],
+        "isAtAll": $atall
     }
 }
 A
@@ -159,39 +156,40 @@ A
     _____x_cmd_dingtalk_ui_utils Markdown
 }
 
-___x_cmd_dingtalk_bot_send_action() {
+___x_cmd_dingtalk_bot_send_sing_action() {
     param:scope     dingtalk
     param:dsl <<A
 option:
-    --title             "Provide title"                                 <title>:title
-    --text              "Provide text"                                  <text>:text
-    --atall|-a          "Notify all member of the group"
-    --horizontal|-H     "horizontal"
-    --linktitle         "Link title"                                    <title>:title
-    --linkurl           "link url"                                      <link>:url
-
-    --json|-j           "output origin json data"
-
+    --text                  "Provide text"                                  <>:text
+    --title                 "Provide title"                                 <>
+    --btn|m                 "Provide button titles and action links . [ <title> <url> ] "
+        <title>:title
+        <url>:url
+    --webhook               "webhook"                                       <>=""
+    --btn_horizontal        "The buttons are arranged horizontally"
+    --json|-j               "output origin json data"
 A
     param:run
 
-    local atall="${atall:-false}"
 
     local btnOrientation=0
-    [ -z "$horizontal" ] || btnOrientation=1
+    [ -z "$btn_horizontal" ] || btnOrientation=1
+
+    local linktitle; local linkurl
+    for i in $(param_marg btn); do
+        linktitle="$(param_marg btn "$i" 1)"
+        linkurl="$(param_marg btn "$i" 2)"
+    done
 
     local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
 {
     "msgtype": "actionCard",
     "actionCard": {
         "title": "$title",
-        "text":  "$text",
-        "btnOrientation": "$btnOrientation",
-        "singleTitle" :   "$linktitle",
-        "singleURL" :     "$linkurl"
-    },
-    "at": {
-        "isAtAll": ${atall:-false}
+        "text": "$text",
+        "btnOrientation": $btnOrientation,
+        "singleTitle": "$linktitle",
+        "singleURL": "$linkurl"
     }
 }
 A
@@ -199,22 +197,23 @@ A
     _____x_cmd_dingtalk_ui_utils Action
 }
 
-___x_cmd_dingtalk_bot_send_actioncards() {
+___x_cmd_dingtalk_bot_send_multi_action() {
     param:scope     dingtalk
     param:dsl <<A
 option:
-    --title             "Provide title"                                                      <title>:title
-    --text              "Provide text"                                                       <text>:text
-    --btnOrientation    "0:The buttons are arranged vertically,1:Horizontal arrangement"     <btnOrientation>:btnOrientation
-    --btn|m             "Provide button titles and action links . [ <title> <action-url> ] "
+    --text                  "Provide text"                                  <>:text
+    --title                 "Provide title"                                 <>
+    --btn|m                 "Provide button titles and action links . [ <title> <url> ] "
         <title>:title
-        <action-url>:url
-    --json|-j           "output origin json data"
-
+        <url>:url
+    --webhook               "webhook"                                       <>=""
+    --btn_horizontal        "The buttons are arranged horizontally"
+    --json|-j               "output origin json data"
 A
     param:run
 
-    local atall="${atall:-false}"
+    local btnOrientation=0
+    [ -z "$btn_horizontal" ] || btnOrientation=1
     local IFS="
 "
     local all; local actionTitle ; local actionURL
@@ -232,7 +231,7 @@ A
         "text":  "$text",
         "btnOrientation": "$btnOrientation",
         "btns": [
-            $(printf "%s" "$all" | x jo)
+            $(printf "%s" "$all" | ___x_cmd jo)
         ]
     }
 }
@@ -245,10 +244,11 @@ ___x_cmd_dingtalk_bot_send_richtext() {
     param:scope     dingtalk
     param:dsl <<A
 option:
-    --card|m            "Provide multiple action card in following format. [ <title> <message-url> <picture-url> ] ..."
+    --card|m            "Provide multiple action card in following format. [ <title> <url> <picurl> ] ..."
         <title>:text
-        <message-url>:url
-        <picture-url>:url
+        <url>:url
+        <picurl>:url
+    --webhook           "webhook"                   <>=""
     --json|-j           "output origin json data"
 
 A
@@ -270,7 +270,7 @@ A
     "msgtype": "feedCard",
     "feedCard": {
         "links": [
-            $(printf "%s" "$all" | x jo)
+            $(printf "%s" "$all" | ___x_cmd jo)
         ]
     }
 }

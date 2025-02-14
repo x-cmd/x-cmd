@@ -1,17 +1,20 @@
 # shellcheck shell=dash
 # this is a moduel to honor x-bash/chat module
 
-xrc chat
-xrc:mod:lib     moonshot      chat/send chat/exec
-
 ___x_cmd_moonshot_chat(){
     local X_help_cmd='___x_cmd help -m moonshot chat'; help:arg:parse
     local op="$1";
     case "$op" in
         request|preparehistory|exec)
             shift; ___x_cmd_moonshot_chat_"$op" "$@" ;;
+        --def-model_)
+            shift; ___x_cmd_moonshot_chat_def_model_ "$@" ;;
         *)  N=moonshot M="Not support such option '$op'" log:ret:64
     esac
+}
+
+___x_cmd_moonshot_chat_def_model_(){
+    x_="$___X_CMD_MOONSHOT_DEFAULT_FIRST_MODEL"
 }
 
 ___x_cmd_moonshot_chat_request(){
@@ -19,72 +22,13 @@ ___x_cmd_moonshot_chat_request(){
     ___x_cmd chat --exec --provider moonshot "$@"
 }
 
-___x_cmd_moonshot_chat_request___launch(){
-    local content_dir
-    read -r content_dir
-    [ -d "$content_dir" ] || return 1
+___x_cmd_moonshot_chat_exec(){
+    if [ -n "$count_token" ]; then
+        local ___X_CMD_OPENAI_CHAT_REQUEST_ACTUAL_FUNTION=___x_cmd_moonshot_count_token_app
+    fi
 
-    ___x_cmd_moonshot_chat_request___trapexit(){
-        moonshot:debug "Remove chat.running file"
-        ___x_cmd rmrf "$content_dir/chat.running"
-    }
-
-    printf "%s\n" $$ >"$content_dir/chat.running"
-    trap '___x_cmd_moonshot_chat_request___trapexit' EXIT
-
-    {
-        read -r model
-
-        local request_body_file="$content_dir/moonshot.request.body.yml"
-        [ -f "$request_body_file" ] || return $?
-        if [ -z "$count_token" ]; then
-            ___x_cmd retry --max 2 --interval 3 ___x_cmd_moonshot_chat_request___try
-        else
-            ___x_cmd retry --max 2 --interval 3 ___x_cmd_moonshot_count_token_app
-        fi
-    } || {
-        ___x_cmd_moonshot_chat_request___trapexit
-        return 1
-    }
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER='moonshot'   \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME='Moonshot AI kimi'  \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_ENDPOINT="$___X_CMD_MOONSHOT_ENDPOINT"    \
+    ___x_cmd openai chat exec "$@"
 }
-
-___x_cmd_moonshot_chat_request___try(){
-    moonshot:debug "Sending request to moonshot server"
-    [ -z "$confirm_before_send" ] || {
-        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml >"$___X_CMD_DEVTTY_FP"
-        ___x_cmd ui yesno "Do your want to send this message?" || {
-            ___X_CMD_RETRY_ABORT=1
-            return 1
-        }
-        confirm_before_send=
-    }
-
-    local _md5; _md5="$( < "$request_body_file" ___x_cmd str md5 )"
-    {
-        request_body_file="$request_body_file" \
-        ___x_cmd ccmd "$cache_time" -- \
-            ___x_cmd_moonshot_request_generaxwtecontent "$model" "$_md5"
-    } | {
-        local interative=
-        if ___x_cmd_runmode_allow_chatty; then interative=1; fi
-
-        local errcode=0
-        ___x_cmd cawk  -E content_dir,interative         \
-                -m j/json,j/jiter,j/jcp                                     \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"            \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"               \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"             \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"               \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"               \
-                -f "$___X_CMD_ROOT_MOD/moonshot/lib/awk/moonshot.awk"       \
-                -f "$___X_CMD_ROOT_MOD/moonshot/lib/awk/moonshot_stream_output_util.awk"    \
-                -f "$___X_CMD_ROOT_MOD/moonshot/lib/awk/handle_response.awk" || errcode=$?
-
-        case $errcode in
-            0)      ;;
-            *)  ___x_cmd rmrf "$content_dir/moonshot.response.yml" "$content_dir/chat.response.yml" ;;
-        esac
-        return "$errcode"
-    }
-}
-

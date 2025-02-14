@@ -158,7 +158,7 @@ fn init {
         edit:add-var a: $a:
     }
 
-    if (not (os:is-regular $E:HOME/.x-cmd.root/local/data/elv/config/readline-binding.disable ) ) {
+    if ( os:is-regular $E:HOME/.x-cmd.root/local/data/elv/config/readline-binding.enable ) {
         use readline-binding
         edit:add-var readline-binding $readline-binding:
     }

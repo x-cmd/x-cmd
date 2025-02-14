@@ -3,28 +3,46 @@
 xrc chat
 xrc:mod:lib     openai      chat/send chat/exec
 
+# TODO: preparehistory
 ___x_cmd_openai_chat(){
-    local X_help_cmd='x help -m openai chat'; help:arg:parse
+    local X_help_cmd='___x_cmd help -m openai chat'; help:arg:parse
     local op="$1";
     case "$op" in
-        request|preparehistory|exec)
+        request|exec)
             shift; ___x_cmd_openai_chat_"$op" "$@" ;;
+        --def-model_)
+            shift; ___x_cmd_openai_chat_def_model_ "$@" ;;
         *)  N=openai M="Not support such [subcmd=$op]" log:ret:64
     esac
 }
 
+___x_cmd_openai_chat_def_model_(){
+    x_="$___X_CMD_OPENAI_DEFAULT_FIRST_MODEL"
+}
+
+___x_cmd_openai_chat_provider___validate(){
+    local provider="$1"
+    case "$provider" in
+        openai|gh|lms|deepseek|moonshot) return 0 ;;
+        *)
+            N=openai M="Provider API format must be OpenAI-compatible" log:ret:64
+            ;;
+    esac
+}
+
 ___x_cmd_openai_chat_request(){
-    local X_help_cmd='x help -m openai chat request'; help:arg:parse
+    local X_help_cmd='___x_cmd help -m openai chat request'; help:arg:parse
     ___x_cmd chat --exec --provider openai "$@"
 }
 
 ___x_cmd_openai_chat_request___launch(){
+    local act_provider="$___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER"
     local content_dir
     read -r content_dir
     [ -d "$content_dir" ] || return 1
 
     ___x_cmd_openai_chat_request___trapexit(){
-        openai:debug "Remove chat.running file"
+        ___x_cmd log ":${act_provider}" debug "Remove chat.running file"
         ___x_cmd rmrf "$content_dir/chat.running"
     }
 
@@ -35,10 +53,18 @@ ___x_cmd_openai_chat_request___launch(){
         local model
         read -r model
 
-        local request_body_file="$content_dir/openai.request.body.yml"
+        local request_body_file="$content_dir/${act_provider}.request.body.yml"
         [ -f "$request_body_file" ] || return $?
 
-        ___x_cmd retry --max 2 --interval 3 ___x_cmd_openai_chat_request___try
+        local request_function="${___X_CMD_OPENAI_CHAT_REQUEST_ACTUAL_FUNTION:-___x_cmd_openai_chat_request___try}"
+
+        if [ -z "$___X_CMD_OPENAI_CHAT_REQUEST_NOT_RETRY" ]; then
+            ___x_cmd retry --max 2 --interval 3 "$request_function"
+        else
+            "$request_function"
+        fi
+
+        ___x_cmd_openai_chat_request___trapexit
     } || {
         ___x_cmd_openai_chat_request___trapexit
         return 1
@@ -46,7 +72,8 @@ ___x_cmd_openai_chat_request___launch(){
 }
 
 ___x_cmd_openai_chat_request___try(){
-    openai:debug "Sending request to openai server"
+    local act_provider="$___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER"
+    ___x_cmd log ":${act_provider}" debug "Sending request to $___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME server"
     [ -z "$confirm_before_send" ] || {
         < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >"$___X_CMD_DEVTTY_FP"
         ___x_cmd ui yesno "Do your want to send this message?" || {
@@ -66,6 +93,7 @@ ___x_cmd_openai_chat_request___try(){
         if ___x_cmd_runmode_allow_chatty; then interative=1; fi
 
         local errcode=0
+        provider_name="$act_provider" \
         ___x_cmd cawk -i -E content_dir,interative         \
                 -m j/json,j/jiter,j/jcp                                     \
                 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"            \
@@ -83,7 +111,7 @@ ___x_cmd_openai_chat_request___try(){
         case $errcode in
             0)  ;;
             2)  ___X_CMD_RETRY_ABORT=1; errcode=1 ;;
-            *)  ___x_cmd rmrf "$content_dir/openai.response.yml" "$content_dir/chat.response.yml" ;;
+            *)  ___x_cmd rmrf "$content_dir/${act_provider}.response.yml" "$content_dir/chat.response.yml" ;;
         esac
         return "$errcode"
     }

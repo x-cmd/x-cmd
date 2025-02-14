@@ -59,7 +59,7 @@ function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key
 }
 
 function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq_kp, def_model,          i, l, str, \
-    _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken, _seed, _temperature, _data_str){
+    _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken_keyname, _maxtoken, _seed, _temperature, _data_str){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
         str = openai_gen_history_str(history_obj, i)
@@ -82,8 +82,16 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq
     _temperature    = minion_temperature( minion_obj, minion_kp )
     _jsonmode       = minion_is_jsonmode( minion_obj, minion_kp )
 
-    # TODO: in some case, _maxtoken is 0, but it is not a valid value for openai. Find out why that happened in line 72
-    _maxtoken       = (_maxtoken > 0) ? "\"max_tokens\": " _maxtoken "," : ""
+    # Tip:
+    #   in some case, _maxtoken is 0, but it is not a valid value for openai.
+    #   in openai, 'max_tokens' is now deprecated in favor of 'max_completion_tokens', and is not compatible with o1 series models.
+    if ( PROVIDER_NAME == "openai" ) {
+        _maxtoken_keyname = "\"max_completion_tokens\""
+    } else {
+        _maxtoken_keyname = "\"max_tokens\""
+    }
+
+    _maxtoken       = (_maxtoken > 0) ? _maxtoken_keyname ": " _maxtoken "," : ""
     _seed           = (_seed != "") ? "\"seed\": " int(_seed) "," : ""
     _temperature    = (_temperature != "") ? "\"temperature\": " _temperature "," : ""
     _jsonmode       = (_jsonmode) ? "\"response_format\": { \"type\": \"json_object\" }," : ""

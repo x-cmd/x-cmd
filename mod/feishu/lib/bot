@@ -2,45 +2,39 @@
 
 # Reference: https://open.feishu.cn/document/ukTMukTMukTM/ucTM5YjL3ETO24yNxkjN#8b0f2a1b
 
-# Section(inner): endpoint, send_json
-
-___x_cmd_feishu_bot___send_json() {
-    local req_json; req_json="$(___x_cmd_cmds_cat)"
-    feishu:debug "$(printf "%s" "$req_json" | x jo fmt)"
-
-    local webhook
-    ___x_cmd_feishu_cur webhook:= 2>/dev/null
-    [ -n "$webhook" ] || N=feishu M="Please setting up your webhook first ==> 'x feishu --cfg webhook=<your webhook url>'" log:ret:1
-
-    local res ; res="$(___x_cmd_http post json "$webhook?wait=true" "$req_json")"
-    printf "%s" "$res"
-}
-
-# EndSection
-
 ___x_cmd_feishu_bot(){
     param:subcmd ___x_cmd_feishu_bot    \
         send   "send msg"
 
     param:subcmd:try
     param:run
-    feishu:error "Subcommand required"
-    ___x_cmd_feishu help
+
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_feishu bot --help
+    else
+        ___x_cmd_feishu bot send "$@"
+    fi
+    return
 }
 
 ___x_cmd_feishu_bot_send() {
-    param:subcmd ___x_cmd_feishu_bot_send       \
-        text             "send text"            \
-        richtext         "send rich text msg"   \
-        share_chat       "send group card"      \
-        raw              "send raw json"        \
-        image            "send image"
+    param:subcmd ___x_cmd_feishu_bot_send         \
+        --text             "send text"            \
+        --richtext         "send rich text msg"   \
+        --share_chat       "send group card"      \
+        --raw              "send raw json"        \
+        --image            "send image"
         # card             "send card"
 
     param:subcmd:try
     param:run
 
-    ___x_cmd_feishu_bot_send_text "$@"
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_feishu bot send --help
+    else
+        ___x_cmd_feishu_bot_send_text "$@"
+    fi
+    return
 }
 
 ___x_cmd_feishu_bot_send_text() {
@@ -48,8 +42,8 @@ ___x_cmd_feishu_bot_send_text() {
     param:dsl <<A
 option:
     #1              "Provide text"              <content>:text
+    --webhook       "webhook"                   <>=""
     --json|-j       "output origin json data"
-
 A
     param:run
     local text="$1"
@@ -70,6 +64,7 @@ ___x_cmd_feishu_bot_send_raw() {
     param:dsl <<A
 option:
     #1              "Provide raw json"          <raw>:json
+    --webhook       "webhook"                   <>=""
     --json|-j       "output origin json data"
 
 A
@@ -84,55 +79,52 @@ A
 }
 
 
-# https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/im-v1/message/create_json
 ___x_cmd_feishu_bot_send_richtext() {
     param:scope     feishu
     param:dsl <<A
 option:
-    --title             "The title of the richtext"   <title>:title
-    --text|m            "Text content"            <text>:text
-    --hyperlink|m       "Hyperlink content [ <text> <herf> ]"
-            <text>:text
-            <herf>:url
+    --text|m            "Text content"                  <>
+    --title             "The title of the richtext"     <>=""
+    --url|m             "Hyperlink content [ <text> <herf> ]"
+            <>=""
+            <>=""
     --at|m              "Provide @person username and userID. [ <user_id> <user_name> ]"
-            <user_id>:user_id
-            <user_name>:user_name
-    --img|m             "Provide the key you obtained from the upload image interface [ <image_key> ]"
-            <image_key>:image_key
-
+            <>=""
+            <>=""
+    --image_key|m       "Provide the key you obtained from the upload image interface [ <image_key> ]"  <>=""
+    --webhook           "webhook"                       <>=""
     --json|-j           "output origin json data"
-
 A
     param:run
 
     local IFS="
 "
-
-    local all; local tag
+    local i; local all; local text
     for i in $(param_marg text); do
         text=$(param_marg_get text "$i")
-        all="$all$(x jo dict "tag:text" "text:$text")"
+        all="$all$(___x_cmd jo dict "tag:text" "text:$text")"
     done
 
     local href
-    for i in $(param_marg hyperlink); do
-        text=$(param_marg_get hyperlink "$i" 1)
-        href=$(param_marg_get hyperlink "$i" 2)
-        all="$all$(x jo dict "tag:a" "text:$text" "href:$href")"
+    for i in $(param_marg url); do
+        text=$(param_marg_get url "$i" 1)
+        href=$(param_marg_get url "$i" 2)
+        [ -z "$text" ] || all="$all$(___x_cmd jo dict "tag:a" "text:$text" "href:$href")"
     done
 
     local user_id; local user_name
     for i in $(param_marg at); do
         user_id=$(param_marg_get at "$i" 1)
         user_name=$(param_marg_get at "$i" 2)
-        all="$all$(x jo dict "tag:at" "user_id:$user_id" "user_name:$user_name")"
+        [ -z "$user_id" ] || all="$all$(___x_cmd jo dict "tag:at" "user_id:$user_id" "user_name:$user_name")"
     done
 
-    local image_key
-    for i in $(param_marg img); do
-        image_key=$(param_marg_get img "$i")
-        all="$all$(x jo dict "tag:img" "image_key:$image_key")"
+    local image
+    for i in $(param_marg image_key); do
+        image="$(param_marg_get image_key "$i")"
+        [ -z "$image" ] || all="$all$(___x_cmd jo dict "tag:img" "image_key:$image")"
     done
+
 
     # TODO: Order about the content option is not correct
     # TODO: Support multiple content array
@@ -145,7 +137,7 @@ A
 				"title": "${title}",
 				"content": [
 					[
-                        $(printf "%s" "$all" | x jo)
+                        $(printf "%s" "$all" | ___x_cmd jo)
                     ]
 				]
 			}
@@ -161,9 +153,9 @@ ___x_cmd_feishu_bot_send_share_chat() {
     param:scope     feishu
     param:dsl <<A
 option:
-    --share_chat_id    "Provide share chat id"    <share_chat_id>:share_chat_id
+    --chat_id           "Provide share chat id"    <chat_id>:
+    --webhook           "webhook"                   <>=""
     --json|-j           "output origin json data"
-
 A
     param:run
 
@@ -171,7 +163,7 @@ A
 {
     "msg_type": "share_chat",
     "content":{
-        "share_chat_id": "$share_chat_id"
+        "share_chat_id": "$chat_id"
     }
 }
 A
@@ -184,6 +176,7 @@ ___x_cmd_feishu_bot_send_image() {
     param:dsl <<A
 option:
     --image_key     "Provide the key you obtained from the upload image interface"    <image_key>:image_key
+    --webhook       "webhook"                                                         <>=""
     --json|-j       "output origin json data"
 
 A
@@ -212,22 +205,22 @@ _____x_cmd_feishu_ui_utils(){
     fi
     case "$1" in
         Text)
-            msg="Sent text: $text  successfully"
+            msg="Sent text message successfully"
             ;;
         Raw)
-            msg="Sent message  successfully"
+            msg="Sent message successfully"
             ;;
         richtext)
-            msg="Sent rich text: $title  successfully"
+            msg="Sent rich text message successfully"
             ;;
         Image)
             msg="Sent image: $image_key  successfully"
             ;;
         Share_chat)
-            msg="Sent group business card: $share_chat_id  successfully"
+            msg="Sent group business card: $chat_id  successfully"
             ;;
     esac
-    local statu ; statu="$(printf "%s" "$res" | {  x jo env .StatusMessage ; echo "$StatusMessage" ; })"
+    local statu ; statu="$(printf "%s" "$res" | {  ___x_cmd jo env .StatusMessage ; echo "$StatusMessage" ; })"
     if [ "$statu" = "success" ]; then
         ___x_cmd_ui_tf true "$msg"
     else

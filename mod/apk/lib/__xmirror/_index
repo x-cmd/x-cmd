@@ -3,34 +3,63 @@
 # For alpine users
 # Reference: https://blog.csdn.net/qq_33657251/article/details/107526842
 
-
 ___x_cmd_apk___xmirror(){
-    [ "$#" -gt 0 ] ||   set -- --help
+    local ___X_CMD_APK_MIRROR_SOURCES='/etc/apk/repositories'
+    ___x_cmd_apk___xmirror___ensure || return $?
+
+    [ "$#" -gt 0 ] || { ___x_cmd_apk___xmirror___app ; return ; }
 
     local op="$1"; shift
     case "$op" in
         -h|--help)
-            x help -m mirror apk         "$@"
-            return   ;;
+                ___x_cmd help -m apk mirror                  "$@" ;;
+        ls|replace|current|rollback)
+                ___x_cmd_apk___xmirror_"${op}"               "$@" ;;
+        set)    ___x_cmd_apk___xmirror_replace               "$@" ;;
+        unset)  ___x_cmd_apk___xmirror_rollback              "$@" ;;
+        *)      N=apk M="subcommand not found."    log:ret:1      ;;
     esac
+}
 
-    x hascmd apk || N=mirror M="[command=apk] not found." log:ret:1
-    case "$op" in
-        ls|current|replace|unset)     ___x_cmd_apk___xmirror_"${op}"  "$@" ;;
-        set)                          ___x_cmd_apk___xmirror_replace  "$@" ;;
-        *)                            ___x_cmd_mirror___util_subcmd_invalid apk "$@" ;;
+___x_cmd_apk___xmirror___ensure(){
+    ___x_cmd_hascmd apk || N=apk M="[command=apk] not found." log:ret:1
+}
+
+___x_cmd_apk___xmirror___app(){
+    local _SELECT
+    ___x_cmd ui select "_SELECT" \
+        "Methods:" \
+            "Set apk mirror (default is ali)" \
+            "Get current apk mirror" \
+            "List all the apk mirror candidates" \
+            "Rollback the apk mirror to the original official"
+
+    case "$_SELECT" in
+        1)  ___x_cmd_apk___xmirror replace       ;;
+        2)  ___x_cmd_apk___xmirror current       ;;
+        3)  ___x_cmd_apk___xmirror ls            ;;
+        4)  ___x_cmd_apk___xmirror rollback      ;;
+        *)  apk:info "Canceled" ;        return 1 ;;
     esac
 }
 
 ___x_cmd_apk___xmirror_ls(){
     printf "%s\n" \
-        "Code          Url                             Name" \
-        "ustc          mirrors.ustc.edu.cn             ustc official" \
-        "official      dl-cdn.alpinelinux.org          Official"
+        "Code          Url                                  Name"              \
+        "official      dl-cdn.alpinelinux.org               官方源"             \
+        "ali           mirrors.aliyun.com                   阿里云镜像"          \
+        "huawei        mirrors.huaweicloud.com              华为镜像"            \
+        "tuna          mirrors.tuna.tsinghua.edu.cn         清华大学镜像"         \
+        "ustc          mirrors.ustc.edu.cn                  中国科学技术大学镜像"  \
+        "sjtu          mirrors.sjtug.sjtu.edu.cn            上海交通大学镜像"
+}
+
+___x_cmd_apk___xmirror_advise_ls(){
+    ___x_cmd_apk___xmirror_ls | ___x_cmd_cmds_awk 'NR >1 { print $1 }'
 }
 
 ___x_cmd_apk___xmirror_current(){
-    ___x_cmd_cmds_cat /etc/apk/repositories
+    ___x_cmd_cmds_cat "$___X_CMD_APK_MIRROR_SOURCES"
 }
 
 ___x_cmd_apk___xmirror___url(){
@@ -39,43 +68,45 @@ ___x_cmd_apk___xmirror___url(){
 }
 
 ___x_cmd_apk___xmirror_replace() {
-    [ "$#" -gt 0 ] ||   set -- ustc
+    [ "$#" -gt 0 ] ||   set -- ali
     case "$1" in
         -h|--help)
-            x help -m mirror apk replace "$@"
-            return   ;;
+            ___x_cmd help -m mirror apk replace "$@";    return ;;
     esac
 
     ___x_cmd_apk___xmirror_save || N=mirror M="Save apk original config failed." log:ret:1
 
     local url
     url="$(___x_cmd_apk___xmirror___url "${1}")" || return $?
+    if [ -z "$url" ]; then
+        apk:error "Invalid mirror name: $1"
+        return 1
+    fi
 
-    local src_path=/etc/apk/repositories
     # ___x_cmd_proxy___util_backup "$src_path" apk
 
     if [ "$(id -u)" -ne 0 ]; then
         mirror:warn "using sudo"
-        sudo sed -i "s|$(___x_cmd_apk___xmirror___url official)/alpine|$url/alpine|g" "$src_path"
-        apk update
+        ___x_cmd sudo sed -E -i "s|https://[^/]+/alpine/|https://$url/alpine/|g" "$___X_CMD_APK_MIRROR_SOURCES"
     else
-        sed -i "s|$(___x_cmd_apk___xmirror___url official)/alpine|${url}/alpine|g" "$src_path"
-        apk update
+        ___x_cmd_cmds sed -E -i "s|https://[^/]+/alpine/|https://$url/alpine/|g" "$___X_CMD_APK_MIRROR_SOURCES"
     fi
+
+    ___x_cmd apk update
 }
 
 ___x_cmd_apk___xmirror_save(){
-    ___x_cmd_mirror___util_save "/etc/apk/repositories" "apk"
+    ___x_cmd_mirror___util_save "$___X_CMD_APK_MIRROR_SOURCES" "apk"
 }
 
 ___x_cmd_apk___xmirror_unset(){
-    ___x_cmd_mirror___util_rollback_original "/etc/apk/repositories" "apk" || return $?
-    x rmrf "$___X_CMD_ROOT_DATA/mirror/apk"
+    ___x_cmd_mirror___util_rollback_original "$___X_CMD_APK_MIRROR_SOURCES" "apk" || return $?
+    ___x_cmd rmrf "$___X_CMD_ROOT_DATA/mirror/apk"
 
     if [ "$(id -u)" -ne 0 ]; then
-        x sudo apk update
+        ___x_cmd sudo apk update
     else
-               apk update
+        ___x_cmd_cmds apk update
     fi
 }
 
