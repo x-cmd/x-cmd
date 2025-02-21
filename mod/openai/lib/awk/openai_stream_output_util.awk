@@ -39,7 +39,7 @@ function openai_dsiplay_response_text_stream(s,       o, item, response_item, fi
 
     finish_reason = o[ KP_FINISH_REASON ]
     cp_merge( o_response, o )
-    if ( finish_reason != "null" ) {
+    if (( finish_reason != "" ) && ( finish_reason != "null" )) {
         o_response[ KP_FINISH_REASON ] = finish_reason
         o_response[ KP_CONTENT ] = jqu(OPENAI_RESPONSE_CONTENT)
         o_response[ KP_REASONING_CONTENT ] = jqu(OPENAI_RESPONSE_REASONING_CONTENT)
@@ -68,6 +68,7 @@ BEGIN{
                 openai_dsiplay_response_text_stream( $0 )
             }
         } else {
+            OPENAI_HAS_RESPONSE_CONTENT = 1
             if ($0 ~ "^{"){
                 OPENAI_RESPONESE_IS_ERROR_CONTENT=1
                 jiparse_after_tokenize( o_error, $0 )
@@ -78,6 +79,5 @@ BEGIN{
                 JITER_LEVEL = JITER_CURLEN = 0
             }
         }
-        OPENAI_HAS_RESPONSE_CONTENT = 1
     }
 }

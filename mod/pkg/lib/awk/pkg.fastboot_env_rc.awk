@@ -40,5 +40,5 @@ END{
         print "PATH=" shqu1( prefix_p ) "\"${PATH}\"" shqu1( suffix_p)
     }
 
-    print str
+    if ( str != "" ) print str
 }

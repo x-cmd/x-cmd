@@ -34,6 +34,12 @@ function painter_left( n ){
 function painter_right( n ){
     return "\033[" n "C"
 }
+function painter_newline( n,        i, str ){
+    for (i=1; i<=n; ++i){
+        str = str "\r\n"
+    }
+    return str
+}
 
 function paint_screen( str ){
     # restore

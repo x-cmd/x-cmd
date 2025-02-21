@@ -87,7 +87,7 @@ function ___tapp_exit_screen_clear(){
 
 function ___tapp_exit_screen_noclear(){
     printf("%s", UI_CURSOR_RESTORE \
-        "\r" painter_down(CANVAS_ROWSIZE) UI_LINE_CLEAR) >"/dev/stderr"
+        painter_newline(CANVAS_ROWSIZE+1) UI_LINE_CLEAR) >"/dev/stderr"
 }
 
 END{

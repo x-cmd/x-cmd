@@ -124,7 +124,9 @@ if ($?status && $status == 0) then
         alias @gemini    '___x_cmd chat --sendalias gemini'
         alias @mistral   '___x_cmd chat --sendalias mistral'
         alias @kimi      '___x_cmd chat --sendalias kimi'
-        alias @deepseek  '___x_cmd chat --sendalias deepseek'
+        alias @ds        '___x_cmd chat --sendalias ds'
+        alias @dsr1      '___x_cmd chat --sendalias dsr1'
+        alias @grok      '___x_cmd chat --sendalias grok'
     endif
     # eval "`___x_cmd chat --aliasinit --cshcode`"
 

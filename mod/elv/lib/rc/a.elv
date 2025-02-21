@@ -13,7 +13,9 @@ fn gpt4om   { |@a| use x; x:x chat  --sendalias gpt4om      $@a ; }
 fn gemini   { |@a| use x; x:x chat  --sendalias gemini      $@a ; }
 fn mistral  { |@a| use x; x:x chat  --sendalias mistral     $@a ; }
 fn kimi     { |@a| use x; x:x chat  --sendalias kimi        $@a ; }
-fn deepseek { |@a| use x; x:x chat  --sendalias deepseek    $@a ; }
+fn ds       { |@a| use x; x:x chat  --sendalias ds          $@a ; }
+fn dsr1     { |@a| use x; x:x chat  --sendalias dsr1        $@a ; }
+fn grok     { |@a| use x; x:x chat  --sendalias grok        $@a ; }
 
 # writer
 
