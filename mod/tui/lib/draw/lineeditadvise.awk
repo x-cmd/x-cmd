@@ -7,12 +7,14 @@ function draw_lineeditadvise___paint_with_cursor_advise(x1, x2, y1, y2, opt,    
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) _str
 }
 
-function draw_lineeditadvise_str_with_cursor_advise(opt,             s, i, b, lv, rv, adv, e, l, _str, _text_style, _cursor_style){
+function draw_lineeditadvise_str_with_cursor_advise(opt,             s, i, b, lv, lw, rv, style_width, adv, e, l, _str, _text_style, _cursor_style){
     s = opt_get( opt, "line.text" )
     i = opt_get( opt, "cursor.pos" )
     b = opt_get( opt, "start.pos" )
     lv = substr(s, b+1, i-b)
     rv = substr(s, i+1)
+    lw = i - b + 1
+    style_width = opt_get( opt, "line.width" ) - 1
     adv = opt_get( opt, "advise.text" )
 
     if (opt_get( opt, "display.error" )) {
@@ -23,7 +25,7 @@ function draw_lineeditadvise_str_with_cursor_advise(opt,             s, i, b, lv
         _text_style     = ""
     }
 
-    e = substr( wcstruncate_cache( lv adv rv, opt_get( opt, "line.width" )-1 ), i-b+1 )
+    e = substr( wcstruncate_cache( lv adv rv, style_width ), lw )
     if (e == "") _str = th(_text_style, lv) th(_cursor_style, " ")
     else {
         l = wcwidth_first_char_cache(e)

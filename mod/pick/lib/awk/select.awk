@@ -10,7 +10,7 @@ BEGIN{
 function tapp_init(){
     PICK_KP = "pick_kp"
     user_request_selected_data()
-    PICK_SIZE[ "ROW" ] = PICK_ROW
+    PICK_SIZE[ "ROW" ] = PICK_ROW + 2
     PICK_SIZE[ "COL" ] = PICK_COL
     PICK_SIZE[ "WIDTH" ] = PICK_WIDTH
     PICK_SIZE[ "LIMIT" ] = PICK_LIMIT

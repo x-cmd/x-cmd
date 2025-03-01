@@ -9,7 +9,7 @@ function pick_init( o, kp, filter_sw, obj,          title, row, col, width, limi
         if (!re_positive_int(limit) || limit < 1) limit = 1
     }
 
-    if ((!re_positive_int(row)) || (row < 5) )          panic("The pick row must be a positive integer greater than or equal to 5")
+    if ((!re_positive_int(row)) || (row < 3) )          panic("The pick row must be a positive integer greater than or equal to 3")
     if ((!re_positive_int(col)) || (col < 1) )          panic("The pick col must be a positive integer greater than or equal to 1")
 
     if ( width ~ "^"RE_NUM_PERCENTAGE"$" )              width = int(tapp_canvas_colsize_get() * width / 100)

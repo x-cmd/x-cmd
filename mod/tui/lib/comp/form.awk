@@ -255,7 +255,7 @@ function comp_form_paint(o, kp, x1, x2, y1, y2, has_box, color, is_box_arc, padd
         rw = opt_get( opt, "form.right.with" )
         _edit_w = comp_lineeditadvise_width(o, kp SUBSEP "lineedit" SUBSEP r)
         if (_desc_w != lw) comp_form_data_desc_width(o, kp)
-        if (_edit_w != rw) comp_lineeditadvise_width(o, kp SUBSEP "lineedit" SUBSEP r, rw)
+        if (_edit_w != rw) comp_lineeditadvise_init(o, kp SUBSEP "lineedit" SUBSEP r, comp_form_data_val(o, kp, r ), rw)
         if (opt_get( opt, "form.sel.unable" )) ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
         comp_form___draw_body_start(o, kp, opt_getor( opt, "form.body.start", 1))
     }

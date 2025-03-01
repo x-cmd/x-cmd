@@ -56,6 +56,20 @@ function u8wc( ch ) {
             U8WC_ESC_MODE = 2
             return false
         }
+
+        # Just ignore the code and the ch following...
+        U8WC_NAME     =  U8WC_NAME_END_OF_ESCAPE
+        U8WC_TYPE     =  U8WC_TYPE_CONTROL
+
+        if ((U8WC_ORD >=32) && (U8WC_ORD <= 126)) {
+            U8WC_VALUE    =  ch
+            U8WC_LEN      =  1
+        } else {
+            U8WC_VALUE    =  ""
+            U8WC_LEN      =  0
+        }
+        U8WC_ESC_MODE =  0
+        return true
     }
 
     if ( 2 == U8WC_ESC_MODE ) {

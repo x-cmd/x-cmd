@@ -51,7 +51,7 @@ function md_body_transform_italic( text,     s1, s2, r, _regex1, _regex2 ){
         s2 = substr(text, RSTART, RLENGTH)
         gsub(STR_TERMINAL_ESCAPE033_LIST, "", s2)
         text = substr(text, RSTART+RLENGTH)
-        r = r s1 "\033[38;5;214m" UI_TEXT_ITALIC s2 "\033[0m"
+        r = r s1 HD_STYLE_ITALIC UI_TEXT_ITALIC s2 HD_STYLE_END
     }
     return ("" == r) ? text : r text
 }
@@ -65,7 +65,7 @@ function md_body_transform_bold( text,     s1, s2, r, _regex1, _regex2 ){
         s2 = substr(text, RSTART, RLENGTH)
         gsub(STR_TERMINAL_ESCAPE033_LIST, "", s2)
         text = substr(text, RSTART+RLENGTH)
-        r = r s1 "\033[38;5;117m" UI_TEXT_BOLD s2 "\033[0m"
+        r = r s1 HD_STYLE_STRONG UI_TEXT_BOLD s2 HD_STYLE_END
     }
     return ("" == r) ? text : r text
 }
@@ -79,7 +79,7 @@ function md_body_transform_bold_italic( text,     s1, s2, r, _regex1, _regex2 ){
         s2 = substr(text, RSTART, RLENGTH)
         gsub(STR_TERMINAL_ESCAPE033_LIST, "", s2)
         text = substr(text, RSTART+RLENGTH)
-        r = r s1 "\033[38;5;141m" UI_TEXT_ITALIC UI_TEXT_BOLD  s2  "\033[0m"
+        r = r s1 HD_STYLE_ITALIC2 UI_TEXT_ITALIC UI_TEXT_BOLD  s2  HD_STYLE_END
     }
     return ("" == r) ? text : r text
 }
@@ -90,7 +90,7 @@ function md_body_transform_strikethrough( text,     s1, s2, r ){
         s1 = substr(text, 1, RSTART-1)
         s2 = substr(text, RSTART, RLENGTH)
         text = substr(text, RSTART+RLENGTH)
-        r = r s1 "\033[38;5;244;9m"   s2 "\033[0m"
+        r = r s1 HD_STYLE_DELETE   s2 HD_STYLE_END
     }
     return ("" == r) ? text : r text
 }
@@ -101,7 +101,7 @@ function md_body_transform_quote( text,     s1, s2){
         s1 = substr(text, 1, RSTART-1)
         s2 = substr(text, RSTART+1, RLENGTH-2)
         gsub(STR_TERMINAL_ESCAPE033_LIST, "", s2)
-        text = s1 "\033[48;2;48;48;48m\033[38;2;255;80;95m" s2  "\033[0m" substr(text, RSTART+RLENGTH)
+        text = s1 HD_STYLE_CODE " " s2 " "  HD_STYLE_END substr(text, RSTART+RLENGTH)
     }
     return text
 }
@@ -110,9 +110,9 @@ function md_body_transform_quote( text,     s1, s2){
 function md_body_transform_url_email( text,     s1, s2, r ){
     while (match(text, "((^| )" RE_URL_HTTP "|(^| )" RE_URL_HTTPS "|(^| )" RE_EMAIL ")" )) {
         s1 = substr(text, 1, RSTART-1)
-        s2 = substr(text, RSTART, RLENGTH)
+        s2 = substr(text, RSTART+1, RLENGTH-1)
         text = substr(text, RSTART+RLENGTH)
-        r = r s1 "\033[38;5;209m"  s2  "\033[0m"
+        r = r s1 HD_STYLE_LINK  s2  HD_STYLE_END
     }
     return ("" == r) ? text : r text
 }
@@ -125,7 +125,7 @@ function md_body_transform_link( text,     s1, s2, r ,_regex ){
         s2 = substr(text, RSTART, RLENGTH)
         text = substr(text, RSTART+RLENGTH)
         gsub(STR_TERMINAL_ESCAPE033_LIST, "", s2)
-        r = r s1 "\033[38;5;209m"  s2  "\033[0m"
+        r = r s1 HD_STYLE_LINK  s2  HD_STYLE_END
     }
     return ("" == r) ? text : r text
 }
@@ -138,7 +138,7 @@ function md_body_transform_pic( text,     s1, s2, r,_regex  ){
         s2 = substr(text, RSTART, RLENGTH)
         text = substr(text, RSTART+RLENGTH)
         gsub(STR_TERMINAL_ESCAPE033_LIST, "", s2)
-        r = r s1 "\033[38;5;118m" s2 "\033[0m"
+        r = r s1 HD_STYLE_IMAGE s2 HD_STYLE_END
     }
     return ("" == r) ? text : r text
 }

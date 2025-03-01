@@ -30,9 +30,11 @@ function md_handle_header( line, output_arr,        a, b, c ){
     gsub("[ ]+", "", a)
     c = length(a)
 
-    if (c == 1) line = "\033[46;1m " b " "
-    else line = "\033[34;1m" a " " b
-    md_output( line "\033[0m", output_arr )
+    if (c == 1) line = HD_STYLE_HEADER1 b " " HD_STYLE_END
+    else line = HD_STYLE_HEADER2 a " " b HD_STYLE_END
+
+    if ( match(line, "`[^`]+`") )   line = md_body_transform_quote(line)
+    md_output( line, output_arr )
     return 1
 }
 
