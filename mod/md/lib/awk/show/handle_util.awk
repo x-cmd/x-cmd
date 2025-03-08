@@ -14,6 +14,8 @@ BEGIN{
         HD_STYLE_ITALIC2   = "\033[38;5;141m"
         HD_STYLE_LINK      = "\033[32;4;1m"
         HD_STYLE_IMAGE     = "\033[38;5;118m"
+        HD_STYLE_NUMBER    = "\033[35m"
+        HD_STYLE_SYMBOL    = "\033[38;5;208m"
         HD_STYLE_DELETE    = "\033[38;5;244;9m"
     } else {
         HD_STYLE_HEADER1   = "\033[45;1m"
@@ -24,6 +26,8 @@ BEGIN{
         HD_STYLE_ITALIC2   = "\033[36;3;1m"
         HD_STYLE_LINK      = "\033[32;4;1m"
         HD_STYLE_IMAGE     = "\033[32m"
+        HD_STYLE_NUMBER    = "\033[35m"
+        HD_STYLE_SYMBOL    = "\033[33m"
         HD_STYLE_DELETE    = "\033[30m"
     }
 

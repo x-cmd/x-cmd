@@ -1,5 +1,6 @@
 
 function md_handle_body( line, output_arr ){
+    line = md_body_transform_quote(line)
     line = md_body_transform_italic(line)
     line = md_body_transform_bold(line)
     line = md_body_transform_bold_italic(line)
@@ -10,7 +11,6 @@ function md_handle_body( line, output_arr ){
     line = md_body_transform_abstract(line)
     line = md_body_transform_task_list_done(line)
     line = md_body_transform_task_list_undone(line)
-    line = md_body_transform_quote(line)
 
     return md_output( md_body_transpose(line), output_arr )
 }
@@ -44,9 +44,8 @@ function md_body_transpose( line ){
 
 # 倾斜字体
 function md_body_transform_italic( text,     s1, s2, r, _regex1, _regex2 ){
-    _regex1 = "\\*([^ *][^*]*[^ *]|[^ *])\\*"
-    _regex2 = "(^| )_([^ ].*[^ ]|[^ ])_( |$)"
-    while (match(text, "("_regex1 "|" _regex2 ")")) {
+    _regex = "(\\*[^ *]\\*[^*]+|_[^_]+_[^_]+)"
+    while (match(text, _regex)) {
         s1 = substr(text, 1, RSTART-1)
         s2 = substr(text, RSTART, RLENGTH)
         gsub(STR_TERMINAL_ESCAPE033_LIST, "", s2)
@@ -57,15 +56,35 @@ function md_body_transform_italic( text,     s1, s2, r, _regex1, _regex2 ){
 }
 
 # 加粗字体
-function md_body_transform_bold( text,     s1, s2, r, _regex1, _regex2 ){
-    _regex1 = "\\*("STR_TERMINAL_ESCAPE033_LIST")?\\*([^ *][^*]*[^ *]|[^ *])\\*("STR_TERMINAL_ESCAPE033_LIST")?\\*"
-    _regex2 = "(^| )_("STR_TERMINAL_ESCAPE033_LIST")?_([^ ].*[^ ]|[^ ])_("STR_TERMINAL_ESCAPE033_LIST")?_( |$)"
-    while (match(text, "("_regex1 "|" _regex2 ")")) {
+function md_body_transform_bold( text,     s1, s2, r, l, i, _style, _regex ){
+    _style = HD_STYLE_STRONG UI_TEXT_BOLD
+    _regex = "(\\*\\*[^*]+\\*\\*|__[^_]+__[^_]+)"
+    # _regex1 = "\\*("STR_TERMINAL_ESCAPE033_LIST")?\\*([^ *][^*]*[^ *]|[^ *])\\*("STR_TERMINAL_ESCAPE033_LIST")?\\*"
+    # _regex2 = "(^| )_("STR_TERMINAL_ESCAPE033_LIST")?_([^ ].*[^ ]|[^ ])_("STR_TERMINAL_ESCAPE033_LIST")?_( |$)"
+    while (match(text, _regex)) {
         s1 = substr(text, 1, RSTART-1)
         s2 = substr(text, RSTART, RLENGTH)
-        gsub(STR_TERMINAL_ESCAPE033_LIST, "", s2)
-        text = substr(text, RSTART+RLENGTH)
-        r = r s1 HD_STYLE_STRONG UI_TEXT_BOLD s2 HD_STYLE_END
+        if ( s2 ~ STR_TERMINAL_ESCAPE033_LIST ) {
+            gsub( STR_TERMINAL_ESCAPE033_LIST,  "\n&\n",  s2 )
+            l = split( s2, arr, "\n" )
+            for (i=1; i<=l; ++i) {
+                if (arr[i] ~ "\033\\[0m" ) {
+                    style_enable = 0
+                    line = line arr[i]
+                    continue
+                }else if (arr[i] ~ STR_TERMINAL_ESCAPE033_LIST ) {
+                    style_enable = 1
+                    line = line arr[i]
+                } else {
+                    line = (style_enable == 1) ? line arr[i] : line _style arr[i] HD_STYLE_END
+                }
+            }
+        } else {
+            line = _style s2 HD_STYLE_END
+        }
+
+        r = r s1 line
+        text = substr( text, RSTART+RLENGTH )
     }
     return ("" == r) ? text : r text
 }

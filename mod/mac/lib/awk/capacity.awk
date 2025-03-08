@@ -34,5 +34,10 @@ END{
     print "  design: "   design_capacity
     print "  max: "      max_capacity
     print "  current: "  current_capacity
-    print "heath: "  max_capacity / design_capacity * 100 "%"
+
+    if ( design_capacity > 0.00000001 ) {
+        print "heath: "  max_capacity / design_capacity * 100 "%"
+    } else {
+        print "heath: 0%"
+    }
 }

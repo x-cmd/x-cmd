@@ -20,7 +20,7 @@ function md_handle_list_( line, output_arr, level_cache, num_cache,          _le
         else level = _level
 
         $0 = md_str_trim( $0 )
-        gsub("^[*\\-+]", md_list_indent(level) "•", $0)
+        gsub("^[-\\*\\+]", md_list_indent(level) HD_STYLE_SYMBOL "•" HD_STYLE_END, $0)
         md_handle_body($0, output_arr)
     }
     else if ($0 ~ MD_REGEX_OLIST) {

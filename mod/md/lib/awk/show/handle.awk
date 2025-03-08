@@ -23,18 +23,25 @@ function md_handle_note( line, output_arr ){
 }
 
 # the whole line
-function md_handle_header( line, output_arr,        a, b, c ){
+function md_handle_header( line, output_arr,        ll, rl, header_style, text ){
+    if ( line ~ "`[^`]+`" )   line = md_body_transform_quote(line)
     if (!match(line, MD_REGEX_HEADER)) return 0
-    a = substr(line, 1, RLENGTH)
-    b = substr(line, RLENGTH+1)
-    gsub("[ ]+", "", a)
-    c = length(a)
+    ll = substr(line, 1, RLENGTH)
+    rl = substr(line, RLENGTH+1)
+    gsub("[ ]+", "", ll)
 
-    if (c == 1) line = HD_STYLE_HEADER1 b " " HD_STYLE_END
-    else line = HD_STYLE_HEADER2 a " " b HD_STYLE_END
+    if ( length(ll) == 1 ) {
+        ll = ""
+        header_style = HD_STYLE_HEADER1
+    } else {
+        rl = " " rl
+        header_style = HD_STYLE_HEADER2
+    }
 
-    if ( match(line, "`[^`]+`") )   line = md_body_transform_quote(line)
-    md_output( line, output_arr )
+    gsub("\033\\[0m", "&" header_style, rl )
+    text = header_style ll rl HD_STYLE_END
+
+    md_output( text, output_arr )
     return 1
 }
 
