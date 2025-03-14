@@ -21,18 +21,22 @@ BEGIN{
     o[L] = 1
 
     ADVISE_PANIC_EXIT = 0
+
+    true = 1
+    false = 0
 }
 
-function is_value_null(v){  return ( (v == "") || (v == "null") );   }
+function gen_is_value_null(v){  return ( (v == "") || (v == "null") );   }
 function gen_blacklist(o, str,      _, i, l){
     gsub("^\n+|\n+$", "", str)
     l = split(str, _, "\n")
     for (i=1; i<=l; ++i) o[_[i]] = true
 }
 
-function get_mod_desc_of_advise_file(o, kp, filepath,       _, c, RS_OLD, _last_curkey){
+function get_mod_desc_of_advise_file(o, keypath, key, filepath,         kp, _, c, RS_OLD, _last_curkey, _desc_val, _name_val){
     RS_OLD = RS
     RS = "\n"
+    kp = keypath SUBSEP key
     filepath = filepath_adjustifwin( filepath )
     while ((c=(getline <filepath))==1) {
         _last_curkey = (JITER_CURKEY != "") ? JITER_CURKEY : JITER_LAST_KP
@@ -51,13 +55,23 @@ function get_mod_desc_of_advise_file(o, kp, filepath,       _, c, RS_OLD, _last_
     JITER_CURLEN = JITER_LEVEL = 0
     JITER_CURKEY = ""
     RS = RS_OLD
+
+    _desc_val = o[ kp SUBSEP Q2_DESC ]
+    _name_val = o[ kp SUBSEP Q2_NAME ]
+    if (gen_is_value_null(_desc_val) && gen_is_value_null(_name_val)){
+        # log_info( "advise", filepath " num:" ++num)
+        jdict_rm( o, keypath, key)
+        return false
+    }
+    return true
 }
 
 function handle(o, mod, filepath,           _, _q2_mod, _mod_kp, _name_kp, n, d, k){
     _q2_mod = jqu(mod)
     _mod_kp = SUBSEP Q2_1 SUBSEP _q2_mod
     jdict_put( o, SUBSEP Q2_1, _q2_mod, "{")
-    get_mod_desc_of_advise_file( o, _mod_kp, filepath )
+
+    if (get_mod_desc_of_advise_file( o, SUBSEP Q2_1, _q2_mod, filepath ) != true ) return
     jdict_put( o, _mod_kp, Q2_REF, "\"x-advise://"mod"\"")
     if ( XRC_BLACKLIST[ mod ] ) return
     jdict_put( o, _mod_kp, Q2_EXEC, "\"xrc "mod" 2>/dev/null\"")

@@ -200,7 +200,7 @@ ___x_cmd___rcpwsh_addpython
 
 
 $env:___X_CMD_CD_RELM_0 = ___x_cmd___rcpwsh_path_win_to_linux $(Get-Location).Path
-$env:___X_CMD_THEME_RELOAD_DISABLE = 1
+$env:___X_CMD_THEME_CURRENT_SHELL = "powershell"
 # Using gitbash
 # We cannot use WSL here.
 function ___x_cmd(){
@@ -248,21 +248,35 @@ function x(){
     ___x_cmd @args
 }
 
+function wslr(){
+    wsl ___x_cmdexe command @args
+}
+
+function wslx(){
+    wsl ___x_cmdexe @args
+}
+
 if ($Host.Name -ne "ConsoleHost") {
     # non-interactive
     $env:___X_CMD_RUNMODE = 0
+    $env:___X_CMD_THEME_RELOAD_DISABLE = 1
 } else {
     # interactive
     $env:___X_CMD_RUNMODE = 9
+    $env:___X_CMD_THEME_RELOAD_DISABLE = ""
 
     function c(){
         if ( $args[0] -eq "-" ){
             if ($env:OLDPWD){
-                Set-Location $env:OLDPWD
+                ___x_cmd cd $( ___x_cmd___rcpwsh_path_win_to_linux $env:OLDPWD )
             }
             return
         } elseif (-not [string]::IsNullOrWhiteSpace($args[0]) -and (Test-Path $args[0] -PathType Container)){
+            $currentpath = $(Get-Location).Path
+            $env:OLDPWD = $currentpath
             Set-Location $args[0]
+            ___x_cmd cd --history top $( ___x_cmd___rcpwsh_path_win_to_linux $currentpath )
+            ___x_cmd cd --history top $( ___x_cmd___rcpwsh_path_win_to_linux $(Get-Location).Path )
             return
         }
 
@@ -327,6 +341,13 @@ if ($Host.Name -ne "ConsoleHost") {
             . "$HOME\.x-cmd.root\local\cache\writer\bootcode.ps1"
         } catch {
             Write-Host "- E|x: Failed to load command functions related to the writer module alias init"
+        }
+    }
+    if (Test-Path "$HOME\.x-cmd.root\local\cfg\theme\use\powershell\default.ps1" -PathType Leaf) {
+        try {
+            . "$HOME\.x-cmd.root\local\cfg\theme\use\powershell\default.ps1"
+        } catch {
+            Write-Host "- E|x: Failed to load the default theme configuration"
         }
     }
 }

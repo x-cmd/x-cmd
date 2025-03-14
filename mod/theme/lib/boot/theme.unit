@@ -11,7 +11,7 @@ ___x_cmd_theme_boot(){
 
     local op="$1"
     case "$op" in
-        check_unuse|check_untry|check_use|check_and_apply_vendor|check_vendor|\
+        check_unuse|check_untry|check_use|check_and_apply_vendor|check_vendor|check_envshell|\
             unexport_boot_vendor|unexport_try_vendor|\
             configfile_unset|configfile_set|configfile_get_|configfile_check|configdir_check|configdir_unset|\
             current_vendor_set|current_vendor_unset|current_vendor_eq|current_vendor_get_|current_name_set|current_name_get_|current_style_|current_vendor_isempty)
@@ -39,33 +39,63 @@ ___x_cmd_theme_boot___check_and_apply_vendor(){
     local cname="$___X_CMD_THEME_CURRENT_NAME"      # current theme name
     local degree="$3"                               # use/try
     local name="$4"                                 # theme name
+    local envshell="${5}"                           # shell type [posix|powershell|fish...]
+    envshell="${envshell:-"${___X_CMD_THEME_CURRENT_SHELL:-posix}"}"
 
     ___x_cmd log :theme debug \
         --terminal "$terminal" --nvendor "$nvendor" --cvendor "$cvendor" --degree "$degree" --name "$name" \
         "Checking and apply"
 
-    ___x_cmd_theme_boot___check_vendor "$nvendor" || return
+    ___x_cmd_theme_boot___check_vendor "$nvendor" || return $?
     case "$degree" in
         use|try)    ;;
         *)          return 1 ;;
     esac
 
+    if [ "$envshell" != posix ]; then
+        if [ "$degree" = use ]; then
+            [ "$terminal" = default ] || {
+                terminal="default"
+                ___x_cmd log ":${nvendor}" info "The $envshell environment does not yet support terminal distinction. The terminal value will be set to 'default'."
+            }
+            ___x_cmd_theme_boot___configfile_set "$envshell" "$terminal" "$nvendor" "$name" || return $?
+
+            ___x_cmd log ":${nvendor}" info "The prompt theme has been successfully assigned to the [$envshell] environment -> [vendor=$nvendor, name=$name]"
+            ___x_cmd log ":${nvendor}" info "To check out it in action, you can reopen a new shell in the [$envshell] environment"
+
+            if [ "$nvendor" = ohmyposh ] && [ "$envshell" = fish ]; then
+                ___x_cmd log ":${nvendor}" info "In older versions of fish (possibly < 3.7), the oh-my-posh configuration file may have issues"
+            fi
+
+            if ! ___x_cmd ui yesno "Opening a new [$envshell] shell environment to avoid conflicts?"; then
+                return 0
+            fi
+
+            ___x_cmd log ":${nvendor}" info "Opening a new shell environment -> $envshell"
+            "$envshell"
+            return
+        else
+            ___x_cmd log ":${nvendor}" warn "The '$degree' operation is not yet supported in the $envshell environment."
+            return 1
+        fi
+    fi
+
     if [ "$degree" = use ]; then
-        ___x_cmd_theme_boot___configfile_set posix "$terminal" "$nvendor" "$name" || return
+        ___x_cmd_theme_boot___configfile_set "$envshell" "$terminal" "$nvendor" "$name" || return $?
 
         if [ "$terminal" = default ]; then
-            ___x_cmd log ":${nvendor}" info "The default theme setting has been successfully updated in the configuration file -> [$nvendor] ==> [$name]"
+            ___x_cmd log ":${nvendor}" info "The default theme setting for the [$envshell] environment has been successfully updated in the configuration file -> [vendor=$nvendor, name=$name]"
             ___x_cmd log ":${nvendor}" info "From now on, any newly opened shell will apply the default theme unless a specific theme is set."
         else
-            ___x_cmd log ":${nvendor}" info "Successfully, the user configuration file for [terminal=$terminal] has been assigned the specified theme -> [$nvendor] ==> [$name]"
+            ___x_cmd log ":${nvendor}" info "Successfully, the user configuration file for [terminal=$terminal] has been assigned the specified theme -> [vendor=$nvendor, name=$name]"
         fi
 
         if [ "$terminal" != "$___X_CMD_THEME_TERM_VENDOR" ]; then
             # Different terminal
-            if ___x_cmd_theme_boot___configfile_check posix "$___X_CMD_THEME_TERM_VENDOR"; then
+            if ___x_cmd_theme_boot___configfile_check "$envshell" "$___X_CMD_THEME_TERM_VENDOR"; then
                 # Has been assinged a specific theme
                 if [ "$terminal" = default ]; then
-                    ___x_cmd log ":${nvendor}" warn "Current [terminal=$___X_CMD_THEME_TERM_VENDOR] has been assinged a specific theme -> [$cvendor] ==> [$cname]"
+                    ___x_cmd log ":${nvendor}" warn "Current [terminal=$___X_CMD_THEME_TERM_VENDOR] has been assinged a specific theme -> [vendor=$cvendor, name=$cname]"
                     ___x_cmd log ":${nvendor}" info "To check out the default theme in action, you can open any shell that doesn't have a specific theme assigned."
                 else
                     ___x_cmd log ":${nvendor}" warn "The theme is assigned only to the [terminal=$terminal]. However, current terminal is -> $___X_CMD_THEME_TERM_VENDOR"
@@ -86,8 +116,9 @@ ___x_cmd_theme_boot___check_and_apply_vendor(){
     fi
 
     if [ -n "$cvendor" ] && [ "$cvendor" != "$nvendor" ]; then
+        local shellcmd="${___X_CMD_SHELL:-"${SHELL:-/bin/sh}"}"
         ___x_cmd log ":${nvendor}" info "x-cmd using prompt theme [vendor=$cvendor] in current shell env"
-        ___x_cmd log ":${nvendor}" info "Please open a new [shell=${SHELL:-/bin/sh}] to avoid collision"
+        ___x_cmd log ":${nvendor}" info "Please open a new [shell=$shellcmd] to avoid collision"
 
         if ! ___x_cmd ui yesno "Opening a new shell to avoid collision ?"; then
             return 1
@@ -100,10 +131,10 @@ ___x_cmd_theme_boot___check_and_apply_vendor(){
             try_name="$name"
         }
         ___X_CMD_THEME_BOOT_TRY_VENDOR="$try_vendor" \
-            ___X_CMD_THEME_BOOT_TRY_NAME="$try_name" "${SHELL:-/bin/sh}"
+            ___X_CMD_THEME_BOOT_TRY_NAME="$try_name" "$shellcmd"
 
     else
-        ___x_cmd "$nvendor" --rc-load "$name" || return
+        ___x_cmd "$nvendor" --rc-load "$name" || return $?
         ___x_cmd_theme_boot___current_vendor_set "$nvendor"
         ___x_cmd_theme_boot___current_name_set "$name"
     fi
@@ -113,7 +144,17 @@ ___x_cmd_theme_boot___check_vendor(){
     local vendor="$1"
     case "$vendor" in
         theme|starship|ohmyposh)  ;;
+        "") N=theme M="Please provide the theme vendor value [theme|starship|ohmyposh]" log:ret:64 ;;
         *)  N=theme M="Unknown [vendor=$vendor]" log:ret:1 ;;
+    esac
+}
+
+___x_cmd_theme_boot___check_envshell(){
+    local envshell="$1"
+    case "$envshell" in
+        posix|powershell|fish)  ;;
+        "") N=theme M="Please provide the shell type value [posix|powershell|fish]" log:ret:64 ;;
+        *)  N=theme M="Unknown [envshell=$envshell]" log:ret:1 ;;
     esac
 }
 
@@ -121,46 +162,82 @@ ___x_cmd_theme_boot___check_use(){
     local terminal=default
     local vendor=theme
     local fallback=
+    local envshell="${___X_CMD_THEME_CURRENT_SHELL:-posix}"
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
                     terminal="${1#--}"; shift ;;
             --vendor)
                     vendor="$2"
-                    ___x_cmd_theme_boot___check_vendor "$vendor" || return
-                    shift 2
-                    ;;
+                    ___x_cmd_theme_boot___check_vendor "$vendor" || return $?
+                    shift 2 ;;
             --fallback)
                     fallback=1; shift ;;
+            --shell)
+                    envshell="$2"
+                    ___x_cmd_theme_boot___check_envshell "$envshell" || return $?
+                    shift 2 ;;
             --*)    N=theme M="Unknown subcmd ==> $1" log:ret:64 ;;
             *)      break ;;
         esac
     done
 
-    local x_=; ___x_cmd "$vendor" --get_valid_name_ "$@" || return
+    local x_=; ___x_cmd "$vendor" --get_valid_name_ "$@" || return $?
     local name="$x_"
 
     if [ -n "$fallback" ]; then
+        if [ "$envshell" != posix ]; then
+            ___x_cmd log ":${vendor}" warn "The fallback prompt theme is only available for posix shell, not for [$envshell]"
+            return 1
+        fi
         ___x_cmd log ":${vendor}" info "Set the fallback prompt theme using -> [$vendor ==> $name]"
-        ___x_cmd_theme_boot___configfile_set posix fallback "$vendor" "$name"
+        ___x_cmd_theme_boot___configfile_set "$envshell" fallback "$vendor" "$name"
     else
         ___x_cmd_theme_control___discarded_rcfile_data_migrate
-        ___x_cmd_theme_boot___check_and_apply_vendor "$terminal" "$vendor" use "$name"
+        ___x_cmd_theme_boot___check_and_apply_vendor "$terminal" "$vendor" use "$name" "$envshell"
     fi
 }
 
 ___x_cmd_theme_boot___check_unuse(){
-    local cvendor="$1"; shift
     local terminal=default
-    case "$1" in
-        --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
-            terminal="${1#--}"; shift ;;
-        "") ;;
-        *)  N="$cvendor" M="Unknown subcmd ==> $1" log:ret:64 ;;
-    esac
+    local cvendor=theme
+    local envshell="${___X_CMD_THEME_CURRENT_SHELL:-posix}"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
+                    terminal="${1#--}"; shift ;;
+            --vendor)
+                    cvendor="$2"
+                    ___x_cmd_theme_boot___check_vendor "$cvendor" || return $?
+                    shift 2 ;;
+            --shell)
+                    envshell="$2"
+                    ___x_cmd_theme_boot___check_envshell "$envshell" || return $?
+                    shift 2 ;;
+            --*)    N=theme M="Unknown subcmd ==> $1" log:ret:64 ;;
+            *)      break ;;
+        esac
+    done
+
+    if [ "$envshell" != posix ]; then
+        [ "$terminal" = default ] || {
+            terminal="default"
+            ___x_cmd log ":${cvendor}" info "The $envshell environment does not yet support terminal distinction. The terminal value will be set to 'default'."
+        }
+        ___x_cmd_theme_boot___configfile_unset "$envshell" "$terminal" || return $?
+        ___x_cmd log ":${cvendor}" info "Unuse the prompt theme successfully in the [$envshell] environment."
+        ___x_cmd log ":${cvendor}" info "To check out it in action, you can reopen a new shell."
+        if ! ___x_cmd ui yesno "Opening a new [$envshell] shell environment to avoid conflicts?"; then
+            return 0
+        fi
+
+        ___x_cmd log ":${cvendor}" info "Opening a new shell environment -> $envshell"
+        "$envshell"
+        return
+    fi
 
     local vendor=; local name=
-    ___x_cmd_theme_boot___configfile_get_ posix "$terminal" || {
+    ___x_cmd_theme_boot___configfile_get_ "$envshell" "$terminal" || {
         if [ "$terminal" = default ]; then
             ___x_cmd log ":${cvendor}" warn "Has not been assigned the default prompt theme."
         else
@@ -178,7 +255,7 @@ ___x_cmd_theme_boot___check_unuse(){
         return 1
     fi
 
-    ___x_cmd_theme_boot___configfile_unset posix "$terminal"
+    ___x_cmd_theme_boot___configfile_unset "$envshell" "$terminal" || return $?
     if [ "$terminal" = default ]; then
         ___x_cmd log ":${cvendor}" info "Unuse the default prompt theme successfully."
         ___x_cmd log ":${cvendor}" info "To check out it in action, you can reopen a new shell in a terminal that does not have a specified theme."
@@ -190,7 +267,7 @@ ___x_cmd_theme_boot___check_unuse(){
     if [ "$terminal" != "$___X_CMD_THEME_TERM_VENDOR" ]; then
         if [ "$terminal" = default ]; then
             vendor=; name=
-            if ___x_cmd_theme_boot___configfile_get_ posix "$___X_CMD_THEME_TERM_VENDOR"; then
+            if ___x_cmd_theme_boot___configfile_get_ "$envshell" "$___X_CMD_THEME_TERM_VENDOR"; then
                 ___x_cmd log ":${cvendor}" warn "However, the current [terminal=$___X_CMD_THEME_TERM_VENDOR] has a specific theme assigned -> [$vendor ==> $name]"
                 return 1
             else
@@ -203,7 +280,14 @@ ___x_cmd_theme_boot___check_unuse(){
 
 ___x_cmd_theme_boot___check_untry(){
     local vendor="$1"               # starship
-    ___x_cmd_theme_boot___check_vendor "$vendor" || return
+    local envshell="${___X_CMD_THEME_CURRENT_SHELL:-posix}"
+    ___x_cmd_theme_boot___check_vendor "$vendor" || return $?
+
+    if [ "$envshell" != posix ]; then
+        ___x_cmd log ":${nvendor}" warn "The 'untry' operation is not yet supported in the $envshell environment."
+        return 1
+    fi
+
     if ___x_cmd_theme_boot___current_vendor_eq "$vendor"; then
         return 0
     fi

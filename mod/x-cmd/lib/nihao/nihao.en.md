@@ -11,8 +11,8 @@ x-cmd functions are orgainized into modules (mod). Take path `mod` module for ex
 
 We strive for consistent design to improve command usability. Once you're familiar with one command, that knowledge and habit can be easily applied to similar commands.
 
-We provide a quick search of modules at         https://x-cmd.com/mod
-You can easily view docs and tutorials at       https://x-cmd.com/mod/<mod_name>
+We provide a quick search of modules at                 https://x-cmd.com/mod
+You can easily view docs and tutorials at               https://x-cmd.com/mod/<mod_name>
 
 ## Using x-cmd pkg with `x env`
 
@@ -23,22 +23,22 @@ You can use the pkg system with a mod called `env`. Take `jq` for example:
 - `x env try jq`    # You can only use jq in the current shell session
 - `x jq`            # Use jq directly, however we won't influence the environment by changing the PATH or introducing jq binary to folder.
 
-We provide a quick search of pkg in             https://x-cmd.com/pkg
-You can easily view docs and tutorial in        https://x-cmd.com/pkg/<pkg_name>
+We provide a quick search of pkg in                     https://x-cmd.com/pkg
+You can easily view docs and tutorial in                https://x-cmd.com/pkg/<pkg_name>
 
 **For more installation methods: `x pixi`, `x install`, etc**
 
-Use pixi, asdf, etc. at ease                    https://x-cmd.com/mod/pixi
-Browse more method with `x install`             https://x-cmd.com/install
+Use pixi, asdf, etc. at ease                            https://x-cmd.com/mod/pixi
+Browse more method with `x install`                     https://x-cmd.com/install
 
 ## AI and aliases
 
 - `x openai init`     # Setup the API keys
 - `x openai -h`       # Help is helpful
-- `@gpt3 introduce yq command`
-- `@gpt3`             # Open a conversation session.
+- `@gpt introduce yq command`
+- `@gpt`              # Open a conversation session.
 
-As usual, check out the docs on the website              https://x-cmd.com/mod/openai
+As usual, check out the docs on the website             https://x-cmd.com/mod/openai
 
 Note, we also provide gemini, deepseek, kimi, ...
 
@@ -49,4 +49,4 @@ You might find some interesting alternatives.
 
 X-CMD is still under development.
 
-Please star x-cmd and share it with your friends       https://github.com/x-cmd
+Please star x-cmd and share it with your friends        https://github.com/x-cmd

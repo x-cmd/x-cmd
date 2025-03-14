@@ -7,7 +7,7 @@ end
 
 function ___x_cmd
     set -x ___X_CMD_CD_RELM_0               "$___X_CMD_CD_RELM_0"
-    set -x ___X_CMD_THEME_RELOAD_DISABLE    "$___X_CMD_THEME_RELOAD_DISABLE"
+    set -x ___X_CMD_THEME_CURRENT_SHELL     "$___X_CMD_THEME_CURRENT_SHELL"
     set -x ___X_CMD_RUNMODE                 "$___X_CMD_RUNMODE"
     set -x ___X_CMD_XBINEXP_FP              "$HOME/.x-cmd.root/local/data/xbinexp/fish/$fish_pid"_(random)
     set -x ___X_CMD_XBINEXP_INITENV_OLDPWD  "$OLDPWD"
@@ -21,7 +21,7 @@ function ___x_cmd
     set exit_status $status
 
     set -u ___X_CMD_CD_RELM_0               "$___X_CMD_CD_RELM_0"
-    set -u ___X_CMD_THEME_RELOAD_DISABLE    "$___X_CMD_THEME_RELOAD_DISABLE"
+    set -u ___X_CMD_THEME_CURRENT_SHELL     "$___X_CMD_THEME_CURRENT_SHELL"
     set -u ___X_CMD_XBINEXP_FP              "$___X_CMD_XBINEXP_FP"
     set -u ___X_CMD_XBINEXP_INITENV_OLDPWD  "$___X_CMD_XBINEXP_INITENV_OLDPWD"
 
@@ -33,7 +33,7 @@ function ___x_cmd
     for file in $___X_CMD_XBINEXP_FP/*
         set varname (string replace -r '^.*/[^_]+_' '' "$file")
         if [ $varname = PWD ]
-            set -x  OLDPWD  "$PWD"
+            set -gx OLDPWD "$PWD"
             cd (cat $file)
         else
             set -g "$varname" (cat $file)
@@ -60,7 +60,7 @@ end
 # TODO: in the future, adding the advise
 
 # "$HOME/.x-cmd.root/bin/xbin" prepare alias
-set -g ___X_CMD_THEME_RELOAD_DISABLE 1
+set -g ___X_CMD_THEME_CURRENT_SHELL fish
 set -g ___X_CMD_RUNMODE 0
 if status is-interactive
     set -g ___X_CMD_RUNMODE 9
@@ -119,6 +119,10 @@ if status is-interactive
             ___x_cmd advise complete fish code > "$HOME/.x-cmd.root/local/cache/advise/bootcode/v0.0.0.fish"
         end
         source "$HOME/.x-cmd.root/local/cache/advise/bootcode/v0.0.0.fish"
+    end
+
+    if [ -f "$HOME/.x-cmd.root/local/cfg/theme/use/fish/default.fish" ]
+        source "$HOME/.x-cmd.root/local/cfg/theme/use/fish/default.fish"
     end
 end
 
