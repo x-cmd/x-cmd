@@ -3,6 +3,7 @@ use re
 use os
 use platform
 use runtime
+use str
 
 # if repl set-env ___X_CMD_RUNMODE 9 # chatty
 # if repl but less chatty set-env ___X_CMD_RUNMODE 5 # manual
@@ -17,12 +18,10 @@ if (not-eq $runtime:effective-rc-path $nil) {
     set-env ___X_CMD_RUNMODE    0
 }
 
-fn x {  |@a|
+fn ___x_cmd { |@a|
     if ( not (has-env OLDPWD) ) {
         set-env OLDPWD $E:PWD
     }
-
-    set-env ___X_CMD_THEME_RELOAD_DISABLE   1
 
     set-env ___X_CMD_XBINEXP_FP $E:HOME/.x-cmd.root/local/data/xbinexp/elv/$"pid"_(randint 65535)
 
@@ -37,6 +36,7 @@ fn x {  |@a|
     }
 
     unset-env ___X_CMD_XBINEXP_EVAL
+    set-env ___X_CMD_THEME_CURRENT_SHELL "elvish"
 
     try {
         if (not-eq $platform:os "windows") {
@@ -73,36 +73,72 @@ fn x {  |@a|
         if (has-env ___X_CMD_XBINEXP_EVAL) {
             eval $E:___X_CMD_XBINEXP_EVAL
         }
+
+        unset-env ___X_CMD_XBINEXP_FP
+        unset-env ___X_CMD_XBINEXP_INITENV_OLDPWD
+        unset-env ___X_CMD_THEME_CURRENT_SHELL
     }
 }
 
+fn ___x_cmd_cd { |@a|
 
-fn c {
-    |@a|
-
-    var c = (count $a)
-    if ( == $c 1 ) {
-        if ( eq $a[0] "-" ) {
-            if (has-env OLDPWD) {
-                x cd $E:OLDPWD
-            }
+    var original_oldpwd = $E:OLDPWD
+    var original_dir = $pwd
+    var args
+    if ( == (count $a) 0 ) {
+        ___x_cmd cd
+        return
+    } elif (eq $a[0] "-") {
+        ___x_cmd cd $E:OLDPWD
+        set args = $a[1..]
+    } else {
+        if (or (eq $a[0] "-b") (eq $a[0] "-f")) {
+            ___x_cmd cd $a[0] $a[1]
+            set args = $a[2..]
+        } elif (re:match "^-.*" $a[0]) {
+            ___x_cmd cd $@a
             return
+        } else {
+            ___x_cmd cd $a[0]
+            set args = $a[1..]
         }
     }
 
-    x cd $@a
+    if ( > (count $args) 0) {
+        if (or (eq $args[0] "-") (eq $args[0] "--")) {
+            set args = $args[1..]
+        }
+
+        if (not (> (count $args) 0)) {
+            return
+        }
+
+        echo "I|cd: Change the directory to [$pwd] to execute -> '" (str:join " " [(each {|a| put $a} $args)]) "'"
+        eval (str:join " " [(each {|a| put $a} $args)])
+        ___x_cmd cd $original_dir
+        set-env OLDPWD $original_oldpwd
+    }
 }
 
-fn xx   { |@a| x xx             $@a ; }
-fn xw   { |@a| x ws             $@a ; }
+fn x { |@a|
+    if (eq $a[0] "cd") {
+        var args = $a[1..]
+        ___x_cmd_cd $@args
+        return
+    }
+    ___x_cmd $@a
+}
 
-fn xd   { |@a| x docker         $@a ; }
-fn xg   { |@a| x git            $@a ; }
-fn xp   { |@a| x pwsh           $@a ; }
-fn xwt  { |@a| x webtop         $@a ; }
+fn xx   { |@a| ___x_cmd xx              $@a ; }
+fn xw   { |@a| ___x_cmd ws              $@a ; }
 
-fn co   { |@a| x elv --sysco    $@a ; }
-fn coco { |@a| x elv --syscoco  $@a ; }
+fn xd   { |@a| ___x_cmd docker          $@a ; }
+fn xg   { |@a| ___x_cmd git             $@a ; }
+fn xp   { |@a| ___x_cmd pwsh            $@a ; }
+fn xwt  { |@a| ___x_cmd webtop          $@a ; }
+
+fn co   { |@a| ___x_cmd elv --sysco     $@a ; }
+fn coco { |@a| ___x_cmd elv --syscoco   $@a ; }
 
 fn ___x_cmd___rcelv_addp_prepend {  |p|     if ( not (has-value $paths $p) )    {   set paths = [ $p $@paths ]  } }
 fn ___x_cmd___rcelv_addp_append {   |p|     if ( not (has-value $paths $p) )    {   set paths = [ $@paths $p ]  } }
@@ -123,8 +159,6 @@ fn ___x_cmd___rcelv_addpython {
         ___x_cmd___rcelv_addpifd $binpath
     }
 }
-
-# defintion of @<xxx> is in module a
 
 fn init {
     set-env OLDPWD $pwd
@@ -163,15 +197,11 @@ fn init {
         edit:add-var readline-binding $readline-binding:
     }
 
-    # TODO: activate theme
-
     edit:add-var            x~      $x~
 
-
     if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/c.disable    )) {
-        edit:add-var        c~      $c~
+        edit:add-var        c~      $___x_cmd_cd~
     }
-
 
     if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xx.disable   )) {
         edit:add-var        xx~     $xx~
@@ -206,5 +236,9 @@ fn init {
             x advise complete elv code > $E:HOME/.x-cmd.root/local/cache/advise/bootcode/v0.0.0.elv
         }
         eval ( slurp < $E:HOME/.x-cmd.root/local/cache/advise/bootcode/v0.0.0.elv )
+    }
+
+    if (os:is-regular  $E:HOME/.x-cmd.root/local/cfg/theme/use/elvish/default.elv) {
+        eval ( slurp < $E:HOME/.x-cmd.root/local/cfg/theme/use/elvish/default.elv )
     }
 }

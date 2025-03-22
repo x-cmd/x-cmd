@@ -1,7 +1,26 @@
 
 set -g ___X_CMD_CD_RELM_0 $PWD
 
+function ___x_cmd___rcfish_oldpwd
+    set -l dirc (count $dirnext)
+    if test $dirc -gt 0
+        echo $dirnext[-1]
+        return
+    end
+
+    set -l dirc (count $dirprev)
+    if test $dirc -gt 0
+        echo $dirprev[-1]
+    end
+end
+
 function x
+    switch $argv[1]
+        case 'cd'
+            set argv $argv[2..-1]
+            ___x_cmd_cd $argv
+            return
+    end
     ___x_cmd $argv
 end
 
@@ -20,10 +39,10 @@ function ___x_cmd
 
     set exit_status $status
 
-    set -u ___X_CMD_CD_RELM_0               "$___X_CMD_CD_RELM_0"
-    set -u ___X_CMD_THEME_CURRENT_SHELL     "$___X_CMD_THEME_CURRENT_SHELL"
-    set -u ___X_CMD_XBINEXP_FP              "$___X_CMD_XBINEXP_FP"
-    set -u ___X_CMD_XBINEXP_INITENV_OLDPWD  "$___X_CMD_XBINEXP_INITENV_OLDPWD"
+    set -l tmpvar
+    set tmpvar "$___X_CMD_CD_RELM_0";           set -e ___X_CMD_CD_RELM_0;              set -g ___X_CMD_CD_RELM_0           "$tmpvar"
+    set tmpvar "$___X_CMD_THEME_CURRENT_SHELL"; set -e ___X_CMD_THEME_CURRENT_SHELL;    set -g ___X_CMD_THEME_CURRENT_SHELL "$tmpvar"
+    set -e ___X_CMD_XBINEXP_INITENV_OLDPWD
 
     if [ ! -d "$___X_CMD_XBINEXP_FP" ]
         return $exit_status
@@ -45,8 +64,8 @@ function ___x_cmd
     end
 
     if [ -n "$___X_CMD_XBINEXP_EVAL" ]
-        set data "$___X_CMD_XBINEXP_EVAL"
-        set -u ___X_CMD_XBINEXP_EVAL ""
+        set -l data "$___X_CMD_XBINEXP_EVAL"
+        set -e ___X_CMD_XBINEXP_EVAL
         printf "%s\n" "===================" >&2
         printf ">>> %s\n\n" "$data" >&2
         printf "%s\n" "-------------------" >&2
@@ -54,15 +73,58 @@ function ___x_cmd
         printf "\n%s\n" "===================" >&2
     end
 
+    set -e ___X_CMD_XBINEXP_FP
     return $exit_status
+end
+
+function ___x_cmd_cd
+    set -l -a last_dirnext $dirnext
+    set -l -a last_dirprev $dirprev
+
+    set -l original_dir "$PWD"
+    if test "$argv[1]" = "-"
+        cd - || return $status
+        ___x_cmd cd --history top "$PWD"
+        set argv $argv[2..-1]
+    else
+        switch $argv[1]
+            case '-b' '-f'
+                ___x_cmd cd $argv[1] $argv[2] || return $status
+                set argv $argv[3..-1]
+
+            case '-*'
+                ___x_cmd cd $argv
+                return $status
+
+            case '*'
+                ___x_cmd cd $argv[1] || return $status
+                set argv $argv[2..-1]
+        end
+    end
+
+    if test (count $argv) -gt 0
+        switch $argv[1]
+            case '-' '--'
+                set argv $argv[2..-1]
+        end
+        test (count $argv) -gt 0 || return 0
+        printf "%s\n" "- I|cd: Change the directory [$PWD] to execute -> '$argv'" >&2
+        $argv
+        set -l exit_status $status
+        ___x_cmd cd $original_dir
+
+        set -e dirprev; set -g -a dirprev $last_dirprev
+        set -e dirnext; set -g -a dirnext $last_dirnext
+        return $exit_status
+    end
 end
 
 # TODO: in the future, adding the advise
 
 # "$HOME/.x-cmd.root/bin/xbin" prepare alias
-set -g ___X_CMD_THEME_CURRENT_SHELL fish
 set -g ___X_CMD_RUNMODE 0
 if status is-interactive
+    set -g ___X_CMD_THEME_CURRENT_SHELL fish
     set -g ___X_CMD_RUNMODE 9
     # setenv ___X_CMD_CO_EXEC_SHELL=fish
 
@@ -70,16 +132,7 @@ if status is-interactive
         set -g ___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL 1
     end
 
-    [ -f "$HOME/.x-cmd.root/boot/alias/c.disable"     ]   ||  begin
-        function c
-            if [ "$argv[1]" = "-" ]
-                ___x_cmd cd $OLDPWD
-                return
-            end
-            ___x_cmd cd $argv
-        end
-    end
-
+    [ -f "$HOME/.x-cmd.root/boot/alias/c.disable"       ]  ||  alias c='___x_cmd_cd'
     [ -f "$HOME/.x-cmd.root/boot/alias/xx.disable"      ]  ||  alias xx='___x_cmd xx'
     [ -f "$HOME/.x-cmd.root/boot/alias/xw.disable"      ]  ||  alias xw='___x_cmd ws'
     [ -f "$HOME/.x-cmd.root/boot/alias/xd.disable"      ]  ||  alias xd='___x_cmd docker'

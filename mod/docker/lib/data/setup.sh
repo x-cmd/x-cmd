@@ -5,19 +5,19 @@ ___x_cmd_docker_setup___getinfo()(
     printf "%s\n" "x_osname=$___X_CMD_OS_NAME_"
     printf "%s\n" "x_arch=$___X_CMD_OS_ARCH_"
 
-    command -v curl >/dev/null || {
+    command -v curl >/dev/null 2>&1 || {
         printf "%s\n" "need_curl=1"
         command mkdir -p /etc/ssl/certs
     }
 
-    command -v awk >/dev/null || {
+    command -v awk >/dev/null 2>&1 || {
         printf "%s\n" "need_busybox=1"
     }
 
-    [ -f /var/x-cmd/v/global/X ] || {
+    command -v x >/dev/null 2>&1 || command -v x-cmd >/dev/null 2>&1 || [ -f /bin/x-cmd ] || {
         printf "%s\n" "need_x=1"
         printf "%s\n" "need_setup=1"
-        command mkdir -p /var/x-cmd/v
+        command mkdir -p /usr/share/x-cmd/v
     }
 )
 

@@ -62,7 +62,7 @@ ___x_cmd_starship_fz_info(){
 
 ___x_cmd_starship_fz___check_preview(){
     local dir="$___X_CMD_STARSHIP_PREVIEW_DIR"
-    [ ! -d "$dir" ] || return 0
+    [ "$X_STARSHIP_UPDATE_CONFIG" = 1 ] || [ ! -d "$dir" ] || return 0
 
     local url; local tarname="starship.preview.tar.xz"
     if [ -n "$___X_CMD_THEME_DEV_MOD" ]; then
@@ -76,7 +76,7 @@ ___x_cmd_starship_fz___check_preview(){
 
     local cache="$___X_CMD_ROOT_DATA/starship/$tarname"
     ___x_cmd ensurefp "$cache"
-    starship:info --url "$url" "Download $tarname"
+    starship:info --url "$url" --unpack_dir "$dir" "Download $tarname"
     ___x_cmd curl -L -sS --speed-time 5 --speed-limit 100 "$url" > "${cache}.tmp" || {
         starship:error "Fail to download ${cache}"
         return 1
@@ -122,15 +122,9 @@ ___x_cmd_starship_which_(){
     if [ -f "$fp" ]; then
         x_="$fp"
     elif ___x_cmd_starship___check_valid_name "$name"; then
-        local tmpfp="${fp}.tmp"
-        ___x_cmd ensurefp "$tmpfp"
-        ___x_cmd_starship_run preset "$name" > "$tmpfp" || {
-            ___x_cmd rmrf "$tmpfp"
-            return 1
-        }
-        ___x_cmd mv -f "$tmpfp" "$fp"
+        ___x_cmd_starship___update_config "$name" || return $?
+        [ -f "$fp" ] || return 1
         x_="$fp"
-        [ -f "$x_" ]
     elif [ -f "$name" ]; then
         ___x_cmd abspath_ "$name" || return $?
         starship:debug "Custom config file -> $x_"
@@ -143,4 +137,30 @@ ___x_cmd_starship_which_(){
 ___x_cmd_starship_which(){
     local x_=; ___x_cmd_starship_which_ "$@" || return $?
     printf "%s\n" "$x_"
+}
+
+___x_cmd_starship_update(){
+    local X_STARSHIP_UPDATE_CONFIG=1
+
+    starship:info --config_dir "$___X_CMD_STARSHIP_CONFIG_DIR" "Update the starship preset theme file"
+    local name=
+    ___x_cmd_starship_ls | while read -r name; do
+        [ -n "$name" ] || continue
+        ___x_cmd_starship___update_config "$name" || return $?
+    done
+
+    ___x_cmd_starship_fz___check_preview
+}
+
+___x_cmd_starship___update_config(){
+    local name="$1"
+    local fp="$___X_CMD_STARSHIP_CONFIG_DIR/${name}.toml"
+    local tmpfp="${fp}.tmp"
+    ___x_cmd ensurefp "$tmpfp" || return 1
+    ___x_cmd_starship_run preset "$name" > "$tmpfp" || {
+        starship:error "Failed to output [name=$name] configuration"
+        ___x_cmd rmrf "$tmpfp"
+        return 1
+    }
+    ___x_cmd mv -f "$tmpfp" "$fp" || return 1
 }

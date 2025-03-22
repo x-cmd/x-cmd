@@ -4,38 +4,38 @@ function trim( s ){
 }
 
 BEGIN{
+    l = 0
     while (getline) {
-        result[ l+1, "fp" ] = $0
-        if (! getline)    exit
-        if (! getline)    exit
+        if ($1 == "sec") {
+            result[ l+1, "fp" ] = $0
+            l += 1
+            $1 = "";
+            result[ l, "sec"    ]   = trim( $0 )
 
-        l += 1
-        $1 = "";
-        result[ l, "sec"    ]   = trim( $0 )
+            split(result[l, "sec"], sec_info, "/")
+            result[l, "algo"] = sec_info[1]
+            result[l, "short_keyid"] = sec_info[2]
 
-        split(result[l, "sec"], sec_info, "/")
-        result[l, "algo"] = sec_info[1]
-        result[l, "short_keyid"] = sec_info[2]
+            split(result[l, "short_keyid"], sec_info, " ")
+            result[l, "short_keyid"] = sec_info[1]
+            result[l, "create"] = sec_info[2]
+            result[l, "use"] = sec_info[3]
+            result[l, "expires"] = sec_info[5]
 
-        split(result[l, "short_keyid"], sec_info, " ")
-        result[l, "short_keyid"] = sec_info[1]
-        result[l, "create"] = sec_info[2]
-        result[l, "use"] = sec_info[3]
-        result[l, "expires"] = sec_info[5]
+            split(result[l, "expires"], sec_info, "]")
+            result[l, "expires"] = sec_info[1]
 
-        split(result[l, "expires"], sec_info, "]")
-        result[l, "expires"] = sec_info[1]
+            if (! getline)    exit
+            result[ l, "keyid"  ]   = trim( $0 )
 
-        if (! getline)    exit
-        result[ l, "keyid"  ]   = trim( $0 )
+            if (! getline)    exit
+            $1 = "";
+            result[ l, "uid"    ]   = trim( $0 )
 
-        if (! getline)    exit
-        $1 = "";
-        result[ l, "uid"    ]   = trim( $0 )
-
-        if (! getline)    exit
-        $1 = "";
-        result[ l, "ssb"    ]   = trim( $0 )
+            if (! getline)    exit
+            $1 = "";
+            result[ l, "ssb"    ]   = trim( $0 )
+        }
     }
 }
 

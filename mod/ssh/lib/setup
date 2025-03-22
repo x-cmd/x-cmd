@@ -1,11 +1,35 @@
 
 # x ssh deploy-x-cmd
 ___x_cmd_ssh_x_setup(){
-    local tmpsuffix; tmpsuffix=$(x date vlid).$$
+    local ___X_CMD_SSH_MAIN_OPTS=''
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -B|-b|-c|-D|-E|-e|-F|-I|-i|-J|-L|-l|-m|-O|-o|-p|-Q|-R|-S|-W|-w)
+                ___x_cmd cmdstr ___X_CMD_SSH_MAIN_OPTS "$1" "$2"; shift 2 ;;
+            -*)
+                ___x_cmd cmdstr ___X_CMD_SSH_MAIN_OPTS "$1"; shift ;;
+            *)  break
+        esac
+    done
 
-    # same version of x-cmd code and advise and theme and package list
-    command scp .x-cmd.root."$tmpsuffix".sh .x-cmd.root.$tmpsuffix.tar.gz "$target":./
-    command ssh "$target" ""
+    local target="$1"
+    [ -n "$target" ] || N=ssh M="Please provide the destination value" log:ret:1
+    ssh:info "Injecting x-cmd to $target"
+    local origin_codefile="$___X_CMD_ROOT_SHARED/version/archive/$___X_CMD_VERSION.tgz";
+    [ -f "$origin_codefile" ] || ___x_cmd version --pack || return $?
+
+    eval "set -- $___X_CMD_SSH_MAIN_OPTS"
+
+    command ssh "$@" -o "ControlMaster=auto" -o "ControlPath=~/.ssh/master-%r@%h:%p" "$target" \
+        "command mkdir -p \$HOME/.x-cmd.root/global/shared/version/archive" || return $?
+
+    command scp "$@" -q -o "ControlMaster=auto" -o "ControlPath=~/.ssh/master-%r@%h:%p" \
+        "$origin_codefile"  "$target:\$HOME/.x-cmd.root/global/shared/version/archive/$___X_CMD_VERSION.tgz" || return $?
+
+    ssh:info "Executing x-cmd initialization"
+    local setup_script; setup_script="$( ___x_cmd_cmds_cat "$___X_CMD_ROOT_MOD/ssh/lib/data/setup.sh" )"
+    command ssh "$@" -o "ControlMaster=auto" -o "ControlPath=~/.ssh/master-%r@%h:%p" "$target" \
+        "${setup_script}; ___x_cmd_ssh_x_setup___main $___X_CMD_VERSION $___X_CMD_WEBSRC_REGION;"
 }
 
 

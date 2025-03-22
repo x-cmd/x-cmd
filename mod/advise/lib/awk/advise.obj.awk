@@ -147,14 +147,15 @@ function aobj_get_special_value( obj, obj_prefix, v ){
     return obj[ obj_prefix SUBSEP "\"#" v "\""]
 }
 
-function aobj_get_description( obj, obj_prefix,         d, _kp, _kp_name, _n ){
+function aobj_get_description( obj, obj_prefix, lang,               d, _kp, _kp_name, _n ){
+    if ( lang == "" ) lang = ___X_CMD_HELP_LANGUAGE
     _kp_name = aobj_get_special_value_id( obj_prefix, "name" )
     _n = obj[ _kp_name ]
     if ( _n == "{" ) d = obj[ _kp_name, obj[ _kp_name, 1 ] ]
-    if ( d =="null" ) d = aobj_get_value_with_local_language(obj, _kp_name, ___X_CMD_HELP_LANGUAGE)
+    if ( d =="null" ) d = aobj_get_value_with_local_language(obj, _kp_name, lang)
     if ( d == "" ) {
         _kp = aobj_get_special_value_id( obj_prefix, "desc" )
-        if ( (d = obj[ _kp ]) == "{" ) d = aobj_get_value_with_local_language(obj, _kp, ___X_CMD_HELP_LANGUAGE)
+        if ( (d = obj[ _kp ]) == "{" ) d = aobj_get_value_with_local_language(obj, _kp, lang)
     }
     if ( ! aobj_str_is_null(d) ) return aobj_uq(d)
 }
