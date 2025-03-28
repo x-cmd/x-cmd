@@ -87,6 +87,8 @@ function envy_parse_namelist(obj, namelist,         i, l, _, item, id, name, val
         id = index(item, "=")
         name = substr(item, 1, id-1)
         value = substr(item, id+1)
+        if (value ~ "^\"")  value = juq(value)
+        if (value ~ "^'")   value = juq1(value)
         idx = arr_push(obj, name)
         obj[ idx, "value" ] = value
         obj[ idx, "kp" ] = envy_name_to_kp(name)

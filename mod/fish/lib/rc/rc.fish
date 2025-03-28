@@ -80,6 +80,7 @@ end
 function ___x_cmd_cd
     set -l -a last_dirnext $dirnext
     set -l -a last_dirprev $dirprev
+    set -l -a last_fish_cd_direction $__fish_cd_direction
 
     set -l original_dir "$PWD"
     if test "$argv[1]" = "-"
@@ -115,6 +116,7 @@ function ___x_cmd_cd
 
         set -e dirprev; set -g -a dirprev $last_dirprev
         set -e dirnext; set -g -a dirnext $last_dirnext
+        set -e __fish_cd_direction; set -g __fish_cd_direction $last_fish_cd_direction
         return $exit_status
     end
 end

@@ -321,12 +321,24 @@ function wslx(){
     wsl ___x_cmdexe @args
 }
 
-if ($Host.Name -ne "ConsoleHost") {
-    # non-interactive
+if (-not $IsInteractive) {
+    $IsInteractive = $true
+
+    try {
+        $null = $Host.UI.RawUI
+    } catch {
+        $IsInteractive = $false
+    }
+
+    if ($PSVersionTable.ContainsKey("Interactive")) {
+        $IsInteractive = $PSVersionTable["Interactive"]
+    }
+}
+
+if (-not $IsInteractive) {
     $env:___X_CMD_RUNMODE = 0
     $env:___X_CMD_THEME_RELOAD_DISABLE = 1
 } else {
-    # interactive
     $env:___X_CMD_RUNMODE = 9
     $env:___X_CMD_THEME_RELOAD_DISABLE = ""
     $Global:___X_CMD_THEME_CURRENT_SHELL = "powershell"

@@ -1,5 +1,15 @@
+
 ___x_cmd_mac_fw_app(){
-    :
+    [ "$#" -gt 0 ] || set -- ls
+
+    local op="$1";  shift
+    case "$op" in
+        ls|add|rm)
+            ___x_cmd_mac_fw_app_"$op" "$@"                    ;;
+        -h|--help)
+            ___x_cmd help -m mac fw app "$@"                  ;;
+        *)  N=mac M="Unknown subcmd -> $op" log:ret:64        ;;
+    esac
 }
 
 
@@ -16,21 +26,56 @@ ___x_cmd_mac_fw_app_rm(){
 }
 
 ___x_cmd_mac_fw_app_ls(){
-    ___x_cmd_mac_fw_app___tsv
-}
-
-___x_cmd_mac_fw_app___tsv(){
-    ___x_cmd_mac_fw_app_ls___raw
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_mac_fw_app___app
+    else
+        ___x_cmd_mac_fw_app___tsv
+    fi
 }
 
 ___x_cmd_mac_fw_app_ls___raw(){
-    ___x_cmd sudo \
-        /usr/libexec/ApplicationFirewall/socketfilterfw \
-        --list
+    ___x_cmd_mac_fw_bin --listapps
+}
+
+___x_cmd_mac_fw_app___csv(){
+    ___x_cmd_mac_fw_app_ls___raw | ___x_cmd awk '
+BEGIN { print "index,application_path,incoming_connections" }
+/^[0-9]+ :/ {
+    sub(/^[ \t]+/, "", $0);
+    split($0, parts, " : ");
+    app_path = parts[2];
+    getline;
+    match($0, /\(.*\)/);
+    status = substr($0, RSTART+1, RLENGTH-2);
+    print parts[1] "," app_path "," status;
+}
+'
+}
+
+___x_cmd_mac_fw_app___tsv(){
+    ___x_cmd_mac_fw_app___csv | ___x_cmd tsv tocsv
 }
 
 ___x_cmd_mac_fw_app___app(){
-    ___x_cmd_mac_fw_app___tsv
+    local ___X_CMD_CSV_APP_SHBIN_CODE=
 
-    # List, then choose, to remove ...
+    mac:info "Ctrl-D to exit. Ctrl-C to interrupt."
+    local ___X_CMD_CSV_APP_DATA_index=""
+    local ___X_CMD_CSV_APP_DATA_application_path=""
+    local ___X_CMD_CSV_APP_DATA_incoming_connections=""
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc mac; " \
+        ___x_cmd csv app --clear --return var \
+            -- ___x_cmd_mac_fw_app___csv || return 1
+
+    [ -n "$___X_CMD_CSV_APP_DATA_application_path" ] || return 0
+    local id=
+    ___x_cmd ui select id,cmd "What to do next?"            \
+        "x mac fw app add $___X_CMD_CSV_APP_DATA_application_path"    \
+        "x mac fw app rm  $___X_CMD_CSV_APP_DATA_application_path"    \
+        "EXIT" || return 1
+    case "$id" in
+        1)  ___x_cmd_mac_fw_app_add "$___X_CMD_CSV_APP_DATA_application_path"  ;;
+        2)  ___x_cmd_mac_fw_app_rm  "$___X_CMD_CSV_APP_DATA_application_path"  ;;
+        *)  return 0 ;;
+    esac
 }

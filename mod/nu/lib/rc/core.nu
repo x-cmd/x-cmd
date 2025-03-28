@@ -206,10 +206,16 @@ export def --env --wrapped ___x_cmd_cd [ ...args ] {
         $param = ( $args | skip 1 )
     }
 
-    mut exit_code = ""
     if ($param | length) > 0 {
-        run-external ( $param | get 0 ) ...( $param | skip 1 )
-        $exit_code = $env.LAST_EXIT_CODE
+        let cd_args = ( $param | str join " " )
+        printf "%s\n" $"- I|cd: Change the directory [($env.PWD)] to execute -> '($cd_args)'" | print --stderr
+        ^$nu.current-exe -c $cd_args
+
+        # if ( $param | get 0 ) in (help commands | where command_type in ['builtin'] | get name) {
+        #     ^$nu.current-exe -c ( $param | str join " " )
+        # } else {
+        #     run-external ( $param | get 0 ) ...( $param | skip 1 )
+        # }
     } else {
         return
     }

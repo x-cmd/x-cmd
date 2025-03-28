@@ -1,13 +1,13 @@
 
 
 ___x_cmd_mac_vpn(){
-    [ $# -gt 0 ] || set -- status
+    [ $# -gt 0 ] || set -- ls
 
     local op="$1";  shift
     case "$op" in
-        start|stop|status|ls)
-                        ___x_cmd_mac_vpn_"$op" "$@" ;;
-        -h|--help)      ___x_cmd help -m mac vpn ;;
+        start|stop|status|ls|show)
+                        ___x_cmd_mac_vpn_"$op"   "$@" ;;
+        -h|--help)      ___x_cmd help -m mac vpn "$@" ;;
         *)              N=mac M="Unknown subcmd -> $op" log:ret:64 ;;
     esac
 }
@@ -23,16 +23,66 @@ ___x_cmd_mac_vpn_stop(){
 
 
 ___x_cmd_mac_vpn_start(){
-    :
-    # scutil --nc start "${_VPN}" ${_USER} ${_PASSWORD} ${_SECRET}
+    case "$1" in
+        -h|--help)      ___x_cmd help -m mac vpn start;return 0 ;;
+    esac
+    ___x_cmd_cmds scutil --nc start "$@"
 }
 
-# TODO
+___x_cmd_mac_vpn_ls(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_mac_vpn_ls___app
+    else
+        ___x_cmd_mac_vpn_ls___tsv
+    fi
+}
+
 ___x_cmd_mac_vpn_ls___tsv(){
-    ___x_cmd_mac_vpn_ls___raw
+    ___x_cmd_mac_vpn_ls___csv | ___x_cmd tsv tocsv
 }
 
 ___x_cmd_mac_vpn_ls___raw(){
     ___x_cmd_cmds scutil --nc list
 }
 
+___x_cmd_mac_vpn_ls___csv(){
+    ___x_cmd_mac_vpn_ls___raw | ___x_cmd awk 'BEGIN { OFS=","; print "name,uuid,status,type,protocol" }
+     /^\*/ {
+         status = ($2 == "(Disconnected)") ? "Disconnected" : "Connected";
+         uuid = $3;
+         protocol = $4 " " $5 " " $6;
+         name = $7;
+         type = substr($0, index($0, "[") + 1, length($0) - index($0, "[") - 2);
+         print name, uuid, status, type, protocol;
+     }'
+}
+
+___x_cmd_mac_vpn_ls___app(){
+    local ___X_CMD_CSV_APP_SHBIN_CODE=
+
+    mac:info "Ctrl-D to exit. Ctrl-C to interrupt."
+    local ___X_CMD_CSV_APP_DATA_name=""
+    local ___X_CMD_CSV_APP_DATA_uuid=""
+    local ___X_CMD_CSV_APP_DATA_status=""
+    local ___X_CMD_CSV_APP_DATA_type=""
+    local ___X_CMD_CSV_APP_DATA_protocol=""
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc mac; " \
+        ___x_cmd csv app --clear --return var \
+            -- ___x_cmd_mac_vpn_ls___csv || return 1
+
+    local name="$___X_CMD_CSV_APP_DATA_name"; [ -n "$name" ] || return 0
+    local id=
+    ___x_cmd ui select id,cmd "What to do next?"            \
+        "x mac vpn status $name"    \
+        "x mac vpn show   $name"    \
+        "x mac vpn start  $name"    \
+        "x mac vpn stop   $name"    \
+        "EXIT" || return 1
+    case "$id" in
+        1)  ___x_cmd_mac_vpn_status "${name}"  ;;
+        2)  ___x_cmd_mac_vpn_show   "${name}"  ;;
+        3)  ___x_cmd_mac_vpn_start  "${name}"  ;;
+        4)  ___x_cmd_mac_vpn_stop   "${name}"  ;;
+        *)  return 0 ;;
+    esac
+}
