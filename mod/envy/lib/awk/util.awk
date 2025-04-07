@@ -84,7 +84,7 @@ function envy_parse_namelist(obj, namelist,         i, l, _, item, id, name, val
     l = split( namelist, _, "\n" )
     for (i=1; i<=l; ++i){
         if ( "" == (item = _[i]) ) continue
-        id = index(item, "=")
+        if ( (id = index(item, "=")) <= 0 ) continue
         name = substr(item, 1, id-1)
         value = substr(item, id+1)
         if (value ~ "^\"")  value = juq(value)
