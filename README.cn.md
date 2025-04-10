@@ -1,3 +1,5 @@
+<a href="README.md">English</a> | 中文
+
 <p align="center">
     <a target="_blank" href="https://cn.x-cmd.com">
         <img src="https://foruda.gitee.com/images/1676141778442772704/6846937e_9641432.png" alt="x-cmd-logo" width="140" hight="140">
@@ -6,7 +8,7 @@
 
 <h1 align="center"><a target="_blank" href="https://cn.x-cmd.com">X-CMD</a></h1>
 
-<p align="center">在云上 施展 弹指神通 ～</p>
+<p align="center">在云上施展弹指神通 ～</p>
 
 <p align="center">
   <a target="_blank" href="https://cn.x-cmd.com/v">
@@ -21,9 +23,9 @@
 </p>
 
 <p align="center">
-查看 <bold>源码</bold> 请移步至 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支
+查看源码请移步至 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支
 <br>
-<a href="https://github.com/x-cmd/x-cmd/tree/X/README.cn.md">X</a> 分支 仅用于 演示及构建 ⭐
+<a href="https://github.com/x-cmd/x-cmd/tree/X/README.cn.md">X</a> 分支仅用于演示及构建 &nbsp; ⭐
 </p>
 
 <table align="center">
@@ -40,11 +42,11 @@
     </tr>
 </table>
 
-## [x ping](https://x-cmd.com/ping) - ping 命令增强
+## [x ping](https://x-cmd.com/ping) - `ping` 命令增强
 
 ![x ping](https://foruda.gitee.com/images/1730451947678480208/ad63805f_8841942.gif "ping.gif")
 
-## [x man](https://x-cmd.com/mod/man) - 基于 fzf 的 预览 增强
+## [x man](https://x-cmd.com/mod/man) - 基于 `fzf` 的预览增强
 
 ![man.cn.gif](https://foruda.gitee.com/images/1722606367684957086/3e06c8f8_8841942.gif "man.cn.gif")
 
@@ -56,7 +58,7 @@
 
 ![env.cn.gif](https://foruda.gitee.com/images/1724991931565701591/fa35de65_8841942.gif "env.cn.gif")
 
-## [x jq](https://x-cmd.com/mod/jq)/[x yq](https://x-cmd.com/mod/yq) - 快速测试 JQ 表达式
+## [x jq](https://x-cmd.com/mod/jq)/[x yq](https://x-cmd.com/mod/yq) - 快速测试 `jq`/`yq` 表达式
 
 ![jq_r](https://foruda.gitee.com/images/1722588625707099785/131a0613_8841942.gif "jq_r.gif")
 
@@ -64,7 +66,7 @@
 
 ![x osv demo gif](https://foruda.gitee.com/images/1718078629588146457/5d067d31_9641432.gif)
 
-## [x theme](https://x-cmd.com/theme) - 兼容多种 posix shell 的主题美化
+## [x theme](https://x-cmd.com/theme) - 兼容多种 Posix Shell 的主题美化
 
 ![x theme demo gif](https://foruda.gitee.com/images/1697770832734408357/545a3160_11092596.gif "theme.gif")
 
