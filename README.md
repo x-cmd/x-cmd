@@ -1,4 +1,4 @@
-English | <a href="README.cn.md">中文</a>
+English | <a href="README.cn.md">中文</a> | <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">Source Code</a> ⭐
 
 <p align="center">
     <a target="_blank" href="https://x-cmd.com/">

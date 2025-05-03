@@ -1,4 +1,4 @@
-<a href="README.md">English</a> | 中文
+<a href="README.md">English</a> | 中文 | <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">源码</a> ⭐
 
 <p align="center">
     <a target="_blank" href="https://cn.x-cmd.com">
