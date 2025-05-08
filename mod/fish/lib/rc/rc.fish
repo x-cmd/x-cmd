@@ -134,14 +134,6 @@ if status is-interactive
         set -g ___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL 1
     end
 
-    [ -f "$HOME/.x-cmd.root/boot/alias/c.disable"       ]  ||  alias c='___x_cmd_cd'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xx.disable"      ]  ||  alias xx='___x_cmd xx'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xw.disable"      ]  ||  alias xw='___x_cmd ws'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xd.disable"      ]  ||  alias xd='___x_cmd docker'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xg.disable"      ]  ||  alias xg='___x_cmd git'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xp.disable"      ]  ||  alias xp="___x_cmd pwsh"
-    [ -f "$HOME/.x-cmd.root/boot/alias/xwt.disable"     ]  ||  alias xwt="___x_cmd webtop"
-
     [ -f "$HOME/.x-cmd.root/boot/alias/co.disable"      ]  ||  begin
         alias ,="___x_cmd fish --sysco"
         alias "，"="___x_cmd fish --sysco"
@@ -152,20 +144,8 @@ if status is-interactive
         alias "，，"="___x_cmd fish --syscoco"
     end
 
-    [ -f "$HOME/.x-cmd.root/boot/alias/chat.disable"    ]  ||  begin
-        if [ ! -f "$HOME/.x-cmd.root/local/cache/chat/bootcode.fish" ]
-            mkdir -p "$HOME/.x-cmd.root/local/cache/chat"
-            ___x_cmd chat --aliasinit --code > "$HOME/.x-cmd.root/local/cache/chat/bootcode.fish"
-        end
-        source "$HOME/.x-cmd.root/local/cache/chat/bootcode.fish"
-    end
-
-    [ -f "$HOME/.x-cmd.root/boot/alias/writer.disable"  ]  ||  begin
-        if [ ! -f "$HOME/.x-cmd.root/local/cache/writer/bootcode.fish" ]
-            mkdir -p "$HOME/.x-cmd.root/local/cache/writer"
-            ___x_cmd writer --aliasinit --fishcode > "$HOME/.x-cmd.root/local/cache/writer/bootcode.fish"
-        end
-        source "$HOME/.x-cmd.root/local/cache/writer/bootcode.fish"
+    if [ -f "$HOME/.x-cmd.root/local/cache/shortcut/compile/shortcut.fish" ]
+        source "$HOME/.x-cmd.root/local/cache/shortcut/compile/shortcut.fish"
     end
 
     if [ "$___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL" = '1' ]

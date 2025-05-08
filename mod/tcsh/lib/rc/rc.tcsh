@@ -89,15 +89,6 @@ if ($?status && $status == 0) then
         setenv ___X_CMD_XBINEXP_INITENV_OLDPWD "$PWD"
     endif
 
-    [ -f "$HOME/.x-cmd.root/boot/alias/c.disable"       ]  ||  alias c     '___x_cmd cd'
-
-    [ -f "$HOME/.x-cmd.root/boot/alias/xx.disable"      ]  ||  alias xx    '___x_cmd xx'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xw.disable"      ]  ||  alias xw    '___x_cmd ws'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xd.disable"      ]  ||  alias xd    '___x_cmd docker'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xg.disable"      ]  ||  alias xg    '___x_cmd git'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xp.disable"      ]  ||  alias xp    '___x_cmd pwsh'
-    [ -f "$HOME/.x-cmd.root/boot/alias/xwt.disable"     ]  ||  alias xwt   '___x_cmd webtop'
-
     if ( ! -f "$HOME/.x-cmd.root/boot/alias/co.disable" )  then
         alias ,     '___x_cmd tcsh --sysco'
         alias ，    '___x_cmd tcsh --sysco'
@@ -106,34 +97,8 @@ if ($?status && $status == 0) then
     # alias ,,    '___x_cmd tcsh --syscoco'
     # alias ，，  '___x_cmd tcsh --syscoco'
 
-    if ( ! -f "$HOME/.x-cmd.root/boot/alias/chat.disable" )  then
-        # alias @          '___x_cmd chat --sendalias ""'
-        alias @l         '___x_cmd chat --sendalias l'
-        alias @lms       '___x_cmd chat --sendalias lms'
-        alias @o         '___x_cmd chat --sendalias o'
-
-        alias @gpt       '___x_cmd chat --sendalias gpt'
-        alias @gpt3      '___x_cmd chat --sendalias gpt3'
-        alias @gpt4      '___x_cmd chat --sendalias gpt4'
-        alias @gpt4t     '___x_cmd chat --sendalias gpt4t'
-        alias @gpt4om    '___x_cmd chat --sendalias gpt4om'
-        alias @gpto1     '___x_cmd chat --sendalias gpto1'
-        alias @gpto1m    '___x_cmd chat --sendalias gpto1m'
-        alias @gh        '___x_cmd chat --sendalias gh'
-
-        alias @gemini    '___x_cmd chat --sendalias gemini'
-        alias @mistral   '___x_cmd chat --sendalias mistral'
-        alias @kimi      '___x_cmd chat --sendalias kimi'
-        alias @ds        '___x_cmd chat --sendalias ds'
-        alias @dsr1      '___x_cmd chat --sendalias dsr1'
-        alias @grok      '___x_cmd chat --sendalias grok'
-    endif
-    # eval "`___x_cmd chat --aliasinit --cshcode`"
-
-    #  writer, w
-    if ( ! -f "$HOME/.x-cmd.root/boot/alias/writer.disable" )  then
-        alias @zh        '___x_cmd writer --sendalias zh'
-        alias @en        '___x_cmd writer --sendalias en'
+    if ( -f "$HOME/.x-cmd.root/local/cache/shortcut/compile/shortcut.tcsh" )  then
+        source "$HOME/.x-cmd.root/local/cache/shortcut/compile/shortcut.tcsh"
     endif
 endif
 

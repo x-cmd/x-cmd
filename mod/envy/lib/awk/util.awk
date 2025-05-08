@@ -84,14 +84,19 @@ function envy_parse_namelist(obj, namelist,         i, l, _, item, id, name, val
     l = split( namelist, _, "\n" )
     for (i=1; i<=l; ++i){
         if ( "" == (item = _[i]) ) continue
-        if ( (id = index(item, "=")) <= 0 ) continue
-        name = substr(item, 1, id-1)
-        value = substr(item, id+1)
-        if (value ~ "^\"")  value = juq(value)
-        if (value ~ "^'")   value = juq1(value)
-        idx = arr_push(obj, name)
-        obj[ idx, "value" ] = value
-        obj[ idx, "kp" ] = envy_name_to_kp(name)
+        if ( (id = index(item, "=")) <= 0 ) {
+            name = item
+            idx = arr_push(obj, name)
+            obj[ idx, "kp" ] = envy_name_to_kp(name)
+        } else {
+            name = substr(item, 1, id-1)
+            value = substr(item, id+1)
+            if (value ~ "^\"")  value = juq(value)
+            if (value ~ "^'")   value = juq1(value)
+            idx = arr_push(obj, name)
+            obj[ idx, "value" ] = value
+            obj[ idx, "kp" ] = envy_name_to_kp(name)
+        }
     }
 }
 
@@ -115,3 +120,10 @@ function envy_put(o, kp, val,            i, l, _val, _kp, arr, _item){
     }
 }
 
+function envy_rm(o, kp,            i, l, _kp, arr, _item){
+    l = split( kp, arr, SUBSEP )
+    for (i=2; i<l; ++i) _kp = _kp SUBSEP arr[i]
+    _item = arr[l]
+    if ( o[ _kp ] == "{" ) jdict_rm(o, _kp, _item)
+    else if ( o[ _kp ] == "[" ) jlist_rm(o, _kp, _item)
+}

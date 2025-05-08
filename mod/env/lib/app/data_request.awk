@@ -3,6 +3,8 @@ BEGIN{
     os = ENVIRON[ "os" ]
     arch = ENVIRON[ "arch" ]
     region = ENVIRON[ "region" ]
+    if (( region == "cn" ) || ( region == "zh" )) region = "cn"
+    else region = "en"
 }
 {jiparse_after_tokenize( O, $0 )}
 
@@ -19,7 +21,6 @@ END{
 }
 
 function insert_info(O, kp, key){
-    if (region != "cn") region = "en"
     if( O[kp S key S "\"info\""] ~ "null|NULL" ) O[kp S key S "\"info\""] = "{"
 
     desc = O[kp S key S "\"info\"" S "\"desc\"" S "\""region"\"" ]

@@ -1,0 +1,91 @@
+# shellcheck shell=dash
+
+
+___x_cmd_shortcut_ls(){
+    [ "$#" -gt 0 ] ||       set -- --app
+    local op="$1"
+    case "$op" in
+        --csv|--app)    shift; ___x_cmd_shortcut_ls_"${op#--}" "$@" ;;
+        -h|--help)      ___x_cmd help -m shortcut ls ;;
+        "")             ___x_cmd help -m shortcut ls >&2; return 64 ;;
+        *)              N=shortcut M="Not support such [subcmd=$op]" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_shortcut_ls_csv(){
+    local cfgfp="$___X_CMD_SHORTCUT_CONFIG"
+    [ -f "$cfgfp" ] || N=shortcut M="Not found config file" log:ret:1
+
+    local x_=; ___x_cmd os name_ || return $?
+
+    OSNAME="$x_" \
+    ___x_cmd cawk \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/re.awk"              \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/csv.awk"             \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"          \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk"         \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk"           \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yutil.awk"           \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/ystr.awk"            \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.value.awk"    \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.json.awk"     \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.awk"          \
+        -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/util.awk"   \
+        -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/tocsv.awk" < "$cfgfp"
+}
+
+___x_cmd_shortcut_ls_app(){
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; } || {
+        ___x_cmd_shortcut_ls_csv
+        return
+    }
+
+    local data; data="$( ___x_cmd_shortcut_ls_csv )" || return $?
+    [ -n "$data" ] || N=shortcut M="Not found shortcut data" log:ret:1
+
+    local ___X_CMD_CSV_APP_DATA_word=""
+    local ___X_CMD_CSV_APP_DATA_cmd=""
+    ___x_cmd csv app --return var --clear --ctrl-c-clear <<A || return $?
+$data
+A
+
+    [ -n "$___X_CMD_CSV_APP_DATA_word" ] || return 1
+    ___x_cmd_shortcut_form "$___X_CMD_CSV_APP_DATA_word"
+}
+
+___x_cmd_shortcut_form(){
+    local word="$1"
+    [ -n "$word" ] || N=shortcut M="Please provide shortcut word" log:ret:64
+    shift "$#"
+    local newword=""; local newcmd=""; local newstatus=""; local newcategory=""; local newplatform=""; local newadvise="";
+    shortcut:get:data:init
+    ___x_cmd_shortcut_get --format simple --by word "$word" | while shortcut:get:parse:data; do
+        shortcut:info "Edit the shortcut info for '$word'"
+        ___x_cmd tui form --ctrl_exit_strategy \
+            newcmd      "Shortcut command"  "$curcmd"       -- \
+            newstatus   "Shortcut status"   "$curstatus"  = enable disable  -- \
+            newcategory "Shortcut category" "$curcategory"  -- \
+            newplatform "Shortcut platform" "$curplatform" = all linux darwin win sunos freebsd openbsd aix -- \
+            newadvise   "Shortcut advise"   "$curadvise" || return $?
+
+            [ "$newcmd" = "$curcmd" ] || {
+                local x_=""
+                if [ "$newcmd" != "${newcmd#___x_cmd }" ]; then
+                    ___x_cmd shq1_ "${newcmd#___x_cmd }"
+                    set -- --x-cmd "$x_"
+                else
+                    ___x_cmd shq1_ "$newcmd"
+                    set -- --cmd "$x_"
+                fi
+            }
+
+            [ "$newstatus" = "$curstatus" ]     || set -- "$@" --status "$newstatus"
+            [ "$newcategory" = "$curcategory" ] || set -- "$@" --category "$newcategory"
+            [ "$newplatform" = "$curplatform" ] || set -- "$@" --platform "$newplatform"
+            [ "$newadvise" = "$curadvise" ]     || set -- "$@" --advise "$newadvise"
+
+
+            shortcut:debug --cmd "x shortcut set $* $word" form
+            [ "$#" -le 0 ] || ___x_cmd_shortcut_set "$@" "$word"
+    done
+}

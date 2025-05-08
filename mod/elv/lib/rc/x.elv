@@ -129,13 +129,6 @@ fn x { |@a|
     ___x_cmd $@a
 }
 
-fn xx   { |@a| ___x_cmd xx              $@a ; }
-fn xw   { |@a| ___x_cmd ws              $@a ; }
-
-fn xd   { |@a| ___x_cmd docker          $@a ; }
-fn xg   { |@a| ___x_cmd git             $@a ; }
-fn xp   { |@a| ___x_cmd pwsh            $@a ; }
-fn xwt  { |@a| ___x_cmd webtop          $@a ; }
 
 fn co   { |@a| ___x_cmd elv --sysco     $@a ; }
 fn coco { |@a| ___x_cmd elv --syscoco   $@a ; }
@@ -202,26 +195,6 @@ fn init {
     if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/c.disable    )) {
         edit:add-var        c~      $___x_cmd_cd~
     }
-
-    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xx.disable   )) {
-        edit:add-var        xx~     $xx~
-    }
-    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xw.disable   )) {
-        edit:add-var        xw~     $xw~
-    }
-    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xd.disable   )) {
-        edit:add-var        xd~     $xd~
-    }
-    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xg.disable   )) {
-        edit:add-var        xg~     $xg~
-    }
-    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xp.disable   )) {
-        edit:add-var        xp~     $xp~
-    }
-    if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/xwt.disable   )) {
-        edit:add-var        xwt~    $xwt~
-    }
-
 
     if (not (os:is-regular  $E:HOME/.x-cmd.root/boot/alias/co.disable   )) {
         edit:add-vars [     &,~=$co~        &，~=$co~       ]

@@ -58,9 +58,11 @@ function tapp_handle_response(fp,        _, arr, i, l, v){
     comp_gsel_current_position_set(o, PICK_KP)
 }
 
-function tapp_handle_exit( exit_code ){
+function tapp_handle_exit( exit_code,               item ){
     if (exit_is_with_cmd()){
-        tapp_send_finalcmd( sh_varset_val( "___X_CMD_PICK_SELECTED_ITEM", pick_result( o, PICK_KP ) ) )
+        item = pick_result( o, PICK_KP )
+        # gsub(/[\t\b\v\n]+/, " ", item)
+        tapp_send_finalcmd( sh_varset_val( "___X_CMD_PICK_SELECTED_ITEM", item ) )
         tapp_send_finalcmd( sh_varset_val( "___X_CMD_TUI_CURRENT_PICK_POSITION", comp_gsel_current_position_get(o, PICK_KP) ) )
     }
 }

@@ -263,7 +263,7 @@ function jlist_has(obj, keypath, value,          l, i) {
     return false
 }
 
-function jlist_rm_idx(obj, keypath, i,       l){
+function jlist_rm_idx(obj, keypath, i,              l){
     if( i > ( l = obj[ keypath L ] ) ) return false
     for (obj[ keypath L ]=--l; i<=l; ++i) {
         jclear(obj, keypath SUBSEP "\""i"\"")
@@ -273,7 +273,7 @@ function jlist_rm_idx(obj, keypath, i,       l){
 }
 
 # Notice: No GC ...
-function jlist_rm_value(obj, keypath, value,        l, i, v) {
+function jlist_rm_value(obj, keypath, value,            l, i, v) {
     l = obj[ keypath L ]
     for (i=1; i<=l; ++i) {
         v = obj[ keypath SUBSEP "\""i "\"" ]
@@ -288,7 +288,7 @@ function jlist_rm_value(obj, keypath, value,        l, i, v) {
     return false
 }
 
-function jlist_rm(obj, keypath,     l, i, _kp, arr) {
+function jlist_rm(obj, keypath,                             l, i, _kp, arr) {
     l = split(keypath, arr, SUBSEP)
     for(i=2; i<=l-1; ++i ) _kp = _kp SUBSEP arr[i]
     return jlist_rm_idx(obj, _kp, juq(arr[ l ]))
@@ -298,7 +298,7 @@ function jlist_rm(obj, keypath,     l, i, _kp, arr) {
 #     return obj[ keypath L ]
 # }
 
-function jlist_id2arr(obj, keypath, range, arr,    i, l){
+function jlist_id2arr(obj, keypath, range, arr,             i, l){
     jrange(range, obj[ keypath L ])
 
     l=0
@@ -379,7 +379,7 @@ function jlist_grep_to_arr( obj, keypath, reg,  arr,        _arrl,    k, l, _ret
 # Section: jdict
 
 # NOTICE: argument key is already quoted
-function jdict_rm(obj, keypath, key,  k, i, l){
+function jdict_rm(obj, keypath, key,                    k, i, l){
     l = obj[ keypath L ]
     for (i=1; i<=l; ++i) {
         k = obj[ keypath, i ]
@@ -393,7 +393,7 @@ function jdict_rm(obj, keypath, key,  k, i, l){
 }
 
 # TODO: We should quote
-function jdict_put(obj, keypath, key, value,  v, l){
+function jdict_put(obj, keypath, key, value,            v, l){
     v = obj[ keypath, key ]
     obj[ keypath, key ] = value
     if ( v == "" ) {
@@ -403,7 +403,7 @@ function jdict_put(obj, keypath, key, value,  v, l){
     return v
 }
 
-function jdict_has(obj, keypath, key,  v) {
+function jdict_has(obj, keypath, key,           v) {
     v = obj[ keypath, key ]
     return (v == "") ? false : true
 }

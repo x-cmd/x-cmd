@@ -1,9 +1,8 @@
 BEGIN{
-    if (___X_CMD_HELP_LANGUAGE != "cn") {
-        if (___X_CMD_HELP_LANGUAGE == "zh" ) ___X_CMD_HELP_LANGUAGE = "cn"
-        else ___X_CMD_HELP_LANGUAGE = "en"
-    }
-    ___X_CMD_HELP_LANGUAGE = jqu(___X_CMD_HELP_LANGUAGE);
+    if ((___X_CMD_LANG == "cn") || (___X_CMD_LANG == "zh" )) ___X_CMD_LANG = "cn"
+    else ___X_CMD_LANG = "en"
+
+    ___X_CMD_LANG = jqu(___X_CMD_LANG);
 }
 
 function aobj_get_value_with_local_language(o, kp, language){
@@ -148,12 +147,12 @@ function aobj_get_special_value( obj, obj_prefix, v ){
 }
 
 function aobj_get_description( obj, obj_prefix, lang,               d, _kp, _kp_name, _n ){
-    if ( lang == "" ) lang = ___X_CMD_HELP_LANGUAGE
+    if ( lang == "" ) lang = ___X_CMD_LANG
     _kp_name = aobj_get_special_value_id( obj_prefix, "name" )
     _n = obj[ _kp_name ]
     if ( _n == "{" ) d = obj[ _kp_name, obj[ _kp_name, 1 ] ]
     if ( d =="null" ) d = aobj_get_value_with_local_language(obj, _kp_name, lang)
-    if ( d == "" ) {
+    if ( ! d ) {
         _kp = aobj_get_special_value_id( obj_prefix, "desc" )
         if ( (d = obj[ _kp ]) == "{" ) d = aobj_get_value_with_local_language(obj, _kp, lang)
     }

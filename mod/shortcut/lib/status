@@ -1,0 +1,96 @@
+# shellcheck shell=dash
+
+___x_cmd_shortcut_disable(){
+    local namelist=""
+    local field_platform="all"; local field_bytype="word"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m shortcut disable; return ;;
+            --platform)     field_platform="$2";
+                            [ -n "$field_platform" ] || N=shortcut M="Not found \"--platform\" value, [darwin|linux|win|all]" log:ret:64
+                            ___x_cmd_shortcut___check_platform "$field_platform" || return $?
+                            shift 2 ;;
+            --by)           field_bytype="$2"; [ -n "$field_bytype" ] || N=shortcut M="Not found \"--by\" value, [word|category|cmd|x-cmd]" log:ret:64
+                            shift 2 ;;
+            --*)            N=shortcut M="Not support such [subcmd=$1]" log:ret:64 ;;
+            *)              namelist="${namelist}${1}${___X_CMD_UNSEENCHAR_NEWLINE}"; shift ;;
+        esac
+    done
+    [ -n "$namelist" ] || N=shortcut M="Not found value to disable" log:ret:1
+
+    local change_log=""
+    ___x_cmd_shortcut___setup_status_ disable "$field_bytype" "$field_platform" "$namelist" || return $?
+    if [ -n "$change_log" ]; then
+        shortcut:info "Disabled shortcuts for: $change_log"
+    else
+        shortcut:info "No shortcut found to disable"
+    fi
+}
+___x_cmd_shortcut_enable(){
+    local namelist=""
+    local field_platform="all"; local field_bytype="word"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m shortcut enable; return ;;
+            --platform)     field_platform="$2";
+                            [ -n "$field_platform" ] || N=shortcut M="Not found \"--platform\" value, [darwin|linux|win|all]" log:ret:64
+                            ___x_cmd_shortcut___check_platform "$field_platform" || return $?
+                            shift 2 ;;
+            --by)           field_bytype="$2"; [ -n "$field_bytype" ] || N=shortcut M="Not found \"--by\" value, [word|category|cmd|x-cmd]" log:ret:64
+                            shift 2 ;;
+            --*)            N=shortcut M="Not support such [subcmd=$1]" log:ret:64 ;;
+            *)              namelist="${namelist}${1}${___X_CMD_UNSEENCHAR_NEWLINE}"; shift ;;
+        esac
+    done
+    [ -n "$namelist" ] || N=shortcut M="Not found value to enable" log:ret:1
+    local change_log=""
+    ___x_cmd_shortcut___setup_status_ enable "$field_bytype" "$field_platform" "$namelist" || return $?
+    if [ -n "$change_log" ]; then
+        shortcut:info "Enabled shortcuts for: $change_log"
+    else
+        shortcut:info "No shortcut found to enable"
+    fi
+}
+
+___x_cmd_shortcut___setup_status_(){
+    local cfgfp="$___X_CMD_SHORTCUT_CONFIG"
+    [ -f "$cfgfp" ] || N=shortcut M="Not found config file" log:ret:1
+
+    local status_val="$1"; local field_bytype="$2"; local field_platform="$3"; local namelist="$4"
+
+    local x_=; ___x_cmd os name_ || return $?; local osname="$x_"
+    shortcut:debug --field_platform "$field_platform" --field_bytype "$field_bytype" --osname "$osname" --status_val "$status_val" --namelist "$namelist" status
+
+    local data=
+    eval "$(
+        OSNAME="$osname" \
+        STATUS_VAL="$status_val" \
+        STATUS_SETUP_BYTYPE="$field_bytype" \
+        STATUS_SETUP_PLATFORM="$field_platform" \
+        STATUS_SETUP_NAMELIST="$namelist" \
+        ___x_cmd cawk \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/re.awk"              \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"              \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"          \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk"         \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk"           \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yutil.awk"           \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/ystr.awk"            \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.value.awk"    \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.json.awk"     \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.awk"          \
+        -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/util.awk"   \
+        -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/setup_status.awk" < "$cfgfp"
+    )" || return $?
+
+    data="$( ___x_cmd yml j2y <<A
+$data
+A
+)"  || return $?
+
+    [ -n "$data" ] || N=shortcut M="Data error" log:ret:1
+    printf "%s\n" "$data" > "$cfgfp"
+
+    [ -z "$change_log" ] || ___x_cmd_shortcut_compile_all_auto
+}
+

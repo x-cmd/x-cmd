@@ -343,40 +343,6 @@ if (-not $IsInteractive) {
     $env:___X_CMD_THEME_RELOAD_DISABLE = ""
     $Global:___X_CMD_THEME_CURRENT_SHELL = "powershell"
 
-    function c(){
-        ___x_cmd_cd @args
-    }
-
-    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xx.disable" -PathType Leaf)) {
-        function xx(){
-            ___x_cmd xx @args
-        }
-    }
-    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xw.disable" -PathType Leaf)) {
-        function xw(){
-            ___x_cmd ws @args
-        }
-    }
-    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xd.disable" -PathType Leaf)) {
-        function xd(){
-            ___x_cmd docker @args
-        }
-    }
-    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xg.disable" -PathType Leaf)) {
-        function xg(){
-            ___x_cmd git @args
-        }
-    }
-    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xp.disable" -PathType Leaf)) {
-        function xp(){
-            ___x_cmd pwsh @args
-        }
-    }
-    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\xwt.disable" -PathType Leaf)) {
-        function xwt(){
-            ___x_cmd webtop @args
-        }
-    }
     if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\co.disable" -PathType Leaf)) {
         function co(){
             ___x_cmd co --exec @args
@@ -387,26 +353,14 @@ if (-not $IsInteractive) {
             ___x_cmd coco --exec @args
         }
     }
-    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\chat.disable" -PathType Leaf)) {
+    if (Test-Path "$HOME\.x-cmd.root\local\cache\shortcut\compile\shortcut.ps1" -PathType Leaf) {
         try {
-            if (-not (Test-Path "$HOME\.x-cmd.root\local\cache\chat\bootcode.ps1" -PathType Leaf)) {
-                ___x_cmd pwsh --setup-rcshortcut-file
-            }
-            . "$HOME\.x-cmd.root\local\cache\chat\bootcode.ps1"
+            . "$HOME\.x-cmd.root\local\cache\shortcut\compile\shortcut.ps1"
         } catch {
-            Write-Host "- E|x: Failed to load command functions related to the chat module alias init"
+            Write-Host "- E|x: Failed to load shortcut.ps1"
         }
     }
-    if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\writer.disable" -PathType Leaf)) {
-        try {
-            if (-not (Test-Path "$HOME\.x-cmd.root\local\cache\writer\bootcode.ps1" -PathType Leaf)) {
-                ___x_cmd pwsh --setup-rcshortcut-file
-            }
-            . "$HOME\.x-cmd.root\local\cache\writer\bootcode.ps1"
-        } catch {
-            Write-Host "- E|x: Failed to load command functions related to the writer module alias init"
-        }
-    }
+
     if (Test-Path "$HOME\.x-cmd.root\local\cfg\theme\use\powershell\default.ps1" -PathType Leaf) {
         try {
             . "$HOME\.x-cmd.root\local\cfg\theme\use\powershell\default.ps1"

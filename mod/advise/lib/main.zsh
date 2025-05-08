@@ -14,6 +14,7 @@ ___x_cmd_advise_run(){
     local COMP_CWORD="$(( CURRENT-1 ))"
 
     local name="${1:-${COMP_WORDS[1]}}"
+    local ___X_CMD_ADVISE_RUN_CMD_NAME="$name"
     local x_=;  ___x_cmd_advise___main __run_filepath_ ${___X_CMD_ADVISE_RUN_CMD} "$name" || return $?
 
     local cur="${COMP_WORDS[CURRENT]}"

@@ -244,7 +244,7 @@ function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
         _res = _res k " "
     }
     _res = _res "<SUBCOMMAND> --help"
-    if (___X_CMD_HELP_LANGUAGE == "\"cn\"") return "运行 '"_res"' 以获取有关命令的更多信息\n\n"
+    if (___X_CMD_LANG == "\"cn\"") return "运行 '"_res"' 以获取有关命令的更多信息\n\n"
     return "Run '"_res"' for more information on a command\n\n"
 }
 
@@ -256,7 +256,7 @@ function generate_name_help( obj, kp,       n, d, _str){
     n = obj[ kp ]
     if ( n == "{" ) {
         n = obj[ kp, 1 ]
-        if ((d = obj[ kp, n ]) == "null") d = aobj_get_value_with_local_language(obj, kp, ___X_CMD_HELP_LANGUAGE)
+        if ((d = obj[ kp, n ]) == "null") d = aobj_get_value_with_local_language(obj, kp, ___X_CMD_LANG)
     }
     _str = _str COMP_HELPDOC_HELP_INDENT_STR  th_interval(COMP_HELPDOC_UI_THEME) juq(n) COMP_HELPDOC_UI_END ( aobj_str_is_null(d) ? "" : " - " aobj_uq(d) ) "\n"
     return _str "\n"
@@ -267,7 +267,7 @@ function generate_desc_help(obj, kp, tip,        _str, d, tip_str){
     tip_str = generate_tip_help(tip)
     if (! aobj_is_null( obj, kp) ) {
         d = obj[ kp ]
-        if ( d == "{" ) d = aobj_get_value_with_local_language(obj, kp, ___X_CMD_HELP_LANGUAGE)
+        if ( d == "{" ) d = aobj_get_value_with_local_language(obj, kp, ___X_CMD_LANG)
         _str = COMP_HELPDOC_HELP_INDENT_STR str_cut_line(aobj_uq(d), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     }
     _str = (_str != "") ? _str "\n" tip_str : tip_str
@@ -287,7 +287,7 @@ function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {
     for (i=1; i<=l; ++i){
         k = obj[ kp, jqu(i), 1]
         v = obj[ kp, jqu(i), k]
-        if (v == "null") v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), ___X_CMD_HELP_LANGUAGE)
+        if (v == "null") v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), ___X_CMD_LANG)
         _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( th_interval(COMP_HELPDOC_UI_THEME) juq(k) " " COMP_HELPDOC_UI_END aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     }
     return _str "\n"
@@ -301,7 +301,7 @@ function generate_tldr_help(obj, kp,            l, i, k, v, _str){
     l = obj[ kp L ]
     for (i=1; i<=l; ++i){
         k = obj[ kp, jqu(i), "\"cmd\"" ]
-        v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), ___X_CMD_HELP_LANGUAGE)
+        v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), ___X_CMD_LANG)
         if ( ! aobj_str_is_null(v) ) _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( th_interval(COMP_HELPDOC_UI_THEME) aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
         _str = _str space_rep(COMP_HELPDOC_HELP_INDENT_LEN * 2) COMP_HELPDOC_UI_END  str_cut_line(aobj_uq(k), COMP_HELPDOC_HELP_INDENT_LEN * 2) "\n"
     }
@@ -309,7 +309,7 @@ function generate_tldr_help(obj, kp,            l, i, k, v, _str){
 }
 
 function generate_other_help_unit(obj, kp,      l, i, k, v, _str, _kp_language){
-    _kp_language = aobj_get_kp_with_local_language(obj, kp, ___X_CMD_HELP_LANGUAGE)
+    _kp_language = aobj_get_kp_with_local_language(obj, kp, ___X_CMD_LANG)
     if ( ! aobj_is_null(obj, _kp_language) ) return generate_other_help_unit(obj, _kp_language)
     l = obj[ kp L ]
     for (i=1; i<=l; ++i){
@@ -330,7 +330,7 @@ function generate_other_help(obj, kp,       l, i, k, v, _str){
 function generate_tip_help_unit( arr, kp, color, title,            l, i, _str, v){
     l = arr[ kp L ]
     for (i=1; i<=l; ++i) {
-        if ( (v = arr[ kp, "\""i"\"" ]) == "{" ) v = aobj_uq(aobj_get_value_with_local_language(arr, kp SUBSEP "\""i"\"", ___X_CMD_HELP_LANGUAGE))
+        if ( (v = arr[ kp, "\""i"\"" ]) == "{" ) v = aobj_uq(aobj_get_value_with_local_language(arr, kp SUBSEP "\""i"\"", ___X_CMD_LANG))
         sub("\n+$", "", v)
         _str = _str COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_UI_TITLE color title "\n" COMP_HELPDOC_UI_END COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_HELP_INDENT_STR  str_cut_line( v, COMP_HELPDOC_HELP_INDENT_LEN * 2) COMP_HELPDOC_UI_END "\n"
     }

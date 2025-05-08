@@ -1,0 +1,79 @@
+# shellcheck shell=dash
+
+___x_cmd_shortcut_compile(){
+    local op="$1"
+    case "$op" in
+        all)
+            shift; ___x_cmd_shortcut_compile_all "$@" ;;
+        bash|zsh|posixshell|fish|elvish|nu|xonsh|tcsh|pwsh)
+            shift; ___x_cmd_shortcut_compile_shellfile "$op" "$@"
+            ;;
+        __gencode|__gencodefp)
+            shift; ___x_cmd_shortcut_compile_"$op" "$@"
+            ;;
+        -h|--help)
+            ___x_cmd help -m shortcut compile; return
+            ;;
+        *)  N=shortcut M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_shortcut_compile_all(){
+    local shellname
+    for shellname in bash zsh posixshell fish elvish nu xonsh tcsh pwsh; do
+        compile_loglevel="debug" ___x_cmd_shortcut_compile_shellfile "$shellname" "$@" || return $?
+    done
+    shortcut:info "Compiled shortcut config into all supported shell scripts"
+}
+
+___x_cmd_shortcut_compile_all_auto(){
+    [ "$___X_CMD_SHORTCUT_NOAUTO_COMPILE_ALL" = 1 ] || ___x_cmd_shortcut_compile_all
+}
+
+___x_cmd_shortcut_compile_shellfile(){
+    local compile_shellname="$1"
+    local suffix="$compile_shellname"
+    case "$compile_shellname" in
+        posixshell) suffix="sh" ;;
+        pwsh)       suffix="ps1" ;;
+        xonsh)      suffix="xsh" ;;
+        elvish)     suffix="elv" ;;
+        *) ;;
+    esac
+    local codefp="$___X_CMD_ROOT_CACHE/shortcut/compile/shortcut.$suffix"
+
+    ___x_cmd depend run "$codefp" -- "$___X_CMD_ROOT_METADATA/version_sum" "$___X_CMD_SHORTCUT_CONFIG" -- \
+        ___x_cmd_shortcut_compile___gencodefp "$codefp" "$compile_shellname"
+}
+
+___x_cmd_shortcut_compile___gencode(){
+    local cfgfp="$___X_CMD_SHORTCUT_CONFIG"
+    [ -f "$cfgfp" ] || N=shortcut M="Not found config file" log:ret:1
+
+    local x_=; ___x_cmd os name_ || return $?
+
+    COMPILE_SHELLNAME="$1" \
+    OSNAME="$x_" \
+    ___x_cmd cawk \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/re.awk"              \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"              \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"          \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk"         \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk"           \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yutil.awk"           \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/ystr.awk"            \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.value.awk"    \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.json.awk"     \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.awk"          \
+        -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/util.awk"   \
+        -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/compile.awk" < "$cfgfp"
+}
+
+___x_cmd_shortcut_compile___gencodefp(){
+    local codefp="$1"
+    local compile_shellname="$2"
+    local compile_loglevel="${compile_loglevel:-info}"
+    ___x_cmd ensurefp "$codefp" || return $?
+    ___x_cmd log :shortcut "$compile_loglevel" "Compile shortcut config file to $codefp"
+    ___x_cmd_shortcut_compile___gencode "$compile_shellname" > "$codefp"
+}

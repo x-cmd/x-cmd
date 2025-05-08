@@ -78,7 +78,59 @@ ___x_cmd_main___otherwise_other(){
         return
     fi
 
-    x:error "___x_cmd_which_one fail [code=${___x_cmd_main_otherwise_code}]"
-    return 1
+    ___x_cmd_main___otherwise_other___app "$op" "$@"
 }
 
+___x_cmd_main___otherwise_other___app(){
+    local kw="$1"
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; } || {
+        # local str
+        # str="$(___x_cmd_main___otherwise_other___app "$kw" | ___x_cmd_cmds awk '(NF<10){ printf("%s, ", $0); }; END{ printf("...[total %s]\n", NF); }')"
+        x:error "___x_cmd_which_one fail [code=${___x_cmd_main_otherwise_code}]"
+        return 1
+    }
+
+    local candidate
+    candidate="$(___x_cmd_main___otherwise_other___app___list | ___x_cmd_main___otherwise_other___app___grep "$kw" "")"
+    [ -n "$candidate" ] || N=x M="No candidate found -> $kw" log:ret:64
+
+    local mod
+    mod="$(___x_cmd pick <<A
+$candidate
+A
+)" || return $?
+
+    [ -n "$mod" ] || return 1       # TODO: The SIGINT return 0, instead of 130.
+    mod="${mod%% *}"
+    mod="${mod%%"$___X_CMD_UNSEENCHAR_011"*}"
+
+    local id
+    ___x_cmd ui select id "next"        \
+        "Execute -> x $mod"             \
+        "Execute -> x $mod --help"      \
+        "Nothing"
+
+    case "$id" in
+        1)      ___x_cmd "$mod" ;;
+        2)      ___x_cmd "$mod" --help ;;
+        *)      return 1
+    esac
+}
+
+___x_cmd_main___otherwise_other___app___list(){
+    # list all xbin, lightweightmod ...
+    # we can consider using csv app ...
+    ___x_cmd fsiter "$___X_CMD_ROOT_MOD"
+    ___x_cmd pkg ls --xbin-desc "\t-- [pkg]:"
+}
+
+___x_cmd_main___otherwise_other___app___grep(){
+    ___x_cmd_cmds awk -v kw="$1" '
+        BEGIN{ kw = tolower(kw); }
+        {
+            name = tolower($0)
+            if (match(name, "[ \t\v]")) name = substr(name, 1, RSTART - 1)
+            if (index(name, kw)) print $0
+        }
+'
+}

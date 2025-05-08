@@ -9,7 +9,17 @@ $0~/(timeout|no answer)/{
     next
 }
 
+$0~/^MOCK_SEND$/{
+    if (MOCK_SEND_ENABLED == 1) {
+        print_auto( 0, 0, -1, "0.0.0.0", -1 )
+    }
+    MOCK_SEND_ENABLED = 1
+    next
+}
+
 $0~/ttl=/{
+    MOCK_SEND_ENABLED = 0
+
     byte = $1
     ip = $4
     gsub( /:$/, "", ip )

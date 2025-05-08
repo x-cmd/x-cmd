@@ -6,6 +6,7 @@ ___x_cmd_advise_run(){
     ___x_cmd awk get_utf8_
     local _UTF8="$___X_CMD_AWK_LANGUAGE_UTF8"
     local name="${1:-${COMP_WORDS[0]}}"
+    local ___X_CMD_ADVISE_RUN_CMD_NAME="$name"
     local x_=;  ___x_cmd_advise___main __run_filepath_ ${___X_CMD_ADVISE_RUN_CMD} "$name" || return $?
 
     # Only different from main.3.bash, for words in COMP_WORDBREAKS

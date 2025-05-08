@@ -1,6 +1,9 @@
 BEGIN{
     HAS_CONTENT = 0
     if(wsl = "WSL2") wsl=tolower(wsl)
+
+    if (( ___X_CMD_LANG == "cn" ) || ( ___X_CMD_LANG == "zh" )) ___X_CMD_LANG = "cn"
+    else ___X_CMD_LANG = "en"
 }
 
 {
@@ -50,13 +53,11 @@ function print_install_cmd(O, kp,          i, len, key, os_or_release, installer
 }
 
 
-function print_basic_info(O,    region,   homepage, desc, lang){
-    if( REGION == "cn") region = "cn"
-    else region = "en"
+function print_basic_info(O,                homepage, desc, lang){
 
     homepage = juq(O[ SUBSEP "\"1\"" SUBSEP "\"homepage\"" ])
     lang = juq(O[ SUBSEP "\"1\"" SUBSEP "\"lang\"" ])
-    desc = juq(O[ SUBSEP "\"1\"" SUBSEP "\"desc\"" SUBSEP "\""region"\"" ])
+    desc = juq(O[ SUBSEP "\"1\"" SUBSEP "\"desc\"" SUBSEP "\""___X_CMD_LANG"\"" ])
 
     print_install_basic_info_style(NAME, homepage, desc, lang)
 }

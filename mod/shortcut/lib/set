@@ -1,0 +1,155 @@
+# shellcheck shell=dash
+
+# x shortcut set --x-cmd cd c
+# x shortcut set --darwin --x-cmd mac m
+# x shortcut set --cmd 'ls -lah' ll
+___x_cmd_shortcut_set(){
+    local field_platform="all"; local field_xcmd=""; local field_cmd=""; local field_advise=""; local field_category=""; local field_status=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m shortcut set; return ;;
+            --platform)     field_platform="$2";
+                            [ -n "$field_platform" ] || N=shortcut M="Please provide \"--platform\" value, [all|linux|darwin|win|sunos|freebsd|openbsd|aix]" log:ret:64
+                            ___x_cmd_shortcut___check_platform "$field_platform" || return $?
+                            shift 2 ;;
+            --x-cmd)        field_xcmd="$2";
+                            [ -n "$field_xcmd" ]    || N=shortcut M="Please provide \"--x-cmd\" value" log:ret:64
+                            [ -z "$field_cmd" ]     || N=shortcut M="Invalid argument -> \"--x-cmd\" and \"--cmd\" cannot be used together" log:ret:64
+                            shift 2 ;;
+            --cmd)          field_cmd="$2";
+                            [ -n "$field_cmd" ]     || N=shortcut M="Please provide \"--cmd\" value" log:ret:64
+                            [ -z "$field_xcmd" ]    || N=shortcut M="Invalid argument -> \"--x-cmd\" and \"--cmd\" cannot be used together" log:ret:64
+                            shift 2 ;;
+            --advise)       field_advise="$2";
+                            [ "$#" -ge 2 ]          || N=shortcut M="Please provide \"--advise\" value" log:ret:64
+                            shift 2 ;;
+            --category)     field_category="$2";
+                            [ "$#" -ge 2 ]          || N=shortcut M="Please provide \"--category\" value" log:ret:64
+                            shift 2 ;;
+            --status)       field_status="$2";
+                            [ "$#" -ge 2 ]          || N=shortcut M="Please provide \"--status\" value" log:ret:64
+                            shift 2 ;;
+            --*)            N=shortcut M="Not support such [subcmd=$1]" log:ret:64 ;;
+            *)              field_word="$1";        shift; break ;;
+        esac
+    done
+    [ -n "$field_word" ] || N=shortcut M="Please provide shortcut word" log:ret:1
+    [ -n "${field_xcmd}${field_cmd}${field_advise}${field_category}${field_status}" ] || N=shortcut M="No value found to set for \"$field_word\"" log:ret:1
+    local cfgfp="$___X_CMD_SHORTCUT_CONFIG"
+    [ -f "$cfgfp" ] || N=shortcut M="Not found config file" log:ret:1
+
+    local x_=; ___x_cmd os name_ || return $?; local osname="$x_"
+    shortcut:debug --field_word "$field_word" --field_platform "$field_platform" --field_xcmd "$field_xcmd" --field_cmd "$field_cmd" --field_advise "$field_advise" --field_category "$field_category" --osname "$osname" set
+    local data; data="$(
+        CUR_PLATFORM="$osname" \
+        field_platform="$field_platform" \
+        field_cmd="$field_cmd" \
+        field_word="$field_word" \
+        field_xcmd="$field_xcmd" \
+        field_advise="$field_advise"\
+        field_category="$field_category" \
+        field_status="$field_status" \
+        ___x_cmd cawk \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/re.awk"              \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"          \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk"         \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yutil.awk"           \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/ystr.awk"            \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.value.awk"    \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.json.awk"     \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.awk"          \
+            -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/util.awk"   \
+            -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/set.awk" < "$cfgfp"
+    )" || return $?
+    [ -n "$data" ] || N=shortcut M="Data error" log:ret:1
+    printf "%s\n" "$data" > "$cfgfp"
+
+    ___x_cmd_shortcut_compile_all_auto
+}
+
+___x_cmd_shortcut_unset(){
+    local field_platform="all"; local field_bytype="word"; local field_str=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m shortcut unset; return ;;
+            --platform)     field_platform="$2";
+                            [ -n "$field_platform" ] || N=shortcut M="Not found \"--platform\" value, [darwin|linux|win|all]" log:ret:64
+                            ___x_cmd_shortcut___check_platform "$field_platform" || return $?
+                            shift 2 ;;
+            --by)           field_bytype="$2"; [ -n "$field_bytype" ] || N=shortcut M="Not found \"--by\" value, [word|category|cmd|x-cmd]" log:ret:64
+                            shift 2 ;;
+            --*)            N=shortcut M="Not support such [subcmd=$1]" log:ret:64 ;;
+            *)              field_str="$1"; shift; break ;;
+        esac
+    done
+    [ -n "$field_str" ] || N=shortcut M="No value found to set" log:ret:1
+    local cfgfp="$___X_CMD_SHORTCUT_CONFIG"
+    [ -f "$cfgfp" ] || N=shortcut M="Not found config file" log:ret:1
+
+    shortcut:debug --field_str "$field_str" --field_platform "$field_platform" --field_bytype "$field_bytype" unset
+
+    local data; data="$(
+        field_platform="$field_platform" \
+        field_str="$field_str" \
+        field_bytype="$field_bytype" \
+        ___x_cmd cawk \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/re.awk"              \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"          \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk"         \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yutil.awk"           \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/ystr.awk"            \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.value.awk"    \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.json.awk"     \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.awk"          \
+            -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/util.awk"   \
+            -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/unset.awk" < "$cfgfp"
+    )" || return $?
+    [ -n "$data" ] || N=shortcut M="Data error" log:ret:1
+    printf "%s\n" "$data" > "$cfgfp"
+
+    ___x_cmd_shortcut_compile_all_auto
+}
+
+___x_cmd_shortcut_rename(){
+    local field_platform="all"; local field_oldword=""; local field_newword=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m shortcut rename; return ;;
+            --platform)     field_platform="$2";
+                            [ -n "$field_platform" ] || N=shortcut M="Not found \"--platform\" value, [darwin|linux|win|all]" log:ret:64
+                            ___x_cmd_shortcut___check_platform "$field_platform" || return $?
+                            shift 2 ;;
+            *)  break ;;
+        esac
+    done
+
+    local field_oldword="$1";   [ -n "$field_oldword" ] || N=shortcut M="Please provide a old word name" log:ret:64
+    local field_newword="$2";   [ -n "$field_newword" ] || N=shortcut M="Please provide a new word name" log:ret:64
+
+    local cfgfp="$___X_CMD_SHORTCUT_CONFIG"
+    [ -f "$cfgfp" ] || N=shortcut M="Not found config file" log:ret:1
+
+    local x_=; ___x_cmd os name_ || return $?; local osname="$x_"
+    shortcut:debug --field_platform "$field_platform"  --field_newword "$field_newword" rename
+    local data; data="$(
+        CUR_PLATFORM="$osname" \
+        field_platform="$field_platform" \
+        field_oldword="$field_oldword" \
+        field_newword="$field_newword" \
+        ___x_cmd cawk \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/re.awk"              \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"          \
+            -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk"         \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yutil.awk"           \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/ystr.awk"            \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.value.awk"    \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.json.awk"     \
+            -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.awk"          \
+            -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/util.awk"   \
+            -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/rename.awk" < "$cfgfp"
+    )" || return $?
+    [ -n "$data" ] || N=shortcut M="Data error" log:ret:1
+    printf "%s\n" "$data" > "$cfgfp"
+
+    ___x_cmd_shortcut_compile_all_auto
+}

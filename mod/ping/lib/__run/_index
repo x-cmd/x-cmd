@@ -1,9 +1,8 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2016
 
-xrc:mod:lib     ping        __run/busybox   __run/win
+xrc:mod:lib     ping        __run/busybox   __run/win   __run/inetutils  __run/iputils  __run/mac
 
 ___x_cmd_ping___run(){
-    [ $# -gt 0 ] || set - --help
     local wait=1
     local count=0
     # local port=icmp
@@ -27,11 +26,19 @@ ___x_cmd_ping___run(){
         esac
     done
 
+    local x_=""
+    ___x_cmd_ping___run___typeofping_
+    local typeofping="$x_"
 
-    if ! ___x_cmd user isroot && ___x_cmd_ping___is_busybox; then
+    if ! ___x_cmd user isroot && [ "$typeofping" = busybox ]; then
         ping:info "busybox icmp require priviledge"
         ___x_cmd sudo echo "sudo priviledge granted."
     fi
+
+    [ $# -gt 0 ] || {
+        ping:info "Default ping target -> bing.com"
+        set - bing.com
+    }
 
     ___x_cmd_ping___run___"$format" "$@"
 }
@@ -50,19 +57,82 @@ ___x_cmd_ping___run___bar(){        MODE="bar"      ___x_cmd_ping___run___impl "
 ___x_cmd_ping___run___heatmap(){    MODE="heatmap"  ___x_cmd_ping___run___impl "$@"; }
 
 ___x_cmd_ping___run___raw(){
-    if ___x_cmd os is win; then     ___x_cmd_ping___run___win_raw       "$@"
-    else                            ___x_cmd_ping___run___busybox_raw   "$@"
-    fi
+    local x_=""
+    ___x_cmd os name_ || return $?
+
+    case "$x_" in
+        win)    ___x_cmd_ping___run___win_raw       "$@";   return ;;
+        darwin) ___x_cmd_ping___run___mac_raw       "$@";   return ;;
+    esac
+
+    ___x_cmd_hascmd ping || {
+        USE_BUSYBOX_BIN=1 ___x_cmd_ping___run___busybox_raw "$@"
+        return
+    }
+
+    case "$typeofping" in
+        inetutils)  ___x_cmd_ping___run___inetutils_raw     "$@"    ;;
+        iputils)    ___x_cmd_ping___run___iputils_raw       "$@"    ;;
+        busybox)    ___x_cmd_ping___run___busybox_raw       "$@"    ;;
+
+        *)
+                    ping:warn "This ping implemenation is not tested. Try it with best effort."
+                    ___x_cmd_ping___run___busybox_raw   "$@" ;  ;;
+    esac
 }
 
 ___x_cmd_ping___run___impl(){
-    if ___x_cmd os is win; then     ___x_cmd_ping___run___win           "$@"
-    else                            ___x_cmd_ping___run___busybox       "$@"
-    fi
+    local x_=""
+    ___x_cmd os name_ || return $?
+
+    case "$x_" in
+        win)    ___x_cmd_ping___run___win           "$@";   return ;;
+        darwin) ___x_cmd_ping___run___mac           "$@";   return ;;
+    esac
+
+    ___x_cmd_hascmd ping || {
+        USE_BUSYBOX_BIN=1 ___x_cmd_ping___run___busybox "$@"
+        return
+    }
+
+    case "$typeofping" in
+        inetutils)  ___x_cmd_ping___run___inetutils "$@"    ;;
+        iputils)    ___x_cmd_ping___run___iputils   "$@"    ;;
+        busybox)    ___x_cmd_ping___run___busybox   "$@"    ;;
+        *)
+                    ping:warn "This ping implemenation is not tested. Try it with best effort."
+                    ___x_cmd_ping___run___busybox   "$@" ;  ;;
+    esac
 }
 
 ___x_cmd_ping___run___awk(){
     if [ "$(___x_cmd awk impl)" = "mawk" ]; then    LC_ALL=C ___x_cmd_cmds mawk -W interactive "$@"
     else                                            LC_ALL=C ___x_cmd_cmds_awk "$@"
     fi
+}
+
+___x_cmd_ping___run___typeofping_(){
+    x_="$(
+        ___x_cmd_cmds ping --help 2>&1 | ___x_cmd_cmds awk -v retval="unknown" '
+
+    $0~/inetutils/{
+        retval = "inetutils"
+        exit
+    }
+
+    $0~/iputils/{
+        retval = "iputils"
+        exit
+    }
+
+    $0~/BusyBox/{
+        retval = "busybox"
+        exit
+    }
+
+    END{
+        print retval
+    }
+    '
+    )"
 }

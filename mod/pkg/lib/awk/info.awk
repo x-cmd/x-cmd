@@ -1,9 +1,11 @@
 BEGIN{
     VERSION         = ENVIRON[ "version"                ]
     OSARCH          = ENVIRON[ "osarch"                 ]
-    region          = ENVIRON[ "___X_CMD_WEBSRC_REGION" ]
-    pkg_real_name   = ENVIRON[ "pkg_real_name"          ]
+    region          = ENVIRON[ "___X_CMD_LANG"          ]
+    if (( region == "cn" ) || ( region == "zh" )) region = "cn"
+    else region = "en"
 
+    pkg_real_name   = ENVIRON[ "pkg_real_name"          ]
     pkg_real_name   = substr(pkg_real_name, index(pkg_real_name,"/") + 1 )
 }
 
@@ -31,7 +33,6 @@ END{
 }
 
 function generate_desc_by_region(O, kp,        desc){
-    if (region != "cn") region = "en"
     desc = O[ kp S "\"desc\"" S "\""region"\""]
     O[ kp S "\"desc\""] = desc
 }

@@ -1,0 +1,61 @@
+
+___x_cmd_nets_exist(){
+    local datadir="${1:-"${___X_CMD_NETS_DATA}/latest"}"
+    [ -f "${datadir}/all" ]
+}
+
+___x_cmd_nets_view(){
+    local format=auto
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --csv|--tsv|--auto)     format="${1#--}" ;;
+            *)                      break ;;
+        esac
+    done
+
+    local datadir="${___X_CMD_NETS_DATA}/latest"
+
+    ___x_cmd_nets_exist "$datadir" || {
+        if ___x_cmd is stdout2tty; then
+            ___x_cmd ui yesno "No data found. Trigger the data collection using 'x nets update' ?" || return $?
+            ___x_cmd_nets_update || return $?
+        else
+            nets:info --hint 'x nets update' "No data collected. You need to trigger using command: x nets update"
+            return 1
+        fi
+    }
+
+    local topic="${1}"
+    ___x_cmd_nets_view___"$format"
+}
+
+___x_cmd_nets_view___csv(){
+    ___x_cmd_nets_view___raw | ___x_cmd tsv tocsv
+}
+
+
+___x_cmd_nets_view___raw(){
+    ___x_cmd_cmds cat "$datadir/${topic:-internet}"
+}
+
+___x_cmd_nets_view___auto(){
+    if ___x_cmd_is_stdout2tty; then
+        ___x_cmd_nets_view___app    "$@"
+    else
+        ___x_cmd_nets_view___tsv    "$@"
+    fi
+}
+
+___x_cmd_nets_view___app(){
+    if [ -z "$topic" ]; then
+        topic="$(___x_cmd_nets ls | ___x_cmd_cmds awk '
+            BEGIN{ print "internet"; }
+            $1=="internet"{ next; }
+            { print; }
+        ' | ___x_cmd pick --ask "Select the table avaiable")"
+    fi
+
+    ___x_cmd_nets_view___csv | ___x_cmd csv app
+}
+
