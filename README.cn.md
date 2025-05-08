@@ -78,7 +78,7 @@
 4. 提供一系列的交互式 cli 工具（ gh for github, gt for gitee ，更多的工具模块将在最近半年发布）
 5. 极轻极快: 包括全功能模块安装包体积 1.1MB，首启后 shell 的加载时间一般不超过100ms
 
-现有 **超过 210** 个[模块](https://x-cmd.com/mod)，**超过 520 个**的[包](https://x-cmd.com/pkg)，以及 **超过 1200 条** [install](https://www.x-cmd.com/install/) 指南 ~
+现有 **超过 314** 个[模块](https://x-cmd.com/mod)，**超过 577 个**的[包](https://x-cmd.com/pkg)，以及 **超过 1588 条** [install](https://www.x-cmd.com/install/) 指南 ~
 
 ## [模块](https://x-cmd.com/mod/)
 

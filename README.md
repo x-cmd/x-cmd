@@ -64,7 +64,7 @@ For <bold>source code</bold>, please visit <a href="https://github.com/x-cmd/x-c
 4. Provides a range of interactive CLI tools (gh for github, gt for gitee, with more tool modules to be released in the next six months).
 5. Extremely light and fast: the size of the full-featured moduleinstallation package does not exceed 1.1MB, and the shell loadingtime after initial startup generally does not exceed 100ms.
 
-Now there are more than **210** [modules](https://x-cmd.com/mod), **more than 520** [packages](https://x-cmd.com/pkg), and **more than 1200** [install](https://www.x-cmd.com/install/) receipes ~
+Now there are more than **314** [modules](https://x-cmd.com/mod), **more than 577** [packages](https://x-cmd.com/pkg), and **more than 1588** [install](https://www.x-cmd.com/install/) receipes ~
 
 ## [Module](https://x-cmd.com/mod/)
 
