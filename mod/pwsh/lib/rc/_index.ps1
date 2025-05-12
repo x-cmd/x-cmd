@@ -82,8 +82,8 @@ function msysbash(){
     )
 
     $msysbash_path = ___x_cmd____rcpwsh_get_msysbash
-    if (-not (Test-Path $msysbash_path)) {
-        Write-Error "msysbash not found"
+    if ([string]::IsNullOrEmpty($msysbash_path) -or -not (Test-Path $msysbash_path)) {
+        Write-Error "Fail to locate msysbash -> $msysbash_path"
     } else {
         & $msysbash_path "$command" @args
     }

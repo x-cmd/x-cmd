@@ -1,0 +1,88 @@
+
+___x_cmd_root_repoint(){
+    [ $# -gt 0 ]    ||      set -- default
+
+    local op="$1";  shift
+    case "$op" in
+        current|default|current_|apply|revoke)
+                    ___x_cmd_root_repoint_"$op"             "$@" ;;
+        -h|--help)  ___x_cmd help -m root repoint           "$@" ;;
+        *)          ___x_cmd_root_repoint_default   "$op"   "$@" ;;
+    esac
+}
+
+___x_cmd_root_repoint_default(){
+    if [ $# -eq 0 ]; then
+        ___x_cmd_root_repoint_current
+    else
+        ___x_cmd_root_repoint_apply "$@"
+    fi
+}
+
+___x_cmd_root_repoint_current(){
+    local x_
+    ___x_cmd_root_repoint_current_ || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_root_repoint_current_(){
+    if [ -L "$___X_CMD_ROOT" ]; then
+        ___x_cmd readlink_recursive_ "$___X_CMD_ROOT"
+    else
+        x_="$___X_CMD_ROOT"
+    fi
+}
+
+___x_cmd_root_repoint_apply(){
+    if ___x_cmd os is win && ! ___x_cmd mklink --nopriv; then
+        N=root M="Currently we don't support early versions of windows which require privliedge to create softlink." log:ret:1
+    fi
+
+    local tgtfolder="$1"
+    [ -n "$tgtfolder" ]     || N=root M="Please provide a target folder" log:ret:64
+    ! [ -e "$tgtfolder" ]   || N=root M="Target folder already existed -> $tgtfolder" log:ret:64
+
+    local srcfolder="$___X_CMD_ROOT"
+    if [ -L "$srcfolder" ]; then
+        local x_=""
+        ___x_cmd readlink_recursive_ "$srcfolder" || N=root M="Fail to locate root instance folder -> $srcfolder" log:ret:1
+        srcfolder="$x_"
+    fi
+
+    ___x_cmd ensurefp "$tgtfolder" || return $?
+    ___x_cmd_cmds mv "$srcfolder" "$tgtfolder" || return $?
+
+    [ ! -L "$___X_CMD_ROOT" ] || ___x_cmd_cmds rm -f "$___X_CMD_ROOT" || N=root M="Fail to remove the link of root folder -> $___X_CMD_ROOT" log:ret:1
+
+    ___x_cmd_root_repoint___mksoftlink  "$___X_CMD_ROOT" "$tgtfolder" || return $?
+    ___x_cmd log :root info "Successfully switched x-cmd root instance folder -> $tgtfolder"
+}
+
+___x_cmd_root_repoint_revoke(){
+    [ -L "$___X_CMD_ROOT" ] || {
+        root:info "Abort because current root folder is not repointed."
+        return 0
+    }
+
+    local x_=""
+    ___x_cmd readlink_recursive_ "$___X_CMD_ROOT" || N=root M="Fail to locate root instance folder -> $___X_CMD_ROOT" log:ret:1
+    local tgtfolder="$x_"
+
+    ___x_cmd_cmds rm -f "$___X_CMD_ROOT" || N=root M="Fail to remove the link of root folder -> $___X_CMD_ROOT" log:ret:1
+
+    ___x_cmd_cmds mv "$tgtfolder" "$___X_CMD_ROOT" || return $?
+    ___x_cmd log :root info "Successfully reverted x-cmd root instance folder -> $___X_CMD_ROOT"
+}
+
+
+___x_cmd_root_repoint___mksoftlink(){
+    local linkname="$1"
+    local tgt="$2"
+
+    ___x_cmd os is win || {
+        ___x_cmd_cmds ln -s "$tgt" "$linkname"
+        return $?
+    }
+
+    ___x_cmd mklink -j "$tgt" "$linkname"
+}
