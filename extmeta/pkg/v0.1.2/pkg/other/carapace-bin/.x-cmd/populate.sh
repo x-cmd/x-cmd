@@ -10,7 +10,7 @@ ___x_cmd_pkg_carapace_bin_populate(){
 
     local ball="$___X_CMD_PKG___META_TGT/${___X_CMD_PKG___META_VERSION}.${tree}.${download_file_ext}"
     local unpack_dir="$___X_CMD_PKG___META_TGT"
-    x_cmd_pkg:info  --ball "$$___X_CMD_PKG_DOWNLOAD_PATH/$___X_CMD_PKG___META_NAME/${___X_CMD_PKG___META_VERSION}.${tree}.${download_file_ext}" --target_dir "$unpack_dir" "Unpacking"
+    x_cmd_pkg:info  --ball "$___X_CMD_PKG_DOWNLOAD_PATH/$___X_CMD_PKG___META_NAME/${___X_CMD_PKG___META_VERSION}.${tree}.${download_file_ext}" --target_dir "$unpack_dir" "Unpacking"
     ___X_CMD_ZUZ_QUIET=1 ___x_cmd uzr "$ball" "$unpack_dir" || {
         ___x_cmd rmrf "$unpack_dir/"*
         return 1

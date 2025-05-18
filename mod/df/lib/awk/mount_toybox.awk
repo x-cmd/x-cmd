@@ -1,6 +1,3 @@
-
-# TODO: merge all implemation into a single awk file ...
-
 BEGIN{
     PRINT_FMT = (format == "tsv") ? \
         "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" : \

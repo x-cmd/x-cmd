@@ -36,7 +36,7 @@ fn ___x_cmd { |@a|
     }
 
     unset-env ___X_CMD_XBINEXP_EVAL
-    set-env ___X_CMD_THEME_CURRENT_SHELL "elvish"
+    set-env ___X_CMD_REAL_CALLER_SHELL "elvish"
 
     try {
         if (not-eq $platform:os "windows") {
@@ -76,7 +76,7 @@ fn ___x_cmd { |@a|
 
         unset-env ___X_CMD_XBINEXP_FP
         unset-env ___X_CMD_XBINEXP_INITENV_OLDPWD
-        unset-env ___X_CMD_THEME_CURRENT_SHELL
+        unset-env ___X_CMD_REAL_CALLER_SHELL
     }
 }
 
@@ -209,7 +209,12 @@ fn init {
             x advise complete elv code > $E:HOME/.x-cmd.root/local/cache/advise/bootcode/v0.0.0.elv
         }
         eval ( slurp < $E:HOME/.x-cmd.root/local/cache/advise/bootcode/v0.0.0.elv )
+
+        if (os:is-regular  $E:HOME/.x-cmd.root/local/cache/advise/addon/complete.elv) {
+            eval ( slurp < $E:HOME/.x-cmd.root/local/cache/advise/addon/complete.elv )
+        }
     }
+
 
     if (os:is-regular  $E:HOME/.x-cmd.root/local/cfg/theme/use/elvish/default.elv) {
         eval ( slurp < $E:HOME/.x-cmd.root/local/cfg/theme/use/elvish/default.elv )

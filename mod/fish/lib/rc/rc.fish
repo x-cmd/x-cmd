@@ -26,7 +26,7 @@ end
 
 function ___x_cmd
     set -x ___X_CMD_CD_RELM_0               "$___X_CMD_CD_RELM_0"
-    set -x ___X_CMD_THEME_CURRENT_SHELL     "$___X_CMD_THEME_CURRENT_SHELL"
+    set -x ___X_CMD_REAL_CALLER_SHELL       "$___X_CMD_REAL_CALLER_SHELL"
     set -x ___X_CMD_RUNMODE                 "$___X_CMD_RUNMODE"
     set -x ___X_CMD_XBINEXP_FP              "$HOME/.x-cmd.root/local/data/xbinexp/fish/$fish_pid"_(random)
     set -x ___X_CMD_XBINEXP_INITENV_OLDPWD  "$OLDPWD"
@@ -41,7 +41,7 @@ function ___x_cmd
 
     set -l tmpvar
     set tmpvar "$___X_CMD_CD_RELM_0";           set -e ___X_CMD_CD_RELM_0;              set -g ___X_CMD_CD_RELM_0           "$tmpvar"
-    set tmpvar "$___X_CMD_THEME_CURRENT_SHELL"; set -e ___X_CMD_THEME_CURRENT_SHELL;    set -g ___X_CMD_THEME_CURRENT_SHELL "$tmpvar"
+    set tmpvar "$___X_CMD_REAL_CALLER_SHELL";   set -e ___X_CMD_REAL_CALLER_SHELL;      set -g ___X_CMD_REAL_CALLER_SHELL "$tmpvar"
     set -e ___X_CMD_XBINEXP_INITENV_OLDPWD
 
     if [ ! -d "$___X_CMD_XBINEXP_FP" ]
@@ -126,7 +126,7 @@ end
 # "$HOME/.x-cmd.root/bin/xbin" prepare alias
 set -g ___X_CMD_RUNMODE 0
 if status is-interactive
-    set -g ___X_CMD_THEME_CURRENT_SHELL fish
+    set -g ___X_CMD_REAL_CALLER_SHELL fish
     set -g ___X_CMD_RUNMODE 9
     # setenv ___X_CMD_CO_EXEC_SHELL=fish
 
@@ -154,6 +154,10 @@ if status is-interactive
             ___x_cmd advise complete fish code > "$HOME/.x-cmd.root/local/cache/advise/bootcode/v0.0.0.fish"
         end
         source "$HOME/.x-cmd.root/local/cache/advise/bootcode/v0.0.0.fish"
+
+        if [ -f "$HOME/.x-cmd.root/local/cache/advise/addon/complete.fish" ]
+            source "$HOME/.x-cmd.root/local/cache/advise/addon/complete.fish"
+        end
     end
 
     if [ -f "$HOME/.x-cmd.root/local/cfg/theme/use/fish/default.fish" ]

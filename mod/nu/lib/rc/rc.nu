@@ -1,4 +1,8 @@
 
+if ($env.HOME | is-empty) {
+    $env.HOME = $nu.home-path
+}
+
 use $"($nu.home-path)/.x-cmd.root/local/data/nu/core.nu" *
 
 if ( $"($nu.home-path)/.x-cmd.root/local/cfg/theme/use/nu/default.nu" | path exists ) {
@@ -6,7 +10,11 @@ if ( $"($nu.home-path)/.x-cmd.root/local/cfg/theme/use/nu/default.nu" | path exi
 }
 
 if ( $env.___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL? | is-empty) or ( $env.___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL? != "0" ) {
-    source $"($nu.home-path)/.x-cmd.root/local/data/nu/advise.nu"
+    if ( $"($nu.home-path)/.x-cmd.root/local/cache/advise/addon/complete.nu" | path exists ) {
+        source $"($nu.home-path)/.x-cmd.root/local/cache/advise/addon/complete.nu"
+    }
+
+    source $"($nu.home-path)/.x-cmd.root/local/cache/advise/bootcode/v0.0.0.nu"
 }
 
 

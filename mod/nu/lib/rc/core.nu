@@ -63,7 +63,7 @@ export-env {
         $env.___X_CMD_RUNMODE = 0
     }
 
-    $env.___X_CMD_THEME_CURRENT_SHELL = "nu"
+    $env.___X_CMD_REAL_CALLER_SHELL = "nu"
 
     $env.___X_CMD_CD_RELM_0 = $env.PWD
 }
@@ -84,7 +84,7 @@ export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
         $env.___X_CMD_RUNMODE = 0
     }
 
-    $env.___X_CMD_THEME_CURRENT_SHELL = "nu"
+    $env.___X_CMD_REAL_CALLER_SHELL = "nu"
 
     ___x_cmd ...$args
 

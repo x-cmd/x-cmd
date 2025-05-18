@@ -42,7 +42,8 @@ function ___x_cmd____rcpwsh_get_msysbash(){
             "C:\Program Files\Git\bin\bash.exe",
             "C:\Program Files (x86)\Git\bin\bash.exe",
             "$HOME\scoop\apps\git\current\bin\bash.exe",
-            "$HOME\AppData\Local\Programs\Git\bin\bash.exe"
+            "$HOME\AppData\Local\Programs\Git\bin\bash.exe",
+            "C:\scoop\apps\git\current\bin\bash.exe"
         )
 
         $msysbash_found = $false
@@ -204,7 +205,7 @@ $env:OLDPWD = $env:___X_CMD_CD_RELM_0
 # Using gitbash
 # We cannot use WSL here.
 function ___x_cmd(){
-    $env:___X_CMD_THEME_CURRENT_SHELL = $Global:___X_CMD_THEME_CURRENT_SHELL
+    $env:___X_CMD_REAL_CALLER_SHELL = $Global:___X_CMD_REAL_CALLER_SHELL
     $env:___X_CMD_XBINEXP_FP = "$HOME\.x-cmd.root\local\data\xbinexp\pwsh\$($PID)_$((Get-Random ))"
 
     if (-not $env:OLDPWD) {
@@ -244,9 +245,9 @@ function ___x_cmd(){
         Write-Host "==================="
     }
     Remove-Item env:___X_CMD_XBINEXP_FP
-    $tmpval = $env:___X_CMD_THEME_CURRENT_SHELL
-    Remove-Item env:___X_CMD_THEME_CURRENT_SHELL
-    $Global:___X_CMD_THEME_CURRENT_SHELL = $tmpval
+    $tmpval = $env:___X_CMD_REAL_CALLER_SHELL
+    Remove-Item env:___X_CMD_REAL_CALLER_SHELL
+    $Global:___X_CMD_REAL_CALLER_SHELL = $tmpval
 }
 
 function ___x_cmd_cd {
@@ -341,7 +342,7 @@ if (-not $IsInteractive) {
 } else {
     $env:___X_CMD_RUNMODE = 9
     $env:___X_CMD_THEME_RELOAD_DISABLE = ""
-    $Global:___X_CMD_THEME_CURRENT_SHELL = "powershell"
+    $Global:___X_CMD_REAL_CALLER_SHELL = "powershell"
 
     if (-not (Test-Path "$HOME\.x-cmd.root\boot\alias\co.disable" -PathType Leaf)) {
         function co(){
