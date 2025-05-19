@@ -1,0 +1,75 @@
+
+
+# x ip tps -a bing.com
+# x ip tps bing.com
+# x ip tps bing.com 1-1000 1000-2000
+
+___x_cmd_ip_tps(){
+    local ALL=""
+    local retry=""
+    local timeout=""
+    local concurrency=10000
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -t|--timeout)   [ $# -ge 2 ] || N=ip M="require number after -t|--timeout"  log:ret:64;     timeout="$2";       shift 2 ;;
+            -r|--retry)     [ $# -ge 2 ] || N=ip M="require number after -r|--retry"    log:ret:64;     retry="$2";         shift 2 ;;
+            -c)             [ $# -ge 2 ] || N=ip M="require concurrency after -c"       log:ret:64;     concurrency="$2";   shift 2 ;;
+            -a)             ALL=1;          shift ;;
+            --)             shift;          break ;;
+            *)              break
+        esac
+    done
+
+    local addr="127.0.0.1"
+    [ $# -eq 0 ] || {   addr="$1";    shift; }
+
+    if      [ -n "$ALL" ];  then    set -- "telnet://${addr}:[1-65535]"
+    elif    [ $# -eq 0 ];   then    set -- "telnet://${addr}:[1-10000]"
+    else
+        local IFS='
+'
+        local data="$*"
+        set -- 1
+        local item; while read -r item; do
+            case "$item" in
+                -a|all|--all)       set -- "$@" "telnet://${addr}:[1-65535]"   ;;
+                *-*)                set -- "$@" "telnet://${addr}:[${item}]"   ;;
+                *)                  set -- "$@" "telnet://${addr}:${item}"     ;;
+            esac
+        done <<A
+$data
+A
+        shift
+    fi
+
+    if [ -z "$timeout" ]; then
+        timeout=0.5
+        case "$addr" in
+            127.0.0.1|localhost|192.168.*.*)        timeout=0.1 ;;
+        esac
+
+        ip:debug "Default setting [timeout=$timeout]"
+    fi
+
+    # --parallel-immediate
+    if [ "$concurrency" -le 1 ]; then
+        set --  --no-parallel "$@"
+    else
+        set --  --parallel --parallel-max "$concurrency" "$@"
+    fi
+
+    set -- \
+        --max-time          "$timeout"              \
+        --connect-timeout   "$timeout"              \
+        -w "%{remote_ip} %{remote_port}
+"   "$@"
+
+    [ -z "$retry" ] || set -- --retry "$retry" --retry-delay 0 "$@"
+
+    ___x_cmd curl "$@" 2>/dev/null     | ___x_cmd_cmds awk '$1!=0{ if ($2 != "") print $2; }'
+}
+
+___x_cmd_ip_tps___join(){
+    ___x_cmd_cmds awk 'NR==1{ printf("%s", $0 ) }  NR>1{ printf("%s", "," $0 ); }'
+}

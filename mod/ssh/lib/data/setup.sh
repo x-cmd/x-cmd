@@ -25,7 +25,7 @@ ___x_cmd_ssh_x_setup___main(){
     else
         local tgzfile="$___X_CMD_ROOT/global/shared/version/archive/$___X_CMD_VERSION.tgz"
         command mkdir -p "$tardir"
-        LC_ALL=C command tar -xzf "$tgzfile" -C "$tardir" || return 1
+        LC_ALL="$___X_CMD_LOCALE_DEF_C" command tar -xzf "$tgzfile" -C "$tardir" || return 1
     fi
 
     ___X_CMD_ROOT="$___X_CMD_ROOT"          \

@@ -369,4 +369,12 @@ if (-not $IsInteractive) {
             Write-Host "- E|x: Failed to load the default theme configuration"
         }
     }
+
+    if (Test-Path "$HOME\.x-cmd.root\local\cache\advise\addon\complete.ps1" -PathType Leaf) {
+        try {
+            . "$HOME\.x-cmd.root\local\cache\advise\addon\complete.ps1"
+        } catch {
+            Write-Host "- E|x: Failed to load the complete code"
+        }
+    }
 }
