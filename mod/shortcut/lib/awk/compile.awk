@@ -7,10 +7,10 @@ END{
     Q2_1 = SUBSEP "\"1\""
     yml_parse( yml_text, o )
 
-    OSNAME = ENVIRON[ "OSNAME" ]
+    PLATFORM = ENVIRON[ "PLATFORM" ]
     COMPILE_SHELLNAME = ENVIRON[ "COMPILE_SHELLNAME" ]
 
-    shortcut_parse_toarr( o, ARR, OSNAME )
+    shortcut_parse_toarr( o, ARR, PLATFORM )
     shortcut_parse_toshellcode( ARR, COMPILE_SHELLNAME )
 }
 

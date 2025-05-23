@@ -37,11 +37,14 @@ function parse_standard_json( o, arr,        kp, i, l, _kp, v ){
     }
 }
 
-function parse_second_json_has_kv( o, key, val,         kp, i, l ) {
+function parse_second_json_has_kv( o, key, val,         kp, i, l, _second_release_id ) {
     kp = Q2_1
     l = o[ kp L ]
     for (i=1; i<=l; ++i) {
-        if ( o[ kp, "\""i"\"", key ] == val ) return true
+        if ( o[ kp, "\""i"\"", key ] == val ) {
+            _second_release_id = o[ kp, "\""i"\"", jqu("id") ]
+            return ( _second_release_id != "" ) ? _second_release_id : true
+        }
     }
     return false
 }

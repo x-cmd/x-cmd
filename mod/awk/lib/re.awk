@@ -208,8 +208,8 @@ BEGIN{
     RE_C0 = "[\001-\020]"
     RE_NON_C0 = "[^\001-\020]"
 
-    # wrong: LC_ALL=C awk 'BEGIN{ RE_C_PRINTABLE = "[^\x01-\x08\x0B\x0C\x0E\x0F\x7F]"; } $0~"^"RE_C_PRINTABLE"$"{ print $0; }' <<<"均"
-    # true:  LC_ALL=en_US.UTF-8 awk 'BEGIN{ RE_C_PRINTABLE = "[^\x01-\x08\x0B\x0C\x0E\x0F\x7F]"; } $0~"^"RE_C_PRINTABLE"$"{ print $0; }' <<<"均"
+    # wrong: LC_ALL="$___X_CMD_LOCALE_DEF_C" awk 'BEGIN{ RE_C_PRINTABLE = "[^\x01-\x08\x0B\x0C\x0E\x0F\x7F]"; } $0~"^"RE_C_PRINTABLE"$"{ print $0; }' <<<"均"
+    # true:  LC_ALL="$___X_CMD_LOCALE_DEF_UTF8" awk 'BEGIN{ RE_C_PRINTABLE = "[^\x01-\x08\x0B\x0C\x0E\x0F\x7F]"; } $0~"^"RE_C_PRINTABLE"$"{ print $0; }' <<<"均"
     RE_C_PRINTABLE = "[^\x01-\x08\x0B\x0C\x0E\x0F\x7F]" # Unfinish
 
     RE_NB_JSON_CONTENT_NEG = "\x00-\x08\x0A-\x19"

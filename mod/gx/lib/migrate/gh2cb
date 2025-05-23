@@ -1,0 +1,64 @@
+# shellcheck shell=dash  disable=2016
+
+___x_cmd_gx_migrate_release_gh2cb(){
+    local gh_owner_repo="$1"
+    local cb_owner_repo="${2:-$gh_owner_repo}"
+    local app_name="${gh_owner_repo##*"/"}"
+    {
+        x gh repo release ls --repo "${gh_owner_repo}" -j | x tee "${___X_CMD_ROOT_TMP}/gx/___x_cmd_gx_github_${app_name}"
+        x cb repo release ls --repo "${cb_owner_repo}" -j | x tee "${___X_CMD_ROOT_TMP}/gx/___x_cmd_gx_codeberg_${app_name}"
+    } | {
+        CHECK_PARAM=tag_name RET_FIELD=id ___x_cmd_gx_migrate_release___verify
+    } | (
+        local cb_release_id
+        while read -r release_name && read -r tag_name && read -r release_id && read -r is_exist && read -r second_release_id; do
+            [ "${release_name}" = "null" ] || unset release_name
+
+            if [ "${is_exist}" = "false" ]; then
+                gx:debug "x cb repo release create --repo ${cb_owner_repo} ${release_name:+"--name"} ${release_name:+"${release_name}"} --tag ${tag_name}"
+                cb_release_id="$(x cb repo release create --repo "${cb_owner_repo}" ${release_name:+"--name"} ${release_name:+"${release_name}"} --tag "${tag_name}" --json | x jq -r .id)"
+            fi
+            [ -n "${cb_release_id}" ] || cb_release_id="${second_release_id}"
+            gx:info "${cb_release_id}"
+            ___x_cmd_gx_migrate_release_gh2cb___attachment "${gh_owner_repo}" "${cb_owner_repo}" "${release_id}" "${tag_name}" "${cb_release_id}" || {
+                # TODO: log
+                return 1
+            }
+        done
+    )
+}
+
+___x_cmd_gx_migrate_release_gh2cb___attachment(){
+    local gh_owner_repo="$1"
+    local cb_owner_repo="$2"
+    local gh_release_id="$3"
+    local cb_tag_name="$4"
+    local cb_release_id="${5}"
+    {
+        < "${___X_CMD_ROOT_TMP}/gx/___x_cmd_gx_github_${app_name}" \
+            x jo env '.*' .id .assets -- '[ "$id" != '"${gh_release_id}"' ] || printf "%s\n" "$assets"'
+
+        < "${___X_CMD_ROOT_TMP}/gx/___x_cmd_gx_codeberg_${app_name}" \
+            x jo env '.*' .tag_name .assets -- '[ "$tag_name" != '"${cb_tag_name}"' ] || printf "%s\n" "$assets"'
+    } | {
+        #
+        CHECK_PARAM=name RET_FIELD=browser_download_url ___x_cmd_gx_migrate_release___verify attachment
+    } | {
+        while read -r file_name && read -r download_url; do
+            gx:debug "downloading file:${download_url}"
+            x curl -L "${download_url}" -o "${___X_CMD_ROOT_TMP}/gx/${file_name}" || {
+                # TODO:
+                return 1
+            }
+            local file_size
+            file_size=$(wc -c "${___X_CMD_ROOT_TMP}/gx/${file_name}")
+            file_size=${file_size% *}
+            gx:debug "download file size:${file_size}"
+            x cb repo release attachment upload --repo "${cb_owner_repo}" --release_id "${cb_release_id}" --name "${file_name}" "${___X_CMD_ROOT_TMP}/gx/${file_name}" || {
+                gx:error "Uploading file to codeberg fails"
+                return 1
+            }
+            x rm "${___X_CMD_ROOT_TMP}/gx/${file_name}"
+        done
+    }
+}

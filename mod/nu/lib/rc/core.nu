@@ -26,9 +26,9 @@ export def --env ___x_cmd___rcnu_addpifh [ cmd, element ] {
 
 export def --env ___x_cmd___rcnu_addpython [ ...args ] {
     ___x_cmd___rcnu_addpifh python     $"($env.HOME)/.local/bin"
-    let singleton_fp = $"($env.HOME)/.x-cmd.root/local/data/pkg/sphere/X/.x-cmd/singleton/python"
+    let singleton_fp = $"($env.___X_CMD_ROOT)/local/data/pkg/sphere/X/.x-cmd/singleton/python"
     if ( $singleton_fp | path exists ) {
-        let tgtdir = $"($env.HOME)/.x-cmd.root/local/data/pkg/sphere/X/(cat $singleton_fp)"
+        let tgtdir = $"($env.___X_CMD_ROOT)/local/data/pkg/sphere/X/(cat $singleton_fp)"
         if ( $nu.os-info.name == "windows" ) {
             let binpath = ( $tgtdir | path join Scripts)
             ___x_cmd___rcnu_addpifd $binpath
@@ -41,12 +41,12 @@ export def --env ___x_cmd___rcnu_addpython [ ...args ] {
 
 
 export-env {
-    if ( $"($env.HOME)/.x-cmd.root/boot/pixi" | path exists ) {
+    if ( $"($env.___X_CMD_ROOT)/boot/pixi" | path exists ) {
         ___x_cmd___rcnu_addp_append $"($env.HOME)/.pixi/bin"
     }
 
-    ___x_cmd___rcnu_addp_prepend       $"($env.HOME)/.x-cmd.root/bin"
-    ___x_cmd___rcnu_addp_prepend       $"($env.HOME)/.x-cmd.root/local/data/pkg/sphere/X/l/j/h/bin"
+    ___x_cmd___rcnu_addp_prepend       $"($env.___X_CMD_ROOT)/bin"
+    ___x_cmd___rcnu_addp_prepend       $"($env.___X_CMD_ROOT)/local/data/pkg/sphere/X/l/j/h/bin"
 
     ___x_cmd___rcnu_addpifd            $"($env.HOME)/.cargo/bin"
     ___x_cmd___rcnu_addpifh go         $"($env.HOME)/go/bin"
@@ -69,7 +69,7 @@ export-env {
 }
 
 export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
-    $env.___X_CMD_XBINEXP_FP = $"($env.HOME)/.x-cmd.root/local/data/xbinexp/nu/($nu.pid)_(random int)"
+    $env.___X_CMD_XBINEXP_FP = $"($env.___X_CMD_ROOT)/local/data/xbinexp/nu/($nu.pid)_(random int)"
     # mkdir $env.___X_CMD_XBINEXP_FP
 
     if OLDPWD in $env {
@@ -143,14 +143,14 @@ export def --env --wrapped ___x_cmd_nu_rc_xbinexp [ ...args ] {
     $env.LAST_EXIT_CODE = $exit_code
 }
 
-# export alias ___x_cmd   = bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"
-# export alias x          = bash $"($env.HOME)/.x-cmd.root/bin/xbinexp"
+# export alias ___x_cmd   = bash $"($env.___X_CMD_ROOT)/bin/xbinexp"
+# export alias x          = bash $"($env.___X_CMD_ROOT)/bin/xbinexp"
 
 export def --env --wrapped ___x_cmdexe_exp [ ...args ] {
     if ( $nu.os-info.name == "windows" ) {
-        ~/.x-cmd.root/bin/___x_cmdexe_exp.bat ...$args
+        cmd /c  $"($env.___X_CMD_ROOT)/bin/___x_cmdexe_exp.bat" ...$args
     } else {
-        bash $"($env.HOME)/.x-cmd.root/bin/___x_cmdexe_exp" ...$args
+        bash    $"($env.___X_CMD_ROOT)/bin/___x_cmdexe_exp"     ...$args
     }
 }
 
@@ -161,9 +161,9 @@ export def --env --wrapped ___x_cmd [ ...args ] {
     }
 
     if ( $nu.os-info.name == "windows" ) {
-        ~/.x-cmd.root/bin/___x_cmdexe_exp.bat ...$args
+        cmd /c  $"($env.___X_CMD_ROOT)/bin/___x_cmdexe_exp.bat" ...$args
     } else {
-        bash $"($env.HOME)/.x-cmd.root/bin/___x_cmdexe_exp" ...$args
+        bash    $"($env.___X_CMD_ROOT)/bin/___x_cmdexe_exp"     ...$args
     }
 }
 

@@ -17,6 +17,38 @@ ___x_cmd_qywx_bot___send_json() {
     ___x_cmd_http post json "$webhook" "$request"
 }
 
+___x_cmd_qywx_bot___upload_media_(){
+    local filepath=""; local type="file"
+    local op="$1"
+    case "$op" in
+        --file|--voice) type="${op#--}"; shift ;;
+    esac
+    filepath="$1"
+    [ -f "$filepath" ] || N=qywx M="Not found file -> $filepath" log:ret:1
+
+    x_=""; ___x_cmd_qywx___get_key_ "$webhook" || return $?
+    local webhook_key="$x_"; x_=""
+
+    local res=""; res="$( ___x_cmd curl -X POST  \
+        -H 'Content-Type: multipart/form-data' -F "file=@${filepath}"  \
+        "https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?type=${type}&key=${webhook_key}" \
+    )" || return $?
+
+    [ -n "$res" ] || N=qywx M="Failed to upload media" log:ret:1
+
+    local errcode=""; local errmsg=""; local media_id=""
+    ___x_cmd jo env . .errcode .errmsg .media_id << A
+$res
+A
+
+    if [ "$errcode" = 0 ]; then
+        x_="$media_id"
+    else
+        qywx:error --errmsg "$errmsg" "Failed to upload media"
+        return 1
+    fi
+}
+
 ___x_cmd_qywx_bot(){
     param:subcmd ___x_cmd_qywx_bot    \
         send   "send msg"
@@ -38,8 +70,8 @@ ___x_cmd_qywx_bot_send() {
         --markdown         "send markdown"    \
         --image            "send image"       \
         --raw              "send raw json"    \
-        --richtext         "send richtext"
-        # --file             "send file"
+        --richtext         "send richtext"    \
+        --file             "send file"
         # --textcard         "send textcard"
         # --newscard         "send newscard"
 
@@ -201,11 +233,17 @@ ___x_cmd_qywx_bot_send_file() {
     param:scope     qywx
     param:dsl <<A
 option:
-    --media_id      "Provide file id"           <media_id>:media_id
+    --media_id      "file id"                   <>=""
     --webhook       "webhook"                   <>=""
     --json|-j       "output origin json data"
 A
     param:run
+
+    [ -n "$media_id" ] || {
+        local x_=""; ___x_cmd_qywx_bot___upload_media_ "$@" || return $?
+        media_id="$x_"
+    }
+
     local res
     res="$(___x_cmd_qywx_bot___send_json <<A
 {

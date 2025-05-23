@@ -38,7 +38,8 @@ function minion_seed( o, prefix,            v ){
     v = o[ prefix S "\"seed\"" ]
     if ( ! chat_str_is_null(v) )    return int(((v ~ "^\"") ? juq(v) : v))
 
-    return int(ENVIRON[ "cfg_seed" ])
+    v = ENVIRON[ "cfg_seed" ]
+    if ( ! chat_str_is_null(v) )    return int(v)
 }
 
 function minion_session( o, prefix,         v ){

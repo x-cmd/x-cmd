@@ -21,7 +21,7 @@ BEGIN{
     }
 }
 END{
-    minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE, "openai" )
+    minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE, PROVIDER_NAME )
     TYPE                = minion_type( minion_obj, MINION_KP )
     MODEL               = minion_model( minion_obj, MINION_KP, def_model )
     HISTORY_NUM         = minion_history_num( minion_obj, MINION_KP )

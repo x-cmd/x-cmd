@@ -7,8 +7,8 @@ END{
     Q2_1 = SUBSEP "\"1\""
     yml_parse( yml_text, o )
 
-    OSNAME = ENVIRON[ "OSNAME" ]
-    shortcut_parse_toarr( o, ARR, OSNAME )
+    PLATFORM = ENVIRON[ "PLATFORM" ]
+    shortcut_parse_toarr( o, ARR, PLATFORM )
     shortcut_parse_tocsv( ARR )
 }
 
