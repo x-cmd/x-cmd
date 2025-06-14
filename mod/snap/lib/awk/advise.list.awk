@@ -17,7 +17,7 @@ BEGIN{
 }
 (IS_XBIN_LIST == 1) {
     if ((arr[ $1 ] != 1) && (( cur == "" ) || ( $1 ~ "^"cur ))) {
-        print comp_advise_str_style($1, "[PKG]:"$2)
+        print comp_advise_str_style($1, "[snap]:"$2)
     }
 }
 END{

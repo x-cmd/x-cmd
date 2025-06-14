@@ -1,0 +1,62 @@
+# shellcheck shell=dash
+
+xrc:mod:lib     pkg     envvar
+xrc:mod:lib     snap    ls  runmode run var whichpkg_
+
+if ___x_cmd_is_suitable_advise_env; then
+    xrc:mod:lib snap    advise
+fi
+
+___x_cmd_snap___main(){
+    local op="$1";
+    case "$op" in
+        -h|--help)      ___x_cmd help -m snap;      return ;;
+        "")             ___x_cmd help -m snap >&2;  return 64 ;;
+
+        --runcmd|--whichpkg_|--genfun|--preparecmd|--advise)
+                        shift; ___x_cmd_snap___"${op#--}" "$@" ;;
+        --runmode|--var|--run|--ls)
+                        shift; ___x_cmd_snap_"${op#--}" "$@" ;;
+        *)              ___x_cmd_snap_run "$@" ;;
+    esac
+}
+
+___x_cmd_snap___runcmd(){
+    [ -z "$___X_CMD_SNAP_IS_PREPARECMD" ] || return 0
+
+    local cmd="$1";  shift
+    if [ -f "$___X_CMD_ROOT_DATA/snap/var/$cmd" ]; then
+        ___x_cmd_source "$___X_CMD_ROOT_DATA/snap/var/$cmd" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
+
+___x_cmd_snap___preparecmd(){
+    local cmd="$1"
+
+    ! ___x_cmd hascmd "$cmd" || return 0
+    local ___X_CMD_SNAP_IS_PREPARECMD=1
+    ___x_cmd_snap_run "$@"
+}
+
+___x_cmd_snap___genfun(){
+    local cmd="$1";     [ -n "$cmd" ] || N=snap M="Please provide the command name" log:ret:64
+    local funname="$2"; [ -n "$funname" ] || N=snap M="Please provide the function name" log:ret:64
+
+    ! command -v "$funname" 2>/dev/null 1>&2 || {
+        ___x_cmd log :snap error "Function \`$funname\` already exists"
+        return 1
+    }
+
+    ___x_cmd_snap___whichpkg_ pkg "$cmd" || {
+        ___x_cmd log :snap error "Not found snap package for \`$cmd\`"
+        return 1
+    }
+
+    eval "
+${funname}(){
+    ___x_cmd snap --run ${cmd} \"\$@\"
+}
+"
+}

@@ -1,0 +1,95 @@
+# shellcheck shell=dash disable=2016
+
+___x_cmd_snap_ls(){
+    local op="$1"
+    case "$op" in
+        --pkglist)
+            shift; ___x_cmd_snap_ls___pkglist "$@" ;;
+        --pkglist-desc)
+            shift; ___x_cmd_snap_ls___pkglist_desc "$@" ;;
+        *) ;;
+    esac
+}
+
+# List all of the snap mod
+# m pkg --> termux pkg
+# brew  -->
+# m pkg --> freebsd pkg
+
+# apk ( root )
+# apt ( root )
+# dnf ( root )
+# pacman ( root )
+# yay ( root )
+# scoop ( root )
+
+
+___x_cmd_snap_ls___pkglist(){
+    # TODO: Need to be removed in the future
+    ___x_cmd pkg update_check || return $?
+    ___x_cmd_snap_ls___pkglist_inner
+}
+
+___x_cmd_snap_ls___pkglist_inner(){
+    local fp="$___X_CMD_PKG_SNAPLIST_FILE"
+    [ -f "$fp" ] || return $?
+    local l=""
+    local sep="$___X_CMD_UNSEENCHAR_011"
+    while read -r l; do
+        [ -n "$l" ] || continue
+        printf "%s\n" "${l%"${sep}"*}"
+    done <"$fp"
+}
+
+___x_cmd_snap_ls___pkglist_desc(){
+    local seq="$1"
+    local x_=""; ___x_cmd_snap_ls___pkglist_desc___fp_ || return $?
+    if [ -z "$seq" ]; then
+        ___x_cmd_cmds cat "$x_"
+    else
+        ___x_cmd_cmds sed "s/\x02/${seq}/g" "$x_"
+    fi
+}
+
+___x_cmd_snap_ls___pkglist_desc___fp_(){
+    local lang="$___X_CMD_LANG"
+    case "$lang" in
+        cn|zh)  lang=cn ;;
+        *)      lang=en ;;
+    esac
+
+    x_="$___X_CMD_ROOT_CACHE/snap/pkglist-desc/binmod.desc.${lang}.txt"
+    local fp="$___X_CMD_PKG_SNAPLIST_FILE"
+    [ -f "$fp" ] || return $?
+    ___x_cmd depend run "$x_" -- "$fp" -- ___x_cmd_snap_ls___pkglist_desc___fp_inner
+
+    [ -f "$x_" ]
+}
+
+___x_cmd_snap_ls___pkglist_desc___fp_inner(){
+    local fp="$___X_CMD_PKG_SNAPLIST_FILE"
+    [ -f "$fp" ] || return $?
+
+    local dir="$___X_CMD_ROOT_CACHE/snap/pkglist-desc"
+    ___x_cmd rmrf "$dir";   ___x_cmd mkdirp "$dir"
+    local l; local name=
+    local sep="$___X_CMD_UNSEENCHAR_011"
+    while ___x_cmd_readr l; do
+        name="${l##*"${sep}"}"
+        [ "$name" != "$l" ] || continue
+        printf "%s\n" "${l%"${sep}"*}"
+        printf "%s\n" "$___X_CMD_PKG_METADATA_PATH"/*/"$name/info.tt.json"
+    done < "$fp" | dir="$dir" ___x_cmd cawk -m j/json,j/jiter '
+    BEGIN{ dir = ENVIRON[ "dir" ]; }
+    {
+        name = $0
+        getline fp
+        jiparse2leaf_fromfile( o, name, fp )
+        if ( ! cat_is_filenotfound() ) {
+            printf("%s\002%s\n", name, juq(o[ name, "\"desc\"", "\"cn\"" ])) >> ( dir "/binmod.desc.cn.txt" )
+            printf("%s\002%s\n", name, juq(o[ name, "\"desc\"", "\"en\"" ])) >> ( dir "/binmod.desc.en.txt" )
+        }
+        delete o
+    }
+    '
+}

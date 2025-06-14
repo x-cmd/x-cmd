@@ -199,7 +199,7 @@ function utf8tt_to_arr( o, kp, col, arr, arrkp,      _null, a, l, _l, i, j, k, e
                     e = ""
                 } else {
                     if (_restl == col-1) _rest = _rest " "
-                    arr[ arrkp, ++k ] = _rest
+                    arr[ arrkp, ++k ] = _last_sep _rest
                     _rest = ""
                     _restl = 0
                     _last_sep = _sep

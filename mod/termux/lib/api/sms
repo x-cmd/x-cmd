@@ -4,8 +4,8 @@ ___x_cmd_termux_sms(){
 
     local op="$1";      shift
     case "$op" in
-        send|ls)        ___x_cmd_termux_sms_"$op"   "$@" ;;
-        -h|--help)      ___x_cmd help -m termux sms "$@" ;;
+        send|ls)    ___x_cmd_termux_sms_"$op"   "$@" ;;
+        -h|--help)  ___x_cmd help -m termux sms "$@" ;;
 
         *)  N=termux M="Invalid subcmd -> $op" log:ret:64
     esac
@@ -18,7 +18,16 @@ ___x_cmd_termux_sms_send(){
 
 
 ___x_cmd_termux_sms_ls(){
-    ___x_cmd_termux_sms_ls___yml "$@"
+    [ $# -gt 0 ]    ||      set -- --fzf
+
+    local op="$1";      shift
+    case "$op" in
+        --fzf|--tsv|--csv|--json|--yml|--fzfinfo)
+            local data_type="${op##*'-'}"
+            ___x_cmd_termux_sms_ls___"${data_type}"   "$@" ;;
+        -h|--help)  ___x_cmd help -m termux sms ls "$@" ;;
+        *)  N=termux M="Invalid subcmd -> $op" log:ret:64
+    esac
 }
 
 ___x_cmd_termux_sms_ls___tsv(){
@@ -26,7 +35,9 @@ ___x_cmd_termux_sms_ls___tsv(){
 }
 
 ___x_cmd_termux_sms_ls___csv(){
-    :
+    printf "%s,%s,%s,%s,%s\n" threadid type address received body
+    ___x_cmd_termux_sms_ls___json "$@" | \
+        ___x_cmd jq -r '.[] | [ .threadid, .type, (.address // .number), .received,( .body | @text ) ] | @csv'
 }
 
 ___x_cmd_termux_sms_ls___yml(){
@@ -37,8 +48,31 @@ ___x_cmd_termux_sms_ls___json(){
     ___x_cmd_cmds termux-sms-list "$@"
 }
 
-# Using fzf
-___x_cmd_termux_sms_fz(){
-    :
+___x_cmd_termux_sms_ls___fzfinfo(){
+    local data="$1"
+    data="${data%%"$___X_CMD_UNSEENCHAR_011"*}"
+    ___x_cmd_termux_sms_ls___tsv    |   \
+        ___x_cmd_termux___tsvlabel      |   \
+        a="$data" command awk 'NR==ENVIRON["a"]{
+            $1 = ""
+            $2 = ""
+            $3 = ""
+            $4 = ""
+            $5 = ""
+            $6 = ""
+            print $0
+        }' | ___x_cmd j2y
 }
+
+# Using fzf
+___x_cmd_termux_sms_ls___fzf(){
+    ___x_cmd_termux_sms_ls___tsv "$@"       \
+        |   ___x_cmd_termux___tsvlabel         \
+        |   ___x_cmd_termux___fzfpretty        \
+        |   command awk -v FS='\t' '{
+                printf("\033[2m" "%s\t" "\033[0;32m" "%-12s\t" "\033[2;33m"  "%s\t" "\033[2;37m" "%s\t" "\033[0;36m" "%s\n", $1, $3, $4, $5,$6)
+            }'  \
+        |   ___x_cmd_termux___fzf --preview="___x_cmdexe termux sms ls --fzfinfo {1}" --preview-window="right:20%,wrap"
+}
+
 

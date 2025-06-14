@@ -1,6 +1,6 @@
 # shellcheck shell=dash
 xrc chat
-xrc:mod:lib     ollama      chat/send
+___X_CMD_OLLAMA_ENDPOINT="http://localhost:11434"
 
 ___x_cmd_ollama_chat(){
     local X_help_cmd='x help -m ollama chat'; help:arg:parse
@@ -8,6 +8,10 @@ ___x_cmd_ollama_chat(){
     case "$op" in
         request|exec)
             shift; ___x_cmd_ollama_chat_"$op" "$@" ;;
+        --def-model_)
+            shift; ___x_cmd_ollama_chat_def_model_ "$@" ;;
+        --model-has-pull)
+            shift; ___x_cmd_ollama_chat_model_has_pull "$@" ;;
         *)  N=ollama M="Not support such option '$op'" log:ret:64
     esac
 }
@@ -19,107 +23,51 @@ ___x_cmd_ollama_chat_request(){
     ___x_cmd chat --exec --provider ollama "$@"
 }
 
+___x_cmd_ollama_chat_def_model_(){
+    x_="$( ___x_cmd_ollama_current_model 2>/dev/null )"
+    [ -n "$x_" ] || x_="llama3"
+}
+
+___x_cmd_ollama_chat_model_has_pull(){
+    local model="$1"
+    [ -n "$model" ] || N=ollama M="Please provide a model name"   log:ret:64;
+    [ "$model" != "${model%:*}" ] || model="${model}:latest"
+
+    local l
+    while read -r l; do
+        [ "$l" = "${l%%"${model}"*}" ] || return 0
+    done <<A
+$(___x_cmd_ollama___bin ls)
+A
+    return 1
+}
+
 ___x_cmd_ollama_chat_exec(){
-
-    [ -n "$model" ] || {
-        local model=
-        [ -n "$model" ] || model="$(___x_cmd_ollama_current_model 2>/dev/null )"
-        [ -n "$model" ] || model="llama3"
-    }
-
-    local endpoint_tmp=
-    ___x_cmd_ollama_cur endpoint_tmp:=endpoint 2>/dev/null
+    local endpoint_tmp=""
+    ___x_cmd_ollama_cur endpoint_tmp:=endpoint   2>/dev/null
 
     if [ -z "$endpoint_tmp" ]; then
-        ___x_cmd_ollama_model_has_model "$model" || N=ollama M="[MODLE ==> $model] not found, try pulling it first -> 'x ollama pull'" log:ret:64
-    fi
-
-    local cfg_temperature=; local cfg_ctx=
-
-    # TODO: add cfg_numctx, cfg_temperature
-    ___x_cmd_ollama_cfg --var cfg_temperature=temperature  cfg_ctx=ctx  2>/dev/null
-    ollama:debug  --model "$model" "chat exec"
-
-    [ -n "$cfg_ctx" ]         || cfg_ctx=8000
-    [ -n "$cfg_temperature" ] || cfg_temperature=0.3
-
-    {
-        userlang="${cfg_userlang:-$LANG}" \
-        ___x_cmd cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach   \
-                -E cfg_history_num,cfg_session,cfg_minion,cfg_maxtoken,cfg_seed,cfg_temperature,cfg_ctx \
-                -m j/json,j/jiter,j/jcp \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"        \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"           \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"         \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"           \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"           \
-                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/ollama.awk"       \
-                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/handle_request.awk" <<A
-${question}
-A
-    } | ( ___x_cmd_ollama_chat_request___launch )
-}
-
-___x_cmd_ollama_chat_request___launch(){
-    local content_dir
-    read -r content_dir
-    [ -d "$content_dir" ] || return 1
-
-    ___x_cmd_ollama_chat_request___trapexit(){
-        ___x_cmd rmrf "$content_dir/chat.running"
-    }
-
-    printf "%s\n" $$ >"$content_dir/chat.running"
-    trap '___x_cmd_ollama_chat_request___trapexit' EXIT
-
-    {
-        read -r model
-
-        local request_body_file="$content_dir/ollama.request.body.yml"
-        [ -f "$request_body_file" ] || return $?
-
-        ___x_cmd retry --max 2 --interval 3 ___x_cmd_ollama_chat_request___try
-    } || {
-        ___x_cmd_ollama_chat_request___trapexit
-        return 1
-    }
-}
-
-___x_cmd_ollama_chat_request___try(){
-    [ -z "$confirm_before_send" ] || {
-        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >"$___X_CMD_DEVTTY_FP"
-        ___x_cmd ui yesno "Do your want to send this message?" || {
-            ___X_CMD_RETRY_ABORT=1
+        local model="${model}";
+        [ -n "$model" ] || {
+            local x_=; ___x_cmd ollama chat --def-model_
+            model="$x_"
+        }
+        ___x_cmd_ollama_chat_model_has_pull "$model" || {
+            ollama:error "Not found [model ==> $model], try pulling it first -> 'x ollama pull $model'"
             return 1
         }
-        confirm_before_send=
-    }
+    fi
 
-    local _md5; _md5="$( < "$request_body_file" ___x_cmd str md5 )"
-    {
-        request_body_file="$request_body_file" \
-        ___x_cmd ccmd "$cache_time" -- \
-            ___x_cmd_ollama_api_chat "$model" "$_md5"
-    } | {
-        local interative=
-        if ___x_cmd_runmode_allow_chatty; then interative=1; fi
+    local cur_endpoint=""
+    case "$endpoint_tmp" in
+        http://*|https://*)     cur_endpoint="$endpoint_tmp"    ;;
+        "")                     cur_endpoint="$___X_CMD_OLLAMA_ENDPOINT" ;;
+        *)                      cur_endpoint="http://${endpoint_tmp}"
+        ;;
+    esac
 
-        local errcode=0
-        ___x_cmd cawk -i -E content_dir,interative         \
-                -m j/json,j/jiter,j/jcp                                     \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"            \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"               \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"             \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"               \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"               \
-                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/ollama.awk"           \
-                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/ollama_stream_output_util.awk"    \
-                -f "$___X_CMD_ROOT_MOD/ollama/lib/awk/handle_response.awk" || errcode="$?"
-        case $errcode in
-            0)      ;;
-            *)  ___x_cmd rmrf "$content_dir/ollama.response.yml" "$content_dir/chat.response.yml" ;;
-        esac
-        return "$errcode"
-    }
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER='ollama'   \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME='ollama'  \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_REQUEST_URL="${cur_endpoint}/api/chat" \
+    ___x_cmd openai chat exec "$@"
 }
-

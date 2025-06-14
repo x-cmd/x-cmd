@@ -1,0 +1,126 @@
+# shellcheck shell=dash
+
+___x_cmd_snap_var(){
+    local op="$1"
+    case "$op" in
+        "")         ___x_cmd help -m snap --var >&2;    return 64 ;;
+        -h|--help)  ___x_cmd help -m snap --var;        return ;;
+        set|unset|ls|show)
+                    shift; ___x_cmd_snap_var_"$op" "$@" ;;
+    esac
+}
+
+# x snap --var set jq abc=3wr
+___x_cmd_snap_var_unset(){
+    case "$1" in
+        "")             ___x_cmd help -m snap --var unset >&2;    return 64 ;;
+        -h|--help)      ___x_cmd help -m snap --var unset;        return ;;
+        -a|--all)       [ ! -d "$___X_CMD_ROOT_DATA/snap/var" ] || ___x_cmd rmrf "$___X_CMD_ROOT_DATA/snap/var"; return $? ;;
+    esac
+
+    while [ $# -gt 0 ]; do
+        ___x_cmd_cmds rm "$___X_CMD_ROOT_DATA/snap/var/$1"
+        shift
+    done
+}
+
+___x_cmd_snap_var_set(){
+    case "$1" in
+        "")         ___x_cmd help -m snap --var set >&2;    return 64 ;;
+        -h|--help)  ___x_cmd help -m snap --var set;        return ;;
+    esac
+
+    local cmd="$1";
+    [ -n "$cmd" ]   || N=snap M="Please provide the command name" log:ret:64
+    shift
+
+    local p=""
+    local sp=""
+
+    [ $# -gt 0 ]    || N=snap M="Please provide envrionment variables after [cmd=$cmd]" log:ret:64
+
+    local data=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -p=*|--proxy=*)
+                    p="${1#*=}"
+                    case "$p" in
+                        "")             p=""; sp="" ;;
+                        http*://*)      ;;
+                        *://*)          ;;
+                        *)              p="http://$p"
+                                        sp="socks5://$p" ;;
+                    esac
+                    ___x_cmd_snap_var_set___one_ http_proxy      "$p"
+                    ___x_cmd_snap_var_set___one_ https_proxy     "$p"
+                    ___x_cmd_snap_var_set___one_ ftp_proxy       "$p"
+                    ___x_cmd_snap_var_set___one_ all_proxy       "$sp"
+
+                    ___x_cmd_snap_var_set___one_ HTTP_PROXY      "$p"
+                    ___x_cmd_snap_var_set___one_ HTTPS_PROXY     "$p"
+                    ___x_cmd_snap_var_set___one_ FTP_PROXY       "$p"
+                    ___x_cmd_snap_var_set___one_ ALL_PROXY       "$sp"
+                    ;;
+
+            *=*)    ___x_cmd_snap_var_set___one_ "${1%%=*}" "${1#*=}"
+                    ;;
+            *)
+                    N=snap M="Invalid variable format -> [$1], should be [VAR=VALUE]" log:ret:64 ;;
+        esac
+
+        shift
+    done
+    [ -n "$data" ] || return 1
+    data="${data}${cmd} \"%@\""
+    ___x_cmd log :snap info "Successfully set variable for [cmd=$cmd], see in \`x snap --var show $cmd\`"
+    ___x_cmd mkdirp "$___X_CMD_ROOT_DATA/snap/var"
+    printf "%s\n" "$data" > "$___X_CMD_ROOT_DATA/snap/var/$cmd"
+}
+
+___x_cmd_snap_var_set___one_(){
+    local var="$1"
+    local val="$2"
+    local x_=""
+    ___x_cmd_shq1_ "$val"
+    data="${data}${var}=${x_} \\
+"
+}
+
+___x_cmd_snap_var_ls(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m snap --var ls; return ;;
+    esac
+
+    [ -d "$___X_CMD_ROOT_DATA/snap/var" ] || return 0
+    ___x_cmd fsiter "$___X_CMD_ROOT_DATA/snap/var"
+}
+
+___x_cmd_snap_var_show(){
+    [ $# -gt 0 ] || {
+        [ -d "$___X_CMD_ROOT_DATA/snap/var" ] || return 1
+        ___x_cmd fsiter "$___X_CMD_ROOT_DATA/snap/var" | {
+            local cmd
+            while read -r cmd; do
+                ___x_cmd_snap_var___show1 "$cmd"
+            done
+        }
+        return 0
+    }
+
+    case "$1" in
+        -h|--help)      ___x_cmd help -m snap --var ls; return ;;
+    esac
+
+    while [ $# -gt 0 ]; do
+        ___x_cmd_snap_var___show1 "$1"
+        shift
+    done
+}
+
+___x_cmd_snap_var___show1(){
+    local cmd="$1"
+    printf "## %s\n" "$cmd"
+    local fp="$___X_CMD_ROOT_DATA/snap/var/$cmd"
+    [ -f "$fp" ] || N=snap M="Not found variable for [cmd=$cmd]" log:ret:1
+    ___x_cmd rat "$fp"
+}

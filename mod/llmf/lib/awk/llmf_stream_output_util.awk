@@ -1,4 +1,4 @@
-function llmf_dsiplay_response_text_stream(s,       o, item, finish_reason){
+function llmf_display_response_text_stream(s,       o, item, finish_reason){
     if (s ~ "^ *\\[DONE\\]$") exit(0)
     jiparse_after_tokenize(o, s)
     JITER_LEVEL = JITER_CURLEN = 0
@@ -37,6 +37,6 @@ BEGIN{
     if (LLMF_RESPONESE_IS_ERROR_CONTENT==1) jiparse_after_tokenize( o_error, $0 )
     else {
         $1 = ""
-        llmf_dsiplay_response_text_stream( $0 )
+        llmf_display_response_text_stream( $0 )
     }
 }

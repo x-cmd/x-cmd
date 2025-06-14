@@ -15,6 +15,9 @@ BEGIN{
     stdout_yml_info( "busybox", ENVIRON[ "_v_busybox" ] )
     stdout_yml_info( "curl",    ENVIRON[ "_v_curl" ] )
     stdout_yml_info( "wget",    ENVIRON[ "_v_wget" ] )
+    stdout_yml_info( "yq",      ENVIRON[ "_v_yq" ] )
+    stdout_yml_info( "jq",      ENVIRON[ "_v_jq" ] )
+    stdout_yml_info( "fzf",      ENVIRON[ "_v_fzf" ] )
     stdout_yml_info( "release", ENVIRON[ "_v_release" ] )
 }
 

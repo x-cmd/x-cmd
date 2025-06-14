@@ -22,11 +22,11 @@ function gemini_parse_response_data( text, obj, o_error,       _arr, _arrl, i, _
             cp( o_error, Q2_1, obj, _current_kp )
             continue
         }
-        gemini_dsiplay_response_text_stream( obj, _current_kp )
+        gemini_display_response_text_stream( obj, _current_kp )
     }
 }
 
-function gemini_dsiplay_response_text_stream( obj, kp,      _kp, str ){
+function gemini_display_response_text_stream( obj, kp,      _kp, str ){
     _kp = kp SUBSEP KP_CONTENT
 
     str =  juq(obj[ _kp ])

@@ -7,40 +7,58 @@ xrc:mod:lib pkg     sphere/xbin
 ___x_cmd_pkg_sphere_snap(){
     local op="$1"
     case "$op" in
-        exec|ensure_execfp|gen_execfp)
+        exec|get_binpath_|ensure_execfp|gen_execfp)
                     shift; ___x_cmd_pkg_sphere_snap___"$op" "$@" ;;
         *)          ___x_cmd_pkg_sphere_snap___exec "$@" ;;
     esac
 }
 
 ___x_cmd_pkg_sphere_snap___exec(){
-    local X_help_cmd='___x_cmd help -m pkg sphere snap'
+    local X_help_cmd='___x_cmd help -m pkg sphere snap exec'
+    local x_binpath=""; local x_shift_count=0
+    ___x_cmd_pkg_sphere_snap___get_binpath_inner_ "$@" || return $?
+    [ -n "$x_binpath" ] || return 1
+    shift "$x_shift_count"
+    ___x_cmd snap --runcmd "$x_binpath" "$@"
+}
+
+___x_cmd_pkg_sphere_snap___get_binpath_(){
+    x_=""
+    local X_help_cmd='___x_cmd help -m pkg sphere snap get_binpath_'
+    local x_binpath=""; local x_shift_count=0
+    ___x_cmd_pkg_sphere_snap___get_binpath_inner_ "$@" || return $?
+    [ -n "$x_binpath" ] || return 1
+    x_="$x_binpath"
+}
+
+___x_cmd_pkg_sphere_snap___get_binpath_inner_(){
     local sphere_name=; local osarch=
-    local name=; local version=; local sociality
+    local name=; local version=;
+    x_binpath=""; x_shift_count=0
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --sphere)
                     sphere_name="$2";
                     [ -n "$sphere_name" ] || M="Provide a sphere name" N=pkg log:ret:1
-                    shift 2
+                    shift 2; x_shift_count=$((x_shift_count + 2))
                     ;;
             --sphereroot)
                     local ___X_CMD_PKG_ROOT_SPHERE="$2"
                     [ -n "$___X_CMD_PKG_ROOT_SPHERE" ] || M="Provide sphere root path" N=pkg log:ret:1
-                    shift 2
+                    shift 2; x_shift_count=$((x_shift_count + 2))
                     ;;
             --osarch)
                     osarch="$2";        [ -n "$2" ] || N=pkg M="Provide osarch value" log:ret:1
-                    shift 2 ;;
+                    shift 2; x_shift_count=$((x_shift_count + 2))
+                    ;;
             -v|--version)
                     version="$2";       [ -n "$2" ] || N=pkg M="Provide a package version" log:ret:1
-                    shift 2 ;;
+                    shift 2; x_shift_count=$((x_shift_count + 2))
+                    ;;
             -n|--name)
                     name="$2";          [ -n "$2" ] || N=pkg M="Provide a package name" log:ret:1
-                    shift 2 ;;
-            --sociality)
-                    sociality="$2";     [ -n "$2" ] || N=pkg M="Provide sociality value" log:ret:1
-                    shift 2 ;;
+                    shift 2; x_shift_count=$((x_shift_count + 2))
+                    ;;
             -h|--help)
                     help:show:ret:0 ;;
             *)      break ;;
@@ -53,81 +71,109 @@ ___x_cmd_pkg_sphere_snap___exec(){
     local x_=
     local binname="$1";
     [ -n "$binname" ]   || N=pkg M="Provide a bin name" log:ret:1
-    shift
+    shift; x_shift_count=$((x_shift_count + 1))
 
-    [ -n "$name" ]      || {
-        name="$binname"
-        # x_=""; ___x_cmd_pkg_sphere_xbin_get_binmod_name_ "$binname" || return $?
-        # name="$x_"
-        [ -n "$name" ]  || N=pkg M="Not found package name for $binname" log:ret:1
-    }
-
-    local binpath=
+    x_binpath=""
     local execfile="${___X_CMD_ROOT_PKG_EXEC_BINPATH}/${binname}"
     if [ -f "$execfile" ]; then
-        if ___x_cmd_readr binpath <"$execfile" && [ -x "$binpath" ]; then
-            "$binpath" "$@"
-            return
+        if ___x_cmd_readr x_binpath <"$execfile" && [ -x "$x_binpath" ]; then
+            return 0
         fi
     fi
 
+    [ -n "$name" ]      || {
+        x_=""; ___x_cmd snap --whichpkg_ pkg "$binname" || N=pkg M="Not found package name for $binname" log:ret:1
+        name="$x_"
+    }
+
     ___x_cmd_pkg_sphere_snap___ensure_execfp \
         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
-        --osarch "$osarch" "$name" "$version" "$sociality" || return $?
+        --osarch "$osarch" "$name" "$version" || return $?
 
     [ -f "$execfile" ] || {
         pkg:error "Not found exec filepath for $binname"
         return 1
     }
-
-    if ___x_cmd_readr binpath <"$execfile" && [ -x "$binpath" ]; then
-        "$binpath" "$@"
-        return
+    if ___x_cmd_readr x_binpath <"$execfile" && [ -x "$x_binpath" ]; then
+        return 0
     fi
+
+    return 1
 }
 
 ___x_cmd_pkg_sphere_snap___ensure_execfp(){
     pkg:sphere:parse:args
-    local sociality="$1"
 
     ___x_cmd_pkg_sphere add --prebuild  \
-        --reason "snap,protect"   \
+        --protection use --reason "snap,protect"   \
         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
         --osarch "$osarch" "$name" "$version" || return $?
 
     ___x_cmd_pkg_sphere_snap___gen_execfp \
         --sphere "$sphere_name" --sphereroot "$___X_CMD_PKG_ROOT_SPHERE" \
-        --osarch "$osarch" "$name" "$version" "$sociality"
+        --osarch "$osarch" "$name" "$version"
 }
 
 ___x_cmd_pkg_sphere_snap___gen_execfp(){
     pkg:sphere:parse:args
-    local sociality="$1"
 
     local x_treename=; ___x_cmd_pkg_treename_ "$name" "$version" "$osarch" || return $?
     local tgt="$___X_CMD_PKG_ROOT_SPHERE/$sphere_name/$x_treename/$name/$version"
 
-    local path_list; path_list="$( ___x_cmd_pkg_sphere_link list_all_path_expand "$name" "$version" "$osarch" "$tgt" bin "$sociality" )" || return $?
-    [ -n "$path_list" ] || {
-        pkg:warn "Not found path list for $name $version"
+    local datalist; datalist="$( ___x_cmd_pkg___all_info --non-version "$name" "$version" "$osarch" )" || return $?
+    local path_list; path_list="$(
+    printf "%s\n\n" "$datalist" | ___x_cmd_cmds_awk \
+        -v TGTDIR="$tgt" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk"        \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"      \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jqparse.awk"   \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/util.awk"    \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg._.awk"   \
+        -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.snap.awk"
+    )"
+    local execdir="$___X_CMD_ROOT_PKG_EXEC_BINPATH"
+    if [ -n "$path_list" ]; then
+        ___x_cmd mkdirp "$execdir"
+
+        local bin_path=
+        local bin_name=
+        while ___x_cmd_readr bin_name && ___x_cmd_readr bin_path; do
+            ___x_cmd_pkg_sphere_snap___gen_execfp_inner "$bin_name" "$bin_path" || return $?
+        done <<A
+$path_list
+A
+    else
+        pkg:debug "Not found xbin path list for $name $version"
+        path_list="$( ___x_cmd_pkg_sphere_link list_all_path_expand "$name" "$version" "$osarch" "$tgt" bin )" || return $?
+        [ -n "$path_list" ] || {
+            pkg:warn "Not found link path list for $name $version"
+            return 1
+        }
+
+        ___x_cmd mkdirp "$execdir"
+        while ___x_cmd_readr bin_path; do
+            ___x_cmd_pkg_sphere_snap___gen_execfp_inner "${bin_path##*/}" "$bin_path" || return $?
+        done <<A
+$path_list
+A
+    fi
+}
+
+___x_cmd_pkg_sphere_snap___gen_execfp_inner(){
+    local bin_name="$1"
+    local bin_path="$2"
+    local execdir="$___X_CMD_ROOT_PKG_EXEC_BINPATH"
+
+    pkg:debug "Generate the exec file for $bin_name -> $execdir/$bin_name"
+    [ -f "$bin_path" ] || {
+        pkg:error "Not found binpath for $bin_name -> $bin_path"
+        return 1
+    }
+    ___x_cmd_cmds chmod +x "$bin_path" || {
+        pkg:error "Cannot use chmod on $bin_path"
         return 1
     }
 
-    local execdir="$___X_CMD_ROOT_PKG_EXEC_BINPATH"
-    ___x_cmd mkdirp "$execdir"
-
-    local bin_path=
-    local bin_name=
-    while ___x_cmd_readr bin_path; do
-        bin_name="${bin_path##*/}"
-        printf "%s\n" "$bin_path" > "$execdir/$bin_name"
-        pkg:debug "Generate the exec file for $bin_name -> $execdir/$bin_name"
-        ___x_cmd_cmds chmod +x "$bin_path" || {
-            pkg:error "Cannot use chmod on $bin_path"
-            return 1
-        }
-    done <<A
-$path_list
-A
+    [ -d "$execdir" ] || ___x_cmd mkdirp "$execdir"
+    printf "%s\n" "$bin_path" > "$execdir/$bin_name"
 }
-
