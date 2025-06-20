@@ -14,7 +14,7 @@ ___x_cmd_docker_cmdinfo(){
             return 0
             ;;
 
-        create|update|getlist|iscreated|hascmd)
+        create|update|getlist|iscreated|hascmd|exist)
             ___x_cmd_docker_cmdinfo_"$op" "$@"
             ;;
 
@@ -25,13 +25,13 @@ ___x_cmd_docker_cmdinfo(){
 }
 
 ___x_cmd_docker_cmdinfo_create(){
-    ___x_cmd_docker_cmdinfo_iscreated "$@" || return 0
+    ! ___x_cmd_docker_cmdinfo_iscreated "$@" || return 0
     ___x_cmd_docker_cmdinfo_update "$@"
 }
 
 ___x_cmd_docker_cmdinfo_update(){
     local image="$1"
-    local cmdinfofp="${___X_CMD_ROOT_DATA}/alpine/image/$image/cmdinfo"
+    local cmdinfofp="${___X_CMD_ROOT_DATA}/docker/image/$image/cmdinfo"
 
     ___x_cmd ensurefp "$cmdinfofp"
 
@@ -40,12 +40,12 @@ ___x_cmd_docker_cmdinfo_update(){
 
 ___x_cmd_docker_cmdinfo_getlist(){
     local image="$1"
-    ___x_cmd docker run --entrypoint '' --rm -it "$image" sh -c 'find `echo "$PATH" | tr ":" "\n"` -maxdepth 1 -executable; return 0'
+    ___x_cmd docker run --entrypoint '' --rm -it "$image" sh -c 'find `echo "$PATH" | tr ":" "\n"` -maxdepth 1 -type f -executable 2>/dev/null; return 0'
 }
 
 ___x_cmd_docker_cmdinfo_iscreated(){
     local image="$1"
-    local cmdinfofp="${___X_CMD_ROOT_DATA}/alpine/image/$image/cmdinfo"
+    local cmdinfofp="${___X_CMD_ROOT_DATA}/docker/image/$image/cmdinfo"
 
     [ -f "$cmdinfofp" ]
 }
@@ -57,8 +57,18 @@ ___x_cmd_docker_cmdinfo_hascmd(){
 ___x_cmd_docker_cmdinfo_exist(){
     local image="$1"
     local binname="${2:-ls}"
+    ___x_cmd_docker_cmdinfo_create "$image" || return $?
 
-    local cmdinfofp="${___X_CMD_ROOT_DATA}/alpine/image/$image/cmdinfo"
-
-    ___x_cmd_cmds grep -F "$binname" <"$cmdinfofp" 1>/dev/null 2>/dev/null
+    local cmdinfofp="${___X_CMD_ROOT_DATA}/docker/image/$image/cmdinfo"
+    # ___x_cmd_cmds grep -F "/$binname" <"$cmdinfofp" 1>/dev/null 2>/dev/null
+    ___x_cmd_cmds awk -F '/' -v binname="$binname" '
+{
+    cmd = $NF; sub("\\..*$", "", cmd);
+    if (cmd == binname) { exist_bin = 1; exit(0); };
+}
+END{
+if (exist_bin == 1) exit(0)
+else exit(1)
+}
+' < "$cmdinfofp" 1>/dev/null 2>/dev/null
 }

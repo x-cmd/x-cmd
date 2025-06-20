@@ -1,0 +1,166 @@
+
+
+___x_cmd_ccal_lunar_cat(){
+    local mode=auto
+    local all=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m ccal lunar cat "$@"; return 0 ;;
+            --tsv)          mode=tsv ;;
+            --json)         mode=json ;;
+            --csv)          mode=csv ;;
+            --colr)         mode=colr ;;
+            --colrall)      mode=colrall ;;
+            --fz)           mode=fz ;;
+            --auto)         mode=auto ;;
+            -a|--all)       all=1 ;;
+            *)              break ;;
+        esac
+        shift
+    done
+
+    local year=$1
+    local month=$2
+
+    case "$year" in
+        *-*-*)
+            month="${year#*-}"
+            month="${month%-*}"
+            year="${year%%-*}"
+    esac
+
+    if [ "$year" -lt 100 ] && [ "$year" -ge 0 ]; then
+        year="$(($year+2000))"
+    fi
+
+    if [ "$year" -lt 1900 ] || [ "$year" -gt 2099 ]; then
+        ccal:info "Aborted Invalid year -> $year"
+        return 1
+    fi
+
+    [ -z "$month" ] || {
+        if [ "$month" -lt 1 ] || [ "$month" -gt 12 ]; then
+            ccal:info "Aborted Invalid month -> $month"
+            return 1
+        fi
+    }
+
+    ___x_cmd_ccal_lunar_cat___"$mode"
+}
+
+___x_cmd_ccal_lunar_cat___json(){
+    ___x_cmd_ccal_lunar_cat___tsv "$@" | ___x_cmd tsv tojson
+}
+
+___x_cmd_ccal_lunar_cat___csv(){
+    ___x_cmd_ccal_lunar_cat___tsv "$@" | ___x_cmd tsv tocsv
+}
+
+___x_cmd_ccal_lunar_cat___tsv(){
+    ___x_cmd_ccal_lunar_prepare || return $?
+
+    # ___x_cmd zuz cat "$___X_CMD_CCAL_DATA_FILE" lunar/${year}_${month}.tsv
+    if [ "$all" = 1 ]; then
+        ___x_cmd ccmd 1d -- ___x_cmd_ccal_lunar_cat___tsv0_all
+    else
+        ___x_cmd_ccal_lunar_cat___tsv0 "$@"
+    fi
+}
+
+___x_cmd_ccal_lunar_cat___tsv0_lsmonth(){
+    local year="$1"
+    local month=1
+    while [ $month -le 12 ]; do
+        if [ $month -lt 10 ]; then
+            printf "%s\n" ccal-data/lunar/${year}_0"${month#0}".tsv
+        else
+            printf "%s\n" "$@" ccal-data/lunar/${year}_"${month}".tsv
+        fi
+        month=$((month+1))
+    done
+}
+
+___x_cmd_ccal_lunar_cat___tsv0_all(){
+    local year=1900
+    while [ $year -le 2099 ]; do
+        ___x_cmd_ccal_lunar_cat___tsv0_lsmonth "$year" || return $?
+        year="$(( year + 1 ))"
+    done | ___x_cmd_ccal_lunar_cat___tsv0_pipe
+}
+
+___x_cmd_ccal_lunar_cat___tsv0(){
+    if [ -z "$month" ]; then
+        ___x_cmd_ccal_lunar_cat___tsv0_lsmonth "$year"
+    else
+        if [ $month -lt 10 ]; then
+            printf "%s\n" ccal-data/lunar/${year}_0"${month#0}".tsv
+        else
+            printf "%s\n" ccal-data/lunar/${year}_"${month}".tsv
+        fi
+    fi | ___x_cmd_ccal_lunar_cat___tsv0_pipe
+}
+
+___x_cmd_ccal_lunar_cat___tsv0_pipe(){
+    ___x_cmd line args -n 60 '___x_cmd_cmds tar -xzOf "$___X_CMD_CCAL_DATA_FILE" "$@"' 2>/dev/null
+}
+
+___x_cmd_ccal_lunar_cat___colrall(){
+    ___x_cmd_ccal_lunar_cat___tsv | ___x_cmd_cmds awk -v FS='\t' '
+        BEGIN{
+            fmt = "%s\033[0m\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t"
+            fmt = fmt "\033[31;7m" "%s" "\033[0m" "\t"
+            fmt = fmt "\033[0;7m" "%s" "\033[0m"
+            fmt = fmt "\n"
+
+        }
+        {
+            if ($14 == "诸事不宜") {
+                printf("\033[32m")
+            } else if ($15 == "诸事不忌") {
+                printf("\033[31m")
+            } else {
+                printf("\033[34m")
+            }
+
+            printf(fmt, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        }
+    '
+}
+
+___x_cmd_ccal_lunar_cat___colr(){
+    ___x_cmd_ccal_lunar_cat___tsv | ___x_cmd_cmds awk -v FS='\t' '
+        BEGIN{
+            fmt = "%s\033[0m %s %s %s %s %s\t"
+            fmt = fmt "\033[31;1m" "%s" "\033[0m" "   "
+            fmt = fmt "\033[0;1;2m" "%s" "\033[0m"
+            fmt = fmt "\n"
+
+        }
+
+        {
+            if ($14 == "诸事不宜") {
+                printf("\033[32m")
+            } else if (index($15, "诸事不忌") > 0) {
+                printf("\033[31m")
+            } else {
+                printf("\033[34m")
+            }
+            printf(fmt, $1, $2, $3, $4, $5, $9, $14, $15)
+        }
+    '
+}
+
+___x_cmd_ccal_lunar_cat___auto(){
+    if ___x_cmd_is_stdout2tty; then
+        ___x_cmd_ccal_lunar_cat___fz "$@"
+    else
+        ___x_cmd_ccal_lunar_cat___tsv "$@"
+    fi
+}
+
+___x_cmd_ccal_lunar_cat___fz(){
+    ___x_cmd_ccal_lunar_cat___colr |    \
+        ___x_cmd fzf \
+            --ansi --reverse
+}
+
