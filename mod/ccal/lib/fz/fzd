@@ -1,0 +1,183 @@
+
+
+___x_cmd_ccal_fzd(){
+    local ___X_CMD_CCAL_FZD_MODE=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m ccal fzd "$@"; return 0 ;;
+            -a|--all)   ___X_CMD_CCAL_FZD_MODE=1 ;;
+            *)          break ;;
+        esac
+        shift
+    done
+
+    local ___X_CMD_CCAL_FZ_RESULT="${1:-$___X_CMD_CCAL_FZ_RESULT}"
+
+    ___x_cmd_ccal_fz___info
+
+    local ___X_CMD_CCAL_FZ_APP_TYPE=d
+    local ___X_CMD_CCAL_FZ_APP_CONT=1
+    while [ "$___X_CMD_CCAL_FZ_APP_CONT" = 1 ]; do
+        "___x_cmd_ccal___fz${___X_CMD_CCAL_FZ_APP_TYPE}" || return $?
+    done
+}
+
+___x_cmd_ccal___fzd___nextmonth_(){
+    local ymd="$1"
+
+    local y="${ymd%%-*}"
+    local m="${ymd#*-}"; m="${m%-*}"
+
+    if [ "$m" -eq 12 ]; then
+        m=1
+        y="$(( y+1 ))"
+        [ "$y" -le 2099 ] || return 1
+    else
+        m="$(( m+1 ))"
+    fi
+    x_="$y-$m-01"
+}
+
+___x_cmd_ccal___fzd___prevmonth_(){
+    local ymd="$1"
+
+    local y="${ymd%%-*}"
+    local m="${ymd#*-}"; m="${m%-*}"
+    local d=31
+
+    if [ "$m" -eq 1 ]; then
+        m=12
+        y="$(( y-1 ))"
+        [ "$y" -gt 1899 ] || return 1
+    else
+        m="$(( m-1 ))"
+        case "$m" in
+            4|6|9|11)    d=30    ;;
+            2)
+                d=28
+                if { [ $(( y % 100 )) -ne 0 ] && [ "$(( y % 4 ))" -eq 0 ]; } || [ $((y % 400)) -eq 0 ]; then
+                    d=29
+                fi
+                ;;
+        esac
+    fi
+    x_="$y-$m-$d"
+}
+
+___x_cmd_ccal___fzd(){
+    ___x_cmd_ccal_fz___date_ "$___X_CMD_CCAL_FZ_RESULT"
+
+    local x_;     ___x_cmd storerat_ ___x_cmd_ccal_fzd___fz_ || return $?
+    case "${x_}" in
+        *"|next|"*)
+            if ___x_cmd_ccal___fzd___nextmonth_ "$___X_CMD_CCAL_FZ_RESULT"; then
+                ___X_CMD_CCAL_FZ_RESULT="$x_"
+            fi
+            return 0
+            ;;
+
+        *"|prev|"*)
+            if ___x_cmd_ccal___fzd___prevmonth_ "$___X_CMD_CCAL_FZ_RESULT"; then
+                ___X_CMD_CCAL_FZ_RESULT="$x_"
+            fi
+            return 0
+            ;;
+
+        *"|goback|"*)
+            ___x_cmd_ccal_fz___read_date_ "${x_}"
+            ___X_CMD_CCAL_FZ_APP_TYPE=m
+            ___X_CMD_CCAL_FZ_RESULT="$x_"
+            return 0
+            ;;
+        *"|restart|"*)
+            ___X_CMD_CCAL_FZ_RESULT="$___X_CMD_CCAL_FZ_DATE_TODAY"
+            return 0 ;;
+        *"|switch|"*)
+            ___X_CMD_CCAL_FZD_MODE="$(( 1 - ___X_CMD_CCAL_FZD_MODE ))"
+            return 0 ;;
+        # some normal exit to set ___X_CMD_CCAL_FZ_APP_CONT=0
+        *)
+            ___x_cmd_ccal_fz___read_date_ "${x_}"
+            ___X_CMD_CCAL_FZ_RESULT="$x_"
+            ;;
+    esac
+
+    local id
+    ___x_cmd ui select id "Next -> $___X_CMD_CCAL_FZ_RESULT"  \
+        "x ccal info $___X_CMD_CCAL_FZ_RESULT"    \
+        "x ccal fzm  $___X_CMD_CCAL_FZ_RESULT"     \
+        "x ccal fzy  $___X_CMD_CCAL_FZ_RESULT"     \
+        "return" || return $?
+
+    case "$id" in
+        1)      ___x_cmd ccal info     "$___X_CMD_CCAL_FZ_RESULT"
+                ___X_CMD_CCAL_FZ_APP_CONT=0 ;;
+        2)      ___X_CMD_CCAL_FZ_APP_TYPE=m ;;
+        3)      ___X_CMD_CCAL_FZ_APP_TYPE=y ;;
+        *)      return 0
+    esac
+}
+
+___x_cmd_ccal_fzd___fz_(){
+    {
+        if [ "$___X_CMD_CCAL_FZD_MODE" = 1 ]; then
+            ___x_cmd ccal lunar cat --all
+        else
+            ___x_cmd ccal lunar cat "$___X_CMD_CCAL_FZ_DATE_Y" "$___X_CMD_CCAL_FZ_DATE_M"
+        fi 2>/dev/null
+    } | {
+        ___x_cmd_cmds awk \
+            -v "year=$___X_CMD_CCAL_FZ_DATE_TODAY_Y"    \
+            -v "month=$___X_CMD_CCAL_FZ_DATE_TODAY_M"   \
+            -v "day=$___X_CMD_CCAL_FZ_DATE_TODAY_D"     \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/gongli.awk"     \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/lunar.awk"      \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ccal.awk"       \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ymd.awk"        \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/fzd_ls.awk"
+    } | {
+
+        local pos=""
+        if [ "$___X_CMD_CCAL_FZD_MODE" != 1 ]; then
+            pos="$___X_CMD_CCAL_FZ_DATE_D"
+        else
+            pos="$( ___x_cmd date diff 1900-01-01 "${___X_CMD_CCAL_FZ_DATE}")"
+            pos="$(( pos + 1 ))"
+        fi
+
+        local FZF_DEFAULT_OPTS="
+            --header='ctrl-t: RESET to $___X_CMD_CCAL_FZ_DATE_TODAY'
+            --bind='ctrl-t:print(|restart|)+accept'
+        "
+
+        FZF_DEFAULT_OPTS="
+            $FZF_DEFAULT_OPTS
+            --exact
+            --ansi
+            --reverse
+            --height='80%'
+            --bind='ctrl-w:toggle-preview-wrap'
+            --bind='ctrl-r:change-preview-window(80%|52|hidden)'
+            --bind='tab:print(|goback|)+accept'
+            --bind='ctrl-b:print(|goback|)+accept'
+            --bind='ctrl-f:accept'
+
+            --bind='ctrl-p:print(|prev|)+accept'
+            --bind='ctrl-n:print(|next|)+accept'
+
+            --bind='ctrl-s:print(|switch|)+accept'
+            --preview-window='right:52,wrap'
+            --bind='load:pos($pos)'
+            --preview='___x_cmdexe ccal --fzdpreview {1} {6} {8}'
+        " ___x_cmd fzf
+    }
+}
+
+___x_cmd_ccal___fzdpreview(){
+    HLDAY="$1" ___x_cmdexe ccal draw "$1"
+    # printf "  \033[31m[宜] %s\n\n" "$2"
+    # printf "  \033[32m[忌] %s\n" "$3"
+
+    # printf "\n\n\n\n\n"  # Extra \n to prevent fzf bug
+}
+

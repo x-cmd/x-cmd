@@ -710,6 +710,13 @@ function str_wrap_by_backslash(str){
     return "\\\"" str "\\\""
 }
 
+function str_md5(str,       _cmd, v){
+    _cmd = "printf '%s' " qu1(str) " | md5sum | cut -d ' ' -f 1 2>/dev/null"
+    _cmd | getline v
+    close( _cmd )
+    return v
+}
+
 function qu(str){
     gsub(/"/, "\\\"", str)
     return "\"" str "\""

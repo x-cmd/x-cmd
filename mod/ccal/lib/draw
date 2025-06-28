@@ -4,9 +4,9 @@ ___x_cmd_ccal_draw(){
         -h|--help)      ___x_cmd help -m ccal draw "$@"; return 0 ;;
     esac
 
-    local today; today="$(___x_cmd_cmds date +%Y/%m/%d)"
+    local today; today="$(___x_cmd_cmds date +%Y-%m-%d)"
 
-    [ $# -gt 0 ] || set -- "${today%/*}"
+    [ $# -gt 0 ] || set -- "${today%-*}"
 
     while [ $# -gt 0 ]; do
         ___x_cmd_ccal_draw___one "$1"
@@ -17,32 +17,45 @@ ___x_cmd_ccal_draw(){
 ___x_cmd_ccal_draw___one(){
     local ym="$1"
 
+    local x_
     case "$ym" in
-        ""|today)   ym="${today%/*}" ;;
-
-        */*)        ;;
-
-        *-*)
-                    ym="${ym%%-*}/${ym#*-}"
-                    ym="${ym%-*}"
+        */*/*|*-*-*)
+                    ___x_cmd_ccal_util_normalize0_ "$ym" || return $?
+                    ym="$x_"
+                    ;;
+        ""|today)
+                    ym="${today}"
                     ;;
 
+        */*)        ym="${ym%%/*}-${ym#*/}"
+                    ym="${ym%/*}-01"
+                    ;;
+
+        *-*)        ym="${ym}-01" ;;
         *)
-                    if [ "$ym" -lt 12 ]; then
-                        ym="${today%%/*}/$ym"
-                    else
-                        ym="${ym}/"
+                    ___x_cmd is int "$ym" ||  N=ccal M="Expect to be int -> $ym" log:ret:64
+                    if [ "$ym" -le 12 ]; then
+                        ym="${today%%/*}-$ym-01"
                     fi
                     ;;
     esac
 
-    local year="${ym%%/*}"
-    local month="${ym#*/}"
+    local year="${ym%%-*}"
+    [ "$year" -ge 1900 ]        || N=ccal M="Expect year to more than 1899 -> $year" log:ret:64
+    ___x_cmd is int "$year"     || N=ccal M="Expect year to be int -> $year" log:ret:64
 
-    [ -z "$month" ] || {
-        ___x_cmd_ccal_draw___runmain "$year" "$month"
+    if [ "$year" != "$ym" ]; then
+        local month="${ym#*-}"; month="${month%-*}"
+
+        ___x_cmd is int "$month"    || N=ccal M="Expect month to be int -> $month" log:ret:64
+        local day="${ym#"$year"-"$month"}"
+        if [ -z "$day" ]; then
+            ___x_cmd_ccal_draw___runmain "$year" "$month"
+        else
+            HLDAY="$ym" ___x_cmd_ccal_draw___runmain "$year" "$month"
+        fi
         return $?
-    }
+    fi
 
     local i=1
     while [ $i -le 12 ]; do
@@ -54,6 +67,20 @@ ___x_cmd_ccal_draw___one(){
 ___x_cmd_ccal_draw___runmain(){
     local year="$1"
     local month="$2"
+
+    local infolunar=""; local infoyiji=""; local wdtitle; local wdstart
+    ___x_cmd_ccal_cur infolunar:= infoyiji:= wdtitle:= wdstart:= 2>/dev/null
+
     ___x_cmd_ccal_lunar_cat --tsv "$year" "$month" | \
-        ___x_cmd_cmds awk -v today="$today" -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/draw.awk"
+        ___x_cmd_cmds awk               \
+            -v today="$today"           \
+            -v wdtitle="$wdtitle"       \
+            -v wdstart="$wdstart"       \
+            -v infoyiji="$infoyiji"     \
+            -v infolunar="$infolunar"   \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/gongli.awk" \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/lunar.awk"  \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ccal.awk"   \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ymd.awk"    \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/draw.awk"
 }
