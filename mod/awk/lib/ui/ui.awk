@@ -9,8 +9,18 @@ BEGIN {
     UI_FG_MAGENTA       = "\033[35m"
     UI_FG_CYAN          = "\033[36m"
     UI_FG_WHITE         = "\033[37m"
+
     UI_FG_DARKGRAY      = "\033[90m"
     UI_FG_DARKRED       = "\033[91m"
+
+    UI_FG_BRIGHT_BLACK  = "\033[90m"
+    UI_FG_BRIGHT_RED    = "\033[91m"
+    UI_FG_BRIGHT_GREEN  = "\033[92m"
+    UI_FG_BRIGHT_YELLOW = "\033[93m"
+    UI_FG_BRIGHT_BLUE   = "\033[94m"
+    UI_FG_BRIGHT_MAGENTA = "\033[95m"
+    UI_FG_BRIGHT_CYAN   = "\033[96m"
+    UI_FG_BRIGHT_WHITE  = "\033[97m"
 
     UI_BG_BLACK         = "\033[40m"
     UI_BG_RED           = "\033[41m"

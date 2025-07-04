@@ -1,5 +1,5 @@
--- 添加一条新备忘录（无文件夹）
--- osascript add_note.applescript <note>
+-- e.g. osascript add_note.applescript <note>
+
 on run argv
     set theNote to item 1 of argv
     try

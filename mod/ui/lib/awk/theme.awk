@@ -48,7 +48,7 @@ BEGIN {
     TH_GRIDSELECT_ITEM_UNSELECTED         =       ""
     TH_GRIDSELECT_ITEM_SELECTED_INFO      =       TH_THEME_COLOR
     TH_GRIDSELECT_ITEM_ICON               =       UI_FG_GREEN
-    TH_GRIDSELECT_ITEM_UNICON             =       UI_FG_DARKGRAY
+    TH_GRIDSELECT_ITEM_UNICON             =       UI_FG_BRIGHT_BLACK
     # EndSection
 
     # Section: selectn

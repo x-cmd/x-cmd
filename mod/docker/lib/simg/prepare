@@ -9,7 +9,6 @@ ___x_cmd_docker_simg_prepare(){
     printf "%s\n" "$x_"
 }
 
-# xd simg prep --alpine node:aba
 # xd simg prep --alpine apt:java
 # xd simg prep --alpine apt/nodejs:node
 
@@ -26,68 +25,102 @@ ___x_cmd_docker_simg_prepare_(){
     arg:init docker
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)              ___x_cmd help -m alpine image download "$@"; return 0 ;;
+            -h|--help)              ___x_cmd help -m docker simg prepare_ "$@"; return 0 ;;
 
-            --alpine|--debian|--fedora|--ubuntu)
-                                    imgtype="${1#--}";  shift ;;
+            --imagetype)            imgtype="${2}";     arg:2:shift ;;
 
             --mode)                 mode="${2}";        arg:2:shift ;;
-            *)                      cmd="$1";      break ;;
+            *)                      break ;;
         esac
-        shift
     done
+
+    local cmd="$1"
 
     [ -z "$mode" ] || { ___x_cmd_docker_simg_prepare___"$mode"; return $?;  }
 
-    x_="";  ___x_cmd_docker_simg_prepare___base_
+    x_="";  ___x_cmd_docker_simg_prepare___base_ || return $?
+    local baseimg="$x_"
 
-    local REFIT_PKG="";    local REFIT_SYS="";  local REFIT_CMD="$1";
-    ___x_cmd_docker_simg_prepare___parse "$cmd"
+    local REFIT_PKG="";    local REFIT_SYS="";  local REFIT_CMD="$cmd";
+    ___x_cmd_docker_snap___parse__ "$REFIT_CMD" "$imgtype"
 
-    ! ___x_cmd_docker cmdinfo hascmd "$x_" "$cmd" || return 0
+    docker:debug --cmd "$REFIT_CMD" --sys "$REFIT_SYS" --pkg "$REFIT_PKG" "___x_cmd_docker_simg_prepare___refit_"
 
-    ___x_cmd_docker_simg_prepare___refit_
+    ! ___x_cmd_docker cmdinfo hascmd "$baseimg" "$REFIT_CMD" || return 0
+
+    ___x_cmd_docker_simg_prepare___refit_ "$baseimg"
 }
 
 ___x_cmd_docker_simg_prepare___base_(){
     x_="s/$imgtype/base"
-    ! ___x_cmd_docker image exist ""       || return 0
+    ! ___x_cmd_docker image exist "$x_"             || return 0
 
-    ___x_cmd docker refit                       \
-        --from alpine --to "$x_"                \
-        --userabc                               \
-        --apk 'curl fzf jq sqlite bash'         || return $?
+    case "$imgtype" in
+        alpine)
+            ___x_cmd_docker_simg_download --imagetype alpine        || return $?
+            ___x_cmd docker refit               \
+                --from alpine                   \
+                --to "$x_"                      \
+                --userabc                       \
+                --apk 'curl fzf jq sqlite bash'
+                ;;
+
+        debian|ubuntu)
+            ___x_cmd_docker_simg_download --imagetype "$imgtype"    || return $?
+            ___x_cmd docker refit               \
+                --from "$imgtype"               \
+                --to "$x_"                      \
+                --userabc                       \
+                --apt 'curl fzf jq sqlite3'
+                ;;
+
+        kali)
+            ___x_cmd_docker_simg_download --imagetype "$imgtype"    || return $?
+            ___x_cmd docker refit               \
+                --from kalilinux/kali-rolling   \
+                --to "$x_"                      \
+                --userabc                       \
+                --apt 'curl fzf jq sqlite3'
+                ;;
+
+        fedora)
+            ___x_cmd_docker_simg_download --imagetype "$imgtype" || return $?
+            ___x_cmd docker refit               \
+                --from fedora                   \
+                --to "$x_"                      \
+                --userabc                       \
+                --dnf 'curl fzf jq sqlite3'
+                ;;
+
+        arch)
+            ___x_cmd_docker_simg_download --imagetype "$imgtype" || return $?
+            ___x_cmd docker refit               \
+                --from archlinux --to "$x_"     \
+                --userabc                       \
+                --pacman 'curl fzf jq sqlite3'
+                ;;
+
+    esac
 }
 
 ___x_cmd_docker_simg_prepare___refit_(){
-    ___x_cmd_docker_simg_prepare___imgname_ "$imgtype" "$REFIT_SYS" "$REFIT_PKG";
+    local baseimg="$1"
+
+    docker:debug --img "$baseimg" --sys "$REFIT_SYS" --pkg "$REFIT_PKG" "___x_cmd_docker_simg_prepare___refit_"
+
+    ___x_cmd_docker_simg_prepare___imgname_ "$imgtype" "$REFIT_SYS" "$REFIT_PKG"
 
     ! ___x_cmd_docker image exist "$x_" || {
-        alpine:debug "Image already created -> $x_"
+        docker:debug "Image already created -> $x_"
         return 0
     }
 
+    docker:info "now refitting image -> $x_"
+
     ___x_cmd docker refit                   \
-        --from alpine --to "$x_"            \
+        --from "$baseimg" --to "$x_"        \
         --userabc                           \
         --"$REFIT_SYS" "$REFIT_PKG"         || return $?
-}
-
-___x_cmd_docker_simg_prepare___parse(){
-    local data="$1"
-    case "$data" in
-        *:*)
-            REFIT_CMD="${data#*:}"
-            REFIT_PKG="${data%"$REFIT_CMD"}"
-            case "$REFIT_PKG" in
-                apk/*|apt/*|dnf/*|go/*|npm/*|cargo/*|pip/*|pixi/*|asdf/*)
-                    REFIT_SYS="${REFIT_PKG%%/*}"
-                    REFIT_PKG="${REFIT_PKG#*/}"
-                    ;;
-            esac
-
-            ;;
-    esac
 }
 
 ___x_cmd_docker_simg_prepare___imgname_(){
@@ -95,7 +128,10 @@ ___x_cmd_docker_simg_prepare___imgname_(){
     local sys="$2"
     local pkg="$3"
 
+
     x_="s/$imgtype"
+
+    docker:debug --img "$imgtype" --sys "$sys" --pkg "$pkg" --name "$x_" "Generate image name"
 
     case "$sys" in
         apt|apk|dnf|pacman)     ;;
@@ -103,5 +139,15 @@ ___x_cmd_docker_simg_prepare___imgname_(){
     esac
 
     # using -- to seperate pkgs ...
-    x_="$x_/$( ___x_cmd_cmds awk -v "n=$pkg" 'BEGIN{ gsub("[=:/-]", "_", n);  print n; }' )"
+    x_="$x_/$( ___x_cmd_cmds awk -v "n=$pkg" '
+        BEGIN{
+            gsub("https://", "", n)
+            gsub("github.com",      "gh", n)
+            gsub("gitlab.com",      "gl", n)
+            gsub("codeberg.org",    "cb", n)
+            gsub("[=:\\/-@.]", "_", n);
+            n = tolower(n);
+            print n
+        }
+    ')"
 }

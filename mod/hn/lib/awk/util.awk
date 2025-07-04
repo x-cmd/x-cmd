@@ -40,17 +40,17 @@ function hn_preview(o, kp, item, no_color,          by, descendants, id, score, 
     _res        = _res "\n" indent score by time kids_num
 
     if (match( url, "://[^/]+" ) ) {
-        _res    = _res "\n" indent hn_th(UI_FG_DARKGRAY, " link-url: " url, no_color)
+        _res    = _res "\n" indent hn_th(UI_FG_BRIGHT_BLACK, " link-url: " url, no_color)
     }
 
-    _res = _res "\n" indent hn_th(UI_FG_DARKGRAY, " comment-url: https://news.ycombinator.com/item?id=" id, no_color)
+    _res = _res "\n" indent hn_th(UI_FG_BRIGHT_BLACK, " comment-url: https://news.ycombinator.com/item?id=" id, no_color)
 
     if ( parent != "" ) {
-        _res = _res "\n" indent hn_th(UI_FG_DARKGRAY, " parent-url: https://news.ycombinator.com/item?id=" parent, no_color)
+        _res = _res "\n" indent hn_th(UI_FG_BRIGHT_BLACK, " parent-url: https://news.ycombinator.com/item?id=" parent, no_color)
     }
 
     if ( text != "" ) {
-        _res = _res "\n" indent hn_th(UI_FG_DARKGRAY, " text: " text, no_color)
+        _res = _res "\n" indent hn_th(UI_FG_BRIGHT_BLACK, " text: " text, no_color)
     }
 
     return _res

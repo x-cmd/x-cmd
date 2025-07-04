@@ -5,7 +5,7 @@ function print_progressbar(percent, size,         i, _v, _s, _info){
 
     size --
     for (i=1; i<=size && getline _v; ++i) _info = _info "  " th(TH_PBAR_INFO[i%4], _v)
-    _s = _s ((_info != "") ? "\n" th(UI_FG_DARKGRAY, _info) : "" )
+    _s = _s ((_info != "") ? "\n" th(UI_FG_BRIGHT_BLACK, _info) : "" )
 
     printf( "%s\n", UI_CURSOR_RESTORE UI_CURSOR_HIDE UI_SCREEN_CLEAR_BOTTOM UI_LINE_CLEAR \
                     _s UI_CURSOR_NORMAL ) > "/dev/stderr"
@@ -35,7 +35,7 @@ BEGIN{
 
     TH_PBAR_CHAR    = " " # "━"
     TH_PBAR_LEFT    = UI_FG_CYAN UI_TEXT_REV
-    TH_PBAR_RIGHT   = UI_FG_DARKGRAY UI_TEXT_REV
+    TH_PBAR_RIGHT   = UI_FG_BRIGHT_BLACK UI_TEXT_REV
 
     COLUMNS = ENVIRON[ "COLUMNS" ]
     if (COLUMNS < 20) log_error("ui", "The current screen COLUMNS[" COLUMNS "] is insufficient to display the content")

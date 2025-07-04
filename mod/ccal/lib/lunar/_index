@@ -29,20 +29,23 @@ ___x_cmd_ccal_lunar_ls(){
 }
 
 ___X_CMD_CCAL_DATA="$___X_CMD_ROOT_DATA/ccal/data"
-___X_CMD_CCAL_DATA_VERSION=v0.0.3
-___X_CMD_CCAL_DATA_FILE="$___X_CMD_CCAL_DATA/ccal-data-${___X_CMD_CCAL_DATA_VERSION}.tar.gz"
+___X_CMD_CCAL_DATA_VERSION=v0.0.4
+___X_CMD_CCAL_DATA_FILE="$___X_CMD_CCAL_DATA/ccal-data-${___X_CMD_CCAL_DATA_VERSION}.tar.xz"
 
 ___x_cmd_ccal_lunar_prepare(){
     ___x_cmd mkdirp "$___X_CMD_CCAL_DATA"
 
     [ ! -f "$___X_CMD_CCAL_DATA_FILE" ] || return 0
-    ___x_cmd curl https://codeberg.org/x-cmd/ccal-data/archive/${___X_CMD_CCAL_DATA_VERSION}.tar.gz >"${___X_CMD_CCAL_DATA_FILE}.bak" || {
+
+    ccal:info "正在准备农历数据, 仅在 ccal 首次启动时发生 | Preparing lunar data. This is a one-time process that occurs on the initial start."
+
+    ___x_cmd curl "https://codeberg.org/x-cmd/ccal-data/releases/download/${___X_CMD_CCAL_DATA_VERSION}/ccal-data.tar.xz" >"${___X_CMD_CCAL_DATA_FILE}.bak" || {
         ccal:info "Aborted: Failed to download ccal-data. Please check your network connection."
         return $?
     }
     ___x_cmd_cmds mv "${___X_CMD_CCAL_DATA_FILE}.bak" "${___X_CMD_CCAL_DATA_FILE}"
 
-    ___x_cmd_ccal_lunar_prepare_index
+    ___x_cmd_ccal_lunar_prepare_index || return $?
 }
 
 # 年 轩辕纪年 生肖 月数 (春节 清明 端午 中秋 日期)  # 三元 灶马头
@@ -58,14 +61,26 @@ ___x_cmd_ccal_lunar_prepare_index(){
 
     ___x_cmd mkdirp -p "${output_folder}.bak"
 
-    ___x_cmd ccal lunar cat -a |   \
-    ___x_cmd_cmds awk   \
-        -v output_folder="${output_folder}.bak"             \
-        -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/gongli.awk"     \
-        -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/lunar.awk"      \
-        -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ccal.awk"       \
-        -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ymd.awk"        \
-        -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/prepare.awk"
+    {
+        ___x_cmd zuz cat "$___X_CMD_CCAL_DATA_FILE" ccal-data/index/year.tsv    >"${output_folder}.bak/year.tsv" && \
+        ___x_cmd zuz cat "$___X_CMD_CCAL_DATA_FILE" ccal-data/index/month.tsv   >"${output_folder}.bak/month.tsv"
+    } 2>/dev/null || {
+        ccal:warn "Fail to extract index from the ccal-data. Now regenerate it according to the data."
+        ___x_cmd ccal lunar cat -a |   \
+        ___x_cmd_cmds awk   \
+            -v output_folder="${output_folder}.bak"             \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/gongli.awk"     \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/lunar.awk"      \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ccal.awk"       \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ymd.awk"        \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/prepare.awk"
+    } || {
+        ccal:info "Fail to prepare lunar index for year and month view"
+        ___x_cmd_cmds rm -rf "${output_folder}.bak"
+        return 1
+    }
+
+    ccal:info "Lunar index for year and month view is now ready."
 
     ___x_cmd mv -f "${output_folder}.bak" "$output_folder"
 }

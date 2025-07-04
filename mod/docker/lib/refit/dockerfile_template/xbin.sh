@@ -11,12 +11,8 @@ export PATH
 
 if [ $# -gt 0 ]; then
     "$@"
-    return
-fi
-
-if command -v bash 2>/dev/null; then
+elif command -v bash 2>/dev/null; then
     bash
 else
     sh
 fi
-

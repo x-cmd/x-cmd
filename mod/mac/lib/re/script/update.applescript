@@ -1,5 +1,5 @@
--- 修改指定提醒事项
--- osascript update.applescript "提醒1" "提醒1.v2" "2025-06-25 20:30"
+-- e.g. osascript update.applescript "提醒1" "提醒1.v2" "2025-06-25 20:30"
+
 on run argv
     if (count of argv) is not 3 then
         return "Error: Missing arguments. Parameter format: \"Old Title\" \"New Title\" \"YYYY-MM-DD HH:MM\""

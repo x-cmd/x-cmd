@@ -1,6 +1,6 @@
--- 添加文件夹或子文件夹
--- osascript add_folder.applescript <folder>
--- osascript add_folder.applescript <parent_folder> <child_folder>
+-- e.g. osascript add_folder.applescript <folder>
+-- e.g. osascript add_folder.applescript <parent_folder> <child_folder>
+
 on run argv
     set parentFolderName to item 1 of argv
     set childFolderName to missing value

@@ -1,6 +1,6 @@
--- 删除文件夹或子文件夹
--- osascript rm_folder.applescript <folder>
--- osascript rm_folder.applescript <parent_folder> <child_folder>
+-- e.g. osascript rm_folder.applescript <folder>
+-- e.g. osascript rm_folder.applescript <parent_folder> <child_folder>
+
 on run argv
     set parentFolder to item 1 of argv
     set childFolder to missing value

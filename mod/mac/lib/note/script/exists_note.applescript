@@ -1,7 +1,7 @@
--- 判断备忘录是否存在（支持文件夹/子文件夹）
--- osascript exists_note.applescript <note>
--- osascript exists_note.applescript <folder> <note>
--- osascript exists_note.applescript <parent_folder> <child_folder> <note>
+-- e.g. osascript exists_note.applescript <note>
+-- e.g. osascript exists_note.applescript <folder> <note>
+-- e.g. osascript exists_note.applescript <parent_folder> <child_folder> <note>
+
 on run argv
     set theFolder to missing value
     set theChildFolder to missing value

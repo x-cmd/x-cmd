@@ -1,5 +1,5 @@
--- 删除一条备忘录
--- osascript rm_note.applescript <note>
+-- e.g. osascript rm_note.applescript <note>
+
 on run argv
     set theNote to item 1 of argv
     try

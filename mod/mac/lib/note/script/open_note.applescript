@@ -1,5 +1,5 @@
--- 打开指定名称的备忘录
--- osascript open_note.applescript <keyword>
+-- e.g. osascript open_note.applescript <keyword>
+
 on run argv
     set noteName to item 1 of argv
     try

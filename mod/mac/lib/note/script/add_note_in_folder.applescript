@@ -1,5 +1,5 @@
--- 添加备忘录到指定文件夹
--- osascript add_note_in_folder.applescript <folder> <note>
+-- e.g. osascript add_note_in_folder.applescript <folder> <note>
+
 on run argv
     set theFolder to item 1 of argv
     set theNote to item 2 of argv

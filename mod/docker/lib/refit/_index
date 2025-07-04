@@ -17,32 +17,6 @@
 #    && apt-get -y --no-install-recommends install \
 #        ruby ruby-dev gcc
 
-# x docker refit --apk 'gcc'
-# x docker refit --apt
-# x docker refit --dnf
-
-___x_cmd_docker_refit_dockerfile(){
-    :
-}
-
-___x_cmd_docker_refit_new(){
-
-
-    local dockerfile_content=$(
-        ___x_cmd_docker_refit_dockerfile ""
-    )
-
-    local dockerfile_fp=""
-    printf "%s\n" "dockerfile_content" >"$dockerfile_fp"
-
-    (
-        cd ""
-        docker build -t ...
-    )
-
-
-}
-
 # x docker refit --from <newimage> --to <newimage>
 # x docker refit --from <newimage> --to <newimage> --cmd apk add
 
@@ -50,6 +24,44 @@ ___x_cmd_docker_refit_new(){
 
 # <newimage> -> default is alpine or ubuntu or kali
 # <toimage>  -> default is x-alpine-apk
+
+___x_cmd_docker_refit___prepare_curl_(){
+    local folder="$1"
+
+    x_=""
+    ___x_cmd os arch_
+    ___x_cmd_docker_setup_prepare___get_pkg_path_ curl "linux/${x_}"
+    ___x_cmd_cmds cp "$x_" "$folder/curl"
+
+    ___x_cmd cacert which_
+    ___x_cmd_cmds cp "$x_" "$folder/ca.crt"
+
+    x_="
+ADD curl        /bin/curl
+RUN chmod +x    /bin/curl
+ADD ca.crt      /etc/ssl/certs/ca-certificates.crt
+"
+}
+
+___x_cmd_docker_refit___prepare_xcmd(){
+    local folder="$1"
+
+    x_=""
+    ___x_cmd version archive prepare_ || return $?
+    local latest="$x_"
+
+    ___x_cmd_cmds cp "$x_" "$folder/"
+    ___x_cmd_cmds cp "$___X_CMD_ROOT_MOD/x-cmd/lib/bin/x-cmd" "$folder/x-cmd"
+
+    x_="
+ADD     x-cmd           /bin/x-cmd
+RUN     chmod +x        /bin/x-cmd
+ADD     latest.tgz      /usr/share/x-cmd/v/latest
+"
+
+}
+
+___X_CMD_DOCKER_SNAP_UID=501
 
 ___x_cmd_docker_refit(){
     [ "$#" -gt 0 ] || set - --help
@@ -87,6 +99,9 @@ ___x_cmd_docker_refit(){
 
     local userabc=""
     local script=""
+
+    local refitcnmirror="";
+    ___x_cmd_docker_cur refitcnmirror:=
 
     arg:init docker
     while [ $# -gt 0 ]; do
@@ -179,7 +194,7 @@ ___x_cmd_docker_refit(){
     ___x_cmd mkdirp "$dir"
     (
         ___x_cmd_cmds_cd "$dir"
-        ___x_cmd_cmds cp "$___X_CMD_ROOT_MOD/docker/lib/refit"/* ./
+        ___x_cmd_cmds cp "$___X_CMD_ROOT_MOD/docker/lib/refit/dockerfile_template"/* ./
 
         {
             ___x_cmd_docker_refit_code_from             "$baseimage"
@@ -187,10 +202,18 @@ ___x_cmd_docker_refit(){
             ___x_cmd_docker_refit_code_user_workdir     root    /root
             local USHO=/root
 
-            # Using x-cmd injection ...
-            printf "RUN %s\n" "sh -c '[ -d /root/.x-cmd.root ] || eval \"\$(wget -O- https://get.x-cmd.com)\"'"
+            # ___x_cmd_docker_refit___prepare_curl_ . >/dev/null
+            # printf "%s\n" "$x_"
 
-            [ -z "$userabc" ]       || ___x_cmd_docker_refit_code_adduser   "$baseimage"    abc abc     1000
+            ___x_cmd_docker_refit___prepare_xcmd .
+            printf "%s\n" "$x_"
+
+            # Using x-cmd injection ...
+            # printf "RUN %s\n" "sh -c '[ -d /root/.x-cmd.root ] || eval \"\$(curl -q https://get.x-cmd.com)\"'"
+
+            printf "%s\n" "RUN ___X_CMD_ROOTBIN_SLEEP=0 x-cmd"
+
+            [ -z "$userabc" ]       || ___x_cmd_docker_refit_code_adduser   "$baseimage"    abc abc   "$___X_CMD_DOCKER_SNAP_UID"   # normally 1000
 
             local xcmd="/root/.x-cmd.root/bin/___x_cmdexe"
 
@@ -213,7 +236,8 @@ ___x_cmd_docker_refit(){
             [ -z "$userabc" ]       || {
                 ___x_cmd_docker_refit_code_user_workdir     abc     /home/abc
                 USHO=/home/abc
-                ___x_cmd_docker_refit_code_run  "sh -c '[ -d ${USHO}/.x-cmd.root ] || eval \"\$(wget -O- https://get.x-cmd.com)\"'"
+                ___x_cmd_docker_refit_code_run  "___X_CMD_ROOTBIN_SLEEP=0 x-cmd"
+                # ___x_cmd_docker_refit_code_run  "sh -c '[ -d ${USHO}/.x-cmd.root ] || eval \"\$(curl -q https://get.x-cmd.com)\"'"
             }
 
             [ -z "$xenv" ]      ||          ___x_cmd_docker_refit_code_run_xenv     "$USHO"     "$xenv"
@@ -287,10 +311,10 @@ ___x_cmd_docker_refit_code_adduser(){
     local group="$2"
     local user="$3"
     local uid="$4"
-    if ___x_cmd docker cmdinfo hascmd "$baseimage" adduser; then
-        ___x_cmd_docker_refit_code_run  "[ -d /home/$user ] || adduser -D -u $uid $user"
+    if ___x_cmd docker cmdinfo hascmd "$baseimage" useradd; then
+        ___x_cmd_docker_refit_code_run  "[ -d /home/$user ] || { groupadd $group; useradd -r -u $uid -g $group $user; }"
     else
-        ___x_cmd_docker_refit_code_run  "[ -d /home/$user ] || useradd -r -u $uid -g $group $user"
+        ___x_cmd_docker_refit_code_run  "[ -d /home/$user ] || adduser -D -u $uid $user"
     fi
 }
 
@@ -326,7 +350,10 @@ ___x_cmd_docker_refit_code_run_apk(){
 
     local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
 
-    ___x_cmd_docker_refit_code_run      "if $xcmd websrc is cn; then $xcmd apk mirror set ustc; else $xcmd apk mirror set official; fi"
+    # ___x_cmd_docker_refit_code_run      "if $xcmd websrc is cn; then $xcmd apk mirror set ustc; else $xcmd apk mirror set official; fi"
+    # ! ___x_cmd websrc testcn    ||      ___x_cmd_docker_refit_code_run  "$xcmd apk mirror set ustc || true"
+    [ "$refitcnmirror" = disable ] ||   ___x_cmd_docker_refit_code_run  "$xcmd apk mirror set ustc || true"
+
     printf "RUN %s\n%s\n" \
         "--mount=type=cache,target=/etc/apk/cache,sharing=locked \\"    \
         "apk add $apk"
@@ -338,7 +365,10 @@ ___x_cmd_docker_refit_code_run_apt(){
 
     local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
 
-    ___x_cmd_docker_refit_code_run      'rm -f /etc/apt/apt.conf.d/docker-clean; echo '\''Binary::apt::APT::Keep-Downloaded-Packages "true";'\'' > /etc/apt/apt.conf.d/keep-cache'
+    ___x_cmd_docker_refit_code_run      'rm -f /etc/apt/apt.conf.d/docker-clean; mkdir -p /etc/apt/apt.conf.d/; echo '\''Binary::apt::APT::Keep-Downloaded-Packages "true";'\'' > /etc/apt/apt.conf.d/keep-cache'
+
+    # ! ___x_cmd websrc testcn    ||      ___x_cmd_docker_refit_code_run  "$xcmd apt mirror set ustc || true"
+    [ "$refitcnmirror" = disable ] ||   ___x_cmd_docker_refit_code_run  "$xcmd apt mirror set ustc || true"
 
     # Consider judge whether need to apt update -- in 30 minutes, no update needed ... Or may be we should using mirror cache ...
     printf "RUN %s\n%s\n%s\n" \
@@ -352,7 +382,7 @@ ___x_cmd_docker_refit_code_run_yum(){
 }
 
 ___x_cmd_docker_refit_code_run_dnf(){
-    :
+    [ "$refitcnmirror" = disable ] ||   ___x_cmd_docker_refit_code_run  "$xcmd dnf mirror set ustc || true"
 }
 
 ___x_cmd_docker_refit_code_run_go(){
@@ -363,8 +393,11 @@ ___x_cmd_docker_refit_code_run_go(){
 
     ___x_cmd_docker_refit_code_run  "if $xcmd websrc is cn; then $xcmd go proxy set; else $xcmd go proxy unset; fi || true"
 
+    # ! ___x_cmd websrc testcn || ___x_cmd_docker_refit_code_run  "$xcmd go proxy set || true"
+    [ "$refitcnmirror" = disable ]  ||  ___x_cmd_docker_refit_code_run  "$xcmd go proxy set || true"
+
     printf "%s\n" \
-        "RUN --mount=type=cache,target=${USHO}/.cache/go-build,uid=1000,gid=1000 \\"    \
+        "RUN --mount=type=cache,target=${USHO}/.cache/go-build,uid=$___X_CMD_DOCKER_SNAP_UID,gid=$___X_CMD_DOCKER_SNAP_UID \\"    \
         "go install $go"
 }
 
@@ -377,7 +410,7 @@ ___x_cmd_docker_refit_code_run_cargo(){
     ___x_cmd_docker_refit_code_run  "mkdir -p ${USHO}/.cargo" # If we don't do this, it will fail with os-permission
 
     printf "%s\n" \
-        "RUN --mount=type=cache,target=${USHO}/.cargo/registry,uid=1000,gid=1000 \\"    \
+        "RUN --mount=type=cache,target=${USHO}/.cargo/registry,uid=$___X_CMD_DOCKER_SNAP_UID,gid=$___X_CMD_DOCKER_SNAP_UID \\"    \
         "cargo install $cargo"
 }
 
@@ -388,7 +421,7 @@ ___x_cmd_docker_refit_code_run_zig(){
     local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
 
     printf "%s\n" \
-        "RUN --mount=type=cache,target=${USHO}/.cache/zig,uid=1000,gid=1000 \\"    \
+        "RUN --mount=type=cache,target=${USHO}/.cache/zig,uid=$___X_CMD_DOCKER_SNAP_UID,gid=$___X_CMD_DOCKER_SNAP_UID \\"    \
         "zig fetch $zig"
 }
 
@@ -398,9 +431,11 @@ ___x_cmd_docker_refit_code_run_pip(){
 
     local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
 
-    ___x_cmd_docker_refit_code_run      "if $xcmd websrc is cn; then $xcmd mirror pip set ali; else $xcmd mirror pip unset; fi || true"
+    # ___x_cmd_docker_refit_code_run      "if $xcmd websrc is cn; then $xcmd mirror pip set ali; else $xcmd mirror pip unset; fi || true"
+    [ "$refitcnmirror" = disable ]  ||  ___x_cmd_docker_refit_code_run      "$xcmd mirror pip set ali"
+
     printf "%s\n" \
-        "RUN --mount=type=cache,target=${USHO}/.cache/pip,uid=1000,gid=1000 \\"    \
+        "RUN --mount=type=cache,target=${USHO}/.cache/pip,uid=$___X_CMD_DOCKER_SNAP_UID,gid=$___X_CMD_DOCKER_SNAP_UID \\"    \
         "python3 -m venv p && . p/bin/activate && pip3 install $pip"
 }
 
@@ -413,7 +448,7 @@ ___x_cmd_docker_refit_code_run_pixi(){
     ___x_cmd_docker_refit_code_run      "if $xcmd websrc is cn; then $xcmd mirror pip set ali; else $xcmd mirror pip unset; fi || true"
     ___x_cmd_docker_refit_code_run      "[ -d $USHO/.pixi ] || $xcmd pixi --install"
 
-    # "RUN --mount=type=cache,target=${USHO}/.cache/rattler/cache,uid=1000,gid=1000 \\"    \
+    # "RUN --mount=type=cache,target=${USHO}/.cache/rattler/cache,uid=$___X_CMD_DOCKER_SNAP_UID,gid=$___X_CMD_DOCKER_SNAP_UID \\"    \
     ___x_cmd_docker_refit_code_run      "$xcmd pixi global install $pixi"
 }
 
@@ -423,7 +458,7 @@ ___x_cmd_docker_refit_code_run_xenv(){
 
     local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
 
-    # "RUN --mount=type=cache,target=${USHO}/.cache/rattler/cache,uid=1000,gid=1000 \\"    \
+    # "RUN --mount=type=cache,target=${USHO}/.cache/rattler/cache,uid=$___X_CMD_DOCKER_SNAP_UID,gid=$___X_CMD_DOCKER_SNAP_UID \\"    \
     ___x_cmd_docker_refit_code_run      "$xcmd env use $xenv"
 }
 
@@ -435,8 +470,12 @@ ___x_cmd_docker_refit_code_run_npm(){
     local xcmd="${USHO}/.x-cmd.root/bin/___x_cmdexe"
 
     ___x_cmd_docker_refit_code_run  "if $xcmd websrc is cn; then $xcmd mirror npm set npmmirror; else $xcmd mirror npm unset; fi || true"
+
+    # ! ___x_cmd websrc testcn || ___x_cmd_docker_refit_code_run  "$xcmd npm proxy set || true"
+    [ "$refitcnmirror" = disable ]  ||      ___x_cmd_docker_refit_code_run  "$xcmd npm proxy set || true"
+
     printf "%s\n" \
-        "RUN --mount=type=cache,target=${USHO}/.npm,uid=1000,gid=1000 \\"    \
+        "RUN --mount=type=cache,target=${USHO}/.npm,uid=$___X_CMD_DOCKER_SNAP_UID,gid=$___X_CMD_DOCKER_SNAP_UID \\"    \
         "npm install $npm"
 }
 

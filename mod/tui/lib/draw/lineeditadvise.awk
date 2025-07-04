@@ -18,7 +18,7 @@ function draw_lineeditadvise_str_with_cursor_advise(opt,             s, i, b, lv
     adv = opt_get( opt, "advise.text" )
 
     if (opt_get( opt, "display.error" )) {
-        _text_style     = UI_FG_DARKRED
+        _text_style     = UI_FG_BRIGHT_RED
         _cursor_style   = TH_ERROR_CURSOR
     } else {
         _cursor_style   = TH_CURSOR

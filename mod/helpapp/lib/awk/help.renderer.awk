@@ -1,4 +1,4 @@
-function print_helpdoc_init(no_color, theme_color0, theme_color1, desc_color0, desc_color1, position_order, po_arr ){
+function print_helpdoc_init(no_color, name_color, desc_color, title_color, rule_color, cmd_color, other_name_color, other_desc_color, tldr_cmd_color, tldr_desc_color, position_order, po_arr ){
     COMP_HELPDOC_HELP_INDENT_LEN = 4;    COMP_HELPDOC_HELP_INDENT_STR = "    "
     COMP_HELPDOC_DESC_INDENT_LEN = 3;    COMP_HELPDOC_DESC_INDENT_STR = "   "
     COMP_HELPDOC_TAG_LEFT = "---- "
@@ -8,13 +8,18 @@ function print_helpdoc_init(no_color, theme_color0, theme_color1, desc_color0, d
         COMP_HELPDOC_UI_TIP_NOTE   = UI_FG_CYAN
         COMP_HELPDOC_UI_TIP_WARN   = UI_FG_YELLOW
         COMP_HELPDOC_UI_TIP_DANGER = UI_FG_RED
+
         COMP_HELPDOC_UI_END        = UI_END
 
-        COMP_HELPDOC_UI_TITLE      = UI_TEXT_BOLD
-        COMP_HELPDOC_UI_DESC[0]    = ( desc_color0 == "" ) ? UI_FG_DARKRED : desc_color0
-        COMP_HELPDOC_UI_DESC[1]    = ( desc_color1 == "" ) ? UI_FG_DARKRED : desc_color1 # UI_FG_MAGENTA
-        COMP_HELPDOC_UI_THEME[0]   = ( theme_color0 == "" ) ? UI_FG_CYAN  : theme_color0
-        COMP_HELPDOC_UI_THEME[1]   = ( theme_color1 == "" ) ? UI_FG_CYAN : theme_color1 # UI_FG_GREEN
+        COMP_HELPDOC_UI_DESC       = desc_color     # UI_FG_BRIGHT_RED
+        COMP_HELPDOC_UI_NAME       = name_color    # UI_FG_CYAN
+        COMP_HELPDOC_UI_TITLE      = title_color    # UI_TEXT_BOLD
+        COMP_HELPDOC_UI_RULE       = rule_color    # UI_FG_BRIGHT_BLACK
+        COMP_HELPDOC_UI_CMD        = ( cmd_color == "" ) ? name_color : cmd_color
+        COMP_HELPDOC_UI_OTHER_NAME = other_name_color
+        COMP_HELPDOC_UI_OTHER_DESC = other_desc_color
+        COMP_HELPDOC_UI_TLDR_CMD    = tldr_cmd_color
+        COMP_HELPDOC_UI_TLDR_DESC   = tldr_desc_color
     }
 
     comp_parse_position_order( position_order, po_arr)
@@ -66,11 +71,15 @@ function get_option_string( obj, kp, v,         _str, _synopsis_str){
 }
 
 function generate_title(v){ return COMP_HELPDOC_UI_TITLE v COMP_HELPDOC_UI_END ;  }
-function generate_help_for_namedoot_cal_maxlen_desc( obj, kp, _text_arr,            l, i, _len, _max_len, _opt_help_doc ){
+function generate_help_for_namedoot_cal_maxlen_desc( obj, kp, _text_arr,            l, i, _len, _max_len, _opt_help_doc, _idx ){
     l = arr_len(_text_arr)
     for ( i=1; i<=l; ++i ) {
-        _text_arr[ i ]   = _opt_help_doc     = get_option_string( obj, kp, _text_arr[ i ] )
+        _opt_help_doc = get_option_string( obj, kp, _text_arr[ i ] )
         _len = length( _opt_help_doc )        # TODO: Might using wcswidth
+
+        if ( (_idx = index( _opt_help_doc, " " )) <= 0 ) _text_arr[ i ] = _opt_help_doc
+        else _text_arr[ i ] = substr( _opt_help_doc, 1, _idx - 1 ) COMP_HELPDOC_UI_END COMP_HELPDOC_UI_RULE substr( _opt_help_doc, _idx ) COMP_HELPDOC_UI_END
+
         if ( _len > _max_len )    _max_len = _len
     }
     return (_max_len <= COMP_HELPDOC_LEFT_W) ? _max_len : COMP_HELPDOC_LEFT_W
@@ -78,29 +87,29 @@ function generate_help_for_namedoot_cal_maxlen_desc( obj, kp, _text_arr,        
 
 function generate_optarg_rule_string_inner(obj, kp, tag,          _str, _dafault, _regexl, _candl, i, _cand_id_arr){
     _default = aobj_get_default(obj, kp)
-    if (_default != "" ) _str = _str " [default: " aobj_uq(_default) "]"
+    if (_default != "" ) _str = _str "\n" COMP_HELPDOC_UI_RULE " [default: " aobj_uq(_default) "]" COMP_HELPDOC_UI_END
 
     _regex_id = aobj_get_special_value_id( kp, "regex")
     _regexl  = aobj_len(obj, _regex_id)
     if ( _regexl > 0 ) {
-        _str = _str " [regex: "
+        _str = _str "\n" COMP_HELPDOC_UI_RULE " [regex: "
         _str = _str juq( aobj_get(obj, _regex_id SUBSEP 1) )
         for (i=2; i<=_regexl; ++i ) _str = _str "|" juq( aobj_get(obj, _regex_id SUBSEP i) )
-        _str = _str "]"
+        _str = _str "]" COMP_HELPDOC_UI_END
     }
 
     _cand_id = aobj_get_special_value_id( kp, "cand")
     _candl   = aobj_len(obj, _cand_id)
     if ( _candl > 0  ) {
-        _str = _str " [candidate: "
+        _str = _str "\n" COMP_HELPDOC_UI_RULE " [candidate: "
         _str = _str aobj_get_cand_value(obj, _cand_id SUBSEP "\"1\"")
-        if ( ( tag == "ARGS" ) || ( _candl < 6 ) ){
+        if ( ( tag == "ARGS" ) || ( _candl < 50 ) ){
             for (i=2; i<=_candl; ++i ) _str = _str ", " aobj_get_cand_value(obj, _cand_id SUBSEP "\""i"\"")
         } else{
-            for (i=2; i<=5; ++i ) _str = _str ", " aobj_get_cand_value(obj, _cand_id SUBSEP "\""i"\"")
+            for (i=2; i<=49; ++i ) _str = _str ", " aobj_get_cand_value(obj, _cand_id SUBSEP "\""i"\"")
             _str = _str " ..."
         }
-        _str = _str "]"
+        _str = _str "]" COMP_HELPDOC_UI_END
     }
     return _str
 }
@@ -117,15 +126,13 @@ function generate_flag_help_unit( obj, kp, arr, arr_kp,        i, v, l, _str, _m
     arr_clone_of_kp( arr, _text_arr, arr_kp )
     _max_len = generate_help_for_namedoot_cal_maxlen_desc( obj, kp, _text_arr )
 
-    th_interval_init(COMP_HELPDOC_UI_THEME)
-    th_interval_init(COMP_HELPDOC_UI_DESC)
     l = arr_len(arr, arr_kp)
     for ( i=1; i<=l; ++i ) {
         v = arr[ arr_kp SUBSEP "\""i"\"" ]
         if (obj[ kp, v ] == "") continue
         _option_after = aobj_get_description(obj, kp SUBSEP v)
-        _str = _str comp_helpdoc_unit_line( th_interval(COMP_HELPDOC_UI_THEME) _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
-            th_interval(COMP_HELPDOC_UI_DESC) _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
+        _str = _str comp_helpdoc_unit_line( COMP_HELPDOC_UI_NAME _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
+            COMP_HELPDOC_UI_DESC _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
     }
     return _str
 }
@@ -148,15 +155,13 @@ function generate_option_help_unit( obj, kp, arr, arr_kp,         i, v, l, _str,
     arr_clone_of_kp( arr, _text_arr, arr_kp )
     _max_len = generate_help_for_namedoot_cal_maxlen_desc( obj, kp, _text_arr )
 
-    th_interval_init(COMP_HELPDOC_UI_THEME)
-    th_interval_init(COMP_HELPDOC_UI_DESC)
     l = arr_len(arr, arr_kp)
     for ( i=1; i<=l; ++i ) {
         v = arr[ arr_kp SUBSEP "\""i"\"" ]
         if (obj[ kp, v ] == "") continue
         _option_after = aobj_get_description(obj, kp SUBSEP v) COMP_HELPDOC_UI_END generate_optarg_rule_string(obj, kp, v, "OPTIONS")
-        _str = _str comp_helpdoc_unit_line( th_interval(COMP_HELPDOC_UI_THEME) _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
-            th_interval(COMP_HELPDOC_UI_DESC) _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
+        _str = _str comp_helpdoc_unit_line( COMP_HELPDOC_UI_NAME _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
+            COMP_HELPDOC_UI_DESC _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
     }
     return (_str != "") ? _str "\n" : ""
 }
@@ -180,14 +185,12 @@ function generate_rest_argument_help( obj, kp, arr,         i, v, l, _str, _max_
     arr_clone_of_kp( arr, _text_arr )
     _max_len = generate_help_for_namedoot_cal_maxlen_desc( obj, kp, _text_arr )
 
-    th_interval_init(COMP_HELPDOC_UI_THEME)
-    th_interval_init(COMP_HELPDOC_UI_DESC)
     for ( i=1; i<=l; ++i ) {
         v = arr[ i ]
         help_get_ref(obj, kp SUBSEP v)
         if (str_remove_esc(_option_after = aobj_get_description(obj, kp SUBSEP v) COMP_HELPDOC_UI_END generate_optarg_rule_string(obj, kp, v, "ARGS")) == "") continue
-        _str = _str comp_helpdoc_unit_line( th_interval(COMP_HELPDOC_UI_THEME) _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
-            th_interval(COMP_HELPDOC_UI_DESC) _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
+        _str = _str comp_helpdoc_unit_line( COMP_HELPDOC_UI_NAME _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
+            COMP_HELPDOC_UI_DESC _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
     }
     if (_str == "") return
     return generate_title("ARGS:") "\n" _str "\n"
@@ -197,15 +200,13 @@ function generate_subcmd_help_unit( obj, kp, arr, arr_kp,        i, v, l, _str, 
     arr_clone_of_kp( arr, _text_arr, arr_kp )
     _max_len = generate_help_for_namedoot_cal_maxlen_desc( obj, kp, _text_arr )
 
-    th_interval_init(COMP_HELPDOC_UI_THEME)
-    th_interval_init(COMP_HELPDOC_UI_DESC)
     l = arr_len(arr, arr_kp)
     for (i=1; i<=l; ++i) {
         v = arr[ arr_kp SUBSEP "\""i"\"" ]
         if (obj[ kp, v ] == "") continue
         _option_after = aobj_get_description(obj, kp SUBSEP v) COMP_HELPDOC_UI_END
-        _str = _str comp_helpdoc_unit_line( th_interval(COMP_HELPDOC_UI_THEME) _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
-            th_interval(COMP_HELPDOC_UI_DESC) _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
+        _str = _str comp_helpdoc_unit_line( COMP_HELPDOC_UI_NAME _text_arr[i], _max_len, COMP_HELPDOC_HELP_INDENT_LEN, \
+            COMP_HELPDOC_UI_DESC _option_after, COMP_HELPDOC_WIDTH - _max_len - COMP_HELPDOC_HELP_INDENT_LEN - COMP_HELPDOC_DESC_INDENT_LEN, COMP_HELPDOC_DESC_INDENT_LEN ) "\n"
     }
     return _str
 }
@@ -251,14 +252,13 @@ function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
 function generate_name_help( obj, kp,       n, d, _str){
     kp = kp SUBSEP "\"#name\""
     if (aobj_is_null( obj, kp)) return
-    th_interval_init(COMP_HELPDOC_UI_THEME)
     _str = generate_title("NAME:") "\n"
     n = obj[ kp ]
     if ( n == "{" ) {
         n = obj[ kp, 1 ]
         if ((d = obj[ kp, n ]) == "null") d = aobj_get_value_with_local_language(obj, kp, ___X_CMD_LANG)
     }
-    _str = _str COMP_HELPDOC_HELP_INDENT_STR  th_interval(COMP_HELPDOC_UI_THEME) juq(n) COMP_HELPDOC_UI_END ( aobj_str_is_null(d) ? "" : " - " aobj_uq(d) ) "\n"
+    _str = _str COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_UI_CMD juq(n) COMP_HELPDOC_UI_END ( aobj_str_is_null(d) ? "" : " - " aobj_uq(d) ) "\n"
     return _str "\n"
 }
 
@@ -277,18 +277,17 @@ function generate_desc_help(obj, kp, tip,        _str, d, tip_str){
 function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {
     kp = kp SUBSEP "\"#synopsis\""
     if (aobj_is_null( obj, kp)) return
-    th_interval_init(COMP_HELPDOC_UI_THEME)
     _str = generate_title("SYNOPSIS:") "\n"
     v = obj[ kp ]
     if ( (v != "[") && (v != "") )
-        return _str COMP_HELPDOC_HELP_INDENT_STR th( th_interval(COMP_HELPDOC_UI_THEME), aobj_uq(v) ) "\n\n"
+        return _str COMP_HELPDOC_HELP_INDENT_STR th( COMP_HELPDOC_UI_NAME, aobj_uq(v) ) "\n\n"
 
     l = obj[ kp L ]
     for (i=1; i<=l; ++i){
         k = obj[ kp, jqu(i), 1]
         v = obj[ kp, jqu(i), k]
         if (v == "null") v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), ___X_CMD_LANG)
-        _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( th_interval(COMP_HELPDOC_UI_THEME) juq(k) " " COMP_HELPDOC_UI_END aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
+        _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( COMP_HELPDOC_UI_NAME juq(k) " " COMP_HELPDOC_UI_END aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     }
     return _str "\n"
 }
@@ -296,14 +295,13 @@ function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {
 function generate_tldr_help(obj, kp,            l, i, k, v, _str){
     kp = kp SUBSEP "\"#tldr\""
     if (aobj_is_null( obj, kp)) return
-    th_interval_init(COMP_HELPDOC_UI_THEME)
     _str = generate_title("TLDR:") "\n"
     l = obj[ kp L ]
     for (i=1; i<=l; ++i){
         k = obj[ kp, jqu(i), "\"cmd\"" ]
         v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), ___X_CMD_LANG)
-        if ( ! aobj_str_is_null(v) ) _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( th_interval(COMP_HELPDOC_UI_THEME) aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
-        _str = _str space_rep(COMP_HELPDOC_HELP_INDENT_LEN * 2) COMP_HELPDOC_UI_END  str_cut_line(aobj_uq(k), COMP_HELPDOC_HELP_INDENT_LEN * 2) "\n"
+        if ( ! aobj_str_is_null(v) ) _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line(COMP_HELPDOC_UI_TLDR_DESC aobj_uq(v) COMP_HELPDOC_UI_END, COMP_HELPDOC_HELP_INDENT_LEN) "\n"
+        _str = _str space_rep(COMP_HELPDOC_HELP_INDENT_LEN * 2) COMP_HELPDOC_UI_TLDR_CMD str_cut_line(aobj_uq(k) COMP_HELPDOC_UI_END, COMP_HELPDOC_HELP_INDENT_LEN * 2) "\n"
     }
     return _str "\n"
 }
@@ -315,7 +313,7 @@ function generate_other_help_unit(obj, kp,      l, i, k, v, _str, _kp_language){
     for (i=1; i<=l; ++i){
         k = obj[ kp, i]
         v = obj[ kp, k]
-        _str = _str COMP_HELPDOC_UI_END COMP_HELPDOC_HELP_INDENT_STR juq(k) th_interval(COMP_HELPDOC_UI_THEME) " " aobj_uq(v) COMP_HELPDOC_UI_END "\n"
+        _str = _str COMP_HELPDOC_UI_OTHER_NAME COMP_HELPDOC_HELP_INDENT_STR juq(k) COMP_HELPDOC_UI_OTHER_DESC " " aobj_uq(v) COMP_HELPDOC_UI_END "\n"
     }
     return _str
 }
@@ -323,7 +321,6 @@ function generate_other_help_unit(obj, kp,      l, i, k, v, _str, _kp_language){
 function generate_other_help(obj, kp,       l, i, k, v, _str){
     kp = kp SUBSEP "\"#other\""
     if (aobj_is_null( obj, kp)) return
-    th_interval_init(COMP_HELPDOC_UI_THEME)
     return generate_title("SEE ALSO:") "\n" generate_other_help_unit(obj, kp)
 }
 

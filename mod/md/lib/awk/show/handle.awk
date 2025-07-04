@@ -8,7 +8,7 @@ function md_handle_code( line, output_arr ){
             md_output( $0, output_arr )
             return 1
         }
-        # gsub("(^(#|//) .*|^<!-- .+ -->$)", UI_FG_DARKGRAY "&" UI_END, $0)
+        # gsub("(^(#|//) .*|^<!-- .+ -->$)", UI_FG_BRIGHT_BLACK "&" UI_END, $0)
         md_output( "  " $0, output_arr )
     }
     return 0

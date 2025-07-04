@@ -1,4 +1,4 @@
--- 新建并打开一条备忘录
+-- e.g.
 try
     tell application "Notes"
         make new note

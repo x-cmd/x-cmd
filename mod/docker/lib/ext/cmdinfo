@@ -1,9 +1,4 @@
 
-# First get all of the information of cmdinfo
-# Second all of the information of pkgs
-
-# Could be a image, or a container ...
-
 ___x_cmd_docker_cmdinfo(){
     [ $# -gt 0 ]    ||  set -- --help
 
@@ -14,7 +9,7 @@ ___x_cmd_docker_cmdinfo(){
             return 0
             ;;
 
-        create|update|getlist|iscreated|hascmd|exist)
+        create|update|getlist|iscreated|hascmd|exist|cat)
             ___x_cmd_docker_cmdinfo_"$op" "$@"
             ;;
 
@@ -40,7 +35,8 @@ ___x_cmd_docker_cmdinfo_update(){
 
 ___x_cmd_docker_cmdinfo_getlist(){
     local image="$1"
-    ___x_cmd docker run --entrypoint '' --rm -it "$image" sh -c 'find `echo "$PATH" | tr ":" "\n"` -maxdepth 1 -type f -executable 2>/dev/null; return 0'
+    ___x_cmd docker run --entrypoint '' --rm -it "$image" sh -c 'find `echo "$PATH:$HOME/.x-cmd.root/bin" | tr ":" "\n"` -maxdepth 1 -executable 2>/dev/null; return 0' | \
+        ___x_cmd_cmds awk -v RS="[\r]?\n" -v ORS='\n' '{ print }'
 }
 
 ___x_cmd_docker_cmdinfo_iscreated(){
@@ -54,18 +50,27 @@ ___x_cmd_docker_cmdinfo_hascmd(){
     ___x_cmd_docker_cmdinfo_exist "$@"
 }
 
+___x_cmd_docker_cmdinfo_cat(){
+    local image="$1"
+    ___x_cmd_docker_cmdinfo_create "$@" || return $?
+    local cmdinfofp="${___X_CMD_ROOT_DATA}/docker/image/$image/cmdinfo"
+    ___x_cmd_cmds cat "$cmdinfofp"
+}
+
 ___x_cmd_docker_cmdinfo_exist(){
     local image="$1"
     local binname="${2:-ls}"
     ___x_cmd_docker_cmdinfo_create "$image" || return $?
 
     local cmdinfofp="${___X_CMD_ROOT_DATA}/docker/image/$image/cmdinfo"
-    # ___x_cmd_cmds grep -F "/$binname" <"$cmdinfofp" 1>/dev/null 2>/dev/null
-    ___x_cmd_cmds awk -F '/' -v binname="$binname" -v code=1 '
+
+    local awkc='
 {
     cmd = $NF; sub("\\..*$", "", cmd);
-    if (cmd == binname) { code=0; exit(0); };
+    if (cmd == binname) { code=0; exit(0); }
 }
 END{ exit(code) ; }
-' < "$cmdinfofp" 1>/dev/null 2>/dev/null
+'
+
+    <"$cmdinfofp" ___x_cmd_cmds awk -v FS='/' -v RS='[\r]?\n' -v binname="$binname" -v code=1 "$awkc"
 }

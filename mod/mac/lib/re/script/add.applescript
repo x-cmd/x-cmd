@@ -1,5 +1,5 @@
--- 添加新的提醒事项
--- osascript add.applescript "提醒1" "2025-06-25" "18:00"
+-- e.g. osascript add.applescript "提醒1" "2025-06-25" "18:00"
+
 on run argv
     if (count of argv) is not 3 then
         return "Error: Missing arguments. Parameter format: \"Reminders title\" \"YYYY-MM-DD\" \"HH:MM\""

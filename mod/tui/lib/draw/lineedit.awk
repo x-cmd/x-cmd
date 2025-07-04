@@ -15,7 +15,7 @@ function draw_lineedit_str_with_cursor(opt,             s, i, b, lv, rv, l, _str
     rv = substr( wcstruncate_cache( substr(s, b+1), opt_get( opt, "line.width" )-1 ), i-b+1 )
 
     if (opt_get( opt, "display.error" )) {
-        _text_style     = UI_FG_DARKRED
+        _text_style     = UI_FG_BRIGHT_RED
         _cursor_style   = TH_ERROR_CURSOR
     } else {
         _text_style     = ""
