@@ -14,7 +14,7 @@ ___x_cmd_docker_ps_main(){
     local IMAGE_OPTS=
 
     local datamode=auto
-    local X_KASM_PREFIX="$X_KASM_PREFIX"
+    local ___X_CMD_DOCKER_PS_PREFIX="$___X_CMD_DOCKER_PS_PREFIX"
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -24,7 +24,7 @@ ___x_cmd_docker_ps_main(){
             --app)          datamode=app;   shift   ;;
             --auto)         datamode=auto;  shift   ;;
 
-            -p|--prefix)    X_KASM_PREFIX="$2";    shift 2 ;;
+            -p|--prefix)    ___X_CMD_DOCKER_PS_PREFIX="$2";    shift 2 ;;
 
             -s|--size|-l|--latest|-a|--all|--no-trunc|-q|--quiet)
                 ___x_cmd cmdstr IMAGE_OPTS "$1"
@@ -42,7 +42,7 @@ ___x_cmd_docker_ps_main(){
         esac
     done
 
-    X_KASM_PREFIX="$X_KASM_PREFIX" ___x_cmd_docker_ps___"$datamode"
+    ___X_CMD_DOCKER_PS_PREFIX="$___X_CMD_DOCKER_PS_PREFIX" ___x_cmd_docker_ps___"$datamode"
 }
 
 ___x_cmd_docker_ps___auto(){
@@ -54,11 +54,11 @@ ___x_cmd_docker_ps___auto(){
 ___x_cmd_docker_ps___json(){
     ___x_cmd cmdstr IMAGE_OPTS --format '{{json .}}'
 
-    eval ___x_cmd___docker_origin ps "$IMAGE_OPTS" | {
-        if [ -z "$X_KASM_PREFIX" ]; then
+    eval ___x_cmd___docker_origin ps --no-trunc "$IMAGE_OPTS" | {
+        if [ -z "$___X_CMD_DOCKER_PS_PREFIX" ]; then
             ___x_cmd jq -s .
         else
-            ___x_cmd jq --arg prefix "$X_KASM_PREFIX" -s '.[] | select(.Names | startswith( $prefix ))' | ___x_cmd jq -s .
+            ___x_cmd jq --arg prefix "$___X_CMD_DOCKER_PS_PREFIX" -s '.[] | select(.Names | startswith( $prefix ))' | ___x_cmd jq -s .
         fi
     }
 }
@@ -122,7 +122,7 @@ ___x_cmd_docker_ps___app_(){
     local ___X_CMD_CSV_APP_DATA_mount=""
 
     ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
-    X_KASM_PREFIX="$X_KASM_PREFIX" \
+    ___X_CMD_DOCKER_PS_PREFIX="$___X_CMD_DOCKER_PS_PREFIX" \
         ___x_cmd csv app --clear --return var \
             --loop-action r "remove" "Force the removal of a running container" \
             --loop-processor ___x_cmd_docker_ps___app___inner_remove \
@@ -133,16 +133,23 @@ ___x_cmd_docker_ps___app_(){
 
     [ -n "$container_id" ] || return 0
 
+    ___x_cmd_docker_ps___app_choose "$container_id" "$___X_CMD_CSV_APP_DATA_name" "$___X_CMD_CSV_APP_DATA_state"
+}
+
+___x_cmd_docker_ps___app_choose(){
     if [ -z "$___x_cmd_docker_ps_app_next" ]; then
         ___x_cmd_docker_ps_app_next(){
             local container_id="$1"
             local container_name="$2"
             local state="$3"
 
-                    set --          "x docker container restart $container_id"
+            set --      "Next for container: $container_name"
+
+
 
             case "$state" in
                 paused)
+                    set --  "$@"    "x docker container restart $container_id"
                     set --  "$@"    "x docker container unpause $container_id"
                     set --  "$@"    "x docker container stop    $container_id"
                     ;;
@@ -151,6 +158,8 @@ ___x_cmd_docker_ps___app_(){
                     set --  "$@"    "x docker container rm      $container_id"
                     ;;
                 running)
+                    set --  "$@"    "x docker snapx --name $container_name sh"
+                    set --  "$@"    "x docker container restart $container_id"
                     set --  "$@"    "x docker container pause   $container_id"
                     set --  "$@"    "x docker container stop    $container_id"
                     ;;
@@ -161,12 +170,18 @@ ___x_cmd_docker_ps___app_(){
 
             local id=
             local cmd=
-            ___x_cmd ui select id,cmd \
-                "Next for container: $container_name" "$@" "return 1"     || return 1
+            ___x_cmd ui select id,cmd "$@" "EXIT"     || return 1
             docker:debug "run command -> $cmd"
-            eval "$cmd"
+
+            ___X_CMD_DOCKER_PS_EXIT=""
+            case "$cmd" in
+                EXIT)       ___X_CMD_DOCKER_PS_EXIT=1 ; return 0;  ;;
+                *)
+                            docker:info --cmd "$cmd" "Executing selected command"
+                            eval "$cmd"
+            esac
         }
     fi
 
-    ___x_cmd_docker_ps_app_next "$container_id" "$___X_CMD_CSV_APP_DATA_name" "$___X_CMD_CSV_APP_DATA_state"
+    ___x_cmd_docker_ps_app_next "$1" "$2" "$3"
 }

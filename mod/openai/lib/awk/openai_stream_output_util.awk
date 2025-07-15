@@ -24,7 +24,7 @@ function openai_display_response_text_stream(s,       o, item, response_item, fi
     item = o[ KP_CONTENT ]
     response_item = o[ KP_REASONING_CONTENT ]
 
-    if (( item == "null" ) && ( response_item != "null" )) {
+    if (( item == "null" ) && (( response_item != "null" ) && ( response_item != "\"\"" ))) {
         if ( OPENAI_RESPONSE_HAS_REASONING  == 0 ) {
             print "---------- REASONING BEGIN ----------"
         }
@@ -74,11 +74,12 @@ function openai_display_response_text_stream___ollama_format(o,             item
 
 BEGIN{
     Q2_1                    = SUBSEP "\"1\""
-    KP_DELTA                = Q2_1 SUBSEP "\"choices\"" SUBSEP "\"1\"" SUBSEP "\"delta\""
+    KP_CHOICES              = Q2_1 SUBSEP "\"choices\""
+    KP_DELTA                = KP_CHOICES SUBSEP "\"1\"" SUBSEP "\"delta\""
     KP_CONTENT              = KP_DELTA SUBSEP "\"content\""
     KP_ERROR                = Q2_1 SUBSEP "\"error\""
     KP_REASONING_CONTENT    = KP_DELTA SUBSEP "\"reasoning_content\""
-    KP_FINISH_REASON        = Q2_1 SUBSEP "\"choices\"" SUBSEP "\"1\"" SUBSEP "\"finish_reason\""
+    KP_FINISH_REASON        = KP_CHOICES SUBSEP "\"1\"" SUBSEP "\"finish_reason\""
 
     KP_OLLAMA_DONE          = Q2_1 SUBSEP "\"done\""
     KP_OLLAMA_CONTENT       = Q2_1 SUBSEP "\"message\"" SUBSEP "\"content\""

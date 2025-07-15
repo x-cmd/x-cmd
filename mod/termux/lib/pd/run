@@ -21,16 +21,54 @@ ___x_cmd_termux_pd_run(){
                             ___x_cmd cmdstr ___X_CMD_TERMUX_PD_RUN_MAIN_OPTS --workdir  "$2";           shift 2 ;;
 
             -|--)                           shift; break ;;
-            -h|--help)      ___x_cmd help -m termux prun; return ;;
+            -h|--help)      ___x_cmd help -m termux pd run --help; return ;;
             *)              dist="$1";      shift; break ;;
         esac
     done
     dist="${dist:-ubuntu}"
 
-    local dp="${TERMUX__PREFIX}/var/lib/proot-distro/installed-rootfs/$dist"
+    local dp="${___X_CMD_TERMUX_PD_ROOTFS}/$dist"
     [ -d "$dp" ] || {
         ___x_cmd_termux pd install "$dist" || N=termux M="Fail to install $dist" log:ret:1
     }
 
+    [ -f "$dp/root/.x-cmd.root/X" ] || {
+        ___x_cmd_termux_pd_infuse "$dist"
+    }
+
+    if [ $# -eq 0 ]; then
+        case "$dist" in
+            alpine*)    set -- bash ;;
+        esac
+    fi
+
     ___x_cmd_termux_pd___cmd login "$dist" -- "$@"
+}
+
+___x_cmd_termux_pd_infuse(){
+    local dist="$1"
+    local dp="${___X_CMD_TERMUX_PD_ROOTFS}/$dist"
+    local x_=""
+
+    termux:info "Infusing x-cmd into proot container -> $dist"
+
+    ___x_cmd version archive prepare_ || return $?
+
+    ___x_cmd mkdirp "$dp/usr/share/x-cmd/v/latest"
+
+    ___x_cmd_cmds cp "$x_" "$dp/usr/share/x-cmd/v/latest/latest.tgz"
+    (
+        ___x_cmd_cd0 "$dp/usr/share/x-cmd/v/latest/"
+        if      [ -f latest.tgz ]; then
+            ___x_cmd_cmds tar xvf latest.tgz 1>/dev/null 2>/dev/null
+            ___x_cmd_cmds rm -f latest.tgz
+        fi
+    )
+
+    ___x_cmd_cmds cp "$___X_CMD_ROOT_MOD/x-cmd/lib/bin/x-cmd" "$dp/bin/x-cmd"
+    ___x_cmd_cmds chmod +x "$dp/bin/x-cmd"
+
+    termux:info "Luanching x-cmd for initialization"
+
+    ___x_cmd_termux_pd___cmd login "$dist" -- x-cmd
 }

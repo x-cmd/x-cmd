@@ -66,7 +66,7 @@ function rep( s, n,     i, r ){
     }
     printf("\033[0;35m" BSTYLE)
     printf("%s  ",       $12 )
-    printf("\033[0;2m")
+    printf("\033[0;2;4m")
     printf("%s",         $13 )
     printf("\033[0m" "\n")
 }

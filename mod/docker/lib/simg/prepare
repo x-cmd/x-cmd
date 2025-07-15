@@ -41,63 +41,77 @@ ___x_cmd_docker_simg_prepare_(){
     x_="";  ___x_cmd_docker_simg_prepare___base_ || return $?
     local baseimg="$x_"
 
+    ! ___x_cmd_docker cmdinfo hascmd "$baseimg" "$REFIT_CMD" || return 0
+
+    local errcode=""
     local REFIT_PKG="";    local REFIT_SYS="";  local REFIT_CMD="$cmd";
-    ___x_cmd_docker_snap___parse__ "$REFIT_CMD" "$imgtype"
+    ___x_cmd_docker_snap___parse__ "$REFIT_CMD" "$imgtype" || {
+        errcode=$?
+        docker:warn "Unknown command recipe in ___x_cmd_docker_simg_prepare_ -> $REFIT_CMD"
+        return $errcode
+    }
 
     docker:debug --cmd "$REFIT_CMD" --sys "$REFIT_SYS" --pkg "$REFIT_PKG" "___x_cmd_docker_simg_prepare___refit_"
-
-    ! ___x_cmd_docker cmdinfo hascmd "$baseimg" "$REFIT_CMD" || return 0
 
     ___x_cmd_docker_simg_prepare___refit_ "$baseimg"
 }
 
 ___x_cmd_docker_simg_prepare___base_(){
-    x_="s/$imgtype/base"
+    ___x_cmd_docker_snap___imageprefix_ "$imgtype" || return $?
+    x_="${x_}-base"
     ! ___x_cmd_docker image exist "$x_"             || return 0
 
     case "$imgtype" in
         alpine)
-            ___x_cmd_docker_simg_download --imagetype alpine        || return $?
+            ___x_cmd_docker_simg_download --if0 --imagetype alpine        || return $?
             ___x_cmd docker refit               \
                 --from alpine                   \
                 --to "$x_"                      \
                 --userabc                       \
-                --apk 'curl fzf jq sqlite bash'
+                --apk 'curl fzf jq yq xz sqlite bash'
                 ;;
 
         debian|ubuntu)
-            ___x_cmd_docker_simg_download --imagetype "$imgtype"    || return $?
+            ___x_cmd_docker_simg_download --if0 --imagetype "$imgtype"    || return $?
             ___x_cmd docker refit               \
                 --from "$imgtype"               \
                 --to "$x_"                      \
                 --userabc                       \
-                --apt 'curl fzf jq sqlite3'
+                --apt 'curl fzf jq yq xz-utils sqlite3 ca-certificates'
                 ;;
 
         kali)
-            ___x_cmd_docker_simg_download --imagetype "$imgtype"    || return $?
+            ___x_cmd_docker_simg_download --if0 --imagetype "$imgtype"    || return $?
             ___x_cmd docker refit               \
                 --from kalilinux/kali-rolling   \
                 --to "$x_"                      \
                 --userabc                       \
-                --apt 'curl fzf jq sqlite3'
+                --apt 'curl fzf jq yq xz-utils sqlite3 ca-certificates'
                 ;;
 
         fedora)
-            ___x_cmd_docker_simg_download --imagetype "$imgtype" || return $?
+            ___x_cmd_docker_simg_download --if0 --imagetype "$imgtype" || return $?
             ___x_cmd docker refit               \
                 --from fedora                   \
                 --to "$x_"                      \
                 --userabc                       \
-                --dnf 'curl fzf jq sqlite3'
+                --dnf 'curl fzf jq yq sqlite3'
                 ;;
 
         arch)
-            ___x_cmd_docker_simg_download --imagetype "$imgtype" || return $?
+            ___x_cmd_docker_simg_download --if0 --imagetype "$imgtype" || return $?
             ___x_cmd docker refit               \
                 --from archlinux --to "$x_"     \
                 --userabc                       \
-                --pacman 'curl fzf jq sqlite3'
+                --pacman 'curl fzf jq yq sqlite3'
+                ;;
+
+        nixos)
+            ___x_cmd_docker_simg_download --if0 --imagetype "$imgtype" || return $?
+            ___x_cmd docker refit               \
+                --from nixos/nix --to "$x_"     \
+                --userabc                       \
+                --nix 'curl fzf jq yq sqlite3'
                 ;;
 
     esac
@@ -128,18 +142,17 @@ ___x_cmd_docker_simg_prepare___imgname_(){
     local sys="$2"
     local pkg="$3"
 
-
-    x_="s/$imgtype"
+    ___x_cmd_docker_snap___imageprefix_ "$imgtype"
 
     docker:debug --img "$imgtype" --sys "$sys" --pkg "$pkg" --name "$x_" "Generate image name"
 
     case "$sys" in
         apt|apk|dnf|pacman)     ;;
-        *)                      x_="$x_/$sys" ;;
+        *)                      x_="${x_}-${sys}" ;;
     esac
 
     # using -- to seperate pkgs ...
-    x_="$x_/$( ___x_cmd_cmds awk -v "n=$pkg" '
+    x_="${x_}-$( ___x_cmd_cmds awk -v "n=$pkg" '
         BEGIN{
             gsub("https://", "", n)
             gsub("github.com",      "gh", n)
@@ -147,6 +160,8 @@ ___x_cmd_docker_simg_prepare___imgname_(){
             gsub("codeberg.org",    "cb", n)
             gsub("[=:\\/-@.]", "_", n);
             n = tolower(n);
+
+            gsub( "(^[_]+)|([_]+$)", "", n )
             print n
         }
     ')"

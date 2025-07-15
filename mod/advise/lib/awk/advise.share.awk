@@ -128,11 +128,11 @@ function comp_advise_get_ref(obj, kp,        r, msg, i, l){
 
 function comp_advise_get_ref_inner(obj, kp, filepath,       _, msg){
     if (aobj_str_is_null(filepath)) return "Not found referenced file"
-    if ( filepath ~ "^x-cmd-advise://" ) msg = " . Try to => x advise man update x-cmd"
+    if ( filepath ~ "^x-cmd-advise://" ) msg = "\nTry to => `x advise man update x-cmd`"
     filepath = comp_advise_get_ref_adv_jso_filepath( filepath )
     jref_rm(obj, kp)
     jiparse2leaf_fromfile( _, kp, filepath )
-    if ( cat_is_filenotfound() ) return "Not found such advise jso file - " filepath msg # " kp["kp"]"
+    if ( cat_is_filenotfound() ) return "Not found such advise jso file => " filepath msg # " kp["kp"]"
     # cp_cover(obj, kp, _, kp)
     cp(obj, kp, _, kp)
     return true

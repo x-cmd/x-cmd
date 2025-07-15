@@ -101,3 +101,12 @@ function gongli_wd_name( id,    style ){
 
     return gongli_wd_name_zhou( id )
 }
+
+function gongli_wd_name3( id,    style ){
+    if (style == GONGLI_WD_STYLE_EN)        return gongli_wd_name_en( id )      "  "
+    if (style == GONGLI_WD_STYLE_XINGQI)    return gongli_wd_name_xingqi( id )
+    if (style == GONGLI_WD_STYLE_LIBAI)     return gongli_wd_name_libai( id )
+    if (style == GONGLI_WD_STYLE_YAO)       return gongli_wd_name_yao( id )     "  "
+
+    return gongli_wd_name_zhou( id )    "  "
+}

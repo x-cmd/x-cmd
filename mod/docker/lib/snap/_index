@@ -1,9 +1,9 @@
 
 xrc:mod:lib     docker      snap/util
 
-___X_CMD_DOCKER_APK_CACHE="$___X_CMD_ROOT_CACHE/alpine/apk/cache"
-___X_CMD_DOCKER_APT_CACHE="$___X_CMD_ROOT_CACHE/alpine/apt/cache"
-___X_CMD_DOCKER_DNF_CACHE="$___X_CMD_ROOT_CACHE/alpine/dnf/cache"
+# ___X_CMD_DOCKER_APK_CACHE="$___X_CMD_ROOT_CACHE/alpine/apk/cache"
+# ___X_CMD_DOCKER_APT_CACHE="$___X_CMD_ROOT_CACHE/alpine/apt/cache"
+# ___X_CMD_DOCKER_DNF_CACHE="$___X_CMD_ROOT_CACHE/alpine/dnf/cache"
 
 # use case:
 # xd snap jq
@@ -21,7 +21,9 @@ ___x_cmd_docker_snap(){
 
     local name=""
     local image=""
-    local imagetype="alpine"
+    local imagetype=""
+    imagetype="$(___x_cmd docker --cur get snapdefault 2>/dev/null)"
+    [ -n "$imagetype" ] || imagetype="alpine"
 
     local x_=""
 
@@ -43,7 +45,7 @@ ___x_cmd_docker_snap(){
             -d|--daemon)            daemon=1;           shift 1 ;;
 
             -v|--volume)            arg:add START_OPTS "$1"      "$2" ;   arg:2:shift ;;
-            -p|--port)              arg:add START_OPTS --port    "$2" ;   arg:2:shift ;;
+            -p|--port|--publish)    arg:add START_OPTS --publish "$2" ;   arg:2:shift ;;
 
             --net|--network)        arg:add START_OPTS --network "$2" ;   arg:2:shift ;;
 
@@ -60,13 +62,16 @@ ___x_cmd_docker_snap(){
             -r|--root)              arg:add RUN_OPTS --user root ;        shift 1 ;;
 
             --*)                    arg:invalid:ret:64 ;;
-            -*)                     image="${___X_CMD_ALPINE_PREFIX}$1"; shift 1 ;;     # Inner use, don't document.
+            -*)                     image="${___X_CMD_DOCKER_IMAGE_PREFIX}$1"; shift 1 ;;     # Inner use, don't document.
 
             *)                      break ;;
         esac
     done
 
-    [ -z "$name" ] || ___x_cmd str startswith "$name" "${___X_CMD_ALPINE_PREFIX}-"      || N=docker M="Please provide container name with prefix -> ${___X_CMD_ALPINE_PREFIX}-" log:ret:64
+    [ -z "$name" ] || ___x_cmd str startswith "$name" "${___X_CMD_DOCKER_IMAGE_PREFIX}"      || {
+        name="${___X_CMD_DOCKER_IMAGE_PREFIX}${name}"
+    } # N=docker M="Please provide container name with prefix -> ${___X_CMD_ALPINE_PREFIX}-" log:ret:64
+
     ! { [ -n "$daemon" ] && [ -z "$name" ]; }                                           || N=docker M="Please provide container name for daemon -> $daemon" log:ret:64
 
     [ $# -gt 0 ]    || set -- bash
@@ -80,29 +85,37 @@ ___x_cmd_docker_snap(){
             ;;
     esac
 
-    ___x_cmd_docker_snap___parse__ "$REFIT_CMD" "$imagetype"
+    # ___x_cmd_docker_snap___parse__ "$REFIT_CMD" "$imagetype" || {
+    #     errcode=$?
+    #     docker:warn "Unknown command recipe in ___x_cmd_docker_snap -> $REFIT_CMD"
+    #     return $errcode
+    # }
 
-    if [ -n "$usecache" ]; then
-        [ -n "$REFIT_SYS" ] || {    ___x_cmd_docker_snap___defaultpkgsys_ "$imagetype";     REFIT_SYS="$x_";    }
-        case "$REFIT_SYS" in
-            apk)            arg:add START_OPTS -v "$___X_CMD_DOCKER_APK_CACHE":/etc/apk/cache ;;
-            apt)            arg:add START_OPTS -v "$___X_CMD_DOCKER_APT_CACHE":/var/cache/apt
-                            # arg:add START_OPTS -v "$___X_CMD_DOCKER_APT_CACHE":/var/cache/apt
-                            ;;
+    # if [ -n "$usecache" ]; then
+    #     [ -n "$REFIT_SYS" ] || {    ___x_cmd_docker_snap___defaultpkgsys_ "$imagetype";     REFIT_SYS="$x_";    }
+    #     case "$REFIT_SYS" in
+    #         apk)            arg:add START_OPTS -v "$___X_CMD_DOCKER_APK_CACHE":/etc/apk/cache ;;
+    #         apt)            arg:add START_OPTS -v "$___X_CMD_DOCKER_APT_CACHE":/var/cache/apt
+    #                         # arg:add START_OPTS -v "$___X_CMD_DOCKER_APT_CACHE":/var/cache/apt
+    #                         ;;
 
-            dnf)            arg:add START_OPTS -v "$___X_CMD_DOCKER_DNF_CACHE":/var/cache/dnf ;;
-        esac
-    fi
+    #         dnf)            arg:add START_OPTS -v "$___X_CMD_DOCKER_DNF_CACHE":/var/cache/dnf ;;
+    #     esac
+    # fi
 
     if [ -z "$image" ]; then
-        ___x_cmd_docker_simg_prepare_ --imagetype "$imagetype" "${REFIT_SYS}/${REFIT_PKG}:${REFIT_CMD}"    || return $?;
+        ___x_cmd_docker_simg_prepare_ --imagetype "$imagetype" "${REFIT_CMD}"    || return $?;
         image="$x_"
     else
-        :
+        N=docker M="Currently unsupported running cmd with image specified" log:ret:64
         # ___x_cmd_docker_snap___imageprefix_ "$imagetype" || return $?
         # ___x_cmd str startswith "$image" "${x_}-"     \
         #     || N=docker M="Image name should be prefixed with '${x_}-'" log:ret:64
     fi
+
+    case "${REFIT_CMD}" in
+        *:*)        REFIT_CMD="${REFIT_CMD#*:}"
+    esac
 
     ___x_cmd_docker_snap___run "${REFIT_CMD}" "$@"
 }
@@ -128,6 +141,7 @@ ___x_cmd_docker_snap___run(){
     local IFS=' '
     docker:debug "docker command -> ___x_cmd docker run $START_OPTS --name ${name} $RUN_OPTS $image"
     docker:debug "command argument -> $*"
+
     eval ___x_cmd docker run         "$START_OPTS" --name "${name}"          "$RUN_OPTS" "$image" "\"\$@\""
     # ___x_cmd_docker_snap___eval         ___x_cmd docker run         "$START_OPTS" --name "${name}"          "$RUN_OPTS" "$image" "\"\$@\""
 }

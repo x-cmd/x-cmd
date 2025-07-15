@@ -8,22 +8,28 @@ ___x_cmd_docker_snap___parse__(){
             REFIT_CMD="${data##*:}"
             data="${data%:"$REFIT_CMD"}"
             ;;
+        *)
+            REFIT_CMD="$data"
+            ___x_cmd_docker_snaplookup_ "$data" "$imgtype" || return $?
+            data="$x_"
+            ;;
     esac
 
     case "$data" in
-        apk/*|apt/*|dnf/*|go/*|npm/*|cargo/*|pip/*|pixi/*|asdf/*)
+        apk/*|apt/*|dnf/*|go/*|npm/*|cargo/*|pip/*|pixi/*|asdf/*|nix/*)
             REFIT_SYS="${data%%/*}"
             REFIT_PKG="${data#*/}"
+            return 0
             ;;
         */*)
             N=docker M="Unknown -> $data" log:ret:64 ;;
-
         *)
             REFIT_PKG="$data"
             case "$imgtype" in
                 alpine)     REFIT_SYS=apk       ;;
                 fedora)     REFIT_SYS=dnf       ;;
                 arch)       REFIT_SYS=pacman    ;;
+                nixos)      REFIT_SYS=nix       ;;
                 *)          REFIT_SYS=apt       ;;
             esac
             ;;
@@ -40,6 +46,7 @@ ___x_cmd_docker_snap___getname_(){
         ubuntu)     imagetype=xub ;;
         kali)       imagetype=xka ;;
         arch)       imagetype=xar ;;
+        nixos)      imagetype=xni ;;
 
         *)          imagetype=xd  ;;
     esac
@@ -57,6 +64,7 @@ ___x_cmd_docker_snap___defaultpkgsys_(){
         arch)                               x_=--yay ;;
         debian|ubuntu|kali)                 x_=--apt ;;
         fedora|rocky|almal|centos|redhat)   x_=--dnf ;;
+        nixos)                              x_=--nix ;;
     esac
 }
 
@@ -68,6 +76,56 @@ ___x_cmd_docker_snap___imageprefix_(){
         ubuntu)     x_=xub     ;;
         kali)       x_=xka     ;;
         arch)       x_=xar     ;;
+        nixos)      x_=xni     ;;
         *)          x_=""; return 1 ;;
     esac
+}
+
+alias docker:snap:exitif130orfound='
+    case "$?" in
+        130)        return 130
+    esac
+    [ -z "$x_" ] || return 0
+'
+
+
+___x_cmd_docker_snaplookup(){
+    local x_=""
+    ___x_cmd_docker_snaplookup_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_docker_snaplookup_(){
+    local cmd="$1"
+    local imgtype="$2"
+
+    ___x_cmd install snaplookup_ "$cmd" "$imgtype"
+    docker:snap:exitif130orfound
+
+    ___x_cmd install snaplookup_ "$cmd"  go
+    if [ -n "$x_" ]; then
+        case "$x_" in
+            *@*)    ;;
+            *)      x_="${x_}@latest"
+        esac
+    fi
+    docker:snap:exitif130orfound
+
+    ___x_cmd install snaplookup_ "$cmd"  rust
+    docker:snap:exitif130orfound
+
+    ___x_cmd install snaplookup_ "$cmd"  deno
+    docker:snap:exitif130orfound
+
+    ___x_cmd install snaplookup_ "$cmd"  pixi
+    docker:snap:exitif130orfound
+
+    ___x_cmd install snaplookup_ "$cmd"  npm
+    docker:snap:exitif130orfound
+
+    ___x_cmd install snaplookup_ "$cmd"  pip
+    docker:snap:exitif130orfound
+
+    # ___x_cmd_install_lookupsnappkg_fromruleset_ "$cmd"  pixi
+    return 1
 }

@@ -1,0 +1,95 @@
+# shellcheck shell=dash
+
+___x_cmd_openai_model(){
+    [ $# -gt 0 ]    ||  set - ls
+
+    local op="$1"; shift
+    case "$op" in
+        ls|ll|get|set)  ___x_cmd_openai_model_"$op" "$@"            ;;
+        --help|-h)      ___x_cmd help -m openai model               ;;
+        *)              ___x_cmd help -m openai model >&2; return 1 ;;
+    esac
+}
+
+___x_cmd_openai_model_get(){
+    local X_help_cmd='___x_cmd help -m openai model get'; help:arg:parse
+    local model=""; ___x_cmd_openai_cur model:=  2>/dev/null
+    printf "%s\n" "$model"
+}
+
+___x_cmd_openai_model_set(){
+    local X_help_cmd='___x_cmd help -m openai model set'; help:arg-null:parse
+    local model="$1"
+    ___x_cmd_openai_cfg set model="$model"
+}
+
+___x_cmd_openai_model_ll(){
+    local X_help_cmd='___x_cmd help -m openai model ll'; help:arg:parse
+    ___x_cmd_openai_model_ls___csv | ___x_cmd csv static_tab
+}
+
+___x_cmd_openai_model_ls(){
+    [ $# -gt 0 ]    ||  set - --app
+
+    local op="$1"; shift
+    case "$op" in
+        --json|--csv|--app|--fast)
+                    ___x_cmd_openai_model_ls___"${op#--}" "$@" ;;
+        --help|-h)  ___x_cmd help -m openai model ls ;;
+        *)          ___x_cmd help -m openai model ls >&2; return 64 ;;
+    esac
+}
+
+___x_cmd_openai_model_ls___app(){
+    local model=""
+    model="$( ___x_cmd_openai_model_ls___csv | ___x_cmd csv app --return print )" || return $?
+    model="${model%%,*}"
+    [ -n "$model" ] || return $?
+
+    local id=
+    ___x_cmd ui select id "NEXT" \
+        "Set the [model=$model] as the default model for OpenAI" \
+        "Stdout the model name" \
+        "return" || return $?
+
+    case "$id" in
+        1)  ___x_cmd_openai_cfg model="$model"
+            openai:info "Successfully set [model=$model] as the default model for OpenAI"
+            ;;
+        2)  printf "%s\n" "$model" ;;
+        *)  return ;;
+    esac
+}
+
+___x_cmd_openai_model_ls___csv(){
+    ___x_cmd_openai_model_ls___json | ___x_cmd jo .data \
+        | ___x_cmd jo 2c .id .object .created .owned_by \
+        | ___x_cmd awk -v FS=, '($0 ~ "gpt|^o[0-9]"){ print $0; }' \
+        | ___x_cmd csv header --add "Id,Object,Created,Owned By"
+}
+
+___x_cmd_openai_model_ls___json(){
+    ___x_cmd_openai_model_ls___raw
+}
+
+___x_cmd_openai_model_ls___fast(){
+    local apikey=; local proxy=
+    ___x_cmd_openai_cur apikey:= proxy:= 2>/dev/null
+
+    if [ -z "$apikey" ] || [ ! -f "$( ___x_cmd ccmd which ___x_cmd proxy runifset "$proxy" ___x_cmd curl --fail -H "Authorization: Bearer $apikey" "$___X_CMD_OPENAI_DEFAULT_ENDPOINT/v1/models" )" ]; then
+        printf "%s\n" gpt-4.1 gpt-4.1-mini gpt-4.1-nano gpt-4.5-preview chatgpt-4o-latest gpt-4o gpt-4o-mini gpt-4-turbo o1-mini o1-preview
+    else
+        ___x_cmd_openai_model_ls___csv | ___x_cmd awk -v FS=, 'NR>1{ print $1; }'
+    fi
+}
+
+___x_cmd_openai_model_ls___raw(){
+    ___x_cmd_openai_has_apikey || return $?
+
+    local apikey=; local proxy=
+    ___x_cmd_openai_cur apikey:= proxy:= 2>/dev/null
+
+    ___x_cmd ccmd 1d -- ___x_cmd proxy runifset "$proxy" ___x_cmd curl --fail \
+        -H "Authorization: Bearer $apikey" \
+        "$___X_CMD_OPENAI_DEFAULT_ENDPOINT/v1/models"
+}

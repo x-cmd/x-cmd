@@ -288,6 +288,7 @@ function escape_char033(s){
 }
 
 function log_mul_msg( msg ){
+    if ( msg ~ "^\\|\n" ) return msg
     msg = "|\n" msg
     gsub( "\n", "\n" ___X_CMD_LOG_YML_INDENT "    ", msg )
     return msg
@@ -310,6 +311,7 @@ function log_error( mod, msg ){
 }
 
 function log_level( level, mod, msg, c, c_bg, c_msg ){
+    if (msg ~ "\n") msg = log_mul_msg( msg )
     printf("%s%s %s%s%s%s%s|%s: %s%s%s\n", ___X_CMD_LOG_YML_INDENT "-", ___X_CMD_LOG_YML_PID_LIST, \
         c, c_bg, level, ___X_CMD_LOG_END, c, mod, \
         c_msg, msg, ___X_CMD_LOG_END ) >"/dev/stderr"

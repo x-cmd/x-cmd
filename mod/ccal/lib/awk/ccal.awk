@@ -64,8 +64,9 @@ function ccal_add(  \
     ccal[ kp, "xiuxi" ] = xiuxi
     ccal[ kp, "related" ] = related
 
-    ccal[ kp, "holiday_gongli" ] = get_gongli_holiday_zh( ccal[ kp, "m" ], ccal[ kp, "d" ], ccal[ kp, "wd" ] )
-    ccal[ kp, "holiday_lunar" ] = lunar_get_festival( ccal[ kp, "lm" ], ccal[ kp, "ld" ] )
+    ccal[ kp, "holiday_gongli" ]        = get_gongli_holiday_zh( ccal[ kp, "m" ], ccal[ kp, "d" ], ccal[ kp, "wd" ] )
+    ccal[ kp, "holiday_lunar" ]         = lunar_get_festival_short( ccal[ kp, "lm" ], ccal[ kp, "ld" ] )
+    ccal[ kp, "holiday_lunar_desc" ]    = lunar_get_festival_desc( ccal[ kp, "lm" ], ccal[ kp, "ld" ] )
 
     return kp
 }
@@ -119,6 +120,7 @@ function ccal_holiday_gongli(    kp ) {  return ccal[ kp, "holiday_gongli" ];   
 
 function ccal_is_holiday_lunar( kp ) {  return ccal[ kp, "holiday_lunar" ] != "";    }
 function ccal_holiday_lunar(    kp ) {  return ccal[ kp, "holiday_lunar" ];    }
+function ccal_holiday_lunar_desc(    kp ) {  return ccal[ kp, "holiday_lunar_desc" ];    }
 
 
 function ccal_is_jiaqi( kp ) {

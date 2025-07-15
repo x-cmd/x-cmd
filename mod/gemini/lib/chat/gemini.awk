@@ -14,6 +14,13 @@ function gemini_gen_generationConfig(temperature,         _temperature){
     return ", \"generationConfig\": { " _temperature " }"
 }
 
+function gemini_gen_tools( use_google_search,         _tools){
+    if ( use_google_search == true ) {
+        _tools = ", \"tools\": [{ \"google_search\": {} }]"
+    }
+    return _tools
+}
+
 function gemini_gen_history_str( history_obj, i,      _text_res, _text_req, _text_finishReason) {
     _text_req = chat_history_get_req_text(history_obj,  Q2_1, i)
     _text_res = chat_history_get_res_text(history_obj,  Q2_1, i)
@@ -34,12 +41,12 @@ function gemini_gen_minion_content_str(minion_obj,      context, example, conten
 
 function gemini_gen_safe_setting_str(             _safe_setting){
     _safe_setting = "\"safetySettings\": [     {       \"category\": \"HARM_CATEGORY_SEXUALLY_EXPLICIT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_HATE_SPEECH\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_HARASSMENT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     },     {       \"category\": \"HARM_CATEGORY_DANGEROUS_CONTENT\",       \"threshold\": \"BLOCK_ONLY_HIGH\"     }    ],"
-    gsub(/BLOCK_ONLY_HIGH/, "BLOCK_NONE", _safe_setting) # BLOCK_ONLY_HIGH, BLOCK_ONLY_HIGH
+    gsub(/BLOCK_ONLY_HIGH/, "BLOCK_NONE", _safe_setting) # BLOCK_ONLY_HIGH
     return _safe_setting
 }
 
 function gemini_req_from_creq(history_obj, minion_obj, question, creq_obj, creq_kp,         str, i, l, _history_str, promote_content, \
-    promote_system_json, _filelist_str, _safe_setting, _temperature, config, _media_str ){
+    promote_system_json, _filelist_str, _safe_setting, _temperature, _config, _media_str, _tools, _use_google_search ){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
         str = gemini_gen_history_str(history_obj, i)
@@ -55,7 +62,10 @@ function gemini_req_from_creq(history_obj, minion_obj, question, creq_obj, creq_
     if (_filelist_str != "") _filelist_str = gemini_gen_unit_str(_filelist_str)
 
     _temperature    = minion_temperature( minion_obj, MINION_KP )
-    if (_temperature != "") config = gemini_gen_generationConfig(_temperature)
+    if (_temperature != "") _config = gemini_gen_generationConfig(_temperature)
+
+    # _use_google_search = true
+    _tools = gemini_gen_tools( _use_google_search )
 
     if ( ! chat_str_is_null(promote_content))  USER_LATEST_QUESTION = promote_content
     else USER_LATEST_QUESTION = question
@@ -64,11 +74,7 @@ function gemini_req_from_creq(history_obj, minion_obj, question, creq_obj, creq_
 
     _media_str      = gemini_gen_media_str(creq_obj, creq_kp)
 
-    # return sprintf("{ %s \"contents\":[ %s {\"parts\":[ %s %s {\"text\": %s} %s ],\"role\":\"user\"}] %s }\n", \
-    #     _safe_setting, _history_str, promote_system_json, _filelist_str, jqu(USER_LATEST_QUESTION), _media_str, config)
-
-    # FIX: mawk sprintf buffer size=8192
-    return "{" _safe_setting " \"contents\":[ " _history_str " {\"parts\":[ " promote_system_json " " _filelist_str " {\"text\": " jqu(USER_LATEST_QUESTION) "} " _media_str " ],\"role\":\"user\"}] " config " }\n"
+    return "{" _safe_setting " \"contents\":[ " _history_str " {\"parts\":[ " promote_system_json " " _filelist_str " {\"text\": " jqu(USER_LATEST_QUESTION) "} " _media_str " ],\"role\":\"user\"}] " _config  _tools " }\n"
 }
 
 # extract ...

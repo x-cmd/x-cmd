@@ -33,15 +33,18 @@ BEGIN{
     else                            WD_STYLE_CODE = 1
 }
 
-function draw_lunar_wd( start,      i, w ){
+function draw_lunar_wd( start,      i, w, s, SP ){
+    SP = " " "\033[0m"
+
     printf(LEADING)
     if (start == "")    start = 0
     for (i=start; i<=start + 6; ++i) {
         w = i % 7
+        s = gongli_wd_name3( w, WD_STYLE_CODE )
         if ( (w == 0) || (w == 6) ) {
-            printf("\033[0;31m" "%s" SP,        gongli_wd_name( w, WD_STYLE_CODE ))
+            printf("\033[0;31m" "%s" SP,   s )
         } else {
-            printf("\033[0m%s" SP,              gongli_wd_name( w, WD_STYLE_CODE ))
+            printf("\033[0m%s" SP,         s )
         }
     }
 }
@@ -66,6 +69,8 @@ function draw_lunar_lday( datekp ){
         return "\033[31m" ccal_jieqi( datekp )            " " "\033[0m" "  "
     } else if ( ccal_is_holiday_gongli( datekp ) ) {
         return "\033[31m" ccal_holiday_gongli( datekp )   " " "\033[0m" "  "
+    } else if ( ccal_is_holiday_lunar( datekp ) ) {
+        return "\033[31m" ccal_holiday_lunar( datekp )   " " "\033[0m" "  "
     } else if ( ccal_ld( datekp ) == 1 ) {
         if ( ccal_ldaycount( datekp ) == 30 ) {
             return "\033[31;1m" ccal_get( datekp, "lm-zh" ) "\033[0m" " "
@@ -183,8 +188,8 @@ function draw_info( _d, kp, o ){
 
 function draw_info_lunar( kp,        _line ){
     _line = ""
-    if (ccal_is_jieqi( kp ) )           _line = _line "[节气] " ccal_jieqi( kp ) " "
-    if (ccal_is_holiday_lunar( kp ) )   _line = _line "[" ccal_holiday_lunar( kp ) "] "
+    if (ccal_is_jieqi( kp ) )           _line = _line "[节气] " ccal_jieqi( kp ) " " lunar "  \033[2m" lunar_get_jieqi_desc( ccal_jieqi( kp ) ) "\033[0m"
+    if (ccal_is_holiday_lunar( kp ) )   _line = _line "[" ccal_holiday_lunar( kp ) "] " ccal_holiday_lunar_desc( kp )
     printf("  %s\n", _line)
 
     if (ccal_is_holiday_lunar( kp ) ) _line = _line "  " ccal_holiday_lunar( kp ) " "

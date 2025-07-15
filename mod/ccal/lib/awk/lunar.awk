@@ -1,22 +1,49 @@
+BEGIN{
+    LUNAR_FESTIVAL[ 1 ,  1 ]    = "春联, 守岁, 鞭炮, 拜年, 利是压岁"
+    LUNAR_FESTIVAL[ 1 , 15 ]    = "观花灯, 猜灯谜, 吃元宵, 舞龙狮"
+    LUNAR_FESTIVAL[ 2 ,  1 ]    = "春社, 土地诞, 祭祀土地, 祈求丰收"
+    LUNAR_FESTIVAL[ 2 ,  2 ]    = "理发, 龙须面, 祈求风调雨顺"
+    LUNAR_FESTIVAL[ 2 , 15 ]    = "百花生日: 赏花, 祭花神, 踏青游春"
+    LUNAR_FESTIVAL[ 3 ,  3 ]    = "黄帝祭, 轩辕节; 踏青游春, 临水宴饮, 曲水流觞"
+    LUNAR_FESTIVAL[ 5 ,  5 ]    = "屈原祭, 吃粽子, 赛龙舟, 挂艾草, 佩香囊"
+    LUNAR_FESTIVAL[ 7 ,  7 ]    = "牛郎织女, 乞巧节; 穿针引线, 祈求巧艺"
+    LUNAR_FESTIVAL[ 7 , 15 ]    = "盂兰盆节, 祭祖, 放河灯"
+    LUNAR_FESTIVAL[ 8 , 15 ]    = "团聚, 赏月, 桂花, 灯笼"
+    LUNAR_FESTIVAL[ 9 ,  9 ]    = "登高, 赏菊, 插茱萸, 饮菊花酒"
+    LUNAR_FESTIVAL[ 10,  1 ]    = "送寒衣, 祭祀祖先, 为亡者送冬衣"
+    LUNAR_FESTIVAL[ 10, 15 ]    = "水官诞, 祭祀水官, 祈求平安"
+    LUNAR_FESTIVAL[ 12,  8 ]    = "佛祖成道, 燃灯, 喝腊八粥, 祭祖, 敬神, 感恩"
+    LUNAR_FESTIVAL[ 12, 23 ]    = "小年(官); 送灶神, 糖瓜粘, 扫尘, 准备过年"
+    LUNAR_FESTIVAL[ 12, 24 ]    = "小年(民); 送灶神, 糖瓜粘, 扫尘, 准备过年"
+    LUNAR_FESTIVAL[ 12, 25 ]    = "小年(船); 送灶神, 糖瓜粘, 扫尘, 准备过年"
+}
 
 BEGIN{
-    LUNAR_FESTIVAL[ 1 ,  1 ]    = "春节"
-    LUNAR_FESTIVAL[ 1 , 15 ]    = "元宵"
-    LUNAR_FESTIVAL[ 2 ,  1 ]    = "中和" # "春社 土地诞"
-    LUNAR_FESTIVAL[ 2 ,  2 ]    = "龙抬头" # "春社 土地诞"
-    LUNAR_FESTIVAL[ 2 , 15 ]    = "花朝" # "春社 土地诞"
-    LUNAR_FESTIVAL[ 3 ,  3 ]    = "上巳";           LUNAR_FESTIVAL_DESC[ 3 ,  3 ]    = "黄帝祭, 轩辕节; 上巳, 可踏青游春, 临水宴饮, 曲水流觞"
-    LUNAR_FESTIVAL[ 5 ,  5 ]    = "端午"
-    LUNAR_FESTIVAL[ 7 ,  7 ]    = "七夕"
-    LUNAR_FESTIVAL[ 7 , 15 ]    = "中元"
-    LUNAR_FESTIVAL[ 8 , 15 ]    = "中秋"
-    LUNAR_FESTIVAL[ 9 ,  9 ]    = "重阳"
-    LUNAR_FESTIVAL[ 10,  1 ]    = "寒衣"
-    LUNAR_FESTIVAL[ 10, 15 ]    = "下元"
-    LUNAR_FESTIVAL[ 12,  8 ]    = "腊八"
-    LUNAR_FESTIVAL[ 12, 23 ]    = "祭灶-小年(官)"
-    LUNAR_FESTIVAL[ 12, 24 ]    = "祭灶-小年(民)"
-    LUNAR_FESTIVAL[ 12, 25 ]    = "祭灶-小年(船)"
+    LUNAR_FESTIVAL_S[ 1 ,  1 ]    = "春节"
+    LUNAR_FESTIVAL_S[ 1 , 15 ]    = "元宵"
+    LUNAR_FESTIVAL_S[ 2 ,  1 ]    = "中和" # "春社 土地诞"
+    LUNAR_FESTIVAL_S[ 2 ,  2 ]    = "龙头" # "春社 土地诞"
+    LUNAR_FESTIVAL_S[ 2 , 15 ]    = "花朝" # "春社 土地诞"
+    LUNAR_FESTIVAL_S[ 3 ,  3 ]    = "上巳";           LUNAR_FESTIVAL_DESC[ 3 ,  3 ]    = "黄帝祭, 轩辕节; 上巳, 可踏青游春, 临水宴饮, 曲水流觞"
+    LUNAR_FESTIVAL_S[ 5 ,  5 ]    = "端午"
+    LUNAR_FESTIVAL_S[ 7 ,  7 ]    = "七夕"
+    LUNAR_FESTIVAL_S[ 7 , 15 ]    = "中元"
+    LUNAR_FESTIVAL_S[ 8 , 15 ]    = "中秋"
+    LUNAR_FESTIVAL_S[ 9 ,  9 ]    = "重阳"
+    LUNAR_FESTIVAL_S[ 10,  1 ]    = "寒衣"
+    LUNAR_FESTIVAL_S[ 10, 15 ]    = "下元"
+    LUNAR_FESTIVAL_S[ 12,  8 ]    = "腊八"
+    LUNAR_FESTIVAL_S[ 12, 23 ]    = "祭灶"
+    LUNAR_FESTIVAL_S[ 12, 24 ]    = "祭灶"
+    LUNAR_FESTIVAL_S[ 12, 25 ]    = "祭灶"
+}
+
+function lunar_get_festival_short( m, d,   n1, n2,     r ){
+    if (( r = LUNAR_FESTIVAL_S[ int(m), int(d) ] ) != "")  return r
+
+    # TODO: how to calculate 寒食和小寒食 ( 清明节 1, 2 )
+    # TODO: 除夕, 春节前一天
+    return ""
 }
 
 function lunar_get_festival( m, d,   n1, n2,     r ){
@@ -30,6 +57,38 @@ function lunar_get_festival( m, d,   n1, n2,     r ){
 function lunar_get_festival_desc( m, d,   n1, n2,     r ){
     if (( r = LUNAR_FESTIVAL_DESC[ int(m), int(d) ] ) != "")  return r
     return ( lunar_get_festival( m, d ) )
+}
+
+
+BEGIN{
+    JIEQI_DESC[ "立春" ] = "东风解冻，万物复苏"
+    JIEQI_DESC[ "雨水" ] = "春雨润物，草木萌动"
+    JIEQI_DESC[ "惊蛰" ] = "春雷乍动，万物生长"
+    JIEQI_DESC[ "春分" ] = "昼夜平分，春色正中"
+    JIEQI_DESC[ "清明" ] = "清风明月，踏青祭祖"
+    JIEQI_DESC[ "谷雨" ] = "雨生百谷，播种新耕"
+    JIEQI_DESC[ "立夏" ] = "万物并秀，夏意渐浓"
+    JIEQI_DESC[ "小满" ] = "麦穗初齐，物至于此"
+    JIEQI_DESC[ "芒种" ] = "有芒之谷，忙于插秧"
+    JIEQI_DESC[ "夏至" ] = "日长之至，万物繁茂"
+    JIEQI_DESC[ "小暑" ] = "温风至，暑气渐盛"
+    JIEQI_DESC[ "大暑" ] = "炎炎盛夏，骄阳似火"
+    JIEQI_DESC[ "立秋" ] = "凉风至，万物渐收"
+    JIEQI_DESC[ "处暑" ] = "暑气渐消，秋意初现"
+    JIEQI_DESC[ "白露" ] = "露凝而白，秋意渐浓"
+    JIEQI_DESC[ "秋分" ] = "昼夜均分，秋色平分"
+    JIEQI_DESC[ "寒露" ] = "露气寒冷，草木黄落"
+    JIEQI_DESC[ "霜降" ] = "初霜降临，万物肃杀"
+    JIEQI_DESC[ "立冬" ] = "水始冰，地始冻"
+    JIEQI_DESC[ "小雪" ] = "寒气渐增，初雪未盛"
+    JIEQI_DESC[ "大雪" ] = "雪深千里，天地银装"
+    JIEQI_DESC[ "冬至" ] = "白昼最短，阳气初生"
+    JIEQI_DESC[ "小寒" ] = "寒气渐深，岁暮天寒"
+    JIEQI_DESC[ "大寒" ] = "岁寒隆冬，冰封大地"
+}
+
+function lunar_get_jieqi_desc( key ){
+    return JIEQI_DESC[ key ]
 }
 
 BEGIN{

@@ -11,26 +11,39 @@ ___x_cmd_gemini_model(){
     esac
 }
 
-___x_cmd_gemini_model_ll(){
-    ___x_cmd_gemini_model_ls_csv | ___x_cmd csv static_tab
+___x_cmd_gemini_model_get(){
+    local X_help_cmd='___x_cmd help -m gemini model get'; help:arg:parse
+    local model=""
+    ___x_cmd_gemini_cur model:=  2>/dev/null
+    printf "%s\n" "$model"
 }
 
+___x_cmd_gemini_model_set(){
+    local X_help_cmd='___x_cmd help -m gemini model set'; help:arg-null:parse
+    local model="$1"
+    ___x_cmd gemini --cfg set model="$model"
+}
+
+___x_cmd_gemini_model_ll(){
+    local X_help_cmd='___x_cmd help -m gemini model ll'; help:arg:parse
+    ___x_cmd_gemini_model_ls___csv | ___x_cmd csv static_tab
+}
 
 ___x_cmd_gemini_model_ls(){
     [ $# -gt 0 ]    ||  set - --app
 
     local op="$1";      shift
     case "$op" in
-        --app|--csv|--json)
-                        ___x_cmd_gemini_model_ls_"${op#*--}" "$@" ;;
-        --fast)         ___x_cmd_gemini_model_ls___fast ;;
-        -h|--help)      ___x_cmd help -m gemini model ;;
+        --app|--csv|--json|--fast)
+                        ___x_cmd_gemini_model_ls___"${op#*--}" "$@" ;;
+        -h|--help)      ___x_cmd help -m gemini model ls ;;
+        *)              ___x_cmd help -m gemini model ls >&2; return 64 ;;
     esac
 }
 
-___x_cmd_gemini_model_ls_app(){
+___x_cmd_gemini_model_ls___app(){
     local model=
-    model="$( ___x_cmd_gemini_model_ls_csv | ___x_cmd csv app --return print )" || return $?
+    model="$( ___x_cmd_gemini_model_ls___csv | ___x_cmd csv app --return print )" || return $?
     model="${model%%,*}"
     [ -n "$model" ] || return $?
 
@@ -49,32 +62,18 @@ ___x_cmd_gemini_model_ls_app(){
     esac
 }
 
-___x_cmd_gemini_model_ls_csv(){
-    ___x_cmd_gemini_model_request    | ___x_cmd jo .models \
-                                     | ___x_cmd jo 2c .name .description .supportedGenerationMethods  .inputTokenLimit .outputTokenLimit .temperature .topP .topK  \
-                                     | ___x_cmd cawk -m csv -f "$___X_CMD_ROOT_MOD/csv/lib/awk/csva.awk" \
-                                                            -f "$___X_CMD_ROOT_MOD/gemini/lib/model/model_ls.awk"
-
+___x_cmd_gemini_model_ls___csv(){
+    ___x_cmd_gemini_model_ls___json  | ___x_cmd jo .models \
+        | ___x_cmd jo 2c .name .description .supportedGenerationMethods .inputTokenLimit .outputTokenLimit .temperature .topP .topK  \
+        | ___x_cmd cawk -m csv -f "$___X_CMD_ROOT_MOD/csv/lib/awk/csva.awk" \
+            -f "$___X_CMD_ROOT_MOD/gemini/lib/model/model_ls.awk"
 }
 
-___x_cmd_gemini_model_ls_json(){
-    ___x_cmd_gemini_model_request
+___x_cmd_gemini_model_ls___json(){
+    ___x_cmd_gemini_model_ls___raw
 }
 
-
-___x_cmd_gemini_model_get(){
-    ___x_cmd_gemini_cur model:=  2>/dev/null
-    printf "%s\n" "$model"
-}
-
-
-___x_cmd_gemini_model_set(){
-    local model="$1"
-    ___x_cmd gemini --cfg set model="$model"
-}
-
-# https://ai.google.dev/api/rest/v1beta/models/list?hl=zh-cn
-___x_cmd_gemini_model_request(){
+___x_cmd_gemini_model_ls___raw(){
     local apikey=; local proxy=
     ___x_cmd_gemini_cur apikey:= proxy:= 2>/dev/null
     [ -n "$apikey" ] || {
@@ -82,16 +81,16 @@ ___x_cmd_gemini_model_request(){
         return 1
     }
 
-    ___x_cmd ccmd 1d -- ___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} --fail "${___X_CMD_GEMINI_ENDPOINT}/v1beta/models?key=${apikey}"
+    ___x_cmd ccmd 1d -- ___x_cmd proxy runifset "$proxy" ___x_cmd curl --fail "${___X_CMD_GEMINI_ENDPOINT}/v1beta/models?key=${apikey}"
 }
 
 ___x_cmd_gemini_model_ls___fast(){
     local apikey=; local proxy=
     ___x_cmd_gemini_cur apikey:= proxy:= 2>/dev/null
-    if [ -z "$apikey" ] || [ ! -f "$( ___x_cmd ccmd which ___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} --fail "${___X_CMD_GEMINI_ENDPOINT}/v1beta/models?key=${apikey}" )" ]; then
-        printf "%s\n" gemini-2.5-flash-preview-04-17 gemini-2.0-flash-thinking-exp-01-21 gemini-2.0-pro-exp-02-05 gemini-2.0-flash-exp gemini-exp-1206 gemini-1.5-pro-latest gemini-1.5-flash-latest gemini-pro
+    if [ -z "$apikey" ] || [ ! -f "$( ___x_cmd ccmd which ___x_cmd proxy runifset "$proxy" ___x_cmd curl --fail "${___X_CMD_GEMINI_ENDPOINT}/v1beta/models?key=${apikey}" )" ]; then
+        printf "%s\n" gemini-2.5-pro gemini-2.5-flash gemini-2.0-flash gemini-2.0-flash-lite gemini-1.5-pro gemini-1.5-flash
     else
-        ___x_cmd_gemini_model_ls_csv | ___x_cmd_cmds awk -v FS=, 'NR>1{ if ($0 ~ "generateContent" ) print $1; }'
+        ___x_cmd_gemini_model_ls___csv | ___x_cmd awk -v FS=, 'NR>1{ print $1; }'
     fi
 }
 
