@@ -1,0 +1,96 @@
+# shellcheck shell=dash
+# x gg --> x google --> x gemini gg
+
+___x_cmd_gemini_gg(){
+
+    local question="$1"
+    local style="" # 以后我们可能会加一些预定的 type
+
+    # ...
+
+    # get the raw data
+    # show the answer, 以及 reference 信息
+
+    # 以后可以加入持续聊天
+
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
+        ___x_cmd_gemini_gg___md "$@"
+    else
+        ___x_cmd_gemini_gg___llm "$@"
+    fi
+}
+
+# <title>:
+#     <desc>
+#     <url>
+#     <google>
+
+
+___x_cmd_gemini_gg___md(){
+    ___x_cmd_gemini_gg___parse "$@"
+}
+
+___x_cmd_gemini_gg___llm(){
+    NO_COLOR=1 ___x_cmd_gemini_gg___parse "$@"
+}
+
+
+___x_cmd_gemini_gg___parse(){
+    local question="$1"; [ -n "$question" ] || N=gemini M="Please provide the question" log:ret:64
+    local model="${2:-"$___X_CMD_GEMINI_DEFAULT_FIRST_MODEL"}"
+    local cache_time="12h"
+
+    local response_str=""; local urllist=""
+    ___x_cmd_gemini_gg___raw_ "$question" "$model" "$cache_time" || return $?
+
+    printf "%s\n" "$response_str" | ___x_cmd md llm
+
+    if [ -n "$urllist" ]; then
+        local proxy=
+        ___x_cmd_gemini_cur   proxy:=   2>/dev/null
+
+        printf "%s\n" "--------- WEB SOURCE ---------"
+
+        local url=""
+        while read -r url; do
+            [ -n "$url" ] || continue
+            {
+                printf "%s: %s\n" "Location" "$url"
+                ___x_cmd ccmd "$cache_time" -- ___x_cmd proxy runifset "$proxy" \
+                    ___x_cmd curl -s --max-time 10 --dump-header - -L "$url"
+            } | ___x_cmd awk0 -f "$___X_CMD_ROOT_MOD/gemini/lib/awk/gg_parse.awk"
+        done <<A
+$urllist
+A
+    fi
+}
+
+___x_cmd_gemini_gg___raw_(){
+    local question="$1"; [ -n "$question" ] || N=gemini M="Please provide the question" log:ret:64
+    local model="${2:-"$___X_CMD_GEMINI_DEFAULT_FIRST_MODEL"}"
+    local cache_time="${3:-"12h"}"
+
+    ___x_cmd_gemini_has_apikey || return $?
+
+    local cmdstr; cmdstr="$(
+        ___x_cmd ccmd "$cache_time" -- ___x_cmd_gemini_gg___raw_inner "$question" "$model" | \
+        ___x_cmd cawk -m j/json,j/jiter,sh -f "$___X_CMD_ROOT_MOD/gemini/lib/awk/gg_handle_response.awk"
+)" || return $?
+
+    [ -n "$cmdstr" ] || return 1
+    eval "$cmdstr" || return $?
+    [ -n "$response_str" ] || N=gemini M="The response content is empty" log:ret:1
+}
+
+___x_cmd_gemini_gg___raw_inner(){
+    local question="$1";
+    local model="$2"
+
+    local apikey=
+    local proxy=
+    ___x_cmd_gemini_cur   apikey:=   proxy:=   2>/dev/null
+
+    question="$question" ___x_cmd cawk -f "$___X_CMD_ROOT_MOD/gemini/lib/awk/gg_handle_request.awk" | \
+        ___x_cmd proxy runifset "$proxy" \
+        ___x_cmd curl "https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apikey}" -H "Content-Type: application/json" -s -X POST -d @-
+}

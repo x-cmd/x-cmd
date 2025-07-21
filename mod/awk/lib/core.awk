@@ -576,6 +576,32 @@ function arr_uniq( arr,         l, i, j ) {
 # Section: str
 
 # Add Code
+function str_xml_transpose(s){
+    gsub("&nbsp;",      " ",    s)
+    gsub("&lt;",        "<",    s)
+    gsub("&gt;",        ">",    s)
+    gsub("&amp;",       "\\&",  s)
+    gsub("&quot;",      "\"",   s)
+    gsub("&apos;",      "'",    s)
+    gsub("&cent;",      "￠",   s)
+    gsub("&pound;",     "£",    s)
+    gsub("&yen;",       "¥",    s)
+    gsub("&euro;",      "€",    s)
+    gsub("&sect;",      "§",    s)
+    gsub("&copy;",      "©",    s)
+    gsub("&reg;",       "®",    s)
+    gsub("&times;",     "×",    s)
+    gsub("&divide;",    "÷",    s)
+    gsub("&trade;",     "™",    s)
+    gsub("&ldquo;",     "“",    s)
+    gsub("&rdquo;",     "”",    s)
+    gsub("&lsquo;",     "‘",    s)
+    gsub("&rsquo;",     "’",    s)
+    gsub("&ndash;",     "–",    s)
+    gsub("&mdash;",     "—",    s)
+    return s
+}
+
 function str_escape(s) {
     gsub( "\\\\", "&\\", s )
     gsub(/\b/, "\\b", s)

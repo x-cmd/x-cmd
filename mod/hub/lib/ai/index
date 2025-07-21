@@ -1,26 +1,112 @@
 # shellcheck shell=dash
 
 ___x_cmd_hub_ai(){
-    local X_help_cmd='___x_cmd_hub___help ai'
-    help:arg:parse
-
+    [ $# -gt 0 ] || { ___x_cmd help -m hub ai ; return;}
     local subcmd="$1";shift
     case "$subcmd" in
-        context)  ___x_cmd_hub_ai_context "$@"  ;;
-        chat|*) ___x_cmd_hub_ai_chat "$@"       ;;
+        -h|--help)      ___x_cmd help -m hub ai ; return  ;;
+        emb|embedding)  ___x_cmd_hub_ai_emb "$@"    ;;
+        del)            ___x_cmd_hub_ai_del "$@"    ;;
+        chat)           ___x_cmd_hub_ai_chat "$@"     ;;
+        *)              ___x_cmd_hub_ai_chat "${subcmd}" "$@"     ;;
     esac
-}
-
-___x_cmd_hub_ai_context(){
-    :
 }
 
 ___x_cmd_hub_ai_chat(){
-    case "$1" in
+    local op="$1";shift;
+    case "$op" in
         --help|-h)
             ___x_cmd_hub___help ai chat
-            return
-        ;;
+            return;;
+        -j|--json)  ___x_cmd_hub_ai___json  "$@";;
+        -t|--tsv)   ___x_cmd_hub_ai___tsv   "$@";;
+        --fzfinfo)  ___x_cmd_hub_ai___fzfinfo "$@";;
+        *)          ___x_cmd_hub_ai___fzf  "$op" "$@";;
     esac
-    ___x_cmd curl -X GET -G --data-urlencode question="$*" "https://hub.x-cmd.net/api/v0/ai/chat"
+
 }
+
+___x_cmd_hub_ai___json(){
+    ___x_cmd ccmd 30m -- x hub account info -j | {
+        ___x_cmd jo env . .id
+        ___x_cmd ccmd 1m -- ___x_cmd curl -sSL -X GET -G --data-urlencode question="$*" --data-urlencode userId="$id"  "https://cf-hub.it-9b9.workers.dev/api/v0/ai/aichat"
+    }
+}
+
+___x_cmd_hub_ai___tsv(){
+    ___x_cmd_hub_ai___json "$@" | x jo '.*' | x ja jl2t .id .title .content
+}
+
+___x_cmd_hub_ai_emb(){
+    local title
+    local file
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd_hub___help ai emb; return;;
+            -t|--title)     title="$2";         arg:2:shift;;
+            -f)             file="$2";          arg:2:shift;;
+            *)              content="$*";       break;;
+        esac
+    done
+    [ -z "$file" ] || [ -f "$file" ] || { hub:error "${file} file does not exist"; return 1;}
+
+    ___x_cmd ccmd 30m -- x hub account info -j | {
+       ___x_cmd jo env . .id
+       hub:debug "___x_cmd curl -X POST https://cf-hub.it-9b9.workers.dev/api/v0/ai/embedding ${id+"--form"} ${id+userId="$id"}                   \
+                    ${title+"--form"} ${title+title="$title"}           \
+                    ${content+"--form"} ${content+content="$content"}   \
+                    ${file+"--form"} ${file+file=@"$file"}"
+
+       ___x_cmd curl -sSL -X POST 'https://cf-hub.it-9b9.workers.dev/api/v0/ai/embedding' \
+            ${id+"--form"} ${id+userId="$id"}                   \
+            ${title+"--form"} ${title+title="$title"}           \
+            ${content+"--form"} ${content+content="$content"}   \
+            ${file+"--form"} ${file+file=@"$file"} | (
+            x jo env . msg=.msg err=.error
+            if [ -n "${err}" ]; then
+                ___x_cmd_ui_tf false "[Fail]: ${err}" >&2
+                return 1
+            else
+                ___x_cmd_ui_tf true  "[Success]: ${msg}"
+            fi
+        )
+    }
+}
+
+___x_cmd_hub_ai_del(){
+    local embId="$1"
+    [ -n "$embId" ] || { hub:error "Please enter at least one ID" ; return 1;}
+    ___x_cmd ccmd 30m -- x hub account info -j | {
+       ___x_cmd jo env . .id
+        local data
+        data="$(printf "%s" "{userId:${id},embId:[${embId}]}" | ___x_cmd jo fmt)"
+        ___x_cmd curl -sSL -f -X POST 'https://cf-hub.it-9b9.workers.dev/api/v0/ai/embdel' \
+            -H 'Content-Type: application/json' \
+            -d "${data}" >/dev/null || { ___x_cmd_ui_tf false "Failed to delete vector data ${embId}";  return 1;}
+         ___x_cmd_ui_tf true "success"
+    }
+}
+
+
+___x_cmd_hub_ai___fzfinfo(){
+    printf "%s" "$@" |  ___x_cmd_cmds awk '{
+            $1 = ""
+            $2 = ""
+            print $0
+        }' | ___x_cmd j2y
+}
+
+# Using fzf
+___x_cmd_hub_ai___fzf(){
+    ___x_cmd_hub_ai___tsv "$@"              \
+        |   ___x_cmd_hub___tsvlabel         \
+        |   ___x_cmd_hub___fzfpretty        \
+        |   ___x_cmd_cmds awk -v FS='\t' 'BEGIN {
+                printf("\033[2m%s\t\033[0;32m%-10s\t\033[0;36m%-10s\n", "emb_id", "title", "content");
+            }
+            {
+                printf("\033[2m" "%s\t" "\033[0;32m" "%-10s\t" "\033[0;36m" "%-10s\n",$2, $3, $4)
+            }'  \
+        |   ___x_cmd_hub___fzf --preview="___x_cmdexe hub ai --fzfinfo {}" --preview-window="right:70,wrap"
+}
+
