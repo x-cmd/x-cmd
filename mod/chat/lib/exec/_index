@@ -6,7 +6,7 @@
 # @gemini + wp "keyword"
 # @gemini - wp
 
-xrc:mod:lib     chat        exec/util exec/history  exec/fzf exec/repl
+xrc:mod:lib     chat        exec/util exec/history  exec/ted exec/repl exec/repl_id
 
 # ___X_CMD_CHAT_CURRENT_ATTCHMENT=
 # ___X_CMD_CHAT_CURRENT_SESSION=
@@ -48,6 +48,12 @@ ___x_cmd_chat___exec(){
     local is_silent=""
     local modellist=""
     local is_no_empty_question=""
+    local is_start_with_repl=""
+    local is_end_with_repl=""
+
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
+        is_end_with_repl=1
+    fi
 
     local x_=""
     while [ $# -gt 0 ]; do
@@ -172,6 +178,16 @@ A
                             ;;
             --no-empty-question)
                             is_no_empty_question=1; shift 1 ;;
+            --start-with-repl)
+                            is_start_with_repl=1; shift 1 ;;
+            --end-with-repl)
+                            is_end_with_repl=1; shift 1 ;;
+            --start-without-repl)
+                            is_start_with_repl=""; shift 1 ;;
+            --end-without-repl)
+                            is_end_with_repl=""; shift 1 ;;
+            --without-repl)
+                            is_start_with_repl=""; is_end_with_repl=""; is_no_empty_question=1; shift 1 ;;
             *)
                             [ "$1" != -- ] || shift
                             if [ -z "$question" ]; then
@@ -199,20 +215,38 @@ A
             ;;
     esac
 
-    if [ -z "$question" ]; then
+    if [ "$is_start_with_repl" = 1 ]; then
+        is_silent=1
+        ___x_cmd_chat___exec_repl --start "$question"
+        return
+    elif [ -z "$question" ]; then
         if [ "$is_no_empty_question" = 1 ]; then
             chat:error "Please provide the text you want request"
             return 1
         elif [ -z "${minion}${system}" ]; then
             is_silent=1
-            ___x_cmd_chat___exec_repl
+            ___x_cmd_chat___exec_repl --app
             return
         fi
     fi
 
     # x_=; ___x_cmd_chat_request___preparequestion_ "$question" "$inputtype" "$numbered" "$inputdesc" || return $?
     # question="$x_"
-    ___x_cmd_chat___exec_inner_
+
+    if [ "$is_end_with_repl" = 1 ]; then
+        [ -n "$session" ] || {
+            x_=""; ___x_cmd_chat___exec_repl___id_ || return $?
+            session="$x_"
+        }
+        ___x_cmd_chat___exec_inner_ || return $?
+
+        is_silent=1
+        [ -z "$question" ] || ___x_cmd_chat___exec_repl_history add "$question"
+        ___x_cmd_chat___exec_repl --previous
+        return
+    else
+        ___x_cmd_chat___exec_inner_
+    fi
 }
 
 # question reflist imagelist

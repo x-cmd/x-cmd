@@ -43,7 +43,7 @@ function get_mod_desc_of_advise_file(o, keypath, key, filepath,         kp, _, c
         if ( jiter_regexarr_parse(_, $0, patarrl, patarr) == false )    continue
         if ( _last_curkey !~ ADV_SPECIFIED_FIELD_PAT ) continue
         jdict_put( o, kp, _last_curkey, "null")
-        cp_cover( o, kp SUBSEP _last_curkey, _, SUBSEP Q2_1 )
+        jmerge_soft___value( o, kp SUBSEP _last_curkey, _, SUBSEP Q2_1 )
     }
     close( filepath )
     if (c == -1) {
@@ -87,6 +87,6 @@ END{
         log_error( "advise", "Failed to generate x advise jso, not found such filepath - " basepath  )
         exit(1)
     }
-    if (obj[L] > 0) cp_cover( o, SUBSEP Q2_1, obj, SUBSEP Q2_1)
+    if (obj[L] > 0) jmerge_soft___value( o, SUBSEP Q2_1, obj, SUBSEP Q2_1)
     print jstr0(o)
 }

@@ -59,7 +59,7 @@ function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key
 }
 
 function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq_kp, def_model,          i, l, str, \
-    _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken_keyname, _maxtoken, _seed, _temperature, _ctx, _data_str){
+    _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken_keyname, _maxtoken, _seed, _temperature, _ctx, _data_str, _stream_str){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
         str = openai_gen_history_str(history_obj, i)
@@ -88,8 +88,10 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq
     #   in openai, 'max_tokens' is now deprecated in favor of 'max_completion_tokens', and is not compatible with o1 series models.
     if ( PROVIDER_NAME == "openai" ) {
         _maxtoken_keyname = "\"max_completion_tokens\""
+        _stream_str       = "\"stream\": true, \"stream_options\": { \"include_usage\": true }"
     } else {
         _maxtoken_keyname = "\"max_tokens\""
+        _stream_str       = "\"stream\": true"
     }
 
     _maxtoken       = (_maxtoken > 0) ? _maxtoken_keyname ": " _maxtoken "," : ""
@@ -98,7 +100,7 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq
     _ctx            = (_ctx != "") ? "\"num_ctx\": " _ctx "," : ""
     _jsonmode       = (_jsonmode) ? "\"response_format\": { \"type\": \"json_object\" }," : ""
 
-    _data_str = "{ \"model\": " _mode " , \"messages\": [ " _messages_str " ], " _jsonmode _maxtoken _seed _temperature _ctx " \"stream\": true }"
+    _data_str = "{ \"model\": " _mode " , \"messages\": [ " _messages_str " ], " _jsonmode _maxtoken _seed _temperature _ctx " " _stream_str " }"
 
     return _data_str
 }
@@ -117,8 +119,8 @@ function openai_res_to_cres(openai_resp_o, cres_o, kp,          resp_kp, delta_k
     resp_content_kp = delta_kp SUBSEP "\"content\""
     resp_role_kp    = delta_kp SUBSEP "\"role\""
 
-    cp_cover(cres_o, kp, openai_resp_o, SUBSEP "\"1\"")
-    cp_cover(cres_o, kp, openai_resp_o, resp_kp)
+    jmerge_force___value(cres_o, kp, openai_resp_o, SUBSEP "\"1\"")
+    jmerge_force___value(cres_o, kp, openai_resp_o, resp_kp)
     jdict_put( cres_o, kp, "\"finishReason\"", cres_o[ kp, "\"finish_reason\"" ] )
     jdict_put( cres_o, kp, "\"reply\"", "{" )
     jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"role\"", openai_resp_o[ resp_role_kp ] )
@@ -138,7 +140,7 @@ function openai_res_to_cres___ollama_format(ollama_resp_o, cres_o, kp,          
     model_kp = Q2_1 SUBSEP "\"model\""
     msg_kp = Q2_1 SUBSEP "\"message\"" SUBSEP "\"content\""
 
-    cp_cover(cres_o, kp, ollama_resp_o, SUBSEP "\"1\"")
+    jmerge_force___value(cres_o, kp, ollama_resp_o, SUBSEP "\"1\"")
 
 
     jdict_put( cres_o, kp, "\"reply\"", "{" )

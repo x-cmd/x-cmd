@@ -13,6 +13,9 @@ ___x_cmd_pb___main(){
     case "$op" in
         c|cp|copy|-c|--cp)  ___x_cmd_pb_copy    "$@" ;;
         p|paste|-p|--paste) ___x_cmd_pb_paste   "$@" ;;
+
+        o|osc52cp)          ___x_cmd_pb_osc52cp   "$@" ;;
+
         -h|--help)          ___x_cmd help -m pb ; return  ;;
         *)                  N=x M="Unknown subcmd for pb ==> $op" log:ret:64
     esac
@@ -29,17 +32,25 @@ ___x_cmd_pb_copy(){
 ___x_cmd_pb_copy___pipe(){
     if ___x_cmd_is_termux; then
         ___x_cmd_cmds timeout 3s termux-clipboard-set
-        return
+        return $?
+    fi
+
+    # default using osc52 in SSH
+    if [ -n "$SSH_TTY" ]; then
+        ___x_cmd_pb_osc52cp
+        return $?
     fi
 
     local x_;       ___x_cmd os name_;
     case "$x_" in
         darwin)     if      ___x_cmd_hasbin pbcopy;     then ___x_cmd_cmds pbcopy
-                    else    N=pb M="command not found -> pbcopy" log:ret:1
+                    # else    N=pb M="command not found -> pbcopy" log:ret:1
+                    else                                     ___x_cmd_pb_osc52cp
                     fi ;;
 
         win)        if      ___x_cmd_hasbin clip;       then ___x_cmd_cmds clip
-                    else    N=pb M="command not found -> clip" log:ret:1
+                    # else    N=pb M="command not found -> clip" log:ret:1
+                    else                                     ___x_cmd_pb_osc52cp
                     fi ;;
 
         # Out of concerns in security, the pasteboad inside WSL is the preference.
@@ -47,7 +58,8 @@ ___x_cmd_pb_copy___pipe(){
                     elif    ___x_cmd_hasbin xsel;       then ___x_cmd_cmds xsel -ib
                     elif    ___x_cmd_hasbin wl-copy;    then ___x_cmd_cmds wl-copy
                     elif    ___x_cmd_hasbin clip.exe;   then ___x_cmd_cmds clip.exe
-                    else    N=pb M="command not found -> xclip, xsel, wl-copy or clip.exe" log:ret:1
+                   # else    N=pb M="command not found -> xclip, xsel, wl-copy or clip.exe" log:ret:1
+                    else                                     ___x_cmd_pb_osc52cp
                     fi ;;
 
         *)          N=pb M="unsupport os -> $x_" log:ret:1
@@ -77,4 +89,34 @@ ___x_cmd_pb_paste(){
 
         *)          N=pb M="unsupport os -> $x_" log:ret:1
     esac
+}
+
+___x_cmd_pb_osc52cp(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m pb osc52; return 0     ;;
+    esac
+
+    local content
+
+    if [ $# -eq 0 ]; then
+        content="$(___x_cmd_cmds head -c 100001)"
+    else
+        content="$1"
+    fi
+
+    local size="${#content}"
+
+    [ "${size}" -lt 100000 ] || N=cl M="OSC52 buffer is limited to 100000 bytes" log:ret:64
+
+    content="$(printf "%s" "$content" | ___x_cmd_cmds base64)"
+
+    pb:info "Content is writing to clipboard using OSC52. Size -> $size"
+
+    # printf "Fail to clip. %s" "The terminal doesn't support OSC52 features.              " >&2
+
+    printf "\x1b]52;c;"
+    printf "%s" "$content"
+    printf "\x07"
+
+    # printf "\r                                                                  \n" >&2
 }

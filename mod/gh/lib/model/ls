@@ -1,15 +1,16 @@
 # shellcheck shell=dash
 
-
+# https://docs.github.com/en/github-models
+# https://docs.github.com/en/rest/models
 ___x_cmd_gh_model_ls(){
     local op="$1"
     case "$op" in
         -h|--help)
             ___x_cmd help -m gh model ls ;;
-        --csv|--app)
+        --csv|--app|--json)
             shift; ___x_cmd_gh_model_ls___"${op#--}" "$@" ;;
-        --advise)
-            shift; ___x_cmd_gh_model_ls___advise "$@" ;;
+        --advise|--update)
+            shift; ___x_cmd_gh_model_ls___"${op#--}" "$@" ;;
         *)
             if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty ; then
                 ___x_cmd_gh_model_ls___app
@@ -21,13 +22,27 @@ ___x_cmd_gh_model_ls(){
 
 ___x_cmd_gh_model_ls___csv(){
     local x_; ___x_cmd_gh_model_ls___which_ || return
-    < "$x_" ___x_cmd ja 2c .name .task .publisher .summary .tags .license .id | \
-        ___x_cmd csv header --add Name,Task,Publisher,Summary,Tags,Lincense,Id
+    < "$x_" ___x_cmd ja 2c .id .name .publisher .summary .rate_limit_tier .supported_input_modalities .supported_output_modalities .registry .version .capabilities .limits.max_input_tokens .limits.max_output_tokens .html_url | \
+        ___x_cmd csv header --add Id,Name,Publisher,Summary,RateLimitTier,InputModalities,OutputModalities,Registry,Version,Capabilities,MaxInputTokens,MaxOutputTokens,Url
+}
+
+___x_cmd_gh_model_ls___json(){
+    local x_; ___x_cmd_gh_model_ls___which_ || return
+    ___x_cmd_cmds cat "$x_"
 }
 
 ___x_cmd_gh_model_ls___advise(){
     local x_; ___x_cmd_gh_model_ls___which_ || return
-    < "$x_" ___x_cmd ja 2c .name
+    < "$x_" ___x_cmd ja 2c .id
+}
+
+___x_cmd_gh_model_ls___app(){
+    local cur_model=
+    ___x_cmd_gh_cur cur_model:=ai_model 2>/dev/null
+    gh:info "Set the default Github model, currently using [model=${cur_model:-"$___X_CMD_GH_MODEL_DEFAULT_NAME"}]"
+    local x_=; ___x_cmd_gh_model_ls___app_inner || return
+    gh:info "Setting the default [model=$x_]"
+    ___x_cmd_gh_cfg set ai_model="$x_"
 }
 
 ___x_cmd_gh_model_ls___app_inner(){
@@ -40,24 +55,19 @@ A
     [ -n "$x_" ]
 }
 
-___x_cmd_gh_model_ls___app(){
-    local cur_model=
-    ___x_cmd_gh_cur cur_model:=ai_model 2>/dev/null
-    gh:info "Set the default Github model, currently using [model=${cur_model:-"$___X_CMD_GH_MODEL_DEFAULT_NAME"}]"
-    local x_=; ___x_cmd_gh_model_ls___app_inner || return
-    gh:info "Setting the default [model=$x_]"
-    ___x_cmd_gh_cfg set ai_model="$x_"
+___x_cmd_gh_model_ls___which_(){
+    ___x_cmd ccmd 7d -- ___x_cmd_gh_model_ls___update || return $?
+    local file="$___X_CMD_ROOT_DATA/gh/model/data.json"
+    [ -f "$file" ] || return
+    x_="$file"
 }
 
-___x_cmd_gh_model_ls___which_(){
-    x_=""
+___x_cmd_gh_model_ls___update(){
     local file="$___X_CMD_ROOT_DATA/gh/model/data.json"
     local tmpfile="${file}.tmp"
-    [ -f "$file" ] || {
-        ___x_cmd_gh_repo_file download --repo x-cmd/gh --ref main --yes data/model.yml "$tmpfile" || return
-        < "$tmpfile" ___x_cmd y2j > "$file"
-        [ -f "$file" ] || return
-        ___x_cmd rmrf "$tmpfile"
+    ___x_cmd_gh_repo_file download --repo x-cmd/gh --ref main --yes data/model.json "$tmpfile" || return $?
+    ___x_cmd mv -f "$tmpfile" "$file" || {
+        gh:error "Failed to update the Github model data file"
+        return 1
     }
-    x_="$file"
 }

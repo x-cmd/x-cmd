@@ -25,7 +25,7 @@ function get_obj_of_yxrc(o, file,        obj, v, kp, dir_path, _filepath, _conte
         exit 1
     }
     yml_parse( _content, obj )
-    cp_merge(o, obj)
+    jmerge_force(o, obj)
 
     kp = SUBSEP Q2_1
     v = juq(o[ kp , Q2_XRC ])

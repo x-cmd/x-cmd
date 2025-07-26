@@ -4,7 +4,7 @@ END{
     _current_kp = Q2_1 SUBSEP "\""obj[ Q2_1 L ]"\""
     if ( obj[ _current_kp, "\"error\"" ] != "" ) {
         o_error[ L ] = 1
-        cp( o_error, Q2_1, obj, _current_kp )
+        jmerge_force___value( o_error, Q2_1, obj, _current_kp )
     }
 
 
@@ -24,7 +24,7 @@ END{
         exit(1)
     } else {
         o_response[ L ] = 1
-        cp( o_response, Q2_1, obj, _current_kp )
+        jmerge_force___value( o_response, Q2_1, obj, _current_kp )
         o_response[ Q2_1 SUBSEP KP_CONTENT ] = jqu( GEMINI_RESPONSE_CONTENT )
 
         print jstr(o_response)                      > (GEMINI_CONTENT_DIR "/gemini.response.yml" )

@@ -34,7 +34,7 @@ function parse_jsons_after_tokenize( o, text ){
     if ( text == X_CMD_ADVISE_ERREXIT ) exit(1)
     jiparse_after_tokenize(_, text)
     if ( JITER_LEVEL != 0 ) return
-    cp_cover_merge(o, _)
+    jmerge_soft(o, _)
     delete _ ;  JITER_CURLEN = 0
 }
 
@@ -74,7 +74,8 @@ function parse_case_gpae_tldr_data( o, kp, key,     i, l, _kp, _kp_tldr ){
             jlist_put(o, kp SUBSEP Q2_TLDR, "{")
             _kp_tldr = kp SUBSEP Q2_TLDR SUBSEP "\""o[ kp, Q2_TLDR L ]"\""
             jdict_put(o, _kp_tldr, "\"cmd\"", o[ _kp, "\"act\""])
-            cp(o, _kp_tldr, o, _kp SUBSEP "\"goal\"")
+            # cp(o, _kp_tldr, o, _kp SUBSEP "\"goal\"")
+            jmerge_soft___value( o, _kp_tldr, o, _kp SUBSEP "\"goal\"" )
         }
     }
 }
@@ -83,7 +84,7 @@ function parse_case_gpae_tldr_data( o, kp, key,     i, l, _kp, _kp_tldr ){
 
 END{
     if (o[L] > 0) {
-        cp_cover_merge(o, obj)
+        jmerge_soft(o, obj)
         parse_special_fields_value(o, Q2_1)
         print jstr0(o, Q2_1)
         exit(0)

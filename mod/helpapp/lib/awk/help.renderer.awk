@@ -379,7 +379,7 @@ function print_helpdoc( obj, kp, width, po_arr,             _res, i, j, l, v, s,
         s = juq(v)
         if ( s ~ "^#tip" ) {
             arr_push(TIP, s)
-            cp_cover(TIP, s, obj, kp SUBSEP v)
+            jmerge_soft___value(TIP, s, obj, kp SUBSEP v)
         }
         else if ( s ~ "^#(([0-9]+)|n)$" ) comp_advise_push_group_of_value( obj, kp, RESTOPT, ADVISE_NULL_TAG, v )
     }

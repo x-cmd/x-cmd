@@ -1,4 +1,4 @@
-function openai_display_response_text_stream(s,       o, item, response_item, finish_reason){
+function openai_display_response_text_stream(s,       o, item, response_item, finish_reason, choices_l){
     if (s ~ "^ *\\[DONE\\]$") exit(0)
     if (s !~ "^ *\\{") return
     jiparse_after_tokenize(o, s)
@@ -8,9 +8,9 @@ function openai_display_response_text_stream(s,       o, item, response_item, fi
         OPENAI_RESPONESE_ERROR_CONTENT = s
         OPENAI_RESPONESE_ERROR_MSG = "The response output format is incorrect"
         exit(1)
-    } else if ( o[ KP_ERROR ] != "" ) {
+    } else if (( o[ KP_ERROR ] != "" ) || ( o[ KP_OBJECT ] == "\"error\"")) {
         OPENAI_RESPONESE_IS_ERROR_CONTENT = 1
-        cp_cover_merge(o_error, o)
+        jmerge_force(o_error, o)
         exit(1)
     }
 
@@ -46,9 +46,11 @@ function openai_display_response_text_stream(s,       o, item, response_item, fi
         fflush()
     }
 
+    choices_l = o[ KP_CHOICES L ]
+    created  = o[ KP_CREATED ] # For gh models
     finish_reason = o[ KP_FINISH_REASON ]
-    cp_cover_merge( o_response, o )
-    if (( finish_reason != "" ) && ( finish_reason != "null" )) {
+    jmerge_force( o_response, o )
+    if (((choices_l <= 0) && (created != 0)) || (( finish_reason != "" ) && ( finish_reason != "null" ))) {
         o_response[ KP_FINISH_REASON ] = finish_reason
         o_response[ KP_CONTENT ] = jqu(OPENAI_RESPONSE_CONTENT)
         o_response[ KP_REASONING_CONTENT ] = jqu(OPENAI_RESPONSE_REASONING_CONTENT)
@@ -57,14 +59,15 @@ function openai_display_response_text_stream(s,       o, item, response_item, fi
     delete o
 }
 
-function openai_display_response_text_stream___ollama_format(o,             item, finish_reason, finish_status){
+function openai_display_response_text_stream___ollama_format(o,             item, finish_status, choices_l){
     item = juq(o[ KP_OLLAMA_CONTENT ])
     OPENAI_RESPONSE_CONTENT = OPENAI_RESPONSE_CONTENT item
     printf( "%s", item )
     fflush()
-    cp_cover_merge( o_response, o )
+    jmerge_force( o_response, o )
+    choices_l = o[ KP_CHOICES L ]
     finish_status = o_response[ KP_OLLAMA_DONE ]
-    if ( finish_status != "false" ) {
+    if ((choices_l <= 0) || ( finish_status != "false" )) {
         o_response[ KP_OLLAMA_DONE ] = finish_status
         o_response[ KP_OLLAMA_CONTENT ] = jqu(OPENAI_RESPONSE_CONTENT)
         exit(0)
@@ -78,6 +81,8 @@ BEGIN{
     KP_DELTA                = KP_CHOICES SUBSEP "\"1\"" SUBSEP "\"delta\""
     KP_CONTENT              = KP_DELTA SUBSEP "\"content\""
     KP_ERROR                = Q2_1 SUBSEP "\"error\""
+    KP_OBJECT               = Q2_1 SUBSEP "\"object\""
+    KP_CREATED               = Q2_1 SUBSEP "\"created\""
     KP_REASONING_CONTENT    = KP_DELTA SUBSEP "\"reasoning_content\""
     KP_FINISH_REASON        = KP_CHOICES SUBSEP "\"1\"" SUBSEP "\"finish_reason\""
 

@@ -27,7 +27,7 @@ function parse_replace_info_from_list(str, replace_obj,        l, i, a, _id){
 function parse_replace_info_from_obj(obj, replace_obj){
     jlist_put(replace_obj, "", "{")
     jdict_put(replace_obj, SUBSEP Q2_1, Q2_REPLACE_LIST, "{")
-    cp(replace_obj, REPLACE_LIST_KP, obj, REPLACE_LIST_KP)
+    jmerge_force___value(replace_obj, REPLACE_LIST_KP, obj, REPLACE_LIST_KP)
 }
 # EndSection
 
@@ -76,7 +76,7 @@ function replace(o, obj,            l, i){
 function apply_fields_replace(obj, replace_obj,         _){
     if (obj[ REPLACE_LIST_KP L] > 0) {
         parse_replace_info_from_obj(obj, _)
-        cp_merge(replace_obj, _)
+        jmerge_force(replace_obj, _)
         jdict_rm(obj, SUBSEP Q2_1, Q2_REPLACE_LIST)
     }
     replace(obj, replace_obj)

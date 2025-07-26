@@ -19,10 +19,10 @@ function gemini_parse_response_data( text, obj, o_error,       _arr, _arrl, i, _
         _current_kp = Q2_1 SUBSEP "\""JITER_CURLEN"\""
         if (( JITER_CURLEN == 1 ) && ( obj[ _current_kp, "\"error\"" ] != "" )) {
             o_error[ L ] = 1
-            cp( o_error, Q2_1, obj, _current_kp )
+            jmerge_force___value( o_error, Q2_1, obj, _current_kp )
             continue
         } else if ( JITER_CURLEN != 1 ) {
-            cp( o_response, Q2_1 SUBSEP "\"1\"", o_response, Q2_1 SUBSEP "\""JITER_CURLEN"\"" )
+            jmerge_force___value( o_response, Q2_1 SUBSEP "\"1\"", o_response, Q2_1 SUBSEP "\""JITER_CURLEN"\"" )
         }
         gemini_display_response_text_stream( obj, _current_kp )
     }

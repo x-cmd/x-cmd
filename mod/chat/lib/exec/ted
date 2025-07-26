@@ -1,0 +1,118 @@
+# shellcheck shell=dash disable=2120,2154
+
+___x_cmd_chat___exec_repl___ted_(){
+    local style="${___X_CMD_CHAT_EXEC_REPL_TED_STYLE:-fzf}"
+    case "$style" in
+        gum)    ___x_cmd_chat___exec_repl___gum_    "$@" ;;
+        fzf)    ___x_cmd_chat___exec_repl___fzf_    "$@" ;;
+        *)      ___x_cmd_chat___exec_repl___read_   "$@" ;;
+    esac
+}
+
+___x_cmd_chat___exec_repl___read_(){
+    x_="$( ___x_cmd_chat___exec_repl___read )"
+}
+
+___x_cmd_chat___exec_repl___read(){
+    local initial_value="$*"
+    trap 'return 130' INT
+    printf "\0337>>> %s" "${initial_value}" >"$___X_CMD_DEVTTY_FP"
+    local x_=""
+    ___x_cmd_readr x_ || return $?
+    [ "$x_" = "${x_%\\}" ] || {
+        x_="${x_%\\}
+"
+        printf "%s" "... " >"$___X_CMD_DEVTTY_FP"
+        while ___x_cmd_readr line || {
+            x_="${x_}${line%\\}
+"
+            break
+        }; do
+            printf "%s" "... " >"$___X_CMD_DEVTTY_FP"
+            x_="${x_}${line%\\}
+"
+            [ "$line" != "${line%\\}" ] || break
+        done
+    }
+    printf "\0338\033[J\033[2K" >"$___X_CMD_DEVTTY_FP"
+    printf "%s\n" "${initial_value}${x_}"
+}
+
+___x_cmd_chat___exec_repl___gum_(){
+    local initial_value="$*"
+    if [ "$initial_value" != "${initial_value#*"${___X_CMD_UNSEENCHAR_NEWLINE}"}" ]; then
+        x_="$(___x_cmd gum write --width 0 --header "<alt+enter/ctrl+j> new line • <ctrl+e> open editor • <enter> submit" --no-show-help --value "$initial_value")"
+    else
+        x_="$(___x_cmd gum input --prompt=">>> " --width 0 --value "$initial_value" --no-show-help --placeholder="<enter> submit • <ctrl+c> exit • </h> help • <\> multi-line input")" || return $?
+        [ "$x_" = "${x_%\\}" ] || {
+            x_="$(___x_cmd gum write --width 0 --header "<alt+enter/ctrl+j> new line • <ctrl+e> open editor • <enter> submit" --no-show-help --value "${x_%\\}")"
+        }
+    fi
+}
+
+# Section: fzf edit
+___x_cmd_chat___exec_repl_fzdata(){
+    ___x_cmd fzf  \
+        --ansi --reverse --no-mouse --cycle     \
+        --query="$*" --print-query              \
+        --height=50%                            \
+        --exact                                 \
+        --preview-window='40%,down,wrap'        \
+        --preview='___x_cmdexe chat --repl-history get {1}' <<A
+$(___x_cmd_chat___exec_repl_history ls)
+A
+}
+___x_cmd_chat___exec_repl___fzf_(){
+    local initial_value="$*"
+    x_="$(
+        ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" \
+        ___x_cmdexe chat --repl-fzdata "$initial_value"
+    )"
+
+    local _exitcode="$?"
+    case "$_exitcode" in
+        0)  ;;
+        1)  [ -n "$x_" ] || return 1 ;;
+        *)  return "$_exitcode" ;;
+    esac
+
+    local history_text=
+    {
+        ___x_cmd_readr x_
+        ___x_cmd_readr history_text
+    } <<A
+$x_
+A
+
+    [ -z "$history_text" ] || {
+
+        local history_preview="${history_text#* }"
+        local human_text="$x_"
+        ! ___x_cmd_chat___exec_repl___slash_check "$history_preview" || {
+            x_="$history_preview"
+            return
+        }
+
+        local msg=""
+        ___x_cmd ui select ,msg "Next"    \
+            ${human_text:+"Send text     -> $human_text"}   \
+            "Using history -> $history_preview" \
+            "return 0" || return $?
+        case "$msg" in
+            Send*)  x_="$human_text" ;;
+            Using*) x_="$( ___x_cmd_chat___exec_repl_history get "${history_text%% *}" )"
+                    x_="$( ___x_cmd gum write --char-limit 0 --width 0 --header "<alt+enter/ctrl+j> new line • <ctrl+e> open editor • <enter> submit" --no-show-help --value "${x_%\\}" )"
+                    ;;
+            *)      return 0
+        esac
+    }
+
+    case "$x_" in
+        \\|*\\)
+            x_="$(___x_cmd gum write --char-limit 0 --width 0 --header "<alt+enter/ctrl+j> new line • <ctrl+e> open editor • <enter> submit" --no-show-help --value "${x_%\\}")"
+            return
+            ;;
+    esac
+}
+
+# EndSection

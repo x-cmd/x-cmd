@@ -28,7 +28,7 @@ END{
     RESPONSE[ KP_FINISH_REASON ] = "\"stop\""
     jdict_put(RESPONSE, KP_CHOICES_1, "\"message\"")
     RESPONSE[ KP_CONTENT ] = jqu(CONTENT)
-    cp_cover(RESPONSE, KP_MESSAGE, RESPONSE, KP_DELTA)
+    jmerge_force___value(RESPONSE, KP_MESSAGE, RESPONSE, KP_DELTA)
     jdict_rm(RESPONSE, KP_CHOICES_1, "\"delta\"")
     jdict_put(RESPONSE, KP_MESSAGE, "\"role\"", "\"assistant\"")
     print jstr0(RESPONSE)

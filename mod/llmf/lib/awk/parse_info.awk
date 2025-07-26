@@ -24,19 +24,19 @@ function llmf_parse_json(o, obj,            l, i, name, kp, v, q  ){
 
         v = ARR[i, "VERSION"]
         if (v == ""){
-            cp(obj, kp, o, kp)
+            jmerge_force___value(obj, kp, o, kp)
         } else {
             v = jqu(v)
             if (o[ kp, v L ] <=0 ) continue
             q = ARR[i, "QUANT"]
             jdict_put(obj, kp, v, "{")
             if (q == "") {
-                cp(obj, kp SUBSEP v, o, kp SUBSEP v)
+                jmerge_force___value(obj, kp SUBSEP v, o, kp SUBSEP v)
             } else {
                 q = jqu(q)
                 if (o[ kp, v, q L ] <=0 ) continue
                 jdict_put(obj, kp SUBSEP v, q, "{")
-                cp(obj, kp SUBSEP v SUBSEP q, o, kp SUBSEP v SUBSEP q)
+                jmerge_force___value(obj, kp SUBSEP v SUBSEP q, o, kp SUBSEP v SUBSEP q)
             }
         }
     }

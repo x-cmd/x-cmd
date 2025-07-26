@@ -63,12 +63,6 @@ function stdout_msg( title, url, desc ){
     }
 }
 
-function xml_transpose( s ){
-    gsub( "&gt;", ">", s )
-    gsub( "&lt;", "<", s )
-    return s
-}
-
 END {
-    stdout_msg( xml_transpose( title ), xml_transpose( location ), xml_transpose( desc ) )
+    stdout_msg( str_xml_transpose( title ), str_xml_transpose( location ), str_xml_transpose( desc ) )
 }

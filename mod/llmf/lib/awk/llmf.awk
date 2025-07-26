@@ -68,8 +68,8 @@ function llmf_res_to_cres(llmf_resp_o, cres_o, kp,          resp_kp, delta_kp, r
     resp_content_kp = delta_kp SUBSEP "\"content\""
     resp_role_kp    = delta_kp SUBSEP "\"role\""
 
-    cp_cover(cres_o, kp, llmf_resp_o, SUBSEP "\"1\"")
-    cp_cover(cres_o, kp, llmf_resp_o, resp_kp)
+    jmerge_force___value(cres_o, kp, llmf_resp_o, SUBSEP "\"1\"")
+    jmerge_force___value(cres_o, kp, llmf_resp_o, resp_kp)
     jdict_put( cres_o, kp, "\"finishReason\"", cres_o[ kp, "\"finish_reason\"" ] )
     jdict_put( cres_o, kp, "\"reply\"", "{" )
     jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"role\"", llmf_resp_o[ resp_role_kp ] )

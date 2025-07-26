@@ -87,7 +87,7 @@ function gemini_res_to_cres(gemini_resp_o, cres_o, kp,      v, resp_kp ){
     resp_kp = Q2_1 SUBSEP "\"candidates\"" SUBSEP "\"1\""
 
     jdict_put( cres_o, kp, "\"reply\"", "\"\"" )
-    cp_cover( cres_o, kp SUBSEP "\"reply\"", gemini_resp_o,  resp_kp SUBSEP "\"content\""  )
+    jmerge_force___value( cres_o, kp SUBSEP "\"reply\"", gemini_resp_o,  resp_kp SUBSEP "\"content\""  )
 
     v = gemini_resp_o[ resp_kp SUBSEP "\"finishReason\""  ]
     jdict_put( cres_o, kp, "\"finishReason\"", ( (v == "" )   ? "\"\"" : v) )

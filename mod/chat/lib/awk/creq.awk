@@ -58,7 +58,7 @@ function creq_create( o, minion_obj, minion_kp, type, model, question, chatid, h
     jdict_put(o, _kp, "\"question\"",        jqu(question))
     jdict_put(o, _kp, "\"chatid\"",          jqu(chatid))
     jdict_put(o, _kp, "\"history_num\"",     history_num)
-    cp_cover(o, _kp SUBSEP "\"minion\"", minion_obj, minion_kp)
+    jmerge_soft___value(o, _kp SUBSEP "\"minion\"", minion_obj, minion_kp)
 
     imagelist = str_trim( imagelist )
     if (imagelist != "") {
