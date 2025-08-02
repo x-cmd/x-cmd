@@ -26,13 +26,14 @@ END{
     MODEL               = minion_model( minion_obj, MINION_KP, def_model )
     HISTORY_NUM         = minion_history_num( minion_obj, MINION_KP )
     SESSIONDIR          = SESSIONDIR "/" minion_session( minion_obj, MINION_KP )
+    TOOL_JSTR           = minion_tool_jstr( minion_obj, MINION_KP )
     mkdirp( SESSIONDIR "/" CHATID )
 
     chat_history_load( history_obj, SESSIONDIR, HISTORY_NUM)
 
 
     #
-    creq_create( creq_obj, minion_obj, MINION_KP, TYPE, MODEL, QUESTION, CHATID, HISTORY_NUM, IMAGELIST )
+    creq_create( creq_obj, minion_obj, MINION_KP, TYPE, MODEL, QUESTION, CHATID, HISTORY_NUM, IMAGELIST, TOOL_JSTR )
     chat_request_json                   = chat_str_replaceall( creq_dump( creq_obj ) )
     print chat_request_json             > (SESSIONDIR "/" CHATID "/chat.request.yml")
 

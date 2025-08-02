@@ -1,7 +1,7 @@
 END{
     PROVIDER_NAME       = ENVIRON[ "provider_name" ]
     PROVIDER_NAME       = (PROVIDER_NAME != "") ? PROVIDER_NAME : "openai"
-    INTERACTIVE         = ENVIRON[ "interative" ]
+    INTERACTIVE         = ENVIRON[ "XCMD_CHAT_IS_INTERACTIVE" ]
     OPENAI_CONTENT_DIR  = ENVIRON[ "content_dir" ]
     MINION_KP           = SUBSEP "\"1\""
 
@@ -16,7 +16,8 @@ END{
             log_error(PROVIDER_NAME, log_mul_msg(OPENAI_RESPONESE_ERROR_MSG))
             msg_str = OPENAI_RESPONESE_ERROR_MSG "\n" OPENAI_RESPONESE_ERROR_CONTENT
             print msg_str                           > (OPENAI_CONTENT_DIR "/chat.error.yml")
-            exit(1)
+            if ( OPENAI_RESPONESE_EXITCODE != "" ) exit( OPENAI_RESPONESE_EXITCODE )
+            else exit(1)
         } else {
             msg_str = jstr(o_error)
             log_error(PROVIDER_NAME, log_mul_msg(msg_str))
@@ -38,5 +39,6 @@ END{
 
         openai_res_to_cres( o_response, cres_o, SUBSEP "cres" )
         print cres_dump( cres_o, SUBSEP "cres" )    > (OPENAI_CONTENT_DIR "/chat.response.yml")
+        if ( INTERACTIVE == 1 ) cres_display_response_usage( cres_o, SUBSEP "cres" )
     }
 }

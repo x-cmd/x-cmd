@@ -318,6 +318,14 @@ function log_level( level, mod, msg, c, c_bg, c_msg ){
 }
 # EndSection
 
+function mkdirp( dir,       _cmd,   t ){
+    dir = qu1(dir)
+    _cmd = "[ -d " dir " ] || command mkdir -p " dir " 2>/dev/null"
+    _cmd | getline t
+    close( _cmd )
+    return t
+}
+
 # Section: fs.awk cat bcat
 # TODO: this module try to provide facility for filesystem manipulation in the future.
 function cat( filepath,    r, c, l ){

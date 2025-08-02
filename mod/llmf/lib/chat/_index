@@ -1,15 +1,14 @@
 # shellcheck shell=dash
 # this is a moduel to honor x-bash/chat module
 
-xrc chat
-xrc:mod:lib     llmf      chat/send
-
 ___x_cmd_llmf_chat(){
     local X_help_cmd='x help -m llmf chat'; help:arg:parse
     local op="$1";
     case "$op" in
-        request|preparehistory|exec)
+        request|exec)
             shift; ___x_cmd_llmf_chat_"$op" "$@" ;;
+        --def-model_)
+            shift; ___x_cmd_llmf_model_default___get_ "$@" ;;
         *)  N=llmf M="Not support such option '$op'" log:ret:64
     esac
 }
@@ -20,95 +19,11 @@ ___x_cmd_llmf_chat_request(){
 }
 
 ___x_cmd_llmf_chat_exec(){
-    [ -n "$model" ] || {
-        local x_=
-        ___x_cmd_llmf_model_default get_
-        model="$x_"
-    }
+    local cur_endpoint="";
+    ___x_cmd_llmf_cur cur_endpoint:=endpoint 2>/dev/null
 
-
-    llmf:debug --model "$model" --question "$question"
-
-    {
-        userlang="${cfg_userlang:-$LANG}" \
-        ___x_cmd cawk  -E ___X_CMD_CHAT_SESSION_DIR,session,history_num,minion,model,chatid,minion_json_cache,system,type,filelist_attach   \
-                -E cfg_history_num,cfg_session,cfg_minion,cfg_model,cfg_maxtoken,cfg_seed,cfg_temperature \
-                -m j/json,j/jiter,j/jcp \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"        \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"           \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"         \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"           \
-                -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"           \
-                -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/llmf.awk"           \
-                -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/handle_request.awk" <<A
-${question}
-A
-    } | ( ___x_cmd_llmf_chat_request___launch )
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER='llmf'   \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME='llamafile'  \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_ENDPOINT="${cur_endpoint:-$___X_CMD_LLMF_DEFAULT_ENDPOINT}"    \
+    ___x_cmd openai chat exec "$@"
 }
-
-___x_cmd_llmf_chat_request___launch(){
-    local content_dir
-    read -r content_dir
-    [ -d "$content_dir" ] || return 1
-
-    ___x_cmd_llmf_chat_request___trapexit(){
-        llmf:debug "Remove chat.running file"
-        ___x_cmd rmrf "$content_dir/chat.running"
-    }
-
-    printf "%s\n" $$ >"$content_dir/chat.running"
-    trap '___x_cmd_llmf_chat_request___trapexit' EXIT
-
-    {
-        local model
-        read -r model
-
-        local request_body_file="$content_dir/llmf.request.body.yml"
-        [ -f "$request_body_file" ] || return $?
-        ___x_cmd retry --max 2 --interval 3 ___x_cmd_llmf_chat_request___try
-    } || {
-        ___x_cmd_llmf_chat_request___trapexit
-        return 1
-    }
-}
-
-___x_cmd_llmf_chat_request___try(){
-    llmf:debug "Sending request to llmf server"
-    [ -z "$confirm_before_send" ] || {
-        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml >"$___X_CMD_DEVTTY_FP"
-        ___x_cmd ui yesno "Do your want to send this message?" || {
-            ___X_CMD_RETRY_ABORT=1
-            return 1
-        }
-        confirm_before_send=
-    }
-
-    local _md5; _md5="$( < "$request_body_file" ___x_cmd str md5 )"
-    local interative=""; if ___x_cmd_runmode_allow_chatty; then interative=1; fi
-
-    local errcode=0
-    {
-        request_body_file="$request_body_file" \
-        ___x_cmd ccmd "$cache_time" -- \
-            ___x_cmd_llmf_request_generaxwtecontent "$model" "$_md5" \
-        | ___x_cmd cawk  -E content_dir,interative  \
-            -m j/json,j/jiter,j/jcp                 \
-            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"    \
-            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"       \
-            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"     \
-            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"       \
-            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"       \
-            -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/llmf.awk"       \
-            -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/llmf_stream_output_util.awk"    \
-            -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/handle_response.awk"
-    }
-    errcode=$?
-    case $errcode in
-        0)  return 0 ;;
-        2)  ___X_CMD_RETRY_ABORT=1; errcode=1 ;;
-    esac
-    ___x_cmd ccmd - ___x_cmd_llmf_request_generaxwtecontent "$model" "$_md5"
-    ___x_cmd rmrf "$content_dir/llmf.response.yml" "$content_dir/chat.response.yml"
-    return "$errcode"
-}
-

@@ -201,7 +201,36 @@ function minion_load_from_jsonfile( o, prefix, jsonfilepath, provider ){
     }
 }
 
+function minion_tool_jstr(o, prefix,            v){
+    v = ENVIRON[ "tool_jstr" ]
+    if ( ! chat_str_is_null(v) )    return v
+}
 
+# function minion_tool_function( o, prefix, obj, obj_kp,        v ){
+#     v = ENVIRON[ "tool_function" ]
+#     if ( ! chat_str_is_null(v) ) {
+#         jiparse2leaf_fromstr( obj, obj_kp, v )
+#         return
+#     }
+
+#     v = o[ prefix S "\"tool\"" S "\"function\"" ]
+#     if ( (v == "[")  || (v == "{") ) {
+#         jmerge_soft___value( obj, obj_kp, o, prefix S "\"tool\"" S "\"function\"" )
+#     }
+# }
+
+# function minion_tool_choice( o, prefix         v ){
+#     v = ENVIRON[ "tool_choice" ]
+#     if ( ! chat_str_is_null(v) )    return v
+
+#     v = o[ prefix S "\"tool\"" S "\"choice\"" ]
+#     if ( ! chat_str_is_null(v) )    return ((v ~ "^\"") ? juq(v) : v)
+
+#     v = ENVIRON[ "cfg_tool_choice" ]
+#     if ( ! chat_str_is_null(v) )    return ((v ~ "^\"") ? juq(v) : v)
+
+#     return "auto"
+# }
 
 # END{
 #     # minion name

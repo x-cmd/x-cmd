@@ -48,7 +48,7 @@ function creq_loadfromjsonfile( o, kp, fp ){
     jiparse2leaf_fromfile( o, kp,  fp )
 }
 
-function creq_create( o, minion_obj, minion_kp, type, model, question, chatid, history_num, imagelist,       _kp, _kp_media, i, l, _arr, _keyl){
+function creq_create( o, minion_obj, minion_kp, type, model, question, chatid, history_num, imagelist, tool_jstr,      _kp, _kp_media, i, l, _arr, _keyl){
     _kp = SUBSEP "\""1"\""
 
     jlist_put(o,  "" , "{")
@@ -72,6 +72,15 @@ function creq_create( o, minion_obj, minion_kp, type, model, question, chatid, h
             jdict_put(o, _kp_media SUBSEP "\"" _keyl "\"", "\"base64\"",    jqu(_arr[ i ]))
             jdict_put(o, _kp_media SUBSEP "\"" _keyl "\"", "\"msg\"",       jqu(_arr[ ++i ]))
         }
+    }
+    if ( ! chat_str_is_null(tool_jstr) ) {
+        jdict_put(o, _kp, "\"tool\"", "[")
+        jiparse2leaf_fromstr( o, _kp SUBSEP "\"tool\"", tool_jstr )
+    }
+
+    if (minion_obj[ minion_kp, "\"tool\"" L ] > 0 ){
+        jdict_put(o, _kp, "\"tool\"", "[")
+        jmerge_soft___value(o, _kp SUBSEP "\"tool\"", minion_obj, minion_kp SUBSEP "\"tool\"")
     }
 }
 

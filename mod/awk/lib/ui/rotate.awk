@@ -38,11 +38,18 @@ function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end, outp
     ui_rotate_render_begin(n)
     ring_init( o, n )
     while (getline _line) {
-        if ( output_raw == 1 ) OUTPUT_ARR[ ++OUTPUT_ARRL ] = _line
+        if ( output_raw == 1 ) {
+            if (_line ~ /^UI_ROTATE_EXITCODE:/) {
+                OUTPUT_ARRL --
+                _c = int( substr( _line, 10 ) )
+                break
+            }
+            OUTPUT_ARR[ ++OUTPUT_ARRL ] = _line
+        }
         l = split(_line, arr, "\n|\r")
         for (i=1; i<=l; ++i){
             _line = arr[i]
-            if (_line ~ /^EXITCODE:/) {
+            if (_line ~ /^UI_ROTATE_EXITCODE:/) {
                 _c = int( substr( _line, 10 ) )
             }
             else {

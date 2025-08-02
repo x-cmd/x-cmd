@@ -38,5 +38,27 @@ function cres_loadfromjsonfile( o, kp, fp ){
 }
 
 
+function cres_display_response_usage(o, kp,           kp_usage, total_token, input_token, output_token, model ){
+    kp_usage = kp  SUBSEP "\"usage\""
+    if ( o[ kp_usage ] != "{" ) return
+    total_token       = int( o[ kp_usage SUBSEP "\"total_tokens\"" ] )
+    if ( total_token <= 0 ) return
+    input_token     = int( o[ kp_usage SUBSEP "\"prompt_tokens\"" ] )
+    output_token    = int( o[ kp_usage SUBSEP "\"completion_tokens\"" ] ) + int( o[ kp_usage SUBSEP "\"thought_tokens\"" ] )
+    model           = juq( o[ kp SUBSEP "\"model\"" ] )
+    title_model     = "Model Usage"
+
+    if ( (kl = (length( title_model ) - length( model ))) >= 0 ) {
+        model = model repeat( " ", kl )
+    } else {
+        title_model = title_model repeat( " ", (0-kl) )
+    }
+
+    printf( "\n\n%s %-20s%-20s%-20s\n", title_model, "Input Tokens", "Output Tokens", "Total Tokens")
+    print repeat( "─", length(title_model) + 61 )
+    printf( "%s %-20s%-20s%-20s\n", model, input_token, output_token, total_token )
+}
+
+
 # gemini_response => cres_object
 # openai_response => cres_object

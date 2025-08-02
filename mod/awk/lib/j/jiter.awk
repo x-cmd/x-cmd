@@ -456,5 +456,12 @@ function jiparse2leaf_fromfile( obj, kp, filepath,     c, r ){
     JITER_CURLEN = 0
 }
 
+function jiparse2leaf_fromstr( obj, kp, text ){
+    JITER_CURLEN = 0
+    jiparse2leaf_init( kp )
+    jiparse2leaf_after_tokenize(obj, text)
+    JITER_CURLEN = 0
+}
+
 # EndSection
 

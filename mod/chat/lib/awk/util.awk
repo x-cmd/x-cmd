@@ -1,9 +1,3 @@
-function mkdirp( dir,       _cmd,   t ){
-    _cmd = "[ -d " dir " ] || command mkdir -p " dir " 2>/dev/null"
-    _cmd | getline t
-    close( _cmd )
-    return t
-}
 
 function chat_str_is_null( str ){
     return ((str == "") || (str == "null") || (str == "NULL") || (str == "\"\""))

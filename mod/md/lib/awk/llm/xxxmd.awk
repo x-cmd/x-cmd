@@ -40,6 +40,7 @@ BEGIN{
     ARR_I = "CURRENT"
     ARR_L = "LENGTH"
     HD_BLANK = "  "
+    HD_EXITCODE = 0
 }
 
 function larr_advance( offset ) {
@@ -83,10 +84,15 @@ function hd_main( arr,      i, l, line, re_line ){
 }
 
 {
+    if (match($0, "^XCMD_MD_LLM_EXITCODE:")){
+        HD_EXITCODE = int(substr($0, RLENGTH + 1))
+        next
+    }
     arr[ ARR_L ++ ] = $0
 }
 
 END{
     if ( arr[0] !~ "^$" )   printf("\n")
     hd_main( arr )
+    exit(HD_EXITCODE)
 }

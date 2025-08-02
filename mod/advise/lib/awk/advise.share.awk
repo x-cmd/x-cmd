@@ -136,7 +136,7 @@ function comp_advise_get_ref_inner(obj, kp, filepath,       _, msg){
     # cp_cover(obj, kp, _, kp)
     # cp(obj, kp, _, kp)
     jmerge_soft___value(_, kp, obj, kp)
-    jmerge_copy(obj, _)
+    jmerge_force___value(obj, kp, _, kp)
     return true
 }
 

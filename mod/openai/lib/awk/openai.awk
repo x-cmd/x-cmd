@@ -58,8 +58,35 @@ function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key
     return _str
 }
 
+
+function openai_gen_tool_str( creq_obj, creq_kp,            _function_str ) {
+    _function_str = openai_gen_tool_function_str( creq_obj, creq_kp )
+    return _function_str
+}
+
+function openai_gen_tool_function_str( creq_obj, creq_kp,           i, l, _kp_tool_function, _, _res ){
+    _kp_tool_function = creq_kp SUBSEP "\"tool\"" SUBSEP "\"function\""
+    l = creq_obj[ _kp_tool_function L ]
+    if (l <= 0) return ""
+
+    _res = ""
+    for (i=1; i<=l; ++i){
+        jlist_put( _, "", "{")
+        jdict_put( _, SUBSEP "\""i"\"", "\"type\"", "\"function\"")
+        jdict_put( _, SUBSEP "\""i"\"", "\"function\"", "{")
+        jmerge_force___value(_, SUBSEP "\""i"\"" SUBSEP "\"function\"", creq_obj, _kp_tool_function SUBSEP "\""i"\"")
+
+        jdict_put( _, SUBSEP "\""i"\"" SUBSEP "\"function\"", "\"strict\"", "true")
+        jdict_put( _, SUBSEP "\""i"\"" SUBSEP "\"function\"" SUBSEP "\"parameters\"" ,"\"additionalProperties\"", "false")
+
+        _res = _res jstr0(_, SUBSEP "\""i"\"", " ") ((i!=l)  ? "," : "")
+    }
+
+    return _res
+}
+
 function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq_kp, def_model,          i, l, str, \
-    _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken_keyname, _maxtoken, _seed, _temperature, _ctx, _data_str, _stream_str){
+    _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken_keyname, _maxtoken, _seed, _temperature, _ctx, _data_str, _stream_str, _tool_str){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
         str = openai_gen_history_str(history_obj, i)
@@ -83,6 +110,8 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq
     _jsonmode       = minion_is_jsonmode( minion_obj, minion_kp )
     _ctx            = minion_ctx( minion_obj, minion_kp )
 
+    _tool_str       = openai_gen_tool_str(creq_obj, creq_kp)
+
     # Tip:
     #   in some case, _maxtoken is 0, but it is not a valid value for openai.
     #   in openai, 'max_tokens' is now deprecated in favor of 'max_completion_tokens', and is not compatible with o1 series models.
@@ -99,13 +128,14 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq
     _temperature    = (_temperature != "") ? "\"temperature\": " _temperature "," : ""
     _ctx            = (_ctx != "") ? "\"num_ctx\": " _ctx "," : ""
     _jsonmode       = (_jsonmode) ? "\"response_format\": { \"type\": \"json_object\" }," : ""
+    _tool_str       = (_tool_str) ? "\"tools\": [" _tool_str "]," : ""
 
-    _data_str = "{ \"model\": " _mode " , \"messages\": [ " _messages_str " ], " _jsonmode _maxtoken _seed _temperature _ctx " " _stream_str " }"
+    _data_str = "{ \"model\": " _mode " , \"messages\": [ " _messages_str " ], " _jsonmode _maxtoken _seed _temperature _ctx _tool_str " " _stream_str " }"
 
     return _data_str
 }
 
-function openai_res_to_cres(openai_resp_o, cres_o, kp,          resp_kp, delta_kp, resp_content_kp, resp_role_kp ){
+function openai_res_to_cres(openai_resp_o, cres_o, kp,          resp_kp, delta_kp, resp_content_kp, resp_role_kp, usage_kp ){
     if ( PROVIDER_NAME == "ollama" ) {
         openai_res_to_cres___ollama_format(openai_resp_o, cres_o, kp)
         return
@@ -118,6 +148,7 @@ function openai_res_to_cres(openai_resp_o, cres_o, kp,          resp_kp, delta_k
     delta_kp        = resp_kp SUBSEP "\"delta\""
     resp_content_kp = delta_kp SUBSEP "\"content\""
     resp_role_kp    = delta_kp SUBSEP "\"role\""
+    usage_kp        = SUBSEP "\"1\"" SUBSEP "\"usage\""
 
     jmerge_force___value(cres_o, kp, openai_resp_o, SUBSEP "\"1\"")
     jmerge_force___value(cres_o, kp, openai_resp_o, resp_kp)
@@ -130,6 +161,9 @@ function openai_res_to_cres(openai_resp_o, cres_o, kp,          resp_kp, delta_k
     jdict_rm( cres_o, kp, "\"finish_reason\"" )
     jdict_rm( cres_o, kp, "\"choices\"" )
     jdict_rm( cres_o, kp, "\"delta\"" )
+
+    jdict_put( cres_o, kp, "\"usage\"", "{" )
+    jmerge_force___value( cres_o, kp SUBSEP "\"usage\"", openai_resp_o, usage_kp )
 }
 
 function openai_res_to_cres___ollama_format(ollama_resp_o, cres_o, kp,          resp_kp){

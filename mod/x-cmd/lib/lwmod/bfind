@@ -1,0 +1,79 @@
+
+___x_cmd_bfind(){
+    local BFIND_ARGS=""
+    local line=1000
+    local maxdepth=10
+
+    local ignore="${___X_CMD_BFIND_IGNORE:-".DS_Store
+.git
+.x-cmd.root
+"}"
+
+    arg:init:x bfind
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m bfind;         return 0    ;;
+            -n)             line="$2";                      arg:2:shift ;;
+
+            -i)             ignore="${ignore}${2}${___X_CMD_UNSEENCHAR_NEWLINE}";
+                                                            arg:2:shift ;;
+
+            --no-ignore)    ignore="";                      shift       ;;
+
+            -a|--all)       line=""; maxdepth=65535;        shift       ;;      # all
+            -d)             maxdepth="$2";                  arg:2:shift ;;
+            --)             shift 1 ; break ;;
+            -*)             break ;;
+            *)              arg:add BFIND_ARGS "$1";        shift       ;;
+        esac
+    done
+
+    [ -n "$BFIND_ARGS" ]    ||  BFIND_ARGS=.
+
+    local f
+    local first=1
+    while read -r f; do
+        [ -n "$f" ]     || continue
+        [ -n "$first" ] || arg:add BFIND_ARGS -and
+        arg:add BFIND_ARGS -not -path '**/'"$f"'/*'
+        first=""
+    done <<A
+$ignore
+A
+
+
+    if [ -z "$line" ]; then
+        ___x_cmd_bfind___inner "$@"
+    else
+        ___x_cmd_bfind___inner "$@" | ___x_cmd_cmds head -n "$line"
+    fi
+}
+
+___x_cmd_bfind___inner(){
+    local depth=1
+    while [ $depth -lt "${maxdepth}" ]; do
+        if [ $# -gt 0 ]; then
+            eval ___x_cmd_cmds find "$BFIND_ARGS" -mindepth "$depth" -maxdepth "$depth" '"$@"'
+        else
+            eval ___x_cmd_cmds find "$BFIND_ARGS" -mindepth "$depth" -maxdepth "$depth" | \
+                ___x_cmd_cmds awk '
+                {
+                    count += 1;             print
+                }
+
+                END{
+                    if (count == 0) {       exit(1)
+                    } else {                exit(0)
+                    }
+                }'
+
+            case "$?" in
+                1)      return 0
+            esac
+        fi
+
+        depth="$((depth+1))"
+    done
+
+}

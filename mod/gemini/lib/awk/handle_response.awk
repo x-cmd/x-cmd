@@ -1,6 +1,6 @@
 
 END{
-
+    INTERACTIVE = ENVIRON[ "XCMD_CHAT_IS_INTERACTIVE" ]
     _current_kp = Q2_1 SUBSEP "\""obj[ Q2_1 L ]"\""
     if ( obj[ _current_kp, "\"error\"" ] != "" ) {
         o_error[ L ] = 1
@@ -30,5 +30,7 @@ END{
         print jstr(o_response)                      > (GEMINI_CONTENT_DIR "/gemini.response.yml" )
         gemini_res_to_cres( o_response, cres_o , SUBSEP "cres"  )
         print cres_dump( cres_o, SUBSEP "cres" )    > (GEMINI_CONTENT_DIR "/chat.response.yml")
+
+        if ( INTERACTIVE == 1 ) cres_display_response_usage( cres_o, SUBSEP "cres" )
     }
 }
