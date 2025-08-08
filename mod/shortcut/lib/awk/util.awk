@@ -132,7 +132,7 @@ function shortcut_set(o, arr, word, cmd, xcmd, advise, category, platform, statu
     if (category != "") shortcut_set_item(o, kp, "\"category\"", jqu(category) )
 
     if (status != "disable") {
-        jdict_rm(o, kp, "\"status\"")
+        jdict_rm(o, kp, "\"status\"", jqu("enable"))
     } else {
         shortcut_set_item(o, kp, "\"status\"", jqu(status) )
     }

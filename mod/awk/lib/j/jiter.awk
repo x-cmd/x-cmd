@@ -446,6 +446,7 @@ function jiparse2leaf_iter( obj, item ){
 }
 
 function jiparse2leaf_fromfile( obj, kp, filepath,     c, r ){
+    if ( filepath == "" ) return
     CAT_FILENOTFOUND = false
     JITER_CURLEN = 0
     jiparse2leaf_init( kp )

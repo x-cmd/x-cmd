@@ -38,6 +38,19 @@ function cres_loadfromjsonfile( o, kp, fp ){
 }
 
 
+function cres_dump_usage(o, kp,           kp_usage, total_token, obj_usage ){
+    kp_usage = kp  SUBSEP "\"usage\""
+    if ( o[ kp_usage ] != "{" ) return
+    total_token       = int( o[ kp_usage SUBSEP "\"total_tokens\"" ] )
+    if ( total_token <= 0 ) return
+
+    jlist_put(obj_usage, "", "{" )
+    jdict_put(obj_usage, Q2_1, "\"usage\"", "{" )
+    jmerge_force___value( obj_usage, Q2_1 SUBSEP "\"usage\"", o, kp_usage )
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"usage\"", "\"model\"", o[ kp SUBSEP "\"model\"" ])
+    return jstr0( obj_usage, Q2_1, " ")
+}
+
 function cres_display_response_usage(o, kp,           kp_usage, total_token, input_token, output_token, model ){
     kp_usage = kp  SUBSEP "\"usage\""
     if ( o[ kp_usage ] != "{" ) return

@@ -1,0 +1,111 @@
+# shellcheck shell=dash
+xrc ourl
+
+___x_cmd_siliconflow_model(){
+    [ $# -gt 0 ]    ||      set - ls
+
+    local op="$1";  shift
+    case "$op" in
+        ls|set|get)
+            ___x_cmd_siliconflow_model_"$op" "$@"
+            ;;
+        -h|--help)
+            ___x_cmd help -m siliconflow model "$@"
+            ;;
+    esac
+}
+
+___x_cmd_siliconflow_model_set(){
+    local model="$1"
+    [ -n "$model" ] || siliconflow:error "Please provide a model name"
+
+    ___x_cmd_siliconflow_cfg set model="$model" || return $?
+    siliconflow:info "The default model has been set as $model"
+}
+
+___x_cmd_siliconflow_model_get(){
+    local model=""
+    ___x_cmd_siliconflow_cur model:=  2>/dev/null
+    printf "%s\n" "$model"
+}
+
+___x_cmd_siliconflow_model_ls(){
+    [ $# -gt 0 ]    ||      set - --app
+    local op="$1"
+    local format=
+    case "$op" in
+        --csv)      format=csv       ;;
+        --app)      format=app       ;;
+        -j|--json)  format=json      ;;
+        -y|--yml)   format=yml       ;;
+        -h|--help)  ___x_cmd help -m siliconflow model ls  "$@"; return ;;
+        *)          M="Not support $op" N=moonshot log:ret:1 ;;
+    esac
+
+    "___x_cmd_siliconflow_model_ls___${format}"
+}
+
+___x_cmd_siliconflow_model_ls___app(){
+    local ___X_CMD_CSV_APP_DATA_CURROW=
+    local data; data="$( ___x_cmd_siliconflow_model_ls___csv )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd csv --app --return line
+
+    if [ -n "$___X_CMD_CSV_APP_DATA_CURROW" ] ; then
+        local select_id="${___X_CMD_CSV_APP_DATA_CURROW%%,*}"
+        local id=""
+        siliconflow:info "Select model -> $select_id"
+        ___x_cmd ui select id "What to do NEXT" \
+        "set default model: $select_id"    \
+        "EXIT"     || return $?
+
+        case "$id" in
+            1)  ___x_cmd_siliconflow_model_set "$select_id" ;;
+            2)
+                siliconflow:info "EXIT [code=0]"
+                return 0 ;;
+        esac
+    fi
+}
+
+___x_cmd_siliconflow_model_ls___csv(){
+    local data; data="$( ___x_cmd_siliconflow_model_ls_raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd_siliconflow_model_ls___parse_json2csv
+}
+___x_cmd_siliconflow_model_ls___json(){
+    local data; data="$( ___x_cmd_siliconflow_model_ls_raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd jo fmt
+}
+
+___x_cmd_siliconflow_model_ls___yml(){
+    local data; data="$( ___x_cmd_siliconflow_model_ls_raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd j2y
+}
+
+___x_cmd_siliconflow_model_ls___parse_json2csv(){
+    ___x_cmd jo .data | ___x_cmd ja 2c .id .object .created .owned_by | \
+        ___x_cmd csv header --add  Id Object Creadted Owned_by
+}
+
+___x_cmd_siliconflow_model_ls_raw(){
+    ___x_cmd ccmd 1d -- ___x_cmd_siliconflow_model_ls_raw___inner
+}
+
+___x_cmd_siliconflow_model_ls_raw___inner(){
+    ___x_cmd_siliconflow_has_apikey || return $?
+
+    local apikey=
+    ___x_cmd_siliconflow_cur apikey:=  2>/dev/null
+    local data=; data="$(
+        ___x_cmd curl \
+            -sS  "$___X_CMD_SILICONFLOW_DEFAULT_ENDPOINT/v1/models"          \
+            --header 'Content-Type: application/json'        \
+            --header "Authorization: Bearer $apikey"
+    )"
+
+    [ "$(printf "%s\n" "$data" | ___x_cmd jo .object)" = "\"list\"" ] || {
+        siliconflow:error -m "$data"
+        return 1
+    }
+
+    printf "%s\n" "$data" | ___x_cmd jo fmt
+}

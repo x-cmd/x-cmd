@@ -13,17 +13,17 @@ function hd_wiki_main( arr,      i, l, line ){
         if ( line ~ "^[-|*|_]{3,}[ ]*$" ) {
             gsub("^[-|*|_]{3,}[ ]*$", "----------", line)
             printf(HD_BLANK "%s\n", "\033[2m" line "\033[0m")
-            larr_advance()
+            larr_advance(arr)
             continue
         }
 
         if ( line ~  "^\\{\\|")    { hd_wiki_table( line ); continue }   # handle table
 
-        if ( line ~  "^=====[^=]+=====$")    { hd_head2( line ); continue }
-        if ( line ~  "^====[^=]+====$")    { hd_head2( line ); continue }
-        if ( line ~  "^===[^=]+===$")    { hd_head2( line ); continue }
-        if ( line ~  "^==[^=]+==$")    { hd_head2( line ); continue }
-        if ( line ~  "^=[^=]+=$")    { hd_head2( line ); continue }
+        if ( line ~  "^=====[^=]+=====$")    { hd_head2( arr, line ); continue }
+        if ( line ~  "^====[^=]+====$")    { hd_head2( arr, line ); continue }
+        if ( line ~  "^===[^=]+===$")    { hd_head2( arr, line ); continue }
+        if ( line ~  "^==[^=]+==$")    { hd_head2( arr, line ); continue }
+        if ( line ~  "^=[^=]+=$")    { hd_head2( arr, line ); continue }
 
         if ( line ~  "<syntaxhighlight[^>]+>")    { hd_wiki_codeblock( arr ); continue }
 
@@ -31,7 +31,7 @@ function hd_wiki_main( arr,      i, l, line ){
 
         # handle image ...
 
-        if ( line ~ _regex_head( "#{3,6}" )) { hd_head3( line ); continue }
+        if ( line ~ _regex_head( "#{3,6}" )) { hd_head3( arr, line ); continue }
 
         if ( line ~ "^[ ]*```[A-Za-z0-9]+$" ) {
             hd_codeblock( arr )

@@ -40,7 +40,11 @@ function chat_history_get_req_text(o, prefix, i){
 }
 
 function chat_history_get_res_text(o, prefix, i){
-    return o[  Q2_1 SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"reply\"" SUBSEP "\"parts\"" SUBSEP "\"1\"" SUBSEP "\"text\"" ]
+    return o[  Q2_1 SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"reply\"" SUBSEP "\"content\"" ]
+}
+
+function chat_history_get_res_tool_call(o, prefix, i){
+    return jstr0( o, Q2_1 SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"reply\"" SUBSEP "\"tool_calls\"", " " )
 }
 
 function chat_history_get_finishReason(o, prefix, i){

@@ -18,65 +18,68 @@ END{
     ui_rotate_render_restore()
 }
 
-# function ui_rotate1( screensize, fp,     line,     d, i ){
-#     i = IFS
-#     IFS = "\n"
+function ui_rotate___handle_running( ring_arr, output_arr, status_obj, line, prefix, prompt_run, output_raw,           i, l, arr, _c){
+    if ( output_raw == 1 ) {
+        if (line ~ /^UI_ROTATE_EXITCODE:/) {
+            output_arr[ L ] --
+            _c = int( substr( line, 10 ) )
+            status_obj[ "IS_BREAK" ] = 1
+            status_obj[ "EXITCODE" ] = _c
+            return
+        }
+        output_arr[ ++ output_arr[ L ]  ] = line
+    }
+    l = split(line, arr, "\n|\r")
+    for (i=1; i<=l; ++i){
+        line = arr[i]
+        if (line ~ /^UI_ROTATE_EXITCODE:/) {
+            _c = int( substr( line, 10 ) )
+            status_obj[ "EXITCODE" ] = _c
+        }
+        else {
+            gsub("\033\\[[^A-Za-z]*[A-Za-z=]", "",  line )
+            gsub( "\n", "\\n", line )
+            gsub( "\t", "\\t", line )
+            gsub( "\v", "\\v", line )
+            gsub( "\b", "\\b", line )
+            gsub( "\r", "\\r", line )
+            if ( ! status_obj[ "HAS_CONTENT" ] ) {
+                ui_rotate_render_begin(n)
+                status_obj[ "HAS_CONTENT" ] = 1
+            }
+            ring_add( ring_arr, line )
+            ui_rotate_render( ring_arr, prefix )
+            ui_rotate_render_prompt( ring_arr, prefix, prompt_run )
+        }
+    }
+    fflush()
+}
 
-#     printf("%s", UI_LINEWRAP_DISABLE) > "/dev/stderr"  # This must be  the default ...
-#     printf("\033[?7l") > "/dev/stderr"
-
-#     while (getline line <fp ) {
-#         printf("\r%s") > "/dev/stderr"
-#     }
-
-#     IFS = i
+# function ui_rotate_fromarr(){
+#     # tail_idx = arr[ L ]
+#     # if ( arr[ tail_idx, "IS_RENDERED" ] ) return
+#     # arr[ tail_idx, "IS_RENDERED" ] = 1
 # }
 
-function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end, output_raw,    i, o, _line, l, arr, _c, _has_content, OUTPUT_ARR, OUTPUT_ARRL ){
+function ui_rotate_fromstdin( n, prefix, exitclear, prompt_run, prompt_end, output_raw,         i, l, _line, _c, output_arr, status_obj, ring_arr ){
     prompt_run = ( prompt_run != "") ? prompt_run : "Running ..."
     prompt_end = ( prompt_end != "") ? prompt_end : "Done"
     ui_rotate_render_begin(n)
-    ring_init( o, n )
+    ring_init( ring_arr, n )
     while (getline _line) {
-        if ( output_raw == 1 ) {
-            if (_line ~ /^UI_ROTATE_EXITCODE:/) {
-                OUTPUT_ARRL --
-                _c = int( substr( _line, 10 ) )
-                break
-            }
-            OUTPUT_ARR[ ++OUTPUT_ARRL ] = _line
-        }
-        l = split(_line, arr, "\n|\r")
-        for (i=1; i<=l; ++i){
-            _line = arr[i]
-            if (_line ~ /^UI_ROTATE_EXITCODE:/) {
-                _c = int( substr( _line, 10 ) )
-            }
-            else {
-                gsub("\033\\[[^A-Za-z]*[A-Za-z=]", "",  _line )
-                gsub( "\n", "\\n", _line )
-                gsub( "\t", "\\t", _line )
-                gsub( "\v", "\\v", _line )
-                gsub( "\b", "\\b", _line )
-                gsub( "\r", "\\r", _line )
-                if ( ! _has_content ) {
-                    ui_rotate_render_begin(n)
-                    _has_content = 1
-                }
-                ring_add( o, _line )
-                ui_rotate_render( o, prefix )
-                ui_rotate_render_prompt( o, prefix, prompt_run )
-            }
-        }
+        ui_rotate___handle_running( ring_arr, output_arr, status_obj, _line, prefix, prompt_run, output_raw )
+        _c = status_obj[ "EXITCODE" ]
+        if ( status_obj[ "IS_BREAK" ] ) break
     }
 
-    if ( _has_content == 1 ) {
-        ui_rotate_render_prompt( o, prefix, prompt_end )
+    if ( status_obj[ "HAS_CONTENT" ] ) {
+        ui_rotate_render_prompt( ring_arr, prefix, prompt_end )
         if ( exitclear == 1 )       ui_rotate_render_clear()
         ui_rotate_render_restore()
     }
-    for (i=1; i<=OUTPUT_ARRL; ++i) print OUTPUT_ARR[i]
-    return _c
+    l = output_arr[ L ]
+    for (i=1; i<=l; ++i) print output_arr[i]
+    return int(_c)
 }
 
 function ui_rotate_render( o, prefix,      i, n, str, counter ){

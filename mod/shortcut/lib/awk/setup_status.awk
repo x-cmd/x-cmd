@@ -42,13 +42,9 @@ function shortcut_setup_status( o, kp, namearr, statusval, bytype, platform,    
 function shortcut_setup_status_item(o, kp, statusval){
     q2_status = "\"status\""
 
-    if ( statusval == "enable" ) {
-        if ( jdict_has(o, kp, q2_status) ) jdict_rm(o, kp, q2_status)
-    } else {
-        statusval = ( statusval ~ "^\"" ) ? statusval : jqu( statusval )
-        if ( ! jdict_has(o, kp, q2_status) ) jdict_put(o, kp, q2_status, statusval)
-        else o[ kp, q2_status ] = statusval
-    }
+    if ( statusval != "enable" ) statusval = ( statusval ~ "^\"" ) ? statusval : jqu( statusval )
+    if ( ! jdict_has(o, kp, q2_status) ) jdict_put(o, kp, q2_status, statusval)
+    else o[ kp, q2_status ] = statusval
 
     shortcut_record_word_change(o, kp)
 }

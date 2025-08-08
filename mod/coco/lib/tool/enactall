@@ -1,0 +1,115 @@
+
+
+___x_cmd_coco_enactall(){
+    # TODO: using fifo
+    local folder="$1"
+    ___x_cmd_coco_enactall___draw "$folder" || return $?
+    ___x_cmd_coco_enactall___tool "$folder"
+}
+
+___x_cmd_coco_enactall___draw(){
+    local folder="$1"
+    local datafile="$folder/draw"
+    [ -f "$datafile" ] || N=coco M="Not found draw file -> $datafile" log:ret:1
+
+    local is_interactive="$XCMD_CHAT_IS_INTERACTIVE"
+    [ -n "$is_interactive" ] || {
+        if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
+            is_interactive=1
+        fi
+    }
+
+    {
+        ___x_cmd pidofsubshell
+        exec tail -F -n "10000" "$datafile"
+    } | {(
+        local pid_of_upstream_pid
+        read -r pid_of_upstream_pid
+        trap "kill -s TERM $pid_of_upstream_pid" EXIT
+
+        ___x_cmd tty update
+
+        is_interactive="$is_interactive" \
+        LINES="$LINES" \
+        ___X_CMD_UI_ROTATE_SIZE=10 \
+        ___X_CMD_UI_ROTATE_TEXT_COLOR="\033[36m" \
+        ___x_cmd cawk -m j/json,j/jiter,ui/ui,ui/rotate,re \
+            -f "$___X_CMD_ROOT_MOD/md/lib/awk/llm/xxxdetect.awk"    \
+            -f "$___X_CMD_ROOT_MOD/md/lib/awk/llm/xxxbody.awk"      \
+            -f "$___X_CMD_ROOT_MOD/md/lib/awk/llm/xxxcodeblock.awk" \
+            -f "$___X_CMD_ROOT_MOD/md/lib/awk/llm/xxxmd.awk"        \
+            -f "$___X_CMD_ROOT_MOD/coco/lib/awk/handle_drawfile_data.awk"
+    )}
+}
+___x_cmd_coco_enactall___tool(){
+    local folder="$1"
+    local datafile="$folder/log"
+    [ -f "$datafile" ] || N=coco M="Not found log file -> $datafile" log:ret:1
+    {
+        ___x_cmd pidofsubshell
+        exec tail -F -n "10000" "$datafile"
+    } | {(
+        local pid_of_upstream_pid
+        read -r pid_of_upstream_pid
+        trap "kill -s TERM $pid_of_upstream_pid" EXIT
+
+        local log
+        local fcidx
+        local expected_count=-1
+        local finish_count=0
+        local exitcode=0
+
+        while read -r log; do
+            case "$log" in
+                "[EXITCODE] "*)
+                    exitcode="${log#*"[EXITCODE] "}"
+                    return "$exitcode" ;;
+                "[FUNCTION-CALL] "*)
+                    fcidx="${log#*"[FUNCTION-CALL] "}"
+                    ___x_cmd_coco_enactall___tool_1 "$folder" "$fcidx"
+                    ;;
+
+                "[FUNCTION-CALL-COUNT] "*)
+                    expected_count="${log#*"[FUNCTION-CALL-COUNT] "}"
+                    [ "$expected_count" -gt 0 ] || break
+                    ;;
+                "[FUNCTION-CALL-END] "*)
+                    finish_count="$((finish_count+1))"
+                    if [ "$expected_count" -gt 0 ] && [ "$finish_count" -ge "$expected_count" ]; then
+                        break
+                    fi
+                    ;;
+            esac
+        done
+    )}
+}
+
+___x_cmd_coco_enactall___tool_1(){
+    local folder="$1"
+    local fcidx="$2"
+    local fcall_dir="$folder/function-call/$fcidx"
+
+    [ ! -e "$fcall_dir/errcode" ] || {
+        return 0
+    }
+
+    local fcall_name=""
+    local fcall_arg=""
+
+    read -r fcall_name  <"$fcall_dir/name"
+    read -r fcall_arg   <"$fcall_dir/arg"
+
+    case "$fcall_name" in
+        findgrep|readfile|mcp|shcmd)
+            ___x_cmd_coco_tool___enactcmd           \
+                "$folder"                           \
+                "$fcidx"                            \
+                "$fcall_name"   "$fcall_arg"
+            ;;
+        *)
+            coco:error "Unknown tool calling -> $fcall_name"
+            ;;
+    esac
+}
+
+

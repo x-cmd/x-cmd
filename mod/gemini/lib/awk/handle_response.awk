@@ -1,36 +1,49 @@
+BEGIN{
+    XCMD_CHAT_LOGFILE   = ENVIRON[ "XCMD_CHAT_LOGFILE" ]
+    XCMD_CHAT_DRAWFILE  = ENVIRON[ "XCMD_CHAT_DRAWFILE" ]
+    GEMINI_CONTENT_DIR  = ENVIRON[ "content_dir" ]
+    DRAW_PREFIX         = "    "
+    printf("%s\n", "[START]") >> XCMD_CHAT_DRAWFILE
+    printf("%s", DRAW_PREFIX) >> XCMD_CHAT_DRAWFILE
+}
 
 END{
-    INTERACTIVE = ENVIRON[ "XCMD_CHAT_IS_INTERACTIVE" ]
+    _exitcode = 0
+    print "\n---"                                           >> XCMD_CHAT_DRAWFILE
+
     _current_kp = Q2_1 SUBSEP "\""obj[ Q2_1 L ]"\""
     if ( obj[ _current_kp, "\"error\"" ] != "" ) {
         o_error[ L ] = 1
         jmerge_force___value( o_error, Q2_1, obj, _current_kp )
     }
 
-
     if (GEMINI_HAS_RESPONSE_CONTENT == 0) {
         msg_str = "The response content is empty"
         log_error("gemini", msg_str)
         print ""                                    > (GEMINI_CONTENT_DIR "/chat.error.yml")
-        exit(1)
-    }
-
-    if (o_error[ L ] == 1) {
+        _exitcode = 1
+    } else if (o_error[ L ] == 1) {
         msg_str = jstr(o_error)
         log_error("gemini", log_mul_msg( msg_str ))
         print msg_str                               > (GEMINI_CONTENT_DIR "/chat.error.yml")
         _exitcode = o_error[ Q2_1 SUBSEP "\"error\"" SUBSEP "\"code\"" ]
-        if (_exitcode ~ "^4") exit(2) # retry abort
-        exit(1)
+        if (_exitcode ~ "^4") _exitcode = 2 # retry abort
+        else _exitcode = 1
     } else {
         o_response[ L ] = 1
         jmerge_force___value( o_response, Q2_1, obj, _current_kp )
         o_response[ Q2_1 SUBSEP KP_CONTENT ] = jqu( GEMINI_RESPONSE_CONTENT )
 
         print jstr(o_response)                      > (GEMINI_CONTENT_DIR "/gemini.response.yml" )
-        gemini_res_to_cres( o_response, cres_o , SUBSEP "cres"  )
+        gemini_res_to_cres( o_response, cres_o , SUBSEP "cres", o_tool, Q2_1 )
         print cres_dump( cres_o, SUBSEP "cres" )    > (GEMINI_CONTENT_DIR "/chat.response.yml")
 
-        if ( INTERACTIVE == 1 ) cres_display_response_usage( cres_o, SUBSEP "cres" )
+        usage_str = cres_dump_usage( cres_o, SUBSEP "cres" )
+        print "[USAGE] " usage_str                              >> XCMD_CHAT_DRAWFILE
+        print "[FUNCTION-CALL-COUNT] " int(o_tool[ Q2_1 L ])    >> XCMD_CHAT_LOGFILE
     }
+
+    # print "[EXITCODE] " _exitcode >> XCMD_CHAT_DRAWFILE
+    # print "[EXITCODE] " _exitcode >> XCMD_CHAT_LOGFILE
+    exit( _exitcode )
 }

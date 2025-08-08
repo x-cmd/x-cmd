@@ -24,7 +24,7 @@ BEGIN{
     MD_STYLE_BLIST_2 = HD_STYLE_NUMBER_0 "  ∘ " HD_STYLE_NUMBER_1
 }
 
-function hd_body( arr,  pattern, _line, i, a, l ){
+function hd_body( arr,                  pattern, _line, i, a, l ){
     _line = arr[ arr[ ARR_I ] ]
 
     if ( _line ~ "^[ ]*[-\\*\\+] +(.*)") {
@@ -63,7 +63,7 @@ function hd_body( arr,  pattern, _line, i, a, l ){
 
     printf("\n")
     # HD_BLANK="  "
-    larr_advance()
+    larr_advance(arr)
 }
 
 function hd_body_colorize( str ){

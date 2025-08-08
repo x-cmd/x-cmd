@@ -1,15 +1,15 @@
 function hd_codeblock( arr,     i,  _firstline ){
     _firstline = arr[ arr[ ARR_I ] ] # ```
-    larr_advance()
+    larr_advance(arr)
     while (arr[ ARR_I ]<=ARR_L) {
         i = arr[ ARR_I ]
         line = arr[i]
         line = HD_BLANK "  " line
         if (line ~ /^[ ]*```$/) {
-            larr_advance()
+            larr_advance(arr)
             break
         }
-        larr_advance()
+        larr_advance(arr)
         hd_codeblock_1( line, _firstline )
     }
     printf("\n")

@@ -22,3 +22,9 @@ function chat_str_replaceall( src,          _name, ans ){
 
     return str_remove_esc( ans src )
 }
+
+function chat_record_str_to_drawfile(item, draw_prefix){
+    gsub( "\n|\r", "&" draw_prefix, item )
+    printf( "%s", item ) >> XCMD_CHAT_DRAWFILE
+    fflush()
+}

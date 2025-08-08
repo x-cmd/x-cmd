@@ -5,7 +5,7 @@ BEGIN{
 
     CHATID            = ENVIRON[ "chatid" ]
     MINION_JSON_CACHE = ENVIRON[ "minion_json_cache" ]
-    SESSIONDIR        = ENVIRON[ "___X_CMD_CHAT_SESSION_DIR" ]
+    SESSIONDIR        = ENVIRON[ "XCMD_CHAT_SESSION_DIR" ]
     QUESTION          = ""
     IMAGELIST         = ""
     IS_IMAGE_DATA     = 0
@@ -29,7 +29,6 @@ END{
     TYPE                = minion_type( minion_obj, MINION_KP )
     MODEL               = minion_model( minion_obj, MINION_KP )
     HISTORY_NUM         = minion_history_num( minion_obj, MINION_KP )
-    SESSIONDIR          = SESSIONDIR "/" minion_session( minion_obj, MINION_KP )
     TOOL_JSTR           = minion_tool_jstr( minion_obj, MINION_KP )
     mkdirp( SESSIONDIR "/" CHATID )
 

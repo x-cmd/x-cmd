@@ -45,17 +45,17 @@ function ystr___print_comment_val( o, kp, indent, v,    a, l ) {
 
 # Section: cmt
 # root:     o[ L L kp ], o[ kp L L ]
-function ystr___cmt_print_root_0( o, kp ){      
-    if (o[ L L kp ] != "") {       
-        ystr___print_comment_mline(o[ L L kp ]); 
+function ystr___cmt_print_root_0( o, kp, indent ){
+    if (o[ L L kp ] != "") {
+        ystr___print_comment_mline(o[ L L kp ], indent)
         print
     }
 }
-function ystr___cmt_print_root_1( o, kp ){      
-    if (o[ kp L L ] != ""){       
-        print; 
-        ystr___print_comment_mline(o[ kp L L ]); 
-    }   
+function ystr___cmt_print_root_1( o, kp, indent ){
+    if (o[ kp L L ] != ""){
+        print
+        ystr___print_comment_mline(o[ kp L L ], indent)
+    }
 }
 # key:      o[ L kp ]
 function ystr___cmt_print_key( o, kp, i ){      if (o[ L kp ] != "")        ystr___print_comment_mline(o[ L kp ], i );      }
@@ -145,25 +145,31 @@ function ystr_value( o, kp, indent,     v, _v ){
     ystr___cmt_print_val_1( o, kp, v )
 }
 
-function ystr_root( o, kp,      k ){
-    l = o[ kp L ]
-    k = kp SUBSEP "\"" 1 "\""
+function ystr_root( o, kp, indent,      i, l ){
+    if ( kp != "" ){
+        ystr___cmt_print_root_0( o, kp, indent )
+        ystr_value( o, kp, indent )
+        ystr___cmt_print_root_1( o, kp, indent )
+        return
+    }
 
-    ystr___cmt_print_root_0( o, k )
-    ystr_value( o, k )
-    ystr___cmt_print_root_1( o, k )
+    l = o[ L ]
+    if (l < 1) return
+    kp = SUBSEP "\"" 1 "\""
+
+    ystr___cmt_print_root_0( o, kp, indent )
+    ystr_value( o, kp, indent )
+    ystr___cmt_print_root_1( o, kp, indent )
 
     for (i=2; i<=l; ++i) {
         printf("---\n")
-        k = kp SUBSEP "\"" i "\""
-
-        ystr___cmt_print_root_0( o, k )
-        ystr_value( o, k )
-        ystr___cmt_print_root_1( o, k )
+        kp = SUBSEP "\"" i "\""
+        ystr___cmt_print_root_0( o, kp, indent )
+        ystr_value( o, kp, indent )
+        ystr___cmt_print_root_1( o, kp, indent )
     }
 }
 
-function ystr( o ){
-    ystr_root( o, "" )
+function ystr( o, kp, indent ){
+    ystr_root( o, kp, indent )
 }
-

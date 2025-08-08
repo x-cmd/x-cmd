@@ -3,10 +3,18 @@ BEGIN{
 }
 
 function minion_name( o, prefix,        v ){
-    v = o[ prefix S "\"name\"" ]
-    return ((v ~ "^\"") ? juq(v) : v)
-}
+    # v = o[ prefix S "\"name\"" ]
+    v = ENVIRON[ "minion" ]
+    if ( ! chat_str_is_null(v) )    return ((v ~ "^\"") ? juq(v) : v)
 
+    v = o[ prefix S "\"name\"" ]
+    if ( ! chat_str_is_null(v) )    return ((v ~ "^\"") ? juq(v) : v)
+
+    v = ENVIRON[ "cfg_minion" ]
+    if ( ! chat_str_is_null(v) )    return ((v ~ "^\"") ? juq(v) : v)
+
+    return "default"
+}
 
 # option > minion > cfg
 function minion_history_num( o, prefix,         v ){
@@ -29,6 +37,23 @@ function minion_model( o, prefix, def_model,           v ){
     v = ENVIRON[ "cfg_model" ]
     if ( (v == "") && (def_model !="" ) ) v = def_model
     return v
+}
+
+function minion_is_stream( o, prefix, model,            v, v1 ){
+    v1 = ENVIRON[ "is_stream" ]
+    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
+
+    v1 = o[ prefix S "\"stream\"" ]
+    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
+
+    v1 = ENVIRON[ "cfg_stream" ]
+    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
+
+    if ( v == "true" ) return true
+    else if ( v == "false" ) return false
+
+    if ( model ~ "^(gpt-5|gpt-5-mini)$" ) return false
+    return true
 }
 
 function minion_seed( o, prefix,            v ){

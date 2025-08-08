@@ -50,6 +50,7 @@ ___x_cmd_chat___exec(){
     local is_no_empty_question=""
     local is_start_with_repl=""
     local is_end_with_repl=""
+    local is_interactive=""
 
     if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
         is_end_with_repl=1
@@ -188,6 +189,8 @@ A
                             is_end_with_repl=""; shift 1 ;;
             --without-repl)
                             is_start_with_repl=""; is_end_with_repl=""; is_no_empty_question=1; shift 1 ;;
+            --interactive)      is_interactive=1; shift 1 ;;
+            --non-interactive)  is_interactive=0; shift 1 ;;
             *)
                             [ "$1" != -- ] || shift
                             if [ -z "$question" ]; then
@@ -238,6 +241,7 @@ A
             x_=""; ___x_cmd_chat___exec_repl___id_ || return $?
             session="$x_"
         }
+
         ___x_cmd_chat___exec_inner_ || return $?
 
         is_silent=1
@@ -251,6 +255,7 @@ A
 
 # question reflist imagelist
 ___x_cmd_chat___exec_inner_(){
+    local question="$question"
     x_=; ___x_cmd str trimm_ "$reflist"
     question="${x_}${question}"
 
@@ -262,7 +267,8 @@ ___x_cmd_chat___exec_inner_(){
     local cfg_history_num=; local cfg_session=;     local cfg_minion=;  local cfg_userlang=
     ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion cfg_userlang=userlang 2>/dev/null
 
-    [ -n "$minion" ] || minion="default"
+    minion="${minion:-"$cfg_minion"}"
+    minion="${minion:-"default"}"
     x_=; ___x_cmd_chat_minion_cache_json_ "$minion" || return $?
     local minion_json_cache="$x_"
 
@@ -277,20 +283,28 @@ ___x_cmd_chat___exec_inner_(){
         esac
     }
 
+    # TODO:     ___x_cmd_chat___exec_inner_raw_ >to the pipe
+    # using tail to refresh and show ...
 
-    local XCMD_CHAT_IS_INTERACTIVE=""
+
+    local XCMD_CHAT_IS_INTERACTIVE="$is_interactive"
+    local XCMD_CHAT_SESSION_DIR=""
+    local XCMD_CHAT_LOGFILE=""
+    local XCMD_CHAT_DRAWFILE=""
+
+    XCMD_CHAT_SESSION_DIR="$(___x_cmd_chat_minion getitem "$minion_json_cache" session)"
+    [ -n "$XCMD_CHAT_SESSION_DIR" ] || N=chat M="The session name is empty, please check the minion file" log:ret:64
+    XCMD_CHAT_SESSION_DIR="$___X_CMD_CHAT_SESSION_DIR/$XCMD_CHAT_SESSION_DIR"
+    XCMD_CHAT_LOGFILE="$XCMD_CHAT_SESSION_DIR/$chatid/log"
+    XCMD_CHAT_DRAWFILE="$XCMD_CHAT_SESSION_DIR/$chatid/draw"
+    ___x_cmd ensurefp "$XCMD_CHAT_LOGFILE"
+    printf "%s" "" > "$XCMD_CHAT_LOGFILE"
+    printf "%s" "" > "$XCMD_CHAT_DRAWFILE"
+
     (
-        if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
-            XCMD_CHAT_IS_INTERACTIVE=1
-            {
-                ___x_cmd_chat___exec_inner_raw_
-                ___x_cmd md llm --print-exitcode "$?"
-            } | ___x_cmd md llm --rotate --noless
-        else
-            ___x_cmd_chat___exec_inner_raw_
-        fi
+        ___x_cmd_chat___exec_inner_raw_ & \
+            ___x_cmd coco enactall "$XCMD_CHAT_SESSION_DIR/$chatid"
     )
-
 }
 
 ___x_cmd_chat___exec_inner_raw_(){
@@ -299,4 +313,22 @@ ___x_cmd_chat___exec_inner_raw_(){
         gh) ___x_cmd "$provider" model chat exec ;;
         *)  ___x_cmd "$provider" chat exec ;;
     esac
+}
+
+___x_cmd_chat___exec__cancel_request(){
+    ___X_CMD_RETRY_ABORT=1
+    printf "\n%s\n" "[EXITCODE] 130"    >> "$XCMD_CHAT_LOGFILE"
+    printf "\n%s\n" "[EXITCODE] 130"    >> "$XCMD_CHAT_DRAWFILE"
+    printf "%s\n" "Cancel the request"  >> "$XCMD_CHAT_SESSION_DIR/$chatid/chat.error.yml"
+}
+
+___x_cmd_chat___exec__confirm_before_request(){
+    [ -z "$confirm_before_send" ] || {
+        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >"$___X_CMD_DEVTTY_FP"
+        ___x_cmd ui yesno "Do your want to send this message?" || {
+            ___x_cmd_chat___exec__cancel_request
+            return 1
+        }
+        confirm_before_send=
+    }
 }

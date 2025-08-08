@@ -1,0 +1,69 @@
+# shellcheck shell=dash disable=SC2034
+
+xrc cfgy
+___x_cmd_openrouter_cfg(){
+    [ "$#" -gt 0 ] || {
+        ___x_cmd_openrouter_init
+        return
+    }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m openrouter --cfg ;;
+        apikey=*)       ___x_cmd_openrouter_cfg___invoke "$op" "$@"
+                        ! ___x_cmd_openrouter_has_apikey 2>/dev/null >&2 || ___x_cmd shortcut enable --by category openrouter
+                        ;;
+        *)              ___x_cmd_openrouter_cfg___invoke "$op" "$@" ;;
+    esac
+}
+
+___x_cmd_openrouter_cur(){
+    local X_help_cmd=; X_help_cmd='___x_cmd help -m openrouter --cur' help:arg:parse
+    ___x_cmd_openrouter_cfg --current "$@"
+}
+
+___x_cmd_openrouter_init(){
+    local cur_apikey=; local cur_model=; local cur_maxtoken=; local cur_temperature=; local cur_proxy=;
+
+    if [ -f "$(___x_cmd_openrouter_cur --get config)" ]; then
+        ___x_cmd_openrouter_cur cur_apikey:=apikey cur_model:=model cur_maxtoken:=maxtoken cur_temperature:=temperature cur_proxy:=proxy 2>/dev/null
+    fi
+
+    openrouter:info "To get OpenRouter API key -> https://openrouter.ai/settings/provisioning-keys"
+
+    ___x_cmd_openrouter_cfg___invoke --init ${cur_apikey:+"--ctrl_exit_strategy"} \
+        apikey      "Set up the OpenRouter API key"                               \
+                    "$cur_apikey"   '=~*' "^[A-Za-z0-9-]+$" --                  \
+        model       "Set up the OpenRouter API model"                             \
+                    "${cur_model:-"$___X_CMD_OPENROUTER_DEFAULT_FIRST_MODEL"}" '=' openrouter-chat openrouter-reasoner --  \
+        maxtoken    "Set up the OpenRouter API maxtoken"                          \
+                    "${cur_maxtoken:-8192}"     '=~' "^[-+]?[0-9]+$" --         \
+        temperature "Set up the OpenRouter API temperature"                       \
+                    "${cur_temperature:-"1.0"}" --                              \
+        proxy       "Set up the network proxy for API requests (optional)"      \
+                    "$cur_proxy" '=~'    "^([a-z0-9]+://)?[0-9.:]+$" || return $?
+
+    ! ___x_cmd_openrouter_has_apikey 2>/dev/null >&2 || ___x_cmd shortcut enable --by category openrouter
+}
+
+___x_cmd_openrouter_has_apikey(){
+    local apikey=
+    ___x_cmd_openrouter_cur apikey:= 2>/dev/null
+    [ -n "$apikey" ] || {
+        openrouter:error "Please setting up your apikey first ==> 'x openrouter --cfg apikey=<your apikey>'"
+        openrouter:warn "You can get the OpenRouter API Key from ==>  https://openrouter.ai/settings/provisioning-keys"
+        return 1
+    }
+}
+
+___X_CMD_OPENROUTER_CFG_VARLIST="apikey,model,maxtoken,temperature,seed,proxy,endpoint"
+___x_cmd_openrouter_cfg___invoke(){
+    ___x_cmd_cfgy_obj   \
+        --prefix            ___X_CMD_OPENROUTER_CFG_DATA                \
+        --default-config    "${___X_CMD_ROOT_CFG}/openrouter/X.cfg.yml" \
+        --current-config    "${___X_CMD_OPENROUTER_LOCAL_CONFIG}"       \
+        --current-profile   "${___X_CMD_OPENROUTER_LOCAL_PROFILE}"      \
+        --varlist           "$___X_CMD_OPENROUTER_CFG_VARLIST"          \
+        "$@"
+}
+

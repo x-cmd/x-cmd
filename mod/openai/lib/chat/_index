@@ -7,7 +7,7 @@ xrc:mod:lib     openai      chat/send chat/exec
 
 # TODO: preparehistory
 ___x_cmd_openai_chat(){
-    local X_help_cmd='___x_cmd help -m openai chat'; help:arg:parse
+    local X_help_cmd='___x_cmd help -m openai chat'; help:arg-null:parse
     local op="$1";
     case "$op" in
         request|exec)
@@ -55,6 +55,8 @@ ___x_cmd_openai_chat_request___launch(){
     {
         local model
         ___x_cmd_readr model
+        local is_stream
+        ___x_cmd_readr is_stream
 
         local request_body_file="$content_dir/${act_provider}.request.body.yml"
         [ -f "$request_body_file" ] || return $?
@@ -63,10 +65,13 @@ ___x_cmd_openai_chat_request___launch(){
         local _exitcode=0
         if [ -z "$___X_CMD_OPENAI_CHAT_REQUEST_NOT_RETRY" ]; then
             ___x_cmd retry --max 2 --interval 3 "$request_function"
+            _exitcode="$?"
+            printf "[EXITCODE] %s\n" "$_exitcode" >> "$XCMD_CHAT_DRAWFILE"
+            printf "[EXITCODE] %s\n" "$_exitcode" >> "$XCMD_CHAT_LOGFILE"
         else
             "$request_function"
+            _exitcode="$?"
         fi
-        _exitcode="$?"
 
         ___x_cmd_openai_chat_request___trapexit
         [ "$_exitcode" -eq 0 ] || false
@@ -79,14 +84,7 @@ ___x_cmd_openai_chat_request___launch(){
 ___x_cmd_openai_chat_request___try(){
     local act_provider="$___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER"
     ___x_cmd log ":${act_provider}" debug "Sending request to $___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME server"
-    [ -z "$confirm_before_send" ] || {
-        < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >"$___X_CMD_DEVTTY_FP"
-        ___x_cmd ui yesno "Do your want to send this message?" || {
-            ___X_CMD_RETRY_ABORT=1
-            return 1
-        }
-        confirm_before_send=
-    }
+    ___x_cmd_chat___exec__confirm_before_request || return $?
 
     local _md5; _md5="$( < "$request_body_file" ___x_cmd str md5 )"
     local errcode=0
@@ -95,7 +93,7 @@ ___x_cmd_openai_chat_request___try(){
         ___x_cmd ccmd "$cache_time" -- \
             ___x_cmd_openai_request_generaxwtecontent "$model" "$_md5"  \
         | provider_name="$act_provider" \
-        ___x_cmd cawk -i -E content_dir,XCMD_CHAT_IS_INTERACTIVE         \
+        ___x_cmd cawk -i -E content_dir,is_stream,XCMD_CHAT_LOGFILE,XCMD_CHAT_DRAWFILE \
             -m j/json,j/jiter,j/jcp                                     \
             -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"            \
             -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"               \

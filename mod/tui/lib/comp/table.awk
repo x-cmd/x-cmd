@@ -146,7 +146,8 @@ function comp_table___slct_data_do( o, kp, rowi,         i, l, _slct){
     for (i=1; i<=l; ++i) {
         _slct = comp_table___slct_get(o, kp, i)
         if (_slct == "") continue
-        if (index(table_arr_get_data(o, kp, rowi, i), _slct)<=0) return false
+        _slct = tolower(_slct)
+        if (index(tolower(table_arr_get_data(o, kp, rowi, i)), _slct)<=0) return false
     }
     return true
 }
@@ -189,15 +190,16 @@ function comp_table___search_handle(o, kp, char_value, char_name, char_type){
 function comp_table___search_date(o, kp, r, step,        _search, l, c, i){
     c = comp_table_get_cur_col(o, kp)
     if ((_search = comp_table___search_get(o, kp)) == "") return
+    _search = tolower(_search)
     step = (step) ? step : 1
     if (step > 0) {
         l = comp_table___slct_data_maxrow(o, kp)
         for (i=r+1; i<=l; i+=step)
-            if (index(table_arr_get_data(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i), c), _search) > 0)
+            if (index(tolower(table_arr_get_data(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i), c)), _search) > 0)
                 return ctrl_page_set( o, kp, i )
     } else {
         for (i=r-1; i>=1; i+=step)
-            if (index(table_arr_get_data(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i), c), _search) > 0)
+            if (index(tolower(table_arr_get_data(o, kp, model_arr_get(o, kp, "view-row" SUBSEP i), c)), _search) > 0)
                 return ctrl_page_set( o, kp, i )
     }
 }

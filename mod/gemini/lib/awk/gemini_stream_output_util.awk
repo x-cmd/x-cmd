@@ -1,7 +1,5 @@
 
 BEGIN{
-    INTERACTIVE = ENVIRON[ "XCMD_CHAT_IS_INTERACTIVE" ]
-    GEMINI_CONTENT_DIR  = ENVIRON[ "content_dir" ]
     GEMINI_RESPONSE_CONTENT = ""
     GEMINI_HAS_RESPONSE_CONTENT = 0
 
@@ -45,24 +43,31 @@ function gemini_display_response_text_stream( obj, kp,          str ){
     str =  juq(obj[ kp ])
     if ( str == "" ) return
     GEMINI_RESPONSE_CONTENT = GEMINI_RESPONSE_CONTENT str
-    printf( "%s", str )
-    fflush()
+    chat_record_str_to_drawfile( str, DRAW_PREFIX )
 }
 
-function gemini_stream_parse_tool_function_call( obj, kp,        name, args, dir){
-    ++TOOL_FUNC_IDX
+function gemini_stream_parse_tool_function_call( obj, kp,        name, args, dir, idx){
+
     name = juq( obj[ kp, "\"name\"" ] )
     args = jstr0( obj, kp SUBSEP "\"args\"", " " )
     if ( name == "" ) return
 
+    o_tool[ Q2_1 ] = "["
+    jlist_put( o_tool, Q2_1, "{" )
+    idx = o_tool[ Q2_1 L ]
+    jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"index\"", idx)
+    jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"name\"", jqu(name))
+    jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"arguments\"", jqu(args))
+
     if ( GEMINI_CONTENT_DIR != "" ) {
-        dir = (GEMINI_CONTENT_DIR "/tool_function/" TOOL_FUNC_IDX)
+        dir = (GEMINI_CONTENT_DIR "/function-call/" idx)
         mkdirp( dir )
         print name > (dir "/name")
-        print args > (dir "/args")
+        print args > (dir "/arg")
+        print "[FUNCTION-CALL] " idx >> XCMD_CHAT_LOGFILE
     }
 
-    print "function: " name " " args
+    fflush()
 }
 
 ($0 != ""){
