@@ -10,16 +10,16 @@ function openai_record_response_text_stream( s,       o ){
         exit(1)
     }
 
-    openai_record_response_text_content(o)
+    openai_record_response___text_content(o)
 }
 
 function openai_record_response_text_nonstream( o, s ) {
     jiparse_after_tokenize(o, s)
     if ( JITER_LEVEL != 0 ) return
-    openai_record_response_text_content(o)
+    openai_record_response___text_content(o)
 }
 
-function openai_record_response_text_content( o,        item, response_item, finish_reason, choices_l, tool_l, tool_index, tool_last_index, kp_i, kp_tool_name, kp_tool_args, kp_tool_id, call_id, i, idx ){
+function openai_record_response___text_content( o,        item, response_item, finish_reason, choices_l, tool_l, tool_index, tool_last_index, kp_i, kp_tool_name, kp_tool_args, kp_tool_id, call_id, i, idx ){
     if (( o[ KP_ERROR ] != "" ) || ( o[ KP_OBJECT ] == "\"error\"") || (( PROVIDER_NAME != "ollama" ) && ( o[ KP_OLLAMA_MESSAGE ] != "" ))) {
         OPENAI_RESPONESE_IS_ERROR_CONTENT = 1
         jmerge_force(o_error, o)
@@ -29,7 +29,7 @@ function openai_record_response_text_content( o,        item, response_item, fin
     JITER_LEVEL = JITER_CURLEN = 0
 
     if ( PROVIDER_NAME == "ollama" ) {
-        openai_record_response_text_stream___ollama_format(o)
+        openai_record_response___text_content_ollama_format(o)
         return
     }
 
@@ -44,16 +44,16 @@ function openai_record_response_text_content( o,        item, response_item, fin
 
     if (( item == "null" ) && ( ! chat_str_is_null(response_item) )) {
         if ( OPENAI_RESPONSE_HAS_REASONING  == 0 ) {
-            chat_record_str_to_drawfile( "---------- REASONING BEGIN ----------", DRAW_PREFIX )
+            if ( IS_REASONING == true ) chat_record_str_to_drawfile( "---------- REASONING BEGIN ----------\n", DRAW_PREFIX )
         }
         OPENAI_RESPONSE_HAS_REASONING = 1
         response_item = juq(o[ KP_DELTA_REASONING_CONTENT ])
         OPENAI_RESPONSE_REASONING_CONTENT = OPENAI_RESPONSE_REASONING_CONTENT response_item
-        chat_record_str_to_drawfile( response_item, DRAW_PREFIX )
+        if ( IS_REASONING == true ) chat_record_str_to_drawfile( response_item, DRAW_PREFIX )
 
     } else if (OPENAI_RESPONSE_HAS_REASONING == 1){
         OPENAI_RESPONSE_HAS_REASONING = 0
-        chat_record_str_to_drawfile( "\n---------- REASONING END ----------", DRAW_PREFIX )
+        if ( IS_REASONING == true ) chat_record_str_to_drawfile( "\n---------- REASONING END ----------\n", DRAW_PREFIX )
     }
 
     if ( ! chat_str_is_null(item) ) {
@@ -75,7 +75,7 @@ function openai_record_response_text_content( o,        item, response_item, fin
 
             if ( call_id != "" ) {
                 if ( tool_arr[ call_id, "HAS_CHECK" ] == "" ) {
-                    openai_stream_parse_tool_function_call( o_tool, tool_arr )
+                    openai_record_response___tool_call( o_tool, tool_arr )
                     tool_arr[ call_id, "HAS_CHECK" ] = "1"
                     ++ tool_arr[ "tool_l" ]
                 }
@@ -97,14 +97,14 @@ function openai_record_response_text_content( o,        item, response_item, fin
         o_response[ KP_FINISH_REASON ] = finish_reason
         o_response[ KP_DELTA_CONTENT ] = jqu(OPENAI_RESPONSE_CONTENT)
         o_response[ KP_DELTA_REASONING_CONTENT ] = jqu(OPENAI_RESPONSE_REASONING_CONTENT)
-        openai_stream_parse_tool_function_call( o_tool, tool_arr )
+        openai_record_response___tool_call( o_tool, tool_arr )
         jmerge_force___value(o_response, KP_DELTA_TOOL, o_tool, Q2_1)
         exit(0)
     }
     delete o
 }
 
-function openai_stream_parse_tool_function_call(o_tool, tool_arr,             idx, name, args, dir){
+function openai_record_response___tool_call(o_tool, tool_arr,             idx, name, args, dir){
     idx = o_tool[ Q2_1 L ]
     if ( idx <= 0 ) return
     name = tool_arr[ idx, "name" ]
@@ -124,7 +124,7 @@ function openai_stream_parse_tool_function_call(o_tool, tool_arr,             id
     fflush()
 }
 
-function openai_record_response_text_stream___ollama_format(o,             item, finish_status, choices_l, tool_l, i, kp_i, kp_tool_name, kp_tool_args, call_id){
+function openai_record_response___text_content_ollama_format(o,             item, finish_status, choices_l, tool_l, i, kp_i, kp_tool_name, kp_tool_args, call_id){
     item = o[ KP_OLLAMA_CONTENT ]
     if ( ! chat_str_is_null(item) ) {
         item = juq(item)
@@ -145,7 +145,7 @@ function openai_record_response_text_stream___ollama_format(o,             item,
             jmerge_force___value( o_tool, Q2_1 SUBSEP "\""call_id"\"", o, kp_i )
             tool_arr[ call_id, "name" ] = juq(o[ kp_tool_name ])
             if ( o[ kp_tool_args ] == "{" ) tool_arr[ call_id, "args" ] = jstr0(o, kp_tool_args, " ")
-            openai_stream_parse_tool_function_call( o_tool, tool_arr )
+            openai_record_response___tool_call( o_tool, tool_arr )
         }
     }
 
@@ -190,6 +190,7 @@ BEGIN{
     OPENAI_HAS_RESPONSE_CONTENT = 0
 }
 
+# { print $0 >> (OPENAI_CONTENT_DIR "/chat.running.yml"); }
 ($0 != ""){
     if ( IS_STREAM == true ) {
         if ($0 !~ "^:"){

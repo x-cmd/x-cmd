@@ -11,9 +11,13 @@ function gemini_gen_unit_str(str){
         return "{\"text\":" str "} ,"
     }
 }
-function gemini_gen_generationConfig(temperature,         _temperature){
-    _temperature    =  "\"temperature\": " temperature
-    return ", \"generationConfig\": { " _temperature " }"
+function gemini_gen_generationConfig(temperature, is_reasoning,                 str){
+    if ( temperature != "" ) str = "\"temperature\": " temperature
+    if ( is_reasoning == true ) {
+        str = str (( str != "" ) ?  ", " : "")
+        str = str "\"thinkingConfig\": { \"include_thoughts\": true }"
+    }
+    return ", \"generationConfig\": { " str " }"
 }
 
 function gemini_gen_history_str( history_obj, i,      _text_res, _text_req, _text_tool, _text_finishReason) {
@@ -46,7 +50,7 @@ function gemini_gen_safe_setting_str(             _safe_setting){
     return _safe_setting
 }
 
-function gemini_req_from_creq(history_obj, minion_obj, question, creq_obj, creq_kp,         str, i, l, _history_str, promote_content, \
+function gemini_req_from_creq(history_obj, minion_obj, question, creq_obj, creq_kp, is_reasoning,        str, i, l, _history_str, promote_content, \
     promote_system_json, _filelist_str, _safe_setting, _temperature, _config, _media_str, _tool_str, _use_google_search ){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
@@ -63,7 +67,7 @@ function gemini_req_from_creq(history_obj, minion_obj, question, creq_obj, creq_
     if (_filelist_str != "") _filelist_str = gemini_gen_unit_str(_filelist_str)
 
     _temperature    = minion_temperature( minion_obj, MINION_KP )
-    if (_temperature != "") _config = gemini_gen_generationConfig(_temperature)
+    _config = gemini_gen_generationConfig(_temperature, is_reasoning)
 
 
     if ( ! chat_str_is_null(promote_content))  USER_LATEST_QUESTION = promote_content
@@ -95,8 +99,14 @@ function gemini_res_to_cres(gemini_resp_o, cres_o, kp, o_tool, tool_kp,         
     jdict_put( cres_o, kp, "\"reply\"", "{" )
     jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"role\"", gemini_resp_o[ resp_content_kp SUBSEP "\"role\"" ] )
     jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"content\"", gemini_resp_o[ resp_content_kp SUBSEP "\"parts\"" SUBSEP "\"1\"" SUBSEP "\"text\"" ] )
-    jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"tool_calls\"", "[" )
-    jmerge_force___value( cres_o, kp SUBSEP "\"reply\"" SUBSEP "\"tool_calls\"", o_tool, tool_kp )
+    if ( o_tool[ tool_kp L ] > 0 ) {
+        jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"tool_calls\"", "[" )
+        jmerge_force___value( cres_o, kp SUBSEP "\"reply\"" SUBSEP "\"tool_calls\"", o_tool, tool_kp )
+    }
+
+    if ( gemini_resp_o[ resp_content_kp SUBSEP "\"parts\"" SUBSEP "\"2\"" SUBSEP "\"thought\"" ] == "true" ) {
+        jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"reasoning_content\"", gemini_resp_o[ resp_content_kp SUBSEP "\"parts\"" SUBSEP "\"2\"" SUBSEP "\"text\"" ] )
+    }
 
     if ( (v = gemini_resp_o[ resp_kp SUBSEP "\"finishReason\"" ]) != "" )
         jdict_put( cres_o, kp, "\"finishReason\"", v )

@@ -29,6 +29,7 @@ BEGIN{
         next
     }
     else if ( $0 == "[START]" ) {
+        handle_content_rotate_end()
         handle_content_rotate_begin()
         OBJ_USAGE_STR = ""
         next
@@ -74,6 +75,7 @@ function handle_content_rotate_end(){
             ui_rotate_render_prompt( RING_ARR )
             if ( EXITCLEAR == 1 )   ui_rotate_render_clear()
             ui_rotate_render_restore()
+            STATUS_OBJ[ "HAS_CONTENT" ] = 0
         }
     }
 }
@@ -83,33 +85,17 @@ function handle_content_md(arr){
     hd_main( arr )
 }
 
-function handle_usage(str,          o, kp_usage, l, k, v, _l, j, jk, jv){
+function handle_usage(str,          o, kp_usage, total_token, pt, ct, tt, detail_str ){
     if ( str == "" ) return
     jiparse_after_tokenize(o, str)
     kp_usage = Q2_1 SUBSEP "\"usage\""
+    total_token = int( o[ kp_usage SUBSEP "\"total_tokens\"" ] )
+    pt = int( o[ kp_usage SUBSEP "\"prompt_tokens\"" ] )
+    ct = int( o[ kp_usage SUBSEP "\"completion_tokens\"" ] )
+    tt = int( o[ kp_usage SUBSEP "\"thought_tokens\"" ] )
+    # model           = juq( o[ Q2_1 SUBSEP "\"model\"" ] )
 
-    handle_usage_unit( "usage" )
-    l = o[ kp_usage L ]
-    for (i=1; i<=l; ++i){
-        k = o[ kp_usage, i ]
-        v = o[ kp_usage, k ]
-        if ( k ~ "details" ) continue
-        if (v == "{") {
-            handle_usage_unit( k, "", "  " )
-            _l = o[ kp_usage, k L ]
-            for (j=1; j<=_l; ++j){
-                jk = o[ kp_usage, k, j ]
-                jv = o[ kp_usage, k, jk ]
-                handle_usage_unit( jk, jv, "    " )
-            }
-            continue
-        }
-        handle_usage_unit( k, v, "  " )
-    }
-}
-
-function handle_usage_unit( k, v, indent ) {
-    v = (v ~ "^\"") ? juq(v) : v
-    k = (k ~ "^\"") ? juq(k) : k
-    print indent "\033[36m" k "\033[0m: \033[35m" v "\033[0m"
+    detail_str = pt " prompt, " ct " completion"
+    if ( tt > 0 ) detail_str = detail_str ", " tt " thought"
+    print "\033[90m    Usage: " total_token " tokens (" detail_str ")\033[0m"
 }

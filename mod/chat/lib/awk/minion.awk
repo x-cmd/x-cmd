@@ -56,6 +56,22 @@ function minion_is_stream( o, prefix, model,            v, v1 ){
     return true
 }
 
+function minion_is_reasoning( o, prefix,            v, v1 ){
+    v1 = ENVIRON[ "is_reasoning" ]
+    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
+
+    v1 = o[ prefix S "\"reasoning\"" ]
+    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
+
+    v1 = ENVIRON[ "cfg_reasoning" ]
+    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
+
+    if ( v == "true" ) return true
+    else if ( v == "false" ) return false
+
+    return true
+}
+
 function minion_seed( o, prefix,            v ){
     v = ENVIRON[ "seed" ]
     if ( ! chat_str_is_null(v) )    return int(v)
@@ -100,14 +116,32 @@ function minion_output( o, prefix,         v ){
     # return ENVIRON[ "cfg_output" ]
 }
 
-function minion_maxtoken( o, prefix,            v ){
-    v = ENVIRON[ "maxtoken" ]
-    if ( ! chat_str_is_null(v) )    return int(v)
+function minion_maxtoken( o, prefix,            v, v1 ){
+    v1 = ENVIRON[ "maxtoken" ]
+    if ( ! chat_str_is_null(v1) )    v = ((v1 ~ "^\"") ? juq(v1) : v1)
 
-    v = o[ prefix S "\"maxtoken\"" ]
-    if ( ! chat_str_is_null(v) )    return int((v ~ "^\"") ? juq(v) : v)
+    v1 = o[ prefix S "\"maxtoken\"" ]
+    if ( ! chat_str_is_null(v1) )    v = ((v1 ~ "^\"") ? juq(v1) : v1)
 
-    return int(ENVIRON[ "cfg_maxtoken" ])
+    v1 = ENVIRON[ "cfg_maxtoken" ]
+    if ( ! chat_str_is_null(v1) )    v = ((v1 ~ "^\"") ? juq(v1) : v1)
+
+    v = str_trim(v)
+    v = tolower(v)
+    if ( match( v, "(k|kb)$" ) ) {
+        v = substr(v, 1, RSTART-1)
+        v = int(v) * 1024
+    } else if ( match( v, "(m|mb)$" ) ) {
+        v = substr(v, 1, RSTART-1)
+        v = int(v) * 1024 * 1024
+    } else if ( match( v, "(g|gb)$" ) ) {
+        v = substr(v, 1, RSTART-1)
+        v = int(v) * 1024 * 1024 * 1024
+    } else {
+        v = int(v)
+    }
+
+    return v
 }
 
 function minion_temperature( o, prefix,         v ){

@@ -2,13 +2,14 @@
 BEGIN{
     GEMINI_RESPONSE_CONTENT = ""
     GEMINI_HAS_RESPONSE_CONTENT = 0
+    GEMINI_RESPONSE_REASONING_CONTENT = ""
+    GEMINI_RESPONSE_HAS_REASONING = 0
 
     KP_PART = "\"candidates\"" SUBSEP "\"1\"" SUBSEP "\"content\"" SUBSEP "\"parts\""
-    KP_CONTENT = KP_PART SUBSEP "\"1\"" SUBSEP "\"text\""
     Q2_1 = SUBSEP "\"1\""
 }
 
-function gemini_parse_response_data( text, obj,       _arr, _arrl, i, _current_kp, j, _part_l, _kp_part_idx, _kp_part_text, _kp_part_func){
+function gemini_parse_response_data( text, obj,       _arr, _arrl, i, _current_kp, j, _part_l, _kp_part_idx, _kp_part_func){
     _arrl = json_split2tokenarr( _arr, text )
     for (i=1; i<=_arrl; ++i) {
         jiparse( obj, _arr[i] )
@@ -27,27 +28,37 @@ function gemini_parse_response_data( text, obj,       _arr, _arrl, i, _current_k
         _part_l = obj[ _current_kp, KP_PART L ]
         for (j=1; j<=_part_l; ++j){
             _kp_part_idx    = _current_kp SUBSEP KP_PART SUBSEP "\""j"\""
-            _kp_part_text   = _kp_part_idx SUBSEP "\"text\""
-            if ( obj[ _kp_part_text ] != "" ) {
-                gemini_display_response_text_stream( obj, _kp_part_text )
-            }
-            _kp_part_func   = _kp_part_idx SUBSEP "\"functionCall\""
-            if ( obj[ _kp_part_func ] != "" ) {
-                gemini_stream_parse_tool_function_call( obj, _kp_part_func )
-            }
+            gemini_record_response___text_content( obj, _kp_part_idx )
+            gemini_record_response___tool_call( obj, _kp_part_idx )
         }
     }
 }
 
-function gemini_display_response_text_stream( obj, kp,          str ){
-    str =  juq(obj[ kp ])
-    if ( str == "" ) return
-    GEMINI_RESPONSE_CONTENT = GEMINI_RESPONSE_CONTENT str
-    chat_record_str_to_drawfile( str, DRAW_PREFIX )
+function gemini_record_response___text_content( obj, kp,          item, is_thought ){
+    item =  obj[ kp, "\"text\"" ]
+    if ( chat_str_is_null(item) ) return
+    item = juq(item)
+    is_thought = obj[ kp, "\"thought\"" ]
+    if ( is_thought == "true" ) {
+        if ( GEMINI_RESPONSE_HAS_REASONING  == 0 ) {
+            if ( IS_REASONING == true ) chat_record_str_to_drawfile( "---------- REASONING BEGIN ----------\n", DRAW_PREFIX )
+        }
+        GEMINI_RESPONSE_HAS_REASONING = 1
+        GEMINI_RESPONSE_REASONING_CONTENT = GEMINI_RESPONSE_REASONING_CONTENT item
+        if ( IS_REASONING == true ) chat_record_str_to_drawfile( item, DRAW_PREFIX )
+        return
+    } else if (GEMINI_RESPONSE_HAS_REASONING == 1){
+        GEMINI_RESPONSE_HAS_REASONING = 0
+        if ( IS_REASONING == true ) chat_record_str_to_drawfile( "\n---------- REASONING END ----------\n", DRAW_PREFIX )
+    }
+
+    GEMINI_RESPONSE_CONTENT = GEMINI_RESPONSE_CONTENT item
+    chat_record_str_to_drawfile( item, DRAW_PREFIX )
 }
 
-function gemini_stream_parse_tool_function_call( obj, kp,        name, args, dir, idx){
-
+function gemini_record_response___tool_call( obj, kp,        name, args, dir, idx){
+    kp = kp SUBSEP "\"functionCall\""
+    if ( obj[ kp L ] <= 0 ) return
     name = juq( obj[ kp, "\"name\"" ] )
     args = jstr0( obj, kp SUBSEP "\"args\"", " " )
     if ( name == "" ) return
@@ -69,6 +80,8 @@ function gemini_stream_parse_tool_function_call( obj, kp,        name, args, dir
 
     fflush()
 }
+
+# { print $0 >> (GEMINI_CONTENT_DIR "/chat.running.yml"); }
 
 ($0 != ""){
     GEMINI_HAS_RESPONSE_CONTENT = 1

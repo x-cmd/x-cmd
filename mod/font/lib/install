@@ -7,7 +7,7 @@ ___x_cmd_font_install(){
     local fontargs=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)  ___x_cmd help -m font install "$@";     return 0 ;;
+            -h|--help)  ___x_cmd help -m font install "$@";  return ;;
             -*)         arg:add fontargs "$1";  shift ;;
             *)          break ;;
         esac
@@ -23,7 +23,7 @@ ___x_cmd_font_install(){
         ___x_cmd ui select id "Choose a font to install"        \
             "nerd/FiraCode"                                     \
             "Choose other fonts"                                \
-            "Go to nerdfont website to preview the nerdfont"    \
+            "Go to nerdfont website to preview the NerdFonts"    \
             "exit"
 
         case "$id" in
@@ -47,13 +47,12 @@ ___x_cmd_font_install(){
     eval ___x_cmd_font "$typename" install "$fontargs" '"$fontname"'
 }
 
-
-___x_cmd_font_install___install_system(){
-    local source="${1:?'Please provide source folder name'}";   shift;
+___x_cmd_font_install___linux_darwin(){
+    local source="${1:?'Please provide fonts folder name'}";   shift;
     ___x_cmd mkdirp "$___X_CMD_FONT_DIR" || return
     font:info --source "$source" --target "$___X_CMD_FONT_DIR" "Copy resource font files to font folder..."
 
-    ___x_cmd find "$source" -type f   -iname "*.otf" -or -iname "*.ttf" | {
+    ___x_cmd find "$source" -type f -mindepth 1 -maxdepth 1   -iname "*.otf" -or -iname "*.ttf" | {
         local line=""
         while read -r line; do
             set -- "$@" "$line"
@@ -61,4 +60,47 @@ ___x_cmd_font_install___install_system(){
         done
         ___x_cmd sudo cp -f "$@" "$___X_CMD_FONT_DIR"
     }
+}
+
+# shellcheck disable=SC2016
+___x_cmd_font_install___win(){
+    local source="${1:?'Please provide fonts folder name'}";   shift;
+    (
+        ___x_cmd_cmds cd "$source" || return
+        ___x_cmd pwsh -Command '
+            $currentDir = Get-Location
+
+            # Initialize an empty list for font files
+            $fontFiles = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+
+            # Get .ttf files
+            $ttfFiles = Get-ChildItem -Path $currentDir -Filter "*.ttf" -Recurse
+            foreach ($file in $ttfFiles) {
+                $fontFiles.Add($file)
+            }
+
+            # Get .otf files
+            $otfFiles = Get-ChildItem -Path $currentDir -Filter "*.otf" -Recurse
+            foreach ($file in $otfFiles) {
+                $fontFiles.Add($file)
+            }
+
+            # Access the Windows Fonts folder
+            $shellApp = New-Object -ComObject shell.application
+            $fonts = $shellApp.NameSpace(0x14)
+
+            # Copy each font file to the Windows Fonts directory
+            foreach ($fontFile in $fontFiles) {
+                $fonts.CopyHere($fontFile.FullName)
+            }
+        '
+    )
+}
+
+___x_cmd_font_install___termux(){
+    local source="${1:?'Please provide font file path'}";   shift;
+    [ -f "$source" ] ||
+    ___x_cmd mkdirp "$___X_CMD_FONT_DIR" || return
+    font:info --source "$source" --target "${___X_CMD_FONT_DIR}/font.ttf" "Copy resource font to font folder..."
+    ___x_cmd_cmds cp -f "$source" "${___X_CMD_FONT_DIR}/font.ttf"
 }

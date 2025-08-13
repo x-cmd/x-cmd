@@ -1,0 +1,76 @@
+# shellcheck shell=dash
+
+xrc ourl
+___x_cmd_grok_model_ls(){
+    [ $# -gt 0 ]    ||      set - --app
+    local op="$1"
+    local format=
+    case "$op" in
+        --csv)      format=csv       ;;
+        --app)      format=app       ;;
+        --fast)     format=fast      ;;
+        -j|--json)  format=json      ;;
+        -h|--help)  ___x_cmd help -m grok model ls  "$@"; return ;;
+        *)          M="Not support $op" N=grok log:ret:1  ;;
+    esac
+
+    "___x_cmd_grok_model_ls___${format}"
+}
+
+___x_cmd_grok_model_ls___app(){
+    local ___X_CMD_CSV_APP_DATA_CURROW=""
+    local data; data="$( ___x_cmd_grok_model_ls___csv )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd csv --app --return line
+    if [ -n "$___X_CMD_CSV_APP_DATA_CURROW" ] ; then
+        local select_id="${___X_CMD_CSV_APP_DATA_CURROW%%,*}"
+        local id=""
+        grok:info "Select model -> $select_id"
+        ___x_cmd ui select id "What to do NEXT" \
+            "set model: $select_id"    \
+            "EXIT"     || return $?
+
+        case "$id" in
+            1)  ___x_cmd_grok_model_set "$select_id" ;;
+            2)
+                grok:info "EXIT [code=0]"
+                return 0 ;;
+        esac
+    fi
+}
+___x_cmd_grok_model_ls___csv(){
+    local data; data="$( ___x_cmd ccmd 1d -- ___x_cmd_grok_model_ls___raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd jo .data | \
+        ___x_cmd ja 2c .id .object .owned_by | ___x_cmd csv header --add  Id Object OwnedBy
+}
+
+___x_cmd_grok_model_ls___json(){
+    local data; data="$( ___x_cmd ccmd 1d -- ___x_cmd_grok_model_ls___raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd jo .data
+}
+
+___x_cmd_grok_model_ls___raw(){
+    ___x_cmd_grok_has_apikey || return $?
+
+    local apikey=""; local proxy=""
+    ___x_cmd_grok_cur apikey:= proxy:= || return $?
+
+    local data=""
+    data="$( ___x_cmd proxy runifset "$proxy" \
+        ___x_cmd curl -sS "$___X_CMD_GROK_DEFAULT_ENDPOINT/v1/models" \
+            -H 'Accept: application/json' \
+            -H "Authorization: Bearer $apikey" )" || return $?
+    if [ -z "$( printf "%s\n" "$data" | ___x_cmd jo .data )" ]; then
+        grok:error --m:data "$data" "Not found models"
+        return 1
+    fi
+
+    printf "%s\n" "$data"
+}
+
+___x_cmd_grok_model_ls___fast(){
+    if ! ___x_cmd_grok_has_apikey 2>/dev/null >&2 || [ ! -f "$( ___x_cmd ccmd which ___x_cmd_grok_model_ls___raw )" ]; then
+        printf "%s\n" grok-4 grok-3 grok-3-mini grok-3-fast grok-3-mini-fast
+    else
+        ___x_cmd_grok_model_ls___csv | ___x_cmd awk -v FS=, 'NR>1{ print $1; }'
+    fi
+}

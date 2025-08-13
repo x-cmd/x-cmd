@@ -16,7 +16,7 @@ function comp_lineeditadvise_width(o, kp, w){
 function comp_lineeditadvise_handle( o, kp, char_value, char_name, char_type,       d ) {
     if ( o[ kp, "TYPE" ] != "lineedit" ) return false
     if ( char_type != U8WC_TYPE_SPECIAL ) {
-        if (char_name == U8WC_NAME_DELETE)  ctrl_stredit_value_del(o, kp)
+        if ((char_name == U8WC_NAME_DELETE) || (char_name == U8WC_NAME_BACKSPACE))  ctrl_stredit_value_del(o, kp)
         else if (char_name == U8WC_NAME_HORIZONTAL_TAB) ctrl_stredit_value_add(o, kp, comp_lineeditadvise___get_adv(o, kp))
         else if ((char_value != "") && (char_name == "")) ctrl_stredit_value_add(o, kp, char_value)
         else return false

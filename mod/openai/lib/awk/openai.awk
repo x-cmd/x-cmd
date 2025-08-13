@@ -95,7 +95,7 @@ function openai_gen_tool_function_str( creq_obj, creq_kp,           i, l, _kp_to
     return _res
 }
 
-function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq_kp, def_model, is_stream,          i, l, str, \
+function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq_kp, def_model, is_stream, is_reasoning,                    i, l, str, \
     _system_str, _history_str, _content_str, _messages_str, _mode, _jsonmode, _maxtoken_keyname, _maxtoken, _seed, _temperature, _ctx, _data_str, _stream_str, _tool_str, _reason_eddort){
     l = chat_history_get_maxnum(history_obj, Q2_1)
     for (i=1; i<=l; ++i){
@@ -160,7 +160,7 @@ function openai_req_from_creq(history_obj, minion_obj, minion_kp, creq_obj, creq
     return _data_str
 }
 
-function openai_res_to_cres(openai_resp_o, cres_o, kp, o_tool, tool_kp,         resp_kp, delta_kp, resp_content_kp, resp_role_kp, usage_kp ){
+function openai_res_to_cres(openai_resp_o, cres_o, kp, o_tool, tool_kp,         resp_kp, delta_kp, resp_content_kp, resp_role_kp, resp_reason_kp, usage_kp ){
     if ( PROVIDER_NAME == "ollama" ) {
         openai_res_to_cres___ollama_format(openai_resp_o, cres_o, kp)
         return
@@ -173,6 +173,7 @@ function openai_res_to_cres(openai_resp_o, cres_o, kp, o_tool, tool_kp,         
     delta_kp        = resp_kp SUBSEP "\"delta\""
     resp_content_kp = delta_kp SUBSEP "\"content\""
     resp_role_kp    = delta_kp SUBSEP "\"role\""
+    resp_reason_kp  = delta_kp SUBSEP "\"reasoning_content\""
 
     jmerge_force___value(cres_o, kp, openai_resp_o, SUBSEP "\"1\"")
     jmerge_force___value(cres_o, kp, openai_resp_o, resp_kp)
@@ -180,8 +181,15 @@ function openai_res_to_cres(openai_resp_o, cres_o, kp, o_tool, tool_kp,         
     jdict_put( cres_o, kp, "\"reply\"", "{" )
     jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"role\"", openai_resp_o[ resp_role_kp ] )
     jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"content\"", openai_resp_o[ resp_content_kp ] )
-    jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"tool_calls\"", "[" )
-    jmerge_force___value( cres_o, kp SUBSEP "\"reply\"" SUBSEP "\"tool_calls\"", o_tool, tool_kp )
+    if ( o_tool[ tool_kp L ] > 0 ) {
+        jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"tool_calls\"", "[" )
+        jmerge_force___value( cres_o, kp SUBSEP "\"reply\"" SUBSEP "\"tool_calls\"", o_tool, tool_kp )
+    }
+
+    if ( openai_resp_o[ resp_reason_kp ] != "" ){
+        jdict_put( cres_o, kp SUBSEP "\"reply\"", "\"reasoning_content\"", openai_resp_o[ resp_reason_kp ] )
+    }
+
     jdict_rm( cres_o, kp, "\"finish_reason\"" )
     jdict_rm( cres_o, kp, "\"choices\"" )
     jdict_rm( cres_o, kp, "\"delta\"" )

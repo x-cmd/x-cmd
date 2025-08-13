@@ -70,9 +70,9 @@ ___x_cmd_chat___exec_repl___select(){
 # x ls | @ -a 'work.note' --> Save to the llm results ...
 
 ___x_cmd_chat___exec_repl_loop(){
+    trap ':' INT
     chat:info "repl [session=$session]"
 
-    local id
     local history_num=10
     local ___X_CMD_MD_LLM_LESS_DISABLE=1
     local x_=""
@@ -86,56 +86,12 @@ ___x_cmd_chat___exec_repl_loop(){
         x_=; ___x_cmd_chat___exec_repl___ted_ "$question" || break
         printf "\033[1;7m>>> %s \033[0m\n" "$x_" > "$___X_CMD_DEVTTY_FP"
 
-        question=
+        question=""
+        ___x_cmd_chat___exec_repl____handlecmd_
+
         case "$x_" in
-            # /attach)
-            #     ;;      # add attachment to the list
-            # /rm)
-
-            #     ;;      # remove attachment from the list
-
-            /h|/help)
-                    ___x_cmd_chat___exec_repl___printhelp ;;
-            /exit|/quit)  break ;;
-
-            /init)
-                    # set default provider/model
-                    # set default temperature
-                    # store the session data ...
-                    ___x_cmd_chat_init
-                    ;;
-            /history)
-                    ___x_cmd_chat___exec_repl_history app ;;
-            "")
-                    ___x_cmd ui select id   "Next"      \
-                        "/h         | show help"        \
-                        "/exit      | exit the loop"    \
-                        "/history   | manage repl history records" \
-                        "...        | continue the loop"
-
-                    case "$id" in
-                        1)      ___x_cmd_chat___exec_repl___printhelp ;;
-                        2)      break ;;
-                        3)      ___x_cmd_chat___exec_repl_history app ;;
-                    esac
-                    ;;
-
-            \=' '*)
-                    chat:info "Execute the command —> ${x_#'= '}"
-                    eval "${x_#'= '}"
-                    ;;
-
-            *)
-                    ___x_cmd_chat___exec_repl_history add "$x_"
-                    question="$x_"
-                    ___x_cmd_chat___exec_inner_ || {
-                        chat:debug "Execution failed"
-                        continue
-                    }
-                    run_id=$(( run_id + 1 ))
-                    question=""
-                    reflist=""
-                    imagelist=""
+            EXIT)       return 0 ;;
+            CONT)       continue ;;
         esac
     done
 
@@ -158,10 +114,56 @@ Other inputs continue the loop, use \ to start multi-line input content
 " >"$___X_CMD_DEVTTY_FP"
 }
 
+___x_cmd_chat___exec_repl___nexthelp(){
+    local id=""
+    ___x_cmd ui select id   "Next"                  \
+        "/h         | show help"                    \
+        "/exit      | exit the loop"                \
+        "/history   | manage repl history records"  \
+        "...        | continue the loop"
+    case "$id" in
+        1)      ___x_cmd_chat___exec_repl___printhelp ;;
+        2)      x_=EXIT;    return 0 ;;
+        3)      ___x_cmd_chat___exec_repl_history app ;;
+        4)      x_=CONT;    return 0 ;;
+    esac
+}
+
 ___x_cmd_chat___exec_repl___slash_check(){
     local str="$1"
     case "$str" in
         /h|/help|/exit|/quit|/history) return 0;;
         *) return 1 ;;
     esac
+}
+
+___x_cmd_chat___exec_repl____handlecmd_(){
+    case "$x_" in
+        # /attach)   add attachment to the list ;
+        # /rm)       remove attachment from the list ;;
+
+        /h|/help)       ___x_cmd_chat___exec_repl___printhelp ;;
+        /exit|/quit)    x_=EXIT;    return 0 ;;
+        /init)          ___x_cmd_chat_init      ;;
+        /history)       ___x_cmd_chat___exec_repl_history app   ;;
+        "")             ___x_cmd_chat___exec_repl___nexthelp; return ;;
+
+        \=' '*)
+                        chat:info "Execute the command —> ${x_#'= '}"
+                        eval "${x_#'= '}"
+                        ;;
+        *)
+                        ___x_cmd_chat___exec_repl_history add "$x_"
+                        question="$x_"
+                        ___x_cmd_chat___exec_inner_ || {
+                            chat:debug "Execution failed"
+                            x_=CONT;    return 0
+                        }
+                        run_id=$(( run_id + 1 ))
+                        question=""
+                        reflist=""
+                        imagelist=""
+    esac
+
+    x_=""
 }

@@ -5,6 +5,7 @@ BEGIN{
     XCMD_CHAT_DRAWFILE  = ENVIRON[ "XCMD_CHAT_DRAWFILE" ]
     OPENAI_CONTENT_DIR  = ENVIRON[ "content_dir" ]
     IS_STREAM           = ENVIRON[ "is_stream" ]
+    IS_REASONING        = ENVIRON[ "is_reasoning" ]
     DRAW_PREFIX         = "    "
     printf("%s\n", "[START]") >> XCMD_CHAT_DRAWFILE
     printf("%s", DRAW_PREFIX) >> XCMD_CHAT_DRAWFILE
@@ -12,7 +13,7 @@ BEGIN{
 
 END{
     _exitcode = 0
-    print "\n---"                                           >> XCMD_CHAT_DRAWFILE
+    print "\n---"                                   >> XCMD_CHAT_DRAWFILE
 
     if ( OPENAI_HAS_RESPONSE_CONTENT == 0 ) {
         msg_str = "The response content is empty"
