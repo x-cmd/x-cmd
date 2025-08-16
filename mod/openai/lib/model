@@ -1,5 +1,5 @@
 # shellcheck shell=dash
-
+xrc ourl
 ___x_cmd_openai_model(){
     [ $# -gt 0 ]    ||  set - ls
 
@@ -29,21 +29,31 @@ ___x_cmd_openai_model_ll(){
 }
 
 ___x_cmd_openai_model_ls(){
-    [ $# -gt 0 ]    ||  set - --app
-
+    [ $# -gt 0 ]    ||      set - --app
     local op="$1"; shift
+    local format=
     case "$op" in
-        --json|--csv|--app|--fast)
-                    ___x_cmd_openai_model_ls___"${op#--}" "$@" ;;
-        --help|-h)  ___x_cmd help -m openai model ls ;;
-        *)          ___x_cmd help -m openai model ls >&2; return 64 ;;
+        --csv|--app|--fast)
+                    format="${op#--}" ;;
+        -j|--json)  format=json      ;;
+        -y|--yml)   format=yml       ;;
+        -h|--help)  ___x_cmd help -m openai model ls "$@"; return ;;
+        *)          M="Not support $op" N=openai log:ret:1 ;;
     esac
+
+    "___x_cmd_openai_model_ls___${format}" "$@"
 }
 
 ___x_cmd_openai_model_ls___app(){
-    local model=""
-    model="$( ___x_cmd_openai_model_ls___csv | ___x_cmd csv app --return print )" || return $?
-    model="${model%%,*}"
+    if ! { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; }; then
+        ___x_cmd_openai_model_ls___csv "$@"
+        return $?
+    fi
+
+    local ___X_CMD_CSV_APP_DATA_CURROW=
+    local data; data="$( ___x_cmd_openai_model_ls___csv )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd csv --app --return line
+    local model="${___X_CMD_CSV_APP_DATA_CURROW%%,*}"
     [ -n "$model" ] || return $?
 
     local id=
@@ -62,14 +72,21 @@ ___x_cmd_openai_model_ls___app(){
 }
 
 ___x_cmd_openai_model_ls___csv(){
-    ___x_cmd_openai_model_ls___json | ___x_cmd jo .data \
+    local data; data="$( ___x_cmd_openai_model_ls___raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd jo .data \
         | ___x_cmd jo 2c .id .object .created .owned_by \
         | ___x_cmd awk -v FS=, '($0 ~ "gpt|^o[0-9]"){ print $0; }' \
         | ___x_cmd csv header --add "Id,Object,Created,Owned By"
 }
 
 ___x_cmd_openai_model_ls___json(){
-    ___x_cmd_openai_model_ls___raw
+    local data; data="$( ___x_cmd_openai_model_ls___raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd jo fmt
+}
+
+___x_cmd_openai_model_ls___yml(){
+    local data; data="$( ___x_cmd_openai_model_ls___raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd j2y
 }
 
 ___x_cmd_openai_model_ls___fast(){

@@ -69,7 +69,7 @@ function minion_is_reasoning( o, prefix,            v, v1 ){
     if ( v == "true" ) return true
     else if ( v == "false" ) return false
 
-    return true
+    return false # true
 }
 
 function minion_seed( o, prefix,            v ){

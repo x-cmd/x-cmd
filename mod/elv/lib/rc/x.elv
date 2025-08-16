@@ -180,6 +180,11 @@ fn init {
     ___x_cmd___rcelv_addpifh  npm       $E:HOME/.npm/bin
     ___x_cmd___rcelv_addpython
 
+    if ( os:is-regular $E:HOME/.config/elvish/lib/a.elv ) {
+        use a
+        edit:add-var a: $a:
+    }
+
     if ( os:is-regular $E:HOME/.x-cmd.root/local/data/elv/config/readline-binding.enable ) {
         use readline-binding
         edit:add-var readline-binding $readline-binding:

@@ -219,7 +219,7 @@ BEGIN{
             }
         }
     } else {
-        openai_record_response_text_nonstream( o, $0 )
         OPENAI_HAS_RESPONSE_CONTENT = 1
+        openai_record_response_text_nonstream( o, $0 )
     }
 }

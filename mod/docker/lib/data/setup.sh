@@ -21,11 +21,6 @@ ___x_cmd_docker_setup___getinfo()(
     }
 )
 
-___x_cmd_docker_setup___init(){
-    eval "$(x init)"
-    x websrc set "$___X_CMD_WEBSRC_REGION"
-    x boot init
-}
 
 ___x_cmd_os_arch_() {
     [ -z "$___X_CMD_OS_ARCH_" ] || return 0

@@ -433,6 +433,32 @@ function ord_leading1( o ){
 }
 # EndSection
 
+# Section: hex_to_dec("f") -> 15
+function hex_to_dec_init(           i){
+    for (i = 0; i <= 9; i++) {
+        _hex_to_dec_map[sprintf("%c", i + 48)] = i
+    }
+    for (i = 0; i <= 5; i++) {
+        _hex_to_dec_map[sprintf("%c", i + 97)] = i + 10
+        _hex_to_dec_map[sprintf("%c", i + 65)] = i + 10
+    }
+    ___HEX_TO_DEC_INIT_FLAG = 1
+}
+
+function hex_to_dec(hex,            dec, i, l, digit) {
+    if ( 1 != ___HEX_TO_DEC_INIT_FLAG ) hex_to_dec_init()
+
+    dec = 0
+    l = length(hex)
+    for (i = 1; i <= l; i++) {
+        digit = substr(hex, i, 1)
+        dec = dec * 16 + _hex_to_dec_map[digit]
+    }
+    return dec
+}
+
+# EndSection
+
 # Section: arr
 BEGIN {
     NULL = "\001"

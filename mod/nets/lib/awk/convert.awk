@@ -216,9 +216,9 @@ function handle_connection(){
 
     header = $0
 
-    fmt = repeat( 3, "%s\t" ) "%s\n"
+    fmt = repeat( 4, "%s\t" ) "%s\n"
 
-    printf(fmt,     "proto", "local", "foreign", "state" )>>(datadir "/internet")
+    printf(fmt,     "proto", "local", "foreign", "state", "pid" )>>(datadir "/internet")
 
     while (getline) {
         if ( ($1 == "Active") || ($1 == "Registered") )     break
@@ -226,8 +226,9 @@ function handle_connection(){
         local   = $2
         foreign = $3
         state   = $4
+        pid     = $5
 
-        printf( fmt, proto, local, foreign, state ) >>(datadir "/internet")
+        printf( fmt, proto, local, foreign, state, pid ) >>(datadir "/internet")
     }
 }
 

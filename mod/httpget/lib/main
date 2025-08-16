@@ -5,7 +5,7 @@ ___x_cmd_httpget___main(){
     case "$op" in
         gitx)
             ___x_cmd_httpget_gitx "$@" ;;
-        ""|-h|--help)  x help -m httpget "$@" ;;
+        ""|-h|--help)  ___x_cmd help -m httpget "$@" ;;
         *)
             ___x_cmd_httpget_with_cache "$op" "$@" ;;
     esac
@@ -16,7 +16,12 @@ ___x_cmd_httpget_handle_resp_header(){
     local code="${2:?Provide exit code of function ___x_cmd_httpget_inner}"
 
     local http_code
-    http_code="$(___x_cmd_cmds_awk 'NR==1{ printf("%s", $2); }')"
+    http_code="$(
+        ___x_cmd_cmds_awk '
+            $0~"^[Hh][Tt][Tt][Pp]/"{ trycode = int($2); if (trycode > 1) code = trycode; }
+            END{ print code; }
+        '
+    )"
     case "$http_code" in
         20*)    return 0 ;;
         40*)    x:debug "HTTP_CODE: $http_code. Fail to retrieve file from: $url"
@@ -71,9 +76,9 @@ ___x_cmd_httpget_with_cache() {
         fi
 
         # First make sure it works before webservice. Fail fast.
-        x ensurefp "$cache"
+        ___x_cmd ensurefp "$cache"
         redirect_path="${___X_CMD_ROOT_TMP}/httpget/x-bash-temp-download.$RANDOM"
-        x ensurefp "${redirect_path}"
+        ___x_cmd ensurefp "${redirect_path}"
         # TODO: Consider using following code
         # redirect_path="$(dirname "$cache")/x-bash-temp-download.$RANDOM"
     fi
@@ -82,7 +87,7 @@ ___x_cmd_httpget_with_cache() {
     if ___x_cmd_httpget_inner "$url" "$redirect_path"; then
         if [ -n "$cache" ]; then
             x:debug "Copy the temp file to CACHE file: $cache"
-            x mv "$redirect_path" "$cache"
+            ___x_cmd mv "$redirect_path" "$cache"
             ___X_CMD_HTTPGET_AGE=0
         fi
     else
@@ -105,7 +110,7 @@ ___x_cmd_httpget_gitx(){   # Simple strategy
     local cache="${5}"
     local cache_expiration="${6}"
 
-    x websrc load     # Reload ___X_CMD_MIRROR_LIST
+    ___x_cmd websrc load     # Reload ___X_CMD_MIRROR_LIST
 
     local mirror
     local urlpath
@@ -115,7 +120,7 @@ ___x_cmd_httpget_gitx(){   # Simple strategy
         ___x_cmd_httpget_with_cache "$urlpath" "$cache" "$cache_expiration"
 
         case $? in
-            0)  x websrc uproot "$mirror"
+            0)  ___x_cmd websrc uproot "$mirror"
                 return 0 ;;
             1)  x:debug "Network unavailable."
                 return 1 ;;
@@ -142,7 +147,29 @@ ___x_cmd_httpget_curl___main(){(
 
     if [ -z "$cache" ]; then
         exec 3>&1
-        ___X_CMD_HTTP_GET_INNER_HEADER="$(___x_cmd_httpget_curl___main_fn -L --silent --dump-header - --output /dev/stderr --speed-time 5 --speed-limit 10 "$url" 2>&3)"
+        ___X_CMD_HTTP_GET_INNER_HEADER="$(
+            ___x_cmd_httpget_curl___main_fn -L --silent --dump-header - --speed-time 5 --speed-limit 10 "$url" | {
+                ___x_cmd_cmds_awk '
+                {
+                    if (( $0 == "\r" ) || ( $0 == "" )) {
+                        if ((has_te == 1) || ( (has_cl == 1)  && (has_ct == 1))) {
+                            while (getline) {
+                                print $0 > "/dev/stderr"
+                            }
+                        } else {
+                            has_te = has_cl = has_ct = 0
+                        }
+                    }
+
+                    print $0
+                    line = tolower($0)
+                    if (line ~ /^transfer-encoding/)    has_te = 1
+                    else if (line ~ /^content-length/)  has_cl = 1
+                    else if (line ~ /^content-type/)    has_ct = 1
+                }
+                ' 2>&3
+            }
+        )"
         exec 3>&-
     else
         ___X_CMD_HTTP_GET_INNER_HEADER="$(___x_cmd_httpget_curl___main_fn -L --silent --dump-header - --output "$cache" --speed-time 5 --speed-limit 10 "$url")"
@@ -155,7 +182,7 @@ ___x_cmd_httpget_curl___main(){(
 # Section: httpget_inner
 # TODO: &3 is a global var. Must be handled in the proper way.
 if command -v curl >/dev/null; then
-    ___x_cmd_httpget_curl___main_fn(){  x curl "$@";   }
+    ___x_cmd_httpget_curl___main_fn(){  ___x_cmd curl "$@";   }
     ___x_cmd_httpget_inner(){
         ___x_cmd_httpget_curl___main "$@"
     }
@@ -176,7 +203,7 @@ elif command -v wget >/dev/null && command -v ssl_client 1>/dev/null; then
         printf "%s" "$___X_CMD_HTTP_GET_INNER_HEADER" | ___x_cmd_httpget_handle_resp_header "$url" "$code"
     )
 else
-    ___x_cmd_httpget_curl___main_fn(){  x curl "$@";   }
+    ___x_cmd_httpget_curl___main_fn(){  ___x_cmd curl "$@";   }
     ___x_cmd_httpget_inner(){
         ___x_cmd_httpget_curl___main "$@"
     }
