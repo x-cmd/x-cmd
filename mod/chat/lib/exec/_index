@@ -12,7 +12,6 @@ xrc:mod:lib     chat        exec/util exec/history  exec/ted exec/repl exec/repl
 # ___X_CMD_CHAT_CURRENT_SESSION=
 
 ___x_cmd_chat___exec(){
-
     local ___X_CMD_CHAT_CURRENT_ATTCHMENT="$___X_CMD_CHAT_CURRENT_ATTCHMENT"
     local ___X_CMD_CHAT_CURRENT_SESSION="$___X_CMD_CHAT_CURRENT_SESSION"
     local ___X_CMD_CHAT_CURRENT_HISTORY_MAX="$___X_CMD_CHAT_CURRENT_HISTORY_MAX"
@@ -23,6 +22,7 @@ ___x_cmd_chat___exec(){
     local history=""
     local minion=""
     local session=""
+    local hist_session=""
     local model=""
     local system=""
     local type="chat"
@@ -34,7 +34,7 @@ ___x_cmd_chat___exec(){
     local numbered=""
     local temperature=""
     local maxtoken=""
-    local history_num=0
+    local history_num=""
     local seed=""
 
     local inputtype=""
@@ -52,8 +52,10 @@ ___x_cmd_chat___exec(){
     local is_end_with_repl=""
     local is_interactive=""
 
-    local is_reasoning="false"
-    local is_stream="true"
+    local is_reasoning=""
+    local is_stream=""
+    local is_debug=""
+    local is_enactnone=""
 
     if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
         is_end_with_repl=1
@@ -137,6 +139,7 @@ ___x_cmd_chat___exec(){
                                 ;;
                             esac
                             ;;
+            --hist-session) hist_session="$2";      [ $# -ge 2 ] || N=chat M="Please provide the history session value" log:ret:64; shift 2 ;;
             --minion)       minion="$2";            [ $# -ge 2 ] || N=chat M="Please provide the minion value"  log:ret:64; shift 2 ;;
             --history|-n)   history_num="$2";       [ $# -ge 2 ] || N=chat M="Please provide the history num"   log:ret:64; shift 2 ;;
             --model)        if [ $# -ge 2 ]; then
@@ -173,10 +176,11 @@ A
 
             # deprecated ...
             --question)     question="$2";          [ $# -ge 2 ] || N=chat M="Please provide the question value" log:ret:64;  shift 2 ;;
-            --show-reasoning)
-                            is_reasoning="true";    shift 1 ;;
-            --no-stream)    is_stream="false";      shift 1 ;;
-
+            --reasoning)    is_reasoning=1;         shift 1 ;;
+            --no-reasoning) is_reasoning=0;         shift 1 ;;
+            --stream)       is_stream=1;            shift 1 ;;
+            --no-stream)    is_stream=0;            shift 1 ;;
+            --debug)        is_debug=1;             shift 1 ;;
             --help|-h)
                             case "$provider" in
                                 gh) ___x_cmd help -m gh model chat request      ;;
@@ -187,17 +191,19 @@ A
             --no-empty-question)
                             is_no_empty_question=1; shift 1 ;;
             --start-with-repl)
-                            is_start_with_repl=1; shift 1 ;;
+                            is_start_with_repl=1;   shift 1 ;;
             --end-with-repl)
-                            is_end_with_repl=1; shift 1 ;;
+                            is_end_with_repl=1;     shift 1 ;;
             --start-without-repl)
-                            is_start_with_repl=""; shift 1 ;;
+                            is_start_with_repl="";  shift 1 ;;
             --end-without-repl)
-                            is_end_with_repl=""; shift 1 ;;
+                            is_end_with_repl="";    shift 1 ;;
             --without-repl)
-                            is_start_with_repl=""; is_end_with_repl=""; is_no_empty_question=1; shift 1 ;;
-            --interactive)      is_interactive=1; shift 1 ;;
-            --non-interactive)  is_interactive=0; shift 1 ;;
+                            is_start_with_repl=""; is_end_with_repl=""; shift 1 ;;
+            --interactive)      is_interactive=1;   shift 1 ;;
+            --non-interactive)  is_interactive=0;   shift 1 ;;
+            --enactnone)        is_enactnone=1;     shift 1
+                                is_stream=0; is_start_with_repl=""; is_end_with_repl=""; inputtype=none; is_silent=1 ;;
             *)
                             [ "$1" != -- ] || shift
                             if [ -z "$question" ]; then
@@ -248,11 +254,13 @@ A
             x_=""; ___x_cmd_chat___exec_repl___id_ || return $?
             session="$x_"
         }
-
         ___x_cmd_chat___exec_inner_ || return $?
+        [ -z "$question" ] || ___x_cmd_chat___exec_repl_history add "$question"
 
         is_silent=1
-        [ -z "$question" ] || ___x_cmd_chat___exec_repl_history add "$question"
+        question=""
+        reflist=""
+        imagelist=""
         ___x_cmd_chat___exec_repl --previous
         return
     else
@@ -283,35 +291,44 @@ ___x_cmd_chat___exec_inner_(){
     chat:debug --chatid "$chatid" --model "$model" --question "$question" --history_num "$history_num" --confirm_before_send "$confirm_before_send" "chat exec"
     [ -z "$imagelist" ] || {
         case "$provider" in
-            openai|gemini|gh|ollama|llmf|moonshot)  ;;
-            *)  chat:error "Currently, only [openai|gemini|gh|ollama|llmf|moonshot] support multimodal model, while [provider=$provider] does not support"
-                return 1
+            openai|gemini|gh|ollama|llmf|moonshot|mistral|siliconflow|openrouter)  ;;
+            *)  chat:warn "Multimodal models may not be supported"
                 ;;
         esac
     }
 
-    # TODO:     ___x_cmd_chat___exec_inner_raw_ >to the pipe
-    # using tail to refresh and show ...
-
-
     local XCMD_CHAT_IS_INTERACTIVE="$is_interactive"
     local XCMD_CHAT_SESSION_DIR=""
-    local XCMD_CHAT_LOGFILE=""
-    local XCMD_CHAT_DRAWFILE=""
+    local XCMD_CHAT_HISTORY_SESSION_DIR=""
+    local XCMD_CHAT_ENACTALL_LOGFILE=""
+    local XCMD_CHAT_ENACTALL_DRAWFILE=""
 
-    XCMD_CHAT_SESSION_DIR="$(___x_cmd_chat_minion getitem "$minion_json_cache" session)"
-    [ -n "$XCMD_CHAT_SESSION_DIR" ] || N=chat M="The session name is empty, please check the minion file" log:ret:64
-    XCMD_CHAT_SESSION_DIR="$___X_CMD_CHAT_SESSION_DIR/$XCMD_CHAT_SESSION_DIR"
-    XCMD_CHAT_LOGFILE="$XCMD_CHAT_SESSION_DIR/$chatid/log"
-    XCMD_CHAT_DRAWFILE="$XCMD_CHAT_SESSION_DIR/$chatid/draw"
-    ___x_cmd ensurefp "$XCMD_CHAT_LOGFILE"
-    printf "%s" "" > "$XCMD_CHAT_LOGFILE"
-    printf "%s" "" > "$XCMD_CHAT_DRAWFILE"
+    session="$(___x_cmd_chat_minion getitem "$minion_json_cache" session)"
+    [ -n "$session" ] || N=chat M="The session name is empty, please check the minion file" log:ret:64
+    XCMD_CHAT_SESSION_DIR="$___X_CMD_CHAT_SESSION_DIR/$session"
+    if [ -z "$hist_session" ]; then
+        XCMD_CHAT_HISTORY_SESSION_DIR="$XCMD_CHAT_SESSION_DIR"
+    else
+        XCMD_CHAT_HISTORY_SESSION_DIR="$___X_CMD_CHAT_SESSION_DIR/$hist_session"
+    fi
 
-    (
-        ___x_cmd_chat___exec_inner_raw_ & \
-            ___x_cmd coco enactall "$XCMD_CHAT_SESSION_DIR/$chatid"
-    )
+    XCMD_CHAT_ENACTALL_LOGFILE="$XCMD_CHAT_SESSION_DIR/$chatid/log"
+    XCMD_CHAT_ENACTALL_DRAWFILE="$XCMD_CHAT_SESSION_DIR/$chatid/draw"
+
+    if [ "$is_enactnone" != 1 ]; then
+        ___x_cmd_chat___exec__histsum || return $?
+        ___x_cmd ensurefp "$XCMD_CHAT_ENACTALL_LOGFILE"
+        printf "%s" "" > "$XCMD_CHAT_ENACTALL_LOGFILE"
+        printf "%s" "" > "$XCMD_CHAT_ENACTALL_DRAWFILE"
+
+        (
+            ___x_cmd_chat___exec_inner_raw_ & \
+                ___x_cmd coco enactall "$XCMD_CHAT_SESSION_DIR/$chatid"
+        )
+    else
+        ___x_cmd_chat___exec_inner_raw_ || return $?
+        printf "%s\n" "$XCMD_CHAT_SESSION_DIR/$chatid"
+    fi
 }
 
 ___x_cmd_chat___exec_inner_raw_(){
@@ -324,8 +341,10 @@ ___x_cmd_chat___exec_inner_raw_(){
 
 ___x_cmd_chat___exec__cancel_request(){
     ___X_CMD_RETRY_ABORT=1
-    printf "\n%s\n" "[EXITCODE] 130"    >> "$XCMD_CHAT_LOGFILE"
-    printf "\n%s\n" "[EXITCODE] 130"    >> "$XCMD_CHAT_DRAWFILE"
+    if [ "$is_enactnone" != 1 ]; then
+        printf "\n%s\n" "[EXITCODE] 130"    >> "$XCMD_CHAT_ENACTALL_LOGFILE"
+        printf "\n%s\n" "[EXITCODE] 130"    >> "$XCMD_CHAT_ENACTALL_DRAWFILE"
+    fi
     printf "%s\n" "Cancel the request"  >> "$XCMD_CHAT_SESSION_DIR/$chatid/chat.error.yml"
 }
 
@@ -337,5 +356,28 @@ ___x_cmd_chat___exec__confirm_before_request(){
             return 1
         }
         confirm_before_send=
+    }
+}
+
+___x_cmd_chat___exec__histsum(){
+    local history_num="$(___x_cmd_chat_minion getitem "$minion_json_cache" history_num)"
+    [ "$history_num" -gt 0 ] || return 0
+    chat:debug --session "$session" --XCMD_CHAT_HISTORY_SESSION_DIR "$XCMD_CHAT_HISTORY_SESSION_DIR" --history_num "$history_num" "check histsum"
+    [ -d "$XCMD_CHAT_HISTORY_SESSION_DIR" ] || return 0
+
+    local l=""; local n=0; local lastchatid=""; local chatid=""; local filename=""
+    { ___x_cmd_cmds find "$XCMD_CHAT_HISTORY_SESSION_DIR" -type f -name "histsum.txt" -o -name "chat.response.yml" | ___x_cmd_cmds sort -r; } 2>/dev/null | {
+        while read -r l; do
+            l="${l#"$XCMD_CHAT_HISTORY_SESSION_DIR/"}"
+            chatid="${l%%/*}"
+            filename="${l#*/}"
+            [ -n "$lastchatid" ] || lastchatid="$chatid"
+            n="$((n+1))"
+            [ "$n" -le "$history_num" ] || break
+            [ "$filename" != "histsum.txt" ] || break
+        done
+        [ "$n" -gt "$history_num" ] || return 0
+
+        ___x_cmd coco histsum "$session" "$lastchatid" "$history_num"
     }
 }

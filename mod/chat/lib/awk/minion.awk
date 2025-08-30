@@ -40,34 +40,26 @@ function minion_model( o, prefix, def_model,           v ){
 }
 
 function minion_is_stream( o, prefix, model,            v, v1 ){
-    v1 = ENVIRON[ "is_stream" ]
+    v1 = ENVIRON[ "is_stream" ] ""
+    if (v1 == "") v1 = o[ prefix S "\"stream\"" ] ""
+    if (v1 == "") v1 = ENVIRON[ "cfg_stream" ] ""
     if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
 
-    v1 = o[ prefix S "\"stream\"" ]
-    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
-
-    v1 = ENVIRON[ "cfg_stream" ]
-    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
-
-    if ( v == "true" ) return true
-    else if ( v == "false" ) return false
+    if (( v == "true" ) || ( v == true ))           return true
+    else if (( v == "false" ) || ( v == false ))    return false
 
     if ( model ~ "^(gpt-5|gpt-5-mini)$" ) return false
     return true
 }
 
 function minion_is_reasoning( o, prefix,            v, v1 ){
-    v1 = ENVIRON[ "is_reasoning" ]
+    v1 = ENVIRON[ "is_reasoning" ] ""
+    if (v1 == "") v1 = o[ prefix S "\"reasoning\"" ] ""
+    if (v1 == "") v1 = ENVIRON[ "cfg_reasoning" ] ""
     if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
 
-    v1 = o[ prefix S "\"reasoning\"" ]
-    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
-
-    v1 = ENVIRON[ "cfg_reasoning" ]
-    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
-
-    if ( v == "true" ) return true
-    else if ( v == "false" ) return false
+    if (( v == "true" ) || ( v == true ))           return true
+    else if (( v == "false" ) || ( v == false ))    return false
 
     return false # true
 }
@@ -248,8 +240,12 @@ function minion_filelist_attach( o, prefix,     v, i, l, arr, fp, _str, _res ){
     return _res
 }
 
-function minion_load_from_jsonfile( o, prefix, jsonfilepath, provider ){
-    jiparse2leaf_fromfile( o, prefix, jsonfilepath )
+function minion_load_from_jsonfile( o, prefix, jsonfilepath, provider,      str ){
+    if ( jsonfilepath == "" ) return
+    str = cat( jsonfilepath )
+    if ( cat_is_filenotfound() ) return
+    str = chat_str_replaceall( str )
+    jiparse2leaf_fromstr( o, prefix, str )
 
     if ( provider !~ "^\"" )            provider = jqu(provider)
     if ( chat_str_is_null( provider ))  provider = o[ prefix S "\"provider\"" S "\"default\"" ]

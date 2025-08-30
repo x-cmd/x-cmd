@@ -24,7 +24,36 @@ function chat_str_replaceall( src,          _name, ans ){
 }
 
 function chat_record_str_to_drawfile(item, draw_prefix){
+    if ( IS_ENACTNONE == true ) return
+    item = str_xml_transpose( item )
     gsub( "\n|\r", "&" draw_prefix, item )
-    printf( "%s", item ) >> XCMD_CHAT_DRAWFILE
+    printf( "%s", item ) >> XCMD_CHAT_ENACTALL_DRAWFILE
     fflush()
+}
+
+function chat_cal_cached( curr, last,         _curr_arr, _last_arr, _curr_l, _last_l, c, i, l, l1, l2 ) {
+    curr = json_to_machine_friendly( curr )
+    last = json_to_machine_friendly( last )
+
+    _curr_l = split( curr, _curr_arr, "\n" )
+    _curr_arr[ L ] = _curr_l
+
+    _last_l = split( last, _last_arr, "\n" )
+    l = _last_arr[ L ] = _last_l
+    if ( l > _curr_l ) l = _curr_l
+
+    c = 0
+    for (i=1; i<=l; ++i) {
+        l1 = length( _curr_arr[i] )
+        l2 = length( _last_arr[i] )
+        if ( (l1 == l2) && (_last_arr[i] == _curr_arr[i]) ) {
+            c += l2
+            continue
+        }
+
+        # TODO: we can use divide and conqure for more accuracy. But it is meanless comparing to the time cost.
+        break
+    }
+
+    return c
 }

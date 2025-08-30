@@ -455,6 +455,7 @@ function jiparse2leaf_fromfile( obj, kp, filepath,     c, r ){
     if (c == -1)    CAT_FILENOTFOUND = true
     close( filepath )
     JITER_CURLEN = 0
+    return ! CAT_FILENOTFOUND
 }
 
 function jiparse2leaf_fromstr( obj, kp, text ){

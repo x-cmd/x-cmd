@@ -1,0 +1,280 @@
+# shellcheck shell=dash
+
+___X_CMD_MAC_SB_CODE_CORE=''
+
+# m sb -0 --net --basic --tty -a / ls /bin
+# m sb -1 --net ls /bin
+# m sb -9 --nonet curl -h https://bing.com
+
+xrc:mod:lib     mac     sb/exec
+
+# if user specified the path, we should include it into the filepath permission automatically.
+# m sb -9 --nonet curl -h https://bing.com --> auto include the curl bin path in the permission ... To achieve the zero...
+
+___x_cmd_mac_sb(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    local dryrun=""
+    local code=""
+
+    local tracemode=""
+
+    local pp=""
+
+    local x_=""
+
+    local level="0"
+    local preset=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m mac sb "$@" ; return 0 ;;
+            --dryrun)       dryrun=1    ;;
+
+            --pp|--print-policy)
+                            pp=1 ;;
+
+            --trace)        tracemode="$2";                                   arg:2:shift; continue ;;
+
+            -0|-1|-2|-3|-4|-5|-6|-7|-8|-9)
+                            level="${1#-}" ;;
+
+            --preset)       preset="$2";    arg:2:shift; continue ;;
+            :*)             preset="${1#:}";    ;;
+
+            --init)         ___x_cmd_mac_sb_addcode_        "( x-init )"            ;;
+            --all)          ___x_cmd_mac_sb_addcode_        "( x-allow-rwx "/"   )" ;;
+
+            # Inner function
+            --wd|--workdir)
+                            [ -n "$2" ] || N=sb M="Expected directory path after -> $1" log:ret:64
+                            [ -d "$2" ] || ___x_cmd mkdirp "$2" || N=sb M="Fail to create directory -> $2" log:ret:1
+                            ___x_cmd_mac_sb___handlev allow rwx:"$2" ;     arg:2:shift; continue ;;
+
+
+            --wf|--workfile)
+                            [ -n "$2" ] || N=sb M="Expected file path after -> $1" log:ret:64
+                            [ -f "$2" ] || {
+                                ___x_cmd ensurefp "$2"  || N=sb M="Fail to create directory for file -> $2" log:ret:1
+                                printf "">"$2"
+                            }
+                            ___x_cmd_mac_sb___handlev allow rwx:"$2";      arg:2:shift; continue ;;
+
+            --dev0|--no-dev0|\
+            --tty|--no-tty|\
+            --fork|--no-fork|\
+            --net|--no-net|\
+            --homebin|--no-homebin|\
+            --sysbin|--no-sysbin|\
+            --allrx|--no-allrx|\
+            --sysctl0|--no-sysctl0|\
+            --e|--no-e|--ioctl|--no-ioctl)
+                            ___x_cmd_mac_sb_addcode_auto_   "$1"  ;;
+
+            --root)         ___x_cmd_mac_sb_addcode_        "( x-rwx   allow "/"  )" ;;
+            --no-root)      ___x_cmd_mac_sb_addcode_        "( x-rwx   deny  "/"  )" ;;
+
+            --home)         ___x_cmd_mac_sb_addcode_        "( x-rwx   allow HOME )" ;;
+            --no-home)      ___x_cmd_mac_sb_addcode_        "( x-rwx   deny  HOME )" ;;
+
+            --pwd)          ___x_cmd_mac_sb___handlev allow rwx:"$PWD"            ;;
+            --no-pwd)       ___x_cmd_mac_sb___handlev deny  rwx:"$PWD"            ;;
+
+            --ws)           ___x_cmd wsroot_ || N=mac M="Fail to fetch workspace -> $PWD" log:ret:64
+                            ___x_cmd_mac_sb___handlev allow rwx:"${x_}"           ;;
+
+            --no-ws)        ___x_cmd wsroot_ || N=mac M="Fail to fetch workspace -> $PWD" log:ret:64
+                            ___x_cmd_mac_sb___handlev deny rwx:"${x_}"            ;;
+
+            -c|--code)      ___x_cmd_mac_sb_addcode_      "$2" ;            arg:2:shift; continue ;;
+            -q)             ___x_cmd_mac_sb_addcode_      "( $2 )" ;        arg:2:shift; continue ;;
+
+            -a)             ___x_cmd_mac_sb___handlev allow "$2";           arg:2:shift; continue ;;
+            -d)             ___x_cmd_mac_sb___handlev deny  "$2";           arg:2:shift; continue ;;
+
+            -F)             ___x_cmd_mac_sb_addcode_ "( x-deny-rwx \"$2\" )"; arg:2:shift; continue ;;
+
+            # -f)             arg:2:shift; continue ;;        # support file, load the code from file ...
+
+            *)              break ;;
+        esac
+        shift
+    done
+
+    ___x_cmd os is darwin || N=mac M="This function can only run on macOS." log:ret:1
+
+    local ___X_CMD_MAC_SB_CODE_CORE=""          # TODO: remove it so the code could be cached in the env.
+    [ -n "$___X_CMD_MAC_SB_CODE_CORE" ] || {
+        ___X_CMD_MAC_SB_CODE_CORE="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/mac/lib/sb/lib.sb")"
+    }
+
+    ___x_cmd_mac_sb_initcode_
+    code="$x_
+
+;; User-customized fine-tuning
+
+$code"
+
+    [ -z "$dryrun" ]    || {
+        if ___x_cmd_is_stdout2tty; then
+            printf "%s\n" "$code" | ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/mac/lib/sb/lisp.hl.awk"
+        else
+            printf "%s\n" "$code" ;
+        fi
+        return 0 ;
+    }
+
+    [ -z "$pp" ]   || {
+        mac:info "Sandbox code is presented below."
+        printf "%s\n" "--- |"
+        printf "%s\n" "$code" | ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/mac/lib/sb/lisp.hl.awk"
+        printf "%s\n" "---"
+    } >&2
+
+    code="${___X_CMD_MAC_SB_CODE_CORE}${___X_CMD_UNSEENCHAR_NEWLINE}${code}${___X_CMD_UNSEENCHAR_NEWLINE}"
+    ___x_cmd_mac_sb___exec -p "$code" "$@"
+}
+
+___x_cmd_mac_sb_initcode_(){
+    x_=""
+
+    if [ "$level" -eq 9 ]; then
+        x_="( allow default )
+"
+        return 0
+    fi
+
+    x_="( deny default )
+"
+
+    [ "$level" -ge 1  ] ||   return 0
+    x_="${x_}
+;; level 1: Support program designed for computation or data processing, interacting via standard input and output. Eg. echo hi
+    ( x-init )
+    ( x-sysbin      allow )
+"
+
+    [ "$level" -ge 2  ] ||   return 0
+    x_="${x_}
+;; level 2: device, tmpfs and sysctl support
+    ( x-tmpfs       allow )
+    ( x-dev0        allow )
+    ( x-sysctl0     allow )
+"
+
+    [ "$level" -ge 3  ] ||   return 0
+    x_="${x_}
+;; level 3: Support programs installed in home folder.
+    ( x-homebin     allow )
+    ( x-time        allow )
+"
+
+    [ "$level" -ge 4  ] ||   return 0
+    x_="${x_}
+;; level 4: Interactive TUI App, bash
+    ( x-fork        allow )
+    ( x-tty         allow )
+"
+
+    [ "$level" -ge 5  ] ||   return 0
+    x_="${x_}
+;; level 5: X-CMD
+    ( x-x-cmd-root  allow )
+"
+
+    [ "$level" -ge 6  ] ||   return 0
+    x_="${x_}
+;; level 6: GUI App ~
+    ( x-font-access allow )
+"
+
+    [ "$level" -ge 7  ] ||   return 0
+    x_="${x_}
+;; level 7: Sohpisticated GUI App like Web Browswer, or Electron based application.
+    ( x-net         allow )
+"
+
+    [ "$level" -ge 8  ] ||   return 0
+    x_="${x_}
+;; level 8
+"
+
+}
+
+___x_cmd_mac_sb_addcode_auto_(){
+    local name
+    case "$1" in
+        --no-*)         name="x-${1#--no-}"
+                        ___x_cmd_mac_sb_addcode_    "( ${name}  deny  )" ;;
+        *)              name="x-${1#--}"
+                        ___x_cmd_mac_sb_addcode_    "( ${name}  allow )" ;;
+    esac
+}
+
+___x_cmd_mac_sb_addcode_(){
+    while [ $# -gt 0 ]; do
+        code="${code}$1
+"
+        shift
+    done
+}
+
+___x_cmd_mac_sb___handlev(){
+    local op="$1"
+    local arg="$2"
+
+    local s="r" ;
+    local strategy="" ;
+    local fp="$arg" ;
+
+    if ___x_cmd_mac_sb___handlev_isrwux "$arg"; then
+        s="${arg%%:*}"
+        fp="${arg#*:}"
+    fi
+
+    case "$s" in
+        r|w|x)     strategy="x-$s   $op"    ;;
+        rw|wr)     strategy="x-rw   $op"    ;;
+        rx|xr)     strategy="x-rx   $op"    ;;
+        wx|xw)     strategy="x-wx   $op"    ;;
+        *)         strategy="x-rwx  $op"    ;;
+    esac
+
+    local fplist="$fp"
+    while [ -n "$fplist" ]; do
+        case "$fplist" in
+            *:*)
+                fp="${fplist%%:*}"
+                fplist="${fplist#*:}"
+                ;;
+            *)
+                fp="$fplist"
+                fplist=""
+        esac
+
+        # Best effort ...
+        case "$fp" in
+            ~/*)        fp="$HOME/${fp#*/}" ;;
+            ./*)        fp="$PWD/${fp#*/}"  ;;
+            # TODO: ../
+        esac
+
+        ___x_cmd_mac_sb_addcode_ "( $strategy \"$fp\" )"
+    done
+
+    ___x_cmd_mac_sb_addcode_ ""
+}
+
+___x_cmd_mac_sb___handlev_isrwux(){
+    case "$1" in
+        r:*|w:*|x:*|\
+        rw:*|rx:*|\
+        wr:*|wx:*|\
+        xr:*|xw:*|\
+        rwx:*|rxw:*|wrx:*|wxr:*|xrw:*|xwr:*)
+            return 0
+    esac
+    return 1
+}
+
+

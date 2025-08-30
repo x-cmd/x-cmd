@@ -21,7 +21,8 @@ function tsv_unesacpe( v,   _sw ){
 
 function tsv_esacpe( v ){
     if (v ~ /[\r\n\t\\]/) {
-        gsub( "\\", "\\\\", v )
+        # gsub( "\\", "\\\\", v )
+        gsub( "\\\\", "&\\", vd )
         gsub( "\r", "\\r",  v )
         gsub( "\n", "\\n",  v )
         gsub( "\t", "\\t",  v )

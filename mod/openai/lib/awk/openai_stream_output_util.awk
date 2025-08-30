@@ -118,7 +118,7 @@ function openai_record_response___tool_call(o_tool, tool_arr,             idx, n
         print name > (dir "/name")
         print args > (dir "/arg")
 
-        print "[FUNCTION-CALL] " idx >> XCMD_CHAT_LOGFILE
+        if ( IS_ENACTNONE != true ) print "[FUNCTION-CALL] " idx >> XCMD_CHAT_ENACTALL_LOGFILE
     }
 
     fflush()
@@ -190,7 +190,7 @@ BEGIN{
     OPENAI_HAS_RESPONSE_CONTENT = 0
 }
 
-# { print $0 >> (OPENAI_CONTENT_DIR "/chat.running.yml"); }
+( IS_DEBUG ){ print $0 >> (OPENAI_CONTENT_DIR "/chat.running.yml"); }
 ($0 != ""){
     if ( IS_STREAM == true ) {
         if ($0 !~ "^:"){

@@ -1,0 +1,307 @@
+( version 1 )
+
+( deny default )
+
+( define HOME (param "HOME") )
+( define ( x-home           sub ) ( string-append HOME                  "/"   sub ) )
+
+( define ___X_CMD_ROOT ( param "___X_CMD_ROOT" ) )
+( define ( x-cmd-root       sub ) ( string-append ___X_CMD_ROOT         "/"   sub ) )
+
+;; Notice, in x-cmd and x-cmd-root, sub value should not start with /
+
+( define ___X_CMD_ROOT_BIN ( x-cmd-root  "bin" ) )
+( define ( x-cmd-root-bin   sub ) ( string-append ___X_CMD_ROOT_BIN     "/"   sub ) )
+
+
+( define ( x-init )
+  ( begin
+    ;; ( allow process* )
+    ;; ( allow process-fork )
+    ;; ( allow syscall* )
+    ;; ( allow system* )
+
+    ;; ( allow file* process* ( subpath "/" ) )
+
+    ;; for version 3
+    ;; (import "dyld-support.sb")
+    ;; (import "system.sb")
+
+    ( allow file-read-metadata file-read-data ( literal "/" ) )
+
+    ( allow file-read-metadata file-read-data
+        ( subpath
+            "/usr/share"
+            "/var"          "/private/var"
+            "/etc"          "/private/etc"
+        )
+    )
+
+    ( allow file-read* file-map-executable
+      ( subpath
+          "/System/Cryptexes/App"
+          "/System/Cryptexes/OS"
+          "/System/Volumes/Preboot/Cryptexes/App/System"
+          "/System/Volumes/Preboot/Cryptexes/OS"
+      )
+    )
+
+    ( allow file-read-data file-write-data file-ioctl
+        ( require-all
+          ( literal "/dev/dtracehelper"  )
+          ( vnode-type CHARACTER-DEVICE  )
+        )
+    )
+
+    ( allow sysctl-read
+        ( sysctl-name
+            "kern.bootargs"
+            "kern.ngroups"
+            "security.mac.lockdown_mode_state"
+        )
+    )
+
+    ( allow mach-lookup
+      ( global-name
+          "com.apple.system.notification_center"
+          "com.apple.system.opendirectoryd.libinfo"
+      ) ;; for bash hostname
+    )
+
+  )
+)
+
+;; TODO: reconsider in the future
+( define ( x-homeconfig op )
+  ( x-rwx op
+    ( x-home ".local" )
+    ( x-home ".bun"   )
+    ( x-home ".deno"  )
+    ( x-home "go"     )
+    ( x-home ".cargo" )
+  )
+)
+
+( define ( x-homebin op )
+  ( op  process*   file-read*  file-test-existence
+    ( subpath
+      ( x-home  ".bun/bin" )
+      ( x-home  ".npm/bin" )
+      ( x-home  ".deno/bin" )
+    )
+    ( subpath
+      ( x-home  "go/bin" )
+      ( x-home  ".local/bin" )
+      ( x-home  ".cargo/bin" )
+    )
+  )
+)
+
+( define ( x-sysbin op )
+  ( op  process*   file-read*  file-test-existence
+    ( subpath
+        "/bin"                "/sbin"
+        "/usr/bin"            "/usr/sbin"
+        "/usr/local/bin"      "/usr/local/sbin"
+        "/Library/Developer/CommandLineTools/"
+        "/opt/homebrew/bin"  "/opt/homebrew/sbin" "/opt/homebrew/Cellar"
+    )
+  )
+)
+
+( define ( x-tmpfs op )
+  ( op file-read* file-write* ;; file-unlink
+    ( subpath
+        "/private/tmp"          "/tmp"
+        "/private/var/tmp"      "/var/tmp"
+        "/private/var/folders"  "/var/folders"
+    )
+  )
+)
+
+( define ( x-x-cmd-root op )
+  ( begin
+    ( op            file-read* file-test-existence  file-write*   file-ioctl
+        ( subpath
+            ___X_CMD_ROOT
+        )
+    )
+    ( op process*   file-read* file-test-existence  file-write*
+        ( subpath
+            ___X_CMD_ROOT_BIN
+            ( x-cmd-root "local/data" )
+        )
+    )
+  )
+)
+
+( define ( x-net    op )          ( op network* ) )
+
+( define ( x-fork   op )          ( op process-fork ) )
+
+( define ( x-r      op fp )
+  ( when ( eq? op allow )         ( op          file-read* file-test-existence                              ( literal fp )  ( subpath fp ) ) )
+  ( when ( eq? op deny  )         ( op          file-read*                                                  ( literal fp )  ( subpath fp ) ) )
+)
+
+( define ( x-w      op fp )
+  ( when ( eq? op allow )         ( op                     file-test-existence  file-write*                 ( literal fp )  ( subpath fp ) ) )
+  ( when ( eq? op deny  )         ( op                                          file-write*                 ( literal fp )  ( subpath fp ) ) )
+)
+
+( define ( x-x      op fp )
+  ( when ( eq? op allow )         ( op process*                                                             ( literal fp )  ( subpath fp ) ) )
+  ( when ( eq? op deny  )         ( op process*                                                             ( literal fp )  ( subpath fp ) ) )
+)
+
+( define ( x-rx     op fp )
+  ( when ( eq? op allow )         ( op process* file-read* file-test-existence                              ( literal fp )  ( subpath fp ) ) )
+  ( when ( eq? op deny  )         ( op process* file-read*                                                  ( literal fp )  ( subpath fp ) ) )
+)
+
+( define ( x-rw     op fp )
+  ( when ( eq? op allow )         ( op          file-read* file-test-existence  file-write*                 ( literal fp )  ( subpath fp ) ) )
+  ( when ( eq? op deny  )         ( op          file-read*                      file-write*                 ( literal fp )  ( subpath fp ) ) )
+)
+
+( define ( x-wx     op fp )
+  ( when ( eq? op allow )         ( op process*            file-test-existence  file-write*                 ( literal fp )  ( subpath fp ) ) )
+  ( when ( eq? op deny )          ( op process*                                 file-write*                 ( literal fp )  ( subpath fp ) ) )
+)
+
+( define ( x-rwx    op fp )
+  ( when ( eq? op allow )         ( op process* file-read* file-test-existence  file-write*  file*          ( literal fp )  ( subpath fp ) ) )
+  ( when ( eq? op deny  )         ( op process* file-read*                      file-write*  file*          ( literal fp )  ( subpath fp ) ) )
+)
+
+( define ( x-e    op fp )         ( op                     file-test-existence                              ( literal fp )  ( subpath fp ) ) )
+( define ( x-ioctl    op fp )     ( op                     file-ioctl                                       ( literal fp )  ( subpath fp ) ) )
+
+( define ( x-allrx  op )          ( x-rx   op "/" ) )
+( define ( x-root   op )          ( x-rwx  op "/" ) )
+
+( define ( x-forbid-privacy fp )
+  ( begin
+    ( x-forbid ( x-home ".ssh" ) )
+    ( x-forbid ( "/private/etc/passwd" ) )
+    ;; ( x-forbid ( "" ) )
+  )
+)
+
+( define ( x-tty  op )   ( op file-read* file-write* file-ioctl ( literal "/dev/tty"  ) ( prefix  "/dev/ttys" )) )
+
+( define ( x-dev0 op )
+  ( begin
+    ( op    file-read* file-test-existence  file-write*   file-ioctl
+        ( literal "/dev/zero" )
+        ( literal "/dev/null" )
+    )
+
+    ( op    file-read* file-test-existence
+        ( literal "/dev/random"  )
+        ( literal "/dev/urandom" )
+    )
+  )
+)
+
+( define ( x-time op )
+  ( op    file-read* file-test-existence
+    ( subpath "/private/var/db/timezone" )
+    ( subpath "/usr/share/zoneinfo" )
+    ( subpath "/usr/share/zoneinfo.default" )
+    ( literal "/private/etc/localtime" )
+  )
+)
+
+( define ( x-sysctl0 op )
+  ( begin
+    ( op  sysctl-read
+        ( sysctl-name-prefix "hw.perflevel" )
+        ( sysctl-name        "sysctl.proc_cputype" )
+        ( sysctl-name
+            "kern.hostname"
+            "kern.maxfilesperproc"
+            "kern.osproductversion"
+            "kern.osrelease"
+            "kern.ostype"
+            "kern.osvariant_status"
+            "kern.osversion"
+            "kern.secure_kernel"
+            "kern.usrstack64"
+            "kern.version"
+        )
+        ;; TODO: kern.ngroups kern.bootargs
+
+        ( sysctl-name
+            "hw.activecpu"
+            "hw.busfrequency_compat"
+            "hw.byteorder"
+            "hw.cacheconfig"
+            "hw.cachelinesize_compat"
+            "hw.cpufamily"
+            "hw.cpufrequency_compat"
+            "hw.cputype"
+            "hw.l1dcachesize_compat"
+            "hw.l1icachesize_compat"
+            "hw.l2cachesize_compat"
+            "hw.l3cachesize_compat"
+            "hw.logicalcpu_max"
+            "hw.machine"
+            "hw.memsize"
+            "hw.ncpu"
+            "hw.nperflevels"
+        )
+
+        ( sysctl-name
+            "hw.optional.arm.FEAT_BF16"
+            "hw.optional.arm.FEAT_DotProd"
+            "hw.optional.arm.FEAT_FCMA"
+            "hw.optional.arm.FEAT_FHM"
+            "hw.optional.arm.FEAT_FP16"
+            "hw.optional.arm.FEAT_I8MM"
+            "hw.optional.arm.FEAT_JSCVT"
+            "hw.optional.arm.FEAT_LSE"
+            "hw.optional.arm.FEAT_RDM"
+            "hw.optional.arm.FEAT_SHA512"
+
+            "hw.optional.armv8_2_sha512"
+
+            ;; these are for
+            ;; "hw.optional.armv8_1_atomics"
+            ;; "hw.optional.armv8_crc32"
+
+            ;; consider cpu diff in intel mac
+            "hw.optional.*"
+
+            "hw.optional.armv*"
+            "hw.optional.arm.FEAT_DIT"
+        )
+
+        ( sysctl-name
+            "hw.packages"
+            "hw.pagesize_compat"
+            "hw.physicalcpu_max"
+            "hw.tbfrequency_compat"
+            "hw.vectorunit"
+        )
+    )
+  )
+)
+
+( define ( x-font-access op )
+  ( begin
+    ( op file-read-data file-test-existence file-read-xattr
+        (   subpath
+            "/Library/Fonts"
+            "/System/Library/Fonts"
+            ( x-home "Library/Fonts" )
+        )
+    )
+    ( op mach-lookup
+      ( global-name "com.apple.fonts" )
+      ( global-name "com.apple.FontObjectsServer" )
+    )
+
+    ( op file-read* ( extension "com.apple.app-sandbox.read" ) )
+  )
+)

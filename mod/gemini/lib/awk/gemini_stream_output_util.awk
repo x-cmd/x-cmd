@@ -13,7 +13,6 @@ function gemini_parse_response_data( text, obj,       _arr, _arrl, i, _current_k
     _arrl = json_split2tokenarr( _arr, text )
     for (i=1; i<=_arrl; ++i) {
         jiparse( obj, _arr[i] )
-        # debug(  ( JITER_LEVEL != 1 ) ":" ( JITER_CURLEN <= 0) ":" ( _arr[i] !~ "^[,:]?$") "\tJITER_CURLEN:" JITER_CURLEN "\titem:" _arr[i] )
         if (( JITER_LEVEL != 1 ) || ( JITER_CURLEN <= 0) || ( _arr[i] ~ "^[,:]?$")) continue
 
         _current_kp = Q2_1 SUBSEP "\""JITER_CURLEN"\""
@@ -75,13 +74,13 @@ function gemini_record_response___tool_call( obj, kp,        name, args, dir, id
         mkdirp( dir )
         print name > (dir "/name")
         print args > (dir "/arg")
-        print "[FUNCTION-CALL] " idx >> XCMD_CHAT_LOGFILE
+        if ( IS_ENACTNONE != true ) print "[FUNCTION-CALL] " idx >> XCMD_CHAT_ENACTALL_LOGFILE
     }
 
     fflush()
 }
 
-# { print $0 >> (GEMINI_CONTENT_DIR "/chat.running.yml"); }
+( IS_DEBUG ){ print $0 >> (GEMINI_CONTENT_DIR "/chat.running.yml"); }
 
 ($0 != ""){
     GEMINI_HAS_RESPONSE_CONTENT = 1

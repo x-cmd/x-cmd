@@ -1,0 +1,74 @@
+# shellcheck shell=dash
+
+___X_CMD_PRICE_DATA_DIR="$___X_CMD_ROOT_DATA/price/data"
+___x_cmd_price_info(){
+    :
+}
+
+
+___x_cmd_price_which_(){
+    ___x_cmd_price_check || return $?
+    local op="$1"
+    case "$op" in
+        usd-rate)   x_="$___X_CMD_PRICE_DATA_DIR/usd-rate.json" ;;
+        *)          x_="$___X_CMD_PRICE_DATA_DIR/$op/latest.json" ;;
+    esac
+    [ -f "$x_" ] || N=price M="Not found data file for $op" log:ret:1
+}
+
+___x_cmd_price_which(){
+    local x_=""; ___x_cmd_price_which_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_price_update(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m price update; return ;;
+    esac
+    ___x_cmd_price_update___inner 1
+}
+___x_cmd_price_check(){
+    if [ ! -d "$___X_CMD_PRICE_DATA_DIR" ]; then
+        ___x_cmd_price_update || return $?
+    else
+        ___x_cmd ccmd 7d -- ___x_cmd_price_update___inner
+    fi
+}
+
+___x_cmd_price_update___inner(){
+    local is_force_update="$1"
+    local is_check="$2"
+
+    local version='v0.0.1'
+    local dir="$___X_CMD_ROOT_DATA/price"
+    local distdir="$dir/dist"; ___x_cmd mkdirp "$distdir"
+    local dist_tarfile="$distdir/${version}.tar.gz"
+    local dist_hashfile="$distdir/${version}_hash.txt"
+    ___x_cmd httpget gitx x-cmd price main "dist/${version}_hash.txt" "$dist_hashfile" || return $?
+    local hash; read -r hash < "$dist_hashfile"
+    local tarhash=""
+
+    if [ -f "$dist_tarfile" ]; then
+        tarhash="$( ___x_cmd sha512 "$dist_tarfile" )" || return $?
+        [ "$hash" != "$tarhash" ] || {
+            if [ -n "$is_force_update" ]; then
+                price:info "No update needed, the local data is latest"
+            fi
+            return 0
+        }
+    fi
+
+    local dist_tartmp="${dist_tarfile}.tmp"
+    ___x_cmd httpget gitx x-cmd price main "dist/${version}.tar.gz" "$dist_tartmp" || return $?
+    tarhash="$( ___x_cmd sha512 "$dist_tartmp" )" || return $?
+    [ "$hash" = "$tarhash" ] || {
+        ___x_cmd rmrf "$dist_tartmp"
+        price:error "The downloaded data file is corrupted, hash not match"
+        return 1
+    }
+
+    local datadir="$dir/data"; ___x_cmd mkdirp "$datadir"
+    ___x_cmd_cmds mv -f "$dist_tartmp" "$dist_tarfile" || return $?
+    ___X_CMD_ZUZ_QUIET=1 ___x_cmd uz "$dist_tarfile" "$datadir"
+    price:info "LLM price data update completed"
+}

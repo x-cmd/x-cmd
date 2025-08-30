@@ -20,9 +20,9 @@ END{
 
 function ui_rotate___handle_running( ring_arr, output_arr, status_obj, line, prefix, prompt_run, output_raw,           i, l, arr, _c){
     if ( output_raw == 1 ) {
-        if (line ~ /^UI_ROTATE_EXITCODE:/) {
+        if (match(line, /^UI_ROTATE_EXITCODE:/)) {
             output_arr[ L ] --
-            _c = int( substr( line, 10 ) )
+            _c = int( substr( line, RLENGTH+1 ) )
             status_obj[ "IS_BREAK" ] = 1
             status_obj[ "EXITCODE" ] = _c
             return
@@ -32,8 +32,8 @@ function ui_rotate___handle_running( ring_arr, output_arr, status_obj, line, pre
     l = split(line, arr, "\n|\r")
     for (i=1; i<=l; ++i){
         line = arr[i]
-        if (line ~ /^UI_ROTATE_EXITCODE:/) {
-            _c = int( substr( line, 10 ) )
+        if (match(line, /^UI_ROTATE_EXITCODE:/)) {
+            _c = int( substr( line, RLENGTH+1 ) )
             status_obj[ "EXITCODE" ] = _c
         }
         else {

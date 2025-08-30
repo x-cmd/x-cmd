@@ -16,5 +16,7 @@ BEGIN{
         print minion_session( minion_obj, MINION_KP )
     } else if ( ITEMNAME == "maxtoken" ) {
         print minion_maxtoken( minion_obj, MINION_KP )
+    } else if ( ITEMNAME == "history_num" ) {
+        print minion_history_num( minion_obj, MINION_KP )
     }
 }

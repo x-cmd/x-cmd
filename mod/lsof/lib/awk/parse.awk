@@ -1,3 +1,6 @@
+BEGIN{
+    task = (task == "yes") ? 1 : ""
+}
 
 function display( t,    i ) {
     for (i=1; i<=t[0]; ++i) {
@@ -35,6 +38,7 @@ function locatetoken( tokenarr, line,    l ){
 
 
 NR==1{
+    if ( $3 == "TID" )   LINUX_DATA = 1
     name_left = index( $0, "NAME")
     line = substr( $0, 1, name_left-1 )
     locatetoken( title, line )
@@ -43,6 +47,9 @@ NR==1{
 
     for (i=1; i<=title[0]; ++i) {
         ttt = substr( $0, title[i, 0], title[i, 1] - title[i, 0]+1)
+        if ( !(task) && ( LINUX_DATA ) ) {
+            if ( ( i == 3) || ( i == 4 ) )   continue
+        }
         printf("%s\t", ttt)
     }
 
@@ -71,6 +78,9 @@ NR>1{
     }
 
     for (i=1; i<=title[0]; ++i) {
+        if ( !(task) && ( LINUX_DATA ) ) {
+            if ( ( i == 3) || ( i == 4 ) )   continue
+        }
         printf("%s\t", col[i])
     }
     printf("%s\n", name)
