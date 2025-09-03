@@ -74,7 +74,7 @@ function gemini_gen_last_msgtool_from_creq( current_msgtool_obj, msgtool_obj, ch
 }
 
 function gemini_gen_msgtool_from_creq( msgtool_obj, creq_obj, creq_kp, chatid, hist_session_dir,                history_obj, history_num, i, l, str, \
-    _history_str, _creq_minion_kp, _system_str, _content_str, _media_str, _messages_str, _use_gg_search, _tool_str ){
+    _history_str, _creq_minion_kp, _system_str, _filelist_str, _content_str, _media_str, _messages_str, _use_gg_search, _tool_str ){
     history_num = creq_obj[ creq_kp S "\"history_num\"" ]
     chat_history_load( history_obj, chatid, hist_session_dir, history_num)
     l = chat_history_get_maxnum(history_obj, chatid)
@@ -87,14 +87,17 @@ function gemini_gen_msgtool_from_creq( msgtool_obj, creq_obj, creq_kp, chatid, h
     _system_str = minion_system_tostr(creq_obj, _creq_minion_kp)
     if (_system_str != "") _system_str = gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text(_system_str)) ","
 
+    _filelist_str = creq_obj[ creq_kp S "\"filelist_attach\"" ]
+    if (_filelist_str != "") _filelist_str = gemini_gen_unit_str_rolepart( "user", gemini_gen_unit_str_text(chat_filelist_load(juq(_filelist_str))) ) " ,"
+
     _media_str      = gemini_gen_media_str(creq_obj, creq_kp)
     _content_str    = gemini_gen_minion_content_str( creq_obj, _creq_minion_kp, _media_str )
     _content_str    = gemini_gen_unit_str_rolepart("user", _content_str)
 
-    _messages_str   = "\"contents\":[" _history_str _system_str _content_str "]"
+    _messages_str   = "\"contents\":[" _system_str _history_str _filelist_str _content_str "]"
     _use_gg_search  = GEMINI_USE_GOOGLE_SEARCH
     _tool_str       = gemini_gen_tool_str(creq_obj, creq_kp, _use_gg_search)
-    creq_append_usage_input_ratio_SHO( creq_obj, creq_kp, _system_str, _history_str, _content_str _tool_str )
+    creq_append_usage_input_ratio_SHO( creq_obj, creq_kp, _system_str, _history_str, _filelist_str _content_str _tool_str )
     msgtool_obj[ "msg_str" ]  = _messages_str
     msgtool_obj[ "tool_str" ] = _tool_str
     msgtool_obj[ "provider" ] = creq_obj[ creq_kp, "\"provider\"" ]

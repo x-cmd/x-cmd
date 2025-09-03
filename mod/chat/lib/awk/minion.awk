@@ -40,11 +40,12 @@ function minion_model( o, prefix, def_model,           v ){
 }
 
 function minion_is_stream( o, prefix, model,            v, v1 ){
-    v1 = ENVIRON[ "is_stream" ] ""
-    if (v1 == "") v1 = o[ prefix S "\"stream\"" ] ""
-    if (v1 == "") v1 = ENVIRON[ "cfg_stream" ] ""
+    v1 = ENVIRON[ "is_stream" ]
+    if (v1 == "") v1 = o[ prefix S "\"stream\"" ]
+    if (v1 == "") v1 = ENVIRON[ "cfg_stream" ]
     if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
 
+    v = v ""
     if (( v == "true" ) || ( v == true ))           return true
     else if (( v == "false" ) || ( v == false ))    return false
 
@@ -58,6 +59,7 @@ function minion_is_reasoning( o, prefix,            v, v1 ){
     if (v1 == "") v1 = ENVIRON[ "cfg_reasoning" ] ""
     if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
 
+    v = v ""
     if (( v == "true" ) || ( v == true ))           return true
     else if (( v == "false" ) || ( v == false ))    return false
 
@@ -224,20 +226,22 @@ function minion_system_len( o, prefix ){
     return o[ prefix S "\"prompt\"" S "\"system\"" L ]
 }
 
-function minion_filelist_attach( o, prefix,     v, i, l, arr, fp, _str, _res ){
+function minion_filelist_attach( o, prefix,     v, i, l ){
     v = ENVIRON[ "filelist_attach" ]
-    if ( chat_str_is_null(v) ) return
-    l = split( v, arr, ":" )
-    for (i=1; i<=l; ++i){
-        fp = arr[i]
-        if (fp == "") continue
-        _str =  "FILENAME: " fp "\n"    \
-                "------BEGIN------\n"   \
-                cat(fp)                 \
-                "\n------ENG------\n\n"
-        _res = _res _str
+    if ( chat_str_is_null(v) ) {
+        v = o[ prefix S "\"filelist_attach\"" ]
+        if ( v == "[" ) {
+            v = ""
+            l = o[ prefix S "\"filelist_attach\"" L ]
+            for (i=1; i<=l; ++i){
+                v = v o[ prefix S "\"filelist_attach\"" S "\""i"\"" ] "\n"
+            }
+        }
     }
-    return _res
+
+    if ( chat_str_is_null(v) ) return
+    v = str_trim_right(v)
+    return v
 }
 
 function minion_load_from_jsonfile( o, prefix, jsonfilepath, provider,      str ){

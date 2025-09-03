@@ -41,7 +41,7 @@ function creq_loadfromjsonfile( o, kp, fp ){
     jiparse2leaf_fromfile( o, kp,  fp )
 }
 
-function creq_create( o, kp, minion_obj, minion_kp, provider, model, question, chatid, imagelist, is_stream, is_reasoning,       _kp_media, i, l, _arr, _keyl, tool_jstr){
+function creq_create( o, kp, minion_obj, minion_kp, provider, model, question, chatid, imagelist, is_stream, is_reasoning,       _kp_media, i, l, _arr, _keyl, tool_jstr, filelist_attach){
     kp = ((kp != "") ? kp : SUBSEP "\"1\"")
     o[ kp ] = "{"
     jdict_put(o, kp, "\"minion\"",          "{")
@@ -73,6 +73,11 @@ function creq_create( o, kp, minion_obj, minion_kp, provider, model, question, c
     if ( ! chat_str_is_null(tool_jstr) ) {
         jdict_put(o, kp, "\"tool\"", "[")
         jiparse2leaf_fromstr(o, kp SUBSEP "\"tool\"", tool_jstr)
+    }
+
+    filelist_attach = minion_filelist_attach( minion_obj, minion_kp )
+    if ( ! chat_str_is_null(filelist_attach) ) {
+        jdict_put(o, kp, "\"filelist_attach\"", jqu(filelist_attach))
     }
 
     if (minion_obj[ minion_kp, "\"tool\"" L ] > 0 ){

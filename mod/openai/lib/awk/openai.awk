@@ -105,9 +105,10 @@ function openai_gen_last_msgtool_from_creq( current_msgtool_obj, msgtool_obj, ch
 }
 
 function openai_gen_msgtool_from_creq( msgtool_obj, creq_obj, creq_kp, chatid, hist_session_dir,                  history_obj, history_num, i, l, str, \
-    _history_str, _creq_minion_kp, _system_str, _media_str, _content_str, _messages_str, _tool_str){
+    _history_str, _creq_minion_kp, _system_str, _filelist_str, _media_str, _content_str, _messages_str, _tool_str){
 
     history_num = creq_obj[ creq_kp S "\"history_num\"" ]
+
     chat_history_load( history_obj, chatid, hist_session_dir, history_num )
     l = chat_history_get_maxnum(history_obj, chatid)
     for (i=1; i<=l; ++i){
@@ -119,17 +120,17 @@ function openai_gen_msgtool_from_creq( msgtool_obj, creq_obj, creq_kp, chatid, h
     _system_str = minion_system_tostr(creq_obj, _creq_minion_kp)
     if (_system_str != "") _system_str = openai_gen_unit_str( "system", _system_str ) " ,"
 
-    # _filelist_str   = minion_filelist_attach( creq_obj, _creq_minion_kp )
-    # if (_filelist_str != "") _filelist_str = openai_gen_unit_str( "user", _filelist_str) " ,"
+    _filelist_str = creq_obj[ creq_kp S "\"filelist_attach\"" ]
+    if (_filelist_str != "") _filelist_str = openai_gen_unit_str( "user", chat_filelist_load(juq(_filelist_str))) " ,"
 
     _media_str      = openai_gen_media_str(creq_obj, creq_kp)
     _content_str    = openai_gen_minion_content_str(creq_obj, _creq_minion_kp, _media_str)
-    _messages_str   = _history_str _system_str _content_str
+    _messages_str   = _system_str _history_str _filelist_str _content_str
     _messages_str   = "\"messages\": [ " _messages_str " ], "
     _tool_str       = openai_gen_tool_str(creq_obj, creq_kp)
     _tool_str       = (_tool_str) ? "\"tools\": [" _tool_str "]," : ""
 
-    creq_append_usage_input_ratio_SHO( creq_obj, creq_kp, _system_str, _history_str, _content_str _tool_str )
+    creq_append_usage_input_ratio_SHO( creq_obj, creq_kp, _system_str, _history_str, _filelist_str _content_str _tool_str )
 
     msgtool_obj[ "msg_str" ]  = _messages_str
     msgtool_obj[ "tool_str" ] = _tool_str

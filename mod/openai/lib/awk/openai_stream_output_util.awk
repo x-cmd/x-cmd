@@ -4,9 +4,9 @@ function openai_record_response_text_stream( s,       o ){
     jiparse_after_tokenize(o, s)
 
     if ( JITER_LEVEL != 0 ){
-        OPENAI_RESPONESE_IS_ERROR_CONTENT = 1
-        OPENAI_RESPONESE_ERROR_CONTENT = s
-        OPENAI_RESPONESE_ERROR_MSG = "The response output format is incorrect"
+        OPENAI_RESPONSE_IS_ERROR_CONTENT = 1
+        OPENAI_RESPONSE_ERROR_CONTENT = s
+        OPENAI_RESPONSE_ERROR_MSG = "The response output format is incorrect"
         exit(1)
     }
 
@@ -21,7 +21,7 @@ function openai_record_response_text_nonstream( o, s ) {
 
 function openai_record_response___text_content( o,        item, response_item, finish_reason, choices_l, tool_l, tool_index, tool_last_index, kp_i, kp_tool_name, kp_tool_args, kp_tool_id, call_id, i, idx ){
     if (( o[ KP_ERROR ] != "" ) || ( o[ KP_OBJECT ] == "\"error\"") || (( PROVIDER_NAME != "ollama" ) && ( o[ KP_OLLAMA_MESSAGE ] != "" ))) {
-        OPENAI_RESPONESE_IS_ERROR_CONTENT = 1
+        OPENAI_RESPONSE_IS_ERROR_CONTENT = 1
         jmerge_force(o_error, o)
         exit(1)
     }
@@ -186,8 +186,10 @@ BEGIN{
 
     OPENAI_RESPONSE_CONTENT = ""
     OPENAI_RESPONSE_REASONING_CONTENT = ""
-    OPENAI_RESPONSE_HAS_REASONING = 0
+    OPENAI_RESPONSE_ERROR_MSG = ""
     OPENAI_HAS_RESPONSE_CONTENT = 0
+    OPENAI_RESPONSE_HAS_REASONING = 0
+    OPENAI_RESPONSE_IS_ERROR_CONTENT = 0
 }
 
 ( IS_DEBUG ){ print $0 >> (OPENAI_CONTENT_DIR "/chat.running.yml"); }
@@ -195,7 +197,7 @@ BEGIN{
     if ( IS_STREAM == true ) {
         if ($0 !~ "^:"){
             if ( OPENAI_HAS_RESPONSE_CONTENT != 0 ) {
-                if (OPENAI_RESPONESE_IS_ERROR_CONTENT==1) {
+                if (OPENAI_RESPONSE_IS_ERROR_CONTENT==1) {
                     jiparse_after_tokenize( o_error, $0 )
                     next
                 } else {
@@ -205,13 +207,13 @@ BEGIN{
             } else {
                 OPENAI_HAS_RESPONSE_CONTENT = 1
                 if ($0 == "{") {
-                    OPENAI_RESPONESE_IS_ERROR_CONTENT=1
+                    OPENAI_RESPONSE_IS_ERROR_CONTENT=1
                     jiparse_after_tokenize( o_error, $0 )
                     next
                 } else if ($0 ~ "^\"") {
-                    OPENAI_RESPONESE_IS_ERROR_CONTENT=1
-                    OPENAI_RESPONESE_EXITCODE=2
-                    OPENAI_RESPONESE_ERROR_CONTENT = OPENAI_RESPONESE_ERROR_MSG = $0
+                    OPENAI_RESPONSE_IS_ERROR_CONTENT=1
+                    OPENAI_RESPONSE_EXITCODE=2
+                    OPENAI_RESPONSE_ERROR_CONTENT = OPENAI_RESPONSE_ERROR_MSG = $0
                 } else {
                     if ($0 !~ "^ *\\{") $1 = ""
                     openai_record_response_text_stream( $0 )

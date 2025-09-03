@@ -282,7 +282,7 @@ function generate_desc_help(obj, kp, tip,        _str, d, tip_str){
         _str = COMP_HELPDOC_HELP_INDENT_STR str_cut_line(aobj_uq(d), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     }
     _str = (_str != "") ? _str "\n" tip_str : tip_str
-    return (_str != "") ? generate___title("DESCRIPTON:") "\n" _str : ""
+    return (_str != "") ? generate___title("DESCRIPTION:") "\n" _str : ""
 }
 
 function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {

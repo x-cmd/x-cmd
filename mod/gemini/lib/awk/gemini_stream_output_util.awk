@@ -1,9 +1,11 @@
 
 BEGIN{
     GEMINI_RESPONSE_CONTENT = ""
-    GEMINI_HAS_RESPONSE_CONTENT = 0
     GEMINI_RESPONSE_REASONING_CONTENT = ""
+    GEMINI_RESPONSE_ERROR_MSG = ""
+    GEMINI_HAS_RESPONSE_CONTENT = 0
     GEMINI_RESPONSE_HAS_REASONING = 0
+    GEMINI_RESPONSE_IS_ERROR_CONTENT = 0
 
     KP_PART = "\"candidates\"" SUBSEP "\"1\"" SUBSEP "\"content\"" SUBSEP "\"parts\""
     Q2_1 = SUBSEP "\"1\""
@@ -13,14 +15,20 @@ function gemini_parse_response_data( text, obj,       _arr, _arrl, i, _current_k
     _arrl = json_split2tokenarr( _arr, text )
     for (i=1; i<=_arrl; ++i) {
         jiparse( obj, _arr[i] )
-        if (( JITER_LEVEL != 1 ) || ( JITER_CURLEN <= 0) || ( _arr[i] ~ "^[,:]?$")) continue
+        if ( IS_STREAM == true ) {
+            if (( JITER_LEVEL != 1 ) || ( JITER_CURLEN <= 0) || ( _arr[i] ~ "^[,:]?$")) continue
+            _current_kp = Q2_1 SUBSEP "\""JITER_CURLEN"\""
+        } else {
+            if ( JITER_LEVEL != 0 ) continue
+            _current_kp = Q2_1
+        }
 
-        _current_kp = Q2_1 SUBSEP "\""JITER_CURLEN"\""
         if (( JITER_CURLEN == 1 ) && ( obj[ _current_kp, "\"error\"" ] != "" )) {
+            GEMINI_RESPONSE_IS_ERROR_CONTENT = 1
             o_error[ L ] = 1
             jmerge_force___value( o_error, Q2_1, obj, _current_kp )
             continue
-        } else if ( JITER_CURLEN != 1 ) {
+        } else if (( JITER_CURLEN != 1 ) && ( IS_STREAM == true )){
             jmerge_force___value( o_response, Q2_1 SUBSEP "\"1\"", o_response, Q2_1 SUBSEP "\""JITER_CURLEN"\"" )
         }
 

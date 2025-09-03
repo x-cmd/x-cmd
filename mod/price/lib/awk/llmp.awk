@@ -63,21 +63,31 @@ function llmp_total_calprice( llmp_obj, llmp_kp, vendor_model, input_count, inpu
     return a + b
 }
 
-function llmp_amount_calccy( ccy_obj, ccy_kp, ccy, price ){
+function llmp_usd_to_currency( ccy_obj, ccy_kp, ccy, price ){
     ccy = ( ccy ~ "^\"" ) ? ccy : jqu(ccy)
     if ( ccy == "\"USD\"" ) return price
     if ( ! jdict_has( ccy_obj, ccy_kp, ccy ) ) return
-    return price * ccy_obj[ ccy_kp, ccy ]
+    return price * ccy_obj[ ccy_kp, ccy, "\"rate\"" ]
 }
 
-function llmp_format_ccy( amount, ccy,          v ){
-    if ( ccy == "USD" ) {
-        v = sprintf( "$%.6f", amount )
-    } else if ( ccy == "RMB" ) {
-        v = sprintf( "¥%.6f", amount )
-    } else if ( ccy == "EUR" ) {
-        v = sprintf( "€%.6f", amount )
-    }
+function llmp_format_currency( amount, ccy,          v ){
+    v = sprintf( "%.6f", amount )
+
+    if ( ccy == "USD" )      v = "$" v
+    else if ( ccy == "CNY" ) v = "¥" v
+    else if ( ccy == "EUR" ) v = "€" v
+    else v = ccy " " v
+    # else if ( ccy == "GBP" ) v = "£" v
+    # else if ( ccy == "INR" ) v = "₹" v
+    # else if ( ccy == "AUD" ) v = "A$" v
+    # else if ( ccy == "CAD" ) v = "C$" v
+    # else if ( ccy == "SGD" ) v = "S$" v
+    # else if ( ccy == "MYR" ) v = "RM" v
+    # else if ( ccy == "JPY" ) v = "¥" v
+    # else if ( ccy == "ARS" ) v = "AR$" v
+    # else if ( ccy == "BHD" ) v = "BD" v
+    # else if ( ccy == "BWP" ) v = "P" v
+    # else if ( ccy == "BRL" ) v = "R$" v
 
     return v
 }

@@ -10,7 +10,7 @@ BEGIN{
     IS_ENACTNONE        = ENVIRON[ "is_enactnone" ]
     DRAW_PREFIX         = "    "
     if ( IS_ENACTNONE != true ) {
-        printf("%s\n", "[START]") >> XCMD_CHAT_ENACTALL_DRAWFILE
+        printf("%s\n", "[MODEL-RES-START]") >> XCMD_CHAT_ENACTALL_DRAWFILE
         printf("%s", DRAW_PREFIX) >> XCMD_CHAT_ENACTALL_DRAWFILE
     }
 }
@@ -25,12 +25,12 @@ END{
         print ""                                    > (OPENAI_CONTENT_DIR "/chat.error.yml")
         _exitcode = 1
     }
-    else if (OPENAI_RESPONESE_IS_ERROR_CONTENT == 1) {
-        if ( OPENAI_RESPONESE_ERROR_MSG != "" ) {
-            log_error(PROVIDER_NAME, log_mul_msg(OPENAI_RESPONESE_ERROR_MSG))
-            msg_str = OPENAI_RESPONESE_ERROR_MSG "\n" OPENAI_RESPONESE_ERROR_CONTENT
+    else if (OPENAI_RESPONSE_IS_ERROR_CONTENT == 1) {
+        if ( OPENAI_RESPONSE_ERROR_MSG != "" ) {
+            log_error(PROVIDER_NAME, log_mul_msg(OPENAI_RESPONSE_ERROR_MSG))
+            msg_str = OPENAI_RESPONSE_ERROR_MSG "\n" OPENAI_RESPONSE_ERROR_CONTENT
             print msg_str                           > (OPENAI_CONTENT_DIR "/chat.error.yml")
-            if ( OPENAI_RESPONESE_EXITCODE != "" ) _exitcode = OPENAI_RESPONESE_EXITCODE
+            if ( OPENAI_RESPONSE_EXITCODE != "" ) _exitcode = OPENAI_RESPONSE_EXITCODE
             else _exitcode = 1
         } else {
             msg_str = jstr(o_error)
@@ -55,7 +55,7 @@ END{
 
         if ( IS_ENACTNONE != true ) {
             usage_str = cres_dump_usage( cres_obj, SUBSEP "cres" )
-            print "[USAGE] " usage_str                              >> XCMD_CHAT_ENACTALL_DRAWFILE
+            print "[MODEL-USAGE] " usage_str                        >> XCMD_CHAT_ENACTALL_DRAWFILE
             print "[FUNCTION-CALL-COUNT] " int(o_tool[ Q2_1 L ])    >> XCMD_CHAT_ENACTALL_LOGFILE
         }
     }

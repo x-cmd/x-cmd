@@ -43,6 +43,7 @@ END{
 
     print SESSIONDIR "/" CHATID
     print MODEL
+    print IS_STREAM
     print IS_REASONING
 }
 

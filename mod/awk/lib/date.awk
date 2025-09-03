@@ -41,3 +41,25 @@ function timestamp_to_date_bsd( timestamp,   t, _cmd ){
 function timestamp_to_date( timestamp,   t ){
     return ( (t = timestamp_to_date_linux( timestamp ) ) != "") ? t : timestamp_to_date_bsd( timestamp )
 }
+
+function date_epochminus(a, b,          c){
+    c = sprintf("%.3f", a - b)
+    gsub(/0+$/, "", c)
+    gsub(/\.$/, "", c)
+    return c
+}
+
+function date_humantime(t,          _res) {
+    _res = (t % 60) "s"
+    t = int(t)
+    if (t >= 60) {
+        _res = int((t / 60) % 60) "m " _res
+        if (t >= 3600) {
+            _res = int((t / 3600) % 24) "h " _res
+            if (t >= 86400) {
+                _res = int(t / 86400) "d " _res
+            }
+        }
+    }
+    return _res
+}

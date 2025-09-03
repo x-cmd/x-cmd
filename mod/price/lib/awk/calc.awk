@@ -2,7 +2,7 @@
 END{
     model               = ENVIRON[ "model" ]
     # provider            = ENVIRON[ "provider" ]
-    currency            = ENVIRON[ "currency" ]
+    currency_unit       = ENVIRON[ "currency_unit" ]
     input_token         = int( ENVIRON[ "input_token" ] )
     input_cache_token   = int( ENVIRON[ "input_cache_token" ] )
     output_token        = int( ENVIRON[ "output_token" ] )
@@ -16,11 +16,11 @@ END{
     }
 
     totalprice  = llmp_total_calprice( o, KP_LLMP_DATA, model_key, input_token, input_cache_token, output_token)
-    amount = llmp_amount_calccy( o, KP_CCY, currency, totalprice )
+    amount = llmp_usd_to_currency( o, KP_CCY, currency_unit, totalprice )
     if ( amount == "" ) {
-        log_error("price", "Currency["currency"] not found")
+        log_error("price", "Currency unit ["currency_unit"] not found")
         exit 1
     } else {
-        print llmp_format_ccy( amount, currency )
+        print llmp_format_currency( amount, currency_unit )
     }
 }

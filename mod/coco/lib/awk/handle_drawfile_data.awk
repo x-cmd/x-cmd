@@ -19,16 +19,24 @@ BEGIN{
     handle_content_rotate_begin()
 }
 {
-    if ( $0 ~ "^\\[EXITCODE\\] " ) {
-        STATUS_OBJ[ "EXITCODE" ] = int( substr($0, 12) )
+    if ( match($0, "^\\[EXITCODE\\] ") ) {
+        STATUS_OBJ[ "EXITCODE" ] = int( substr($0, RLENGTH+1) )
         handle_content_rotate_end()
         exit(0)
     }
-    else if ( $0 ~ "^\\[USAGE\\] " ) {
-        OBJ_USAGE_STR = substr($0, 9)
+    else if ( match($0, "^\\[MODEL-USAGE\\] ") ) {
+        OBJ_USAGE_STR = substr($0, RLENGTH+1)
         next
     }
-    else if ( $0 == "[START]" ) {
+    else if ( match($0, "^\\[MODEL-SENT-AT\\] ") ) {
+        MODEL_SENT_AT = substr($0, RLENGTH+1)
+        next
+    }
+    else if ( match($0, "^\\[MODEL-RECV-AT\\] ") ) {
+        MODEL_RECV_AT = substr($0, RLENGTH+1)
+        next
+    }
+    else if ( $0 == "[MODEL-RES-START]" ) {
         handle_content_rotate_end()
         handle_content_rotate_begin()
         OBJ_USAGE_STR = ""
@@ -85,45 +93,61 @@ function handle_content_md(arr){
     hd_main( arr )
 }
 
-function handle_usage(str,          o, kp_usage, total_token, at, it, ot, ict, icr, ott, otr, _cache_str, _thought_str, isr, ihr, ior, detail_str, model, provider, PRICE_DATA_DIR, price_data_file, usd_rate_file, currency, llmp_obj, ccy_obj, llmp_it, llmp_model, totalprice, amount, _amount_str) {
-    if ( str == "" ) return
-    jiparse_after_tokenize(o, str)
-    kp_usage = Q2_1 SUBSEP "\"usage\""
-    at = int( o[ kp_usage SUBSEP "\"total\""  SUBSEP "\"tokens\"" ] )
-    if ( at <= 0 ) return
-    it = int( o[ kp_usage SUBSEP "\"input\""  SUBSEP "\"tokens\"" ] )
-    ot = int( o[ kp_usage SUBSEP "\"output\"" SUBSEP "\"tokens\"" ] )
-
-    ict =  int( o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"cache_tokens\"" ] )
-    icr =  o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"cache\"" ]
-    if ( ict > 0 ) icr = sprintf( "%.4f", (ict/it) )
-    if ( icr > 0 ) _cache_str = " (Cache " icr * 100 "%)"
-
-    ott = int( o[ kp_usage SUBSEP "\"output\"" SUBSEP "\"thought_tokens\"" ] )
-    if ( ott > 0 ) otr = sprintf("%.4f", (ott/ot) )
-    if ( otr > 0 ) _thought_str = " (Thought " otr * 100 "%)"
-
-    isr = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"system\"" ]
-    ihr = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"history\"" ]
-    ior = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"other\"" ]
-
-    model = o[ Q2_1 SUBSEP "\"model\"" ]
-    provider = o[ Q2_1 SUBSEP "\"provider\"" ]
-    PRICE_DATA_DIR = ENVIRON[ "___X_CMD_PRICE_DATA_DIR" ]
-    price_data_file = PRICE_DATA_DIR "/" juq(provider) "/latest.json"
-    usd_rate_file = PRICE_DATA_DIR "/usd-rate.json"
-    currency = "USD"
-    if ( jiparse2leaf_fromfile( llmp_obj, Q2_1, price_data_file ) && jiparse2leaf_fromfile( ccy_obj, "ccykp", usd_rate_file )  ) {
-        llmp_model = llmp_search_model( llmp_obj, Q2_1, model )
-        llmp_it = it - ict
-        if ( llmp_model != "" ) {
-            totalprice = llmp_total_calprice( llmp_obj, Q2_1, llmp_model, llmp_it, ict, ot )
-            amount = llmp_amount_calccy( ccy_obj, Q2_1, currency, totalprice )
-            _amount_str = "· Cost: " llmp_format_ccy( amount, currency )
-        }
+function handle_usage(str,          o, kp_usage, total_token, at, it, ot, ict, icr, ott, otr, _time_str, _cache_str, _thought_str, isr, ihr, ior, detail_str, model, provider, PRICE_DATA_DIR, price_data_file, usd_rate_file, money_unit, llmp_obj, ccy_obj, llmp_it, llmp_model, totalprice, amount, _money_str) {
+    if ( (MODEL_SENT_AT != "") && (MODEL_RECV_AT != "")){
+        _time_str = date_epochminus(MODEL_RECV_AT, MODEL_SENT_AT)
+        if ( _time_str != "" ) _time_str = date_humantime( _time_str )
     }
 
-    detail_str = sprintf("Token: %s = Input %s + Output %s %s", at, it _cache_str, ot _thought_str, _amount_str ) "\n" \
-        sprintf("Input distribution → Sys %s | Hist %s | Other %s",  isr * 100 "%", ihr * 100 "%", ior * 100 "%")
-    print "\033[90m" detail_str "\033[0m"
+    if ( str == "" ) {
+        if ( _time_str != "" ) detail_str = "Time: " _time_str
+    } else {
+        jiparse_after_tokenize(o, str)
+        kp_usage = Q2_1 SUBSEP "\"usage\""
+        at = int( o[ kp_usage SUBSEP "\"total\""  SUBSEP "\"tokens\"" ] )
+        if ( at <= 0 ) {
+            if ( _time_str != "" ) detail_str = "Time: " _time_str
+        } else {
+            it = int( o[ kp_usage SUBSEP "\"input\""  SUBSEP "\"tokens\"" ] )
+            ot = int( o[ kp_usage SUBSEP "\"output\"" SUBSEP "\"tokens\"" ] )
+
+            ict =  int( o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"cache_tokens\"" ] )
+            icr =  o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"cache\"" ]
+            if ( ict > 0 ) icr = sprintf( "%.4f", (ict/it) )
+            if ( icr > 0 ) _cache_str = " (Cache " icr * 100 "%)"
+
+            ott = int( o[ kp_usage SUBSEP "\"output\"" SUBSEP "\"thought_tokens\"" ] )
+            if ( ott > 0 ) otr = sprintf("%.4f", (ott/ot) )
+            if ( otr > 0 ) _thought_str = " (Thought " otr * 100 "%)"
+
+            isr = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"system\"" ]
+            ihr = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"history\"" ]
+            ior = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"other\"" ]
+
+            model = o[ Q2_1 SUBSEP "\"model\"" ]
+            provider = o[ Q2_1 SUBSEP "\"provider\"" ]
+            PRICE_DATA_DIR = ENVIRON[ "___X_CMD_PRICE_DATA_DIR" ]
+            price_data_file = PRICE_DATA_DIR "/" juq(provider) "/latest.json"
+            usd_rate_file = PRICE_DATA_DIR "/usd-rate.json"
+            # debug( "price_data_file:" price_data_file )
+            if ( jiparse2leaf_fromfile( llmp_obj, Q2_1, price_data_file ) && jiparse2leaf_fromfile( ccy_obj, Q2_1, usd_rate_file )  ) {
+                llmp_model = llmp_search_model( llmp_obj, Q2_1, model )
+                llmp_it = it - ict
+                # debug( "llmp_it:" llmp_it )
+                if ( llmp_model != "" ) {
+                    totalprice = llmp_total_calprice( llmp_obj, Q2_1, llmp_model, llmp_it, ict, ot )
+                    money_unit = ENVIRON[ "money_unit" ]
+                    amount = llmp_usd_to_currency( ccy_obj, Q2_1, money_unit, totalprice )
+                    # debug( "money_unit:" money_unit " amount:" amount " totalprice:" totalprice)
+                    _money_str = " · Cost: " llmp_format_currency( amount, money_unit )
+                }
+            }
+            if ( _time_str != "" ) _time_str = " · Time: " _time_str
+
+            detail_str = sprintf("Token: %s = Input %s + Output %s%s%s", at, it _cache_str, ot _thought_str, _money_str, _time_str ) "\n" \
+                sprintf("Input distribution → Sys %s | Hist %s | Other %s",  isr * 100 "%", ihr * 100 "%", ior * 100 "%")
+        }
+
+    }
+    if ( detail_str != "" ) print "\033[90m" detail_str "\033[0m"
 }
