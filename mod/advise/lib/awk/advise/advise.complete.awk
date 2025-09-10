@@ -40,7 +40,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k,
                             advise_complete___generic_value( substr( curval, length(v)+1 ), genv, lenv, obj, _cand_kp )
                             continue
                         }
-                        else if (index(v, curval) <= 0) continue
+                        else if (index(v, curval) != 1) continue
                     }
                     if (_is_cand_nospace) {
                         jdict_put( CAND, "NOSPACE", jqu(v), jqu(_desc) )
@@ -56,7 +56,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k,
         _arr_valuel = split( juq( _option_id ), _arr_value, "|" )
         for ( j=1; j<=_arr_valuel; ++j) {
             v =_arr_value[j]
-            if ((curval != "") && (index(v, curval) <= 0)) continue
+            if ((curval != "") && (index(v, curval) != 1)) continue
             if ( ! aobj_is_multiple(obj, kp SUBSEP _option_id) && (lenv[ _option_id ] != "")) continue
             if (( curval == "" ) && ( v ~ "^-" )) if ( ! aobj_is_subcmd(obj, kp SUBSEP _option_id ) ) continue
             if (( curval == "-" ) && ( v ~ "^--." )) continue

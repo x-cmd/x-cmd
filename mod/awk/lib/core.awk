@@ -445,14 +445,17 @@ function hex_to_dec_init(           i){
     ___HEX_TO_DEC_INIT_FLAG = 1
 }
 
-function hex_to_dec(hex,            dec, i, l, digit) {
+function hex_to_dec(hex,            dec, i, l, a) {
+    if ( RE_SPRINTF_HEX_SUPPORTED ) return sprintf("%d", hex)
+
     if ( 1 != ___HEX_TO_DEC_INIT_FLAG ) hex_to_dec_init()
 
+    if ( hex ~ "^0[xX]" ) hex = substr(hex, 3)
+
     dec = 0
-    l = length(hex)
+    l = split(hex, a, "")
     for (i = 1; i <= l; i++) {
-        digit = substr(hex, i, 1)
-        dec = dec * 16 + _hex_to_dec_map[digit]
+        dec = dec * 16 + _hex_to_dec_map[ a[i] ]
     }
     return dec
 }

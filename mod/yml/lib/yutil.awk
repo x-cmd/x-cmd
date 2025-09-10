@@ -41,10 +41,6 @@ BEGIN{
     RE_Y_VALUE_FLOAT = "[-+]?(\\.[0-9]+|[0-9]+(\\.[0-9]*)?)([eE][-+]?[0-9]+)?"
 }
 
-BEGIN{
-    USING_GAWK = (sprintf("%d", "0xa") == 0) 
-}
-
 function yml_oct2dec__slow( oct, idx,     r, i, l, a ){
     oct = substr(oct, (idx=="") ? 3 : idx)
     l = split(oct, a, "")
@@ -57,8 +53,7 @@ function yml_oct2dec( oct, idx ){
 }
 
 function yml_hex2dec( hex ) {
-    if (USING_GAWK)     return strtonum(hex)
-    else                return sprintf("%d", hex)
+    return hex_to_dec(hex)
 }
 
 BEGIN{

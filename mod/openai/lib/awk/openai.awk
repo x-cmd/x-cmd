@@ -3,9 +3,15 @@ BEGIN{
     JOINSEP = "\n\n"
 }
 
-function openai_gen_unit_str( role, content ){
+function openai_gen_unit_str_text(str){
+    if( chat_str_is_null(str) ) return
+    if (str !~ "^\"")  str = jqu(str)
+    return "{ \"type\": \"text\", \"text\": " str " }"
+}
+
+function openai_gen_unit_str_rolecont( role, content ){
     if ( role !~ "^\"" )    role = jqu( role )
-    if ( content !~ "^\"" ) content = jqu( content )
+    if (( content !~ "^\\[.*\\]$" ) && ( content !~ "^\"" )) content = jqu( content )
     return "{ \"role\": " role ", \"content\": " content " }"
 }
 
@@ -15,15 +21,30 @@ function openai_gen_history_str( history_obj, chatid, i,        _text_req, _text
     _text_tool = chat_history_get_res_tool_call(history_obj, chatid, i)
     if (_text_req =="") return
 
-    _res = openai_gen_unit_str( "user", _text_req )
+    _res = openai_gen_unit_str_rolecont( "user", _text_req )
     if ( ! chat_str_is_null( _text_res ) ) {
-        _res = _res ", " openai_gen_unit_str( "assistant", _text_res )
+        _res = _res ", " openai_gen_unit_str_rolecont( "assistant", _text_res )
     }
 
     if ( ! chat_str_is_null( _text_tool ) ) {
-        _res = _res ", " openai_gen_unit_str( "assistant", _text_tool )
+        _res = _res ", " openai_gen_unit_str_rolecont( "assistant", _text_tool )
     }
     return _res
+}
+
+function openai_gen_filelist_str(filelist_str,       arr, _str, i, l){
+    if ( chat_str_is_null(filelist_str) ) return
+    chat_filelist_load_to_array( filelist_str, arr )
+    l = arr[ L ]
+    for (i=1; i<=l; ++i){
+        _str = _str openai_gen_unit_str_text( arr[i] ) ((i!=l) ? ", " : "")
+    }
+
+    if ( _str != "" ) {
+        _str = openai_gen_unit_str_text( "Please note that the following content is provided in XML format. Focus only on the file content part and ignore the tags." ) "," _str
+        _str = openai_gen_unit_str_rolecont( "user", "[ " _str " ]" )
+    }
+    return _str
 }
 
 function openai_gen_minion_content_str(minion_obj, minion_kp, media_str,      context, example, content, str){
@@ -37,13 +58,13 @@ function openai_gen_minion_content_str(minion_obj, minion_kp, media_str,      co
     if ( str == "" ) str = "null"
 
     if( media_str != "" ){
-        return "{ \"role\": \"user\", \"content\": [ { \"type\": \"text\", \"text\": " jqu(str) " } " media_str " ] }"
+        str = openai_gen_unit_str_text( str )
+        return openai_gen_unit_str_rolecont( "[ " str media_str " ]" )
     }
-    return openai_gen_unit_str( "user", str )
-
+    return openai_gen_unit_str_rolecont( "user", str )
 }
 
-function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key, _type, _url, _type_msg, _base64, _msg, _str){
+function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key, _type, _url, _mime_type, _base64, _msg, _str){
     _kp_media = creq_kp SUBSEP "\"media\""
     l = creq_obj[ _kp_media L ]
     if (l <= 0) return
@@ -53,15 +74,14 @@ function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key
         _url    = creq_obj[ _kp_key, "\"url\"" ]
         if ( _type == "\"image\"" ) {
             _type = "\"image_url\""
-            _type_msg = "image/"
         }
 
         if ( _url != "" ) {
             _str    = _str ",{ \"type\": " _type ", \"image_url\": { \"url\": " jqu(_url) " } }"
         } else {
             _base64 = juq(creq_obj[ _kp_key, "\"base64\"" ])
-            _msg    = juq(creq_obj[ _kp_key, "\"msg\"" ])
-            _msg    = "data:" _type_msg _msg ";base64,{" _base64 "}"
+            _mime_type = juq(creq_obj[ _kp_key, "\"mime_type\"" ])
+            _msg    = "data:" _mime_type ";base64,{" _base64 "}"
             _str    = _str ",{ \"type\": " _type ", \"image_url\": { \"url\": " jqu( _msg ) " } }"
         }
 
@@ -118,10 +138,10 @@ function openai_gen_msgtool_from_creq( msgtool_obj, creq_obj, creq_kp, chatid, h
 
     _creq_minion_kp = creq_kp SUBSEP "\"minion\""
     _system_str = minion_system_tostr(creq_obj, _creq_minion_kp)
-    if (_system_str != "") _system_str = openai_gen_unit_str( "system", _system_str ) " ,"
+    if (_system_str != "") _system_str = openai_gen_unit_str_rolecont( "system", _system_str ) " ,"
 
     _filelist_str = creq_obj[ creq_kp S "\"filelist_attach\"" ]
-    if (_filelist_str != "") _filelist_str = openai_gen_unit_str( "user", chat_filelist_load(juq(_filelist_str))) " ,"
+    if (_filelist_str != "") _filelist_str = openai_gen_filelist_str(juq(_filelist_str)) " ,"
 
     _media_str      = openai_gen_media_str(creq_obj, creq_kp)
     _content_str    = openai_gen_minion_content_str(creq_obj, _creq_minion_kp, _media_str)

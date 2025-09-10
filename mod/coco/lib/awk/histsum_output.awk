@@ -18,7 +18,7 @@ END{
 
     if ( _l_creq > _l_cres ) {
         _l_char = (_l_creq - _l_cres)
-        _detail_str = sprintf("↓ %0.2f% · -%s tokens", (_l_char / _l_creq * 100), int(_l_char/3)) _detail_str
+        _detail_str = sprintf("↓ %0.2f% · -%d tokens", (_l_char / _l_creq * 100), (_l_char/3)) _detail_str
         _detail_str = " (" _detail_str ")"
     }
 

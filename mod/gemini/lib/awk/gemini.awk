@@ -45,6 +45,21 @@ function gemini_gen_history_str( history_obj, chatid, i,      _text_res, _text_r
     return _res
 }
 
+function gemini_gen_filelist_str(filelist_str,       arr, _str, i, l){
+    if ( chat_str_is_null(filelist_str) ) return
+    chat_filelist_load_to_array( filelist_str, arr )
+    l = arr[ L ]
+    for (i=1; i<=l; ++i){
+        _str = _str gemini_gen_unit_str_text( arr[i] ) ((i!=l) ? ", " : "")
+    }
+
+    if ( _str != "" ) {
+        _str = gemini_gen_unit_str_text( "Please note that the following content is provided in XML format. Focus only on the file content part and ignore the tags." ) "," _str
+        _str = gemini_gen_unit_str_rolepart( "user", _str )
+    }
+    return _str
+}
+
 function gemini_gen_minion_content_str(minion_obj, minion_kp, media_str,     context, example, content){
     context = minion_prompt_context(minion_obj, minion_kp)
     context = (context != "") ? context JOINSEP : ""
@@ -88,7 +103,7 @@ function gemini_gen_msgtool_from_creq( msgtool_obj, creq_obj, creq_kp, chatid, h
     if (_system_str != "") _system_str = gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text(_system_str)) ","
 
     _filelist_str = creq_obj[ creq_kp S "\"filelist_attach\"" ]
-    if (_filelist_str != "") _filelist_str = gemini_gen_unit_str_rolepart( "user", gemini_gen_unit_str_text(chat_filelist_load(juq(_filelist_str))) ) " ,"
+    if (_filelist_str != "") _filelist_str = gemini_gen_filelist_str(juq(_filelist_str))" ,"
 
     _media_str      = gemini_gen_media_str(creq_obj, creq_kp)
     _content_str    = gemini_gen_minion_content_str( creq_obj, _creq_minion_kp, _media_str )
@@ -194,7 +209,7 @@ function gemini_parse_response(gemini_resp_o, ret_o,        _kp, str, code){
 }
 
 
-function gemini_gen_media_str(creq_obj, creq_kp,      _kp_media, i, l, _type, _url, _kp_key, _type_msg, _str, _msg, _base64){
+function gemini_gen_media_str(creq_obj, creq_kp,      _kp_media, i, l, _type, _url, _kp_key, _mime_type, _str, _base64){
     _kp_media = creq_kp SUBSEP "\"media\""
     l = creq_obj[ _kp_media L ]
     if (l <= 0) return
@@ -202,18 +217,14 @@ function gemini_gen_media_str(creq_obj, creq_kp,      _kp_media, i, l, _type, _u
         _kp_key = _kp_media SUBSEP "\""i"\""
         _type   = creq_obj[ _kp_key, "\"type\"" ]
         _url    = creq_obj[ _kp_key, "\"url\"" ]
-        if ( _type == "\"image\"" ) {
-            _type = "\"image_url\""
-            _type_msg = "image/"
-        }
 
         if ( _url != "" ) {
-            _str    = _str ",{ \"inline_data\": { \"mime_type\": "_type", \"data\" : "jqu(_url)" } }"
+            if ( _type == "\"image\"" ) _mime_type  = "\"image_url\""
+            _str        = _str ",{ \"inline_data\": { \"mime_type\": " _mime_type ", \"data\" : "jqu(_url)" } }"
         } else {
-            _base64 = juq(creq_obj[ _kp_key, "\"base64\"" ])
-            _msg    = juq(creq_obj[ _kp_key, "\"msg\"" ])
-            _msg    = _type_msg _msg
-            _str    = _str ",{ \"inline_data\": { \"mime_type\": "jqu(_msg)", \"data\" : "jqu(_base64)" } }"
+            _base64     = creq_obj[ _kp_key, "\"base64\"" ]
+            _mime_type  = creq_obj[ _kp_key, "\"mime_type\"" ]
+            _str        = _str ",{ \"inline_data\": { \"mime_type\": " _mime_type ", \"data\" : " _base64 " } }"
         }
 
     }

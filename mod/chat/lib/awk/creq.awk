@@ -65,7 +65,7 @@ function creq_create( o, kp, minion_obj, minion_kp, provider, model, question, c
             _keyl = o[ _kp_media L ]
             jdict_put(o, _kp_media SUBSEP "\"" _keyl "\"", "\"type\"",      "\"image\"")
             jdict_put(o, _kp_media SUBSEP "\"" _keyl "\"", "\"base64\"",    jqu(_arr[ i ]))
-            jdict_put(o, _kp_media SUBSEP "\"" _keyl "\"", "\"msg\"",       jqu(_arr[ ++i ]))
+            jdict_put(o, _kp_media SUBSEP "\"" _keyl "\"", "\"mime_type\"", jqu(_arr[ ++i ]))
         }
     }
 

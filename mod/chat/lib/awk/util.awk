@@ -58,11 +58,11 @@ function chat_cal_cached( curr, last,         _curr_arr, _last_arr, _curr_l, _la
     return c
 }
 
-function chat_filelist_load(v,      i, l, arr, fp, fp_desc, fp_content, id, _str, _res){
+function chat_filelist_load_to_array(v, arr,            i, l, _, fp, fp_desc, fp_content, id, _str ){
     if ( chat_str_is_null(v) ) return
-    l = split( v, arr, "\n" )
+    l = split( v, _, "\n" )
     for (i=1; i<=l; ++i){
-        fp = arr[i]
+        fp = _[i]
         fp_desc = ""
         if (fp == "") continue
         if ( (id=index(fp, ":")) > 0 ) {
@@ -71,15 +71,9 @@ function chat_filelist_load(v,      i, l, arr, fp, fp_desc, fp_content, id, _str
         }
         fp_content = cat(fp)
         gsub("[ \t]+\n", "\n", fp_content)
-        # _str =  "<|---BEGIN[FILE-NAME]---|>" fp "<|---END---|>\n"
-        # if ( fp_desc !="" ) _str = _str "<|---BEGIN[FILE-DESC]---|>" fp_desc "<|---END---|>\n"
-        # _str = _str "<|---BEGIN[FILE-CONTENT]---|>" fp_content "<|---END---|>\n"
         _str =  "<file-name>" fp "</file-name>\n"
         if ( fp_desc !="" ) _str = _str "<file-desc>" fp_desc "</file-desc>\n"
         _str = _str "<file-content>" fp_content "</file-content>\n"
-
-        _res = _str
+        arr[ ++arr[L] ] = _str
     }
-    if ( _res != "" ) _res = "Please note that the following content is provided in XML format. Focus only on the file content part and ignore the tags.\n" _res
-    return _res
 }

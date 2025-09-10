@@ -57,6 +57,8 @@ function re_patgen___( regex,  _tmp, _tmp_arr ){
 BEGIN{
     RE_INTERVAL_EXPRESSIONS_SUPPORTED = ENVIRON[ "RE_INTERVAL_EXPRESSIONS_SUPPORTED" ]
     if ( RE_INTERVAL_EXPRESSIONS_SUPPORTED == "" ) RE_INTERVAL_EXPRESSIONS_SUPPORTED = ("XXXX" ~ /^X{0,4}$/)
+    RE_SPRINTF_HEX_SUPPORTED = ( sprintf("%d", "0xa") == 10 )
+
     RE_OR = "|"
 
     RE_SPACE = "[ \t\v\n]+"

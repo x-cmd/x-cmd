@@ -187,7 +187,8 @@ function minion_example_len( o, prefix ){
 
 function minion_example_tostr( o, prefix,      v, _kp, i, l, _str, _res, u, a ){
     v = minion_example( o, prefix )
-    if ( ! chat_str_is_null(v) && (v != "[") ) return v
+    if ( ! chat_str_is_null(v) && (v != "[") ) return ((v ~ "^\"") ? juq(v) : v)
+
     _kp = prefix S "\"prompt\"" S "\"example\""
     l = minion_example_len( o, prefix )
     for (i=1; i<=l; ++i){
@@ -209,7 +210,7 @@ function minion_system( o, prefix,      v ){
 
 function minion_system_tostr( o, prefix,       v, _kp, i, l, _str, _res ){
     v = minion_system( o, prefix )
-    if ( ! chat_str_is_null(v) && (v != "[") ) return v
+    if ( ! chat_str_is_null(v) && (v != "[") ) return ((v ~ "^\"") ? juq(v) : v)
 
     _kp = prefix S "\"prompt\"" S "\"system\""
     l = minion_system_len(o, prefix )
@@ -227,17 +228,13 @@ function minion_system_len( o, prefix ){
 }
 
 function minion_filelist_attach( o, prefix,     v, i, l ){
-    v = ENVIRON[ "filelist_attach" ]
-    if ( chat_str_is_null(v) ) {
-        v = o[ prefix S "\"filelist_attach\"" ]
-        if ( v == "[" ) {
-            v = ""
-            l = o[ prefix S "\"filelist_attach\"" L ]
-            for (i=1; i<=l; ++i){
-                v = v o[ prefix S "\"filelist_attach\"" S "\""i"\"" ] "\n"
-            }
+    if ( o[ prefix S "\"filelist_attach\"" ] == "[" ) {
+        l = o[ prefix S "\"filelist_attach\"" L ]
+        for (i=1; i<=l; ++i){
+            v = v o[ prefix S "\"filelist_attach\"" S "\""i"\"" ] "\n"
         }
     }
+    v = v ENVIRON[ "filelist_attach" ]
 
     if ( chat_str_is_null(v) ) return
     v = str_trim_right(v)

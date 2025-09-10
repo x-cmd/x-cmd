@@ -2,7 +2,7 @@
 # unicode_to_utf8("\\u5f53")
 function unicode_to_utf8(unicode,               utf8, dec) {
     gsub(/^\\u/, "", unicode)
-    dec = hex_to_dec(unicode)
+    dec = hex_to_dec("0x" unicode)
 
     if (dec < 0x80) {
         utf8 = sprintf("%c", dec)
