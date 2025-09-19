@@ -1,24 +1,100 @@
 
 # TODO: add information protection
+# desc: 说明写入时必要的话，必须使用 readfile 获取要修改的文件内容
 
 ___x_cmd_coco_writefile(){
-    local filepath=""
+    local fp=""
     local content=""
+    local is_patchdiff="false"
 
     arg:init:x  coco
     while [ $# -gt 0 ]; do
         case "$1" in
-            --filepath)     filepath="$2";      arg:2:shift ;;
+            --filepath)     fp="$2";            arg:2:shift ;;
             --content)      content="$2";       arg:2:shift ;;
+            --is_patchdiff) is_patchdiff="$2";  arg:2:shift ;;
+            *)              break ;;
+        esac
+    done
+    [ -n "$content" ] || N=coco M="Please provide the text content to write" log:ret:64
+
+    ___x_cmd_coco_valid_fp --filepath "$fp" || return $?
+    coco:info "Writing to file -> $fp"
+
+    local content_line=""; local confirmid=""
+    while true; do
+        content_line="$( ___x_cmd_cmds wc -l <<A
+$content
+A
+)"
+        if [ "$content_line" -gt 50 ]; then
+            coco:info "Requesting user confirmation" 2>/dev/tty >&2
+            ___x_cmd less --autoview-all 2>/dev/tty >&2  <<A
+$content
+A
+        else
+            coco:info --m:content "$content" "Requesting user confirmation" 2>/dev/tty >&2
+        fi
+        ___x_cmd ui select confirmid "Requesting user confirmation" \
+            "Yes" "No" 2>/dev/tty >&2 || return $?
+
+        case "$confirmid" in
+            1)  coco:info "User granted permission to write to file"
+                break ;;
+            2)  coco:error "User permission denied for writing to file"
+                printf "[BREAK] 1\n" >> "$X_COCO_TOOL_ENACTCMD_FOLDER/log"
+                return 1
+                ;;
+        esac
+    done
+
+    if [ ! -e "$fp" ]; then
+        coco:info "File does not exist"
+        local dir="${fp%/*}"
+        if [ ! -d "$dir" ]; then
+            coco:info "Creating parent directory -> $dir"
+            ___x_cmd mkdirp "${fp%/*}" || return $?
+        fi
+    fi
+
+    if [ "$is_patchdiff" = "true" ]; then
+        if ___x_cmd_hascmd patch; then
+            ___x_cmd_cmds patch -u --verbose --ignore-whitespace "$fp" << A
+$content
+A
+        else
+            ___x_cmd cosmo patch -u --verbose --ignore-whitespace "$fp" << A
+$content
+A
+        fi
+    else
+        # append or overwrite
+        printf "%s\n" "$content" >> "$fp"
+    fi
+}
+
+
+# check validate filepath
+___x_cmd_coco_valid_fp(){
+    local fp=""
+    arg:init:x  coco
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --filepath)     fp="$2";    arg:2:shift ;;
             *)              break ;;
         esac
     done
 
-    [ ! -e "$filepath" ]    || {
-        N=coco M="Filepath already existed -> $filepath" log:ret:1
-    }
+    [ -n "$fp" ] || N=coco M="Please provide file path value" log:ret:64
+    case "$fp" in
+        /*) ;;
+        *)  N=coco M="File path '$fp' must be an absolute path" log:ret:1
+    esac
 
-    ___x_cmd ensurefp "$filepath"
-    printf "%s" "$content" >"$filepath"
+    if [ -e "$fp" ] && [ -d "$fp" ]; then
+        coco:error "File path '$fp' already exists and is a directory."
+        return 1
+    fi
+
+    return 0
 }
-

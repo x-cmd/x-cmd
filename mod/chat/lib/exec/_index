@@ -35,6 +35,7 @@ ___x_cmd_chat___exec(){
     local temperature=""
     local maxtoken=""
     local history_num=""
+    local repl_history_num=""
     local seed=""
 
     local inputtype=""
@@ -232,7 +233,6 @@ A
     esac
 
     if [ "$is_start_with_repl" = 1 ]; then
-        is_silent=1
         ___x_cmd_chat___exec_repl --start "$question"
         return
     elif [ -z "$question" ]; then
@@ -240,7 +240,6 @@ A
             chat:error "Please provide the text you want request"
             return 1
         elif [ -z "${minion}${system}" ]; then
-            is_silent=1
             ___x_cmd_chat___exec_repl --app
             return
         fi
@@ -254,25 +253,31 @@ A
             x_=""; ___x_cmd_chat___exec_repl___id_ || return $?
             session="$x_"
         }
-        ___x_cmd_chat___exec_inner_ || return $?
+        ___x_cmd_chat___exec_raw "$question" "$history_num" "$reflist" "$filelist_attach" "$imagelist"
         [ -z "$question" ] || ___x_cmd_chat___exec_repl_history add "$question"
 
-        is_silent=1
-        question=""
-        reflist=""
-        imagelist=""
-        filelist_attach=""
         ___x_cmd_chat___exec_repl --previous
         return
     else
-        ___x_cmd_chat___exec_inner_
+        ___x_cmd_chat___exec_raw "$question" "$history_num" "$reflist" "$filelist_attach" "$imagelist"
     fi
 }
 
 # question reflist imagelist
-___x_cmd_chat___exec_inner_(){
+___x_cmd_chat___exec_raw(){
+    local question="$1"
+    local history_num="$2"
+    local reflist="$3"
+    local filelist_attach="$4"
+    local imagelist="$5"
+
+    envinfo="$(___x_cmd_chat___exec_envinfo)" \
+        ___x_cmd_chat___exec_inner
+}
+
+___x_cmd_chat___exec_inner(){
     local question="$question"
-    x_=; ___x_cmd str trimm_ "$reflist"
+    local x_=; ___x_cmd str trimm_ "$reflist"
     question="${x_}${question}"
 
     # TODO: scan the question, extract url.
@@ -280,8 +285,8 @@ ___x_cmd_chat___exec_inner_(){
 
     # @gemini "Please summary the data [ddgo:]"
 
-    local cfg_history_num=; local cfg_session=;     local cfg_minion=;  local cfg_userlang=
-    ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion cfg_userlang=userlang 2>/dev/null
+    local cfg_history_num=; local cfg_session=;     local cfg_minion=;  local cfg_userlang=; local cfg_stream=""
+    ___x_cmd_chat_cfg --var cfg_history_num=history cfg_session=session cfg_minion=minion cfg_userlang=userlang cfg_stream=stream 2>/dev/null
 
     minion="${minion:-"$cfg_minion"}"
     minion="${minion:-"default"}"
@@ -323,16 +328,16 @@ ___x_cmd_chat___exec_inner_(){
         printf "%s" "" > "$XCMD_CHAT_ENACTALL_DRAWFILE"
 
         (
-            ___x_cmd_chat___exec_inner_raw_ & \
+            ___x_cmd_chat___exec_inner_provider_ & \
                 ___x_cmd coco enactall "$XCMD_CHAT_SESSION_DIR/$chatid"
         )
     else
-        ___x_cmd_chat___exec_inner_raw_ || return $?
+        ___x_cmd_chat___exec_inner_provider_ || return $?
         printf "%s\n" "$XCMD_CHAT_SESSION_DIR/$chatid"
     fi
 }
 
-___x_cmd_chat___exec_inner_raw_(){
+___x_cmd_chat___exec_inner_provider_(){
     [ "$is_enactnone" = 1 ] || printf "[MODEL-SENT-AT] %s\n" "${EPOCHREALTIME:-"$(date +%s)"}" >> "$XCMD_CHAT_ENACTALL_DRAWFILE"
 
     [ -z "$is_silent" ] || ___x_cmd log "$provider"/warn 2>/dev/null
@@ -341,9 +346,9 @@ ___x_cmd_chat___exec_inner_raw_(){
         *)  ___x_cmd "$provider" chat exec ;;
     esac
     local _exitcode="$?"
-    if [ "$is_enactnone" != 1 ]; then
+    if [ "$is_enactnone" != 1 ] && [ "$_exitcode" != 0 ]; then
         printf "[EXITCODE] %s\n" "$_exitcode" >> "$XCMD_CHAT_ENACTALL_DRAWFILE"
-        printf "[EXITCODE] %s\n" "$_exitcode" >> "$XCMD_CHAT_ENACTALL_LOGFILE"
+        printf "[BREAK] %s\n" "$_exitcode" >> "$XCMD_CHAT_ENACTALL_LOGFILE"
     fi
     return "$_exitcode"
 }
@@ -351,8 +356,8 @@ ___x_cmd_chat___exec_inner_raw_(){
 ___x_cmd_chat___exec__cancel_request(){
     ___X_CMD_RETRY_ABORT=1
     if [ "$is_enactnone" != 1 ]; then
-        printf "\n%s\n" "[EXITCODE] 130"    >> "$XCMD_CHAT_ENACTALL_LOGFILE"
         printf "\n%s\n" "[EXITCODE] 130"    >> "$XCMD_CHAT_ENACTALL_DRAWFILE"
+        printf "\n%s\n" "[BREAK] 130"    >> "$XCMD_CHAT_ENACTALL_LOGFILE"
     fi
     printf "%s\n" "Cancel the request"  >> "$XCMD_CHAT_SESSION_DIR/$chatid/chat.error.yml"
 }
@@ -375,7 +380,7 @@ ___x_cmd_chat___exec__histsum(){
     [ -d "$XCMD_CHAT_HISTORY_SESSION_DIR" ] || return 0
 
     local l=""; local n=0; local lastchatid=""; local chatid=""; local filename=""
-    { ___x_cmd_cmds find "$XCMD_CHAT_HISTORY_SESSION_DIR" -type f -name "histsum.txt" -o -name "chat.response.yml" | ___x_cmd_cmds sort -r; } 2>/dev/null | {
+    { ___x_cmd_cmds find "$XCMD_CHAT_HISTORY_SESSION_DIR" -type f -name "histsum.txt" -o -path "*/chat.response/content" | ___x_cmd_cmds sort -r; } 2>/dev/null | {
         while read -r l; do
             l="${l#"$XCMD_CHAT_HISTORY_SESSION_DIR/"}"
             chatid="${l%%/*}"

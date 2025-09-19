@@ -43,14 +43,14 @@ function minion_is_stream( o, prefix, model,            v, v1 ){
     v1 = ENVIRON[ "is_stream" ]
     if (v1 == "") v1 = o[ prefix S "\"stream\"" ]
     if (v1 == "") v1 = ENVIRON[ "cfg_stream" ]
-    if ( ! chat_str_is_null(v1) ) v = ((v1 ~ "^\"") ? juq(v1) : v1)
-
-    v = v ""
+    # if ( ! chat_str_is_null(v1) )
+    v = ((v1 ~ "^\"") ? juq(v1) : v1) ""
     if (( v == "true" ) || ( v == true ))           return true
     else if (( v == "false" ) || ( v == false ))    return false
 
-    if ( model ~ "^(gpt-5|gpt-5-mini)$" ) return false
-    return true
+    # if ( model ~ "^(gpt-5|gpt-5-mini)$" ) return false
+    # return true
+    return false
 }
 
 function minion_is_reasoning( o, prefix,            v, v1 ){
@@ -197,7 +197,7 @@ function minion_example_tostr( o, prefix,      v, _kp, i, l, _str, _res, u, a ){
         _res = _res "User: "        ((u ~ "^\"") ? juq(u) : u) ";\n"
         _res = _res "Assistant: "   ((a ~ "^\"") ? juq(a) : a) "\n"
     }
-    _res = ( _res != "" ) ? "example:\n" _res JOINSEP : ""
+    _res = ( _res != "" ) ? chat_wrap_tag("example", _res) "\n": ""
     return _res
 }
 
@@ -218,7 +218,7 @@ function minion_system_tostr( o, prefix,       v, _kp, i, l, _str, _res ){
         _str = o[ _kp S "\""i"\"" ]
         if ( chat_str_is_null( _str ) ) continue
         _str = ((_str ~ "^\"") ? juq(_str) : _str)
-        _res = _res _str JOINSEP
+        _res = _res _str "\n\n"
     }
     return _res
 }

@@ -46,7 +46,7 @@ END{
     }
 
     if( ( change[ "blog" ] != "null" ) && ( change[ "blog" ] != "" ) ) {
-        printf("%s%s\n", "[👉 View X-CMD demo for more information about this version]", "(https://x-cmd.com" juq(change[ "blog" ]) ")" )
+        printf("%s%s\n", "[👉 View X-CMD blog for more information about this version]", "(https://x-cmd.com" juq(change[ "blog" ]) ")" )
     }
 
     if( previous_version != "" ) {

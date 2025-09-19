@@ -49,12 +49,12 @@ END{
     else {
         print jstr(o_response)                      > (OPENAI_CONTENT_DIR "/" PROVIDER_NAME ".response.yml")
 
-        creq_loadfromjsonfile( creq_obj, SUBSEP "creq", OPENAI_CONTENT_DIR "/chat.request.yml" )
-        openai_res_to_cres( o_response, cres_obj, SUBSEP "cres", creq_obj, SUBSEP "creq", o_tool, Q2_1 )
-        print cres_dump( cres_obj, SUBSEP "cres" )    > (OPENAI_CONTENT_DIR "/chat.response.yml")
+        cres_dir = (OPENAI_CONTENT_DIR "/chat.response")
+        creq_dir = (OPENAI_CONTENT_DIR "/chat.request")
+        openai_res_to_cres( o_response, cres_dir, creq_dir, o_tool, Q2_1 )
 
         if ( IS_ENACTNONE != true ) {
-            usage_str = cres_dump_usage( cres_obj, SUBSEP "cres" )
+            usage_str = cres_dump_usage( cres_dir, creq_dir )
             print "[MODEL-USAGE] " usage_str                        >> XCMD_CHAT_ENACTALL_DRAWFILE
             print "[FUNCTION-CALL-COUNT] " int(o_tool[ Q2_1 L ])    >> XCMD_CHAT_ENACTALL_LOGFILE
         }

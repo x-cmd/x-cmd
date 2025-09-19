@@ -77,3 +77,22 @@ function chat_filelist_load_to_array(v, arr,            i, l, _, fp, fp_desc, fp
         arr[ ++arr[L] ] = _str
     }
 }
+
+function chat_tf_bit(v){
+    v = ((v ~ "^\"") ? juq(v) : v) ""
+    v = tolower(v)
+    if (( v == true ) || ( v == "true" ))           return true
+    else if (( v == false ) || ( v == "false" ))    return false
+}
+
+function chat_tf_str(v){
+    v = ((v ~ "^\"") ? juq(v) : v) ""
+    v = tolower(v)
+    if (( v == "true" ) || ( v == true ))           return "true"
+    else if (( v == "false" ) || ( v == false ))    return "false"
+}
+
+function chat_wrap_tag(name, str, name_desc){
+    if ( str == "" ) return
+    return "<" name name_desc ">" str "</" name ">"
+}

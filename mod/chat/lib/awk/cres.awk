@@ -1,56 +1,52 @@
 
-
-function cres_finishReason( o, prefix ){
-    return o[ prefix S "\"finishReason\"" ]
+function cres_fragfile_unit___set( dir, name, str ) {
+    print str > ( dir "/" name )
+    fflush()
+    cres_obj[ dir, name, "loaded" ] = true
+    cres_obj[ dir, name ] = str
 }
 
-
-function cres_index( o, prefix ){
-    return o[ prefix S "\"index\"" ]
+function cres_fragfile_unit___get( dir, name,               str ) {
+    if ( cres_obj[ dir, name, "loaded" ] == true ) return cres_obj[ dir, name ]
+    cres_obj[ dir, name, "loaded" ] = true
+    fp = ( dir "/" name )
+    if ( (fp == "") || (fp == "/") ) return
+    str = cat( fp )
+    if ( cat_is_filenotfound() ) return
+    cres_obj[ dir, name ] = str
+    return str
 }
 
-function cres_role( o, prefix ){
-    return o[ prefix S "\"reply\"" S "\"role\"" ]
-}
-
-function cres_text( o, prefix ){
-    return o[ prefix S "\"reply\"" S "\"parts\"" S "\"1\"" S "\"text\"" ]
-}
-
-function cres_dump( o, _kp ){
-    return jstr(o, _kp )
-}
-
-
-function cres_load( o, jsonstr,      _arrl, _arr, i ){
-    _arrl = json_split2tokenarr( _arr, jsonstr )
-    for (i=1; i<=_arrl; ++i) {
-        jiparse( o, _arr[i] )
-        if ( JITER_LEVEL != 0 ) continue
-        if ( JITER_CURLEN == HISTORY_SIZE) exit
-    }
-}
-
-
-
-function cres_loadfromjsonfile( o, kp, fp ){
-    jiparse2leaf_fromfile( o, kp,  fp )
-}
-
-
-function cres_dump_usage(o, kp,           kp_usage, total_token, obj_usage ){
-    kp_usage = kp  SUBSEP "\"usage\""
-    if ( o[ kp_usage ] != "{" ) return
-    total_token       = int( o[ kp_usage SUBSEP "\"total\"" SUBSEP "\"tokens\"" ] )
+function cres_dump_usage( cres_dir, creq_dir,           total_token, obj_usage ){
+    total_token       = int( creq_fragfile_unit___get( cres_dir, "usage_total_token" ) )
     if ( total_token <= 0 ) return
 
     jlist_put(obj_usage, "", "{" )
     jdict_put(obj_usage, Q2_1, "\"usage\"", "{" )
-    jmerge_force___value( obj_usage, Q2_1 SUBSEP "\"usage\"", o, kp_usage )
-    jdict_put(obj_usage, Q2_1, "\"model\"", o[ kp SUBSEP "\"model\"" ])
-    jdict_put(obj_usage, Q2_1, "\"provider\"", o[ kp SUBSEP "\"provider\"" ])
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"", "\"input\"", "{" )
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"input\"", "\"token\"",           int( cres_fragfile_unit___get( cres_dir, "usage_input_token" ) ) )
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"input\"", "\"cache_token\"",     int( cres_fragfile_unit___get( cres_dir, "usage_input_cache_token" ) ) )
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"input\"", "\"charlen\"",         int( cres_fragfile_unit___get( creq_dir, "usage_input_charlen" ) ) )
+
+    v = cres_fragfile_unit___get( creq_dir, "usage_input_ratio_system" )
+    if ( v != "" ) jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"input\"", "\"ratio_system\"",   v )
+    v = cres_fragfile_unit___get( creq_dir, "usage_input_ratio_history" )
+    if ( v != "" ) jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"input\"", "\"ratio_history\"",  v )
+    v = cres_fragfile_unit___get( creq_dir, "usage_input_ratio_other" )
+    if ( v != "" ) jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"input\"", "\"ratio_other\"",    v )
+    v = cres_fragfile_unit___get( creq_dir, "usage_input_ratio_cache" )
+    if ( v != "" ) jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"input\"", "\"ratio_cache\"",    v )
+
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"", "\"output\"", "{" )
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"output\"", "\"token\"",          int( cres_fragfile_unit___get( cres_dir, "usage_output_token" ) ) )
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"output\"", "\"thought_token\"",  int( cres_fragfile_unit___get( cres_dir, "usage_output_thought_token" ) ) )
+
+
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"", "\"total\"", "{" )
+    jdict_put(obj_usage, Q2_1 SUBSEP "\"usage\"" SUBSEP "\"total\"", "\"token\"",           total_token )
+
+
+    jdict_put(obj_usage, Q2_1, "\"model\"",     jqu(cres_fragfile_unit___get( creq_dir, "model" )) )
+    jdict_put(obj_usage, Q2_1, "\"provider\"",  jqu(cres_fragfile_unit___get( creq_dir, "provider" )) )
     return jstr0( obj_usage, Q2_1, " ")
 }
-
-# gemini_response => cres_object
-# openai_response => cres_object

@@ -3,13 +3,24 @@ name: default-tools
 
 
 prompt:
-  system:
+  system: |
+    Always prioritize using function calls for any actionable tasks or when more information is needed, so that operations are executed automatically without requiring the user to intervene.
+    If a call fails or returns an error, use the error information to guide the next step.
+    If function calls are not possible, do not explain or apologize—continue solving the task with reasoning, calculations, or content generation.
+    If information is insufficient, report the issue directly without making anything up.
+    When a function execution completes, skip commentary and proceed immediately with the next relevant step.
 
+    Structured information may be provided using internal field markers:
+    - Fields are enclosed with <field-name> and </field-name>, containing authoritative content.
+    - Use the content inside fields exactly as given; do not alter, invent, or fabricate execution-related information.
+    - These markers are strictly for LLM processing. **Never output the markers or their raw format to the user.**
+
+    Always respond in the same language as the user.
+
+    %{envinfo}%
   context:
   example:
-  content: |
-    If more information is needed, please maximize the use of function calls to obtain more detailed and accurate results.
-    '%{BODY}%'
+  content: '%{BODY}%'
 tool:
   # choice:
   #   type: function
@@ -18,16 +29,18 @@ tool:
   choice: required # auto none
   function:
     - name: findgrep
-      description: Search for all files in the specified folder and look for a specific keyword within these files, while displaying the line numbers of matches and the surrounding context lines
+      description: |
+        Search for all files in the specified folder and look for a specific keyword within these files.
+        For each match, return the file path, the line number, and the surrounding context lines to provide full reference to where the keyword appears.
       parameters:
         type: object
         properties:
           desc:
             type: string
-            description: "Required parameter, briefly describe the purpose of calling the current function and its role"
+            description: "Required parameter, a brief description of the function's purpose and usage. This parameter provides context for the AI when calling the function, helping to clarify its intended action and expected outcomes."
           folder:
             type: string
-            description: 'Required parameter, the path to the specified folder'
+            description: 'Required parameter, the absolute path to the specified folder'
           keyword:
             type: string
             description: 'Required parameter, the specific keyword to search for'
@@ -50,8 +63,78 @@ tool:
             description: "Required parameter, a brief description of the function's purpose and usage. This parameter provides context for the AI when calling the function, helping to clarify its intended action and expected outcomes."
           filepath:
             type: string
-            description: Required parameter, the path of the file to be read
+            description: Required parameter, the absolute path of the file to be read
         required:
           - desc
           - filepath
+    - name: writefile
+      description: |
+        Writes content to a specified file.
+        For file modifications, it is strongly recommended to provide content in patch-diff format, as this ensures changes are applied precisely and reduces the risk of overwriting unrelated parts of the file.
+      parameters:
+        type: object
+        properties:
+          desc:
+            type: string
+            description: "Required parameter, a brief description of the function's purpose and usage. This parameter provides context for the AI when calling the function, helping to clarify its intended action and expected outcomes."
+          filepath:
+            type: string
+            description: "Required parameter, the absolute path of the file to be written to."
+          content:
+            type: string
+            description: |
+              Required parameter: `content` — the text to write to the file.
+              - Preferred method: set `is_patchdiff=true` and provide `content` as a valid unified diff (v4a format).
+                The diff must be syntactically correct, including accurate Hunk Headers that specify the exact line ranges in the original and updated files.
+                This ensures that the `patch` command can safely and precisely apply the modifications.
+              - If `is_patchdiff=false`, `content` will be appended to the end of the file instead of overwriting it.
+          is_patchdiff:
+            type: boolean
+            description: |
+              Required parameter: indicates whether the write operation should treat the content as a patch diff.
+              - Preferred: true, so that the content is a valid patch-diff file and can safely modify the file.
+              - If false, the content will be appended directly to the existing file content without overwriting it.
 
+        required:
+          - desc
+          - filepath
+          - content
+          - is_patchdiff
+    - name: diffv4a
+      description: Compares two files using the v4a algorithm to generate a detailed diff output. The v4a concept focuses on advanced diffing techniques to improve accuracy and efficiency in file comparisons.
+      parameters:
+        type: object
+        properties:
+          desc:
+            type: string
+            description: "Required parameter, a brief description of the function's purpose and usage. This parameter provides context for the AI when calling the function, helping to clarify its intended action and expected outcomes."
+          oldfile:
+            type: string
+            description: "Required parameter, the absolute path of the old file to be compared."
+          newfile:
+            type: string
+            description: "Required parameter, the absolute path of the new file to be compared."
+        required:
+          - desc
+          - oldfile
+          - newfile
+    - name: create_temp_path
+      description: |
+          Creates a temporary file or directory in a predefined location for storing LLM-generated content.
+          Always use this function when a temporary file or directory is required, instead of creating it manually.
+      parameters:
+        type: object
+        properties:
+          desc:
+            type: string
+            description: "Required. A short description of the purpose of this temporary file or directory."
+          name:
+            type: string
+            description: "Required. The exact name of the file or directory to be created in the predefined location."
+          is_directory:
+            type: boolean
+            description: "Required. Set to true to create a directory, or false to create a file."
+        required:
+          - desc
+          - name
+          - is_directory

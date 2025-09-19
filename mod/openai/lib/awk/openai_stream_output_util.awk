@@ -75,15 +75,13 @@ function openai_record_response___text_content( o,        item, response_item, f
 
             if ( call_id != "" ) {
                 if ( tool_arr[ call_id, "HAS_CHECK" ] == "" ) {
-                    openai_record_response___tool_call( o_tool, tool_arr )
+                    openai_record_response___tool_call( tool_arr )
                     tool_arr[ call_id, "HAS_CHECK" ] = "1"
                     ++ tool_arr[ "tool_l" ]
                 }
             }
 
-            o_tool[ Q2_1 ] = "["
-            o_tool[ Q2_1 L ] = (idx = tool_arr[ "tool_l" ])
-            jmerge_force___value( o_tool, Q2_1 SUBSEP "\""idx"\"", o, kp_i )
+            idx = tool_arr[ "tool_l" ]
             tool_arr[ idx, "name" ] = tool_arr[ idx, "name" ] juq(o[ kp_tool_name ])
             tool_arr[ idx, "args" ] = tool_arr[ idx, "args" ] juq(o[ kp_tool_args ])
         }
@@ -97,26 +95,38 @@ function openai_record_response___text_content( o,        item, response_item, f
         o_response[ KP_FINISH_REASON ] = finish_reason
         o_response[ KP_DELTA_CONTENT ] = jqu(OPENAI_RESPONSE_CONTENT)
         o_response[ KP_DELTA_REASONING_CONTENT ] = jqu(OPENAI_RESPONSE_REASONING_CONTENT)
-        openai_record_response___tool_call( o_tool, tool_arr )
-        jmerge_force___value(o_response, KP_DELTA_TOOL, o_tool, Q2_1)
+        openai_record_response___tool_call( tool_arr )
         exit(0)
     }
     delete o
 }
 
-function openai_record_response___tool_call(o_tool, tool_arr,             idx, name, args, dir){
-    idx = o_tool[ Q2_1 L ]
+function openai_record_response___tool_call(tool_arr,             idx, name, args, desc, dir){
+    idx = tool_arr[ "tool_l" ]
     if ( idx <= 0 ) return
     name = tool_arr[ idx, "name" ]
     args = tool_arr[ idx, "args" ]
-    o_tool[ Q2_1 SUBSEP "\""idx"\"" SUBSEP "\"function\"" SUBSEP "\"name\"" ] = jqu(name)
-    o_tool[ Q2_1 SUBSEP "\""idx"\"" SUBSEP "\"function\"" SUBSEP "\"arguments\"" ] = jqu(args)
+    o_tool[ Q2_1 ] = "["
+    jlist_put( o_tool, Q2_1, "{" )
+    jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"index\"",        idx )
+    jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"name\"",         jqu(name) )
 
-    if ( XCMD_CHAT_LOGFILE != "" ) {
+    jiparse2leaf_fromstr( argsobj, Q2_1, args )
+    desc = argsobj[ Q2_1, "\"desc\"" ]
+    if ( desc != "" ) {
+        jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"desc\"",     desc )
+        jdict_rm( argsobj, Q2_1, "\"desc\"" )
+        desc = ( desc ~ "^\"" ) ? juq(desc) : desc
+        args = jstr0( argsobj, Q2_1, " " )
+    }
+    jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"arguments\"",    jqu( args ) )
+
+    if ( XCMD_CHAT_ENACTALL_LOGFILE != "" ) {
         dir = (OPENAI_CONTENT_DIR "/function-call/" idx)
         mkdirp( dir )
         print name > (dir "/name")
         print args > (dir "/arg")
+        print desc > (dir "/desc")
 
         if ( IS_ENACTNONE != true ) print "[FUNCTION-CALL] " idx >> XCMD_CHAT_ENACTALL_LOGFILE
     }
@@ -124,7 +134,7 @@ function openai_record_response___tool_call(o_tool, tool_arr,             idx, n
     fflush()
 }
 
-function openai_record_response___text_content_ollama_format(o,             item, finish_status, choices_l, tool_l, i, kp_i, kp_tool_name, kp_tool_args, call_id){
+function openai_record_response___text_content_ollama_format(o,             item, finish_status, tool_l, kp_i, kp_tool_name, kp_tool_args, call_id, i ){
     item = o[ KP_OLLAMA_CONTENT ]
     if ( ! chat_str_is_null(item) ) {
         item = juq(item)
@@ -140,20 +150,25 @@ function openai_record_response___text_content_ollama_format(o,             item
             kp_tool_args    = kp_i SUBSEP "\"function\"" SUBSEP "\"arguments\""
             call_id         = i
             ++ tool_arr[ "tool_l" ]
-            o_tool[ Q2_1 ] = "["
-            o_tool[ Q2_1 L ] = call_id
-            jmerge_force___value( o_tool, Q2_1 SUBSEP "\""call_id"\"", o, kp_i )
             tool_arr[ call_id, "name" ] = juq(o[ kp_tool_name ])
             if ( o[ kp_tool_args ] == "{" ) tool_arr[ call_id, "args" ] = jstr0(o, kp_tool_args, " ")
-            openai_record_response___tool_call( o_tool, tool_arr )
+            openai_record_response___tool_call( tool_arr )
         }
     }
 
     jmerge_force( o_response, o )
-    choices_l = o[ KP_CHOICES L ]
     finish_status = o_response[ KP_OLLAMA_DONE ]
-    if ((choices_l <= 0) || ( finish_status != "false" )) {
+    if ( finish_status != "false" ) {
         o_response[ KP_OLLAMA_DONE ] = finish_status
+        if ( match(OPENAI_RESPONSE_CONTENT, "^<think>.*</think>") ) {
+            if ( IS_REASONING != true ) {
+                OPENAI_RESPONSE_REASONING_CONTENT = substr(OPENAI_RESPONSE_CONTENT, RSTART+7, RLENGTH-15)
+                OPENAI_RESPONSE_REASONING_CONTENT = str_trim(OPENAI_RESPONSE_REASONING_CONTENT )
+                jdict_put( o_response, KP_OLLAMA_MESSAGE, "\"reasoning_content\"" , jqu( OPENAI_RESPONSE_REASONING_CONTENT ) )
+                OPENAI_RESPONSE_CONTENT = substr( OPENAI_RESPONSE_CONTENT, RLENGTH+1 )
+                OPENAI_RESPONSE_CONTENT = str_trim_left( OPENAI_RESPONSE_CONTENT )
+            }
+        }
         o_response[ KP_OLLAMA_CONTENT ] = jqu(OPENAI_RESPONSE_CONTENT)
         exit(0)
     }

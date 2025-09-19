@@ -1,12 +1,11 @@
-{ if ($0 != "") jiparse_after_tokenize(o, $0); }
+BEGIN{
+    content_dir = ENVIRON[ "content_dir" ]
+    creq_dir = (content_dir "/chat.request")
+    cres_dir = (content_dir "/chat.response")
 
-END{
-    CREQ_KP = SUBSEP "\"1\""
-    CRES_KP = SUBSEP "\"2\""
-
-    _text_req = juq(o[ CREQ_KP SUBSEP "\"question\"" ])
-    _text_res = juq(o[ CRES_KP SUBSEP "\"reply\"" SUBSEP "\"content\"" ])
-    _l_creq = int(o[ CREQ_KP SUBSEP "\"usage\"" SUBSEP "\"input\"" SUBSEP "\"stringLength\"" ] - length( _text_req ))
+    _text_req = creq_fragfile_unit___get( creq_dir, "content" )
+    _text_res = cres_fragfile_unit___get( cres_dir, "content" )
+    _l_creq = int( creq_fragfile_unit___get( creq_dir, "usage_input_charlen" ) - length( _text_req ))
     _l_cres = int( length(_text_res) )
 
     sentat = ENVIRON[ "sentat" ]

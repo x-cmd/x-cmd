@@ -1,6 +1,5 @@
 BEGIN{
     Q2_1 = SUBSEP "\"1\""
-    JOINSEP = "\n\n"
 }
 
 function openai_gen_unit_str_text(str){
@@ -15,19 +14,22 @@ function openai_gen_unit_str_rolecont( role, content ){
     return "{ \"role\": " role ", \"content\": " content " }"
 }
 
-function openai_gen_history_str( history_obj, chatid, i,        _text_req, _text_res, _text_tool, _res ){
-    _text_req = chat_history_get_req_text(history_obj, chatid, i)
-    _text_res = chat_history_get_res_text(history_obj, chatid, i)
-    _text_tool = chat_history_get_res_tool_call(history_obj, chatid, i)
-    if (_text_req =="") return
+function openai_gen_history_str( history_obj, chatid, i,        req_text, res_text, j, tool_l, tool_req, tool_res, _res ){
+    req_text = chat_history_get_req_text(history_obj, chatid, i)
+    res_text = chat_history_get_res_text(history_obj, chatid, i)
+    if (req_text =="") return
 
-    _res = openai_gen_unit_str_rolecont( "user", _text_req )
-    if ( ! chat_str_is_null( _text_res ) ) {
-        _res = _res ", " openai_gen_unit_str_rolecont( "assistant", _text_res )
+    _res = openai_gen_unit_str_rolecont( "user", req_text )
+    if ( ! chat_str_is_null( res_text ) ) {
+        _res = _res ", " openai_gen_unit_str_rolecont( "assistant", res_text )
     }
 
-    if ( ! chat_str_is_null( _text_tool ) ) {
-        _res = _res ", " openai_gen_unit_str_rolecont( "assistant", _text_tool )
+    tool_l = chat_history_get_tool_l(history_obj, chatid, i)
+    for (j=1; j<=tool_l; ++j){
+        tool_req = chat_history_get_tool_req(history_obj, chatid, i, j)
+        tool_res = chat_history_get_tool_res(history_obj, chatid, i, j)
+        _res = _res "," openai_gen_unit_str_rolecont("assistant", tool_req)
+        _res = _res "," openai_gen_unit_str_rolecont("user", tool_res)
     }
     return _res
 }
@@ -47,57 +49,20 @@ function openai_gen_filelist_str(filelist_str,       arr, _str, i, l){
     return _str
 }
 
-function openai_gen_minion_content_str(minion_obj, minion_kp, media_str,      context, example, content, str){
-    context = minion_prompt_context(minion_obj, minion_kp)
-    context = ( context != "" ) ? context JOINSEP : ""
-
-    example = minion_example_tostr(minion_obj, minion_kp)
-    content = minion_prompt_content(minion_obj, minion_kp)
-    str = context example content
-    str = str_trim(str)
-    if ( str == "" ) str = "null"
-
-    if( media_str != "" ){
-        str = openai_gen_unit_str_text( str )
-        return openai_gen_unit_str_rolecont( "[ " str media_str " ]" )
-    }
-    return openai_gen_unit_str_rolecont( "user", str )
-}
-
-function openai_gen_media_str(creq_obj, creq_kp,        _kp_media, i, l, _kp_key, _type, _url, _mime_type, _base64, _msg, _str){
-    _kp_media = creq_kp SUBSEP "\"media\""
-    l = creq_obj[ _kp_media L ]
-    if (l <= 0) return
-    for (i=1; i<=l; ++i){
-        _kp_key = _kp_media SUBSEP "\""i"\""
-        _type   = creq_obj[ _kp_key, "\"type\"" ]
-        _url    = creq_obj[ _kp_key, "\"url\"" ]
-        if ( _type == "\"image\"" ) {
-            _type = "\"image_url\""
-        }
-
-        if ( _url != "" ) {
-            _str    = _str ",{ \"type\": " _type ", \"image_url\": { \"url\": " jqu(_url) " } }"
-        } else {
-            _base64 = juq(creq_obj[ _kp_key, "\"base64\"" ])
-            _mime_type = juq(creq_obj[ _kp_key, "\"mime_type\"" ])
-            _msg    = "data:" _mime_type ";base64,{" _base64 "}"
-            _str    = _str ",{ \"type\": " _type ", \"image_url\": { \"url\": " jqu( _msg ) " } }"
-        }
-
-    }
+function openai_gen_tool_str( creq_dir,            _function_str ) {
+    _str = openai_gen_tool_function_str( creq_dir )
     return _str
 }
 
+function openai_gen_tool_function_str( creq_dir,            tool_str, tool_obj, tool_kp, tool_function_kp, i, l, _res, _ ){
+    tool_str = creq_fragfile_unit___get( creq_dir, "tool" )
+    if ( chat_str_is_null(tool_str) ) return
 
-function openai_gen_tool_str( creq_obj, creq_kp,            _function_str ) {
-    _function_str = openai_gen_tool_function_str( creq_obj, creq_kp )
-    return _function_str
-}
+    tool_kp = SUBSEP "tool"
+    jiparse2leaf_fromstr( tool_obj, SUBSEP "tool", tool_str )
 
-function openai_gen_tool_function_str( creq_obj, creq_kp,           i, l, _kp_tool_function, _, _res ){
-    _kp_tool_function = creq_kp SUBSEP "\"tool\"" SUBSEP "\"function\""
-    l = creq_obj[ _kp_tool_function L ]
+    tool_function_kp = tool_kp SUBSEP "\"function\""
+    l = tool_obj[ tool_function_kp L ]
     if (l <= 0) return ""
 
     _res = ""
@@ -105,7 +70,7 @@ function openai_gen_tool_function_str( creq_obj, creq_kp,           i, l, _kp_to
         jlist_put( _, "", "{")
         jdict_put( _, SUBSEP "\""i"\"", "\"type\"", "\"function\"")
         jdict_put( _, SUBSEP "\""i"\"", "\"function\"", "{")
-        jmerge_force___value(_, SUBSEP "\""i"\"" SUBSEP "\"function\"", creq_obj, _kp_tool_function SUBSEP "\""i"\"")
+        jmerge_force___value(_, SUBSEP "\""i"\"" SUBSEP "\"function\"", tool_obj, tool_function_kp SUBSEP "\""i"\"")
 
         jdict_put( _, SUBSEP "\""i"\"" SUBSEP "\"function\"", "\"strict\"", "true")
         jdict_put( _, SUBSEP "\""i"\"" SUBSEP "\"function\"" SUBSEP "\"parameters\"" ,"\"additionalProperties\"", "false")
@@ -115,19 +80,18 @@ function openai_gen_tool_function_str( creq_obj, creq_kp,           i, l, _kp_to
 
     return _res
 }
-function openai_gen_last_msgtool_from_creq( current_msgtool_obj, msgtool_obj, chatid, hist_session_dir,             provider, last_chatid, last_creq_obj, last_creq_kp ){
-    last_chatid = chat_history_get_last_chatid(hist_session_dir, juq(current_msgtool_obj[ "provider" ]), chatid)
+function openai_gen_last_msgtool_from_creq( current_msgtool_obj, msgtool_obj, chatid, hist_session_dir,             last_chatid, last_creq_dir){
+    last_chatid = chat_history_get_last_chatid(hist_session_dir, current_msgtool_obj[ "provider" ], chatid)
     if ( last_chatid == "" ) return
-    last_creq_kp = SUBSEP "last-creq"
-    chat_history_get_last_creq( last_creq_obj, last_creq_kp, hist_session_dir, provider, chatid, last_chatid )
-    if ( (current_msgtool_obj[ "provider" ] != last_creq_obj[ last_creq_kp, "\"provider\"" ]) || (current_msgtool_obj[ "model" ] != last_creq_obj[ last_creq_kp, "\"model\"" ]) ) return
-    return openai_gen_msgtool_from_creq( msgtool_obj, last_creq_obj, last_creq_kp, last_chatid, hist_session_dir )
+    last_creq_dir = ( hist_session_dir "/" last_chatid "/chat.request" )
+    if ( (current_msgtool_obj[ "provider" ] != creq_fragfile_unit___get(last_creq_dir, "provider")) || (current_msgtool_obj[ "model" ] != creq_fragfile_unit___get(last_creq_dir, "model")) ) return
+    return openai_gen_msgtool_from_creq( msgtool_obj, last_creq_dir, last_chatid, hist_session_dir )
 }
 
-function openai_gen_msgtool_from_creq( msgtool_obj, creq_obj, creq_kp, chatid, hist_session_dir,                  history_obj, history_num, i, l, str, \
-    _history_str, _creq_minion_kp, _system_str, _filelist_str, _media_str, _content_str, _messages_str, _tool_str){
+function openai_gen_msgtool_from_creq( msgtool_obj, creq_dir, chatid, hist_session_dir,                  history_obj, history_num, i, l, str, \
+    _history_str, _system_str, _filelist_str, _context_str, _example_str, _content_str, _messages_str, _tool_str ){
 
-    history_num = creq_obj[ creq_kp S "\"history_num\"" ]
+    history_num = creq_fragfile_unit___get( creq_dir, "history_num" )
 
     chat_history_load( history_obj, chatid, hist_session_dir, history_num )
     l = chat_history_get_maxnum(history_obj, chatid)
@@ -136,54 +100,64 @@ function openai_gen_msgtool_from_creq( msgtool_obj, creq_obj, creq_kp, chatid, h
         if(str != "") _history_str = _history_str str " ,"
     }
 
-    _creq_minion_kp = creq_kp SUBSEP "\"minion\""
-    _system_str = minion_system_tostr(creq_obj, _creq_minion_kp)
-    if (_system_str != "") _system_str = openai_gen_unit_str_rolecont( "system", _system_str ) " ,"
+    _system_str = creq_fragfile_unit___get( creq_dir, "system" )
+    if (_system_str != "") {
+        _system_str = chat_wrap_tag("system", _system_str)
+        _system_str = openai_gen_unit_str_rolecont( "system", _system_str ) " ,"
+    }
 
-    _filelist_str = creq_obj[ creq_kp S "\"filelist_attach\"" ]
-    if (_filelist_str != "") _filelist_str = openai_gen_filelist_str(juq(_filelist_str)) " ,"
+    _filelist_str = creq_fragfile_unit___get( creq_dir, "filelist_attach" )
+    if (_filelist_str != "") _filelist_str = openai_gen_filelist_str(_filelist_str) " ,"
 
-    _media_str      = openai_gen_media_str(creq_obj, creq_kp)
-    _content_str    = openai_gen_minion_content_str(creq_obj, _creq_minion_kp, _media_str)
+    _context_str = creq_fragfile_unit___get( creq_dir, "context" )
+    _context_str = (_context_str != "") ? chat_wrap_tag("context", _context_str) "\n" : ""
+    _example_str = creq_fragfile_unit___get( creq_dir, "example" )
+    _content_str = creq_fragfile_unit___get( creq_dir, "content" )
+
+    _content_str = _context_str _example_str _content_str
+    _content_str = str_trim(_content_str)
+    if ( _content_str == "" ) _content_str = "null"
+    _content_str = openai_gen_unit_str_rolecont( "user", _content_str )
+
     _messages_str   = _system_str _history_str _filelist_str _content_str
     _messages_str   = "\"messages\": [ " _messages_str " ], "
-    _tool_str       = openai_gen_tool_str(creq_obj, creq_kp)
+    _tool_str       = openai_gen_tool_str( creq_dir )
     _tool_str       = (_tool_str) ? "\"tools\": [" _tool_str "]," : ""
 
-    creq_append_usage_input_ratio_SHO( creq_obj, creq_kp, _system_str, _history_str, _filelist_str _content_str _tool_str )
+    creq_fragfile_set___usage_input_ratio_SHO( creq_dir, _system_str, _history_str, _filelist_str _content_str _tool_str )
 
     msgtool_obj[ "msg_str" ]  = _messages_str
     msgtool_obj[ "tool_str" ] = _tool_str
-    msgtool_obj[ "provider" ] = creq_obj[ creq_kp, "\"provider\"" ]
-    msgtool_obj[ "model" ]    = creq_obj[ creq_kp, "\"model\"" ]
+    msgtool_obj[ "provider" ] = creq_fragfile_unit___get( creq_dir, "provider" )
+    msgtool_obj[ "model" ]    = creq_fragfile_unit___get( creq_dir, "model" )
 }
 
-function openai_req_from_creq(creq_obj, creq_kp, chatid, hist_session_dir,
+function openai_req_from_creq(creq_dir, chatid, hist_session_dir,
     msgtool_obj, last_msgtool_obj, cache_msg, cache_tool, _msgtool, _mode, _maxtoken_keyname, _maxtoken, _seed, _temperature, _jsonmode, _ctx, is_stream, _data_str, _stream_str, _reason_eddort){
-    openai_gen_msgtool_from_creq(msgtool_obj, creq_obj, creq_kp, chatid, hist_session_dir)
+    openai_gen_msgtool_from_creq(msgtool_obj, creq_dir, chatid, hist_session_dir)
     openai_gen_last_msgtool_from_creq(msgtool_obj, last_msgtool_obj, chatid, hist_session_dir)
     _msgtool    = msgtool_obj[ "msg_str" ] msgtool_obj[ "tool_str" ]
 
     cache_msg   = chat_cal_cached( msgtool_obj[ "msg_str" ], last_msgtool_obj[ "msg_str" ] )
     cache_tool  = chat_cal_cached( msgtool_obj[ "tool_str" ], last_msgtool_obj[ "tool_str" ] )
-    creq_append_usage_input_ratio_cache( creq_obj, creq_kp, int(cache_msg + cache_tool), length( _msgtool ))
+    creq_fragfile_set___usage_input_ratio_cache( creq_dir, int(cache_msg + cache_tool), length( _msgtool ))
 
     _creq_minion_kp = creq_kp SUBSEP "\"minion\""
-    _mode           = creq_obj[ creq_kp, "\"model\"" ]
-    _maxtoken       = minion_maxtoken( creq_obj, _creq_minion_kp )
-    _seed           = minion_seed( creq_obj, _creq_minion_kp )
-    _temperature    = minion_temperature( creq_obj, _creq_minion_kp )
-    _jsonmode       = minion_is_jsonmode( creq_obj, _creq_minion_kp )
-    _ctx            = minion_ctx( creq_obj, _creq_minion_kp )
-    is_stream       = minion_is_stream( creq_obj, _creq_minion_kp, juq(_mode) )
-
+    _mode           = creq_fragfile_unit___get( creq_dir, "model" )
+    _maxtoken       = creq_fragfile_unit___get( creq_dir, "maxtoken" )
+    _seed           = creq_fragfile_unit___get( creq_dir, "seed" )
+    _temperature    = creq_fragfile_unit___get( creq_dir, "temperature" )
+    _jsonmode       = creq_fragfile_unit___get( creq_dir, "jsonmode" )
+    _ctx            = creq_fragfile_unit___get( creq_dir, "ctx" )
+    is_stream       = creq_fragfile_unit___get( creq_dir, "is_stream" )
+    is_stream       = chat_tf_bit( is_stream )
     # Tip:
     #   in some case, _maxtoken is 0, but it is not a valid value for openai.
     #   in openai, 'max_tokens' is now deprecated in favor of 'max_completion_tokens', and is not compatible with o1 series models.
 
     if ( PROVIDER_NAME == "openai" ) {
         _maxtoken_keyname = "\"max_completion_tokens\""
-        if ( _mode ~ "^\"(gpt-5|o)" ) {
+        if ( _mode ~ "^(gpt-5|o)" ) {
             _reason_eddort  = "low" # medium high
         }
     } else {
@@ -197,11 +171,11 @@ function openai_req_from_creq(creq_obj, creq_kp, chatid, hist_session_dir,
             _stream_str       = "\"stream\": true"
         }
     } else {
-        # "^(gpt-5|gpt-5-mini)$"
+        # if "^(gpt-5|gpt-5-mini)$"
         _stream_str       = "\"stream\": false"
     }
 
-    _mode           = (_mode != "") ? "\"model\": " _mode "," : ""
+    _mode           = (_mode != "") ? "\"model\": " jqu(_mode) "," : ""
     _maxtoken       = (_maxtoken > 0) ? _maxtoken_keyname ": " _maxtoken "," : ""
     _seed           = (_seed != "") ? "\"seed\": " int(_seed) "," : ""
     _temperature    = (_temperature != "") ? "\"temperature\": " _temperature "," : ""
@@ -214,92 +188,61 @@ function openai_req_from_creq(creq_obj, creq_kp, chatid, hist_session_dir,
     return _data_str
 }
 
-function openai_res_to_cres(openai_resp_o, cres_obj, cres_kp, creq_obj, creq_kp, o_tool, tool_kp,
-    resp_kp, delta_kp, resp_content_kp, resp_role_kp, resp_reason_kp, usage_kp, cres_usage_kp, cres_input_kp, cres_output_kp, cres_total_kp){
+function openai_res_to_cres(openai_resp_o, cres_dir, creq_dir, o_tool, tool_kp,
+    Q2_1, resp_kp, delta_kp, resp_content_kp, resp_role_kp, resp_reason_kp, usage_kp ){
+    mkdirp( cres_dir )
     if ( PROVIDER_NAME == "ollama" ) {
-        openai_res_to_cres___ollama_format(openai_resp_o, cres_obj, cres_kp)
+        openai_res_to_cres___ollama_format(openai_resp_o, cres_dir)
         return
     }
 
-    cres_kp = ((cres_kp != "") ? cres_kp : SUBSEP "\"1\"")
-    cres_obj[ cres_kp ] = "{"
-
-    resp_kp         = SUBSEP "\"1\"" SUBSEP "\"choices\"" SUBSEP "\"1\""
+    Q2_1            = SUBSEP "\"1\""
+    resp_kp         = Q2_1 SUBSEP "\"choices\"" SUBSEP "\"1\""
     delta_kp        = resp_kp SUBSEP "\"delta\""
     resp_content_kp = delta_kp SUBSEP "\"content\""
     resp_role_kp    = delta_kp SUBSEP "\"role\""
     resp_reason_kp  = delta_kp SUBSEP "\"reasoning_content\""
 
-    jmerge_force___value(cres_obj, cres_kp, openai_resp_o, SUBSEP "\"1\"")
-    jmerge_force___value(cres_obj, cres_kp, openai_resp_o, resp_kp)
-    jdict_put( cres_obj, cres_kp, "\"finishReason\"", cres_obj[ cres_kp, "\"finish_reason\"" ] )
-    jdict_put( cres_obj, cres_kp, "\"reply\"", "{" )
-    jdict_put( cres_obj, cres_kp SUBSEP "\"reply\"", "\"role\"", openai_resp_o[ resp_role_kp ] )
-    jdict_put( cres_obj, cres_kp SUBSEP "\"reply\"", "\"content\"", openai_resp_o[ resp_content_kp ] )
+    cres_fragfile_unit___set( cres_dir, "id",           juq( openai_resp_o[ Q2_1, "\"id\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "created",      juq( openai_resp_o[ Q2_1, "\"created\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "model",        juq( openai_resp_o[ Q2_1, "\"model\"" ] ) )
+
+    cres_fragfile_unit___set( cres_dir, "role",         juq( openai_resp_o[ resp_role_kp ] ) )
+    cres_fragfile_unit___set( cres_dir, "content",      juq( openai_resp_o[ resp_content_kp ] ) )
+
     if ( o_tool[ tool_kp L ] > 0 ) {
-        jdict_put( cres_obj, cres_kp SUBSEP "\"reply\"", "\"tool_calls\"", "[" )
-        jmerge_force___value( cres_obj, cres_kp SUBSEP "\"reply\"" SUBSEP "\"tool_calls\"", o_tool, tool_kp )
+        cres_fragfile_unit___set( cres_dir, "tool_call",            jstr( o_tool, tool_kp))
+        cres_fragfile_unit___set( cres_dir, "tool_call_l",          o_tool[ tool_kp L ])
     }
 
-    if ( openai_resp_o[ resp_reason_kp ] != "" ){
-        jdict_put( cres_obj, cres_kp SUBSEP "\"reply\"", "\"reasoning_content\"", openai_resp_o[ resp_reason_kp ] )
+    if ( openai_resp_o[ resp_reason_kp ] != "" ) {
+        cres_fragfile_unit___set( cres_dir, "reasoning_content",    juq( openai_resp_o[ resp_reason_kp ] ) )
     }
 
-    jdict_rm( cres_obj, cres_kp, "\"finish_reason\"" )
-    jdict_rm( cres_obj, cres_kp, "\"choices\"" )
-    jdict_rm( cres_obj, cres_kp, "\"delta\"" )
-    jdict_rm( cres_obj, cres_kp, "\"usage\"" )
-    cres_obj[ cres_kp, "\"usage\"" L ] = 0
-
-    jdict_put( cres_obj, cres_kp, "\"raw_usage\"", "{" )
     usage_kp        = SUBSEP "\"1\"" SUBSEP "\"usage\""
-    if ( openai_resp_o[ usage_kp ] == "{" ) jmerge_force___value( cres_obj, cres_kp SUBSEP "\"raw_usage\"", openai_resp_o, usage_kp )
+    if ( openai_resp_o[ usage_kp ] == "{" )  {
+        cres_fragfile_unit___set( cres_dir, "raw_usage",            jstr( openai_resp_o, usage_kp ) )
+    }
 
     # for kimi format
     if ( openai_resp_o[ resp_kp SUBSEP "\"usage\"" ] == "{" ) {
         usage_kp    = resp_kp SUBSEP "\"usage\""
-        jmerge_force___value( cres_obj, cres_kp SUBSEP "\"raw_usage\"", openai_resp_o, usage_kp )
+        cres_fragfile_unit___set( cres_dir, "raw_usage",            jstr( openai_resp_o, usage_kp ) )
     }
 
-    # input ouput total
-    jdict_put( cres_obj, cres_kp, "\"usage\"", "{" )
-    cres_usage_kp   = cres_kp SUBSEP "\"usage\""
-    jdict_put( cres_obj, cres_usage_kp, "\"input\"", "{" )
-    cres_input_kp   = cres_usage_kp SUBSEP "\"input\""
-    jdict_put( cres_obj, cres_input_kp, "\"tokens\"", int(openai_resp_o[ usage_kp SUBSEP "\"prompt_tokens\"" ] ) )
-    jdict_put( cres_obj, cres_input_kp, "\"cache_tokens\"", int( openai_resp_o[ usage_kp SUBSEP "\"prompt_tokens_details\"" SUBSEP "\"cached_tokens\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "usage_input_token",            int( openai_resp_o[ usage_kp SUBSEP "\"prompt_tokens\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "usage_input_cache_token",      int( openai_resp_o[ usage_kp SUBSEP "\"prompt_tokens_details\"" SUBSEP "\"cached_tokens\"" ] ) )
 
-    jdict_put( cres_obj, cres_usage_kp, "\"output\"", "{" )
-    cres_output_kp  = cres_usage_kp SUBSEP "\"output\""
-    jdict_put( cres_obj, cres_output_kp, "\"tokens\"", int( openai_resp_o[ usage_kp SUBSEP "\"completion_tokens\"" ] ) )
-    jdict_put( cres_obj, cres_output_kp, "\"thought_tokens\"", int( openai_resp_o[ usage_kp SUBSEP "\"completion_tokens_details\"" SUBSEP "\"reasoning_tokens\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "usage_output_token",           int( openai_resp_o[ usage_kp SUBSEP "\"completion_tokens\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "usage_output_thought_token",   int( openai_resp_o[ usage_kp SUBSEP "\"completion_tokens_details\"" SUBSEP "\"reasoning_tokens\"" ] ) )
 
-    jdict_put( cres_obj, cres_usage_kp, "\"total\"", "{" )
-    cres_total_kp   = cres_usage_kp SUBSEP "\"total\""
-    jdict_put( cres_obj, cres_total_kp, "\"tokens\"", int( openai_resp_o[ usage_kp SUBSEP "\"total_tokens\"" ] ) )
-
-    # creq token ratio
-    usage_kp        = creq_kp SUBSEP "\"usage\""
-    if ( creq_obj[ usage_kp ] == "{" ) jmerge_force___value( cres_obj, cres_kp SUBSEP "\"usage\"", creq_obj, usage_kp )
-
-    jdict_put( cres_obj, cres_kp, "\"provider\"", creq_obj[ creq_kp, "\"provider\"" ]  )
+    cres_fragfile_unit___set( cres_dir, "usage_total_token",            int( openai_resp_o[ usage_kp SUBSEP "\"total_tokens\"" ] ) )
 }
 
-function openai_res_to_cres___ollama_format(ollama_resp_o, cres_obj, cres_kp,          resp_kp){
-    cres_kp = ((cres_kp != "") ? cres_kp : SUBSEP "\"1\"")
-    cres_obj[ cres_kp ] = "{"
-
-    reply_kp = Q2_1 SUBSEP "\"reply\""
-    model_kp = Q2_1 SUBSEP "\"model\""
-    msg_kp = Q2_1 SUBSEP "\"message\"" SUBSEP "\"content\""
-
-    jmerge_force___value(cres_obj, cres_kp, ollama_resp_o, SUBSEP "\"1\"")
-
-    jdict_put( cres_obj, cres_kp, "\"reply\"", "{" )
-    jdict_put( cres_obj, cres_kp SUBSEP "\"reply\"", "\"role\"", ollama_resp_o[ model_kp ] )
-    jdict_put( cres_obj, cres_kp SUBSEP "\"reply\"", "\"parts\"", "[" )
-    jlist_put( cres_obj, cres_kp SUBSEP "\"reply\"" SUBSEP "\"parts\"", "{" )
-    jdict_put( cres_obj, cres_kp SUBSEP "\"reply\"" SUBSEP "\"parts\"" SUBSEP "\"1\"", "\"text\"", ollama_resp_o[ msg_kp ] )
-
-    jdict_rm( cres_obj, cres_kp, "\"message\"" )
+function openai_res_to_cres___ollama_format(ollama_resp_o, cres_dir,         Q2_1 ){
+    Q2_1 = SUBSEP "\"1\""
+    cres_fragfile_unit___set( cres_dir, "model",    juq( ollama_resp_o[ Q2_1, "\"model\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "created",  juq( ollama_resp_o[ Q2_1, "\"created_at\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "role",     juq( ollama_resp_o[ Q2_1, "\"role\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "content",  juq( ollama_resp_o[ Q2_1 SUBSEP "\"message\"" SUBSEP "\"content\"" ] ) )
 }

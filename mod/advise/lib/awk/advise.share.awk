@@ -133,10 +133,7 @@ function comp_advise_get_ref_inner(obj, kp, filepath,       _, msg){
     jref_rm(obj, kp)
     jiparse2leaf_fromfile( _, kp, filepath )
     if ( cat_is_filenotfound() ) return "Not found such advise jso file => " filepath msg # " kp["kp"]"
-    # cp_cover(obj, kp, _, kp)
-    # cp(obj, kp, _, kp)
-    jmerge_soft___value(_, kp, obj, kp)
-    jmerge_force___value(obj, kp, _, kp)
+    jmerge_soft___value(obj, kp, _, kp)
     return true
 }
 

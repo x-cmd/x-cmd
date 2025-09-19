@@ -4,16 +4,16 @@
 
 # req.json
 # res.json
-function chat_history_load( o, chatid, hist_session_dir, history_num,     _cmd, t, lt, rt, i, l, kp, kp_i, _ ){
+function chat_history_load( o, chatid, hist_session_dir, history_num,       _cmd, l, i, t, _, lt, rt, kp, kp_i, content_dir,
+tool_l, j, func_dir, func_desc, func_name, func_code, func_status, func_stdout, func_stderr, func_req, func_res ) {
     kp = chatid
     if ( o[ kp ] == "[" ) return
 
-    _cmd = "{ command find " qu1(hist_session_dir) " -type f -name \"histsum.txt\" -o -name \"chat.response.yml\" | command sort -r; } 2>/dev/null"
+    _cmd = "{ command find " qu1(hist_session_dir) " -type f -name \"histsum.txt\" -o -path \"*/chat.response/content\" | command sort -r; } 2>/dev/null"
     l = 0
     if (history_num > 0) {
         while( ( _cmd | getline t ) > 0 ){
-            if (match(t, "/[^/]+/[^/]+$"))
-            t = substr(t, RSTART+1)
+            t = substr(t, length(hist_session_dir)+2)
             i = index( t, "/" )
             lt = substr(t, 1, i-1)
             rt = substr(t, i+1)
@@ -36,38 +36,69 @@ function chat_history_load( o, chatid, hist_session_dir, history_num,     _cmd, 
     o[ kp ] = "["
     for (i=1; i<=l; ++i){
         jlist_put(o, kp, "{")
-        kp_i = kp SUBSEP "\"" o[ kp L ] "\""
+        kp_i = kp SUBSEP o[ kp L ]
 
         t = _[ l - i + 1 ]
+        content_dir = hist_session_dir "/" t
         if ( _[ t, "use_histsum" ] == true ) {
-            o[ kp_i SUBSEP "\"creq\"" SUBSEP "\"question\""] = "\"Here is the context summary of our conversation. Please base your future responses on this without repeating the summary.\""
-            o[ kp_i SUBSEP "\"cres\"" SUBSEP "\"reply\"" SUBSEP "\"content\""] = jqu( cat( hist_session_dir "/" t "/histsum.txt" ) )
-            o[ kp_i SUBSEP "\"cres\"" SUBSEP "\"finishReason\""] = "\"stop\""
+            o[ kp_i SUBSEP "req" SUBSEP "text" ] = "Here is the context summary of our conversation. Please base your future responses on this without repeating the summary."
+            o[ kp_i SUBSEP "res" SUBSEP "text" ] = cat( content_dir "/histsum.txt" )
             continue
         }
 
-        jdict_put(o, kp_i, "\"creq\"", "{" )
-        jdict_put(o, kp_i, "\"cres\"", "{" )
-        creq_loadfromjsonfile( o, kp_i SUBSEP "\"creq\"",  hist_session_dir "/" t "/chat.request.yml" )
-        cres_loadfromjsonfile( o, kp_i SUBSEP "\"cres\"",  hist_session_dir "/" t "/chat.response.yml" )
+        o[ kp_i SUBSEP "req" SUBSEP "text" ] = cat( content_dir "/chat.request/content" )
+        o[ kp_i SUBSEP "res" SUBSEP "text" ] = cat( content_dir "/chat.response/content" )
+
+        tool_l = cat( content_dir "/chat.response/tool_call_l" )
+        o[ kp_i SUBSEP "res" SUBSEP "tool_l" ] = tool_l
+        if ( tool_l > 0 ) {
+            for (j=1; j<=tool_l; ++j){
+                func_dir    = content_dir "/function-call/" j
+                func_desc   = cat( func_dir "/desc" )
+                func_name   = cat( func_dir "/name" )
+                func_arg    = cat( func_dir "/arg" )
+                func_code   = cat( func_dir "/errcode" )
+                func_status = cat( func_dir "/status" )
+                func_stdout = cat( func_dir "/stdout" )
+                func_stderr = cat( func_dir "/stderr" )
+
+                func_req = chat_wrap_tag( "index", j )
+                func_req = func_req "\n" chat_wrap_tag( "name", func_name )
+                func_req = func_req "\n" chat_wrap_tag( "desc", func_desc )
+                func_req = func_req "\n" chat_wrap_tag( "args", func_arg, " lang=\"json\"" )
+
+                func_res = chat_wrap_tag( "index", j )
+                func_res = func_res "\n" chat_wrap_tag( "name", func_name )
+                func_res = func_res "\n" chat_wrap_tag( "status", func_status )
+                func_res = func_res "\n" chat_wrap_tag( "errcode", func_code )
+                func_res = func_res "\n" chat_wrap_tag( "stderr", func_stderr )
+                func_res = func_res "\n" chat_wrap_tag( "stdout", func_stdout )
+
+                func_req = chat_wrap_tag( "funcmeta-request", func_req )
+                func_res = chat_wrap_tag( "funcmeta-result", func_res )
+                o[ kp_i SUBSEP "tool" SUBSEP j SUBSEP "req" ] = func_req
+                o[ kp_i SUBSEP "tool" SUBSEP j SUBSEP "res" ] = func_res
+            }
+        }
     }
 }
 
 function chat_history_get_req_text(o, prefix, i){
-    return o[ prefix SUBSEP "\""i"\"" SUBSEP "\"creq\"" SUBSEP "\"question\""]
+    return o[ prefix SUBSEP i SUBSEP "req" SUBSEP "text" ]
 }
 
 function chat_history_get_res_text(o, prefix, i){
-    return o[ prefix SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"reply\"" SUBSEP "\"content\"" ]
+    return o[ prefix SUBSEP i SUBSEP "res" SUBSEP "text" ]
 }
 
-function chat_history_get_res_tool_call(o, prefix, i){
-    if ( o[ prefix SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"reply\"" SUBSEP "\"tool_calls\"" L ] <= 0 ) return
-    return jstr0( o, prefix SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"reply\"" SUBSEP "\"tool_calls\"", " " )
+function chat_history_get_tool_l( o, prefix, i ){
+    return o[ prefix SUBSEP i SUBSEP "res" SUBSEP "tool_l" ]
 }
-
-function chat_history_get_finishReason(o, prefix, i){
-    return o[ prefix SUBSEP "\""i"\"" SUBSEP "\"cres\"" SUBSEP "\"finishReason\"" ]
+function chat_history_get_tool_req(o, prefix, i, j){
+    return o[ prefix SUBSEP i SUBSEP "tool" SUBSEP j SUBSEP "req" ]
+}
+function chat_history_get_tool_res(o, prefix, i, j){
+    return o[ prefix SUBSEP i SUBSEP "tool" SUBSEP j SUBSEP "res" ]
 }
 
 function chat_history_get_maxnum(o, prefix){
@@ -88,10 +119,4 @@ function chat_history_get_last_chatid(hist_session_dir, provider, cur_chatid,   
     close( _cmd )
     if ( last_chatid  == "" ) return
     return last_chatid
-}
-
-function chat_history_get_last_creq(o, prefix, hist_session_dir, provider, cur_chatid, last_chatid){
-    if ( last_chatid == "" ) last_chatid = chat_history_get_last_chatid(hist_session_dir, provider, cur_chatid)
-    if ( last_chatid == "" ) return
-    creq_loadfromjsonfile( o, prefix, hist_session_dir "/" last_chatid "/chat.request.yml" )
 }

@@ -55,11 +55,13 @@ BEGIN{
 END{
     _c = int( STATUS_OBJ[ "EXITCODE" ] )
     if ( _c == 0 ) {
-        if ( is_interactive ) {
-            handle_content_md( OUTPUT_ARR )
-        } else {
-            l = OUTPUT_ARR[ L ]
-            for (i=1; i<=l; ++i) print OUTPUT_ARR[i]
+        l = OUTPUT_ARR[ L ]
+        if (( l > 1 ) || ( OUTPUT_ARR[1] != "" )) {
+            if ( is_interactive ) {
+                handle_content_md( OUTPUT_ARR )
+            } else {
+                for (i=1; i<=l; ++i) print OUTPUT_ARR[i]
+            }
         }
     }
 
@@ -104,41 +106,38 @@ function handle_usage(str,          o, kp_usage, total_token, at, it, ot, ict, i
     } else {
         jiparse_after_tokenize(o, str)
         kp_usage = Q2_1 SUBSEP "\"usage\""
-        at = int( o[ kp_usage SUBSEP "\"total\""  SUBSEP "\"tokens\"" ] )
+        at = int( o[ kp_usage SUBSEP "\"total\""  SUBSEP "\"token\"" ] )
         if ( at <= 0 ) {
             if ( _time_str != "" ) detail_str = "Time: " _time_str
         } else {
-            it = int( o[ kp_usage SUBSEP "\"input\""  SUBSEP "\"tokens\"" ] )
-            ot = int( o[ kp_usage SUBSEP "\"output\"" SUBSEP "\"tokens\"" ] )
+            it = int( o[ kp_usage SUBSEP "\"input\""  SUBSEP "\"token\"" ] )
+            ot = int( o[ kp_usage SUBSEP "\"output\"" SUBSEP "\"token\"" ] )
 
-            ict =  int( o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"cache_tokens\"" ] )
-            icr =  o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"cache\"" ]
+            ict =  int( o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"cache_token\"" ] )
+            icr =  o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio_cache\"" ]
             if ( ict > 0 ) icr = sprintf( "%.4f", (ict/it) )
             if ( icr > 0 ) _cache_str = " (Cache " icr * 100 "%)"
 
-            ott = int( o[ kp_usage SUBSEP "\"output\"" SUBSEP "\"thought_tokens\"" ] )
+            ott = int( o[ kp_usage SUBSEP "\"output\"" SUBSEP "\"thought_token\"" ] )
             if ( ott > 0 ) otr = sprintf("%.4f", (ott/ot) )
             if ( otr > 0 ) _thought_str = " (Thought " otr * 100 "%)"
 
-            isr = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"system\"" ]
-            ihr = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"history\"" ]
-            ior = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio\"" SUBSEP "\"other\"" ]
+            isr = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio_system\"" ]
+            ihr = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio_history\"" ]
+            ior = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio_other\"" ]
 
             model = o[ Q2_1 SUBSEP "\"model\"" ]
             provider = o[ Q2_1 SUBSEP "\"provider\"" ]
             PRICE_DATA_DIR = ENVIRON[ "___X_CMD_PRICE_DATA_DIR" ]
             price_data_file = PRICE_DATA_DIR "/" juq(provider) "/latest.json"
             usd_rate_file = PRICE_DATA_DIR "/usd-rate.json"
-            # debug( "price_data_file:" price_data_file )
             if ( jiparse2leaf_fromfile( llmp_obj, Q2_1, price_data_file ) && jiparse2leaf_fromfile( ccy_obj, Q2_1, usd_rate_file )  ) {
                 llmp_model = llmp_search_model( llmp_obj, Q2_1, model )
                 llmp_it = it - ict
-                # debug( "llmp_it:" llmp_it )
                 if ( llmp_model != "" ) {
                     totalprice = llmp_total_calprice( llmp_obj, Q2_1, llmp_model, llmp_it, ict, ot )
                     money_unit = ENVIRON[ "money_unit" ]
                     amount = llmp_usd_to_currency( ccy_obj, Q2_1, money_unit, totalprice )
-                    # debug( "money_unit:" money_unit " amount:" amount " totalprice:" totalprice)
                     _money_str = " · Cost: " llmp_format_currency( amount, money_unit )
                 }
             }

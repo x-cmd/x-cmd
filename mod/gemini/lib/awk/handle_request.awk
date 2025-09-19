@@ -29,17 +29,18 @@ BEGIN{
 
 END{
     minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE , "gemini")
-    MODEL               = minion_model( minion_obj, MINION_KP )
-    IS_STREAM           = minion_is_stream( minion_obj, MINION_KP, MODEL )
-    IS_REASONING        = minion_is_reasoning( minion_obj, MINION_KP )
     mkdirp( SESSIONDIR "/" CHATID )
 
-    creq_create( creq_obj, SUBSEP "creq", minion_obj, MINION_KP, PROVIDER_NAME, MODEL, QUESTION, CHATID, IMAGELIST, IS_STREAM, IS_REASONING )
+    creq_dir = (SESSIONDIR "/" CHATID "/chat.request")
+    creq_fragfile_create( creq_dir, minion_obj, MINION_KP, PROVIDER_NAME, def_model, QUESTION, CHATID )
+    MODEL               = creq_fragfile_unit___get( creq_dir, "model" )
+    IS_STREAM           = creq_fragfile_unit___get( creq_dir, "is_stream" )
+    IS_REASONING        = creq_fragfile_unit___get( creq_dir, "is_reasoning" )
+    IS_STREAM           = chat_tf_bit( IS_STREAM )
+    IS_REASONING        = chat_tf_bit( IS_REASONING )
 
-    gemini_request_body_json            = gemini_req_from_creq( creq_obj, SUBSEP "creq", CHATID, HIST_SESSIONDIR )    # Notice: it's must before creq_create
+    gemini_request_body_json            = gemini_req_from_creq( creq_dir, CHATID, HIST_SESSIONDIR )    # Notice: it's must before creq_create
     print gemini_request_body_json      > (SESSIONDIR "/" CHATID "/gemini.request.body.yml")
-    chat_request_json                   = creq_dump( creq_obj, SUBSEP "creq")
-    print chat_request_json             > (SESSIONDIR "/" CHATID "/chat.request.yml")
 
     print SESSIONDIR "/" CHATID
     print MODEL
