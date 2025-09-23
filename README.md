@@ -26,7 +26,7 @@ X-CMD (pronounced as "*X Command*") is a compact yet powerful command-line toolk
 - 🛡️ **Secure Sandbox**: Provide permission-controlled system sandbox and Docker-based isolation — run software safely.
 - 🎨 **Terminal Beautifier**: Built-in switch terminal theme & primary color, fonts installation, quickpath navigation and native completions — stylish and efficient.
 - ∞ **Design & UX**: Unified CLI style, intuitive terminal UI, smooth workflows, effortless terminal experience.
-- 🗃️ **HUB**: Instantly run hosted scripts across different platforms and shells, even in lightweight containers like BusyBox and Alpine.
+- 🗃️ **Hub**: Instantly run hosted scripts across different platforms and shells, even in lightweight containers like BusyBox and Alpine.
 - 🪶 **Lightweight**: Core package ~ 1.1 MB, loads in ~ 100 ms.
 
 [![x-cmd-banner](https://cdn.jsdelivr.net/gh/Zhengqbbb/Zhengqbbb@v1.2.2/x-cmd/x-cmd-banner.png)](https://x-cmd.com)

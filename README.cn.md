@@ -39,7 +39,7 @@ X-CMD（读作 "X Command"）是一个小巧且功能强大的命令行工具集
 - 🛡️ **安全沙箱**: 提供系统权限控制沙箱和基于 Docker 的隔离沙箱 — 在安全空间中放心运行工具。
 - 🎨 **终端美化**: 内置终端主题与主题色切换，字体安装器，导航切换和原生的命令补全 — 美观又高效。
 - ∞ **一致化设计 & 交互友好**: 统一的命令风格，直观的 TUI 交互，丝滑的流程控制，轻松的终端体验。
-- 🗃️ **HUB**: 随时随地运行自托管脚本，即使在 Alpine / Busybox 等极简容器镜像。
+- 🗃️ **Hub**: 随时随地运行自托管脚本，即使在 Alpine / Busybox 等极简容器镜像。
 - 🪶 **极致轻量化**: 核心包体积 ~ 1.1 MB, 加载时间控制 ~ 100 ms.
 
 [![x-cmd-banner](https://cdn.jsdelivr.net/gh/Zhengqbbb/Zhengqbbb@v1.2.2/x-cmd/x-cmd-banner.png)](https://cn.x-cmd.com)
