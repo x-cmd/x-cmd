@@ -22,7 +22,7 @@
             扫码关注官方微信公众号获取开源软件和 x-cmd 的最新用法与独家资讯
             </p>
         </td>
-        <td align="center" >
+        <td align="center" width="300px">
             <img align="center" src="https://foruda.gitee.com/images/1715696069230260264/d8037bf6_9641432.png" alt="公众号二维码，微信搜索：oh my x" width="140">
         </td>
     </tr>
