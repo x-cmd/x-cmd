@@ -94,9 +94,9 @@ For more information see [mod/get-started](https://www.x-cmd.com/mod/get-started
 <td width="500px">
 
 ```sh
-x openai
-x gemini
-x deepseek
+x claude
+x codex
+x crush
 ...
 ```
 
@@ -104,9 +104,9 @@ x deepseek
 <td width="500px">
 
 ```sh
-x claude
-x codex
-x crush
+x openai
+x gemini
+x deepseek
 ...
 ```
 
