@@ -23,7 +23,7 @@
             </p>
         </td>
         <td align="center" width="300px">
-            <img align="center" src="https://foruda.gitee.com/images/1715696069230260264/d8037bf6_9641432.png" alt="公众号二维码，微信搜索：oh my x" width="140px">
+            &nbsp;<img align="center" src="https://foruda.gitee.com/images/1715696069230260264/d8037bf6_9641432.png" alt="公众号二维码，微信搜索：oh my x" />
         </td>
     </tr>
 </table>
@@ -107,9 +107,9 @@ X-CMD 提供的功能模块，通过 `x <mod>` 的方式调用。
 <td width="500px">
 
 ```sh
-x openai
-x gemini
-x deepseek
+x claude
+x codex
+x crush
 ...
 ```
 
@@ -117,9 +117,9 @@ x deepseek
 <td width="500px">
 
 ```sh
-x claude
-x codex
-x crush
+x openai
+x gemini
+x deepseek
 ...
 ```
 
