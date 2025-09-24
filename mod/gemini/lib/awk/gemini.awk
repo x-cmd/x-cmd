@@ -6,10 +6,14 @@ BEGIN{
 
 function gemini_gen_unit_str_text(str){
     str = str_trim(str)
-    if( ! chat_str_is_null(str)) {
-        if (str !~ "^\"")  str = jqu(str)
-        return "{\"text\":" str "}"
-    }
+    if( chat_str_is_null(str)) return
+    if (str !~ "^\"")  str = jqu(str)
+    return "{\"text\":" str "}"
+}
+
+function gemini_gen_unit_str_image(base64, mime_type){
+    if( chat_str_is_null(base64)) return
+    return "{ \"inline_data\": { \"mime_type\": " jqu(mime_type) ", \"data\": " jqu(base64) " } }"
 }
 
 function gemini_gen_unit_str_rolepart(role, str){
@@ -48,12 +52,20 @@ function gemini_gen_history_str( history_obj, chatid, i,      res_text, req_text
     return _res
 }
 
-function gemini_gen_filelist_str(filelist_str,       arr, _str, i, l){
+function gemini_gen_filelist_str(filelist_str,       arr, _fp, _type, _str, i, l){
     if ( chat_str_is_null(filelist_str) ) return
     chat_filelist_load_to_array( filelist_str, arr )
     l = arr[ L ]
     for (i=1; i<=l; ++i){
-        _str = _str gemini_gen_unit_str_text( arr[i] ) ((i!=l) ? ", " : "")
+        _fp = arr[ i ]
+        _type = arr[ _fp, "type" ]
+        if ( _type == "text" ) {
+            _str = _str gemini_gen_unit_str_text( arr[ _fp, "text" ] )
+        } else if ( _type == "image" ) {
+            _str = _str gemini_gen_unit_str_text( arr[ _fp, "text" ] ) ", "
+            _str = _str gemini_gen_unit_str_image( arr[ _fp, "base64" ], arr[ _fp, "mime_type" ] )
+        }
+        _str = _str ((i!=l) ? ", " : "")
     }
 
     if ( _str != "" ) {
@@ -138,10 +150,11 @@ function gemini_req_from_creq(creq_dir, chatid, hist_session_dir,       msgtool_
 
 # extract ...
 function gemini_res_to_cres(gemini_resp_o, cres_dir, creq_dir, o_tool, tool_kp,
-    v, resp_kp, resp_content_kp, usage_kp, usage_prompt_kp, usage_cand_kp, usage_total_kp, usage_thought_kp, usage_cache_kp, cres_usage_kp, cres_input_kp, cres_output_kp, cres_total_kp ){
+    v, resp_kp, resp_content_kp, resp_finish_kp, usage_kp, usage_prompt_kp, usage_cand_kp, usage_total_kp, usage_thought_kp, usage_cache_kp, cres_usage_kp, cres_input_kp, cres_output_kp, cres_total_kp ){
 
     resp_kp             = Q2_1 SUBSEP "\"candidates\"" SUBSEP "\"1\""
     resp_content_kp     = resp_kp SUBSEP "\"content\""
+    resp_finish_kp      = resp_kp SUBSEP "\"finishReason\""
     usage_kp            = Q2_1 SUBSEP "\"usageMetadata\""
     usage_prompt_kp     = usage_kp SUBSEP "\"promptTokenCount\""
     usage_cand_kp       = usage_kp SUBSEP "\"candidatesTokenCount\""
@@ -155,15 +168,19 @@ function gemini_res_to_cres(gemini_resp_o, cres_dir, creq_dir, o_tool, tool_kp,
     cres_fragfile_unit___set( cres_dir, "content",  juq( gemini_resp_o[ resp_content_kp SUBSEP "\"parts\"" SUBSEP "\"1\"" SUBSEP "\"text\"" ] ) )
 
     if ( o_tool[ tool_kp L ] > 0 ) {
-        cres_fragfile_unit___set( cres_dir, "tool_call",            jstr( o_tool, tool_kp))
-        cres_fragfile_unit___set( cres_dir, "tool_call_l",          o_tool[ tool_kp L ])
+        cres_fragfile_unit___set( cres_dir, "tool_call",                jstr( o_tool, tool_kp))
+        cres_fragfile_unit___set( cres_dir, "tool_call_l",              o_tool[ tool_kp L ])
     }
 
     if ( gemini_resp_o[ resp_content_kp SUBSEP "\"parts\"" SUBSEP "\"2\"" SUBSEP "\"thought\"" ] == "true" ) {
-        cres_fragfile_unit___set( cres_dir, "reasoning_content",    juq( gemini_resp_o[ resp_content_kp SUBSEP "\"parts\"" SUBSEP "\"2\"" SUBSEP "\"text\"" ] ) )
+        cres_fragfile_unit___set( cres_dir, "reasoning_content",        juq( gemini_resp_o[ resp_content_kp SUBSEP "\"parts\"" SUBSEP "\"2\"" SUBSEP "\"text\"" ] ) )
     }
 
-    cres_fragfile_unit___set( cres_dir, "raw_usage",            jstr( gemini_resp_o, usage_kp ) )
+    if ( gemini_resp_o[ resp_finish_kp ] ) {
+        cres_fragfile_unit___set( cres_dir, "finish_reason",            juq( gemini_resp_o[ resp_finish_kp ] ) )
+    }
+
+    cres_fragfile_unit___set( cres_dir, "raw_usage",                    jstr( gemini_resp_o, usage_kp ) )
 
     cres_fragfile_unit___set( cres_dir, "usage_input_token",            int(gemini_resp_o[ usage_prompt_kp ] + gemini_resp_o[ usage_cache_kp ]) )
     cres_fragfile_unit___set( cres_dir, "usage_input_cache_token",      int(gemini_resp_o[ usage_cache_kp ] ) )

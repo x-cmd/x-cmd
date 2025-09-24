@@ -9,22 +9,14 @@ BEGIN{
     HIST_SESSIONDIR     = ENVIRON[ "XCMD_CHAT_HISTORY_SESSION_DIR" ]
     HIST_SESSIONDIR     = ( HIST_SESSIONDIR != "" ) ? HIST_SESSIONDIR : SESSIONDIR
     QUESTION            = ""
-    IMAGELIST           = ""
     IS_IMAGE_DATA       = 0
     # IS_REASONING
 
     Q2_1                = SUBSEP "\"1\""
     MINION_KP           = Q2_1
-    CREQ_KP             = Q2_1
 }
 {
-    if ($0 == "\001\002\003:image") {
-        while( getline ) {
-            IMAGELIST = IMAGELIST $0 "\n"
-        }
-    } else {
-        QUESTION = QUESTION $0 "\n"
-    }
+    QUESTION = QUESTION $0 "\n"
 }
 
 END{
@@ -39,7 +31,7 @@ END{
     IS_STREAM           = chat_tf_bit( IS_STREAM )
     IS_REASONING        = chat_tf_bit( IS_REASONING )
 
-    gemini_request_body_json            = gemini_req_from_creq( creq_dir, CHATID, HIST_SESSIONDIR )    # Notice: it's must before creq_create
+    gemini_request_body_json            = gemini_req_from_creq( creq_dir, CHATID, HIST_SESSIONDIR )
     print gemini_request_body_json      > (SESSIONDIR "/" CHATID "/gemini.request.body.yml")
 
     print SESSIONDIR "/" CHATID
@@ -47,14 +39,3 @@ END{
     print IS_STREAM
     print IS_REASONING
 }
-
-
-# {
-#   "contents": [
-#     {
-#       text:
-#       role:
-#     }
-#   ],
-
-# {"contents":[{"parts":[{"text":"Write a story about a magic backpack"}]}]}

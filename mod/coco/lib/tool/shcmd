@@ -5,32 +5,47 @@
 
 ___x_cmd_coco_shcmd(){
     local cmd=""
-    local risk=""       # low, medium, high
-    local desc=""
+    local risk="medium"       # low, medium, high, default to medium
 
     arg:init:x  coco
     while [ $# -gt 0 ]; do
         case "$1" in
+            --cmd)          cmd="$2";           arg:2:shift ;;
+            --risk)         risk="$2";          arg:2:shift ;;
             *)              break ;;
         esac
     done
 
-    [ -z "$cmd" ] ||
+    [ -n "$cmd" ] || N=coco M="Please provide the command to execute" log:ret:64
 
-    # Judging by coco agent: cmd, desc, risk
-
+    local confirmid=""
     case "$risk" in
         low)
-
+            # No confirmation for low risk commands
+            coco:info "Executing low risk command -> $cmd"
             ;;
-        high)
-            coco:info               \
-                    --cmd "$cmd"    \
-                    "Function call ->   $desc"
+        medium|high)
+            coco:info "Requesting user confirmation for command execution" 2>/dev/tty >&2
+            coco:info --m:content "$cmd" "Command to execute:" 2>/dev/tty >&2
 
-            ___x_cmd ui select "Confirm to execute the command."
+            ___x_cmd ui select confirmid "Confirm to execute the command." \
+                "Yes" "No" 2>/dev/tty >&2 || return $?
+
+            case "$confirmid" in
+                1)  coco:info "User granted permission to execute command"
+                    ;;
+                2)  coco:error "User permission denied for command execution"
+                    printf "[BREAK] 1\n" >> "$X_COCO_TOOL_ENACTCMD_FOLDER/log"
+                    return 1
+                    ;;
+            esac
+            ;;
+        *)
+            coco:error "Invalid risk level: $risk. Must be low, medium, or high."
+            return 1
             ;;
     esac
 
-    eval "$cmd"
+    "${SHELL:-/bin/sh}" -c "$cmd"
 }
+

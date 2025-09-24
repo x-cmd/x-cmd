@@ -8,18 +8,11 @@ BEGIN{
     HIST_SESSIONDIR     = ENVIRON[ "XCMD_CHAT_HISTORY_SESSION_DIR" ]
     HIST_SESSIONDIR     = ( HIST_SESSIONDIR != "" ) ? HIST_SESSIONDIR : SESSIONDIR
     QUESTION            = ""
-    IMAGELIST           = ""
     Q2_1                = SUBSEP "\"1\""
     MINION_KP           = Q2_1
 }
 {
-    if ($0 == "\001\002\003:image") {
-        while( getline ) {
-            IMAGELIST = IMAGELIST $0 "\n"
-        }
-    } else {
-        QUESTION = QUESTION $0 "\n"
-    }
+    QUESTION = QUESTION $0 "\n"
 }
 END{
     minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE, PROVIDER_NAME )

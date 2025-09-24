@@ -1,6 +1,7 @@
 
-function chat_str_is_null( str ){
-    return ((str == "") || (str == "null") || (str == "NULL") || (str == "\"\""))
+# extra_field: none
+function chat_str_is_null( str, extra_field ){
+    return ((str == "") || (str == "null") || (str == "NULL") || (str == "\"\"") || ( str == extra_field ))
 }
 
 function chat_str_replaceall( src,          _name, ans ){
@@ -58,7 +59,7 @@ function chat_cal_cached( curr, last,         _curr_arr, _last_arr, _curr_l, _la
     return c
 }
 
-function chat_filelist_load_to_array(v, arr,            i, l, _, fp, fp_desc, fp_content, id, _str ){
+function chat_filelist_load_to_array(v, arr,            i, l, _, fp, fp_desc, fp_content, fp_base64, fp_suffix, id, _str ){
     if ( chat_str_is_null(v) ) return
     l = split( v, _, "\n" )
     for (i=1; i<=l; ++i){
@@ -69,12 +70,35 @@ function chat_filelist_load_to_array(v, arr,            i, l, _, fp, fp_desc, fp
             fp_desc = substr(fp, id+1)
             fp = substr(fp, 1, id-1)
         }
-        fp_content = cat(fp)
-        gsub("[ \t]+\n", "\n", fp_content)
-        _str =  "<file-name>" fp "</file-name>\n"
+
+        if ( arr[ fp, "recorded" ] == true ) continue
+        arr[ ++arr[L] ] = fp
+        arr[ fp, "recorded" ] = true
+        _str = "<file-name>" fp "</file-name>\n"
         if ( fp_desc !="" ) _str = _str "<file-desc>" fp_desc "</file-desc>\n"
-        _str = _str "<file-content>" fp_content "</file-content>\n"
-        arr[ ++arr[L] ] = _str
+        if (match(tolower(fp), "(.png|.jpeg|.jpg|.webp|.gif)$")) {
+            fp_suffix = tolower( substr(fp, RSTART+1) )
+            fp_base64 = file_base64(fp)
+            _str = _str "<file-type>image</file-type>\n"
+            if ( fp_base64 != "" ) {
+                arr[ fp, "type" ] = "image"
+                arr[ fp, "text" ] = _str
+                arr[ fp, "base64" ] = fp_base64
+                if ( fp_suffix == "jpg" ) fp_suffix = "jpeg"
+                arr[ fp, "mime_type" ] = "image/" fp_suffix
+            } else {
+                _str = _str "<file-content>Failed to read image file content</file-content>\n"
+                arr[ fp, "type" ] = "text"
+                arr[ fp, "text" ] = _str
+                continue
+            }
+        } else {
+            fp_content = cat(fp)
+            gsub("[ \t]+\n", "\n", fp_content)
+            _str = _str "<file-content>" fp_content "</file-content>\n"
+            arr[ fp, "type" ] = "text"
+            arr[ fp, "text" ] = _str
+        }
     }
 }
 

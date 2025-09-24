@@ -326,6 +326,14 @@ function mkdirp( dir,       _cmd,   t ){
     return t
 }
 
+function file_base64( fp,       _cmd, t ){
+    fp = qu1(fp)
+    _cmd = "[ ! -f " fp " ] || { if command base64 -w 0 /dev/null 2>/dev/null 1>&2; then command base64 -w 0 " fp "; else command base64 -i " fp "; fi; };"
+    _cmd | getline t
+    close( _cmd )
+    return t
+}
+
 # Section: fs.awk cat bcat
 # TODO: this module try to provide facility for filesystem manipulation in the future.
 function cat( filepath,    r, c, l ){

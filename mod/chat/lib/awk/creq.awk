@@ -43,7 +43,6 @@ function creq_fragfile_create( dir, minion_obj, minion_kp, provider, def_model, 
     creq_fragfile_unit___set( dir, "jsonmode",          minion_is_jsonmode( minion_obj, minion_kp ) )
     creq_fragfile_unit___set( dir, "ctx",               minion_ctx( minion_obj, minion_kp ) )
 
-    # creq_fragfile_unit___set( dir, "imagelist",      imagelist )
     creq_fragfile_unit___set( dir, "tool")
 
     filelist_attach = minion_filelist_attach( minion_obj, minion_kp )

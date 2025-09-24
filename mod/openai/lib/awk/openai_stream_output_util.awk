@@ -42,7 +42,7 @@ function openai_record_response___text_content( o,        item, response_item, f
     item = o[ KP_DELTA_CONTENT ]
     response_item = o[ KP_DELTA_REASONING_CONTENT ]
 
-    if (( item == "null" ) && ( ! chat_str_is_null(response_item) )) {
+    if (( chat_str_is_null(item) ) && ( ! chat_str_is_null(response_item) )) {
         if ( OPENAI_RESPONSE_HAS_REASONING  == 0 ) {
             if ( IS_REASONING == true ) chat_record_str_to_drawfile( "---------- REASONING BEGIN ----------\n", DRAW_PREFIX )
         }
@@ -89,16 +89,29 @@ function openai_record_response___text_content( o,        item, response_item, f
 
     choices_l = o[ KP_CHOICES L ]
     created  = o[ KP_CREATED ] # For gh models
-    finish_reason = o[ KP_FINISH_REASON ]
+    finish_reason = tolower( o[ KP_FINISH_REASON ] )
+    if ( finish_reason ~ "^\"" ) finish_reason = juq( finish_reason )
     jmerge_force( o_response, o )
-    if (((choices_l <= 0) && (created != 0)) || (( finish_reason != "" ) && ( finish_reason != "null" ))) {
+    delete o
+
+    if ( (chat_str_is_null( finish_reason, "none" )) && ((choices_l > 0) || (created == 0)) ) {
+        return
+    } else if ( finish_reason == "length" ) {
+        OPENAI_RESPONSE_IS_ERROR_CONTENT = 1
+        OPENAI_RESPONSE_EXITCODE = 2
+        OPENAI_RESPONSE_ERROR_MSG = "finish_reason: " finish_reason "\nNote: The maximum number of tokens specified in the request was reached"
+        exit(1)
+    } else if ( finish_reason == "content_filter" ) {
+        OPENAI_RESPONSE_IS_ERROR_CONTENT = 1
+        OPENAI_RESPONSE_EXITCODE = 2
+        OPENAI_RESPONSE_ERROR_MSG = "finish_reason: " finish_reason "\nNote: Content was omitted due to a flag from the llm's content filters"
+        exit(1)
+    } else {
         o_response[ KP_FINISH_REASON ] = finish_reason
         o_response[ KP_DELTA_CONTENT ] = jqu(OPENAI_RESPONSE_CONTENT)
         o_response[ KP_DELTA_REASONING_CONTENT ] = jqu(OPENAI_RESPONSE_REASONING_CONTENT)
         openai_record_response___tool_call( tool_arr )
-        exit(0)
     }
-    delete o
 }
 
 function openai_record_response___tool_call(tool_arr,             idx, name, args, desc, dir){

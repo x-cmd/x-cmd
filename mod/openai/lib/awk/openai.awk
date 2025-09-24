@@ -7,6 +7,11 @@ function openai_gen_unit_str_text(str){
     if (str !~ "^\"")  str = jqu(str)
     return "{ \"type\": \"text\", \"text\": " str " }"
 }
+function openai_gen_unit_str_image(base64, mime_type,       _msg){
+    if( chat_str_is_null(base64) ) return
+    _msg = "data:" mime_type ";base64,{" base64 "}"
+    return "{ \"type\": \"image_url\", \"image_url\": { \"url\": " jqu(_msg) " } }"
+}
 
 function openai_gen_unit_str_rolecont( role, content ){
     if ( role !~ "^\"" )    role = jqu( role )
@@ -34,12 +39,20 @@ function openai_gen_history_str( history_obj, chatid, i,        req_text, res_te
     return _res
 }
 
-function openai_gen_filelist_str(filelist_str,       arr, _str, i, l){
+function openai_gen_filelist_str(filelist_str,       arr, _fp, _type, _str, i, l){
     if ( chat_str_is_null(filelist_str) ) return
     chat_filelist_load_to_array( filelist_str, arr )
     l = arr[ L ]
     for (i=1; i<=l; ++i){
-        _str = _str openai_gen_unit_str_text( arr[i] ) ((i!=l) ? ", " : "")
+        _fp = arr[ i ]
+        _type = arr[ _fp, "type" ]
+        if ( _type == "text" ) {
+            _str = _str openai_gen_unit_str_text( arr[ _fp, "text" ] )
+        } else if ( _type == "image" ) {
+            _str = _str openai_gen_unit_str_text( arr[ _fp, "text" ] ) ", "
+            _str = _str openai_gen_unit_str_image( arr[ _fp, "base64" ], arr[ _fp, "mime_type" ] )
+        }
+        _str = _str ((i!=l) ? ", " : "")
     }
 
     if ( _str != "" ) {
@@ -142,7 +155,6 @@ function openai_req_from_creq(creq_dir, chatid, hist_session_dir,
     cache_tool  = chat_cal_cached( msgtool_obj[ "tool_str" ], last_msgtool_obj[ "tool_str" ] )
     creq_fragfile_set___usage_input_ratio_cache( creq_dir, int(cache_msg + cache_tool), length( _msgtool ))
 
-    _creq_minion_kp = creq_kp SUBSEP "\"minion\""
     _mode           = creq_fragfile_unit___get( creq_dir, "model" )
     _maxtoken       = creq_fragfile_unit___get( creq_dir, "maxtoken" )
     _seed           = creq_fragfile_unit___get( creq_dir, "seed" )
@@ -189,7 +201,7 @@ function openai_req_from_creq(creq_dir, chatid, hist_session_dir,
 }
 
 function openai_res_to_cres(openai_resp_o, cres_dir, creq_dir, o_tool, tool_kp,
-    Q2_1, resp_kp, delta_kp, resp_content_kp, resp_role_kp, resp_reason_kp, usage_kp ){
+    Q2_1, resp_kp, delta_kp, resp_content_kp, resp_role_kp, resp_reason_kp, resp_finish_kp, usage_kp ){
     mkdirp( cres_dir )
     if ( PROVIDER_NAME == "ollama" ) {
         openai_res_to_cres___ollama_format(openai_resp_o, cres_dir)
@@ -202,6 +214,7 @@ function openai_res_to_cres(openai_resp_o, cres_dir, creq_dir, o_tool, tool_kp,
     resp_content_kp = delta_kp SUBSEP "\"content\""
     resp_role_kp    = delta_kp SUBSEP "\"role\""
     resp_reason_kp  = delta_kp SUBSEP "\"reasoning_content\""
+    resp_finish_kp  = resp_kp SUBSEP "\"finish_reason\""
 
     cres_fragfile_unit___set( cres_dir, "id",           juq( openai_resp_o[ Q2_1, "\"id\"" ] ) )
     cres_fragfile_unit___set( cres_dir, "created",      juq( openai_resp_o[ Q2_1, "\"created\"" ] ) )
@@ -217,6 +230,10 @@ function openai_res_to_cres(openai_resp_o, cres_dir, creq_dir, o_tool, tool_kp,
 
     if ( openai_resp_o[ resp_reason_kp ] != "" ) {
         cres_fragfile_unit___set( cres_dir, "reasoning_content",    juq( openai_resp_o[ resp_reason_kp ] ) )
+    }
+
+    if ( openai_resp_o[ resp_finish_kp ] != "" ) {
+        cres_fragfile_unit___set( cres_dir, "finish_reason",        juq( openai_resp_o[ resp_finish_kp ] ) )
     }
 
     usage_kp        = SUBSEP "\"1\"" SUBSEP "\"usage\""

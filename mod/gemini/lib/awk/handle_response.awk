@@ -17,12 +17,6 @@ END{
     _exitcode = 0
     if ( IS_ENACTNONE != true ) print "\n---"       >> XCMD_CHAT_ENACTALL_DRAWFILE
 
-    # _current_kp = Q2_1 SUBSEP "\""obj[ Q2_1 L ]"\""
-    # if ( obj[ _current_kp, "\"error\"" ] != "" ) {
-    #     o_error[ L ] = 1
-    #     jmerge_force___value( o_error, Q2_1, obj, _current_kp )
-    # }
-
     if (GEMINI_HAS_RESPONSE_CONTENT == 0) {
         msg_str = "The response content is empty"
         log_error("gemini", msg_str)

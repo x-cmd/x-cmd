@@ -2,14 +2,10 @@
 
 # x webtop run ubuntu-xfce
 
-# --cjk auto
-# --cjk true|yes|y|t
-# --cjk false|no|n|f
-
 # default we will never expose https port
-# x webtop run -p 127.0.0.1:3000 --cjk auto --name x-webtop-3000 ubuntu-kde
+# x webtop run -p 127.0.0.1:3000 --name x-webtop-3000 ubuntu-kde
 
-# x webtop run -p 127.0.0.1:3000 --cjk auto --name x-webtop-3000 ubuntu-kde
+# x webtop run -p 127.0.0.1:3000 --name x-webtop-3000 ubuntu-kde
 
 # home -> /home
 # wd -> /wd
@@ -37,23 +33,27 @@ ___x_cmd_webtop_container_run(){
     local tz=""
     local lc=""
 
-    local cjk=auto
     local x_=""
 
     local dind=""
     local priv=""
 
+    local dri=""
+    local nvidia=""
+
     while [ $# -gt 0 ]; do
         case "$1" in
             -p|--port)      port="$2";      shift 2 ;;
             # --sslport)      sslport="$2";   shift 2 ;;  # TODO: We will support in the future
-            --cjk)          cjk="$2";       shift 2 ;;
 
             --lc)           lc="$2";        shift 2 ;;
             --tz)           tz="$2";        shift 2 ;;
 
             --dind)         dind=1;         shift 1 ;;
             --priv)         priv=1;         shift 1 ;;
+
+            --dri)          dri=1;          shift 1 ;;
+            --nvidia)       nvidia=1;       shift 1 ;;
 
             -u|--user)      user="$2";      shift 2 ;;
             -P|--password)  password="$3";  shift 2 ;;
@@ -74,7 +74,14 @@ ___x_cmd_webtop_container_run(){
         os="$(___x_cmd webtop --cfg get os 2>/dev/null)"
         [ -n "$os" ] || os=ubuntu
         desktop="$(___x_cmd webtop --cfg get desktop 2>/dev/null)"
-        [ -n "$desktop" ] || desktop=kde
+        [ -n "$desktop" ] || {
+            case "$os" in
+                el)         desktop=xfce    ;;
+                alpine)
+                            desktop=mate    ;;  # because kde is unavaible. Try xfce if available.
+                *)          desktop=kde     ;;
+            esac
+        }
 
         tag="${os}-${desktop}"
         webtop:info "Using default tag -> $tag"
@@ -82,6 +89,11 @@ ___x_cmd_webtop_container_run(){
 
     ___x_cmd_webtop_image_tag_normal_ "$tag" || N=webtop M="Invalid webtop image tag -> $tag" log:ret:64
     tag="$x_"
+
+    case "$tag" in
+        alpine-xfce|alpine-kde|el-kde)
+            N=webtop M="Currently unsupported webtop image tag -> $tag" log:ret:64
+    esac
 
     webtop:info "normal image tag -> $tag"
 
@@ -101,20 +113,8 @@ ___x_cmd_webtop_container_run(){
 
     local image="${___X_CMD_WEBTOP_URL_PREFIX}/webtop:$tag"
 
-    if ___x_cmd_webtop_container_run___docker_cjkmode; then
-        {
-            if [ -z "$update" ]; then
-                ___x_cmd_webtop image refitcjk          "$tag"
-            else
-                ___x_cmd_webtop image refitcjk --update "$tag"
-            fi
-        }   || N=webtop M="ABORT ! Fail to refit image -> $image"       log:ret:1
-        tag="${image}-cjk"
-        image="${image}-cjk"
-    else
-        ___x_cmd_webtop_image_pull ${update:+"--update"} "$image" \
+    ___x_cmd_webtop_image_pull ${update:+"--update"} "$image" \
             || N=webtop M="Fail to pull image -> $image"                log:ret:1
-    fi
 
     local container_id
     container_id="$( ___x_cmd_webtop_container_run___docker "$@" )" || return $?
@@ -169,27 +169,6 @@ ___x_cmd_webtop_container_run___handle_idx_port(){
     esac
 }
 
-
-___x_cmd_webtop_container_run___docker_cjkmode(){
-    local lc=""
-    case "$cjk" in
-        true|t|yes|y)       return 0 ;;
-        false|f|no|n)       return 1 ;;
-        *)
-            if [ "$cjk" = auto ]; then
-                lc="$(___x_cmd webtop --cfg get locale 2>/dev/null)"
-                if [ "${lc:-auto}" = 'auto' ];then
-                    lc="$LANG"
-                fi
-                case "$lc" in
-                    zh_*|ja_*|ko_*)   return 0 ;;
-                esac
-            fi
-        ;;
-    esac
-    return 1
-}
-
 ___x_cmd_webtop_container_run___docker(){
     # [ -z "$sslport" ] || set -- -p "$sslport:3001"
 
@@ -213,10 +192,24 @@ ___x_cmd_webtop_container_run___docker(){
     # [ -n "$lc" ] || lc="${LANG:-"en_US.UTF-8"}"
     [ -n "$lc" ] || {
         lc="$(___x_cmd webtop --cfg get locale 2>/dev/null)"
-        [ -n "$lc" ] || lc="en_US.UTF-8"
+        [ -n "$lc" ] || lc=auto
     }
+
     case "$lc" in
-        auto)     lc="$LANG"
+        auto)
+            case "${LC_ALL:-${LANG}}" in
+                zh*)        lc=zh_CN.UTF-8 ;;
+                ja*)        lc=ja_JP.UTF-8 ;;
+                ko*)        lc=ko_KR.UTF-8 ;;
+                ar*)        lc=ar_AE.UTF-8 ;;
+                ru*)        lc=ru_RU.UTF-8 ;;
+                es*)        lc=es_MX.UTF-8 ;;
+                de*)        lc=de_DE.UTF-8 ;;
+                fr*)        lc=fr_FR.UTF-8 ;;
+                nl*)        lc=nl_NL.UTF-8 ;;
+                it*)        lc=it_IT.UTF-8 ;;
+                *)          lc=en_US.UTF-8 ;;
+            esac
     esac
 
     local title; title="${name#x-webtop-}-${image#*:}"
@@ -229,6 +222,9 @@ ___x_cmd_webtop_container_run___docker(){
     [ -z "$dri" ]           ||  set -- "$@" --device /dev/dri:/dev/dri
     [ -z "$user" ]          ||  set -- "$@" -e CUSTOM_USER="$user"
     [ -z "$password" ]      ||  set -- "$@" -e PASSWORD="$password"
+
+    [ -z "$dri" ]           ||  set -- "$@" --device /dev/dri:/dev/dri
+    [ -z "$nvidia" ]        ||  set -- "$@" --gpus all --runtime nvidia
 
     ___x_cmd_cmds docker run -d             \
         --name="$name"                      \
