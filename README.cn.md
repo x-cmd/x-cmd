@@ -51,7 +51,7 @@ X-CMD（读作 "X Command"）是一个小巧且功能强大的命令行工具集
 
 ## [安装](https://cn.x-cmd.com/start/)
 
-在常用 shell 中运行[官方安装脚本](https://github.com/x-cmd/get/blob/main/index.html)
+在常见 shell (bash, zsh, dash, ash) 中运行[官方安装脚本](https://github.com/x-cmd/get/blob/main/index.html)
 
 - 使用 `curl` 命令安装:
   ```sh

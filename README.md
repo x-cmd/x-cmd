@@ -38,7 +38,7 @@ For <bold>source code</bold>, please visit <a href="https://github.com/x-cmd/x-c
 
 ## [Installation](https://x-cmd.com/start/)
 
-Run the official X-CMD installation [script]((https://github.com/x-cmd/get/blob/main/index.html)) in most common shells (**bash, zsh, dash, ash**).
+Run the official X-CMD installation [script](https://github.com/x-cmd/get/blob/main/index.html) in most common shells (**bash, zsh, dash, ash**).
 
 - With `curl` command:
   ```sh
