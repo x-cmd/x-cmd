@@ -30,6 +30,7 @@ function openai_gen_history_str( history_obj, chatid, i,        req_text, res_te
     }
 
     tool_l = chat_history_get_tool_l(history_obj, chatid, i)
+    if ( tool_l > 0 ) _res = _res ", " openai_gen_unit_str_rolecont("user", "[INTERNAL NOTE: The following content is function execution metadata, shown in pseudo-XML markers.\nThis format is ONLY for recording results.\nWhen you need to make a function call, always use the official JSON function-call format, never this pseudo-XML.]")
     for (j=1; j<=tool_l; ++j){
         tool_req = chat_history_get_tool_req(history_obj, chatid, i, j)
         tool_res = chat_history_get_tool_res(history_obj, chatid, i, j)
@@ -102,7 +103,7 @@ function openai_gen_last_msgtool_from_creq( current_msgtool_obj, msgtool_obj, ch
 }
 
 function openai_gen_msgtool_from_creq( msgtool_obj, creq_dir, chatid, hist_session_dir,                  history_obj, history_num, i, l, str, \
-    _history_str, _system_str, _filelist_str, _context_str, _example_str, _content_str, _messages_str, _tool_str ){
+    _history_str, _system_str, _filelist_str, _example_str, _content_str, _messages_str, _tool_str, _stats_str ){
 
     history_num = creq_fragfile_unit___get( creq_dir, "history_num" )
 
@@ -119,25 +120,26 @@ function openai_gen_msgtool_from_creq( msgtool_obj, creq_dir, chatid, hist_sessi
         _system_str = openai_gen_unit_str_rolecont( "system", _system_str ) " ,"
     }
 
+    _example_str = creq_fragfile_unit___get( creq_dir, "example" )
+    if ( _example_str != "" ) _example_str = openai_gen_unit_str_rolecont( "user", _example_str ) " ,"
+
     _filelist_str = creq_fragfile_unit___get( creq_dir, "filelist_attach" )
     if (_filelist_str != "") _filelist_str = openai_gen_filelist_str(_filelist_str) " ,"
 
-    _context_str = creq_fragfile_unit___get( creq_dir, "context" )
-    _context_str = (_context_str != "") ? chat_wrap_tag("context", _context_str) "\n" : ""
-    _example_str = creq_fragfile_unit___get( creq_dir, "example" )
-    _content_str = creq_fragfile_unit___get( creq_dir, "content" )
+    _stats_str = chat_statsfile_load( hist_session_dir )
+    if ( _stats_str != "" ) _stats_str = openai_gen_unit_str_rolecont( "user", _stats_str ) " ,"
 
-    _content_str = _context_str _example_str _content_str
+    _content_str = creq_fragfile_unit___get( creq_dir, "content" )
     _content_str = str_trim(_content_str)
     if ( _content_str == "" ) _content_str = "null"
     _content_str = openai_gen_unit_str_rolecont( "user", _content_str )
 
-    _messages_str   = _system_str _history_str _filelist_str _content_str
+    _messages_str   = _system_str _example_str _history_str _filelist_str _stats_str _content_str
     _messages_str   = "\"messages\": [ " _messages_str " ], "
     _tool_str       = openai_gen_tool_str( creq_dir )
     _tool_str       = (_tool_str) ? "\"tools\": [" _tool_str "]," : ""
 
-    creq_fragfile_set___usage_input_ratio_SHO( creq_dir, _system_str, _history_str, _filelist_str _content_str _tool_str )
+    creq_fragfile_set___usage_input_ratio_SHO( creq_dir, _system_str _example_str, _history_str, _filelist_str _stats_str _content_str _tool_str )
 
     msgtool_obj[ "msg_str" ]  = _messages_str
     msgtool_obj[ "tool_str" ] = _tool_str

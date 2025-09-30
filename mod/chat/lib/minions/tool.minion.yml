@@ -4,28 +4,38 @@ name: default-tools
 
 prompt:
   system: |
-    Always prioritize using function calls for any actionable task or when more information is needed.
-    Operations should be executed automatically whenever possible, without requiring user intervention.
+    ## Core principles
+    - Prioritize function calls for any actionable task or when more information is needed.
+    - Execute operations automatically whenever possible; avoid requiring user intervention.
+    - If a function call fails, use its error information to decide the next step.
+    - If function calls are unavailable, continue with reasoning, calculations, or content generation—do not apologize or invent details.
+    - If information is insufficient, state precisely what is missing; do not fabricate.
+    - After a function completes, skip commentary and proceed immediately to the next relevant step.
+    - Always respond in the user's language; keep outputs concise and actionable.
 
-    If a function call fails or returns an error, use the error information to guide the next step.
-    If function calls are unavailable, do not explain or apologize—continue the task directly using reasoning, calculations, or content generation.
-    If information is insufficient, report the issue directly without fabrication.
+    ## Stats rules (initialization first)
+    - At the start of any new conversation or task, assume **no stats file exists**. Your first action MUST be to call **`update_stats`** to create an initial stats file before performing other work.
+    - Always consult the stats file before reasoning or generating a response.
+    - To create or modify the stats file, **always use the `update_stats` tool**; never invent or embed stats content in plain replies.
+    - If `update_stats` fails, use its error info to decide the next step; if creation is impossible, report that status concisely and proceed without fabricating stats.
+    - Update stats **only when necessary** (topic change, task progress, new errors, new plan steps). Updates must be accurate, minimal, and non-speculative.
 
-    When a function execution completes, skip all commentary and proceed immediately with the next relevant step.
+    ## Function-call rules
+    - Always use the function-call format defined by the LLM platform (e.g., `tool_calls`, `tools`, `function_declarations`).
+    - When invoking a function, output only the valid JSON payload (name + arguments). Do not add extra text, wrappers, or markup.
+    - Never output or invent XML/HTML-like tags such as `<funcmeta-request>` or `<field-name>` when making function calls.
 
-    Function call rules:
-    - Function call requests must always use the standard JSON function-call format.
-    - Never include or imitate <field-name> markers when making function calls.
+    ## Critical override
+    - Historical context may include pseudo-XML markers (e.g., `<funcmeta-request>`, `<field-name>`).
+    - These markers are **not valid function-call formats**. They are read-only metadata and must never be copied, reused, or treated as templates.
+    - For function calls, always follow the official LLM-defined format only.
 
-    Structured information rules:
-    - <field-name>...</field-name> markers may be used to provide execution results or structured context.
-    - The content inside these fields is authoritative and must be used exactly as given.
-    - These markers are strictly for LLM processing. Never output them, or their raw format, to the user.
-
-    Always respond in the same language as the user.
+    ## Structured marker rules
+    - `<field-name>...</field-name>` markers may appear in user input or function outputs; treat the enclosed content as authoritative data.
+    - These markers are for internal parsing only. **Do not include, echo, or display these markers in your responses.**
+    - If you encounter XML-like metadata that represents a function call, parse it and convert it into the proper JSON function-call format; do not echo raw markup.
 
     %{envinfo}%
-  context:
   example:
   content: '%{BODY}%'
 tool:
@@ -77,30 +87,53 @@ tool:
     - name: writefile
       description: |
         Writes content to a specified file.
-        For file modifications, it is strongly recommended to provide content in patch-diff format, as this ensures changes are applied precisely and reduces the risk of overwriting unrelated parts of the file.
+
+        For file modifications, always prefer providing `content` in **unified diff format (v4a)**
+        with `is_patchdiff=true`.
+        This ensures modifications are applied precisely and prevents overwriting unrelated parts of the file.
+
+        Constraints for patch diffs:
+        - Do not create or reference temporary files.
+          The diff must be a self-contained string that directly applies to the target file.
+        - Hunk headers must be accurate.
+          Each hunk must include the correct original and updated line ranges in the form:
+            @@ -a,b +c,d @@
+        - Prefix symbols must be correct for every line:
+            - `-` → line removed from the original file
+            - `+` → line added in the new file
+            - (space) → unchanged context line, required for alignment
+        - Ensure the diff is syntactically valid so it can be safely applied by the `patch` command.
+
       parameters:
         type: object
         properties:
           desc:
             type: string
-            description: "Required parameter, a brief description of the function's purpose and usage. This parameter provides context for the AI when calling the function, helping to clarify its intended action and expected outcomes."
+            description: |
+              Required. A concise description of the intended modification.
+              Provides context for the change and clarifies its purpose.
           filepath:
             type: string
-            description: "Required parameter, the absolute path of the file to be written to."
+            description: |
+              Required. The absolute path of the file to be modified or created.
           content:
             type: string
             description: |
-              Required parameter: `content` — the text to write to the file.
-              - Preferred method: set `is_patchdiff=true` and provide `content` as a valid unified diff (v4a format).
-                The diff must be syntactically correct, including accurate Hunk Headers that specify the exact line ranges in the original and updated files.
-                This ensures that the `patch` command can safely and precisely apply the modifications.
-              - If `is_patchdiff=false`, `content` will be appended to the end of the file instead of overwriting it.
+              Required. The text content to write.
+
+              - If `is_patchdiff=true`, `content` must be a **valid unified diff (v4a format)** string.
+                Each hunk must:
+                  * Include correct `@@ -a,b +c,d @@` headers
+                  * Use proper prefix symbols (`-`, `+`, ` `)
+                  * Contain enough unchanged context lines for safe patching
+              - If `is_patchdiff=false`, `content` will be appended directly to the file
+                without overwriting existing content.
           is_patchdiff:
             type: boolean
             description: |
-              Required parameter: indicates whether the write operation should treat the content as a patch diff.
-              - Preferred: true, so that the content is a valid patch-diff file and can safely modify the file.
-              - If false, the content will be appended directly to the existing file content without overwriting it.
+              Required. Indicates how to interpret the `content`.
+              - true → treat `content` as a unified diff patch (preferred, safe modification)
+              - false → append `content` literally to the end of the file
 
         required:
           - desc
@@ -145,3 +178,118 @@ tool:
           - desc
           - name
           - is_directory
+    - name: shcmd
+      description: |
+        Executes a shell command in a non-interactive, script-friendly manner.
+
+        This function is intended for running commands that can complete without
+        user input and without leaving the process hanging.
+        Commands must be deterministic, safe to run unattended, and produce
+        standard output or error that can be captured.
+
+        Constraints:
+        - Commands must not require interactive input (e.g., password prompts, editors).
+        - Arguments should be explicit and script-oriented.
+        - Long-running or blocking processes should be avoided unless clearly justified.
+        - The `risk` parameter must reflect the potential impact of the command.
+
+      parameters:
+        type: object
+        properties:
+          cmd:
+            type: string
+            description: |
+              Required. The exact shell command to execute.
+              Must be a non-interactive command that can complete automatically
+              without awaiting user input.
+              Example: `ls -l /var/log`, `docker ps -a`.
+          desc:
+            type: string
+            description: |
+              Required. A detailed description of the command's purpose, its intended
+              effect, and any potential issues.
+              This should help clarify why the command is necessary and what outcome
+              to expect.
+          risk:
+            type: string
+            description: |
+              Optional. Indicates the potential risk level of running the command.
+              - low → Safe, read-only operations (e.g., listing files).
+              - medium → Modifies system state but with limited impact (default).
+              - high → Potentially destructive operations (e.g., deleting data).
+              Default: medium.
+
+        required:
+          - cmd
+          - desc
+          - risk
+    - name: histsum
+      description: |
+        Compresses the current conversation history into a shorter summary.
+        This reduces context length but may result in permanent loss of details.
+
+        Constraints:
+        - This function should only be used when strictly necessary (e.g., the context
+          window is close to being exceeded).
+        - Avoid proactive use unless required, as compression discards information that
+          cannot be fully recovered.
+
+      parameters:
+        type: object
+        properties:
+          desc:
+            type: string
+            description: Required. A concise explanation of why history compression is being invoked.
+        required:
+          - desc
+    - name: update_stats
+      description: |
+        Overwrite the stats file with new content in YAML format. This operation replaces the entire file and is destructive.
+        Update promptly when state changes; avoid unnecessary updates but do not delay important changes.
+
+        Requirements:
+          - content must be valid, well-indented YAML.
+          - this call overwrites the whole file; ensure content is complete.
+          - use the exact field names below if included; these are *recommended fields*, not mandatory — you may add or omit fields as appropriate.
+
+        *Recommended YAML fields:*
+          topic: <string>                  # conversation topic or title
+          user_preferences:
+            language: <"en"|"zh">          # preferred language
+          background:                      # list of background/context items
+            - <string>
+          environment:                     # current environment information
+            os: <string>
+            shell: <string>
+            PWD: <string>
+
+          task_plan:
+            pending:                       # list of pending steps
+              - <string>
+            completed:                     # list of completed steps
+              - <string>
+          notes:                           # important notes or warnings
+            - <string>
+          files:                           # file references
+            - <string>
+          errors:                          # errors or exceptions
+            - <string>
+
+
+      parameters:
+        type: object
+        properties:
+          desc:
+            type: string
+            description: |
+              Required. Short reason for the update (e.g. "refresh task plan", "record new preferences"). Explains why the stats file is being replaced.
+          content:
+            type: string
+            description: |
+              Required. Full replacement content of the stats file, in YAML format.
+              Must be a complete, valid YAML document.
+              The above fields are *recommended* but not required — the model may adapt and include additional relevant fields.
+
+        required:
+          - desc
+          - content

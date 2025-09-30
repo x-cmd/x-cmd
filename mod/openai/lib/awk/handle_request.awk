@@ -5,7 +5,7 @@ BEGIN{
     MINION_JSON_CACHE   = ENVIRON[ "minion_json_cache" ]
     def_model           = ENVIRON[ "def_model" ]
     SESSIONDIR          = ENVIRON[ "XCMD_CHAT_SESSION_DIR" ]
-    HIST_SESSIONDIR     = ENVIRON[ "XCMD_CHAT_HISTORY_SESSION_DIR" ]
+    HIST_SESSIONDIR     = ENVIRON[ "XCMD_CHAT_HISTSESSION_DIR" ]
     HIST_SESSIONDIR     = ( HIST_SESSIONDIR != "" ) ? HIST_SESSIONDIR : SESSIONDIR
     QUESTION            = ""
     Q2_1                = SUBSEP "\"1\""

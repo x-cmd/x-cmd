@@ -26,7 +26,7 @@ function chat_str_replaceall( src,          _name, ans ){
 
 function chat_record_str_to_drawfile(item, draw_prefix){
     if ( IS_ENACTNONE == true ) return
-    item = str_xml_transpose( item )
+    item = chat_trim_str( item )
     gsub( "\n|\r", "&" draw_prefix, item )
     printf( "%s", item ) >> XCMD_CHAT_ENACTALL_DRAWFILE
     fflush()
@@ -74,12 +74,12 @@ function chat_filelist_load_to_array(v, arr,            i, l, _, fp, fp_desc, fp
         if ( arr[ fp, "recorded" ] == true ) continue
         arr[ ++arr[L] ] = fp
         arr[ fp, "recorded" ] = true
-        _str = "<file-name>" fp "</file-name>\n"
-        if ( fp_desc !="" ) _str = _str "<file-desc>" fp_desc "</file-desc>\n"
+        _str = chat_wrap_tag("file-name", fp ) "\n"
+        if ( fp_desc !="" ) _str = _str chat_wrap_tag("file-desc", fp_desc ) "\n"
         if (match(tolower(fp), "(.png|.jpeg|.jpg|.webp|.gif)$")) {
             fp_suffix = tolower( substr(fp, RSTART+1) )
             fp_base64 = file_base64(fp)
-            _str = _str "<file-type>image</file-type>\n"
+            _str = _str chat_wrap_tag("file-type", "image") "\n"
             if ( fp_base64 != "" ) {
                 arr[ fp, "type" ] = "image"
                 arr[ fp, "text" ] = _str
@@ -87,7 +87,7 @@ function chat_filelist_load_to_array(v, arr,            i, l, _, fp, fp_desc, fp
                 if ( fp_suffix == "jpg" ) fp_suffix = "jpeg"
                 arr[ fp, "mime_type" ] = "image/" fp_suffix
             } else {
-                _str = _str "<file-content>Failed to read image file content</file-content>\n"
+                _str = _str chat_wrap_tag("file-content", "Failed to read image file content") "\n"
                 arr[ fp, "type" ] = "text"
                 arr[ fp, "text" ] = _str
                 continue
@@ -95,11 +95,18 @@ function chat_filelist_load_to_array(v, arr,            i, l, _, fp, fp_desc, fp
         } else {
             fp_content = cat(fp)
             gsub("[ \t]+\n", "\n", fp_content)
-            _str = _str "<file-content>" fp_content "</file-content>\n"
+            _str = _str chat_wrap_tag("file-content", fp_content ) "\n"
             arr[ fp, "type" ] = "text"
             arr[ fp, "text" ] = _str
         }
     }
+}
+
+function chat_statsfile_load( hist_session_dir,         fp, str ){
+    fp = hist_session_dir "/stats.yml"
+    str = cat( fp )
+    if ( cat_is_filenotfound() ) return
+    return chat_wrap_tag("stats-file", str)
 }
 
 function chat_tf_bit(v){
@@ -119,4 +126,10 @@ function chat_tf_str(v){
 function chat_wrap_tag(name, str, name_desc){
     if ( str == "" ) return
     return "<" name name_desc ">" str "</" name ">"
+}
+
+function chat_trim_str( str ){
+    str = str_xml_transpose( str )
+    str = str_unicode2utf8( str )
+    return str
 }

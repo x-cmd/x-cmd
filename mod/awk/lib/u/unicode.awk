@@ -1,5 +1,14 @@
 
 # unicode_to_utf8("\\u5f53")
+
+function str_unicode2utf8(src,          ans){
+    while (match(src, RE_UNICODE)) {
+        ans = ans substr(src, 1, RSTART-1) unicode_to_utf8( substr(src, RSTART, RLENGTH) )
+        src = substr(src, RSTART+RLENGTH)
+    }
+    return ans src
+}
+
 function unicode_to_utf8(unicode,               utf8, dec) {
     gsub(/^\\u/, "", unicode)
     dec = hex_to_dec("0x" unicode)

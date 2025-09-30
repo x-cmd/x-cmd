@@ -162,12 +162,6 @@ function minion_is_jsonmode( o, prefix,         v ){
     return (v == "true")
 }
 
-function minion_prompt_context( o, prefix,          v ){
-    v = o[ prefix S  "\"prompt\"" S "\"context\"" ]
-    if ( chat_str_is_null(v) )  return
-    return ((v ~ "^\"") ? juq(v) : v)
-}
-
 function minion_prompt_content( o, prefix,           v ){
     v = o[ prefix S  "\"prompt\"" S "\"content\"" ]
     if ( chat_str_is_null(v) )  return

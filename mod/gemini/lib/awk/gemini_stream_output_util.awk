@@ -102,7 +102,9 @@ function gemini_record_response___tool_call( obj, kp,        name, args, desc, d
         desc = ( desc ~ "^\"" ) ? juq(desc) : desc
         jdict_rm( obj, kp SUBSEP "\"args\"", "\"desc\"" )
     }
-    args = jstr0( obj, kp SUBSEP "\"args\"", " " )
+    name = chat_trim_str( name )
+    desc = chat_trim_str( desc )
+    args = chat_trim_str( jstr0( obj, kp SUBSEP "\"args\"", " " ) )
     jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"arguments\"", jqu(args))
 
     if ( GEMINI_CONTENT_DIR != "" ) {

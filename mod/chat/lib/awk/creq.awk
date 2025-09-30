@@ -33,7 +33,6 @@ function creq_fragfile_create( dir, minion_obj, minion_kp, provider, def_model, 
     creq_fragfile_unit___set( dir, "minion",            jstr( minion_obj, minion_kp ) )
 
     creq_fragfile_unit___set( dir, "system",            minion_system_tostr( minion_obj, minion_kp ) )
-    creq_fragfile_unit___set( dir, "context",           minion_prompt_context( minion_obj, minion_kp ) )
     creq_fragfile_unit___set( dir, "example",           minion_example_tostr( minion_obj, minion_kp ) )
     creq_fragfile_unit___set( dir, "content",           minion_prompt_content( minion_obj, minion_kp ) )
 

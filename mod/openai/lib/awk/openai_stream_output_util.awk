@@ -117,8 +117,8 @@ function openai_record_response___text_content( o,        item, response_item, f
 function openai_record_response___tool_call(tool_arr,             idx, name, args, desc, dir){
     idx = tool_arr[ "tool_l" ]
     if ( idx <= 0 ) return
-    name = tool_arr[ idx, "name" ]
-    args = tool_arr[ idx, "args" ]
+    name = chat_trim_str( tool_arr[ idx, "name" ] )
+    args = chat_trim_str( tool_arr[ idx, "args" ] )
     o_tool[ Q2_1 ] = "["
     jlist_put( o_tool, Q2_1, "{" )
     jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"index\"",        idx )

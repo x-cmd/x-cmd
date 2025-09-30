@@ -109,7 +109,8 @@ BEGIN{
     # /"[^"\\\001-\037]*((\\[^u\001-\037]|\\u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])[^"\\\001-\037]*)*"|-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?|null|false|true|[ \t\n\r]+|./
     # RE_STR2_ORGINAL = "\"[^\"\\\\\001-\037]*((\\\\[^u\001-\037]|\\\\u[0-9a-fA-F]{4})[^\"\\\\\001-\037]*)*\""
 
-    RE_QUOTE_CONTROL_OR_UNICODE = re( "\\\\[^u\001-\037]" RE_OR "\\\\u" re_interval_expression( "[0-9a-fA-F]", 4 ) )
+    RE_UNICODE = "\\\\u" re_interval_expression( "[0-9a-fA-F]", 4 )
+    RE_QUOTE_CONTROL_OR_UNICODE = re( "\\\\[^u\001-\037]" RE_OR RE_UNICODE )
 
     RE_NOQUOTE1 = "[^'\\\\\001-\037]*"
     RE_STR1 = "'"  RE_NOQUOTE1 re( RE_QUOTE_CONTROL_OR_UNICODE RE_NOQUOTE1, "*")  "'"

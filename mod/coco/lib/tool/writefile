@@ -1,6 +1,5 @@
 
 # TODO: add information protection
-# desc: 说明写入时必要的话，必须使用 readfile 获取要修改的文件内容
 
 ___x_cmd_coco_writefile(){
     local fp=""
@@ -20,6 +19,11 @@ ___x_cmd_coco_writefile(){
 
     ___x_cmd_coco_valid_fp --filepath "$fp" || return $?
     coco:info "Writing to file -> $fp"
+
+    local fporig="${fp}.orig"
+    local fprej="${fp}.rej"
+    local hasorig=0; [ ! -e "$fporig" ] || hasorig=1
+    local hasrej=0;  [ ! -e "$fprej"  ] || hasrej=1
 
     local content_line=""; local confirmid=""
     while true; do
@@ -58,14 +62,26 @@ A
     fi
 
     if [ "$is_patchdiff" = "true" ]; then
-        if ___x_cmd_hascmd patch; then
-            ___x_cmd_cmds patch -u --verbose --ignore-whitespace "$fp" << A
+        ! ___x_cmd_coco_writefile___patch_raw "$fp" << A || return 0
 $content
 A
+
+        coco:info "Possible diff content error, attempting to correct diff content"
+        printf "%s\n" "$content" | ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/coco/lib/awk/fix_patchdiff.awk" | ___x_cmd_coco_writefile___patch_raw "$fp"
+        if [ $? -ge 0 ]; then
+            coco:info "Succeeded to apply patch diff to file '$fp'"
+            return 0
         else
-            ___x_cmd cosmo patch -u --verbose --ignore-whitespace "$fp" << A
-$content
-A
+            coco:error "Failed to apply patch diff to file '$fp'"
+            if [ "$hasorig" = 0 ] && [ -e "$fporig" ]; then
+                coco:info "Removing temp file -> $fporig"
+                ___x_cmd rmrf "$fporig"
+            fi
+            if [ "$hasrej" = 0 ] && [ -e "$fprej" ]; then
+                coco:info "Removing temp file -> $fprej"
+                ___x_cmd rmrf "$fprej"
+            fi
+            return 1
         fi
     else
         # append or overwrite
@@ -97,4 +113,26 @@ ___x_cmd_coco_valid_fp(){
     fi
 
     return 0
+}
+
+___x_cmd_coco_writefile___patch_raw(){
+    if true | ___x_cmd_cmds patch --verbose --ignore-whitespace /dev/null 2>/dev/null 1>&2 ; then
+        ___x_cmd_coco_writefile___patch_raw(){
+            ___x_cmd_cmds patch -u --verbose --ignore-whitespace "$@"
+        }
+    elif  ___x_cmd_hascmd patch; then
+        ___x_cmd_coco_writefile___patch_raw(){
+            ___x_cmd_cmds patch "$@"
+        }
+    elif  ___x_cmd_hascmd busybox; then
+        ___x_cmd_coco_writefile___patch_raw(){
+            ___x_cmd buysbox patch "$@"
+        }
+    else
+        ___x_cmd_coco_writefile___patch_raw(){
+            ___x_cmd cosmo patch -u --verbose --ignore-whitespace "$@"
+        }
+    fi
+
+    ___x_cmd_coco_writefile___patch_raw "$@"
 }

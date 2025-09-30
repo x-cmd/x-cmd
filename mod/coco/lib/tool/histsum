@@ -1,29 +1,37 @@
 # shellcheck shell=dash
 
 ___x_cmd_coco_histsum(){
-    local session="$1"
-    local chatid="$2"
-    local num="$3"
-    local folder="$___X_CMD_CHAT_SESSION_DIR/$session/$chatid"
-
-    coco:debug --session "$session" --chatid "$chatid" --num "$num" --folder "$folder" histsum
-    [ -d "$folder" ] || N=coco M="Nou found histsum $session/$chatid folder" log:ret:1
-    coco:info "Generating merged history summary"
+    local session="${1:-"$XCMD_CHAT_HISTSESSION"}"
+    [ -n "$session" ] || N=coco M="Please provide session id" log:ret:64
     local sentat; sentat="${EPOCHREALTIME:-"$(date +%s)"}"
+
+    local session_dir="$___X_CMD_CHAT_SESSION_DIR/$session"
+    [ -d "$session_dir" ] || N=coco M="Not found histsum session dir[$session_dir]" log:ret:1
+    local lastchatid
+    read -r lastchatid <<A
+$( ___x_cmd_cmds find "$session_dir" -type f -name "histsum.md" -o -path "*/chat.response/content" | ___x_cmd_cmds sort -r )"
+A
+    lastchatid="${lastchatid#"$session_dir/"}"; lastchatid="${lastchatid%%/*}"
+    [ -n "$lastchatid" ] || N=coco M="Not found last chatid[$lastchatid]" log:ret:1
+    local folder="$session_dir/$lastchatid"
+    [ -d "$folder" ] || N=coco M="Not found histsum $session/$lastchatid folder" log:ret:1
+
+    coco:debug --session "$session" --lastchatid "$lastchatid" --folder "$folder" histsum
+    coco:info "Generating merged history summary"
     local content_dir; content_dir="$(
         ___x_cmd chat --send --type coco,histsum --enactnone \
             --minion "$___X_CMD_ROOT_MOD/coco/lib/minion/histsum.yml" \
-            --session tmp/histsum --hist-session "$session" --history "$((num+1))"
+            --session tmp/histsum --hist-session "$session" --history "99"
     )" || return $?
 
     [ -n "$content_dir" ] || return 1
     local recvat; recvat="${EPOCHREALTIME:-"$(date +%s)"}"
-    ___x_cmd cawk -m j/json,j/jiter,j/jcp,date \
+    ___x_cmd cawk -m j/json,j/jiter,j/jcp,date,re,u/unicode \
         -E sentat,recvat,content_dir \
         -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"    \
         -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"       \
         -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"     \
         -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"       \
         -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"       \
-        -f "$___X_CMD_ROOT_MOD/coco/lib/awk/histsum_output.awk" > "$folder/histsum.txt"
+        -f "$___X_CMD_ROOT_MOD/coco/lib/awk/histsum_output.awk" > "$folder/histsum.md"
 }
