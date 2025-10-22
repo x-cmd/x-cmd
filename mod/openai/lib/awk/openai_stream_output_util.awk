@@ -141,7 +141,7 @@ function openai_record_response___tool_call(tool_arr,             idx, name, arg
         print args > (dir "/arg")
         print desc > (dir "/desc")
 
-        if ( IS_ENACTNONE != true ) print "[FUNCTION-CALL] " idx >> XCMD_CHAT_ENACTALL_LOGFILE
+        print "[FUNCTION-CALL] " idx >> XCMD_CHAT_ENACTALL_LOGFILE
     }
 
     fflush()

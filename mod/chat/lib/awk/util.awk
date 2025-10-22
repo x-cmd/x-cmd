@@ -25,7 +25,6 @@ function chat_str_replaceall( src,          _name, ans ){
 }
 
 function chat_record_str_to_drawfile(item, draw_prefix){
-    if ( IS_ENACTNONE == true ) return
     item = chat_trim_str( item )
     gsub( "\n|\r", "&" draw_prefix, item )
     printf( "%s", item ) >> XCMD_CHAT_ENACTALL_DRAWFILE

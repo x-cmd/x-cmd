@@ -30,7 +30,7 @@ function openai_gen_history_str( history_obj, chatid, i,        req_text, res_te
     }
 
     tool_l = chat_history_get_tool_l(history_obj, chatid, i)
-    if ( tool_l > 0 ) _res = _res ", " openai_gen_unit_str_rolecont("user", "[INTERNAL NOTE: The following content is function execution metadata, shown in pseudo-XML markers.\nThis format is ONLY for recording results.\nWhen you need to make a function call, always use the official JSON function-call format, never this pseudo-XML.]")
+    if ( tool_l > 0 ) _res = _res ", " openai_gen_unit_str_rolecont("user", jqu("[INTERNAL NOTE: The following content is function execution metadata, shown in pseudo-XML markers.\nThis format is ONLY for recording results.\nWhen you need to make a function call, always use the official JSON function-call format, never this pseudo-XML.]"))
     for (j=1; j<=tool_l; ++j){
         tool_req = chat_history_get_tool_req(history_obj, chatid, i, j)
         tool_res = chat_history_get_tool_res(history_obj, chatid, i, j)

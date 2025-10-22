@@ -118,8 +118,10 @@ function gemini_gen_msgtool_from_creq( msgtool_obj, creq_dir, chatid, hist_sessi
 
     _content_str = creq_fragfile_unit___get( creq_dir, "content" )
     _content_str = str_trim(_content_str)
-    _content_str = gemini_gen_unit_str_text( jqu( _content_str ) )
-    _content_str = gemini_gen_unit_str_rolepart("user", _content_str)
+    if ( _content_str != "" ) {
+        _content_str = gemini_gen_unit_str_text( jqu( _content_str ) )
+        _content_str = gemini_gen_unit_str_rolepart("user", _content_str)
+    }
 
     _messages_str   = "\"contents\":[" _system_str _example_str _history_str _filelist_str _stats_str _content_str "]"
     _use_gg_search  = GEMINI_USE_GOOGLE_SEARCH

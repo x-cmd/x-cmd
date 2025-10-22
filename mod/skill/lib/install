@@ -1,0 +1,69 @@
+# shellcheck shell=dash
+
+___x_cmd_skill_update(){
+    ___x_cmd rmrf "$___X_CMD_SKILL_DATA_DIR/full.hash.txt"
+    ___x_cmd_skill___data_install
+}
+
+___x_cmd_skill___data_check(){
+    if [ ! -d "$___X_CMD_SKILL_DATA_DIR/full" ]; then
+        ___x_cmd_skill___data_install || return $?
+    else
+        ___x_cmd ccmd 7d -- ___x_cmd_skill___data_install
+    fi
+}
+
+___x_cmd_skill___data_install(){
+    local tardir="$___X_CMD_SKILL_DATA_DIR/full"
+    local tardir_hash="$___X_CMD_SKILL_DATA_DIR/full.hash.txt"
+    local baseurl=
+    if ___x_cmd websrc is cn; then
+        baseurl="https://codeberg.org/x-cmd/skill/releases/download/latest"
+    else
+        baseurl="https://github.com/x-cmd/skill/releases/latest/download"
+    fi
+
+    local tmpdir="$___X_CMD_ROOT_TMP/skill"
+    local tmpfile="$tmpdir/skills.tar.gz"
+    local tmphashfile="$tmpdir/skills_hash.txt"
+    local url="$baseurl/skills_hash.txt"
+    ___x_cmd ensurefp "$tmphashfile"
+    ___x_cmd curl -L -sS --speed-time 5 --speed-limit 100 "$url" > "$tmphashfile" || {
+        skill:error "Download skills_hash.txt failed"
+        ___x_cmd rmrf "$tmphashfile"
+        return 1
+    }
+
+    local hash; read -r hash < "$tmphashfile"
+    local tarhash=""
+
+    if [ -f "$tardir_hash" ]; then
+        read -r tarhash < "$tardir_hash"
+        skill:debug --targel_hash "$hash" --actual_hash "$tarhash"
+        [ "$hash" != "$tarhash" ] || return 0
+    fi
+
+    url="$baseurl/skills.tar.gz"
+    ___x_cmd rmrf "$tmpfile"
+    ___x_cmd ensurefp "$tmpfile"
+    skill:info --url "$url" --unpack_dir "$tardir" "Download skills.tar.gz"
+    ___x_cmd curl -L -sS --speed-time 5 --speed-limit 100 "$url" > "$tmpfile" || {
+        skill:error "Download skills.tar.gz failed"
+        ___x_cmd rmrf "$tmpfile"
+        return 1
+    }
+    tarhash="$( ___x_cmd sha512 "$tmpfile" )" || return $?
+    [ "$hash" = "$tarhash" ] || {
+        ___x_cmd rmrf "$tmpfile"
+        skill:error --hash "$hash" --actual_hash "$tarhash" "The downloaded data file is corrupted, hash not match"
+        return 1
+    }
+
+    ___x_cmd rmrf "$tardir"
+    ___x_cmd mkdirp "$tardir"
+    ___X_CMD_ZUZ_QUIET=1 ___x_cmd uz "$tmpfile" "$tardir" || return $?
+    ___x_cmd ensurefp "$tardir_hash"
+    ___x_cmd_cmds cp -f "$tmphashfile" "$tardir_hash"
+
+    skill:info "x-cmd/skill data update completed"
+}

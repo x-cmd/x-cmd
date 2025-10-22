@@ -5,17 +5,14 @@ BEGIN{
     IS_STREAM           = ENVIRON[ "is_stream" ]
     IS_REASONING        = ENVIRON[ "is_reasoning" ]
     IS_DEBUG            = ENVIRON[ "is_debug" ]
-    IS_ENACTNONE        = ENVIRON[ "is_enactnone" ]
     DRAW_PREFIX         = "    "
-    if ( IS_ENACTNONE != true ) {
-        printf("%s\n", "[MODEL-RES-START]") >> XCMD_CHAT_ENACTALL_DRAWFILE
-        printf("%s", DRAW_PREFIX) >> XCMD_CHAT_ENACTALL_DRAWFILE
-    }
+    printf("%s\n", "[MODEL-RES-START]") >> XCMD_CHAT_ENACTALL_DRAWFILE
+    printf("%s", DRAW_PREFIX) >> XCMD_CHAT_ENACTALL_DRAWFILE
 }
 
 END{
     _exitcode = 0
-    if ( IS_ENACTNONE != true ) print "\n---"       >> XCMD_CHAT_ENACTALL_DRAWFILE
+    print "\n---"       >> XCMD_CHAT_ENACTALL_DRAWFILE
 
     if (GEMINI_HAS_RESPONSE_CONTENT == 0) {
         msg_str = "The response content is empty"
@@ -57,11 +54,9 @@ END{
         creq_dir = (GEMINI_CONTENT_DIR "/chat.request")
         gemini_res_to_cres( o_response, cres_dir, creq_dir, o_tool, Q2_1 )
 
-        if ( IS_ENACTNONE != true ) {
-            usage_str = cres_dump_usage( cres_dir, creq_dir )
-            print "[MODEL-USAGE] " usage_str                        >> XCMD_CHAT_ENACTALL_DRAWFILE
-            print "[FUNCTION-CALL-COUNT] " int(o_tool[ Q2_1 L ])    >> XCMD_CHAT_ENACTALL_LOGFILE
-        }
+        usage_str = cres_dump_usage( cres_dir, creq_dir )
+        print "[MODEL-USAGE] " usage_str                        >> XCMD_CHAT_ENACTALL_DRAWFILE
+        print "[FUNCTION-CALL-COUNT] " int(o_tool[ Q2_1 L ])    >> XCMD_CHAT_ENACTALL_LOGFILE
     }
 
     exit( _exitcode )

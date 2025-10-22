@@ -1,0 +1,113 @@
+
+___x_cmd_claude_router_setup(){
+    local setup_path="$HOME/.claude-code-router/config.json"
+
+    if [ -f "$setup_path" ]; then
+        claude:info --path "$setup_path" "The claude-code-router configuration file already exists. Please use the 'x claude router ui' command to modify the configuration."
+        return 0
+    fi
+
+    local openrouter_api_key="${OPENROUTER_API_KEY:-$(___x_cmd openrouter --cur get apikey 2>/dev/null)}"
+    local gemini_api_key="${GEMINI_API_KEY:-$(___x_cmd gemini --cur get apikey 2>/dev/null)}"
+    local deepseek_api_key="${DEEPSEEK_API_KEY:-$(___x_cmd deepseek --cur get apikey 2>/dev/null)}"
+    local openai_api_key="${OPENAI_API_KEY:-$(___x_cmd openai --cur get apikey 2>/dev/null)}"
+
+    ___x_cmd ensurefp "$setup_path"
+    local router_model=""
+    {
+        printf "{ \n"
+        printf "\"Providers\": [\n"
+        [ -z "$openai_api_key" ]     || {
+            ___x_cmd_claude_router_setup___templates_provider openai "$openai_api_key"
+            router_model="openai"
+        }
+        [ -z "$deepseek_api_key" ]   || {
+            ___x_cmd_claude_router_setup___templates_provider deepseek "$deepseek_api_key"
+            router_model="deepseek"
+        }
+        [ -z "$gemini_api_key" ]     || {
+            ___x_cmd_claude_router_setup___templates_provider gemini "$gemini_api_key"
+            router_model="gemini"
+        }
+        [ -z "$openrouter_api_key" ] || {
+            ___x_cmd_claude_router_setup___templates_provider openrouter "$openrouter_api_key"
+            router_model="openrouter"
+        }
+        printf "\n],\n"
+        ___x_cmd_claude_router_setup___templates_router "$router_model"
+        printf "}\n"
+    } | ___x_cmd jo fmt > "$setup_path"
+    claude:info --path "$setup_path" --1-check-config "x claude router ui" --2-restart-serve "x claude router restart" --3-run "x claude router code" \
+        "The claude-code-router configuration file has been successfully generated."
+}
+
+___x_cmd_claude_router_setup___templates_provider() {
+    local name="$1"
+    local api_key="$2"
+
+    local api_base_url=""
+    local models=""
+    local transformer=""
+    case "$name" in
+        gemini)
+            api_base_url="https://generativelanguage.googleapis.com/v1beta/models/"
+            models='["gemini-2.5-flash"]'
+            transformer='{
+              "use": ["gemini"]
+            }'
+            ;;
+        openai)
+            api_base_url="https://api.openai.com/v1/chat/completions"
+            models='["gpt-5-mini"]'
+            transformer='{
+              "use": [
+                [
+                  "maxcompletiontokens",
+                  { "max_completion_tokens": 128000 },
+                  "temperature",
+                  { "temperature": 0.5 }
+                ],
+                "enhancetool"
+              ]
+            }'
+            ;;
+        deepseek)
+            api_base_url="https://api.deepseek.com/chat/completions"
+            models='["deepseek-chat"]'
+            transformer='{
+              "use": ["deepseek"],
+              "deepseek-chat": {
+                "use": ["tooluse"]
+              }
+            }'
+            ;;
+        openrouter)
+            api_base_url="https://openrouter.ai/api/v1/chat/completions"
+            models='["google/gemini-2.5-flash"]'
+            transformer='{
+              "use": ["openrouter"]
+            }'
+            ;;
+        *)
+            N=claude M="The ${name} configuration template is not currently supported." log:ret:1 ;;
+    esac
+
+    printf "{ \"name\": \"%s\", \"api_base_url\": \"%s\", \"api_key\": \"%s\", \"models\": %s, \"transformer\": %s},\n" \
+        "$name" "$api_base_url" "$api_key" "$models" "$transformer"
+}
+
+___x_cmd_claude_router_setup___templates_router(){
+    local name="$1"
+
+    local default=""
+    case "$name" in
+        gemini)     default="gemini,gemini-2.5-flash"   ;;
+        openai)     default="openai,gpt-5-mini"         ;;
+        deepseek)   default="deepseek,deepseek-chat"    ;;
+        openrouter) default="openrouter,google/gemini-2.5-flash" ;;
+        *)          N=claude M="The ${name} configuration template is not currently supported." log:ret:1 ;;
+    esac
+
+    printf "\"Router\": { \"default\": \"%s\" }\n" \
+        "${default}"
+}

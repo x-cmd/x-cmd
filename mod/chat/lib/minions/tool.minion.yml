@@ -15,10 +15,10 @@ prompt:
 
     ## Stats rules (initialization first)
     - At the start of any new conversation or task, assume **no stats file exists**. Your first action MUST be to call **`update_stats`** to create an initial stats file before performing other work.
-    - Always consult the stats file before reasoning or generating a response.
+    - Always consult the stats file **before any reasoning or task execution**.
     - To create or modify the stats file, **always use the `update_stats` tool**; never invent or embed stats content in plain replies.
     - If `update_stats` fails, use its error info to decide the next step; if creation is impossible, report that status concisely and proceed without fabricating stats.
-    - Update stats **only when necessary** (topic change, task progress, new errors, new plan steps). Updates must be accurate, minimal, and non-speculative.
+    - Update stats **only when necessary** (topic change, new target, task progress, new errors, new plan steps). Updates must be accurate, minimal, and non-speculative.
 
     ## Function-call rules
     - Always use the function-call format defined by the LLM platform (e.g., `tool_calls`, `tools`, `function_declarations`).
@@ -88,8 +88,7 @@ tool:
       description: |
         Writes content to a specified file.
 
-        For file modifications, always prefer providing `content` in **unified diff format (v4a)**
-        with `is_patchdiff=true`.
+        For file modifications, always prefer providing `content` in **unified diff format (v4a)** with `is_patchdiff=true`.
         This ensures modifications are applied precisely and prevents overwriting unrelated parts of the file.
 
         Constraints for patch diffs:
@@ -244,37 +243,42 @@ tool:
           - desc
     - name: update_stats
       description: |
-        Overwrite the stats file with new content in YAML format. This operation replaces the entire file and is destructive.
-        Update promptly when state changes; avoid unnecessary updates but do not delay important changes.
+        Create or update the stats file that records conversation context, state, and task progress.
+        This tool must be called at the beginning of a new session if the stats file does not exist, and
+        whenever key information such as topic, plan, or task status changes.
+
+        The operation overwrites the entire file — it is *destructive*.
+        Update promptly when the state changes; avoid redundant writes but do not delay critical updates.
 
         Requirements:
-          - content must be valid, well-indented YAML.
-          - this call overwrites the whole file; ensure content is complete.
-          - use the exact field names below if included; these are *recommended fields*, not mandatory — you may add or omit fields as appropriate.
+          - `content` must be valid, well-indented YAML.
+          - This call replaces the whole file; ensure the YAML content is complete and self-contained.
+          - The following are *recommended fields*, not mandatory.
+            The model may adapt and include additional relevant information.
 
         *Recommended YAML fields:*
           topic: <string>                  # conversation topic or title
           user_preferences:
             language: <"en"|"zh">          # preferred language
-          background:                      # list of background/context items
+          background:                      # background or contextual info
             - <string>
           environment:                     # current environment information
             os: <string>
             shell: <string>
             PWD: <string>
-
+          function_call_format: "JSON"     # always JSON, never pseudo-XML
+          target: <string>                 # optional, current main target or focus
           task_plan:
-            pending:                       # list of pending steps
-              - <string>
-            completed:                     # list of completed steps
-              - <string>
-          notes:                           # important notes or warnings
-            - <string>
-          files:                           # file references
-            - <string>
-          errors:                          # errors or exceptions
-            - <string>
-
+            pending:
+              - <string>                   # pending steps
+            completed:
+              - <string>                   # completed steps
+          notes:
+            - <string>                     # important notes or warnings
+          files:
+            - <string>                     # file references
+          errors:
+            - <string>                     # errors or exceptions
 
       parameters:
         type: object
@@ -282,14 +286,59 @@ tool:
           desc:
             type: string
             description: |
-              Required. Short reason for the update (e.g. "refresh task plan", "record new preferences"). Explains why the stats file is being replaced.
+              Required. A concise reason for updating the stats file
+              (e.g. "refresh task plan", "record environment info", "update topic").
           content:
             type: string
             description: |
-              Required. Full replacement content of the stats file, in YAML format.
-              Must be a complete, valid YAML document.
-              The above fields are *recommended* but not required — the model may adapt and include additional relevant fields.
+              Required. Full YAML content to replace the stats file.
+              Must be valid and complete; includes *recommended fields* above, but
+              flexibility is allowed for additional contextual or operational data.
 
         required:
           - desc
+          - content
+    - name: get_x_cmd_help
+      description: |
+        x-cmd is a command-line library/toolbox developed using Posix Shell compatible syntax, prioritizing flexibility and lightweight design.
+        Retrieve help documentation for a specified x-cmd module or related submodules, based on the model’s functional need.
+        This helps the model understand how to use and integrate x-cmd module capabilities.
+
+        Requirements:
+          - The main command for all modules is `x`.
+          - If the module name is unknown, start from the top-level help of `x` and explore relevant submodules step by step.
+          - Provide a clear `desc` describing the purpose and context for this help retrieval.
+          - The `model` parameter specifies the target module name or feature group to query (e.g., `theme`, `gh`, `hn`).
+          - The `content` parameter can include keywords, subcommands, or brief descriptions of the functional area of interest.
+            It helps refine which part of the help documentation to focus on.
+
+        Example usage:
+          - model: "theme"
+            content: "how to set terminal theme colors"
+          - model: "gh"
+            content: "commit options and hooks"
+          - model: "x"
+            content: "explore top-level modules under x"
+
+      parameters:
+        type: object
+        properties:
+          desc:
+            type: string
+            description: |
+              Required. Brief explanation of why this help documentation is being requested (e.g. "to learn how to use the theme module").
+          model:
+            type: string
+            description: |
+              Required. Target x-cmd module name.
+              If unknown, use 'x' to retrieve help from the top-level `x` command to explore available modules.
+          content:
+            type: string
+            description: |
+              Required. Supplementary description or keywords that help narrow the focus of the requested help
+              (e.g. “configure theme colors”, “run task in background”).
+
+        required:
+          - desc
+          - model
           - content

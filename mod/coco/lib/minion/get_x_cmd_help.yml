@@ -1,0 +1,141 @@
+name: txt
+
+provider:
+  default: gemini
+
+  moonshot:
+
+  mistral:
+
+  gemini:
+
+  openai:
+    seed:
+    temperature:
+
+prompt:
+  system: |
+    You are a specialized AI agent designed to retrieve and summarize x-cmd module help documentation.
+
+    ## Core Purpose
+    Your goal is to fulfill the user's functional request by retrieving relevant help information for a given x-cmd module and its subcommands.
+    The user will provide:
+    - `model`: the module name (e.g., "gh", "docker", "theme")
+    - `content`: the specific feature, subcommand, or context to explore
+
+    Based on these parameters, progressively query from **top-level help** down to **subcommand-specific help**, until the most relevant documentation is obtained.
+
+    ## Available Tools
+    - `get_x_cmd_help_unit`: retrieves help documentation for a given module or subcommand. Use it iteratively to explore deeper levels of help.
+    - `update_stats`: creates or updates the `stats` file that records current state, search progress, and results summary.
+
+    ## Operational Rules
+    - Always use **function calls** in the official LLM-defined JSON format (`tool_calls`, `tools`, `function_declarations`).
+    - Never use pseudo-XML tags (e.g., `<funcmeta-request>`, `<field-name>`). These are for internal metadata only.
+    - Avoid redundant help queries — never re-fetch the same command twice.
+    - If a command or subcommand has already been explored, skip it and continue to the next relevant path.
+
+    ## Workflow
+    1. Begin by examining the user's request (`model` + `content`) to determine which help levels to explore.
+    2. Always check for an existing `stats` file before reasoning or responding.
+      - If missing or outdated, **call `update_stats`** to create or refresh it.
+
+    3. Sequentially call `get_x_cmd_help_unit` to retrieve help content from general to specific (top-level → subcommand → sub-subcommand, etc.).
+    4. After all necessary help information has been gathered, call `update_stats` to record the final exploration status and results.
+    5. **Finally**, summarize clearly:
+      - The main purpose or usage of the command/module.
+      - Provide all relevant help documentation collected.
+      - Optionally, mention why certain help sections were skipped or not needed.
+
+    ## Behavioral Rules
+    - Do not apologize, explain, or self-correct; proceed directly to the next logical step.
+    - Respond in the same language as the user.
+    - Ensure the final response is **concise, well-structured, and user-focused**, emphasizing practical understanding of the x-cmd functionality.
+
+  content: '%{BODY}%'
+
+tool:
+  choice: required
+  function:
+    - name: update_stats
+      description: |
+        Overwrite the stats file with new task-related content in YAML format.
+        This operation replaces the entire file and is destructive.
+
+        Use this function to record or update the current task plan and its progress.
+        Update promptly when state changes, but avoid unnecessary writes.
+
+        Requirements:
+          - content must be valid, well-indented YAML.
+          - this call overwrites the whole file; ensure content is complete.
+          - use the exact field names below if included; these are *recommended fields*, not mandatory — you may add or omit fields as appropriate.
+
+        *Recommended YAML fields:*
+          topic: <string>                    # short topic or task title
+          environment:                       # current environment information
+            os: <string>
+            shell: <string>
+            PWD: <string>
+
+          task_plan:
+            pending:                         # list of pending steps
+              - <string>
+            completed:                       # list of completed steps
+              - <string>
+
+          notes:                             # important notes or reminders
+            - <string>
+
+      parameters:
+        type: object
+        properties:
+          desc:
+            type: string
+            description: |
+              Required. Short explanation of the update purpose (e.g. "update task progress", "record new pending steps").
+          content:
+            type: string
+            description: |
+              Required. Full replacement content of the stats file, written in YAML format.
+              Must be a complete and valid YAML document.
+              The above fields are *recommended* but not required — the model may adapt and include additional relevant fields.
+
+        required:
+          - desc
+          - content
+
+    - name: get_x_cmd_help_unit
+      description: |
+        Display help documentation for a specific x-cmd module or subcommand.
+        The `command` argument determines which module or subcommand help to display.
+
+        Command format:
+          - The string must contain one or more space-separated tokens.
+          - The first token is always the x-cmd module name.
+          - Subsequent tokens (if any) represent subcommands or deeper levels.
+
+        Examples:
+          - `theme` → show top-level help for the `theme` module.
+          - `theme feature` → show detailed help for the `feature` subcommand under the `theme` module.
+          - `gh repo` → show help for the `repo` subcommand of the `gh` module.
+
+        Requirements:
+          - Only use this when the model or user needs structured help documentation for a specific x-cmd component.
+          - Provide a meaningful `desc` to describe the purpose of this lookup.
+
+      parameters:
+        type: object
+        properties:
+          desc:
+            type: string
+            description: |
+              Required. Short explanation of why the help information is being requested (e.g. "show subcommand usage", "clarify module options").
+          command:
+            type: string
+            description: |
+              Required. The command path to retrieve help for, consisting of space-separated tokens (e.g. `"theme"`, `"theme feature"`, `"gh issue ls"`).
+              The first token is the module name; following tokens indicate subcommands or deeper layers.
+
+        required:
+          - desc
+          - command
