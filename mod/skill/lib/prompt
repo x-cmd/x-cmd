@@ -1,0 +1,89 @@
+# shellcheck shell=dash disable=2016
+
+___x_cmd_skill_prompt(){
+    local op="$1"
+    case "$op" in
+        -h|--help)  ___x_cmd help -m skill prompt "$@";    return ;;
+        setup|text|rm)
+                    shift; ___x_cmd_skill_prompt___"$op" "$@" ;;
+        *)          N=skill M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_skill_prompt___rm(){
+    local fp="$1"; [ -n "$fp" ] || N=skill M="Please provide ai agent prompt file" log:ret:64
+    local fpbak="${fp}.bak"
+    [ -f "$fp" ] || return 0
+    skill:info "Removing skill prompt from file -> $fp"
+    skill:info "Backup existing prompt file to -> $fpbak"
+    ___x_cmd_cmds cp -rf "$fp" "$fpbak" || return $?
+    ___x_cmd_cmds awk '
+( $0 ~ "^<!-- BEGIN X-CMD SKILL SPEC -->" ){
+    while (getline) {
+        if (( $0 ~ "^<!-- END X-CMD SKILL SPEC -->" )){
+            break
+        }
+    }
+    next
+}
+{ print $0; }
+' < "$fpbak" > "$fp"
+}
+
+___x_cmd_skill_prompt___setup(){
+    local fp="$1"; [ -n "$fp" ] || N=skill M="Please provide ai agent prompt file" log:ret:64
+    local prompt; prompt="$( ___x_cmd_skill_prompt___text )" || return $?
+    [ -n "$prompt" ] || return 1
+
+    skill:info "Setting up skill prompt to file -> $fp"
+    if ! [ -f "$fp" ]; then
+        ___x_cmd ensurefp "$fp" || return $?
+        printf "%s\n" "$prompt" > "$fp"
+    else
+        local fpbak="${fp}.bak"
+        skill:info "Backup existing prompt file to -> $fpbak"
+        ___x_cmd_cmds cp -rf "$fp" "$fpbak" || return $?
+        prompt="$prompt" ___x_cmd_cmds awk '
+BEGIN{ prompt = ENVIRON["prompt"]; HAS_PRINT_PROMPT = 0; }
+( $0 ~ "^<!-- BEGIN X-CMD SKILL SPEC -->" ){
+    while (getline) {
+        if (( $0 ~ "^<!-- END X-CMD SKILL SPEC -->" ) && ( ! HAS_PRINT_PROMPT )){
+            HAS_PRINT_PROMPT = 1
+            print prompt
+            break
+        }
+    }
+    next
+}
+{ print $0; }
+END{ if ( HAS_PRINT_PROMPT == 0 ) print  "\n" prompt  "\n" ; }
+' < "$fpbak" > "$fp"
+    fi
+    skill:info "Setup complete"
+}
+___x_cmd_skill_prompt___text(){
+    local fp="$___X_CMD_ROOT_MOD/skill/lib/data/skill.prompt.md"
+    [ -f "$fp" ] || return 0
+    local skill_list; skill_list="$( ___x_cmd_skill_active_ls )"
+    [ -n "$skill_list" ] || {
+        skill:error "skill list is empty"
+        if ___x_cmd_runmode_allow_manual; then
+            ___x_cmd_skill_active_add___app || return $?
+            skill_list="$( ___x_cmd_skill_active_ls )"
+            [ -n "$skill_list" ] || return 1
+        else
+            return 1
+        fi
+    }
+
+    < "$fp" skill_list="$skill_list" ___x_cmd_cmds awk '
+BEGIN{ skill_list = ENVIRON["skill_list"] ; }
+{
+    if ( match($0, "%{SKILL_LIST}%") ) {
+        print substr($0, 1, RSTART-1) skill_list substr($0, RSTART+RLENGTH);
+    } else {
+        print $0
+    }
+}
+'
+}

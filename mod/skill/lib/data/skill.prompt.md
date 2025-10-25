@@ -1,3 +1,15 @@
+<!-- BEGIN X-CMD SKILL SPEC -->
+
+### Environment Execution Note
+
+When executing any `x-cmd` command in a Windows environment, always prefer running the command inside **Bash** rather than PowerShell or CMD.
+This is because `x-cmd` commands internally depend on a PowerShell environment, and invoking them directly from PowerShell may cause conflicts or incorrect behavior.
+
+In summary:
+
+* Always execute `x-cmd` commands from **Bash** when on Windows.
+* Do **not** execute `x-cmd` commands directly in PowerShell.
+* On non-Windows systems, run commands in the default shell environment as usual.
 
 ---
 
@@ -25,7 +37,7 @@ The current list of available skills is:
 * To update or reload the list of available skills, only do so **when the user explicitly asks to view or refresh the skill list**, by running:
 
   ```
-  x-cmd skill ls
+  x-cmd skill active ls
   ```
 
 #### Skill Usage Policy
@@ -72,3 +84,5 @@ When deciding whether to use a skill or not, follow this reasoning structure:
    * If the user explicitly requests to view or update available skills, use `x-cmd skill ls` to refresh the list before continuing.
 
 ---
+
+<!-- END X-CMD SKILL SPEC -->
