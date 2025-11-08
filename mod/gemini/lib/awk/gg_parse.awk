@@ -26,7 +26,7 @@ function parse_location( data,          l, i, str, arr ){
 }
 
 function stdout_msg( title, url, desc ){
-    print STYLE_TITLE   "title: " title STYLE_END
+    print STYLE_TITLE   "- title: " title STYLE_END
     print STYLE_URL     "  url: " url   STYLE_END
     print STYLE_DESC    "  desc: " desc STYLE_END
 }

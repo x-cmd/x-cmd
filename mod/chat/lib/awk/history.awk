@@ -4,14 +4,14 @@
 
 # req.json
 # res.json
-function chat_history_load( o, chatid, hist_session_dir, history_num,       _cmd, l, i, t, _, lt, rt, kp, kp_i, content_dir,
+function chat_history_load( o, chatid, hist_session_dir, history_num,       _cmd, l, i, t, _, lt, rt, num, req_text, kp, kp_i, content_dir,
 tool_l, j, func_dir, func_desc, func_name, func_code, func_status, func_stdout, func_stderr, func_req, func_res ) {
     kp = chatid
     if ( o[ kp ] == "[" ) return
     if (history_num <= 0) return
 
     l = 0
-    _cmd = "{ command find " qu1(hist_session_dir) " -type f -name \"histsum.md\" -o -path \"*/chat.response/content\" | command sort -r; } 2>/dev/null"
+    _cmd = "{ command find " qu1(hist_session_dir) " -type f -name \"histsum.md\" -o -path \"*/chat.response/done\" | command sort -r; } 2>/dev/null"
     while( ( _cmd | getline t ) > 0 ){
         t = substr(t, length(hist_session_dir)+2)
         i = index( t, "/" )
@@ -25,10 +25,15 @@ tool_l, j, func_dir, func_desc, func_name, func_code, func_status, func_stdout, 
             }
 
             if (rt == "histsum.md") {
+                ++num
                 _[ lt, "use_histsum" ] = true
                 break
             }
-            if (l >= history_num) break
+
+            req_text = cat( hist_session_dir "/" lt "/chat.request/content" )
+            _[ lt, "req_text" ] = req_text
+            if ( req_text != "" ) ++num
+            if (num >= history_num) break
         }
     }
     close( _cmd )
@@ -45,8 +50,9 @@ tool_l, j, func_dir, func_desc, func_name, func_code, func_status, func_stdout, 
             continue
         }
 
-        o[ kp_i SUBSEP "req" SUBSEP "text" ] = cat( content_dir "/chat.request/content" )
-        o[ kp_i SUBSEP "res" SUBSEP "text" ] = cat( content_dir "/chat.response/content" )
+        o[ kp_i SUBSEP "req" SUBSEP "text" ]        = _[ t, "req_text" ]
+        o[ kp_i SUBSEP "req" SUBSEP "append_text" ] = cat( content_dir "/chat.request/append_text" )
+        o[ kp_i SUBSEP "res" SUBSEP "text" ]        = cat( content_dir "/chat.response/content" )
 
         tool_l = cat( content_dir "/chat.response/tool_call_l" )
         o[ kp_i SUBSEP "res" SUBSEP "tool_l" ] = tool_l
@@ -84,6 +90,10 @@ tool_l, j, func_dir, func_desc, func_name, func_code, func_status, func_stdout, 
 
 function chat_history_get_req_text(o, prefix, i){
     return o[ prefix SUBSEP i SUBSEP "req" SUBSEP "text" ]
+}
+
+function chat_history_get_req_append_text(o, prefix, i){
+    return o[ prefix SUBSEP i SUBSEP "req" SUBSEP "append_text" ]
 }
 
 function chat_history_get_res_text(o, prefix, i){

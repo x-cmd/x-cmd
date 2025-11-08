@@ -12,6 +12,8 @@ BEGIN{
     EXITCLEAR  = 1
     OUTPUT_RAW = 1
     is_interactive = ENVIRON[ "is_interactive" ]
+    MONEY_UNIT = ENVIRON[ "money_unit" ]
+    USD_RATE_FILE = ( ENVIRON[ "___X_CMD_PRICE_DATA_DIR" ] "/usd-rate.json" )
 
     prompt_run = "Running ..."
     prompt_end = "Done"
@@ -95,7 +97,15 @@ function handle_content_md(arr){
     hd_main( arr )
 }
 
-function handle_usage(str,          o, kp_usage, total_token, at, it, ot, ict, icr, ott, otr, _time_str, _cache_str, _thought_str, isr, ihr, ior, detail_str, model, provider, PRICE_DATA_DIR, price_data_file, usd_rate_file, money_unit, llmp_obj, ccy_obj, llmp_it, llmp_model, totalprice, amount, _money_str) {
+function handle_usage_format_currency(totalprice,           amount){
+    if ( totalprice <= 0 ) return
+    if ( (CCY_OBJ[ Q2_1, L ] > 0 ) || jiparse2leaf_fromfile( CCY_OBJ, Q2_1, USD_RATE_FILE ) ) {
+        amount = llmp_usd_to_currency( CCY_OBJ, Q2_1, MONEY_UNIT, totalprice )
+        return llmp_format_currency( amount, MONEY_UNIT )
+    }
+}
+
+function handle_usage(str,          o, kp_usage, total_token, at, sat, it, ot, ict, icr, ott, otr, _time_str, _cache_str, _thought_str, isr, ihr, ior, detail_str, _money_tp, _money_stp, tp, stp ) {
     if ( (MODEL_SENT_AT != "") && (MODEL_RECV_AT != "")){
         _time_str = date_epochminus(MODEL_RECV_AT, MODEL_SENT_AT)
         if ( _time_str != "" ) _time_str = date_humantime( _time_str )
@@ -106,7 +116,8 @@ function handle_usage(str,          o, kp_usage, total_token, at, it, ot, ict, i
     } else {
         jiparse_after_tokenize(o, str)
         kp_usage = Q2_1 SUBSEP "\"usage\""
-        at = int( o[ kp_usage SUBSEP "\"total\""  SUBSEP "\"token\"" ] )
+        at = int( o[ kp_usage SUBSEP "\"total\"" SUBSEP "\"token\"" ] )
+        sat = int( o[ kp_usage SUBSEP "\"session\"" SUBSEP "\"token\"" ] )
         if ( at <= 0 ) {
             if ( _time_str != "" ) detail_str = "Time: " _time_str
         } else {
@@ -126,27 +137,19 @@ function handle_usage(str,          o, kp_usage, total_token, at, it, ot, ict, i
             ihr = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio_history\"" ]
             ior = o[ kp_usage SUBSEP "\"input\"" SUBSEP "\"ratio_other\"" ]
 
-            model = o[ Q2_1 SUBSEP "\"model\"" ]
-            provider = o[ Q2_1 SUBSEP "\"provider\"" ]
-            PRICE_DATA_DIR = ENVIRON[ "___X_CMD_PRICE_DATA_DIR" ]
-            price_data_file = PRICE_DATA_DIR "/" juq(provider) "/latest.json"
-            usd_rate_file = PRICE_DATA_DIR "/usd-rate.json"
-            if ( jiparse2leaf_fromfile( llmp_obj, Q2_1, price_data_file ) && jiparse2leaf_fromfile( ccy_obj, Q2_1, usd_rate_file )  ) {
-                llmp_model = llmp_search_model( llmp_obj, Q2_1, model )
-                llmp_it = it - ict
-                if ( llmp_model != "" ) {
-                    totalprice = llmp_total_calprice( llmp_obj, Q2_1, llmp_model, llmp_it, ict, ot )
-                    money_unit = ENVIRON[ "money_unit" ]
-                    amount = llmp_usd_to_currency( ccy_obj, Q2_1, money_unit, totalprice )
-                    _money_str = " · Cost: " llmp_format_currency( amount, money_unit )
-                }
+            tp  = o[ kp_usage SUBSEP "\"total\"" SUBSEP "\"price\"" ]
+            stp = o[ kp_usage SUBSEP "\"session\"" SUBSEP "\"price\"" ]
+
+            if (tp > 0)     _money_tp  = " | " handle_usage_format_currency( tp )
+            if (stp > 0)    _money_stp = " | " handle_usage_format_currency( stp )
+            if ( _time_str != "" ) _time_str = " | " _time_str
+
+            detail_str =                        sprintf("Now   → Token %s = In %s + Out %s%s%s", at, it _cache_str, ot _thought_str, _money_tp, _time_str ) "\n"
+            detail_str = detail_str             sprintf("Dist  → Sys %s | Hist %s | Other %s",  isr * 100 "%", ihr * 100 "%", ior * 100 "%")
+            if (sat > at) {
+                detail_str = detail_str "\n"    sprintf("Total → Token %s%s", sat, _money_stp )
             }
-            if ( _time_str != "" ) _time_str = " · Time: " _time_str
-
-            detail_str = sprintf("Token: %s = Input %s + Output %s%s%s", at, it _cache_str, ot _thought_str, _money_str, _time_str ) "\n" \
-                sprintf("Input distribution → Sys %s | Hist %s | Other %s",  isr * 100 "%", ihr * 100 "%", ior * 100 "%")
         }
-
     }
     if ( detail_str != "" ) print "\033[90m" detail_str "\033[0m"
 }

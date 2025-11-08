@@ -135,7 +135,7 @@ function openai_record_response___tool_call(tool_arr,             idx, name, arg
     jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"arguments\"",    jqu( args ) )
 
     if ( XCMD_CHAT_ENACTALL_LOGFILE != "" ) {
-        dir = (OPENAI_CONTENT_DIR "/function-call/" idx)
+        dir = (SESSIONDIR "/" CHATID "/function-call/" idx)
         mkdirp( dir )
         print name > (dir "/name")
         print args > (dir "/arg")
@@ -220,7 +220,7 @@ BEGIN{
     OPENAI_RESPONSE_IS_ERROR_CONTENT = 0
 }
 
-( IS_DEBUG ){ print $0 >> (OPENAI_CONTENT_DIR "/chat.running.yml"); }
+( IS_DEBUG ){ print $0 >> (SESSIONDIR "/" CHATID "/chat.running.yml"); }
 ($0 != ""){
     if ( IS_STREAM == true ) {
         if ($0 !~ "^:"){

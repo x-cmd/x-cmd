@@ -1,0 +1,88 @@
+# shellcheck shell=dash
+
+___x_cmd_skill_ls(){
+    local agent=""
+    local dir=""
+    local type=preview
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m skill ls;             return ;;
+            --skill-dir)    dir="$2"; shift 2 ;;
+            --agent)        agent="$2"; shift 2 ;;
+            --id)           type=id;  shift ;;
+            *)              break ;;
+        esac
+    done
+    ___x_cmd_skill___agent_check "$agent" || return $?
+
+    ___x_cmd_skill_ls___"$type" "$agent" "$dir"
+}
+
+___x_cmd_skill_ls___id(){
+    ___x_cmd_skill_ls___preview "$@" | {
+        local IFS="$___X_CMD_UNSEENCHAR_HT"
+        local x_id=""; local x_description=""
+        while read -r x_id x_description; do
+            [ "$x_id" != "skill-id" ] || continue
+            printf "%s\n" "$x_id"
+        done
+    }
+}
+
+___x_cmd_skill_ls___preview(){
+    local agent="$1"
+    local dir="$2"
+    if [ -n "$dir" ]; then
+        [ -d "$dir" ] || return 0
+        local data; data="$( ___x_cmd_cmds find "$dir" -maxdepth 2 -mindepth 2 -type f  -name 'SKILL.md' 2>/dev/null )"
+        [ -n "$data" ] || {
+            skill:warn "No skills available. Please load and activate the required skill list"
+            return 0
+        }
+
+        local l=""; local x_=""; local skillname=""; local skilldesc=""; local skillid=""
+        printf "%s\t%s\n" "skill-id" "description"
+        while read -r l; do
+            x_=""; ___x_cmd_skill_ls___preview_get_file_desc_ "$l"
+            skilldesc="${x_:-"(No description available)"}"
+
+            skillname="${l#"$dir/"}"
+            skillname="${skillname%"/SKILL.md"}"
+            x_=""; ___x_cmd_skill___uselist_get_name_or_id --getid-with-name "$agent" "$skillname"
+            skillid="${x_:-$skillname}"
+
+            printf "%s\t%s\n" "$skillid" "$skilldesc"
+        done <<A
+$data
+A
+    else
+        local uselist="$___X_CMD_SKILL_USE_DATA_DIR/$agent/uselist.tsv"
+        [ -f "$uselist" ] || {
+            skill:warn "No skills available. Please load and activate the required skill list"
+            return 0
+        }
+
+        local x_id=""; local x_name=""; local x_description=""
+        printf "%s\t%s\n" "skill-id" "description"
+        while read -r x_id x_name x_description; do
+            printf "%s\t%s\n" "$x_id" "$x_description"
+        done < "$uselist"
+    fi
+}
+
+___x_cmd_skill_ls___preview_get_file_desc_(){
+    local skillfile="$1"
+    [ -f "$skillfile" ] || return 1
+    local n=0; local l=""; local desc=""
+    x_=""
+    while read -r l; do
+        desc="${l#"description: "}"
+        [ "$l" = "$desc" ] || {
+            x_="$desc"
+            break
+        }
+        n=$(( n + 1 ))
+        [ "$n" -le 10 ] || break
+    done < "$skillfile"
+    [ -n "$x_" ]
+}

@@ -33,14 +33,14 @@ ___x_cmd_chat___exec_repl___app(){
         local x_="";local msg="";local previous=""
         ! ___x_cmd_chat___exec_repl___id_previous_ || previous="$x_"
         ___x_cmd ui select ,msg     "NEXT"                      \
-                "start a new repl"                              \
-                ${previous:+"using previous repl -> $previous"} \
-                "interactive Selection Previous repl"           \
+                "Start a new conversation"                              \
+                ${previous:+"Continue using previous conversation -> $previous"} \
+                "Interactive selection of previous conversation"           \
                 "return 0"
         case "$msg" in
-            start*)     ___x_cmd_chat___exec_repl___start       "$@" ;;
-            using*)     ___x_cmd_chat___exec_repl___previous    "$@" ;;
-            interactive*)
+            Start*)     ___x_cmd_chat___exec_repl___start       "$@" ;;
+            Continue*)     ___x_cmd_chat___exec_repl___previous    "$@" ;;
+            Interactive*)
                         ___x_cmd_chat___exec_repl___select      "$@" ;;
             *)          return 0 ;;
         esac
@@ -73,7 +73,7 @@ ___x_cmd_chat___exec_repl_loop(){
     trap ':' INT
     chat:info "repl [session=$session]"
 
-    local history_num="${history_num:-10}"
+    local history_num="${history_num:-"$def_histnum"}"
     local ___X_CMD_MD_LLM_LESS_DISABLE=1
     local x_=""
     local question="$*"
@@ -107,6 +107,7 @@ ___x_cmd_chat___exec_repl___printhelp(){
     /h|/help    | show help
     /exit|/quit | exit the loop
     /history    | manage repl history records
+    /export     | export conversation content
     = <command> | execute the shell command
 
 Other inputs continue the loop, use \ to start multi-line input content
@@ -119,6 +120,7 @@ ___x_cmd_chat___exec_repl___nexthelp(){
         "/h         | show help"                    \
         "/exit      | exit the loop"                \
         "/history   | manage repl history records"  \
+        "/export    | export conversation content"  \
         "...        | continue the loop"
     case "$id" in
         1)      ___x_cmd_chat___exec_repl___printhelp ;;
@@ -131,7 +133,7 @@ ___x_cmd_chat___exec_repl___nexthelp(){
 ___x_cmd_chat___exec_repl___slash_check(){
     local str="$1"
     case "$str" in
-        /h|/help|/exit|/quit|/history) return 0;;
+        /h|/help|/exit|/quit|/history|/export) return 0;;
         *) return 1 ;;
     esac
 }
@@ -145,6 +147,7 @@ ___x_cmd_chat___exec_repl____handlecmd_(){
         /exit|/quit)    x_=EXIT;    return 0 ;;
         /init)          ___x_cmd_chat_init      ;;
         /history)       ___x_cmd_chat___exec_repl_history app   ;;
+        /export)        ___x_cmd_chat___exec_repl____export "$session" ;;
         "")             ___x_cmd_chat___exec_repl___nexthelp; return ;;
 
         \=' '*)
@@ -162,4 +165,84 @@ ___x_cmd_chat___exec_repl____handlecmd_(){
     esac
 
     x_=""
+}
+
+___x_cmd_chat___exec_repl____export(){
+    local session="$1"
+    local scope=""
+    local method=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            last|all)   scope="$1"; shift ;;
+            clip|file)  method="$1"; shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local cmd=""
+    if [ -z "$scope" ]; then
+        ___x_cmd ui select ,cmd "Select export content" \
+            "all:   All conversation content" \
+            "last:  Last conversation content" || return $?
+        scope="${cmd%%:*}"
+    fi
+
+    if [ -z "$method" ]; then
+        ___x_cmd ui select ,cmd "Select export method" \
+            "clip:  Copy to clipboard" \
+            "file:  Save to file" || return $?
+        method="${cmd%%:*}"
+    fi
+
+    case "$method" in
+        clip)
+            ___x_cmd_chat___exec_repl____export_raw "$session" "$scope" | ___x_cmd pb c
+            chat:info "Conversation exported to clipboard"
+            ;;
+        file)
+            local fp=""
+            ___x_cmd tui form --ctrl_exit_strategy fp "File path:" "$PWD/content.txt" || return $?
+            [ -n "$fp" ] || return $?
+            ___x_cmd_cmds touch "$fp" || return $?
+            ___x_cmd_chat___exec_repl____export_raw "$session" "$scope" > "$fp" || return $?
+            chat:info "Conversation exported to file -> $fp"
+            ;;
+    esac
+}
+
+___x_cmd_chat___exec_repl____export_raw(){
+    local session="$1"
+    local scope="${2:-"all"}"
+
+    local session_dir="$___X_CMD_CHAT_SESSION_DIR/$session"
+    chat:debug --session_dir "$session_dir" "export session conversation content"
+    [ -d "$session_dir" ] || {
+        chat:warn "Not found conversation content"
+        return 1
+    }
+
+    local l=""; local dir=""; local reqfile=""; local resfile=""
+    { ___x_cmd_cmds find "$session_dir" -type f -path "*/chat.response/done" | ___x_cmd_cmds sort -r; } | {
+        while read -r l; do
+            printf "%s\n" "$l"
+            dir="${l%"/chat.response/done"}"
+            reqfile="$dir/chat.request/question"
+            if [ -f "$reqfile" ]; then
+                printf "%s\n" "$reqfile"
+                [ "$scope" != "last" ] || break
+            fi
+        done
+    } | ___x_cmd_cmds sort | {
+        while read -r l; do
+            case "$l" in
+                *chat.request/question)
+                    printf ">>> %s\n\n" "$( ___x_cmd_cmds cat "$l" )" ;;
+                *)
+                    dir="${l%"/chat.response/done"}"
+                    resfile="$dir/chat.response/content"
+                    [ ! -f "$resfile" ] || printf "%s\n\n" "$( ___x_cmd_cmds cat "$resfile" )"
+                    ;;
+            esac
+        done
+    }
 }

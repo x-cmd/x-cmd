@@ -123,16 +123,16 @@ function minion_maxtoken( o, prefix,            v, v1 ){
     v = str_trim(v)
     v = tolower(v)
     if ( match( v, "(k|kb)$" ) ) {
-        v = substr(v, 1, RSTART-1)
+        v = str_trim( substr(v, 1, RSTART-1) )
         v = int(v) * 1024
     } else if ( match( v, "(m|mb)$" ) ) {
-        v = substr(v, 1, RSTART-1)
+        v = str_trim( substr(v, 1, RSTART-1) )
         v = int(v) * 1024 * 1024
     } else if ( match( v, "(g|gb)$" ) ) {
-        v = substr(v, 1, RSTART-1)
+        v = str_trim( substr(v, 1, RSTART-1) )
         v = int(v) * 1024 * 1024 * 1024
     } else {
-        v = int(v)
+        v = int( str_trim(v) )
     }
 
     return v

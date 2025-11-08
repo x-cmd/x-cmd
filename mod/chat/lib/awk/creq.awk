@@ -1,8 +1,10 @@
 
 function creq_fragfile_unit___set( dir, name, str ) {
     str = str_trim_right(str)
-    print str > ( dir "/" name )
-    fflush()
+    if ( str != "" ) {
+        print str > ( dir "/" name )
+        fflush()
+    }
     creq_obj[ dir, name, "loaded" ] = true
     creq_obj[ dir, name ] = str
 }
@@ -18,8 +20,9 @@ function creq_fragfile_unit___get( dir, name,               str ) {
     return str
 }
 
-function creq_fragfile_create( dir, minion_obj, minion_kp, provider, def_model, question, chatid,      model, filelist_attach){
-    if ( dir == "" ) return
+function creq_fragfile_create( session_dir, chatid, hist_session_dir, minion_obj, minion_kp, provider, def_model, question, append_text,
+    model, filelist_attach, last_chatid){
+    dir = chat_get_creq_dir( session_dir, chatid )
     mkdirp( dir )
 
     creq_fragfile_unit___set( dir, "type",              minion_type( minion_obj, minion_kp ))
@@ -42,7 +45,7 @@ function creq_fragfile_create( dir, minion_obj, minion_kp, provider, def_model, 
     creq_fragfile_unit___set( dir, "jsonmode",          minion_is_jsonmode( minion_obj, minion_kp ) )
     creq_fragfile_unit___set( dir, "ctx",               minion_ctx( minion_obj, minion_kp ) )
 
-    creq_fragfile_unit___set( dir, "tool")
+    creq_fragfile_unit___set( dir, "append_text",       append_text )
 
     filelist_attach = minion_filelist_attach( minion_obj, minion_kp )
     if ( ! chat_str_is_null(filelist_attach) ) {
@@ -51,7 +54,13 @@ function creq_fragfile_create( dir, minion_obj, minion_kp, provider, def_model, 
 
     # minion_tool_jstr
     if (minion_obj[ minion_kp, "\"tool\"" L ] > 0 ){
-        creq_fragfile_unit___set( dir, "tool", jstr(minion_obj, minion_kp SUBSEP "\"tool\""))
+        creq_fragfile_unit___set( dir, "tool",          jstr(minion_obj, minion_kp SUBSEP "\"tool\""))
+    }
+
+    last_chatid = chat_history_get_last_chatid(hist_session_dir, provider, chatid)
+    if ( last_chatid != "" ) {
+        creq_fragfile_unit___set( dir, "last_chatid",       last_chatid )
+        creq_fragfile_unit___set( dir, "hist_session_dir",  hist_session_dir )
     }
 }
 

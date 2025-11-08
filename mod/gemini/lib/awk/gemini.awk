@@ -29,26 +29,27 @@ function gemini_gen_generationConfig(temperature, is_reasoning,                 
     return ", \"generationConfig\": { " str " }"
 }
 
-function gemini_gen_history_str( history_obj, chatid, i,      res_text, req_text, _res, tool_l, j, tool_req, tool_res ) {
+function gemini_gen_history_str( history_obj, chatid, i,      res_text, req_text, req_append_text, _res, tool_l, j, tool_req, tool_res ) {
     req_text = chat_history_get_req_text(history_obj, chatid, i)
     res_text = chat_history_get_res_text(history_obj, chatid, i)
-    if( req_text == "" ) return
+    req_append_text = chat_history_get_req_append_text(history_obj, chatid, i)
+    if ((req_text == "") && (req_append_text == "")) return
 
-    req_text = gemini_gen_unit_str_rolepart("user",  gemini_gen_unit_str_text(req_text))
-    _res = req_text
+    if ( req_text != "" )        _res = gemini_gen_unit_str_rolepart("user",  gemini_gen_unit_str_text(jqu(req_text)))
+    if ( req_append_text != "" ) _res = ((_res != "") ? _res "," : "") gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text(jqu(req_append_text)))
     if ( ! chat_str_is_null( res_text ) ) {
-        _res = _res "," gemini_gen_unit_str_rolepart("model", gemini_gen_unit_str_text(res_text))
+        _res = _res "," gemini_gen_unit_str_rolepart("model", gemini_gen_unit_str_text(jqu(res_text)))
     }
 
-
     tool_l = chat_history_get_tool_l(history_obj, chatid, i)
-    if ( tool_l > 0 ) _res = _res ", " gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text("[INTERNAL NOTE: The following content is function execution metadata, shown in pseudo-XML markers.\nThis format is ONLY for recording results.\nWhen you need to make a function call, always use the official JSON function-call format, never this pseudo-XML.]"))
+    if ( tool_l > 0 ) _res = _res ", " gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text("[INTERNAL NOTE: The following block shows past tool execution data for context only.\nDo not reuse or mimic this structure when performing new tool calls.]"))
     for (j=1; j<=tool_l; ++j){
         tool_req = chat_history_get_tool_req(history_obj, chatid, i, j)
         tool_res = chat_history_get_tool_res(history_obj, chatid, i, j)
-        _res = _res "," gemini_gen_unit_str_rolepart("model", gemini_gen_unit_str_text( tool_req ))
-        _res = _res "," gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text( tool_res ))
+        _res = _res "," gemini_gen_unit_str_rolepart("model", gemini_gen_unit_str_text( jqu(tool_req) ))
+        _res = _res "," gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text( jqu(tool_res) ))
     }
+    if ( tool_l > 0 ) _res = _res ", " gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text("[End of tool output — use your environment’s standard function-call format.]"))
 
     return _res
 }
@@ -61,9 +62,9 @@ function gemini_gen_filelist_str(filelist_str,       arr, _fp, _type, _str, i, l
         _fp = arr[ i ]
         _type = arr[ _fp, "type" ]
         if ( _type == "text" ) {
-            _str = _str gemini_gen_unit_str_text( arr[ _fp, "text" ] )
+            _str = _str gemini_gen_unit_str_text( jqu(arr[ _fp, "text" ] ) )
         } else if ( _type == "image" ) {
-            _str = _str gemini_gen_unit_str_text( arr[ _fp, "text" ] ) ", "
+            _str = _str gemini_gen_unit_str_text( jqu(arr[ _fp, "text" ] ) ) ", "
             _str = _str gemini_gen_unit_str_image( arr[ _fp, "base64" ], arr[ _fp, "mime_type" ] )
         }
         _str = _str ((i!=l) ? ", " : "")
@@ -82,16 +83,19 @@ function gemini_gen_safe_setting_str(             _safe_setting){
     return _safe_setting
 }
 
-function gemini_gen_last_msgtool_from_creq( current_msgtool_obj, msgtool_obj, chatid, hist_session_dir,            last_chatid, last_creq_dir ){
-    last_chatid = chat_history_get_last_chatid(hist_session_dir, current_msgtool_obj[ "provider" ], chatid)
+function gemini_gen_last_msgtool_from_creq( current_msgtool_obj, msgtool_obj, session_dir, chatid, hist_session_dir,            last_chatid, last_creq_dir, current_creq_dir ){
+    current_creq_dir    = chat_get_creq_dir( session_dir, chatid )
+    last_chatid         = creq_fragfile_unit___get(current_creq_dir, "last_chatid")
     if ( last_chatid == "" ) return
-    last_creq_dir = ( hist_session_dir "/" last_chatid "/chat.request" )
+    last_creq_dir       = chat_get_creq_dir( hist_session_dir, last_chatid )
+
     if ( (current_msgtool_obj[ "provider" ] != creq_fragfile_unit___get(last_creq_dir, "provider")) || (current_msgtool_obj[ "model" ] != creq_fragfile_unit___get(last_creq_dir, "model")) ) return
-    return gemini_gen_msgtool_from_creq( msgtool_obj, last_creq_dir, last_chatid, hist_session_dir )
+    return gemini_gen_msgtool_from_creq( msgtool_obj, hist_session_dir, last_chatid, hist_session_dir )
 }
 
-function gemini_gen_msgtool_from_creq( msgtool_obj, creq_dir, chatid, hist_session_dir,                history_obj, history_num, i, l, str, \
-    _history_str, _system_str, _content_str, _example_str, _filelist_str, _messages_str, _use_gg_search, _tool_str, _stats_str ){
+function gemini_gen_msgtool_from_creq( msgtool_obj, session_dir, chatid, hist_session_dir,                history_obj, history_num, i, l, str, \
+    creq_dir, _history_str, _system_str, _content_str, _example_str, _filelist_str, _messages_str, _use_gg_search, _tool_str, _stats_str, _append_text ){
+    creq_dir    = chat_get_creq_dir( session_dir, chatid )
     history_num = creq_fragfile_unit___get( creq_dir, "history_num" )
 
     chat_history_load( history_obj, chatid, hist_session_dir, history_num)
@@ -117,13 +121,20 @@ function gemini_gen_msgtool_from_creq( msgtool_obj, creq_dir, chatid, hist_sessi
     if ( _stats_str != "" ) _stats_str = gemini_gen_unit_str_rolepart( "user", gemini_gen_unit_str_text(_stats_str) ) " ,"
 
     _content_str = creq_fragfile_unit___get( creq_dir, "content" )
+    _append_text = creq_fragfile_unit___get( creq_dir, "append_text" )
     _content_str = str_trim(_content_str)
+    _append_text = str_trim(_append_text)
     if ( _content_str != "" ) {
         _content_str = gemini_gen_unit_str_text( jqu( _content_str ) )
         _content_str = gemini_gen_unit_str_rolepart("user", _content_str)
     }
 
-    _messages_str   = "\"contents\":[" _system_str _example_str _history_str _filelist_str _stats_str _content_str "]"
+    if ( _append_text != "" ) {
+        _append_text = gemini_gen_unit_str_text( jqu(_append_text) )
+        _append_text = ( (_content_str != "") ? " ," : "" )  gemini_gen_unit_str_rolepart( "user", _append_text )
+    }
+
+    _messages_str   = "\"contents\":[" _system_str _example_str _history_str _filelist_str _stats_str _content_str _append_text "]"
     _use_gg_search  = GEMINI_USE_GOOGLE_SEARCH
     _tool_str       = gemini_gen_tool_str(creq_dir, _use_gg_search)
 
@@ -135,12 +146,14 @@ function gemini_gen_msgtool_from_creq( msgtool_obj, creq_dir, chatid, hist_sessi
     msgtool_obj[ "model" ]    = creq_fragfile_unit___get( creq_dir, "model" )
 }
 
-function gemini_req_from_creq(creq_dir, chatid, hist_session_dir,       msgtool_obj, last_msgtool_obj, _msgtool, cache_msg, cache_tool, _temperature, _config, _safe_setting){
+function gemini_req_from_creq(session_dir, chatid, hist_session_dir,
+    creq_dir, msgtool_obj, last_msgtool_obj, _msgtool, cache_msg, cache_tool, _temperature, _config, _safe_setting){
 
-    gemini_gen_msgtool_from_creq(msgtool_obj, creq_dir, chatid, hist_session_dir)
-    gemini_gen_last_msgtool_from_creq(msgtool_obj, last_msgtool_obj, chatid, hist_session_dir)
+    gemini_gen_msgtool_from_creq(msgtool_obj, session_dir, chatid, hist_session_dir)
+    gemini_gen_last_msgtool_from_creq(msgtool_obj, last_msgtool_obj, session_dir, chatid, hist_session_dir)
     _msgtool    = msgtool_obj[ "msg_str" ] msgtool_obj[ "tool_str" ]
 
+    creq_dir    = chat_get_creq_dir( session_dir, chatid )
     cache_msg   = chat_cal_cached( msgtool_obj[ "msg_str" ], last_msgtool_obj[ "msg_str" ] )
     cache_tool  = chat_cal_cached( msgtool_obj[ "tool_str" ], last_msgtool_obj[ "tool_str" ] )
     creq_fragfile_set___usage_input_ratio_cache( creq_dir, int(cache_msg + cache_tool), length( _msgtool ))
@@ -152,8 +165,10 @@ function gemini_req_from_creq(creq_dir, chatid, hist_session_dir,       msgtool_
 }
 
 # extract ...
-function gemini_res_to_cres(gemini_resp_o, cres_dir, creq_dir, o_tool, tool_kp,
-    v, resp_kp, resp_content_kp, resp_finish_kp, usage_kp, usage_prompt_kp, usage_cand_kp, usage_total_kp, usage_thought_kp, usage_cache_kp, cres_usage_kp, cres_input_kp, cres_output_kp, cres_total_kp ){
+function gemini_res_to_cres(gemini_resp_o, session_dir, chatid, o_tool, tool_kp,
+    cres_dir, creq_dir, v, resp_kp, resp_content_kp, resp_finish_kp, usage_kp, usage_prompt_kp, usage_cand_kp, usage_total_kp, usage_thought_kp, usage_cache_kp, cres_usage_kp, cres_input_kp, cres_output_kp, cres_total_kp, now_total_token, session_last_total_token, input_token, input_cache_token, output_token, model, provider, price_data_file, llmp_obj, llmp_model, totalprice, session_last_total_price ){
+    cres_dir = chat_get_cres_dir( session_dir, chatid )
+    creq_dir = chat_get_creq_dir( session_dir, chatid )
 
     resp_kp             = Q2_1 SUBSEP "\"candidates\"" SUBSEP "\"1\""
     resp_content_kp     = resp_kp SUBSEP "\"content\""
@@ -169,6 +184,7 @@ function gemini_res_to_cres(gemini_resp_o, cres_dir, creq_dir, o_tool, tool_kp,
     cres_fragfile_unit___set( cres_dir, "model",    juq( gemini_resp_o[ resp_content_kp SUBSEP "\"role\"" ] ) )
     cres_fragfile_unit___set( cres_dir, "role",     juq( gemini_resp_o[ resp_content_kp SUBSEP "\"role\"" ] ) )
     cres_fragfile_unit___set( cres_dir, "content",  juq( gemini_resp_o[ resp_content_kp SUBSEP "\"parts\"" SUBSEP "\"1\"" SUBSEP "\"text\"" ] ) )
+    cres_fragfile_unit___set( cres_dir, "done",     "true" )
 
     if ( o_tool[ tool_kp L ] > 0 ) {
         cres_fragfile_unit___set( cres_dir, "tool_call",                jstr( o_tool, tool_kp))
@@ -185,13 +201,37 @@ function gemini_res_to_cres(gemini_resp_o, cres_dir, creq_dir, o_tool, tool_kp,
 
     cres_fragfile_unit___set( cres_dir, "raw_usage",                    jstr( gemini_resp_o, usage_kp ) )
 
-    cres_fragfile_unit___set( cres_dir, "usage_input_token",            int(gemini_resp_o[ usage_prompt_kp ] + gemini_resp_o[ usage_cache_kp ]) )
-    cres_fragfile_unit___set( cres_dir, "usage_input_cache_token",      int(gemini_resp_o[ usage_cache_kp ] ) )
+    input_token         = int(gemini_resp_o[ usage_prompt_kp ] + gemini_resp_o[ usage_cache_kp ])
+    input_cache_token   = int(gemini_resp_o[ usage_cache_kp ] )
+    output_token        = int(gemini_resp_o[ usage_cand_kp ] + gemini_resp_o[ usage_thought_kp ])
 
-    cres_fragfile_unit___set( cres_dir, "usage_output_token",           int(gemini_resp_o[ usage_cand_kp ] + gemini_resp_o[ usage_thought_kp ]) )
+    cres_fragfile_unit___set( cres_dir, "usage_input_token",            input_token )
+    cres_fragfile_unit___set( cres_dir, "usage_input_cache_token",      input_cache_token )
+
+    cres_fragfile_unit___set( cres_dir, "usage_output_token",           output_token )
     cres_fragfile_unit___set( cres_dir, "usage_output_thought_token",   int(gemini_resp_o[ usage_thought_kp ]) )
 
-    cres_fragfile_unit___set( cres_dir, "usage_total_token",            int(gemini_resp_o[ usage_total_kp ]) )
+    now_total_token = int(gemini_resp_o[ usage_total_kp ])
+    cres_fragfile_unit___set( cres_dir, "usage_total_token",            now_total_token )
+
+    session_last_total_token = int( chat_get_session_last_total_token( session_dir, chatid ) )
+    cres_fragfile_unit___set( cres_dir, "usage_session_total_token",    int( session_last_total_token + now_total_token ) )
+
+    model           = jqu(creq_fragfile_unit___get( creq_dir, "model" ))
+    provider        = jqu(creq_fragfile_unit___get( creq_dir, "provider" ))
+    price_data_file = ( ENVIRON[ "___X_CMD_PRICE_DATA_DIR" ] "/" juq(provider) "/latest.json" )
+    if ( jiparse2leaf_fromfile( llmp_obj, Q2_1, price_data_file ) ) {
+        llmp_model = llmp_search_model( llmp_obj, Q2_1, model )
+        if ( llmp_model != "" ) {
+            totalprice = llmp_total_calprice( llmp_obj, Q2_1, llmp_model, (input_token - input_cache_token), input_cache_token, output_token )
+            if ( totalprice <= 0 ) totalprice = 0
+            cres_fragfile_unit___set( cres_dir, "usage_total_price",    totalprice )
+        }
+    }
+
+    session_last_total_price = chat_get_session_last_total_price( session_dir, chatid )
+    cres_fragfile_unit___set( cres_dir, "usage_session_total_price",    session_last_total_price + totalprice )
+
 }
 
 function gemini_gen_tool_str(creq_dir, use_google_search,          _function_str, _gg_str, _tool_str){

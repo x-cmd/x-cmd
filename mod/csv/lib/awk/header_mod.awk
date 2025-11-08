@@ -9,7 +9,7 @@ BEGIN{
         for (i=1; i<=c; ++i){
             v = csv_quote_ifmust(data[ S 1, i ])
             if ( arr[ v, "mod" ] == true ) v = arr[ v, "n_name" ]
-            _res = ((_res == "") ? "" : _res "," ) v
+            _res = ((i == 1) ? "" : _res "," ) v
         }
         print _res
         break

@@ -132,3 +132,25 @@ function chat_trim_str( str ){
     str = str_unicode2utf8( str )
     return str
 }
+
+function chat_get_cres_dir( session_dir, chatid ){
+    return ( session_dir "/" chatid "/chat.response" )
+}
+
+function chat_get_creq_dir( session_dir, chatid ){
+    return ( session_dir "/" chatid "/chat.request" )
+}
+
+function chat_get_session_last_total_token( session_dir, chatid,            last_chatid, hist_session_dir ){
+    last_chatid         = creq_fragfile_unit___get( chat_get_creq_dir(session_dir, chatid), "last_chatid" )
+    if ( last_chatid == "" ) return
+    hist_session_dir    = creq_fragfile_unit___get( chat_get_creq_dir(session_dir, chatid), "hist_session_dir" )
+    return cres_fragfile_unit___get( chat_get_cres_dir( hist_session_dir, last_chatid ), "usage_session_total_token" )
+}
+
+function chat_get_session_last_total_price( session_dir, chatid,            last_chatid, hist_session_dir ){
+    last_chatid         = creq_fragfile_unit___get( chat_get_creq_dir(session_dir, chatid), "last_chatid" )
+    if ( last_chatid == "" ) return
+    hist_session_dir    = creq_fragfile_unit___get( chat_get_creq_dir(session_dir, chatid), "hist_session_dir" )
+    return cres_fragfile_unit___get( chat_get_cres_dir( hist_session_dir, last_chatid ), "usage_session_total_price" )
+}

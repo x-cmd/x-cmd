@@ -37,6 +37,12 @@ function str_cut_line( str, indent, width,        o, kp, _next_line, _res, i, l 
     return _res
 }
 
+function comp_str_trim_right( str ){
+    gsub("[ \t\b\v]+\n", "\n", str)
+    gsub("[ \t\b\v]+$", "", str)
+    return str
+}
+
 function cut_line2obj( o, kp, str, width ){
     utf8tt_init(str, o, kp)
     utf8tt_refresh(o, kp, "", width)
@@ -53,7 +59,7 @@ function comp_helpdoc_unit_line(ls, lw, li, rs, rw, ri,     o, _right_indent, _r
     ri = space_rep(ri)
     for (i=1; i<=ll; ++i) _res = ((_res == "") ? "" : _res "\n") li o[ "left", "VIEW", i ] ri  COMP_HELPDOC_UI_END o[ "right", "VIEW", i ] COMP_HELPDOC_UI_END
     for (; i<=rl; ++i) _res = _res "\n" _right_indent o[ "right", "VIEW", i ]
-    return _res
+    return comp_str_trim_right( _res )
 }
 
 function generate___cmd_doc_str( obj, kp, v,         _str, _synopsis_str){
@@ -282,7 +288,7 @@ function generate_desc_help(obj, kp, tip,        _str, d, tip_str){
         _str = COMP_HELPDOC_HELP_INDENT_STR str_cut_line(aobj_uq(d), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     }
     _str = (_str != "") ? _str "\n" tip_str : tip_str
-    return (_str != "") ? generate___title("DESCRIPTION:") "\n" _str : ""
+    return (_str != "") ? comp_str_trim_right( generate___title("DESCRIPTION:") "\n" _str ) : ""
 }
 
 function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {
@@ -300,6 +306,7 @@ function generate_synopsis_help(obj, kp,            l, i, k, v, _str) {
         if (v == "null") v = aobj_get_value_with_local_language(obj, kp SUBSEP jqu(i), ___X_CMD_LANG)
         _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line( COMP_HELPDOC_UI_NAME juq(k) " " COMP_HELPDOC_UI_END aobj_uq(v), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     }
+    _str = comp_str_trim_right( _str )
     return _str "\n"
 }
 
@@ -314,6 +321,7 @@ function generate_tldr_help(obj, kp,            l, i, k, v, _str){
         if ( ! aobj_str_is_null(v) ) _str = _str COMP_HELPDOC_HELP_INDENT_STR str_cut_line(COMP_HELPDOC_UI_TLDR_DESC aobj_uq(v) COMP_HELPDOC_UI_END, COMP_HELPDOC_HELP_INDENT_LEN) "\n"
         _str = _str space_rep(COMP_HELPDOC_HELP_INDENT_LEN * 2) COMP_HELPDOC_UI_TLDR_CMD str_cut_line(aobj_uq(k) COMP_HELPDOC_UI_END, COMP_HELPDOC_HELP_INDENT_LEN * 2) "\n"
     }
+    _str = comp_str_trim_right( _str )
     return _str "\n"
 }
 

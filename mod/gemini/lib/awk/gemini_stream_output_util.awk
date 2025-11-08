@@ -37,6 +37,7 @@ function gemini_parse_response_data( text, obj,       _arr, _arrl, i, _current_k
         if (( _finish_reason != "" ) && ( _finish_reason != "\"STOP\"" )){
             _finish_reason = juq(_finish_reason)
             GEMINI_RESPONSE_IS_ERROR_CONTENT = 1
+            GEMINI_HAS_RESPONSE_CONTENT = 1
             GEMINI_RESPONSE_EXITCODE = 2
             if ( _finish_reason == "MAX_TOKENS" )                   GEMINI_RESPONSE_ERROR_MSG = _finish_reason ": The maximum number of tokens as specified in the request was reached."
             else if ( _finish_reason == "SAFETY" )                  GEMINI_RESPONSE_ERROR_MSG = _finish_reason ": The response candidate content was flagged for safety reasons."
@@ -56,6 +57,7 @@ function gemini_parse_response_data( text, obj,       _arr, _arrl, i, _current_k
 
         _part_l = obj[ _current_kp, KP_PART L ]
         for (j=1; j<=_part_l; ++j){
+            GEMINI_HAS_RESPONSE_CONTENT = 1
             _kp_part_idx    = _current_kp SUBSEP KP_PART SUBSEP "\""j"\""
             gemini_record_response___text_content( obj, _kp_part_idx )
             gemini_record_response___tool_call( obj, _kp_part_idx )
@@ -107,8 +109,8 @@ function gemini_record_response___tool_call( obj, kp,        name, args, desc, d
     args = chat_trim_str( jstr0( obj, kp SUBSEP "\"args\"", " " ) )
     jdict_put( o_tool, Q2_1 SUBSEP "\""idx"\"", "\"arguments\"", jqu(args))
 
-    if ( GEMINI_CONTENT_DIR != "" ) {
-        dir = (GEMINI_CONTENT_DIR "/function-call/" idx)
+    if ( XCMD_CHAT_ENACTALL_LOGFILE != "" ) {
+        dir = (SESSIONDIR "/" CHATID "/function-call/" idx)
         mkdirp( dir )
         print name > (dir "/name")
         print args > (dir "/arg")
@@ -118,10 +120,8 @@ function gemini_record_response___tool_call( obj, kp,        name, args, desc, d
 
     fflush()
 }
-
-( IS_DEBUG ){ print $0 >> (GEMINI_CONTENT_DIR "/chat.running.yml"); }
+( IS_DEBUG ){ print $0 >> (SESSIONDIR "/" CHATID "/chat.running.yml"); }
 
 ($0 != ""){
-    GEMINI_HAS_RESPONSE_CONTENT = 1
     gemini_parse_response_data( $0, obj )
 }

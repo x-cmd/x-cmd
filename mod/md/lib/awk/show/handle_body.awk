@@ -56,7 +56,7 @@ function md_body_transform_italic( text,     s1, s2, r, _regex1, _regex2 ){
 }
 
 # 加粗字体
-function md_body_transform_bold( text,     s1, s2, r, l, i, _style, _regex ){
+function md_body_transform_bold( text,     s1, s2, r, l, i, line, _style, _regex, style_enable ){
     _style = HD_STYLE_STRONG UI_TEXT_BOLD
     _regex = "(\\*\\*[^*]+\\*\\*|__[^_]+__[^_]+)"
     # _regex1 = "\\*("STR_TERMINAL_ESCAPE033_LIST")?\\*([^ *][^*]*[^ *]|[^ *])\\*("STR_TERMINAL_ESCAPE033_LIST")?\\*"

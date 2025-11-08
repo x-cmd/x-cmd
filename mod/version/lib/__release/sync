@@ -9,6 +9,7 @@ ___x_cmd_version___release_sync(){
     local title
     local version
     local state="";
+    local mod="all"
 
     while [ $# -gt 0 ];do
         case "${1}" in
@@ -20,7 +21,8 @@ ___x_cmd_version___release_sync(){
         esac
     done
 
-    local mod="all"
+    mod="${1:-"all"}"
+
     local version_data="$( ___x_cmd_version_ls_json | ___x_cmd ja 'kpglob("1", "*"){if(v()=="{")print  k()}')"
 
     local cur_version
@@ -31,74 +33,71 @@ ___x_cmd_version___release_sync(){
     }<<A
 $version_data
 A
-    # latest="$(___x_cmd_version_ls_json | ___x_cmd jq -r '. | keys | sort | reverse | .[0]')"
-    mod="${1:-"$mod"}"
+
     version="${2:-"$cur_version"}"
 
     local beta="$( ___x_cmd_version_ls_json | ___x_cmd jq -r ".[\"$version\"].beta" )"
     [ "$beta" != "true" ] || state="--prerelease"
 
-    ___x_cmd_version___release_sync_ "$version" "$title"
-    [ "$version" != "$cur_version" ] || {
-        ___x_cmd_version___release_sync_ "$old_version"
-    }
+    ___x_cmd_version___release_sync_ "$mod" "$version" "$title" "$state" "$repo"
+
+    if [ "$version" = "$cur_version" ]; then
+        ___x_cmd_version___release_sync_ "$mod" "$old_version" "" "" "$repo"
+    fi
 }
 
 ___x_cmd_version___release_sync_(){
-    local version="$1"
-    local title="$2"
+    local mod="$1"
+    local version="$2"
+    local title="$3"
+    local state="$4"
+    local repo="$5"
+
     if [ -z "$title" ]; then
         title="$(___x_cmd_version_ls_json | ___x_cmd jq -r ".[\"$version\"].name")"
         [ -n "$title" ] || title="$version"
     fi
+
     local desc
     desc="$(___x_cmd version release tomd "$version")"
-    ___x_cmd_version___release_sync_"${mod}"
+
+    if [ "$mod" = "all" ]; then
+        local p
+        for p in gh gt cb; do
+            ___x_cmd_version___release_sync_platform "$p" "$version" "$title" "$desc" "$state" "$repo"
+        done
+    else
+        ___x_cmd_version___release_sync_platform "$mod" "$version" "$title" "$desc" "$state" "$repo"
+    fi
 }
 
-___x_cmd_version___release_sync_gh(){
-    local release_id
-    ___x_cmd_version___release_sync_getid "gh" || return 1
-    ___x_cmd gh repo release edit --repo "$repo" --body "$desc" --name "$title" "$state" "$release_id"
-}
-
-___x_cmd_version___release_sync_gt(){
-    local release_id
-    ___x_cmd_version___release_sync_getid "gt" || return 1
-    local gt_desc
-    gt_desc="$(printf "%s" "$desc" \
-        | ___x_cmd_cmds awk '{ gsub("github.com/x-cmd/x-cmd/compare", "gitee.com/x-cmd/x-cmd/compare", $0); print $0 }')"
-    ___x_cmd gt repo release edit --repo "$repo" --body "$gt_desc" --name "$title" --tag "$version" "$state" "$release_id"
-}
-
-___x_cmd_version___release_sync_cb(){
-    local release_id
-    ___x_cmd_version___release_sync_getid "cb" || return 1
-    local cb_desc
-    cb_desc="$(printf "%s" "$desc" \
-        | ___x_cmd_cmds awk '{ gsub("github.com/x-cmd/x-cmd/compare", "codeberg.org/x-cmd/x-cmd/compare", $0); print $0 }')"
-    ___x_cmd cb repo release edit --repo "$repo" --body "$cb_desc" --name "$title" "$state" "$release_id"
-}
-
-___x_cmd_version___release_sync_getid(){
+___x_cmd_version___release_sync_platform(){
     local mod="$1"
+    local version="$2"
+    local title="$3"
+    local desc="$4"
+    local state="$5"
+    local repo="$6"
+
+    local platform_desc="$desc"
+    local platform_domain
+    case "$mod" in
+        gt) platform_domain="gitee.com" ;;
+        cb) platform_domain="codeberg.org" ;;
+    esac
+
+    if [ -n "$platform_domain" ]; then
+        platform_desc="$(printf "%s" "$desc" \
+            | ___x_cmd_cmds awk -v domain="$platform_domain" '{ gsub("github.com/x-cmd/x-cmd/compare", domain"/x-cmd/x-cmd/compare", $0); print $0 }')"
+    fi
+
     release_id="$(___x_cmd "$mod" repo release ls --csv --repo "$repo" \
         | ___x_cmd csv awk -v version="$version" '{ if( cval(3) ~ version ) print cval(1) }' )"
-    [ -n "$release_id" ] || N=x M="not found release" log:ret:1
-}
+    [ -n "$release_id" ] || N=x M="not found version=$version release" log:ret:1
 
-___x_cmd_version___release_sync_all(){
-    local mod;
-    for mod in gh gt cb; do
-        ___x_cmd_version___release_sync_"$mod"
-    done
-}
-
-___x_cmd_version___release_syncall(){
-    local mod="${1:-"all"}"
-    local version
-    ___x_cmd_version_ls_json | ___x_cmd jq -r '. | keys | sort | reverse | .[]' \
-        | while read -r version; do
-            ___x_cmd_version___release_sync "$mod" "$version"
-    done
+    if [ "$mod" = "gt" ]; then
+        ___x_cmd gt repo release edit --repo "$repo" --body "$platform_desc" --name "$title" --tag "$version" ${state:+"$state"} "$release_id"
+    else
+        ___x_cmd "$mod" repo release edit --repo "$repo" --body "$platform_desc" --name "$title" ${state:+"$state"} "$release_id"
+    fi
 }

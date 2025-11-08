@@ -7,7 +7,7 @@ This is because `x-cmd` commands internally depend on a PowerShell environment, 
 
 In summary:
 
-* Always execute `x-cmd` commands from **Bash** when on Windows.
+* On Windows, always execute `x-cmd` commands from **Bash**.
 * Do **not** execute `x-cmd` commands directly in PowerShell.
 * On non-Windows systems, run commands in the default shell environment as usual.
 
@@ -15,73 +15,80 @@ In summary:
 
 ### Skill Mechanism Specification
 
-The following defines how to reason about and use skills.
+This section defines how to discover, manage, and use skills to enhance reasoning and task workflows.
 
-#### Available Skills
+#### Concept
 
-Each skill represents a reusable capability or workflow pattern.
-The current list of available skills is:
+A skill is a structured, reusable reasoning or workflow pattern identified by a unique skill-id.
+Each skill includes:
+
+* A **skill-id** that uniquely identifies the capability (for example: `anthropics/algorithmic-art`)
+* A **short description** summarizing the skill's purpose and typical use cases
+* A detailed guide accessible with `x-cmd skill cat <skill-id>` that provides usage instructions and examples
+
+Example skill list line (TSV):
+```
+skill-id	description
+anthropics/algorithmic-art	Creating algorithmic art using p5.js with seeded randomness and interactive parameter exploration. Use this when users request creating art using code, generative art, algorithmic art, flow fields, or particle systems. Create original algorithmic art rather than copying existing artists' work to avoid copyright violations.
+```
+
+#### Skill Discovery and Initialization
+
+At the start of a reasoning session, if the current skill list is **unknown or empty**, fetch it automatically by running:
 
 ```
-%{SKILL_LIST}%
+x-cmd skill ls --agent %{SKILL_AGENT}%
 ```
 
-#### Skill Discovery and Retrieval
+Do not re-fetch the skill list frequently.
+Only refresh the list when:
 
-* To access detailed documentation, usage instructions, and examples for a specific skill, run:
+1. The user explicitly requests to view or update available skills, or
+2. No skill list has been loaded yet.
 
-  ```
-  x-cmd skill cat <skill-name>
-  ```
+After fetching once, maintain the known list of available skills for later use.
 
-* To update or reload the list of available skills, only do so **when the user explicitly asks to view or refresh the skill list**, by running:
+#### Accessing Skill Details
 
-  ```
-  x-cmd skill active ls
-  ```
+To access detailed usage instructions, documentation, or examples for a skill:
+
+```
+x-cmd skill cat <skill-id>
+```
+
+Use this command only when a potentially relevant skill has been identified.
 
 #### Skill Usage Policy
 
-1. When handling a user request, review the currently available skills shown above and determine if any are relevant.
-2. If a skill appears applicable, retrieve its full guide using `x-cmd skill cat <skill-name>` and follow the provided instructions.
-3. Only run `x-cmd skill ls` when the user clearly indicates an intention to check, update, or refresh the skill list.
-4. Use only the skills currently listed in the most recent `x-cmd skill ls` output. Do not invent or assume new ones.
-5. If no relevant skill applies, proceed using standard reasoning and general knowledge.
+1. When processing a user request, determine whether a relevant skill exists in the current skill list.
+2. If no skill list is loaded, run `x-cmd skill ls --agent %{SKILL_AGENT}%` once to initialize it.
+3. If a relevant skill is found, retrieve its documentation with `x-cmd skill cat <skill-id>` and follow its guidance.
+4. Only refresh the skill list when the user explicitly requests it.
+5. Do not create or assume skills that are not present in the list.
+6. If no suitable skill applies, proceed with normal reasoning.
 
 #### Skill Reasoning Guidelines
 
-* Skills provide structured methods to improve reasoning reliability and consistency.
-* Apply a skill when it offers a clear and well-defined process for the user’s goal.
-* Explicitly reference the skill name when using it (e.g., “Using the `translate-cn-en` skill…”).
-* Treat the documentation retrieved from `x-cmd skill cat` as authoritative.
-* Skills are reasoning frameworks, not executable code. Use them to guide thought, not to run commands.
+* Skills provide structured reasoning methods, not executable code.
+* Use skills to improve reliability, clarity, and reproducibility.
+* Reference the specific skill when applying it (e.g., “Applying the `summarize` skill…”).
+* Treat documentation retrieved from `x-cmd skill cat` as authoritative.
+* Integrate your own reasoning when a skill does not fully cover the situation.
 
-#### Skill Reasoning Template
+#### Skill Reasoning Procedure
 
-When deciding whether to use a skill or not, follow this reasoning structure:
+1. **Interpret intent:** Understand the user’s goal and task type.
+2. **Check skill availability:**
 
-1. **Interpret the user’s intent.**
-   Determine what the user is asking for and the type of capability it requires.
+   * If no skill list is known, load it via `x-cmd skill ls --agent %{SKILL_AGENT}%`.
+   * Otherwise, compare the user’s intent with the known skills.
+3. **Decision:**
 
-2. **Compare against available skills.**
-   Check if any skill description from the current list aligns with the user’s request.
-
-3. **Decision point:**
-
-   * If a relevant skill exists → use `x-cmd skill cat <skill-name>` to fetch its documentation and follow its guidance.
-   * If no relevant skill matches → proceed with normal reasoning.
-
-4. **Execution reasoning:**
-
-   * Apply the chosen skill’s methods step by step.
-   * Integrate your own reasoning if the skill does not fully cover the request.
-
-5. **Transparency:**
-   Clearly indicate when you are applying a skill (e.g., “Applying the `code-review` skill to analyze the provided code”).
-
-6. **Skill refresh handling:**
-
-   * If the user explicitly requests to view or update available skills, use `x-cmd skill ls` to refresh the list before continuing.
+   * If a relevant skill matches, retrieve it using `x-cmd skill cat <skill-id>` and follow its methods.
+   * If none match, continue without applying a skill.
+4. **Apply reasoning:** Use the selected skill’s steps as a structured reasoning framework.
+5. **Transparency:** Clearly indicate when a skill is being applied.
+6. **Skill refresh:** Refresh the list only when explicitly requested by the user.
 
 ---
 
