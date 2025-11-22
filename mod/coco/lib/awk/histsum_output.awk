@@ -8,6 +8,11 @@ BEGIN{
     _l_creq = int( creq_fragfile_unit___get( creq_dir, "usage_input_charlen" ) - length( _text_req ))
     _l_cres = int( length(_text_res) )
 
+    if ( _l_cres <= 10 ) {
+        log_error("coco", "History summary generated failed, the response content is too short")
+        exit(1)
+    }
+
     sentat = ENVIRON[ "sentat" ]
     recvat = ENVIRON[ "recvat" ]
     if ( sentat != "" && recvat != "" ) {
@@ -22,5 +27,5 @@ BEGIN{
     }
 
     log_info("coco", "History summary generated successfully" _detail_str)
-    print _text_res
+    print _text_res > output_file
 }

@@ -1,22 +1,32 @@
 
 # extra_field: none
+function chat_str_truncate( str,            l, ls, rs ){
+    l = length(str)
+    if ( l <= 2048 ) return str
+
+    ls = substr(func_stderr, 1, 512)
+    if ( match( ls, "^[^-a-zA-Z0-9+&@#/%?=~_|!:,.; ]+" ) ) {
+        ls = substr(ls, 1, RSTART-1)
+    }
+
+    rs = substr(func_stderr, l-512, 512)
+    if ( match( rs, "^[^-a-zA-Z0-9+&@#/%?=~_|!:,.; ]+" ) ) {
+        rs = substr(rs, RSTART+RLENGTH)
+    }
+    return "(truncated)\n" ls "\n<<< omitted " (loutput - 1024) " bytes >>>\n" rs
+}
+
 function chat_str_is_null( str, extra_field ){
     return ((str == "") || (str == "null") || (str == "NULL") || (str == "\"\"") || ( str == extra_field ))
 }
 
-function chat_str_replaceall( src,          _name, ans ){
+function chat_str_replaceall( src, is_escape,         _name, ans ){
     ans = ""
     while (match(src, "%{[A-Za-z0-9_]+}%")) {
         _name = substr(src, RSTART+2, RLENGTH-4)
         if ( _name ~ "^(BODY|QUESTION)$" ) _name = QUESTION
         else _name = ENVIRON[ _name ]
-        gsub( "\\\\", "&\\", _name )
-        gsub( "\"", "\\\"", _name )
-        gsub( "\n", "\\n", _name )
-        gsub( "\t", "\\t", _name )
-        gsub( "\v", "\\v", _name )
-        gsub( "\b", "\\b", _name )
-        gsub( "\r", "\\r", _name )
+        if ( is_escape == true ) _name = jescape( _name )
         ans = ans substr(src, 1, RSTART-1) _name
         src = substr(src, RSTART+RLENGTH)
     }
@@ -106,6 +116,28 @@ function chat_statsfile_load( hist_session_dir,         fp, str ){
     str = cat( fp )
     if ( cat_is_filenotfound() ) return
     return chat_wrap_tag("stats-file", str)
+}
+
+function chat_context_filelist_load_to_array( context_filelist, arr,            i, l, _, fp ){
+    if ( chat_str_is_null(context_filelist) ) return
+    l = split( context_filelist, _, "\n" )
+    for (i=1; i<=l; ++i){
+        fp = _[i]
+        if ( fp == "" ) continue
+        if ( arr[ fp, "recorded" ] == true ) continue
+        arr[ ++arr[L] ] = fp
+        arr[ fp, "recorded" ] = true
+        arr[ arr[L], "content" ] = cat( fp )
+    }
+    return arr[L]
+}
+
+function chat_context_filelist_load( context_filelist,            i, l, arr, _res ){
+    l = chat_context_filelist_load_to_array( context_filelist, arr )
+    for (i=1; i<=l; ++i){
+        _res = _res arr[ i, "content" ] "\n"
+    }
+    return _res
 }
 
 function chat_tf_bit(v){

@@ -26,6 +26,7 @@ function gemini_parse_response_data( text, obj,       _arr, _arrl, i, _current_k
 
         if (( JITER_CURLEN == 1 ) && ( obj[ _current_kp, "\"error\"" ] != "" )) {
             GEMINI_RESPONSE_IS_ERROR_CONTENT = 1
+            GEMINI_HAS_RESPONSE_CONTENT = 1
             o_error[ L ] = 1
             jmerge_force___value( o_error, Q2_1, obj, _current_kp )
             continue

@@ -5,7 +5,7 @@ ___x_cmd_codex_skill(){
 
     local op="$1";      shift
     case "$op" in
-        ll|ls|use|unuse|setup)
+        ll|ls|add|rm|use|unuse|setup)
                         ___x_cmd_codex_skill_"$op"   "$@" ;;
         -h|--help)      ___x_cmd help -m codex skill "$@" ;       return 0 ;;
         *)              N=codex M="skill not such [subcmd=$op]" log:ret:64 ;;
@@ -34,55 +34,95 @@ ___x_cmd_codex_skill_ll___fzapp(){
 
     local id=
     ___x_cmd ui select id "Next:"                   \
+        "x codex skill add $x_"                    \
         "x codex skill use $x_"                    \
         "Show detailed information --> $x_"         \
         "EXIT"     || return $?
 
     case "$id" in
-        1)  ___x_cmd codex skill use "$x_"         ;;
-        2)  ___x_cmd skill ll --fzpreview "$x_"     ;;
+        1)  ___x_cmd codex skill add "$x_"         ;;
+        2)  ___x_cmd codex skill use "$x_"         ;;
+        3)  ___x_cmd skill ll --fzpreview "$x_"     ;;
         *)  return 0;;
     esac
 }
 
 ___x_cmd_codex_skill_ls(){
     local X_help_cmd; X_help_cmd='___x_cmd help -m codex skill ls' help:arg:parse
-    ___x_cmd skill ls --agent codex
+
+    local project_dir=".codex/skills"
+    local user_dir="$HOME/.codex/skills"
+
+    if [ -d "$project_dir" ]; then
+        codex:info "Listing project-level skills from: $project_dir"
+        ___x_cmd skill ls --agent codex --skill-dir "$project_dir"
+    fi
+
+    if [ -d "$user_dir" ]; then
+        codex:info "Listing user-level skills from: $user_dir"
+        ___x_cmd skill ls --agent codex --skill-dir "$user_dir"
+    fi
+}
+
+___x_cmd_codex_skill_add(){
+    local x_=; ___x_cmd_abspath_ "."
+    local dir="$x_"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m codex skill add ; return 0 ;;
+            -g|--global)            dir="${CODEX_HOME:-$HOME}";       shift 1 ;;
+            *)                      break ;;
+        esac
+    done
+
+    local x_=""; ___x_cmd_codex_skill_setup___get_agentfile_ "$dir" || return $?
+    ___x_cmd skill prompt check "$x_" || ___x_cmd skill prompt setup codex "$x_" || return $?
+    ___x_cmd skill add --skill-dir "$dir/.codex/skills" "$@"
+}
+
+___x_cmd_codex_skill_rm(){
+    local x_=; ___x_cmd_abspath_ ".codex"
+    local dir="$x_"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m codex skill rm ; return 0 ;;
+            -g|--global)            dir="${CODEX_HOME:-$HOME}/.codex";       shift 1 ;;
+            *)                      break ;;
+        esac
+    done
+
+    ___x_cmd skill rm --skill-dir "$dir/skills" "$@"
 }
 
 ___x_cmd_codex_skill_unuse(){
     local X_help_cmd; X_help_cmd='___x_cmd help -m codex skill unuse' help:arg:parse
-    ___x_cmd skill unuse --agent codex "$@"
+    ___x_cmd_codex_skill_rm --global "$@"
 }
 
 ___x_cmd_codex_skill_use(){
     local X_help_cmd; X_help_cmd='___x_cmd help -m codex skill use' help:arg:parse
-    ___x_cmd skill use --agent codex "$@"
+    ___x_cmd_codex_skill_add --global "$@"
 }
 
-
 ___x_cmd_codex_skill_setup(){
-    local X_help_cmd; X_help_cmd='___x_cmd help -m codex skill setup' help:arg:parse
+    local x_=; ___x_cmd_abspath_ ".codex"
+    local dir="$x_"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m codex skill setup ; return 0 ;;
+            -g|--global)            dir="${CODEX_HOME:-$HOME}/.codex";       shift 1 ;;
+            *)                      break ;;
+        esac
+    done
 
-    local x_=""; ___x_cmd_codex_skill_setup___get_agentfile_ || return $?
+    x_=""; ___x_cmd_codex_skill_setup___get_agentfile_ "$dir" || return $?
     local fp="$x_"
     ___x_cmd skill prompt setup codex "$fp"  || return $?
 }
 
 ___x_cmd_codex_skill_setup___get_agentfile_(){
-    local dir="${CODEX_HOME:-$HOME}/.codex"
+    local dir="$1"
     local fp="$dir/AGENTS.override.md"
     [ -f "$fp" ] || fp="$dir/AGENTS.md"
-    [ -f "$fp" ] || [ ! -f "$dir/config.toml" ] ||{
-        local filename; filename="$(
-        < "$dir/config.toml" ___x_cmd_cmds awk '
-(match($0, "^project_doc_fallback_filenames[ \t]+=[ \t]+\\[[ \t]*\"")){
-    l = substr($0, RSTART+RLENGTH)
-    print substr(l, 1, index(l, "\"")-1)
-}
-'
-        )"
-        [ -z "$filename" ] || fp="$dir/$filename"
-    }
     x_="$fp"
 }

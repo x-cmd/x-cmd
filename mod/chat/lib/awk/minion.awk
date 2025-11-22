@@ -195,51 +195,25 @@ function minion_example_tostr( o, prefix,      v, _kp, i, l, _str, _res, u, a ){
     return _res
 }
 
-function minion_system( o, prefix,      v ){
+function minion_system( o, prefix,      v, attach_system, origin_system ){
+    attach_system = ENVIRON[ "attach_system" ]
+    if ( ! chat_str_is_null(attach_system) ) attach_system = "\n\n" attach_system
+
     v = ENVIRON[ "system" ]
-    if ( ! chat_str_is_null(v) )    return v
-
-    return o[ prefix S "\"prompt\"" S "\"system\"" ]
-}
-
-function minion_system_tostr( o, prefix,       v, _kp, i, l, _str, _res ){
-    v = minion_system( o, prefix )
-    if ( ! chat_str_is_null(v) && (v != "[") ) return ((v ~ "^\"") ? juq(v) : v)
-
-    _kp = prefix S "\"prompt\"" S "\"system\""
-    l = minion_system_len(o, prefix )
-    for (i=1; i<=l; ++i) {
-        _str = o[ _kp S "\""i"\"" ]
-        if ( chat_str_is_null( _str ) ) continue
-        _str = ((_str ~ "^\"") ? juq(_str) : _str)
-        _res = _res _str "\n\n"
+    if ( ! chat_str_is_null(v) )        origin_system = ((v ~ "^\"") ? juq(v) : v)
+    else {
+        v = o[ prefix S "\"prompt\"" S "\"system\"" ]
+        if ( ! chat_str_is_null(v) )    origin_system = ((v ~ "^\"") ? juq(v) : v)
     }
-    return _res
-}
 
-function minion_system_len( o, prefix ){
-    return o[ prefix S "\"prompt\"" S "\"system\"" L ]
-}
-
-function minion_filelist_attach( o, prefix,     v, i, l ){
-    if ( o[ prefix S "\"filelist_attach\"" ] == "[" ) {
-        l = o[ prefix S "\"filelist_attach\"" L ]
-        for (i=1; i<=l; ++i){
-            v = v o[ prefix S "\"filelist_attach\"" S "\""i"\"" ] "\n"
-        }
-    }
-    v = v ENVIRON[ "filelist_attach" ]
-
-    if ( chat_str_is_null(v) ) return
-    v = str_trim_right(v)
-    return v
+    return chat_str_replaceall( origin_system attach_system, false )
 }
 
 function minion_load_from_jsonfile( o, prefix, jsonfilepath, provider,      str ){
     if ( jsonfilepath == "" ) return
     str = cat( jsonfilepath )
     if ( cat_is_filenotfound() ) return
-    str = chat_str_replaceall( str )
+    str = chat_str_replaceall( str, true )
     jiparse2leaf_fromstr( o, prefix, str )
 
     if ( provider !~ "^\"" )            provider = jqu(provider)
@@ -251,23 +225,20 @@ function minion_load_from_jsonfile( o, prefix, jsonfilepath, provider,      str 
     }
 }
 
-function minion_tool_jstr(o, prefix,            v){
-    v = ENVIRON[ "tool_jstr" ]
-    if ( ! chat_str_is_null(v) )    return v
+function minion_tool_jstr(o, prefix,            _res, i, l, attach_tool_schema){
+    l = o[ prefix, "\"tool\"", "\"function\"" L ]
+    for (i=1; i<=l; ++i){
+        _res = _res jstr(o, prefix SUBSEP "\"tool\"" SUBSEP "\"function\"" SUBSEP "\""i"\"") "\n"
+    }
+
+    attach_tool_schema = ENVIRON[ "attach_tool_schema" ]
+    if ( ! chat_str_is_null(attach_tool_schema) ) {
+        _res = _res attach_tool_schema "\n"
+    }
+
+    if ( _res != "" ) _res = "[\n" _res "]\n"
+    return _res
 }
-
-# function minion_tool_function( o, prefix, obj, obj_kp,        v ){
-#     v = ENVIRON[ "tool_function" ]
-#     if ( ! chat_str_is_null(v) ) {
-#         jiparse2leaf_fromstr( obj, obj_kp, v )
-#         return
-#     }
-
-#     v = o[ prefix S "\"tool\"" S "\"function\"" ]
-#     if ( (v == "[")  || (v == "{") ) {
-#         jmerge_soft___value( obj, obj_kp, o, prefix S "\"tool\"" S "\"function\"" )
-#     }
-# }
 
 # function minion_tool_choice( o, prefix         v ){
 #     v = ENVIRON[ "tool_choice" ]
@@ -281,17 +252,3 @@ function minion_tool_jstr(o, prefix,            v){
 
 #     return "auto"
 # }
-
-# END{
-#     # minion name
-#     # language
-#     # provider.default
-#     # openai
-
-#     # prompt
-
-#     # example:
-
-#     # history
-# }
-

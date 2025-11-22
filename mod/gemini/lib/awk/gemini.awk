@@ -29,32 +29,35 @@ function gemini_gen_generationConfig(temperature, is_reasoning,                 
     return ", \"generationConfig\": { " str " }"
 }
 
-function gemini_gen_history_str( history_obj, chatid, i,      res_text, req_text, req_append_text, _res, tool_l, j, tool_req, tool_res ) {
-    req_text = chat_history_get_req_text(history_obj, chatid, i)
-    res_text = chat_history_get_res_text(history_obj, chatid, i)
-    req_append_text = chat_history_get_req_append_text(history_obj, chatid, i)
-    if ((req_text == "") && (req_append_text == "")) return
+function gemini_gen_history_str( history_obj, chatid, i,      res_text, req_text, req_attach_filelist, req_attach_text, _res, tool_l, j, tool_req, tool_res ) {
+    req_text            = chat_history_get_req_text(history_obj, chatid, i)
+    req_attach_text     = chat_history_get_req_attach_text(history_obj, chatid, i)
+    req_attach_filelist = chat_history_get_req_attach_filelist(history_obj, chatid, i)
+    if ((req_text == "") && (req_attach_text == "") && (req_attach_filelist == "")) return
 
-    if ( req_text != "" )        _res = gemini_gen_unit_str_rolepart("user",  gemini_gen_unit_str_text(jqu(req_text)))
-    if ( req_append_text != "" ) _res = ((_res != "") ? _res "," : "") gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text(jqu(req_append_text)))
+    if ( req_attach_filelist != "" )    _res = gemini_gen_attach_filelist_str( req_attach_filelist )
+    if ( req_attach_text != "" )        _res = ((_res != "") ? _res "," : "") gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text(jqu(req_attach_text)))
+    if ( req_text != "" )               _res = ((_res != "") ? _res "," : "") gemini_gen_unit_str_rolepart("user",  gemini_gen_unit_str_text(jqu(req_text)))
+
+    res_text = chat_history_get_res_text(history_obj, chatid, i)
     if ( ! chat_str_is_null( res_text ) ) {
         _res = _res "," gemini_gen_unit_str_rolepart("model", gemini_gen_unit_str_text(jqu(res_text)))
     }
 
     tool_l = chat_history_get_tool_l(history_obj, chatid, i)
-    if ( tool_l > 0 ) _res = _res ", " gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text("[INTERNAL NOTE: The following block shows past tool execution data for context only.\nDo not reuse or mimic this structure when performing new tool calls.]"))
+    if ( tool_l > 0 ) _res = _res ", " gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text(chat_history_get_function_call_log_begin()))
     for (j=1; j<=tool_l; ++j){
         tool_req = chat_history_get_tool_req(history_obj, chatid, i, j)
         tool_res = chat_history_get_tool_res(history_obj, chatid, i, j)
         _res = _res "," gemini_gen_unit_str_rolepart("model", gemini_gen_unit_str_text( jqu(tool_req) ))
         _res = _res "," gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text( jqu(tool_res) ))
     }
-    if ( tool_l > 0 ) _res = _res ", " gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text("[End of tool output — use your environment’s standard function-call format.]"))
+    if ( tool_l > 0 ) _res = _res ", " gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text(chat_history_get_function_call_log_end()))
 
     return _res
 }
 
-function gemini_gen_filelist_str(filelist_str,       arr, _fp, _type, _str, i, l){
+function gemini_gen_attach_filelist_str(filelist_str,       arr, _fp, _type, _str, i, l){
     if ( chat_str_is_null(filelist_str) ) return
     chat_filelist_load_to_array( filelist_str, arr )
     l = arr[ L ]
@@ -94,7 +97,7 @@ function gemini_gen_last_msgtool_from_creq( current_msgtool_obj, msgtool_obj, se
 }
 
 function gemini_gen_msgtool_from_creq( msgtool_obj, session_dir, chatid, hist_session_dir,                history_obj, history_num, i, l, str, \
-    creq_dir, _history_str, _system_str, _content_str, _example_str, _filelist_str, _messages_str, _use_gg_search, _tool_str, _stats_str, _append_text ){
+    creq_dir, _history_str, _system_str, _content_str, _example_str, _attach_filelist_str, _messages_str, _use_gg_search, _tool_str, _stats_str, _attach_text ){
     creq_dir    = chat_get_creq_dir( session_dir, chatid )
     history_num = creq_fragfile_unit___get( creq_dir, "history_num" )
 
@@ -114,31 +117,37 @@ function gemini_gen_msgtool_from_creq( msgtool_obj, session_dir, chatid, hist_se
     _example_str = creq_fragfile_unit___get( creq_dir, "example" )
     if ( _example_str != "" ) _example_str = gemini_gen_unit_str_rolepart( "user", gemini_gen_unit_str_text(_example_str) ) " ,"
 
-    _filelist_str = creq_fragfile_unit___get( creq_dir, "filelist_attach" )
-    if (_filelist_str != "") _filelist_str = gemini_gen_filelist_str(_filelist_str)" ,"
+    _context_filelist_str = chat_context_filelist_load( creq_fragfile_unit___get( creq_dir, "context_filelist" ) )
+    if (_context_filelist_str != "") _context_filelist_str = gemini_gen_unit_str_rolepart( "user", gemini_gen_unit_str_text(_context_filelist_str) ) " ,"
+
+    _attach_filelist_str = creq_fragfile_unit___get( creq_dir, "attach_filelist" )
+    if (_attach_filelist_str != "") _attach_filelist_str = gemini_gen_attach_filelist_str(_attach_filelist_str) " ,"
 
     _stats_str = chat_statsfile_load( hist_session_dir )
     if ( _stats_str != "" ) _stats_str = gemini_gen_unit_str_rolepart( "user", gemini_gen_unit_str_text(_stats_str) ) " ,"
 
+    _attach_text = creq_fragfile_unit___get( creq_dir, "attach_text" )
     _content_str = creq_fragfile_unit___get( creq_dir, "content" )
-    _append_text = creq_fragfile_unit___get( creq_dir, "append_text" )
+    _attach_text = str_trim(_attach_text)
     _content_str = str_trim(_content_str)
-    _append_text = str_trim(_append_text)
+
+    if ( _attach_text != "" ) {
+        _attach_text = gemini_gen_unit_str_text( jqu(_attach_text) )
+        _attach_text = gemini_gen_unit_str_rolepart( "user", _attach_text )
+    }
+
     if ( _content_str != "" ) {
+        if ( _attach_text != "" ) _attach_text = _attach_text ", "
         _content_str = gemini_gen_unit_str_text( jqu( _content_str ) )
         _content_str = gemini_gen_unit_str_rolepart("user", _content_str)
     }
 
-    if ( _append_text != "" ) {
-        _append_text = gemini_gen_unit_str_text( jqu(_append_text) )
-        _append_text = ( (_content_str != "") ? " ," : "" )  gemini_gen_unit_str_rolepart( "user", _append_text )
-    }
 
-    _messages_str   = "\"contents\":[" _system_str _example_str _history_str _filelist_str _stats_str _content_str _append_text "]"
+    _messages_str   = "\"contents\":[" _system_str _example_str _context_filelist_str _history_str _attach_filelist_str _stats_str _attach_text _content_str "]"
     _use_gg_search  = GEMINI_USE_GOOGLE_SEARCH
     _tool_str       = gemini_gen_tool_str(creq_dir, _use_gg_search)
 
-    creq_fragfile_set___usage_input_ratio_SHO( creq_dir, _system_str _example_str, _history_str, _filelist_str _stats_str _content_str _tool_str )
+    creq_fragfile_set___usage_input_ratio_SHO( creq_dir, _system_str _example_str _context_filelist_str _tool_str, _history_str, _attach_filelist_str _stats_str _attach_text _content_str )
 
     msgtool_obj[ "msg_str" ]  = _messages_str
     msgtool_obj[ "tool_str" ] = _tool_str
@@ -255,11 +264,11 @@ function gemini_gen_tool_function_str( creq_dir,            tool_str, tool_obj, 
     if ( chat_str_is_null(tool_str) ) return
 
     tool_kp = SUBSEP "tool"
-    jiparse2leaf_fromstr( tool_obj, SUBSEP "tool", tool_str )
+    jiparse2leaf_fromstr( tool_obj, tool_kp, tool_str )
 
     jlist_put( _, "", "{")
     jdict_put( _, SUBSEP "\"1\"", "\"function_declarations\"", "[")
-    jmerge_force___value(_, SUBSEP "\"1\"" SUBSEP "\"function_declarations\"", tool_obj, tool_kp SUBSEP "\"function\"")
+    jmerge_force___value(_, SUBSEP "\"1\"" SUBSEP "\"function_declarations\"", tool_obj, tool_kp)
     _res = jstr0(_, SUBSEP "\"1\"", " ")
 
     return _res

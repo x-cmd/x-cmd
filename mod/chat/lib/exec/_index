@@ -28,15 +28,15 @@ ___x_cmd_chat___exec(){
     local confirm_before_send=""
     # local question_op=""
     local count_token=""
-    local filelist_attach=""
+    local attach_filelist=""
     local provider="gemini"
     local numbered=""
     local temperature=""
     local maxtoken=""
-    local def_histnum="10"
-    local history_num="$def_histnum"
+    local history_num=""
     local seed=""
-    local append_text=""
+    local attach_text=""
+    local attach_system=""
 
     local inputtype=""
     [ -n "$NO_PIPE_DATA_SIGN_DISPLAY" ] || local inputdesc="This data form pipe"
@@ -45,9 +45,11 @@ ___x_cmd_chat___exec(){
     local reflist=""
 
     local cache_time=1h
-    local is_silent=""
     local modellist=""
     local require_question=""
+    local attach_tool_schema=""
+
+    local is_silent=""
     local is_start_with_repl=""
     local is_end_with_repl=""
     local is_interactive=""
@@ -56,10 +58,10 @@ ___x_cmd_chat___exec(){
     local is_stream=""
     local is_debug=""
     local is_enactnone=""
+    local is_use_context_file=""
+    local is_tool_force=""
 
-    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
-        is_end_with_repl=1
-    fi
+    local run_mode=""
 
     local x_=""
     while [ $# -gt 0 ]; do
@@ -121,7 +123,7 @@ ___x_cmd_chat___exec(){
             -f|--file)
                             [ $# -ge 2 ] || N=chat M="Please provide the filepath" log:ret:64;
                             if ___x_cmd_chat___exec_filelist_ "$2" "$numbered"; then
-                                filelist_attach="${filelist_attach}${x_}${NL}"
+                                attach_filelist="${attach_filelist}${x_}${NL}"
                             else
                                 return 1
                             fi
@@ -154,8 +156,18 @@ A
 
                             [ -n "$model" ] || N=chat M="Please provide the model value" log:ret:64
                             ;;
-            --system)       system="$2";            [ $# -ge 2 ] || N=chat M="Please provide the system value"  log:ret:64; shift 2 ;;
             # --context)
+            --system)       system="$2";            [ $# -ge 2 ] || N=chat M="Please provide the system value"  log:ret:64; shift 2 ;;
+            --attach-system)
+                            [ $# -ge 2 ] || N=chat M="Please provide the system value"  log:ret:64
+                            attach_system="${attach_system}${2}${NL}"
+                            shift 2 ;;
+            --tool|--allowed-tools)
+                            [ $# -ge 2 ] || N=chat M="Please provide the tools name" log:ret:64
+                            attach_tool_schema="$( ___x_cmd coco toolspec invoke --json "$2" )" || return $?
+                            attach_system="${attach_system}$( ___x_cmd coco toolspec prompt )${NL}" || return $?
+                            shift 2 ;;
+            --tool-force)   is_tool_force=1;        shift 1 ;;
             --type)         type="$2";              [ $# -ge 2 ] || N=chat M="Please provide the type value"    log:ret:64; shift 2 ;;
             --count)        count_token=1 ;         shift 1 ;; # now just gemini kimi
 
@@ -170,22 +182,26 @@ A
                             shift 2 ;;
 
             --numbered)     numbered=1;             shift 1 ;;
-            --silent)       is_silent=1;            shift 1 ;;
 
             # deprecated ...
             --question)     question="$2";          [ $# -ge 2 ] || N=chat M="Please provide the question value" log:ret:64;  shift 2 ;;
-            --append-text)  append_text="$2";       [ $# -ge 2 ] || N=chat M="Please provide the append text value" log:ret:64;  shift 2 ;;
+            --attach-text)  attach_text="$2";       [ $# -ge 2 ] || N=chat M="Please provide the append text value" log:ret:64;  shift 2 ;;
             --reasoning)    is_reasoning=1;         shift 1 ;;
             --no-reasoning) is_reasoning=0;         shift 1 ;;
             --stream)       is_stream=1;            shift 1 ;;
             --no-stream)    is_stream=0;            shift 1 ;;
             --debug)        is_debug=1;             shift 1 ;;
+            --silent)       is_silent=1;            shift 1 ;;
             --help|-h)
                             case "$provider" in
-                                gh) ___x_cmd help -m gh model chat request      ;;
-                                *)  ___x_cmd help -m "$provider" chat request   ;;
+                                hub)    ___x_cmd help -m hub ai convo request ;;
+                                gh)     ___x_cmd help -m gh model chat request ;;
+                                *)      ___x_cmd help -m "$provider" chat request   ;;
                             esac
                             return
+                            ;;
+            --style|--run-mode)
+                            run_mode="$2";           [ $# -ge 2 ] || N=chat M="Please provide the run mode value" log:ret:64; shift 2
                             ;;
             --no-empty-question|--require-question)
                             require_question=1; shift 1 ;;
@@ -194,15 +210,18 @@ A
             --end-with-repl)
                             is_end_with_repl=1;     shift 1 ;;
             --start-without-repl)
-                            is_start_with_repl="";  shift 1 ;;
+                            is_start_with_repl=0;  shift 1 ;;
             --end-without-repl)
-                            is_end_with_repl="";    shift 1 ;;
+                            is_end_with_repl=0;    shift 1 ;;
             --without-repl)
-                            is_start_with_repl=""; is_end_with_repl=""; shift 1 ;;
+                            is_start_with_repl=0; is_end_with_repl=0; shift 1 ;;
             --interactive)      is_interactive=1;   shift 1 ;;
-            --non-interactive)  is_interactive=0;   shift 1 ;;
+            --no-interactive)   is_interactive=0;   shift 1 ;;
             --enactnone)        is_enactnone=1;     shift 1
-                                is_stream=0; is_start_with_repl=""; is_end_with_repl=""; inputtype=none; is_silent=1 ;;
+                                is_stream=0; is_start_with_repl=0; is_end_with_repl=0; inputtype=none; is_silent=1 ;;
+            --use-context-file) is_use_context_file=1; shift 1 ;;
+            --no-context-file)  is_use_context_file=0; shift 1 ;;
+
             *)
                             [ "$1" != -- ] || shift
                             if [ -z "$question" ]; then
@@ -214,6 +233,25 @@ A
                             ;;
         esac
     done
+
+    case "$run_mode" in
+        "")     ;;
+        once)
+                history_num="${history_num:-0}"
+                is_use_context_file="${is_use_context_file:-0}"
+                is_start_with_repl="${is_start_with_repl:-0}"
+                is_end_with_repl="${is_end_with_repl:-0}"
+                ;;
+        chat|conversation)
+                history_num="${history_num:-10}"
+                is_use_context_file="${is_use_context_file:-1}"
+                is_start_with_repl="${is_start_with_repl:-0}"
+                if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
+                    is_end_with_repl="${is_end_with_repl:-1}"
+                fi
+                ;;
+        *)      N=chat M="Unsupported run mode ==> $run_mode" log:ret:64 ;;
+    esac
 
     [ -n "$inputtype" ] || {
         if [ -t 0 ]; then   inputtype=none
@@ -233,41 +271,49 @@ A
     if [ "$is_start_with_repl" = 1 ]; then
         ___x_cmd_chat___exec_repl --start "$question"
         return
-    elif [ -z "$question" ]; then
+    elif [ -z "${question}${attach_text}${reflist}${attach_filelist}" ]; then
         if [ "$require_question" = 1 ]; then
             chat:error "Please provide the text you want request"
             return 1
-        elif [ -z "${minion}${system}${append_text}" ]; then
+        elif [ -z "${minion}${system}${attach_system}" ]; then
             ___x_cmd_chat___exec_repl --app
             return
         fi
     fi
 
+    case "$run_mode" in
+        once)
+                session="${session:-"X"}"
+                ;;
+        chat|conversation)
+                [ -n "$session" ] || {
+                    x_=""; ___x_cmd_chat___exec_repl___id_ || return $?
+                    session="$x_"
+                }
+                ;;
+    esac
+
     # x_=; ___x_cmd_chat_request___preparequestion_ "$question" "$inputtype" "$numbered" "$inputdesc" || return $?
     # question="$x_"
 
     if [ "$is_end_with_repl" = 1 ]; then
-        [ -n "$session" ] || {
-            x_=""; ___x_cmd_chat___exec_repl___id_ || return $?
-            session="$x_"
-        }
-        ___x_cmd_chat___exec_raw "$question" "$history_num" "$append_text" "$reflist" "$filelist_attach"
+        ___x_cmd_chat___exec_raw "$question" "$history_num" "$attach_text" "$reflist" "$attach_filelist" || return $?
         [ -z "$question" ] || ___x_cmd_chat___exec_repl_history add "$question"
 
         ___x_cmd_chat___exec_repl --previous
         return
     else
-        ___x_cmd_chat___exec_raw "$question" "$history_num" "$append_text" "$reflist" "$filelist_attach"
+        ___x_cmd_chat___exec_raw "$question" "$history_num" "$attach_text" "$reflist" "$attach_filelist"
     fi
 }
 
-# question reflist filelist_attach
+# question reflist attach_filelist
 ___x_cmd_chat___exec_raw(){
     local question="$1"
     local history_num="$2"
-    local append_text="$3"
+    local attach_text="$3"
     local reflist="$4"
-    local filelist_attach="$5"
+    local attach_filelist="$5"
 
     envinfo="$(___x_cmd_chat___exec_envinfo)" \
         ___x_cmd_chat___exec_inner
@@ -290,11 +336,11 @@ ___x_cmd_chat___exec_inner(){
     minion="${minion:-"default"}"
     x_=; ___x_cmd_chat_minion_cache_json_ "$minion" || return $?
     local minion_json_cache="$x_"
-
-    local chatid;   chatid="$( ___x_cmd pidid vlseqid ___X_CMD_CHAT_REC )"
-    chat:debug --chatid "$chatid" --model "$model" --cfg_stream "$cfg_stream" --cfg_reasoning "$cfg_reasoning" --history_num "$history_num" --confirm_before_send "$confirm_before_send" --question "$question" "chat exec"
+    x_=; ___x_cmd_chat___exec__get_context_filelist_ || return $?
+    local context_filelist="$x_"
 
     local XCMD_CHAT_IS_INTERACTIVE="$is_interactive"
+    local XCMD_CHAT_IS_TOOL_FORCE="$is_tool_force"
     local XCMD_CHAT_SESSION=""
     local XCMD_CHAT_HISTSESSION=""
     local XCMD_CHAT_SESSION_DIR=""
@@ -304,6 +350,13 @@ ___x_cmd_chat___exec_inner(){
 
     session="$(___x_cmd_chat_minion getitem "$minion_json_cache" session)"
     [ -n "$session" ] || N=chat M="The session name is empty, please check the minion file" log:ret:64
+
+    local chatid;   chatid="$( ___x_cmd pidid vlseqid ___X_CMD_CHAT_REC )"
+    chat:debug --run_mode "$run_mode"  --chatid "$chatid" --session "$session" --provider "$provider" --model "$model" \
+        --minion_json_cache "$minion_json_cache" --is_use_context_file "$is_use_context_file" \
+        --context_filelist "$context_filelist" --cfg_stream "$cfg_stream" --cfg_reasoning "$cfg_reasoning" \
+        --history_num "$history_num" --confirm_before_send "$confirm_before_send" "chat exec"
+
     XCMD_CHAT_SESSION_DIR="$___X_CMD_CHAT_SESSION_DIR/$session"
     XCMD_CHAT_SESSION="$session"
     if [ -z "$hist_session" ]; then
@@ -327,7 +380,7 @@ ___x_cmd_chat___exec_inner(){
     (
         ___x_cmd_chat___exec_inner_provider_ & \
             ___x_cmd coco enactall "$XCMD_CHAT_SESSION_DIR/$chatid"
-    )
+    ) || return $?
 
     [ "$is_enactnone" != 1 ] || printf "%s\n" "$XCMD_CHAT_SESSION_DIR/$chatid"
 }
@@ -336,10 +389,11 @@ ___x_cmd_chat___exec_inner_provider_(){
     ___x_cmd price check || return $?
     printf "[MODEL-SENT-AT] %s\n" "${EPOCHREALTIME:-"$(date +%s)"}" >> "$XCMD_CHAT_ENACTALL_DRAWFILE"
 
-    [ -z "$is_silent" ] || ___x_cmd log "$provider"/warn 2>/dev/null
+    [ "$is_silent" != 1 ] || ___x_cmd log "$provider"/warn 2>/dev/null
     case "$provider" in
-        gh) ___x_cmd "$provider" model chat exec ;;
-        *)  ___x_cmd "$provider" chat exec ;;
+        gh)     ___x_cmd gh model chat exec ;;
+        hub)    ___x_cmd hub ai convo exec ;;
+        *)      ___x_cmd "$provider" chat exec ;;
     esac
     local _exitcode="$?"
     if [ "$_exitcode" != 0 ]; then
@@ -357,13 +411,13 @@ ___x_cmd_chat___exec__cancel_request(){
 }
 
 ___x_cmd_chat___exec__confirm_before_request(){
-    [ -z "$confirm_before_send" ] || {
+    [ "$confirm_before_send" != 1 ] || {
         < "$request_body_file" ___x_cmd j2y | ___x_cmd bat -l yml --wrap never >"$___X_CMD_DEVTTY_FP"
         ___x_cmd ui yesno "Do your want to send this message?" || {
             ___x_cmd_chat___exec__cancel_request
             return 1
         }
-        confirm_before_send=
+        confirm_before_send=0
     }
 }
 
@@ -375,7 +429,7 @@ ___x_cmd_chat___exec__histsum(){
     [ -d "$XCMD_CHAT_HISTSESSION_DIR" ] || return 0
 
     local l=""; local n=0; local filename=""
-    { ___x_cmd_cmds find "$XCMD_CHAT_HISTSESSION_DIR" -type f -name "histsum.md" -o -path "*/chat.response/done" | ___x_cmd_cmds sort -r; } 2>/dev/null | {
+    { ___x_cmd find --cmd "$XCMD_CHAT_HISTSESSION_DIR" -type f -name "histsum.md" -o -path "*/chat.response/done" | ___x_cmd_cmds sort -r; } 2>/dev/null | {
         while read -r l; do
             case "$l" in
                 */histsum.md) n="$((n+1))"; break ;;
@@ -391,4 +445,25 @@ ___x_cmd_chat___exec__histsum(){
 
         ___x_cmd coco histsum "$histsession"
     }
+}
+
+___x_cmd_chat___exec__get_context_filelist_(){
+    x_=""
+    [ "$is_use_context_file" = 1 ] || return 0
+    local filename=""
+    ___x_cmd_chat_cur filename:=context_filename 2>/dev/null
+    filename="${filename:-"AGENTS.md"}"
+    set -- "$PWD/$filename"
+
+    x_=""
+    if ___x_cmd wsroot_; then
+        set -- "$x_/.x-cmd/$filename" "$@"
+    fi
+
+    x_=""
+    local i=; for i in "$@" ; do
+        [ -f "$i" ] || continue
+        x_="${x_}${i}
+"
+    done
 }

@@ -5,7 +5,7 @@ ___x_cmd_gemini_cli_skill(){
 
     local op="$1";      shift
     case "$op" in
-        ll|ls|use|unuse|setup)
+        ll|ls|add|rm|use|unuse|setup)
                         ___x_cmd_gemini_cli_skill_"$op"   "$@" ;;
         -h|--help)      ___x_cmd help -m gemini cli skill "$@" ;       return 0 ;;
         *)              N=gemini M="skill not such [subcmd=$op]" log:ret:64 ;;
@@ -24,59 +24,106 @@ ___x_cmd_gemini_cli_skill_ll(){
     local op="$1"; shift
     case "$op" in
         -h|--help)      ___x_cmd help -m gemini cli skill ll;   return 0 ;;
-        --fzapp)        ___x_cmd_gemini_skill_ll___fzapp            "$@" ;;
+        --fzapp)        ___x_cmd_gemini_cli_skill_ll___fzapp        "$@" ;;
         *)              ___x_cmd skill ll "$@" ;;
     esac
 }
 
-___x_cmd_gemini_skill_ll___fzapp(){
+___x_cmd_gemini_cli_skill_ll___fzapp(){
     local x_=""; ___x_cmd skill ll --fzapp_ "$@" || return $?
 
     local id=
     ___x_cmd ui select id "Next:"                   \
+        "x gemini cli skill add $x_"                \
         "x gemini cli skill use $x_"                \
         "Show detailed information --> $x_"         \
         "EXIT"     || return $?
 
     case "$id" in
-        1)  ___x_cmd gemini cli skill use "$x_"     ;;
-        2)  ___x_cmd skill ll --fzpreview "$x_"     ;;
+        1)  ___x_cmd gemini cli skill add "$x_"     ;;
+        2)  ___x_cmd gemini cli skill use "$x_"     ;;
+        3)  ___x_cmd skill ll --fzpreview "$x_"     ;;
         *)  return 0;;
     esac
 }
 
 ___x_cmd_gemini_cli_skill_ls(){
     local X_help_cmd; X_help_cmd='___x_cmd help -m gemini cli skill ls' help:arg:parse
-    ___x_cmd skill ls --agent gemini
+
+    local project_dir=".gemini/skills"
+    local user_dir="$HOME/.gemini/skills"
+
+    if [ -d "$project_dir" ]; then
+        gemini:info "Listing project-level skills from: $project_dir"
+        ___x_cmd skill ls --agent gemini --skill-dir "$project_dir"
+    fi
+
+    if [ -d "$user_dir" ]; then
+        gemini:info "Listing user-level skills from: $user_dir"
+        ___x_cmd skill ls --agent gemini --skill-dir "$user_dir"
+    fi
+}
+
+___x_cmd_gemini_cli_skill_add(){
+    local x_=; ___x_cmd_abspath_ ".gemini"
+    local dir="$x_"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m gemini cli skill add ; return 0 ;;
+            -g|--global)            dir="${gemini_HOME:-$HOME}/.gemini";       shift 1 ;;
+            *)                      break ;;
+        esac
+    done
+
+    local x_=""; ___x_cmd_gemini_cli_skill_setup___get_agentfile_ "$dir" || return $?
+    ___x_cmd skill prompt check "$x_" || ___x_cmd skill prompt setup gemini "$x_" || return $?
+    ___x_cmd skill add --skill-dir "$dir/skills" "$@"
+}
+
+___x_cmd_gemini_cli_skill_rm(){
+    local x_=; ___x_cmd_abspath_ ".gemini"
+    local dir="$x_"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m gemini cli skill rm ; return 0 ;;
+            -g|--global)            dir="${gemini_HOME:-$HOME}/.gemini";       shift 1 ;;
+            *)                      break ;;
+        esac
+    done
+
+    ___x_cmd skill rm --skill-dir "$dir/skills" "$@"
 }
 
 ___x_cmd_gemini_cli_skill_unuse(){
     local X_help_cmd; X_help_cmd='___x_cmd help -m gemini cli skill unuse' help:arg:parse
-    ___x_cmd skill unuse --agent gemini "$@"
+    ___x_cmd_gemini_cli_skill_rm --global "$@"
 }
 
 ___x_cmd_gemini_cli_skill_use(){
     local X_help_cmd; X_help_cmd='___x_cmd help -m gemini cli skill use' help:arg:parse
-    ___x_cmd skill use --agent gemini "$@"
+    ___x_cmd_gemini_cli_skill_add --global "$@"
 }
 
-
 ___x_cmd_gemini_cli_skill_setup(){
+    local x_=; ___x_cmd_abspath_ ".gemini"
+    local dir="$x_"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m gemini cli skill setup ; return 0 ;;
+            -g|--global)            dir="${gemini_HOME:-$HOME}/.gemini";       shift 1 ;;
+            *)                      break ;;
+        esac
+    done
+
     local X_help_cmd; X_help_cmd='___x_cmd help -m gemini cli skill setup' help:arg:parse
 
-    local x_=""; ___x_cmd_gemini_cli_skill_setup___get_agentfile_ || return $?
+    local x_=""; ___x_cmd_gemini_cli_skill_setup___get_agentfile_ "$dir" || return $?
     local fp="$x_"
     ___x_cmd skill prompt setup gemini "$fp"  || return $?
 }
 
 ___x_cmd_gemini_cli_skill_setup___get_agentfile_(){
-    local dir="$HOME/.gemini"
+    local dir="$1"
     local fname="GEMINI.md"
-    if [ -f "$dir/settings.json" ]; then
-        read -r fname <<A
-$( < "$dir/settings.json" ___x_cmd jo env '.context.fileName.*' fname=. -- 'printf "%s\n" "$fname"' )
-A
-        [ -n "$fname" ] || fname="GEMINI.md"
-    fi
     x_="$dir/$fname"
 }

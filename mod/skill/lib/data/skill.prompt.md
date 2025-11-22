@@ -37,7 +37,7 @@ anthropics/algorithmic-art	Creating algorithmic art using p5.js with seeded rand
 At the start of a reasoning session, if the current skill list is **unknown or empty**, fetch it automatically by running:
 
 ```
-x-cmd skill ls --agent %{SKILL_AGENT}%
+x-cmd skill ls --all --agent %{SKILL_AGENT}%
 ```
 
 Do not re-fetch the skill list frequently.
@@ -61,7 +61,7 @@ Use this command only when a potentially relevant skill has been identified.
 #### Skill Usage Policy
 
 1. When processing a user request, determine whether a relevant skill exists in the current skill list.
-2. If no skill list is loaded, run `x-cmd skill ls --agent %{SKILL_AGENT}%` once to initialize it.
+2. If no skill list is loaded, run `x-cmd skill ls --all --agent %{SKILL_AGENT}%` once to initialize it.
 3. If a relevant skill is found, retrieve its documentation with `x-cmd skill cat <skill-id>` and follow its guidance.
 4. Only refresh the skill list when the user explicitly requests it.
 5. Do not create or assume skills that are not present in the list.
@@ -80,7 +80,7 @@ Use this command only when a potentially relevant skill has been identified.
 1. **Interpret intent:** Understand the user’s goal and task type.
 2. **Check skill availability:**
 
-   * If no skill list is known, load it via `x-cmd skill ls --agent %{SKILL_AGENT}%`.
+   * If no skill list is known, load it via `x-cmd skill ls --all --agent %{SKILL_AGENT}%`.
    * Otherwise, compare the user’s intent with the known skills.
 3. **Decision:**
 

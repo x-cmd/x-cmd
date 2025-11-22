@@ -167,6 +167,11 @@ function juq1( str ){
 
 # TODO: will translate control chars to unicode -- That might be the bug in the script play.
 function jqu( str ){
+    str = jescape( str )
+    return "\"" str "\""
+}
+
+function jescape( str ){
     gsub( "\\\\", "&\\", str )
     gsub( "\"", "\\\"", str )
     gsub( "\n", "\\n", str )
@@ -174,7 +179,7 @@ function jqu( str ){
     gsub( "\v", "\\v", str )        # Notice: Will remove in the future, using \u000b to encode
     gsub( "\b", "\\b", str )
     gsub( "\r", "\\r", str )
-    return "\"" str "\""
+    return str
 }
 # EndSection
 

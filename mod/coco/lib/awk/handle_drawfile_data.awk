@@ -18,7 +18,7 @@ BEGIN{
     prompt_run = "Running ..."
     prompt_end = "Done"
 
-    handle_content_rotate_begin()
+    # handle_content_rotate_begin()
 }
 {
     if ( match($0, "^\\[EXITCODE\\] ") ) {

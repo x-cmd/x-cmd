@@ -25,32 +25,26 @@ ___x_cmd_coco_writefile(){
     local hasorig=0; [ ! -e "$fporig" ] || hasorig=1
     local hasrej=0;  [ ! -e "$fprej"  ] || hasrej=1
 
-    local content_line=""; local confirmid=""
-    while true; do
-        content_line="$( ___x_cmd_cmds wc -l <<A
+    local confirmid=""
+    if [ "$is_tool_force" = 1 ]; then
+        coco:info "Tool force mode enabled, skipping user confirmation"
+    else
+        coco:info "Requesting user confirmation" 2>/dev/tty >&2
+        ___x_cmd bat -l Diff 2>/dev/tty >&2  <<A
 $content
 A
-)"
-        if [ "$content_line" -gt 50 ]; then
-            coco:info "Requesting user confirmation" 2>/dev/tty >&2
-            ___x_cmd less --autoview-all 2>/dev/tty >&2  <<A
-$content
-A
-        else
-            coco:info --m:content "$content" "Requesting user confirmation" 2>/dev/tty >&2
-        fi
         ___x_cmd ui select confirmid "Requesting user confirmation" \
             "Yes" "No" 2>/dev/tty >&2 || return $?
 
         case "$confirmid" in
-            1)  coco:info "User granted permission to write to file"
-                break ;;
-            2)  coco:error "User permission denied for writing to file"
+            1)  coco:info "User granted permission to write to file" ;;
+            2)  coco:error "User rejected file modification"
                 printf "[BREAK] 1\n" >> "$X_COCO_TOOL_ENACTCMD_FOLDER/log"
+                ___x_cmd_coco_writefile___remove_tmpfile || return $?
                 return 1
                 ;;
         esac
-    done
+    fi
 
     if [ ! -e "$fp" ]; then
         coco:info "File does not exist"
@@ -73,14 +67,7 @@ A
             return 0
         else
             coco:error "Failed to apply patch diff to file '$fp'"
-            if [ "$hasorig" = 0 ] && [ -e "$fporig" ]; then
-                coco:info "Removing temp file -> $fporig"
-                ___x_cmd rmrf "$fporig"
-            fi
-            if [ "$hasrej" = 0 ] && [ -e "$fprej" ]; then
-                coco:info "Removing temp file -> $fprej"
-                ___x_cmd rmrf "$fprej"
-            fi
+            ___x_cmd_coco_writefile___remove_tmpfile || return $?
             return 1
         fi
     else
@@ -89,6 +76,16 @@ A
     fi
 }
 
+___x_cmd_coco_writefile___remove_tmpfile(){
+    if [ "$hasorig" = 0 ] && [ -e "$fporig" ]; then
+        coco:info "Removing temp file -> $fporig"
+        ___x_cmd rmrf "$fporig"
+    fi
+    if [ "$hasrej" = 0 ] && [ -e "$fprej" ]; then
+        coco:info "Removing temp file -> $fprej"
+        ___x_cmd rmrf "$fprej"
+    fi
+}
 
 # check validate filepath
 ___x_cmd_coco_valid_fp(){

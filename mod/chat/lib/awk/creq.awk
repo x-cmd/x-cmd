@@ -20,10 +20,12 @@ function creq_fragfile_unit___get( dir, name,               str ) {
     return str
 }
 
-function creq_fragfile_create( session_dir, chatid, hist_session_dir, minion_obj, minion_kp, provider, def_model, question, append_text,
-    model, filelist_attach, last_chatid){
+function creq_fragfile_create( session_dir, chatid, hist_session_dir, minion_obj, minion_kp, provider, def_model, question, attach_text, attach_filelist, context_filelist,
+    dir, model, last_chatid, history_num){
     dir = chat_get_creq_dir( session_dir, chatid )
     mkdirp( dir )
+
+    history_num = minion_history_num( minion_obj, minion_kp )
 
     creq_fragfile_unit___set( dir, "type",              minion_type( minion_obj, minion_kp ))
     creq_fragfile_unit___set( dir, "provider",          provider )
@@ -32,10 +34,10 @@ function creq_fragfile_create( session_dir, chatid, hist_session_dir, minion_obj
     creq_fragfile_unit___set( dir, "chatid",            chatid )
     creq_fragfile_unit___set( dir, "is_stream",         ((minion_is_stream( minion_obj, minion_kp, model ) == true) ? "true" : "false"))
     creq_fragfile_unit___set( dir, "is_reasoning",      ((minion_is_reasoning( minion_obj, minion_kp ) == true) ? "true" : "false") )
-    creq_fragfile_unit___set( dir, "history_num",       minion_history_num( minion_obj, minion_kp ) )
+    creq_fragfile_unit___set( dir, "history_num",       history_num )
     creq_fragfile_unit___set( dir, "minion",            jstr( minion_obj, minion_kp ) )
 
-    creq_fragfile_unit___set( dir, "system",            minion_system_tostr( minion_obj, minion_kp ) )
+    creq_fragfile_unit___set( dir, "system",            minion_system( minion_obj, minion_kp ) )
     creq_fragfile_unit___set( dir, "example",           minion_example_tostr( minion_obj, minion_kp ) )
     creq_fragfile_unit___set( dir, "content",           minion_prompt_content( minion_obj, minion_kp ) )
 
@@ -45,22 +47,18 @@ function creq_fragfile_create( session_dir, chatid, hist_session_dir, minion_obj
     creq_fragfile_unit___set( dir, "jsonmode",          minion_is_jsonmode( minion_obj, minion_kp ) )
     creq_fragfile_unit___set( dir, "ctx",               minion_ctx( minion_obj, minion_kp ) )
 
-    creq_fragfile_unit___set( dir, "append_text",       append_text )
+    creq_fragfile_unit___set( dir, "attach_text",       attach_text )
+    creq_fragfile_unit___set( dir, "attach_filelist",   str_trim_right( attach_filelist ) )
+    creq_fragfile_unit___set( dir, "context_filelist",  str_trim_right( context_filelist ) )
 
-    filelist_attach = minion_filelist_attach( minion_obj, minion_kp )
-    if ( ! chat_str_is_null(filelist_attach) ) {
-        creq_fragfile_unit___set( dir, "filelist_attach", filelist_attach )
-    }
+    creq_fragfile_unit___set( dir, "tool",              minion_tool_jstr(minion_obj, minion_kp))
 
-    # minion_tool_jstr
-    if (minion_obj[ minion_kp, "\"tool\"" L ] > 0 ){
-        creq_fragfile_unit___set( dir, "tool",          jstr(minion_obj, minion_kp SUBSEP "\"tool\""))
-    }
-
-    last_chatid = chat_history_get_last_chatid(hist_session_dir, provider, chatid)
-    if ( last_chatid != "" ) {
-        creq_fragfile_unit___set( dir, "last_chatid",       last_chatid )
-        creq_fragfile_unit___set( dir, "hist_session_dir",  hist_session_dir )
+    if ( history_num > 0 ) {
+        last_chatid = chat_history_get_last_chatid(hist_session_dir, provider, chatid)
+        if ( last_chatid != "" ) {
+            creq_fragfile_unit___set( dir, "last_chatid",       last_chatid )
+            creq_fragfile_unit___set( dir, "hist_session_dir",  hist_session_dir )
+        }
     }
 }
 

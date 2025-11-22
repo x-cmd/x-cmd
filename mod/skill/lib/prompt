@@ -4,7 +4,7 @@ ___x_cmd_skill_prompt(){
     local op="$1"
     case "$op" in
         -h|--help)  ___x_cmd help -m skill prompt "$@";    return ;;
-        setup|text|rm)
+        setup|text|rm|check)
                     shift; ___x_cmd_skill_prompt___"$op" "$@" ;;
         *)          N=skill M="Unknown subcmd -> $op" log:ret:64 ;;
     esac
@@ -62,40 +62,54 @@ END{ if ( HAS_PRINT_PROMPT == 0 ) print  "\n" prompt  "\n" ; }
     fi
     skill:info "Setup complete"
 }
+
 ___x_cmd_skill_prompt___text(){
     local agent="$1"
     local fp="$___X_CMD_ROOT_MOD/skill/lib/data/skill.prompt.md"
     [ -f "$fp" ] || return 0
-    local skill_list; skill_list="$( ___x_cmd_skill_ls --agent "$agent" )"
-    local line; line="$( ___x_cmd_cmds wc -l <<A
-$skill_list
-A
-)"
-    [ "$line" -gt 1 ] || {
-        skill:error "skill list is empty"
-        if ___x_cmd_runmode_allow_manual; then
-            ___x_cmd_skill_use___app "$agent" || return $?
-            skill_list="$( ___x_cmd_skill_ls --agent "$agent" )"
-            line="$( ___x_cmd_cmds wc -l <<A
-$skill_list
-A
-)"
-            [ "$line" -gt 1 ] || return 1
-        else
-            return 1
-        fi
-    }
 
-    < "$fp" skill_list="$skill_list" skill_agent="$agent" ___x_cmd_cmds awk '
-BEGIN{ skill_list = ENVIRON["skill_list"] ; skill_agent = ENVIRON["skill_agent"] ; }
+    < "$fp" skill_agent="$agent" ___x_cmd_cmds awk '
+BEGIN{ skill_agent = ENVIRON["skill_agent"] ; }
 {
-    if ( match($0, "%{SKILL_LIST}%") ) {
-        print substr($0, 1, RSTART-1) skill_list substr($0, RSTART+RLENGTH);
-    } else if ( match($0, "%{SKILL_AGENT}%") ) {
+    if ( match($0, "%{SKILL_AGENT}%") ) {
         print substr($0, 1, RSTART-1) skill_agent substr($0, RSTART+RLENGTH);
     } else {
         print $0
     }
 }
 '
+}
+
+___x_cmd_skill_prompt___check(){
+    local fp="$1"; [ -n "$fp" ] || N=skill M="Please provide ai agent prompt file" log:ret:64
+
+    if ! [ -f "$fp" ]; then
+        skill:info "Prompt file not found -> $fp"
+        return 1
+    fi
+
+    local result; result="$( ___x_cmd_cmds awk '
+/^<!-- BEGIN X-CMD SKILL SPEC -->/ { has_begin = 1 }
+/^<!-- END X-CMD SKILL SPEC -->/ { has_end = 1 }
+END {
+    if (has_begin && has_end) {
+        print "complete"
+    } else {
+        print "incomplete"
+    }
+}
+' < "$fp" )"
+
+    case "$result" in
+        complete)
+            return 0
+            ;;
+        incomplete)
+            return 1
+            ;;
+        *)
+            skill:info "Unexpected error checking prompt file -> $fp"
+            return 1
+            ;;
+    esac
 }

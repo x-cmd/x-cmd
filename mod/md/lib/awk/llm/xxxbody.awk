@@ -32,6 +32,7 @@ function hd_body( arr,                  pattern, _line, i, a, l ){
         gsub("^[ ]*[-\\*\\+] ", MD_STYLE_BLIST_2, _line)
     }
 
+    gsub("[ ]+[0-9]+[ ]+", HD_STYLE_NUMBER_0 "&" HD_STYLE_NUMBER_1, str)
     if ( _line ~ "^[ ]*[0-9]+\\.[ ]+") {
         gsub("[0-9]+",  HD_STYLE_NUMBER_0 "&"   HD_STYLE_NUMBER_1, _line)
     }
@@ -67,7 +68,6 @@ function hd_body( arr,                  pattern, _line, i, a, l ){
 }
 
 function hd_body_colorize( str ){
-    gsub("[ ]+[0-9]+[ ]+", HD_STYLE_NUMBER_0 "&" HD_STYLE_NUMBER_1, str)
     if ( str ~ "\\[[^\\]]*\\]\\([^)]+\\)")  return hd_body_link( str )
     return str
 }

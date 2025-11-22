@@ -7,7 +7,9 @@ BEGIN{
     SESSIONDIR          = ENVIRON[ "XCMD_CHAT_SESSION_DIR" ]
     HIST_SESSIONDIR     = ENVIRON[ "XCMD_CHAT_HISTSESSION_DIR" ]
     HIST_SESSIONDIR     = ( HIST_SESSIONDIR != "" ) ? HIST_SESSIONDIR : SESSIONDIR
-    APPEND_TEXT         = ENVIRON[ "append_text" ]
+    ATTACH_TEXT         = ENVIRON[ "attach_text" ]
+    ATTACH_FILELIST     = ENVIRON[ "attach_filelist" ]
+    CONTEXT_FILELIST    = ENVIRON[ "context_filelist" ]
     QUESTION            = ""
 
     Q2_1                = SUBSEP "\"1\""
@@ -20,7 +22,7 @@ END{
     minion_load_from_jsonfile( minion_obj, MINION_KP, MINION_JSON_CACHE, PROVIDER_NAME )
     mkdirp( SESSIONDIR "/" CHATID )
 
-    creq_fragfile_create( SESSIONDIR, CHATID, HIST_SESSIONDIR, minion_obj, MINION_KP, PROVIDER_NAME, def_model, QUESTION, APPEND_TEXT )
+    creq_fragfile_create( SESSIONDIR, CHATID, HIST_SESSIONDIR, minion_obj, MINION_KP, PROVIDER_NAME, def_model, QUESTION, ATTACH_TEXT, ATTACH_FILELIST, CONTEXT_FILELIST )
 
     creq_dir = (SESSIONDIR "/" CHATID "/chat.request")
     MODEL               = creq_fragfile_unit___get( creq_dir, "model" )

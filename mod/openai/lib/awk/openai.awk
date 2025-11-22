@@ -19,31 +19,57 @@ function openai_gen_unit_str_rolecont( role, content ){
     return "{ \"role\": " role ", \"content\": " content " }"
 }
 
-function openai_gen_history_str( history_obj, chatid, i,        req_text, res_text, req_append_text, j, tool_l, tool_req, tool_res, _res ){
-    req_text = chat_history_get_req_text(history_obj, chatid, i)
-    res_text = chat_history_get_res_text(history_obj, chatid, i)
-    req_append_text = chat_history_get_req_append_text(history_obj, chatid, i)
-    if ((req_text == "") && (req_append_text == "")) return
+function openai_gen_unit_str_toolreq( obj, kp,             _res ){
+    if ( obj[ kp L ] <= 0 ) return
+    _res = jstr0( obj, kp, " " )
+    return "{ \"role\": \"assistant\", \"content\": null, \"tool_calls\": " _res " }"
+}
 
-    if ( req_text != "" )        _res = openai_gen_unit_str_rolecont( "user", jqu(req_text) )
-    if ( req_append_text != "" ) _res = ((_res != "") ? _res ", " : "") openai_gen_unit_str_rolecont( "user", jqu(req_append_text) )
+function openai_gen_unit_str_toolres( tool_id, content ){
+    if (( content !~ "^\\[.*\\]$" ) && ( content !~ "^\"" )) content = jqu( content )
+    return "{ \"role\": \"tool\", \"tool_call_id\": " tool_id ", \"content\": " content " }"
+}
+
+function openai_gen_history_str( history_obj, chatid, i,        req_text, res_text, req_attach_filelist, req_attach_text, j, tool_l, tool_req, tool_res, _res, tool_req_obj, tool_id, tool_name, tool_args ){
+    req_text            = chat_history_get_req_text(history_obj, chatid, i)
+    req_attach_text     = chat_history_get_req_attach_text(history_obj, chatid, i)
+    req_attach_filelist = chat_history_get_req_attach_filelist(history_obj, chatid, i)
+    if ((req_text == "") && (req_attach_text == "") && (req_attach_filelist == "")) return
+
+    if ( req_attach_filelist != "" )    _res = openai_gen_attach_filelist_str( req_attach_filelist )
+    if ( req_attach_text != "" )        _res = ((_res != "") ? _res ", " : "") openai_gen_unit_str_rolecont( "user", jqu(req_attach_text) )
+    if ( req_text != "" )               _res = ((_res != "") ? _res ", " : "") openai_gen_unit_str_rolecont( "user", jqu(req_text) )
+
+    res_text            = chat_history_get_res_text(history_obj, chatid, i)
     if ( ! chat_str_is_null( res_text ) ) {
         _res = _res ", " openai_gen_unit_str_rolecont( "assistant", jqu(res_text) )
     }
 
     tool_l = chat_history_get_tool_l(history_obj, chatid, i)
-    if ( tool_l > 0 ) _res = _res ", " openai_gen_unit_str_rolecont("user", jqu("[INTERNAL NOTE: The following block shows past tool execution data for context only.\nDo not reuse or mimic this structure when performing new tool calls.]"))
     for (j=1; j<=tool_l; ++j){
-        tool_req = chat_history_get_tool_req(history_obj, chatid, i, j)
-        tool_res = chat_history_get_tool_res(history_obj, chatid, i, j)
-        _res = _res "," openai_gen_unit_str_rolecont("assistant", jqu(tool_req))
-        _res = _res "," openai_gen_unit_str_rolecont("user", jqu(tool_res))
+        tool_id = chat_history_get_tool_id(history_obj, chatid, i, j)
+        tool_name = chat_history_get_tool_name(history_obj, chatid, i, j)
+        tool_args = chat_history_get_tool_args(history_obj, chatid, i, j)
+
+        tool_req_obj[ Q2_1 ] = "["
+        jlist_put( tool_req_obj, Q2_1, "{" )
+        jdict_put( tool_req_obj, Q2_1 SUBSEP "\""j"\"", "\"id\"", tool_id )
+        jdict_put( tool_req_obj, Q2_1 SUBSEP "\""j"\"", "\"type\"", "\"function\"" )
+        jdict_put( tool_req_obj, Q2_1 SUBSEP "\""j"\"", "\"function\"", "{" )
+        jdict_put( tool_req_obj, Q2_1 SUBSEP "\""j"\"" SUBSEP "\"function\"", "\"name\"", jqu(tool_name) )
+        jdict_put( tool_req_obj, Q2_1 SUBSEP "\""j"\"" SUBSEP "\"function\"", "\"arguments\"", jqu(tool_args) )
     }
-    if ( tool_l > 0 ) _res = _res ", " openai_gen_unit_str_rolecont("user", jqu("[End of tool output — use your environment’s standard function-call format.]"))
+
+    if ( tool_l > 0 ) _res = _res "," openai_gen_unit_str_toolreq( tool_req_obj, Q2_1 )
+    for (j=1; j<=tool_l; ++j){
+        tool_id = chat_history_get_tool_id(history_obj, chatid, i, j)
+        tool_res = chat_history_get_tool_res(history_obj, chatid, i, j)
+        _res = _res "," openai_gen_unit_str_toolres(tool_id, jqu(tool_res))
+    }
     return _res
 }
 
-function openai_gen_filelist_str(filelist_str,       arr, _fp, _type, _str, i, l){
+function openai_gen_attach_filelist_str(filelist_str,       arr, _fp, _type, _str, i, l){
     if ( chat_str_is_null(filelist_str) ) return
     chat_filelist_load_to_array( filelist_str, arr )
     l = arr[ L ]
@@ -76,10 +102,8 @@ function openai_gen_tool_function_str( creq_dir,            tool_str, tool_obj, 
     if ( chat_str_is_null(tool_str) ) return
 
     tool_kp = SUBSEP "tool"
-    jiparse2leaf_fromstr( tool_obj, SUBSEP "tool", tool_str )
-
-    tool_function_kp = tool_kp SUBSEP "\"function\""
-    l = tool_obj[ tool_function_kp L ]
+    jiparse2leaf_fromstr( tool_obj, tool_kp, tool_str )
+    l = tool_obj[ tool_kp L ]
     if (l <= 0) return ""
 
     _res = ""
@@ -87,7 +111,7 @@ function openai_gen_tool_function_str( creq_dir,            tool_str, tool_obj, 
         jlist_put( _, "", "{")
         jdict_put( _, SUBSEP "\""i"\"", "\"type\"", "\"function\"")
         jdict_put( _, SUBSEP "\""i"\"", "\"function\"", "{")
-        jmerge_force___value(_, SUBSEP "\""i"\"" SUBSEP "\"function\"", tool_obj, tool_function_kp SUBSEP "\""i"\"")
+        jmerge_force___value(_, SUBSEP "\""i"\"" SUBSEP "\"function\"", tool_obj, tool_kp SUBSEP "\""i"\"")
 
         jdict_put( _, SUBSEP "\""i"\"" SUBSEP "\"function\"", "\"strict\"", "true")
         jdict_put( _, SUBSEP "\""i"\"" SUBSEP "\"function\"" SUBSEP "\"parameters\"" ,"\"additionalProperties\"", "false")
@@ -108,7 +132,7 @@ function openai_gen_last_msgtool_from_creq( current_msgtool_obj, msgtool_obj, se
 }
 
 function openai_gen_msgtool_from_creq( msgtool_obj, session_dir, chatid, hist_session_dir,                  history_obj, history_num, i, l, str, \
-    creq_dir, _history_str, _system_str, _filelist_str, _example_str, _content_str, _messages_str, _tool_str, _stats_str, _append_text ){
+    creq_dir, _history_str, _system_str, _context_filelist_str, _example_str, _content_str, _messages_str, _tool_str, _stats_str, _attach_filelist_str, _attach_text ){
 
     creq_dir    = chat_get_creq_dir( session_dir, chatid )
     history_num = creq_fragfile_unit___get( creq_dir, "history_num" )
@@ -129,28 +153,34 @@ function openai_gen_msgtool_from_creq( msgtool_obj, session_dir, chatid, hist_se
     _example_str = creq_fragfile_unit___get( creq_dir, "example" )
     if ( _example_str != "" ) _example_str = openai_gen_unit_str_rolecont( "user", _example_str ) " ,"
 
-    _filelist_str = creq_fragfile_unit___get( creq_dir, "filelist_attach" )
-    if (_filelist_str != "") _filelist_str = openai_gen_filelist_str(_filelist_str) " ,"
+    _context_filelist_str = chat_context_filelist_load( creq_fragfile_unit___get( creq_dir, "context_filelist" ) )
+    if (_context_filelist_str != "") _context_filelist_str = openai_gen_unit_str_rolecont( "user", _context_filelist_str ) " ,"
+
+    _attach_filelist_str = creq_fragfile_unit___get( creq_dir, "attach_filelist" )
+    if (_attach_filelist_str != "") _attach_filelist_str = openai_gen_attach_filelist_str(_attach_filelist_str) " ,"
 
     _stats_str = chat_statsfile_load( hist_session_dir )
     if ( _stats_str != "" ) _stats_str = openai_gen_unit_str_rolecont( "user", _stats_str ) " ,"
 
+    _attach_text = creq_fragfile_unit___get( creq_dir, "attach_text" )
     _content_str = creq_fragfile_unit___get( creq_dir, "content" )
-    _append_text = creq_fragfile_unit___get( creq_dir, "append_text" )
+    _attach_text = str_trim(_attach_text)
     _content_str = str_trim(_content_str)
-    _append_text = str_trim(_append_text)
 
-    if ( (_append_text == "") && (_content_str == "") ) _content_str = "null"
-    if ( _content_str != "" ) _content_str = openai_gen_unit_str_rolecont( "user", jqu(_content_str) )
+    if ( (_attach_text == "") && (_content_str == "") ) _content_str = "null"
 
-    if ( _append_text != "" ) _append_text = ( (_content_str != "") ? " ," : "" )  openai_gen_unit_str_rolecont( "user", jqu(_append_text) )
+    if ( _attach_text != "" ) _attach_text = openai_gen_unit_str_rolecont( "user", jqu(_attach_text) )
+    if ( _content_str != "" ) {
+        if ( _attach_text != "" ) _attach_text = _attach_text ", "
+        _content_str = openai_gen_unit_str_rolecont( "user", jqu(_content_str) )
+    }
 
-    _messages_str   = _system_str _example_str _history_str _filelist_str _stats_str _content_str _append_text
+    _messages_str   = _system_str _example_str _context_filelist_str _history_str _attach_filelist_str _stats_str _attach_text _content_str
     _messages_str   = "\"messages\": [ " _messages_str " ], "
     _tool_str       = openai_gen_tool_str( creq_dir )
     _tool_str       = (_tool_str) ? "\"tools\": [" _tool_str "]," : ""
 
-    creq_fragfile_set___usage_input_ratio_SHO( creq_dir, _system_str _example_str, _history_str, _filelist_str _stats_str _content_str _tool_str )
+    creq_fragfile_set___usage_input_ratio_SHO( creq_dir, _system_str _example_str _context_filelist_str _tool_str, _history_str, _attach_filelist_str _stats_str _attach_text _content_str )
 
     msgtool_obj[ "msg_str" ]  = _messages_str
     msgtool_obj[ "tool_str" ] = _tool_str
@@ -159,7 +189,7 @@ function openai_gen_msgtool_from_creq( msgtool_obj, session_dir, chatid, hist_se
 }
 
 function openai_req_from_creq(session_dir, chatid, hist_session_dir,
-    creq_dir, msgtool_obj, last_msgtool_obj, cache_msg, cache_tool, _msgtool, _mode, _maxtoken_keyname, _maxtoken, _seed, _temperature, _jsonmode, _ctx, is_stream, _data_str, _stream_str, _reason_eddort){
+    creq_dir, msgtool_obj, last_msgtool_obj, cache_msg, cache_tool, _msgtool, _model, _maxtoken_keyname, _maxtoken, _seed, _temperature, _jsonmode, _ctx, is_stream, _data_str, _stream_str, _reason_eddort){
 
     openai_gen_msgtool_from_creq(msgtool_obj, session_dir, chatid, hist_session_dir)
     openai_gen_last_msgtool_from_creq(msgtool_obj, last_msgtool_obj, session_dir, chatid, hist_session_dir)
@@ -170,7 +200,7 @@ function openai_req_from_creq(session_dir, chatid, hist_session_dir,
     cache_tool  = chat_cal_cached( msgtool_obj[ "tool_str" ], last_msgtool_obj[ "tool_str" ] )
     creq_fragfile_set___usage_input_ratio_cache( creq_dir, int(cache_msg + cache_tool), length( _msgtool ))
 
-    _mode           = creq_fragfile_unit___get( creq_dir, "model" )
+    _model          = creq_fragfile_unit___get( creq_dir, "model" )
     _maxtoken       = creq_fragfile_unit___get( creq_dir, "maxtoken" )
     _seed           = creq_fragfile_unit___get( creq_dir, "seed" )
     _temperature    = creq_fragfile_unit___get( creq_dir, "temperature" )
@@ -184,7 +214,7 @@ function openai_req_from_creq(session_dir, chatid, hist_session_dir,
 
     if ( PROVIDER_NAME == "openai" ) {
         _maxtoken_keyname = "\"max_completion_tokens\""
-        if ( _mode ~ "^(gpt-5|o)" ) {
+        if ( _model ~ "^(gpt-5|o)" ) {
             _reason_eddort  = "low" # medium high
         }
     } else {
@@ -202,7 +232,7 @@ function openai_req_from_creq(session_dir, chatid, hist_session_dir,
         _stream_str       = "\"stream\": false"
     }
 
-    _mode           = (_mode != "") ? "\"model\": " jqu(_mode) "," : ""
+    _model          = (_model != "") ? "\"model\": " jqu(_model) "," : ""
     _maxtoken       = (_maxtoken > 0) ? _maxtoken_keyname ": " _maxtoken "," : ""
     _seed           = (_seed != "") ? "\"seed\": " int(_seed) "," : ""
     _temperature    = (_temperature != "") ? "\"temperature\": " _temperature "," : ""
@@ -210,7 +240,7 @@ function openai_req_from_creq(session_dir, chatid, hist_session_dir,
     _jsonmode       = (_jsonmode) ? "\"response_format\": { \"type\": \"json_object\" }," : ""
     _reason_eddort  = (_reason_eddort) ? "\"reasoning_effort\": " jqu( _reason_eddort ) "," : ""
 
-    _data_str = "{ " _mode _msgtool _jsonmode _maxtoken _seed _temperature _ctx _reason_eddort _stream_str " }"
+    _data_str = "{ " _model _msgtool _jsonmode _maxtoken _seed _temperature _ctx _reason_eddort _stream_str " }"
 
     return _data_str
 }

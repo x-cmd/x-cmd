@@ -82,6 +82,7 @@ function openai_record_response___text_content( o,        item, response_item, f
             }
 
             idx = tool_arr[ "tool_l" ]
+            tool_arr[ idx, "call_id" ] = call_id
             tool_arr[ idx, "name" ] = tool_arr[ idx, "name" ] juq(o[ kp_tool_name ])
             tool_arr[ idx, "args" ] = tool_arr[ idx, "args" ] juq(o[ kp_tool_args ])
         }
@@ -114,9 +115,10 @@ function openai_record_response___text_content( o,        item, response_item, f
     }
 }
 
-function openai_record_response___tool_call(tool_arr,             idx, name, args, desc, dir){
+function openai_record_response___tool_call(tool_arr,             idx, call_id, name, args, desc, dir){
     idx = tool_arr[ "tool_l" ]
     if ( idx <= 0 ) return
+    call_id = chat_trim_str( tool_arr[ idx, "call_id" ] )
     name = chat_trim_str( tool_arr[ idx, "name" ] )
     args = chat_trim_str( tool_arr[ idx, "args" ] )
     o_tool[ Q2_1 ] = "["
@@ -137,6 +139,7 @@ function openai_record_response___tool_call(tool_arr,             idx, name, arg
     if ( XCMD_CHAT_ENACTALL_LOGFILE != "" ) {
         dir = (SESSIONDIR "/" CHATID "/function-call/" idx)
         mkdirp( dir )
+        print call_id > (dir "/id")
         print name > (dir "/name")
         print args > (dir "/arg")
         print desc > (dir "/desc")
