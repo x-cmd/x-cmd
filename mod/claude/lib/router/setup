@@ -1,67 +1,68 @@
 
 ___x_cmd_claude_router_setup(){
-    local setup_path="$HOME/.claude-code-router/config.json"
+    local config_file="$HOME/.claude-code-router/config.json"
 
-    if [ -f "$setup_path" ]; then
-        [ -f "$setup_path.bak" ] || {
-            ___x_cmd cp -f "$setup_path" "$setup_path.bak"
-            claude:info --bak-file "$setup_path.bak" "Back up the configuration file of claude-code-router."
-        }
-        claude:info "Regenerate the configuration file for claude-code-router."
+    local provider=""
+    local model=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m claude router setup ; return 0 ;;
+            --gemini|--openai|--deepseek|--openrouter)
+                                    provider="${1#*--}";
+                                    [ $# -ge 2 ] || N=claude M="Please provide argument after $1" log:ret:64 ;
+                                    model="$2";       shift 2 ;;
+            --apikey)               [ $# -ge 2 ] || N=claude M="Please provide argument after $1" log:ret:64 ;
+                                    api_key="$2";     shift 2 ;;
+            *)                      break ;;
+        esac
+    done
+
+    if [ -z "$provider" ]; then
+        provider="gemini"
+        model="gemini-2.5-flash"
     fi
+    [ -n "$api_key" ] || api_key="$(___x_cmd "$provider" --cur get apikey 2>/dev/null)"
 
-    local openrouter_api_key="${OPENROUTER_API_KEY:-$(___x_cmd openrouter --cur get apikey 2>/dev/null)}"
-    local gemini_api_key="${GEMINI_API_KEY:-$(___x_cmd gemini --cur get apikey 2>/dev/null)}"
-    local deepseek_api_key="${DEEPSEEK_API_KEY:-$(___x_cmd deepseek --cur get apikey 2>/dev/null)}"
-    local openai_api_key="${OPENAI_API_KEY:-$(___x_cmd openai --cur get apikey 2>/dev/null)}"
+    ___x_cmd ensurefp "$config_file"
+    ___x_cmd_claude_router_setup_templates "$provider" "$model" "$api_key" > "$config_file" || return $?
+    claude:info --provider "$provider" --model "$model" --config-file "$config_file" "Regenerated configuration file for claude-code-router."
 
-    ___x_cmd ensurefp "$setup_path"
-    local router_model=""
+    claude:info --cmd 'x claude router restart' "Restart the Claude code router service to reload the configuration."
+    ___x_cmd claude router restart
+}
+
+
+___x_cmd_claude_router_setup_templates(){
+    local provider="$1"
+    local model="$2"
+    local api_key="$3"
+
     {
         printf "{ \n"
         printf "\"Providers\": [\n"
-        [ -z "$openai_api_key" ]     || {
-            ___x_cmd_claude_router_setup___templates_provider openai "$openai_api_key"
-            router_model="openai"
-        }
-        [ -z "$deepseek_api_key" ]   || {
-            ___x_cmd_claude_router_setup___templates_provider deepseek "$deepseek_api_key"
-            router_model="deepseek"
-        }
-        [ -z "$openrouter_api_key" ] || {
-            ___x_cmd_claude_router_setup___templates_provider openrouter "$openrouter_api_key"
-            router_model="openrouter"
-        }
-        [ -z "$gemini_api_key" ]     || {
-            ___x_cmd_claude_router_setup___templates_provider gemini "$gemini_api_key"
-            router_model="gemini"
-        }
+        ___x_cmd_claude_router_setup___templates_provider "$provider" "$model" "$api_key"
         printf "\n],\n"
-        ___x_cmd_claude_router_setup___templates_router "$router_model"
+        printf "\"Router\": { \"default\": \"%s,%s\" }\n" "$provider" "$model"
         printf "}\n"
-    } | ___x_cmd jo fmt > "$setup_path"
-    claude:info --path "$setup_path" --1-check-config "x claude router ui" --2-restart-serve "x claude router restart" --3-run "x claude router code" \
-        "Generated claude-code-router configuration file."
+    } | ___x_cmd jo fmt
 }
 
-___x_cmd_claude_router_setup___templates_provider() {
+___x_cmd_claude_router_setup___templates_provider(){
     local name="$1"
-    local api_key="$2"
+    local models="[\"$2\"]"
+    local api_key="$3"
 
     local api_base_url=""
-    local models=""
     local transformer=""
     case "$name" in
         gemini)
             api_base_url="https://generativelanguage.googleapis.com/v1beta/models/"
-            models='["gemini-2.5-flash","gemini-3-pro-preview"]'
             transformer='{
               "use": ["gemini"]
             }'
             ;;
         openai)
             api_base_url="https://api.openai.com/v1/chat/completions"
-            models='["gpt-5-mini"]'
             transformer='{
               "use": [
                 [
@@ -76,7 +77,6 @@ ___x_cmd_claude_router_setup___templates_provider() {
             ;;
         deepseek)
             api_base_url="https://api.deepseek.com/chat/completions"
-            models='["deepseek-chat"]'
             transformer='{
               "use": ["deepseek"],
               "deepseek-chat": {
@@ -86,7 +86,6 @@ ___x_cmd_claude_router_setup___templates_provider() {
             ;;
         openrouter)
             api_base_url="https://openrouter.ai/api/v1/chat/completions"
-            models='["google/gemini-2.5-flash"]'
             transformer='{
               "use": ["openrouter"]
             }'
@@ -99,18 +98,3 @@ ___x_cmd_claude_router_setup___templates_provider() {
         "$name" "$api_base_url" "$api_key" "$models" "$transformer"
 }
 
-___x_cmd_claude_router_setup___templates_router(){
-    local name="$1"
-
-    local default=""
-    case "$name" in
-        gemini)     default="gemini,gemini-2.5-flash"   ;;
-        openai)     default="openai,gpt-5-mini"         ;;
-        deepseek)   default="deepseek,deepseek-chat"    ;;
-        openrouter) default="openrouter,google/gemini-2.5-flash" ;;
-        *)          N=claude M="The ${name} configuration template is not currently supported." log:ret:1 ;;
-    esac
-
-    printf "\"Router\": { \"default\": \"%s\" }\n" \
-        "${default}"
-}

@@ -4,5 +4,13 @@ BEGIN{
         exit(1)
     }
 
-    print "{ \"contents\": [{ \"parts\": [{ \"text\": "jqu(data_str)" }] }], \"tools\": [{ \"google_search\": {} }] }"
+    provider = ENVIRON[ "provider" ]
+    model = ENVIRON[ "model" ]
+    toolstr = ", \"tools\": [{ \"google_search\": {} }]"
+    if ( provider != "gemini" ) {
+        toolstr = ""
+        if ( model != "" ) modelstr = ", \"model\": \"" model "\""
+    }
+
+    print "{ \"contents\": [{ \"parts\": [{ \"text\": "jqu(data_str)" }] }] " modelstr toolstr "}"
 }

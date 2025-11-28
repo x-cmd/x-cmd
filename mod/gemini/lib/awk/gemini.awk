@@ -29,7 +29,21 @@ function gemini_gen_generationConfig(temperature, is_reasoning,                 
     return ", \"generationConfig\": { " str " }"
 }
 
-function gemini_gen_history_str( history_obj, chatid, i,      res_text, req_text, req_attach_filelist, req_attach_text, _res, tool_l, j, tool_req, tool_res ) {
+function gemini_gen_unit_str_toolreq( tool_name, tool_args,         _res){
+    _res = "{ \"role\": \"model\", \"parts\": ["
+    _res = _res "{ \"functionCall\": { \"name\": " jqu(tool_name) ", \"args\": " tool_args " } }"
+    _res = _res "] }"
+    return _res
+}
+
+function gemini_gen_unit_str_toolres( tool_name, tool_res,         _res){
+    _res = "{ \"role\": \"user\", \"parts\": ["
+    _res = _res "{ \"functionResponse\": { \"name\": " jqu(tool_name) ", \"response\": " tool_res " } }"
+    _res = _res "] }"
+    return _res
+}
+
+function gemini_gen_history_str( history_obj, chatid, i,      res_text, req_text, req_attach_filelist, req_attach_text, _res, tool_l, j, tool_name, tool_args, tool_res ) {
     req_text            = chat_history_get_req_text(history_obj, chatid, i)
     req_attach_text     = chat_history_get_req_attach_text(history_obj, chatid, i)
     req_attach_filelist = chat_history_get_req_attach_filelist(history_obj, chatid, i)
@@ -45,14 +59,14 @@ function gemini_gen_history_str( history_obj, chatid, i,      res_text, req_text
     }
 
     tool_l = chat_history_get_tool_l(history_obj, chatid, i)
-    if ( tool_l > 0 ) _res = _res ", " gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text(chat_history_get_function_call_log_begin()))
     for (j=1; j<=tool_l; ++j){
-        tool_req = chat_history_get_tool_req(history_obj, chatid, i, j)
+        tool_name = chat_history_get_tool_name(history_obj, chatid, i, j)
+        tool_args = chat_history_get_tool_args(history_obj, chatid, i, j)
         tool_res = chat_history_get_tool_res(history_obj, chatid, i, j)
-        _res = _res "," gemini_gen_unit_str_rolepart("model", gemini_gen_unit_str_text( jqu(tool_req) ))
-        _res = _res "," gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text( jqu(tool_res) ))
+
+        _res = _res "," gemini_gen_unit_str_toolreq( tool_name, tool_args )
+        _res = _res "," gemini_gen_unit_str_toolres( tool_name, tool_res )
     }
-    if ( tool_l > 0 ) _res = _res ", " gemini_gen_unit_str_rolepart("user", gemini_gen_unit_str_text(chat_history_get_function_call_log_end()))
 
     return _res
 }

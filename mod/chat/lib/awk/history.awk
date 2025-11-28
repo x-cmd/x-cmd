@@ -5,7 +5,7 @@
 # req.json
 # res.json
 function chat_history_load( o, chatid, hist_session_dir, history_num,       _cmd, l, i, t, _, lt, rt, num, req_text, kp, kp_i, content_dir,
-tool_l, j, func_dir, func_id, func_desc, func_name, func_code, func_status, func_stdout, func_stderr, func_req, func_res, loutput ) {
+tool_l, j, func_dir, func_id, func_desc, func_name, func_code, func_status, func_stdout, func_stderr, func_res, loutput ) {
     kp = chatid
     if ( o[ kp ] == "[" ) return
     if (history_num <= 0) return
@@ -80,25 +80,17 @@ tool_l, j, func_dir, func_id, func_desc, func_name, func_code, func_status, func
                 func_stdout = str_remove_esc( func_stdout )
                 func_stderr = str_remove_esc( func_stderr )
 
-                func_req = chat_wrap_tag( "index", j )
-                func_req = func_req "\n" chat_wrap_tag( "name", func_name )
-                func_req = func_req "\n" chat_wrap_tag( "desc", func_desc )
-                func_req = func_req "\n" chat_wrap_tag( "args", func_arg )
+                func_res = "{ \"name\": " jqu(func_name)    \
+                     ", \"status\": "   jqu(func_status)    \
+                     ", \"exit_code\": "  jqu(func_code)      \
+                     ", \"stderr\": "   jqu(func_stderr)    \
+                     ", \"stdout\": "   jqu(func_stdout) " }"
 
-                func_res = chat_wrap_tag( "name", func_name )
-                func_res = func_res "\n" chat_wrap_tag( "status", func_status )
-                func_res = func_res "\n" chat_wrap_tag( "errcode", func_code )
-                func_res = func_res "\n" chat_wrap_tag( "stderr", func_stderr )
-                func_res = func_res "\n" chat_wrap_tag( "stdout", func_stdout )
-
-                func_req = chat_wrap_tag( "funcmeta-request", func_req )
-                func_res = chat_wrap_tag( "funcmeta-result", func_res )
 
                 o[ kp_i SUBSEP "tool" SUBSEP j SUBSEP "id" ] = func_id
                 o[ kp_i SUBSEP "tool" SUBSEP j SUBSEP "name" ] = func_name
                 o[ kp_i SUBSEP "tool" SUBSEP j SUBSEP "desc" ] = func_desc
                 o[ kp_i SUBSEP "tool" SUBSEP j SUBSEP "args" ] = func_arg
-                o[ kp_i SUBSEP "tool" SUBSEP j SUBSEP "req" ] = func_req
                 o[ kp_i SUBSEP "tool" SUBSEP j SUBSEP "res" ] = func_res
             }
         }
@@ -142,9 +134,6 @@ function chat_history_get_tool_name(o, prefix, i, j){
 }
 function chat_history_get_tool_args(o, prefix, i, j){
     return o[ prefix SUBSEP i SUBSEP "tool" SUBSEP j SUBSEP "args" ]
-}
-function chat_history_get_tool_req(o, prefix, i, j){
-    return o[ prefix SUBSEP i SUBSEP "tool" SUBSEP j SUBSEP "req" ]
 }
 function chat_history_get_tool_res(o, prefix, i, j){
     return o[ prefix SUBSEP i SUBSEP "tool" SUBSEP j SUBSEP "res" ]

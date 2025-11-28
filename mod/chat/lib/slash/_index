@@ -1,0 +1,112 @@
+# shellcheck shell=dash
+
+___x_cmd_chat_slash_prompt_(){
+    [ "$#" -gt 0 ] || return 1
+
+    local op=""; local argstr=""
+    case "$1" in
+        /*) op="${1#/}"; shift; argstr="${op#* }$*"; op="${op%% *}" ;;
+        *)  return 1 ;;
+    esac
+
+    case "$op" in
+        init)
+            local filename=""
+            ___x_cmd_chat_cur filename:=context_filename 2>/dev/null
+            filename="${filename:-"AGENTS.md"}"
+
+            chat:info "Generating Repository Guidelines file for AI agents and developers => ${filename}"
+            FILENAME="$filename" ___x_cmd_chat_slash_prompt___content_ init "$argstr"
+            return
+            ;;
+    esac
+
+    ___x_cmd_chat_slash_prompt___check "$op" || return $?
+    ___x_cmd_chat_slash_prompt___content_ "$op" "$argstr"
+}
+
+___x_cmd_chat_slash_prompt___content_(){
+    x_="$( ___x_cmd_chat_slash_prompt___content "$@" )"
+}
+
+___x_cmd_chat_slash_prompt___content(){
+    local cmdname="$1"
+    [ -n "$cmdname" ] || N=chat M="Please provide the slash command name" log:ret:64
+    shift
+    local argstr="$*"
+
+    local x_=; ___x_cmd_chat_slash_prompt___which_ "$cmdname" || return $?
+    [ -f "$x_" ] || N=chat M="Not found the $cmdname command file" log:ret:1
+    < "$x_" ARGUMENTS="$argstr" ___x_cmd awk0 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/slash.cmd.prompt.awk"
+}
+
+___x_cmd_chat_slash_prompt___check(){
+    local cmdname="$1"
+    [ -n "$cmdname" ] || return 1
+    local x_=""; ___x_cmd_chat_slash_prompt___which_ "$cmdname"
+}
+
+___x_cmd_chat_slash_prompt___which_(){
+    local cmdname="$1"
+    [ -n "$cmdname" ] || N=chat M="Please provide the slash command name" log:ret:64
+    set -- "$___X_CMD_ROOT_MOD/chat/lib/slash/data/${cmdname}.md"
+
+    x_=""
+    if ___x_cmd wsroot_; then
+        set -- "$x_/.x-cmd/commands/${cmdname}.md" "$@"
+    fi
+
+    x_=""
+    local i; for i in "$@"; do
+        [ -f "$i" ] || continue
+        x_="$i"
+        return 0
+    done
+    return 1
+}
+
+___x_cmd_chat_slash_prompt_ls(){
+    local i=""; local l=""; local x_=""; local name=""
+    {
+        for i in "$___X_CMD_ROOT_MOD/chat/lib/slash/data"/*.md; do
+            printf "%s\n" "$i"
+        done
+        if ___x_cmd wsroot_; then
+            for i in "$x_/.x-cmd/commands/"*.md; do
+                printf "%s\n" "$i"
+            done
+        fi
+    } 2>/dev/null | while read -r l; do
+        name="${l##*/}"
+        name="${name%.md}"
+        x_=; ___x_cmd_chat_slash_prompt_get_desc_from_fp_ "$l"
+        printf "/%s\t%s\n" "${name}" "${x_}"
+    done
+}
+
+___x_cmd_chat_slash_prompt_get_desc_(){
+    local cmdname="$1"
+    [ -n "$cmdname" ] || return 1
+    x_=""; ___x_cmd_chat_slash_prompt___which_ "$cmdname" || return $?
+    ___x_cmd_chat_slash_prompt_get_desc_from_fp_ "$x_"
+}
+
+___x_cmd_chat_slash_prompt_get_desc_from_fp_(){
+    local fp="$1"
+    [ -f "$fp" ] || return 1
+    local n=0; local l=""; local desc=""
+    x_=""
+    local def_desc=""
+    while read -r l; do
+        [ -n "$l" ] || continue
+        [ -n "$def_desc" ] || def_desc="$l"
+        desc="${l#"description: "}"
+        [ "$l" = "$desc" ] || {
+            x_="$desc"
+            break
+        }
+        n=$(( n + 1 ))
+        [ "$n" -le 10 ] || break
+    done < "$fp"
+    x_="${x_:-${def_desc:-"Custom command"}}"
+}

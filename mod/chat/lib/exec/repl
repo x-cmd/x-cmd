@@ -1,4 +1,4 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2016
 
 # @gemini -a file -t 0 -p
 # Enter into REPL mode
@@ -103,16 +103,19 @@ ___x_cmd_chat___exec_repl_loop(){
 
 # show all of the help ...
 ___x_cmd_chat___exec_repl___printhelp(){
-    ___x_cmd ui style info "Commands:
-    /h|/help    | show help
-    /exit|/quit | exit the loop
-    /export     | export conversation content
-    /compact    | compact conversation history
-    /history    | manage repl history records
-    ! <command> | execute the shell command
-
-Other inputs continue the loop, use \ to start multi-line input content
-" >"$___X_CMD_DEVTTY_FP"
+    {
+        printf "%s\n" "
+/h|/help        show help
+/exit|/quit     exit the loop
+/export         export conversation content
+/compact        compact conversation history
+/history        manage repl history records
+"
+        ___x_cmd_chat_slash_prompt_ls
+        printf "%s\n" "
+!<command>     execute the shell command
+"
+    } | ___x_cmd awk0 -f "$___X_CMD_ROOT_MOD/chat/lib/awk/repl_help.awk" >"$___X_CMD_DEVTTY_FP"
 }
 
 ___x_cmd_chat___exec_repl___nexthelp(){
@@ -120,14 +123,10 @@ ___x_cmd_chat___exec_repl___nexthelp(){
     ___x_cmd ui select id   "Next"                  \
         "/h         | show help"                    \
         "/exit      | exit the loop"                \
-        "/export    | export conversation content"  \
-        "/compact   | compact conversation history" \
-        "/history   | manage repl history records"  \
         "...        | continue the loop"
     case "$id" in
         1)      ___x_cmd_chat___exec_repl___printhelp ;;
         2)      x_=EXIT;    return 0 ;;
-        3)      ___x_cmd_chat___exec_repl_history app ;;
         4)      x_=CONT;    return 0 ;;
     esac
 }
@@ -136,31 +135,37 @@ ___x_cmd_chat___exec_repl___check_shortcut_cmd(){
     local str="$*"
     case "$str" in
         /h|/help|/exit|/quit|/history|/export|/compact|!*) return 0;;
-        *) return 1 ;;
+        /*) ___x_cmd_chat_slash_prompt___check "$str" ;;
+        *)  return 1 ;;
     esac
 }
 
 ___x_cmd_chat___exec_repl____handlecmd_(){
+    local attach_text=""
     case "$x_" in
         # /attach)   add attachment to the list ;
         # /rm)       remove attachment from the list ;;
 
         /h|/help)       ___x_cmd_chat___exec_repl___printhelp ;;
         /exit|/quit)    x_=EXIT;    return 0 ;;
-        /init)          ___x_cmd_chat_init      ;;
+        "")             ___x_cmd_chat___exec_repl___nexthelp; return ;;
         /history)       ___x_cmd_chat___exec_repl_history app   ;;
         /export)        ___x_cmd_chat___exec_repl____export "$session" ;;
         /compact)       ___x_cmd coco histsum "$session" ;;
-        "")             ___x_cmd_chat___exec_repl___nexthelp; return ;;
-
         !*)
                         chat:info "Execute the command —> ${x_#'!'}"
                         eval "${x_#'!'}"
                         ;;
         *)
-                        ___x_cmd_chat___exec_repl_history add "$x_"
+                        if ___x_cmd_chat_slash_prompt_ "$x_"; then
+                            attach_text="$x_"
+                            x_=""
+                        else
+                            ___x_cmd_chat___exec_repl_history add "$x_"
+                        fi
+
                         is_silent=1
-                        ___x_cmd_chat___exec_raw "$x_" "$history_num" || {
+                        ___x_cmd_chat___exec_raw "$x_" "$history_num" "$attach_text" || {
                             chat:debug "Execution failed"
                             x_=CONT;    return 0
                         }
@@ -172,6 +177,7 @@ ___x_cmd_chat___exec_repl____handlecmd_(){
 
 ___x_cmd_chat___exec_repl____export(){
     local session="$1"
+    [ -n "$session" ] || N=chat M="Please provide session id" log:ret:64
     local scope=""
     local method=""
     while [ "$#" -gt 0 ]; do

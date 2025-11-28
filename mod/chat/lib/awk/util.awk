@@ -118,16 +118,18 @@ function chat_statsfile_load( hist_session_dir,         fp, str ){
     return chat_wrap_tag("stats-file", str)
 }
 
-function chat_context_filelist_load_to_array( context_filelist, arr,            i, l, _, fp ){
+function chat_context_filelist_load_to_array( context_filelist, arr,            i, l, _, fp, c ){
     if ( chat_str_is_null(context_filelist) ) return
     l = split( context_filelist, _, "\n" )
     for (i=1; i<=l; ++i){
         fp = _[i]
         if ( fp == "" ) continue
         if ( arr[ fp, "recorded" ] == true ) continue
-        arr[ ++arr[L] ] = fp
+        c = cat( fp )
         arr[ fp, "recorded" ] = true
-        arr[ arr[L], "content" ] = cat( fp )
+        if ( c == "" ) continue
+        arr[ ++arr[L] ] = fp
+        arr[ arr[L], "content" ] = c
     }
     return arr[L]
 }
@@ -135,7 +137,7 @@ function chat_context_filelist_load_to_array( context_filelist, arr,            
 function chat_context_filelist_load( context_filelist,            i, l, arr, _res ){
     l = chat_context_filelist_load_to_array( context_filelist, arr )
     for (i=1; i<=l; ++i){
-        _res = _res arr[ i, "content" ] "\n"
+        _res = _res "# Instruction file for " arr[ i ] "\n" chat_wrap_tag( "INSTRUCTIONS", arr[ i, "content" ] ) "\n"
     }
     return _res
 }
