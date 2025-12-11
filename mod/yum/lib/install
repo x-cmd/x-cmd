@@ -1,6 +1,10 @@
 # shellcheck shell=dash
 
 ___x_cmd_yum_install(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m yum install ; return 0 ;;
+    esac
+
     if [ $# -eq 0 ]; then
         ___x_cmd_yum_install___app
     else
@@ -9,45 +13,65 @@ ___x_cmd_yum_install(){
 }
 
 ___x_cmd_yum_install___app(){
-    local yumfp=;   yumfp="/var/cache/yum/updates.solv"
-    [ -f "$yumfp" ] || {
-        yum:info "Update the software in the repository."
-        x yum upgrade -y || N="yum" M="yum update fail" log:ret:1
+    [ -f "/var/cache/dnf/fedora.solv" ] || [ -d "/var/cache/libdnf5" ] || {
+        yum:info "The first use of yum is detected and the local software repository list is ready to be updated."
+        ___x_cmd yum makecache --refresh || return 1
+        ___x_cmd_yum___repo_lsname > "$___X_CMD_ROOT_DATA/yum/cache/lsname"
     }
 
-    ___x_cmd_is_stdout2tty || {
-        ___x_cmd_yum___lsraw
-        return 0
-    }
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; } \
+        || {
+            ___x_cmd_yum___lsraw
+            return 0
+        }
 
     yum:info "Use 'x yum -h' for help."
     yum:info "Select a package to install, or view information."
 
-    local x_=""
-    ___x_cmd_yum___lsraw_ || return
-    local datafile="$x_"
-    x_=; ___X_CMD_PICK_SHBIN_CODE="xrc yum" ___x_cmd storeread_ x pick --width 40 --col 10 --datafile "$datafile"
-    local software="$x_"
+    local software=
+    software="$( ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe yum --fzdata )" || return $?
 
     [ -n "$software" ] || {
-        yum:info "Exit because no software is selected."
-        return 0
-    }
+            yum:info "Exit because no software is selected."
+            return 1
+        }
 
-    local id
-    x ui select id "What to do NEXT"    \
+    local id=
+    ___x_cmd ui select id "What to do NEXT"    \
         "x yum install   $software"     \
         "x yum reinstall $software"     \
         "x yum info      $software"     \
         "browse repo of  $software"      \
         "yum --help"                    \
-        "EXIT"     || return
+        "EXIT"     || return $?
     case "$id" in
-        1)      x yum install   "$software" ;;
-        2)      x yum reinstall "$software" ;;
-        3)      x yum info      "$software" ;;
+        1)      ___x_cmd yum install   "$software" ;;
+        2)      ___x_cmd yum reinstall "$software" ;;
+        3)      ___x_cmd yum info      "$software" ;;
         4)      ___x_cmd_yum___repo_browse "$software" ;;
-        5)      x help -m yum ;;
+        5)      ___x_cmd help -m yum ;;
         6)      return 0 ;;
     esac
 }
+
+___x_cmd_yum_install___fz_data(){
+    ___x_cmd_yum___lsraw \
+        | ___x_cmd_yum_install___fzf            \
+            --preview='___x_cmdexe yum --fzfpreview {1}'  \
+            --preview-window=right:70%:wrap
+}
+
+___x_cmd_yum_install___fzf_preview(){
+    ___x_cmd yum info "${1}"
+}
+
+___x_cmd_yum_install___fzf(){
+    FZF_DEFAULT_OPTS="
+--ansi
+--reverse
+--height='80%'
+--bind='ctrl-w:toggle-preview-wrap'
+--bind='ctrl-r:change-preview-window(right,70%|down,40%,99%,border-horizontal|hidden|right)'
+"   ___x_cmd fzf "$@"
+}
+

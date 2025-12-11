@@ -6,7 +6,7 @@
 # @gemini + wp "keyword"
 # @gemini - wp
 
-xrc:mod:lib     chat        exec/util exec/history  exec/ted exec/repl exec/repl_id
+xrc:mod:lib     chat        exec/util exec/history exec/shortcut exec/ted exec/repl exec/repl_id
 
 # ___X_CMD_CHAT_CURRENT_ATTCHMENT=
 # ___X_CMD_CHAT_CURRENT_SESSION=
@@ -42,7 +42,6 @@ ___x_cmd_chat___exec(){
     [ -n "$NO_PIPE_DATA_SIGN_DISPLAY" ] || local inputdesc="This data form pipe"
 
     local NL="${___X_CMD_UNSEENCHAR_NEWLINE}"
-    local reflist=""
 
     local cache_time=1h
     local modellist=""
@@ -87,17 +86,17 @@ ___x_cmd_chat___exec(){
 
             --jina)         [ $# -ge 2 ] || N=chat M="Please provide the URL value" log:ret:64;
                             x_=; ___x_cmd_chat___exec_jina_ "$2" || return $?
-                            reflist="${reflist}${x_}${NL}"
+                            attach_text="${attach_text}${x_}${NL}"
                             shift 2 ;;
 
             ## DDGO just preserve the top 10 results
             --ddgo)         [ $# -ge 2 ] || N=chat M="Please provide the duckduckgo keyword" log:ret:64;
                             x_=; ___x_cmd_chat___exec_ddgo_ "$2" || return $?
-                            reflist="${reflist}${x_}${NL}"
+                            attach_text="${attach_text}${x_}${NL}"
                             shift 2 ;;
             --tldr)         [ $# -ge 2 ] || N=chat M="Please provide the tldr command" log:ret:64;
                             x_=; ___x_cmd_chat___exec_tldr_ "$2" || return $?
-                            reflist="${reflist}${x_}${NL}"
+                            attach_text="${attach_text}${x_}${NL}"
                             shift 2 ;;
 
             # --ddgq)         ;;
@@ -106,19 +105,19 @@ ___x_cmd_chat___exec(){
 
             --kv)           [ $# -ge 3 ] || N=chat M="Please provide the key-value, --kv <key> <value>" log:ret:64
                             x_=; ___x_cmd_chat___exec_kv_ "$2" "$3" || return $?
-                            reflist="${reflist}${x_}${NL}"
+                            attach_text="${attach_text}${x_}${NL}"
                             shift 3 ;;
             # --eval "x ls # list all files"
             --eval)
                             [ $# -ge 2 ] || N=chat M="Please provide the command to eval" log:ret:64;
                             chat:info "Eval command -> $2"
                             x_=; ___x_cmd_chat___exec_cmd_ "$2" "Result from execute $2" || return $?
-                            reflist="${reflist}${x_}${NL}"
+                            attach_text="${attach_text}${x_}${NL}"
                             shift 2 ;;
 
             -e)             [ $# -ge 2 ] || N=chat M="Please provide the env name" log:ret:64;
                             x_=; ___x_cmd_chat___exec_env_ "$2" || return $?
-                            reflist="${reflist}${x_}${NL}"
+                            attach_text="${attach_text}${x_}${NL}"
                             shift 2 ;;
             -f|--file)
                             [ $# -ge 2 ] || N=chat M="Please provide the filepath" log:ret:64;
@@ -185,7 +184,8 @@ A
 
             # deprecated ...
             --question)     question="$2";          [ $# -ge 2 ] || N=chat M="Please provide the question value" log:ret:64;  shift 2 ;;
-            --attach-text)  attach_text="$2";       [ $# -ge 2 ] || N=chat M="Please provide the append text value" log:ret:64;  shift 2 ;;
+            --attach-text)  attach_text="${attach_text}${2}${NL}";
+                            [ $# -ge 2 ] || N=chat M="Please provide the append text value" log:ret:64;  shift 2 ;;
             --reasoning)    is_reasoning=1;         shift 1 ;;
             --no-reasoning) is_reasoning=0;         shift 1 ;;
             --stream)       is_stream=1;            shift 1 ;;
@@ -262,7 +262,7 @@ A
     case "$inputtype" in
         pipe)
             ___x_cmd_chat___exec_pipe_ "$inputdesc" "$numbered" || return $?
-            reflist="${reflist}${x_}${NL}"
+            attach_text="${attach_text}${x_}${NL}"
             x_=""
             require_question=""
             ;;
@@ -271,7 +271,7 @@ A
     if [ "$is_start_with_repl" = 1 ]; then
         ___x_cmd_chat___exec_repl --start "$question"
         return
-    elif [ -z "${question}${attach_text}${reflist}${attach_filelist}" ]; then
+    elif [ -z "${question}${attach_text}${attach_filelist}" ]; then
         if [ "$require_question" = 1 ]; then
             chat:error "Please provide the text you want request"
             return 1
@@ -297,23 +297,22 @@ A
     # question="$x_"
 
     if [ "$is_end_with_repl" = 1 ]; then
-        ___x_cmd_chat___exec_raw "$question" "$history_num" "$attach_text" "$reflist" "$attach_filelist" || return $?
+        ___x_cmd_chat___exec_raw "$question" "$history_num" "$attach_text" "$attach_filelist" || return $?
         [ -z "$question" ] || ___x_cmd_chat___exec_repl_history add "$question"
 
         ___x_cmd_chat___exec_repl --previous
         return
     else
-        ___x_cmd_chat___exec_raw "$question" "$history_num" "$attach_text" "$reflist" "$attach_filelist"
+        ___x_cmd_chat___exec_raw "$question" "$history_num" "$attach_text" "$attach_filelist"
     fi
 }
 
-# question reflist attach_filelist
+# question attach_text attach_filelist
 ___x_cmd_chat___exec_raw(){
     local question="$1"
     local history_num="$2"
     local attach_text="$3"
-    local reflist="$4"
-    local attach_filelist="$5"
+    local attach_filelist="$4"
 
     envinfo="$(___x_cmd_chat___exec_envinfo)" \
         ___x_cmd_chat___exec_inner
@@ -321,8 +320,8 @@ ___x_cmd_chat___exec_raw(){
 
 ___x_cmd_chat___exec_inner(){
     local question="$question"
-    local x_=; ___x_cmd str trimm_ "$reflist"
-    question="${x_}${question}"
+    local x_=; ___x_cmd str trimm_ "$attach_text"
+    attach_text="${x_}"
 
     # TODO: scan the question, extract url.
     # Prompt to ask whether to extract the content from the url using jina

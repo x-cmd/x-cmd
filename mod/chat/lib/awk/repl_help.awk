@@ -1,4 +1,5 @@
-($0 != ""){
+($1 != "")&&(! arr[ "handled", $1 ]){
+    arr[ "handled", $1 ] = 1
     w = length($1)
     if (w > maxw) maxw = w
     i = ++arr[ L ]

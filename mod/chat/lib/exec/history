@@ -24,7 +24,9 @@ ___x_cmd_chat___exec_repl_history_app(){
 }
 
 ___x_cmd_chat___exec_repl_history_clear(){
-    printf "\001\002\003 %s\n" /h /help /export /compact /history /init /status /exit /quit > "$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+    [ -f "$fp" ] || ___x_cmd ensurefp "$fp"
+    printf "\n" > "$___X_CMD_CHAT_SESSION_DIR/.history.repl"
 }
 
 ___x_cmd_chat___exec_repl_history_add(){
@@ -50,12 +52,9 @@ BEGIN{
 ___x_cmd_chat___exec_repl_history_init(){
     local dir="$___X_CMD_CHAT_SESSION_DIR"
     local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
-    local fptmp="${fp}.tmp"
-    ___x_cmd ensurefp "$fptmp"
-    printf "\001\002\003 %s\n" /h /help /export /compact /history /init /status /exit /quit > "$fptmp"
 
     if [ ! -d "$dir" ]; then
-        ___x_cmd mv -f "$fptmp" "$fp"
+        ___x_cmd_chat___exec_repl_history_clear
     else
         local l=""
         local fplist; fplist="$(
@@ -67,12 +66,15 @@ ___x_cmd_chat___exec_repl_history_init(){
             done | ___x_cmd_cmds sort -r
         )"
         [ -n "$fplist" ] || return 0
+
+        local fptmp="${fp}.tmp"
+        ___x_cmd ensurefp "$fptmp"
         while read -r l; do
             l="${l#* }"
             [ -f "$l" ] || continue
             printf "\001\002\003 "
             ___x_cmd_cmds cat "$l"
-        done >> "$fptmp" <<A
+        done > "$fptmp" <<A
 ${fplist}
 A
         < "$fptmp" ___x_cmd_cmds awk -v RS='\001\002\003' '
@@ -85,10 +87,16 @@ A
 ___x_cmd_chat___exec_repl_history_ls(){
     local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
     [ -f "$fp" ] || ___x_cmd_chat___exec_repl_history_init || return $?
-    < "$fp" ___x_cmd_cmds awk '
+    {
+        ___x_cmd_chat___exec_repl_shortcut___ls "\001\002\003 "
+        ___x_cmd_cmds cat "$fp"
+    } | ___x_cmd_cmds awk '
         ($1 == "\001\002\003"){
             $1 = ""
-            printf("\033[90m%04s\033[0m%s\n", ++id, $0)
+            if (!_[$0] ) {
+                _[$0] = 1
+                printf("\033[90m%04s\033[0m%s\n", ++id, $0)
+            }
         }
     '
 }
