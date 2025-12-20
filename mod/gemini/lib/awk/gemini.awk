@@ -11,7 +11,7 @@ function gemini_gen_unit_str_text(str){
     return "{\"text\":" str "}"
 }
 
-function gemini_gen_unit_str_image(base64, mime_type){
+function gemini_gen_unit_str_base64(base64, mime_type){
     if( chat_str_is_null(base64)) return
     return "{ \"inline_data\": { \"mime_type\": " jqu(mime_type) ", \"data\": " jqu(base64) " } }"
 }
@@ -82,7 +82,10 @@ function gemini_gen_attach_filelist_str(filelist_str,       arr, _fp, _type, _st
             _str = _str gemini_gen_unit_str_text( jqu(arr[ _fp, "text" ] ) )
         } else if ( _type == "image" ) {
             _str = _str gemini_gen_unit_str_text( jqu(arr[ _fp, "text" ] ) ) ", "
-            _str = _str gemini_gen_unit_str_image( arr[ _fp, "base64" ], arr[ _fp, "mime_type" ] )
+            _str = _str gemini_gen_unit_str_base64( arr[ _fp, "base64" ], arr[ _fp, "mime_type" ] )
+        } else if ( _type == "pdf" ) {
+            _str = _str gemini_gen_unit_str_text( jqu(arr[ _fp, "text" ] ) ) ", "
+            _str = _str gemini_gen_unit_str_base64( arr[ _fp, "base64" ], arr[ _fp, "mime_type" ] )
         }
         _str = _str ((i!=l) ? ", " : "")
     }

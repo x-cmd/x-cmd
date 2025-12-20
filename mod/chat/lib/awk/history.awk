@@ -64,7 +64,7 @@ tool_l, j, func_dir, func_id, func_desc, func_name, func_code, func_status, func
                 func_name   = cat( func_dir "/name" )
                 func_desc   = cat( func_dir "/desc" )
                 func_arg    = cat( func_dir "/arg" )
-                func_code   = cat( func_dir "/errcode" )
+                func_code   = cat( func_dir "/exitcode" )
                 func_status = cat( func_dir "/status" )
 
                 func_stdout = "----- BEGIN -----\n" \

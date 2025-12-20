@@ -276,7 +276,7 @@ BEGIN{
     ___X_CMD_LOG_YML_PID_LIST = ENVIRON["___X_CMD_LOG_YML_PID_LIST"]
     if (___X_CMD_LOG_YML_PID_LIST != "") ___X_CMD_LOG_YML_PID_LIST = " " ___X_CMD_LOG_YML_PID_LIST
 
-    if (___X_CMD_LOG_C_TF == "") {
+    if ((___X_CMD_LOG_C_TF == "") || ( ___X_CMD_LOG_C_TF > 0)) {
         ___X_CMD_LOG_C_DEBUG = escape_char033(ENVIRON[ "___X_CMD_LOG_C_DEBUG" ])
         ___X_CMD_LOG_C_INFO  = escape_char033(ENVIRON[ "___X_CMD_LOG_C_INFO" ])
         ___X_CMD_LOG_C_WARN  = escape_char033(ENVIRON[ "___X_CMD_LOG_C_WARN" ])

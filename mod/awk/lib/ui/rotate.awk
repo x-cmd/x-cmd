@@ -94,6 +94,7 @@ function ui_rotate_render( o, prefix,      i, n, str, counter ){
 }
 
 function ui_rotate_render_begin(n,      i){
+    UI_ROTATE_RENDER_TF = 1
     for (i=0; i<=n; ++i)    printf("%s", "\r\n") > "/dev/stderr"
     printf("%s", "\033["int(n+1)"A" UI_CURSOR_SAVE) > "/dev/stderr"
 }
@@ -105,6 +106,8 @@ function ui_rotate_render_clear(){
 }
 
 function ui_rotate_render_restore(){
+    if ( UI_ROTATE_RENDER_TF != 1 ) return
+    UI_ROTATE_RENDER_TF = 0
     printf ("%s", UI_CURSOR_NORMAL UI_CURSOR_SHOW ) > "/dev/stderr"
 }
 

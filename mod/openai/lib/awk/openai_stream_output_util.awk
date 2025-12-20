@@ -20,7 +20,7 @@ function openai_record_response_text_nonstream( o, s ) {
 }
 
 function openai_record_response___text_content( o,        item, response_item, finish_reason, choices_l, tool_l, tool_index, tool_last_index, kp_i, kp_tool_name, kp_tool_args, kp_tool_id, call_id, i, idx ){
-    if (( o[ KP_ERROR ] != "" ) || ( o[ KP_OBJECT ] == "\"error\"") || (( PROVIDER_NAME != "ollama" ) && ( o[ KP_OLLAMA_MESSAGE ] != "" ))) {
+    if (( o[ KP_ERROR ] != "" ) || ( o[ KP_DETAIL ] != "" ) || ( o[ KP_OBJECT ] == "\"error\"") || (( PROVIDER_NAME != "ollama" ) && ( o[ KP_OLLAMA_MESSAGE ] != "" ))) {
         OPENAI_RESPONSE_IS_ERROR_CONTENT = 1
         jmerge_force(o_error, o)
         exit(1)
@@ -202,6 +202,7 @@ BEGIN{
     KP_DELTA_TOOL                   = KP_DELTA SUBSEP "\"tool_calls\""
 
     KP_ERROR                = Q2_1 SUBSEP "\"error\""
+    KP_DETAIL               = Q2_1 SUBSEP "\"detail\""
     KP_OBJECT               = Q2_1 SUBSEP "\"object\""
     KP_CREATED              = Q2_1 SUBSEP "\"created\""
     KP_FINISH_REASON        = KP_CHOICES SUBSEP "\"1\"" SUBSEP "\"finish_reason\""

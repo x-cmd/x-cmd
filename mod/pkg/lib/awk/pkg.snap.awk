@@ -1,6 +1,7 @@
 function pkg_snap_check_value(v){
-    (( v != "{" ) && ( v != "\"\"" ) && ( v != "null" ) && (v != ""))
+    return (( v != "{" ) && ( v != "\"\"" ) && ( v != "null" ) && (v != ""))
 }
+
 END {
     prefix = jqu(PKG_NAME) SUBSEP jqu("xbin")
 

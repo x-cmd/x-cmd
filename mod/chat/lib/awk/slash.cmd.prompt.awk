@@ -73,12 +73,12 @@ function str_replace_file( src,         ans, _file, t, fp ){
     ans = ""
     while (match(src, "@([^ \t\b\v\n]+)")) {
         _file = substr(src, RSTART+1, RLENGTH-1)
-        t = cat( _file )
+        t = chat_readfile( _file )
         if ( (t == "") && ( cat_is_filenotfound() ) && ( _file !~ "^/" )) {
             fp = PROMPT_FILEPATH
             sub( "/[^/]*$", "", fp )
             fp = fp "/" _file
-            t = cat( fp )
+            t = chat_readfile( fp )
             if ( ! cat_is_filenotfound() ) _file = fp
         }
         t = str_truncate(t)

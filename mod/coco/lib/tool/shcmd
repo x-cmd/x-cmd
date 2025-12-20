@@ -6,11 +6,13 @@
 ___x_cmd_coco_shcmd(){
     local cmd=""
     local risk="medium"       # low, medium, high, default to medium
+    local timeout=""          # optional timeout in seconds
 
     arg:init:x  coco
     while [ $# -gt 0 ]; do
         case "$1" in
             --cmd)          cmd="$2";           arg:2:shift ;;
+            --timeout)      timeout="$2";       arg:2:shift ;;
             --risk)         risk="$2";          arg:2:shift ;;
             *)              break ;;
         esac
@@ -40,6 +42,33 @@ ___x_cmd_coco_shcmd(){
         esac
     fi
 
-    "${SHELL:-/bin/sh}" -c "$cmd"
+    if [ "$timeout" -gt 0 ]; then
+        ___x_cmd_coco_shcmd_timeout "$timeout" "${SHELL:-/bin/sh}" -c "$cmd"
+    else
+        "${SHELL:-/bin/sh}" -c "$cmd"
+    fi
 }
 
+___x_cmd_coco_shcmd_timeout(){
+    local secs="$1"; shift
+    (
+        local pid=; local watcher=; local rc=;
+        "$@" & pid=$!
+        (
+            sleep "$secs"
+            if kill -0 "$pid" 2>/dev/null; then
+                coco:info "sending signal TERM to command '$*'"
+                ___x_cmd kill -r -s TERM "$pid" 2>/dev/null
+                sleep 1
+                kill -0 "$pid" 2>/dev/null && ___x_cmd kill -r -s KILL "$pid" 2>/dev/null
+            fi
+        ) & watcher=$!
+
+        wait "$pid"
+        rc=$?
+
+        kill "$watcher" 2>/dev/null || true
+        wait "$watcher" 2>/dev/null || true
+        return $rc
+    )
+}

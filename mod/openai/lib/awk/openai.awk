@@ -9,8 +9,13 @@ function openai_gen_unit_str_text(str){
 }
 function openai_gen_unit_str_image(base64, mime_type,       _msg){
     if( chat_str_is_null(base64) ) return
-    _msg = "data:" mime_type ";base64,{" base64 "}"
+    _msg = "data:" mime_type ";base64," base64
     return "{ \"type\": \"image_url\", \"image_url\": { \"url\": " jqu(_msg) " } }"
+}
+function openai_gen_unit_str_pdf(base64, mime_type, filename,       _msg){
+    if( chat_str_is_null(base64) ) return
+    _msg = "data:" mime_type ";base64," base64
+    return "{ \"type\": \"file\", \"file\": { \"filename\": " jqu(filename) ", \"file_data\": " jqu( _msg ) " } }"
 }
 
 function openai_gen_unit_str_rolecont( role, content ){
@@ -81,6 +86,9 @@ function openai_gen_attach_filelist_str(filelist_str,       arr, _fp, _type, _st
         } else if ( _type == "image" ) {
             _str = _str openai_gen_unit_str_text( arr[ _fp, "text" ] ) ", "
             _str = _str openai_gen_unit_str_image( arr[ _fp, "base64" ], arr[ _fp, "mime_type" ] )
+        } else if ( _type == "pdf" ) {
+            _str = _str openai_gen_unit_str_text( arr[ _fp, "text" ] ) ", "
+            _str = _str openai_gen_unit_str_pdf( arr[ _fp, "base64" ], arr[ _fp, "mime_type" ], _fp )
         }
         _str = _str ((i!=l) ? ", " : "")
     }
