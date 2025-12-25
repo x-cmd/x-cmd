@@ -31,7 +31,7 @@ function ___x_cmd
     set -x ___X_CMD_XBINEXP_FP              "$HOME/.x-cmd.root/local/data/xbinexp/fish/$fish_pid"_(random)
     set -x ___X_CMD_XBINEXP_INITENV_OLDPWD  "$OLDPWD"
     # mkdir -p $___X_CMD_XBINEXP_FP
-    if [ "$OS" != "Windows_NT" ]
+    if [ "$OS" != "Windows_NT" ] || command -q uname && string match -qr '^(CYGWIN|MINGW)' (uname -s)
         bash "$HOME/.x-cmd.root/bin/___x_cmdexe_exp" $argv
     else
         "$HOME/.x-cmd.root/bin/___x_cmdexe_exp.bat" $argv
