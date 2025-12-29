@@ -68,10 +68,10 @@ tool_l, j, func_dir, func_id, func_desc, func_name, func_code, func_status, func
                 func_status = cat( func_dir "/status" )
 
                 func_stdout = "----- BEGIN -----\n" \
-                    cat( func_dir "/stdout" ) \
+                    chat_readfile( func_dir "/stdout" ) \
                     "\n----- END -----"
                 func_stderr = "----- BEGIN -----\n" \
-                    cat( func_dir "/stderr" ) \
+                    chat_readfile( func_dir "/stderr" ) \
                     "\n----- END -----"
 
                 func_stdout = chat_str_truncate(func_stdout)

@@ -69,6 +69,16 @@ function colrmapstr( time, str ) {
     return colrmap(time) str "\033[0m"
 }
 
+
+function colrmap_str( t ){
+    return "\033[7m" colrmap( t ) sprintf("%4d", t ) " \033[0m"
+}
+
+function colrmap_printexample(){
+    printf( "ColorMap: %s\n\n\n", colrmap_str( 0 ) colrmap_str( 50 ) colrmap_str( 99 ) colrmap_str( 100 ) colrmap_str( 149 ) colrmap_str( 150 ) colrmap_str( 199 ) colrmap_str( 200 ) colrmap_str( 299 ) colrmap_str( 300 ) colrmap_str( 499 ) colrmap_str( 500 ) )
+}
+
+
 function barmap( time ){
     if (time == -1)                     return "X"
     if (float_lessthan( time,   50 ) )  return "▁" ;       # green

@@ -14,11 +14,14 @@ if ( $"($___X_CMD_ROOT)/local/cfg/theme/use/nu/default.nu" | path exists ) {
 }
 
 if ( $env.___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL? | is-empty) or ( $env.___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL? != "0" ) {
+    if not ( source $"($___X_CMD_ROOT)/local/cache/advise/bootcode/v0.0.0.nu" ) {
+        ___x_cmd advise complete nu code | save -f $"($___X_CMD_ROOT)/local/cache/advise/bootcode/v0.0.0.nu"
+        source $"($___X_CMD_ROOT)/local/cache/advise/bootcode/v0.0.0.nu"
+    }
+
     if ( $"($___X_CMD_ROOT)/local/cache/advise/addon/complete.nu" | path exists ) {
         source $"($___X_CMD_ROOT)/local/cache/advise/addon/complete.nu"
     }
-
-    source $"($___X_CMD_ROOT)/local/cache/advise/bootcode/v0.0.0.nu"
 }
 
 module ___x_cmd_shortcut_co {

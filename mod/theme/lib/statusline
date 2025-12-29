@@ -1,0 +1,97 @@
+# shellcheck shell=dash
+
+___x_cmd_theme_statusline(){
+    [ $# -gt 0 ] || set -- --help
+    local X_help_cmd=;  X_help_cmd='x help -m theme statusline' help:arg:parse
+    local op="$1"
+    case "$op" in
+        preview|setup)
+            shift; ___x_cmd_theme_statusline_"$op" "$@" ;;
+        *)  N=theme M="Not support such subcmd ==> $op" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_theme_statusline_preview(){
+    local theme="$1"; [ -n "$theme" ] || theme=el
+
+    local session_id=""
+    local cwd=""
+    local model=""
+    local total_duration=""
+    local total_input_tokens=""
+    local total_output_tokens=""
+    local context_window_size=""
+    ___x_cmd_cmds_cat | {
+        ___x_cmd jo env .       \
+            session_id=.session_id             \
+            cwd=.cwd                           \
+            model=.model.display_name          \
+            total_duration=.cost.total_duration_ms                  \
+            total_input_tokens=.context_window.total_input_tokens   \
+            total_output_tokens=.context_window.total_output_tokens \
+            context_window_size=.context_window.context_window_size
+        local _in=${total_input_tokens:-0}
+        local _out=${total_output_tokens:-0}
+        local _size=${context_window_size:-0}
+
+        local context_window_usage_percent="0"
+        if [ "$_size" -gt 0 ]; then
+            # context_window_usage_percent="$(___x_cmd awk -v i="$_in" -v o="$_out" -v s="$_size" \
+            #     'BEGIN { printf "%.2f", ((i + o) / s) * 100 }')"
+            context_window_usage_percent=$(( (_in + _out) * 10000 / _size ))
+            context_window_usage_percent="$(printf '%d.%02d\n' $((context_window_usage_percent / 100)) $((context_window_usage_percent % 100)))"
+        fi
+
+        total_duration="$(___x_cmd awk0 -v duration="$total_duration" -m date \
+            'BEGIN {
+                sec = duration / 1000
+                print date_humantime( sec )
+            }'
+        )"
+
+        context_window_usage_percent="Ctx:${context_window_usage_percent}%"
+        total_duration="Session:${total_duration}"
+
+        xrc:mod theme/lib/boot/theme.load
+        ___x_cmd_theme_boot check_and_apply_vendor default theme try "$theme"
+
+        ___X_CMD_THEME_EXIT_STATUS="$?" \
+            XT_theme_feature_default_symbol=" " \
+            ___x_cmd_theme_load_format_runner___wrapper "${model} • ${context_window_usage_percent}" "W" "w" "$total_duration" "$total_duration" "$total_duration" "$total_duration" "$total_duration" "" "" "" ""
+    }
+}
+
+___x_cmd_theme_statusline_setup(){
+    local agent=
+    local theme=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m theme statusline setup ; return 0 ;;
+            --agent)            [ $# -ge 2 ] || N=theme M="Please provide argument after $1" log:ret:64 ; agent="$2"; shift 2 ;;
+            --theme)            [ $# -ge 2 ] || N=theme M="Please provide argument after $1" log:ret:64 ; theme="$2"; shift 2 ;;
+            *)                  break
+        esac
+    done
+
+    [ -n "$agent" ] || agent="claude"
+    [ -n "$theme" ] || theme="el"
+
+    local agent_config=
+    case "$agent" in
+        claude) agent_config="$HOME/.claude/settings.json" ;;
+        *)       N=theme M="Not supported yet ==> $agent" log:ret:64
+    esac
+
+    ___x_cmd touch "$agent_config"
+    [ -s "$agent_config" ] || printf "{}" > "$agent_config"
+    ___x_cmd jq --argjson sl "{
+        \"type\": \"command\",
+        \"command\": \"x-cmd theme statusline preview $theme\",
+        \"padding\": 0
+    }" '.statusLine = $sl' "$agent_config" > "$agent_config.xcmd"  || return $?
+    ___x_cmd mv "$agent_config.xcmd" "$agent_config"
+
+    theme:info --config "$agent_config" "Set successfully for $agent with theme[$theme]."
+}
+
+

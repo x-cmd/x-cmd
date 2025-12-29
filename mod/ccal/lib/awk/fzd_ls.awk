@@ -60,7 +60,8 @@ function rep( s, n,     i, r ){
     }
 
     if ( $9 == "无") {
-        printf("%-7s\t",     " " )
+        lunar = ccal[ kp, "holiday_lunar" ]
+        printf("%-7s\t",     lunar )
     } else {
         printf("%-7s\t",     $9 )
     }

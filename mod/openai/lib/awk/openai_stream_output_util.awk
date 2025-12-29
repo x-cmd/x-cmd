@@ -31,6 +31,10 @@ function openai_record_response___text_content( o,        item, response_item, f
     if ( PROVIDER_NAME == "ollama" ) {
         openai_record_response___text_content_ollama_format(o)
         return
+    } else if (( OPENAI_HAS_MEANINGFUL_RESPONSE == 0 ) && ( o[ KP_CHOICES ] != "[" )) {
+        OPENAI_RESPONSE_IS_ERROR_CONTENT = 1
+        jmerge_force(o_error, o)
+        exit(1)
     }
 
     if ( o[ KP_MESSAGE ] == "{" ) {
@@ -43,6 +47,7 @@ function openai_record_response___text_content( o,        item, response_item, f
     response_item = o[ KP_DELTA_REASONING_CONTENT ]
 
     if (( chat_str_is_null(item) ) && ( ! chat_str_is_null(response_item) )) {
+        OPENAI_HAS_MEANINGFUL_RESPONSE = 1
         if ( OPENAI_RESPONSE_HAS_REASONING  == 0 ) {
             if ( IS_REASONING == true ) chat_record_str_to_drawfile( "---------- REASONING BEGIN ----------\n", DRAW_PREFIX )
         }
@@ -57,6 +62,7 @@ function openai_record_response___text_content( o,        item, response_item, f
     }
 
     if ( ! chat_str_is_null(item) ) {
+        OPENAI_HAS_MEANINGFUL_RESPONSE = 1
         item = juq(item)
         OPENAI_RESPONSE_CONTENT = OPENAI_RESPONSE_CONTENT item
         chat_record_str_to_drawfile( item, DRAW_PREFIX )
@@ -64,6 +70,7 @@ function openai_record_response___text_content( o,        item, response_item, f
 
     tool_l = o[ KP_DELTA_TOOL L ]
     if (tool_l > 0) {
+        OPENAI_HAS_MEANINGFUL_RESPONSE = 1
         for (i = 1; i <= tool_l; i++) {
             kp_i            = KP_DELTA_TOOL SUBSEP "\""i"\""
             # TODO: type: function web_search_preview mcp ...
@@ -222,6 +229,7 @@ BEGIN{
     OPENAI_HAS_RESPONSE_CONTENT = 0
     OPENAI_RESPONSE_HAS_REASONING = 0
     OPENAI_RESPONSE_IS_ERROR_CONTENT = 0
+    OPENAI_HAS_MEANINGFUL_RESPONSE = 0
 }
 
 ( IS_DEBUG ){ print $0 >> (SESSIONDIR "/" CHATID "/chat.running.yml"); }

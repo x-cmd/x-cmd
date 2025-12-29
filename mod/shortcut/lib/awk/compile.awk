@@ -57,7 +57,6 @@ function shortcut_parse_toshellcode( arr, shellname,          i, j, l, word, cmd
             }
         }
         else if (shellname == "nu") {
-            if ( word ~ "^a:" ) word = "@" substr( word, 3 )
             print "export alias " word " = " cmd
         }
         else if (shellname == "xonsh") {

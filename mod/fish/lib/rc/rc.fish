@@ -31,11 +31,8 @@ function ___x_cmd
     set -x ___X_CMD_XBINEXP_FP              "$HOME/.x-cmd.root/local/data/xbinexp/fish/$fish_pid"_(random)
     set -x ___X_CMD_XBINEXP_INITENV_OLDPWD  "$OLDPWD"
     # mkdir -p $___X_CMD_XBINEXP_FP
-    if [ "$OS" != "Windows_NT" ]
-        bash "$HOME/.x-cmd.root/bin/___x_cmdexe_exp" $argv
-    else
-        "$HOME/.x-cmd.root/bin/___x_cmdexe_exp.bat" $argv
-    end
+
+    bash "$HOME/.x-cmd.root/bin/___x_cmdexe_exp" $argv
 
     set exit_status $status
 
