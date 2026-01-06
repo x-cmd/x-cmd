@@ -1,4 +1,4 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2016
 
 # Section: id
 ___x_cmd_chat___exec_repl___id_previous_app_(){
@@ -8,33 +8,53 @@ ___x_cmd_chat___exec_repl___id_previous_app_(){
 
     chat:info "Select previous session"
     ___x_cmd storerat_ ___x_cmd_chat___exec_repl___id_previous_app_fzf_ "$dir" || return $?
-    x_="${x_% *}"
+    x_="${x_%%"$___X_CMD_UNSEENCHAR_HT"*}"
     [ -n "$x_" ]
 }
 
 ___x_cmd_chat___exec_repl___id_previous_app_fzf_(){
     local dir="$1"
-    local l=""; local statsfile=""; local topic=""
+    local l=""; local l_id=""; local l_date=""; local l_last_date=""; local l_first_date=""
+    local stats_file=""; local content_file=""; local topic=""
     ___x_cmd find --cmd "$dir" -path '*/chat.response/done' 2>/dev/null | while ___x_cmd_readr l; do
-        l="${l#"$dir"/}"
-        l="${l%%__*}"
-        printf "%s %s\n" "${l##*/}" "${l%/*}"
-    done | ___x_cmd_cmds sort -r | ___x_cmd_cmds awk '(!_[$2]){ print $2 " " $1; _[$2]=1; }' | while read -r l; do
-        statsfile="$dir/${l% *}/stats.yml"; topic=""
-        if [ -f "$statsfile" ]; then
-            topic="$( < "$statsfile" ___x_cmd_cmds awk 'match($0, "^topic: "){ print substr($0, RLENGTH+1); exit(0); }' )"
+        l="${l#"$dir"/}"; l="${l%"/chat.response/done"}"
+        l_id="${l%/*}"
+        l_date="${l##*/}"
+        printf "%s %s\n" "$l_date" "$l_id"
+    done | ___x_cmd_cmds sort -r | ___x_cmd_cmds awk '
+{
+    if ($2 != last_id){
+        if ( last_id != "" ) print last_id " " first_date " " last_date
+        first_date = last_date = $1
+        last_id = $2
+    } else {
+        last_date = $1
+        last_id = $2
+    }
+}
+END{
+    print last_id " " first_date " " last_date
+}
+'   | while read -r l_id l_last_date l_first_date; do
+        [ -n "$l_id" ] || continue
+        stats_file="$dir/$l_id/stats.yml"; topic=""
+        content_file="$dir/$l_id/$l_first_date/chat.request/content"
+        if [ -f "$stats_file" ]; then
+            topic="$( < "$stats_file" ___x_cmd_cmds awk 'match($0, "^topic: "){ print substr($0, RLENGTH+1); exit(0); }' )"
+        elif [ -f "$content_file" ]; then
+            < "$content_file" read -r topic
         fi
-        printf "%s\n" "sh/$l $topic"
+        printf "\033[36m%s\033[0m\t\033[32m%s\033[0m\t\033[90m%s\033[0m\n" "sh/${l_id}" "${l_last_date%%__*}" "${topic}"
     done | {
         FZF_DEFAULT_OPTS="
             --exact
             --ansi
             --reverse
             --height='80%'
-            --preview-window=right:70%:wrap
+            --preview-window=right:60%:wrap
             --preview='___x_cmdexe chat --repl-export-raw {1}'
             --bind='ctrl-w:toggle-preview-wrap'
-            --bind='ctrl-r:change-preview-window(right,70%|down,40%,99%,border-horizontal|hidden|right)'
+            --bind='ctrl-r:change-preview-window(right,80%|down,40%,99%,border-horizontal|hidden|right)'
         " ___x_cmd fzf
     }
 }

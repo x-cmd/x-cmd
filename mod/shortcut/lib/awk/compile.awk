@@ -99,7 +99,7 @@ function shortcut_parse_toshellcode( arr, shellname,          i, j, l, word, cmd
         print "\tput " elvish_advstr "| {"
         print "\t\teach {|c|"
         print "\t\t\tset edit:completion:arg-completer[$c] = {|@a|"
-        print "\t\t\t\teval ( x advise complete elv normal $@a | slurp ) 2>/dev/null"
+        print "\t\t\t\teval ( use x; x:x advise complete elv normal $@a | slurp ) 2>/dev/null"
         print "\t\t\t}"
         print "\t\t}"
         print "\t}"

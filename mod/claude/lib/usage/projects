@@ -1,0 +1,125 @@
+
+___x_cmd_claude_usage_projects(){
+    local source="${1:-"$___X_CMD_CLAUDE_CODE_DATA_PATH"}"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m claude usage projects ; return 0 ;;
+            *)                  break ;;
+        esac
+    done
+
+    [ -d "$source" ] ||{
+        claude:error "$source directory not found. Cannot retrieve Claude Code usage logs."
+        return 1
+    }
+
+    {
+        printf "%s,%s,%s,%s,%s,%s,%s,%s\n" \
+            "project" "models" "cost" "input_tokens" \
+            "cache_creation_input_tokens" "cache_read_input_tokens" "output_tokens" "total_tokens"
+        ___x_cmd_claude_usage_projects_ "$source"
+    } | ___x_cmd csv app \
+            --width "15%,35%,10%,-,-,-,-,-"   \
+            --table-width 60% --clear         \
+            --preview input_tokens,cache_creation_input_tokens,cache_read_input_tokens,output_tokens,total_tokens
+}
+
+___x_cmd_claude_usage_project_token_(){
+    local project="$1"
+    [ -d "$project" ] || N=claude M="$project directory not found. Cannot retrieve Claude Code usage logs." log:ret:1
+    ___x_cmd_cmds find "$project" -maxdepth 2 -type f -exec cat {} + \
+        | ___x_cmd jq '
+            select(
+                .message.usage?
+            )
+            | {
+                timestamp: .timestamp,
+                cwd: .cwd,
+                model: .message.model,
+                input_tokens:  .message.usage.input_tokens,
+                cache_creation_input_tokens: .message.usage.cache_creation_input_tokens,
+                cache_read_input_tokens: .message.usage.cache_read_input_tokens,
+                output_tokens: .message.usage.output_tokens
+            }' \
+        | ___x_cmd jq -s '
+                group_by(.model)
+                | map({
+                    model: .[0].model,
+                    cwd: .[0].cwd,
+                    input_tokens:  (map(.input_tokens)  | add),
+                    cache_creation_input_tokens: (map(.cache_creation_input_tokens)  | add),
+                    cache_read_input_tokens: (map(.cache_read_input_tokens)  | add),
+                    output_tokens: (map(.output_tokens) | add),
+                    total_tokens:  (map(.input_tokens + .output_tokens) | add)
+                })
+            '
+}
+
+___x_cmd_claude_usage_project_cost_(){
+    local cost=
+    local currency="USD"
+    local provider=
+    case "$model" in
+        "<synthetic>")      return 0 ;;
+        doubao-*)           return 0 ;;
+        deepseek-*)         provider="deepseek"   ;;
+        gemini-*)           provider="gemini"     ;;
+        gpt-*)              provider="openai"     ;;
+        kimi-*|moonshot-*)  provider="moonshot"   ;;
+        mistral-*)          provider="mistral"    ;;
+        grok-*)             provider="grok"       ;;
+        *)                  provider="openrouter" ;;
+    esac
+    cost="$(___x_cmd price calc --provider "$provider" --model "$model" --input-token "$input_tokens" --input-cache-token "$((cache_read_input_tokens + cache_read_input_tokens ))" --output-token "$output_tokens" --currency-unit "$currency")"
+    printf "%s,%s,%s,%s,%s,%s,%s,%s\n" "$cwd" "$model" "$cost" "$input_tokens" "$cache_creation_input_tokens" "$cache_read_input_tokens" "$output_tokens" "$total_tokens"
+}
+
+___x_cmd_claude_usage_project_cost(){
+    local project="$1"
+    ___x_cmd_claude_usage_project_token_ "$project" \
+        | {
+            local model=; local input_tokens=; local output_tokens=;
+            local cache_creation_input_tokens=; local cache_read_input_tokens=;
+            local total_tokens=; local cwd=;
+            ___x_cmd jo env 1.\*  \
+                model=.model                \
+                cwd=.cwd                    \
+                input_tokens=.input_tokens  \
+                cache_creation_input_tokens=.cache_creation_input_tokens \
+                cache_read_input_tokens=.cache_read_input_tokens \
+                output_tokens=.output_tokens \
+                total_tokens=.total_tokens -- '___x_cmd_claude_usage_project_cost_'
+        }
+}
+
+___x_cmd_claude_usage_project_(){
+    local project="$1"
+    ___x_cmd_claude_usage_project_cost "$project" \
+        | ___x_cmd awk -F',' '
+            BEGIN { OFS="," }
+            {
+                project = $1
+                models[project] = (models[project] ? models[project] " " : "") $2
+
+                cost[project] += substr($3, 2)
+
+                for (i = 4; i <= NF; i++)
+                    sum[project, i] += $i
+            }
+            END {
+                for (d in models) {
+                    printf "%s,%s,$%.4f", d, models[d], cost[d]
+                    for (i = 4; i <= NF; i++)
+                    printf ",%d", sum[d, i]
+                    print ""
+                }
+            }'
+}
+
+___x_cmd_claude_usage_projects_(){
+    local source="${1}"
+    local project=
+    ___x_cmd fsiter "$source" | while read -r project; do
+        ___x_cmd_claude_usage_project_ "$source/$project" || return $?
+    done
+}

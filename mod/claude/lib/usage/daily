@@ -1,0 +1,147 @@
+# shellcheck shell=dash
+___x_cmd_claude_usage_daily(){
+    local date="$(___x_cmd_cmds date +"%Y-%m-%d")"
+    local date_start=
+    local date_end=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m claude usage daily ; return 0 ;;
+            --start)            [ $# -ge 2 ] || N=claude M="Please provide argument after $1" log:ret:64 ;
+                                date_start=$2;           shift 2 ;;
+            --end)              [ $# -ge 2 ] || N=claude M="Please provide argument after $1" log:ret:64 ;
+                                date_end=$2;             shift 2 ;;
+            *)                  break ;;
+        esac
+    done
+
+    [ -d "$___X_CMD_CLAUDE_CODE_DATA_PATH" ] ||{
+        claude:error "$___X_CMD_CLAUDE_CODE_DATA_PATH directory not found. Cannot retrieve Claude Code usage logs."
+        return 1
+    }
+
+    [ -n "$date_start" ]    || {
+        local x_=; ___x_cmd_claude_usage_util_offset_date_ "$date" -7
+        date_start="$x_"
+    }
+    [ -n "$date_end" ]      || date_end="$date"
+
+    {
+        printf "%s,%s,%s,%s,%s,%s,%s,%s\n" \
+            "date" "models" "cost" "input_tokens" \
+            "cache_creation_input_tokens" "cache_read_input_tokens" "output_tokens" "total_tokens"
+        ___x_cmd_claude_usage_daily_ "$date_start" "$date_end"
+    } | ___x_cmd csv app \
+            --width "15%,35%,10%,-,-,-,-,-"   \
+            --table-width 60% --clear         \
+            --preview input_tokens,cache_creation_input_tokens,cache_read_input_tokens,output_tokens,total_tokens
+}
+
+___x_cmd_claude_usage_date_token_(){
+    local date="$1"
+
+    local x_; local next_date=
+    ___x_cmd_claude_usage_util_offset_date_ "$date" 1
+    next_date="$x_"
+
+    ___x_cmd_cmds find "$___X_CMD_CLAUDE_CODE_DATA_PATH" -maxdepth 2 -type f -newermt "$date" ! -newermt "$next_date" -exec cat {} + \
+        | ___x_cmd jq --arg day "$date" '
+            select(
+                .message.usage?
+                and (.timestamp? | type == "string")
+                and (.timestamp | startswith($day))
+            )
+            | {
+                timestamp: .timestamp,
+                model: .message.model,
+                input_tokens:  .message.usage.input_tokens,
+                cache_creation_input_tokens: .message.usage.cache_creation_input_tokens,
+                cache_read_input_tokens: .message.usage.cache_read_input_tokens,
+                output_tokens: .message.usage.output_tokens
+            }' \
+        | ___x_cmd jq -s '
+                group_by(.model)
+                | map({
+                    model: .[0].model,
+                    input_tokens:  (map(.input_tokens)  | add),
+                    cache_creation_input_tokens: (map(.cache_creation_input_tokens)  | add),
+                    cache_read_input_tokens: (map(.cache_read_input_tokens)  | add),
+                    output_tokens: (map(.output_tokens) | add),
+                    total_tokens:  (map(.input_tokens + .output_tokens) | add)
+                })
+            '
+}
+
+___x_cmd_claude_usage_date_cost_(){
+    local cost=
+    local currency="USD"
+    local provider=
+    case "$model" in
+        "<synthetic>")      return 0 ;;
+        doubao-*)           return 0 ;;
+        deepseek-*)         provider="deepseek"   ;;
+        gemini-*)           provider="gemini"     ;;
+        gpt-*)              provider="openai"     ;;
+        kimi-*|moonshot-*)  provider="moonshot"   ;;
+        mistral-*)          provider="mistral"    ;;
+        grok-*)             provider="grok"       ;;
+        *)                  provider="openrouter" ;;
+    esac
+    cost="$(___x_cmd price calc --provider "$provider" --model "$model" --input-token "$input_tokens" --input-cache-token "$((cache_read_input_tokens + cache_read_input_tokens ))" --output-token "$output_tokens" --currency-unit "$currency")"
+    printf "%s,%s,%s,%s,%s,%s,%s,%s\n" "$date" "$model" "$cost" "$input_tokens" "$cache_creation_input_tokens" "$cache_read_input_tokens" "$output_tokens" "$total_tokens"
+}
+
+___x_cmd_claude_usage_date_cost(){
+    local date="$1"
+    ___x_cmd_claude_usage_date_token_ "$date" \
+        | {
+            local model=; local input_tokens=; local output_tokens=;
+            local cache_creation_input_tokens=; local cache_read_input_tokens=;
+            local total_tokens=
+            ___x_cmd jo env 1.\*  \
+                model=.model                \
+                input_tokens=.input_tokens  \
+                cache_creation_input_tokens=.cache_creation_input_tokens \
+                cache_read_input_tokens=.cache_read_input_tokens \
+                output_tokens=.output_tokens \
+                total_tokens=.total_tokens -- '___x_cmd_claude_usage_date_cost_'
+        }
+}
+
+___x_cmd_claude_usage_date_(){
+    local date="$1"
+    ___x_cmd_claude_usage_date_cost "$date" \
+        | ___x_cmd awk -F',' '
+            BEGIN { OFS="," }
+            {
+                date = $1
+                models[date] = (models[date] ? models[date] " " : "") $2
+
+                cost[date] += substr($3, 2)
+
+                for (i = 4; i <= NF; i++)
+                    sum[date, i] += $i
+            }
+            END {
+                for (d in models) {
+                    printf "%s,%s,$%.4f", d, models[d], cost[d]
+                    for (i = 4; i <= NF; i++)
+                    printf ",%d", sum[d, i]
+                    print ""
+                }
+            }'
+}
+
+___x_cmd_claude_usage_daily_(){
+    local date_start="$1"
+    local date_end="$2"
+
+    local x_=
+    local date="$date_start"
+
+    while true; do
+        ___x_cmd_claude_usage_date_ "$date" || return $?
+        [ "$date" != "$date_end" ] || break
+        ___x_cmd_claude_usage_util_offset_date_ "$date" 1; date="$x_"
+    done
+}
+

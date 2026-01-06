@@ -1,0 +1,90 @@
+
+___x_cmd_claude_usage_monthly(){
+    local month="$(___x_cmd_cmds date +"%Y-%m")"
+    local month_start=
+    local month_end=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m claude usage monthly ; return 0 ;;
+            --start)            [ $# -ge 2 ] || N=claude M="Please provide argument after $1" log:ret:64 ;
+                                month_start=$2;           shift 2 ;;
+            --end)              [ $# -ge 2 ] || N=claude M="Please provide argument after $1" log:ret:64 ;
+                                month_end=$2;             shift 2 ;;
+            *)                  break ;;
+        esac
+    done
+
+    [ -d "$___X_CMD_CLAUDE_CODE_DATA_PATH" ] ||{
+        claude:error "$___X_CMD_CLAUDE_CODE_DATA_PATH directory not found. Cannot retrieve Claude Code usage logs."
+        return 1
+    }
+
+    [ -n "$month_start" ]    || {
+        local x_=; ___x_cmd_claude_usage_util_offset_month_ "$month" -6
+        month_start="$x_"
+    }
+    [ -n "$month_end" ]      || month_end="$month"
+
+    {
+        printf "%s,%s,%s,%s,%s,%s,%s,%s\n" \
+            "month" "models" "cost" "input_tokens" \
+            "cache_creation_input_tokens" "cache_read_input_tokens" "output_tokens" "total_tokens"
+        ___x_cmd_claude_usage_monthly_ "$month_start" "$month_end"
+    } | ___x_cmd csv app \
+            --width "15%,35%,10%,-,-,-,-,-"   \
+            --table-width 60% --clear         \
+            --preview input_tokens,cache_creation_input_tokens,cache_read_input_tokens,output_tokens,total_tokens
+}
+
+___x_cmd_claude_usage_month_(){
+    local month="$1"
+
+    local date_start="${month}-01"
+    local date_end=; local x_
+    ___x_cmd_claude_usage_util_month_end_ "$month"; date_end="$x_"
+
+    ___x_cmd_claude_usage_daily_ "$date_start" "$date_end" \
+        | ___x_cmd awk -F',' '
+            BEGIN { OFS="," }
+            {
+                month = substr($1, 1, 7)   # YYYY-MM
+                n = split($2, m, " ")
+                for (i = 1; i <= n; i++)
+                    model_seen[month, m[i]] = 1
+
+                cost[month] += substr($3, 2)
+
+                for (i = 4; i <= NF; i++)
+                    sum[month, i] += $i
+            }
+
+            END {
+                for (month in cost) {
+                    models = ""
+                    for (k in model_seen)
+                    if (k ~ "^" month SUBSEP) {
+                        split(k, a, SUBSEP)
+                        models = (models ? models " " : "") a[2]
+                    }
+                    printf "%s,%s,$%.4f", month, models, cost[month]
+                    for (i = 4; i <= NF; i++)
+                    printf ",%d", sum[month, i]
+                    print ""
+                }
+            }
+        '
+}
+
+___x_cmd_claude_usage_monthly_(){
+    local month_start="$1"
+    local month_end="$2"
+
+    local x_=
+    local month="$month_start"
+
+    while true; do
+        ___x_cmd_claude_usage_month_ "$month"
+        [ "$month" != "$month_end" ] || break
+        ___x_cmd_claude_usage_util_offset_month_ "$month" 1; month="$x_"
+    done
+}
