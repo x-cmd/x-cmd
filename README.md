@@ -249,3 +249,8 @@ See our [License Explanation](https://www.x-cmd.com/start/license).
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=x-cmd/x-cmd&type=Date)](https://star-history.com/#x-cmd/x-cmd&Date)
+
+
+## [Poweruser Recommendation](https://x-cmd.com/powercommander)
+
+
