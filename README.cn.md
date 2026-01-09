@@ -263,6 +263,6 @@ X-CMD 收录的工具软件包，由 [env](https://cn.x-cmd.com/mod/env) 模块�
 
 [![Star History Chart](https://api.star-history.com/svg?repos=x-cmd/x-cmd&type=Date)](https://star-history.com/#x-cmd/x-cmd&Date)
 
-## [Poweruser Recommendation](https://x-cmd.com/powercommander)
+## [用户评价](https://x-cmd.com/powercommander)
 
 
