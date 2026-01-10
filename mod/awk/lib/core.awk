@@ -156,10 +156,12 @@ function juq1( str ){
 
     gsub( /\\\\/, "\001", str )
     gsub( /\\'/, "'", str )
-    gsub( /\\n/, "\n", str )
-    gsub( /\\t/, "\t", str )
-    gsub( /\\v/, "\v", str )
+    gsub( /\\a/, "\a", str )
     gsub( /\\b/, "\b", str )
+    gsub( /\\t/, "\t", str )
+    gsub( /\\n/, "\n", str )
+    gsub( /\\v/, "\v", str )
+    gsub( /\\f/, "\f", str )
     gsub( /\\r/, "\r", str )
     gsub( "\001", "\\", str )
     return str
@@ -174,10 +176,15 @@ function jqu( str ){
 function jescape( str ){
     gsub( "\\\\", "&\\", str )
     gsub( "\"", "\\\"", str )
-    gsub( "\n", "\\n", str )
-    gsub( "\t", "\\t", str )
-    gsub( "\v", "\\v", str )        # Notice: Will remove in the future, using \u000b to encode
+
+    # Notice: Will remove in the future, using \u000b to encode
+    # 7-13
+    gsub( "\a", "\\a", str )
     gsub( "\b", "\\b", str )
+    gsub( "\t", "\\t", str )
+    gsub( "\n", "\\n", str )
+    gsub( "\v", "\\v", str )
+    gsub( "\f", "\\f", str )
     gsub( "\r", "\\r", str )
     return str
 }
@@ -869,6 +876,31 @@ function str_divide( astr, _sep, ret,    i ){
     i = index( astr, _sep )
     ret[1] = substr( astr, 1, i-1 )
     ret[2] = substr( astr, i+1 )
+}
+
+function ctrlchar_map_init(           i, c){
+    for(i=0; i<=31; i++) {
+        c = sprintf("%c", i)
+        _ctrlchar_map[ i ] = c
+        _ctrlchar_map_to_hex[ c ] = sprintf("%04x", i)
+    }
+    _ctrlchar_map[127] = sprintf("%c", 127)
+    _ctrlchar_map_to_hex[ _ctrlchar_map[127] ] = "007f"
+
+    ___CTRLCHAR_MAP_INIT_FLAG = 1
+}
+
+function str_escape_ctrlchar_to_unicode___except_7_13(str,       i){
+    if ( ___CTRLCHAR_MAP_INIT_FLAG != 1 ) ctrlchar_map_init()
+    # except 7-13
+    for (i=0; i<=6; ++i){
+        gsub( _ctrlchar_map[i], "\\u" _ctrlchar_map_to_hex[ _ctrlchar_map[i] ], str )
+    }
+    for (i=14; i<=31; ++i){
+        gsub( _ctrlchar_map[i], "\\u" _ctrlchar_map_to_hex[ _ctrlchar_map[i] ], str )
+    }
+    gsub( _ctrlchar_map[127], "\\u" _ctrlchar_map_to_hex[ _ctrlchar_map[127] ], str )
+    return str
 }
 # EndSection
 

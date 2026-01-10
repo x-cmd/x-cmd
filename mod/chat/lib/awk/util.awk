@@ -41,6 +41,7 @@ function chat_readfile( fp,       str ){
     if ( cat_is_filenotfound() ) return
 
     str = str_remove_esc( str )
+    str = str_escape_ctrlchar_to_unicode___except_7_13( str )
     return str
 }
 
@@ -186,7 +187,7 @@ function chat_wrap_tag(name, str, name_desc){
 
 function chat_trim_str( str ){
     str = str_xml_transpose( str )
-    str = str_unicode2utf8( str )
+    # str = str_unicode2utf8( str )
     return str
 }
 

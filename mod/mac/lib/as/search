@@ -1,43 +1,80 @@
 
 ___x_cmd_mac_as_search(){
+    [ $# -gt 0 ]    ||  set -- --auto
 
-    [ $# -gt 0 ]    ||  set -- --help
-    case "$1" in
+    local op="$1"; shift
+    case "$op" in
         -h|--help)      ___x_cmd help -m mac as search "$@"; return 0 ;;
+
+        --fzdata)       ___x_cmd_mac_as_search___fz_data    "$@" ;;
+        --fz)           ___x_cmd_mac_as_search___fzapp      "$@" ;;
+
+        -c|--csv)       ___x_cmd_mac_as_search___csv        "$@" ;;
+        -t|--tsv)       ___x_cmd_mac_as_search___tsv        "$@" ;;
+        --auto)         ___x_cmd_mac_as_search___auto       "$@" ;;
+        --raw)          ___x_cmd_mac_as_search___raw        "$@" ;;
+        *)              ___x_cmd_mac_as_search___auto "$op" "$@" ;;
     esac
-
-    ___x_cmd_mac_as_search___auto "$@"
-}
-
-___x_cmd_mac_as_search___auto(){
-    if ___x_cmd_is_stdout2tty; then
-        ___x_cmd_mac_as_search___app "$@"
-    else
-        ___x_cmd_mac_as_search___tsv "$@"
-    fi
-}
-
-___x_cmd_mac_as_search___tsv(){
-    if [ -z "$ALL" ]; then
-        ___x_cmd_mac_as_search___raw "$@" | ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/mac/lib/as/ls.awk"
-        return
-    fi
-
-    local data; data="$(___x_cmd_mac_as_search___raw "$@")"
-    local ids; ids="$(___x_cmd pipevar data ___x_cmd_cmds awk '{ printf("%s ", $1); }')"
-
-    eval ___x_cmd_mac_as_search___info "$ids" 2>/dev/null | \
-        data="$data" ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/mac/lib/as/la.awk"
-}
-
-___x_cmd_mac_as_search___info(){
-    ___x_cmd ccmd 1d -- ___x_cmd_cmds mas info "$@"
 }
 
 ___x_cmd_mac_as_search___raw(){
-    ___x_cmd ccmd 1d -- ___x_cmd_cmds mas search "$@"
+    ___x_cmd_mac_as___runcmd search "$@"
 }
 
-___x_cmd_mac_as_search___app(){
-    ___x_cmd_mac_as_search___tsv "$@" | ___x_cmd tsv tocsv | ___x_cmd csv --app
+___x_cmd_mac_as_search___tsv(){
+    ___x_cmd_mac_as_search___raw "$@" | ___x_cmd awk -f "$___X_CMD_ROOT_MOD/mac/lib/awk/as_ls.awk"
 }
+
+___x_cmd_mac_as_search___csv(){
+    ___x_cmd_mac_as_search___tsv "$@" | ___x_cmd tsv tocsv
+}
+
+___x_cmd_mac_as_search___auto(){
+    [ $# -gt 0 ] || {
+        mac:error "Missing expected argument '<search-term> ...'"
+        return 64
+    }
+
+    if ___x_cmd_is_stdout2tty; then
+        ___x_cmd_mac_as_search___fzapp "$@"
+    else
+        ___x_cmd_mac_as_search___raw "$@"
+    fi
+}
+
+___x_cmd_mac_as_search___fzapp(){
+    [ $# -gt 0 ] || {
+        mac:error "Missing expected argument '<search-term> ...'"
+        return 64
+    }
+
+    local x_=""; ___x_cmd_mac_as_search___fzapp_ "$@" || return $?
+
+    mac:info "Selected ==> $x_"
+    local app_id="$(printf "$x_" | ___x_cmd awk '{print $1}')"
+    local id=
+    ___x_cmd ui select id "NEXT" \
+        "x mac as info $app_id"         \
+        "x mac as open $app_id"         \
+        "x mac as install $app_id"      \
+        "x mac as seller $app_id"       \
+        "return"     || return $?
+
+    case "$id" in
+        1)      ___x_cmd mac as info     "$app_id" ;;
+        2)      ___x_cmd mac as open     "$app_id" ;;
+        3)      ___x_cmd mac as instal   "$app_id" ;;
+        4)      ___x_cmd mac as seller   "$app_id" ;;
+        *)      return 0 ;;
+    esac
+}
+
+___x_cmd_mac_as_search___fzapp_(){
+    x_="";___x_cmd_runmode_allow_manual || N=mac M="Not supported in non-interactive mode" log:ret:64
+    mac:info "Find installed software"
+    x_="$( ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe mac as ls --fzdata ___x_cmd_mac_as_search___tsv "$@" )" || return $?
+    [ -n "$x_" ] || return 1
+}
+
+
+
