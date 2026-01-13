@@ -29,11 +29,13 @@ function handle_desc(desc, title_len){
 }
 
 
-function handle_cmd(cmd,     _res, _max_len, _i, l, _key_len, _cmd_text){
+function handle_cmd(cmd, display_style,     _res, _max_len, _i, l, _key_len, _cmd_text, _cmd_is_highlight ){
     _res = COMP_TLDR_SPACE_LINE
     l = cmd[ L ]
     for (_i=1; _i<=l; _i++) {
-        _cmd_text = cmd[ _i, "text" ]
+        _cmd_text   = cmd[ _i, "text" ]
+        _cmd_is_highlight  = cmd[ i, "is_highlight" ]
+
         while (match(_cmd_text, "\\{\\{[^\\{]+\\}}"))
             cmd[ _i, "text" ] = _cmd_text = substr(_cmd_text,1,RSTART-1) \
                 TH_TLDR_CMD_KEY_SEP_LEFT substr(_cmd_text,RSTART+2, RLENGTH-4) TH_TLDR_CMD_KEY_SEP_RIGHT \
@@ -43,13 +45,19 @@ function handle_cmd(cmd,     _res, _max_len, _i, l, _key_len, _cmd_text){
         if (_key_len > _max_len) _max_len = _key_len
     }
 
-    if (_max_len > COMP_TLDR_COL*0.6)  _res = _res handle_long_cmd(cmd)
-    else _res = _res handle_short_cmd(cmd, _max_len)
+    if ( display_style == "short" ) {
+        _res = _res handle_short_cmd(cmd, _max_len)
+    } else if ( display_style == "auto" ) {
+        if (_max_len > COMP_TLDR_COL*0.6)  _res = _res handle_long_cmd(cmd)
+        else _res = _res handle_short_cmd(cmd, _max_len)
+    } else {
+        _res = _res handle_long_cmd(cmd)
+    }
     return _res
 }
 
 function handle_short_cmd(cmd, max_len,
-    _res, _cmd_info, _cmd_text, _cmd_key_style, _cmd_info_style, i, l, _text){
+    _res, _cmd_info, _cmd_text, _cmd_key_style, _cmd_info_style, _cmd_key_sep_style, i, l, _text){
     l = cmd[ L ]
     th_interval_init(COMP_TLDR_CMD_KEY_SEP)
     th_interval_init(COMP_TLDR_CMD_KEY_COLOR)
@@ -57,10 +65,19 @@ function handle_short_cmd(cmd, max_len,
     for (i=1; i<=l; i++) {
         _cmd_key_style  = th_interval(COMP_TLDR_CMD_KEY_COLOR)
         _cmd_info_style = th_interval(COMP_TLDR_CMD_INFO_COLOR)
-        _cmd_info = cmd[ i, "info" ]
-        _cmd_text = cmd[ i, "text" ]
+        _cmd_key_sep_style = th_interval(COMP_TLDR_CMD_KEY_SEP)
+        _cmd_info           = cmd[ i, "info" ]
+        _cmd_text           = cmd[ i, "text" ]
+        _cmd_is_highlight   = cmd[ i, "is_highlight" ]
+
+        if (_cmd_is_highlight) {
+            _cmd_key_style = _cmd_key_style COMP_TLDR_CMD_HL
+            _cmd_info_style = _cmd_info_style COMP_TLDR_CMD_HL
+            _cmd_key_sep_style = _cmd_key_sep_style COMP_TLDR_CMD_HL
+        }
+
         gsub(/:[ ]*$/, "", _cmd_info)
-        gsub(TH_TLDR_CMD_KEY_SEP_LEFT, th_interval(COMP_TLDR_CMD_KEY_SEP), _cmd_text)
+        gsub(TH_TLDR_CMD_KEY_SEP_LEFT, _cmd_key_sep_style, _cmd_text)
         gsub(TH_TLDR_CMD_KEY_SEP_RIGHT, _cmd_key_style, _cmd_text)
 
         _text = _cmd_key_style _cmd_text space_rep(max_len+4-strlen_without_color(_cmd_text)) \
@@ -71,26 +88,38 @@ function handle_short_cmd(cmd, max_len,
 }
 
 function handle_long_cmd(cmd,
-    _res, _cmd_info, _cmd_text, _cmd_info_style, _cmd_text_style, i, l, _cmd_len){
+    _res, _cmd_info, _cmd_text, _cmd_key_style, _cmd_info_style, _cmd_key_sep_style, i, l, _cmd_len){
     l = cmd[ L ]
     for (i=1; i<=l; i++) {
-        _cmd_text = cmd[ i, "text" ]; _cmd_text_style = COMP_TLDR_CMD_KEY_COLOR_LONG
-        _cmd_info = cmd[ i, "info" ]; _cmd_info_style = COMP_TLDR_CMD_INFO_COLOR_LONG
+        _cmd_is_highlight   = cmd[ i, "is_highlight" ]
+        _cmd_text           = cmd[ i, "text" ]
+        _cmd_info           = cmd[ i, "info" ]
+
+        _cmd_key_style = COMP_TLDR_CMD_KEY_COLOR_LONG
+        _cmd_info_style = COMP_TLDR_CMD_INFO_COLOR_LONG
+        _cmd_key_sep_style = COMP_TLDR_CMD_KEY_SEP_LONG
+
+        if (_cmd_is_highlight) {
+            _cmd_key_style = _cmd_key_style COMP_TLDR_CMD_HL
+            _cmd_info_style = _cmd_info_style COMP_TLDR_CMD_HL
+            _cmd_key_sep_style = _cmd_key_sep_style COMP_TLDR_CMD_HL
+        }
+
         _cmd_len  = strlen_without_color(cmd[ i, "text" ])
-        gsub(TH_TLDR_CMD_KEY_SEP_LEFT, COMP_TLDR_CMD_KEY_SEP[0], _cmd_text)
-        gsub(TH_TLDR_CMD_KEY_SEP_RIGHT, _cmd_text_style, _cmd_text)
+        gsub(TH_TLDR_CMD_KEY_SEP_LEFT, _cmd_key_sep_style, _cmd_text)
+        gsub(TH_TLDR_CMD_KEY_SEP_RIGHT, _cmd_key_style, _cmd_text)
         gsub(/:[ ]*$/, "", _cmd_info)
 
         while (_cmd_len > COMP_TLDR_COL) _cmd_len = _cmd_len - COMP_TLDR_COL
 
-        _res = _res cut_info_line(_cmd_text, _cmd_text_style) COMP_TLDR_NEWLINE
+        _res = _res cut_info_line(_cmd_text, _cmd_key_style) COMP_TLDR_NEWLINE
         _res = _res _cmd_info_style "    "  cut_info_line(_cmd_info, _cmd_info_style, 4) COMP_TLDR_NEWLINE
-        _res = _res COMP_TLDR_SPACE_LINE
+        # _res = _res COMP_TLDR_SPACE_LINE
     }
-    return _res
+    return _res COMP_TLDR_SPACE_LINE
 }
 
-function comp_tldr_parse_of_mdfile_unit(item, cmd,      _res, l ){
+function comp_tldr_parse_of_mdfile_unit(item, cmd,     _res, l ){
     if (item ~ /^[ \t\r]*$/){
 
     } else if (item ~ "^# ") {
@@ -139,6 +168,9 @@ function comp_tldr_init_of_mdfile(col, no_color, no_background){
 
         COMP_TLDR_CMD_KEY_COLOR_LONG  = UI_FG_YELLOW COMP_TLDR_BACKGROUND
         COMP_TLDR_CMD_INFO_COLOR_LONG = UI_FG_CYAN COMP_TLDR_BACKGROUND
+        COMP_TLDR_CMD_KEY_SEP_LONG    = UI_FG_WHITE COMP_TLDR_BACKGROUND
+
+        COMP_TLDR_CMD_HL  = UI_TEXT_BOLD UI_BG_WHITE
 
         COMP_TLDR_END = UI_END
     }
@@ -151,12 +183,13 @@ function comp_tldr_init_of_mdfile(col, no_color, no_background){
     COMP_TLDR_SPACE_LINE = th(COMP_TLDR_BACKGROUND, space_rep(COMP_TLDR_COL)) "\n"
 }
 
-function comp_tldr_paint_of_file_content(content, width, no_color, no_background,      r, i, l, _, cmd, _res){
+function comp_tldr_paint_of_file_content(content, width, no_color, no_background, display_style, highlight_line,     r, i, l, _, cmd, _res){
     if (width < 20) return "The current width is not enough to display the tldr document!"
     comp_tldr_init_of_mdfile(width, no_color, no_background)
 
     l = split(content, _, "\n")
     for (i=1; i<=l; ++i) _res = _res comp_tldr_parse_of_mdfile_unit(_[i], cmd)
-    _res = _res handle_cmd(cmd)
+    if ( highlight_line > 0 ) cmd[ highlight_line, "is_highlight" ] = 1
+    _res = _res handle_cmd(cmd, display_style)
     return _res
 }

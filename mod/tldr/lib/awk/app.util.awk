@@ -2,6 +2,7 @@
 function user_tldr_init(){
     TLDR_APP_BASEPATH = ENVIRON[ "___X_CMD_TLDR_APP_BASEPATH" ]
     TLDR_NO_BACKGROUND = ENVIRON[ "___X_CMD_TLDR_NO_BACKGROUND" ]
+    TLDR_DISPLAY_STYLE = ENVIRON[ "___X_CMD_TLDR_DISPLAY_STYLE" ]
     comp_tldr_parse_ignorelang( TLDR_IGNORELANG_ARR, ENVIRON[ "___X_CMD_TLDR_LANG_IGNORE" ], "," )
     TLDR_KP = "ls_kp"
     navi_init(o, TLDR_KP)
@@ -55,7 +56,7 @@ function user_paint_custom_component( o, kp, rootkp, x1, x2, y1, y2,        s, _
     else {
         if ((_content = o[ kp, TLDR_DOC_KP, "content", _filepath ]) == "")
             o[ TLDR_DOC_KP, "content", _filepath ] = _content = cat(TLDR_APP_BASEPATH "/" _filepath)
-        s = comp_tldr_paint_of_file_content( _content, y2-y1, IS_TH_NO_COLOR, TLDR_NO_BACKGROUND)
+        s = comp_tldr_paint_of_file_content( _content, y2-y1, IS_TH_NO_COLOR, TLDR_NO_BACKGROUND, TLDR_DISPLAY_STYLE)
     }
     comp_textbox_put(o, TLDR_DOC_KP, s)
     return comp_textbox_paint(o, TLDR_DOC_KP, x1, x2, y1, y2)

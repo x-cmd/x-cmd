@@ -1,0 +1,173 @@
+# shellcheck shell=dash
+
+___x_cmd_tldr___fz(){
+    [ $# -gt 0 ]    ||      set -- --show
+    local op="$1";          shift
+
+    case "$op" in
+        --show)         ___x_cmd_tldr___fz_show         "$@" ;;
+        -h|--help)      ___x_cmd help -m tldr --fz      "$@" ;;
+        -c|--cleanup)   ___x_cmd_tldr___fz_cleanup      "$@" ;;
+        *)              ___x_cmd_tldr___fz_show "$op"   "$@" ;;
+    esac
+}
+
+___x_cmd_tldr___fz_show(){
+    local FILTER_MODE=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -a|--all)    FILTER_MODE=all;    shift ;;
+            *)           break ;;
+        esac
+    done
+
+    ___x_cmd_tldr_version_pages_    || return $?
+    ___x_cmd_tldr_pages_prepare en  || return $?
+
+    local tldr_option=
+    tldr_option="$( FILTER_MODE="$FILTER_MODE" ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe tldr --fzdata "$@" )"
+
+    [ -n "$tldr_option" ] || {
+        tldr:info "Exit because no tldr is selected."
+        return 0
+    }
+    ___x_cmd tldr --cat "$tldr_option"
+}
+
+___X_CMD_TLDR_FZ_LS_ALLIN1="${___X_CMD_TLDR_FZ_LS_DATA}.allin1.txt"
+___X_CMD_TLDR_FZ_LS_KEYINFO="${___X_CMD_TLDR_FZ_LS_DATA}.keyinfo.txt"
+
+___x_cmd_tldr___fz_data(){
+    local x_
+
+    local targetfile="$___X_CMD_TLDR_FZ_LS_ALLDATA"
+
+    local mode="allin1"
+    local filtermode="$FILTER_MODE"
+    local HEADER="<TAB> or <ctlr-r> Switch mode or layout
+<ctrl-a> Show TLDR of current|all OS
+com/ → Common"
+
+    while true; do
+
+        [ "$filtermode" = all ] || {
+            ___x_cmd os name_
+            filtermode="$x_"
+            if ___x_cmd_is_termux; then
+                filtermode=termux
+            fi
+
+            case "$filtermode" in
+                darwin)     HEADER="$HEADER  osx/ → macOS"     ;;
+                win)        HEADER="$HEADER  win/ → Windows" ;;
+                android)    HEADER="$HEADER  and/ → Android" ;;
+                linux)      HEADER="$HEADER  lin/ → Linux"   ;;
+            esac
+        }
+
+        ___x_cmd tty update
+
+        case "$mode" in
+            allin1)     ___x_cmd_tldr___fz_prepare_allin1
+                        targetfile="$___X_CMD_TLDR_FZ_LS_ALLIN1"    ;;
+            keyinfo)    ___x_cmd_tldr___fz_prepare_keyinfo
+                        targetfile="$___X_CMD_TLDR_FZ_LS_KEYINFO"   ;;
+            *)          ___x_cmd_tldr___fz_prepare
+                        targetfile="$___X_CMD_TLDR_FZ_LS_DATA"      ;;
+        esac
+
+        ___x_cmd storerat_ ___x_cmd_tldr___fz_fzf || return $?
+
+        case $x_ in
+            *"|next-view|"*)
+                    case "$mode" in
+                        allin1)     mode=keyinfo    ;;
+                        keyinfo)    mode=list       ;;
+                        *)          mode=allin1     ;;
+                    esac
+                ;;
+
+            *"|toggle-filter|"*)
+                    case "$filtermode" in
+                        all)        filtermode=""   ;;
+                        *)          filtermode=all  ;;
+                    esac
+                ;;
+
+            # TODO: using ai or view.
+            *)
+                    printf "%s\n" "${x_%% *}"
+                    return 0
+        esac
+    done
+}
+
+___x_cmd_tldr___fz_fzf(){
+
+    tldr:debug "Fitler mode is $filtermode"
+
+    # case "$filtermode" in
+    #     all)        ___x_cmd_tldr___fz_fzfworker ;;
+    #     *)          ___x_cmd_cmds awk -v filtermode="$filtermode" -f "$___X_CMD_ROOT_MOD/tldr/lib/awk/tlfz.filter.awk" | ___x_cmd_tldr___fz_fzfworker ;;
+    # esac <"$targetfile"
+
+
+    ___x_cmd_cmds awk \
+        -v filtermode="$filtermode" \
+        -f "$___X_CMD_ROOT_MOD/tldr/lib/awk/tlfz.filter.awk" <"$targetfile" | \
+    ___x_cmd_tldr___fz_fzfworker
+}
+
+___x_cmd_tldr___fz_fzfworker(){
+    ___X_CMD_TLDR_COLUMNS=$((COLUMNS * 65 / 100)) ___X_CMD_TLDR_NO_BACKGROUND=1 ___X_CMD_TLDR_ENABLE_COLOR=1 ___x_cmd fzf  \
+            --exact \
+            --header="$HEADER"            \
+            --ansi --reverse --height='80%' --query="$*"                                                    \
+            --bind='ctrl-w:toggle-preview-wrap'                                                             \
+            --bind='ctrl-r:change-preview-window(down,40%,60%,border-horizontal|hidden|right,70%)'    \
+            --bind='tab:print(|next-view|)+accept'                                                          \
+            --bind='ctrl-s:print(|next-view|)+accept'                                                       \
+            --bind='ctrl-a:print(|toggle-filter|)+accept'                                                   \
+            --preview='___x_cmdexe tldr --cat {1}'                                                          \
+            --preview-window=right:70%:wrap
+}
+
+
+
+___x_cmd_tldr___fz_cleanup(){
+    ___x_cmd rmrf "$___X_CMD_TLDR_FZ_LS_DATA" "$___X_CMD_TLDR_FZ_LS_ALLIN1" "$___X_CMD_TLDR_FZ_LS_KEYINFO"
+}
+
+___x_cmd_tldr___fz_prepare(){
+    [ ! -f "$___X_CMD_TLDR_FZ_LS_DATA" ] || return 0
+
+    ___x_cmd ensurefp "$___X_CMD_TLDR_FZ_LS_DATA"
+    ___x_cmd tldr -l >"$___X_CMD_TLDR_FZ_LS_DATA"
+}
+
+___x_cmd_tldr___fz_prepare_allin1(){
+    [ ! -f "$___X_CMD_TLDR_FZ_LS_ALLIN1" ] || return 0
+
+    ___x_cmd_tldr_version_pages_
+
+    ___x_cmd_tldr___fz_prepare
+    ___x_cmd_cmds awk       \
+        -v mode="allin1"    \
+        -v root="${___X_CMD_TLDR_DIR_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.en" \
+        -f "$___X_CMD_ROOT_MOD/tldr/lib/awk/tldr.merge.awk" \
+        <"$___X_CMD_TLDR_FZ_LS_DATA"    >"$___X_CMD_TLDR_FZ_LS_ALLIN1"
+}
+
+___x_cmd_tldr___fz_prepare_keyinfo(){
+    [ ! -f "$___X_CMD_TLDR_FZ_LS_KEYINFO" ] || return 0
+
+    ___x_cmd_tldr_version_pages_
+
+    ___x_cmd_tldr___fz_prepare
+    ___x_cmd_cmds awk       \
+        -v mode="keyinfo"   \
+        -v root="${___X_CMD_TLDR_DIR_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.en" \
+        -f "$___X_CMD_ROOT_MOD/tldr/lib/awk/tldr.merge.awk" \
+        <"$___X_CMD_TLDR_FZ_LS_DATA"    >"$___X_CMD_TLDR_FZ_LS_KEYINFO"
+}
