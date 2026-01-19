@@ -36,10 +36,11 @@ function handle_cmd(cmd, display_style,     _res, _max_len, _i, l, _key_len, _cm
         _cmd_text   = cmd[ _i, "text" ]
         _cmd_is_highlight  = cmd[ i, "is_highlight" ]
 
-        while (match(_cmd_text, "\\{\\{[^\\{]+\\}}"))
+        while (match(_cmd_text, "\\{\\{[^\\{\\}]+\\}\\}")) {
             cmd[ _i, "text" ] = _cmd_text = substr(_cmd_text,1,RSTART-1) \
                 TH_TLDR_CMD_KEY_SEP_LEFT substr(_cmd_text,RSTART+2, RLENGTH-4) TH_TLDR_CMD_KEY_SEP_RIGHT \
                 substr(_cmd_text, RSTART + RLENGTH)
+        }
 
         _key_len = strlen_without_color(_cmd_text)
         if (_key_len > _max_len) _max_len = _key_len
@@ -102,7 +103,7 @@ function handle_long_cmd(cmd,
         if (_cmd_is_highlight) {
             _cmd_key_style = _cmd_key_style COMP_TLDR_CMD_HL
             _cmd_info_style = _cmd_info_style COMP_TLDR_CMD_HL
-            _cmd_key_sep_style = _cmd_key_sep_style COMP_TLDR_CMD_HL
+            _cmd_key_sep_style = _cmd_key_sep_style COMP_TLDR_CMD_HL UI_FG_BLACK
         }
 
         _cmd_len  = strlen_without_color(cmd[ i, "text" ])

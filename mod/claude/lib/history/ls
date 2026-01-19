@@ -1,0 +1,132 @@
+
+___x_cmd_claude_history_ls(){
+    [ $# -gt 0 ]    ||  set - --all
+
+    case "$1" in
+        -h|--help)      ___x_cmd help -m claude history ls;        return 0 ;;
+        --fzdata)       shift;___x_cmd_claude_history_ls___fz_data "$@"; return 0 ;;
+    esac
+
+    local scope=all
+    local fmt=auto
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -a|--all)       scope=all       ;;
+            -c|--csv)       fmt=csv         ;;
+            -t|--tsv)       fmt=tsv         ;;
+            --raw)          fmt=raw         ;;
+            --auto|--app)   fmt="${1#--}"   ;;
+            *)              break           ;;
+        esac
+        shift
+    done
+
+    ___x_cmd_claude_history_ls___"${scope}"___"${fmt}"
+}
+
+___x_cmd_claude_history_ls___all___auto(){
+    if      ___x_cmd_is_stdout2tty; then        ___x_cmd_claude_history_ls___all___app
+    else                                        ___x_cmd_claude_history_ls___all___tsv
+    fi
+}
+
+___x_cmd_claude_history_ls___all___raw(){
+    ___x_cmd jq -s '
+        group_by(.sessionId) | map({
+            sessionId: .[0].sessionId,
+            project: .[0].project,
+            startTime: (map(.timestamp) | min ),
+            lastActive: (map(.timestamp) | max ),
+            interactionCount: length,
+            inputs: map(.display)
+        })
+        | sort_by(.lastActive) | reverse
+    ' "$___X_CMD_CLAUDE_CODE_HOME_PATH/history.jsonl"
+}
+
+___x_cmd_claude_history_ls___all___csv(){
+    printf "%s,%s,%s,%s,%s\n" "time" "input" "count" "project" "id"
+    ___x_cmd_claude_history_ls___all___raw \
+        | ___x_cmd jq -r '
+            (["time", "input", "interactionCount", "project", "sessionId"]),
+            (.[] | [(.lastActive / 1000 | strftime("%Y-%m-%dT%H:%M:%S")), .inputs[0], .interactionCount, .project, .sessionId])
+            | @csv
+        '
+}
+
+___x_cmd_claude_history_ls___all___tsv(){
+    printf "%s\t%s\t%s\t%s\t%s\n" "time" "input" "count" "project" "id"
+    ___x_cmd_claude_history_ls___all___raw \
+        | ___x_cmd jq -r '
+            (.[] | [(.lastActive / 1000 | strftime("%Y-%m-%dT%H:%M:%S")), .inputs[0], .interactionCount, .project, .sessionId])
+            | @tsv
+        '
+}
+
+___x_cmd_claude_history_ls___all___tsv_color(){
+    ___x_cmd_claude_history_ls___all___tsv \
+        | ___x_cmd awk -F'\t' '
+            BEGIN {
+                reset = "\033[0m"
+                c_time   = "\033[36m"
+                c_input  = "\033[33m"
+                c_count  = "\033[35m"
+                c_proj   = "\033[32m"
+                c_id     = "\033[90m"
+            }
+            {
+                printf "%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\n",
+                    c_time,  $1, reset,
+                    c_input, $2, reset,
+                    c_count, $3, reset,
+                    c_proj,  $4, reset,
+                    c_id,    $5, reset
+            }
+        '
+}
+
+___x_cmd_claude_history_ls___all___app(){
+    claude:info "Find session"
+    local session=; session="$( ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe claude history ls --fzdata ___x_cmd_claude_history_ls___all___tsv_color )" || return $?
+    [ -n "$session" ] || return 0
+
+    local session_id="$(printf "$session" | ___x_cmd awk '{print $NF}')"
+    local session_cwd="$(printf "$session" | ___x_cmd awk '{print $1}')"
+
+    local id=
+    ___x_cmd ui select id "NEXT"   \
+        "Resume a conversation ->       $session_id"   \
+        "x claude history preview       $session_id"   \
+        "x claude history rm --dry-run  $session_id"   \
+        "x claude history rm            $session_id"   \
+        "return"     || return $?
+
+    case "$id" in
+        1)      ___x_cmd_claude_history_resume "$session_id" "$session_cwd";;
+        2)      ___x_cmd claude history preview         "$session_id" ;;
+        3)      ___x_cmd claude history rm --dry-run    "$session_id" ;;
+        4)      ___x_cmd claude history rm              "$session_id" ;;
+        # gen skill
+        # ....
+        *)      return 0 ;;
+    esac
+}
+
+___x_cmd_claude_history_ls___fz_data(){
+    ___x_cmd fzf --ensuretableversion || return $?
+
+    # TODO：Multiple FZF Views
+
+    "$@" | FZF_DEFAULT_OPTS="
+--ansi
+--reverse
+--height='80%'
+--bind='ctrl-w:toggle-preview-wrap'
+--bind='ctrl-r:change-preview-window(down,40%,99%,border-horizontal|hidden|right,40%,border)'
+"   ___x_cmd fzf \
+            --freeze-left 1 \
+            --header-lines=1 \
+            --accept-nth 4,5 \
+            --preview='___x_cmdexe claude history preview {-1} 2>/dev/null' \
+            --preview-window=right,70%,border
+}

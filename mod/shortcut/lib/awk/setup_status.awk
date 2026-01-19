@@ -14,6 +14,9 @@ END{
     for (i=1; i<=l; ++i) yml_parse_trim_value(o, SUBSEP "\""i"\"")
     # ystr(o)
 
+    if ( CHANGE_LOG ~ "a:" ) {
+        log_info( "shortcut", "Prefix may vary by environment (possible: \"@\", \"a:\"). Use the detected form for this environment." )
+    }
     print sh_varset_val("data", jstr(o))
     print sh_varset_val("change_log", CHANGE_LOG)
 
