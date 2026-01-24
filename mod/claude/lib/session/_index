@@ -1,0 +1,58 @@
+# shellcheck shell=dash
+
+xrc:mod:lib     claude      session/ls    session/cat    session/preview    session/rm    session/fz
+
+___X_CMD_CLAUDE_CODE_HOME_PATH="$HOME/.claude"
+___X_CMD_CLAUDE_CODE_DATA_PATH="$___X_CMD_CLAUDE_CODE_HOME_PATH/projects"
+
+___x_cmd_claude_session(){
+    [ "$#" -gt 0 ] ||   set -- fz
+
+    local op="$1";      shift
+    case "$op" in
+        list|ls)            ___x_cmd_claude_session_ls      "$@" ;;
+        resume|r)           ___x_cmd_claude_session_resume  "$@" ;;
+        rm|cat|preview)     ___x_cmd_claude_session_"$op"   "$@" ;;
+
+        fz)                 ___x_cmd_claude_session_fz      "$@" ;;
+        prune)              ___x_cmd_claude_session_prune        ;;
+        -h|--help)          ___x_cmd help -m claude session "$@" ;       return 0 ;;
+        *)                  N=claude M="session not such [subcmd=$op]" log:ret:64 ;;
+    esac
+}
+
+
+___x_cmd_claude_session_resume(){
+    local session_id="$1";  [ -n "$session_id" ] || N=claude M="Please provide the session id" log:ret:64
+    local index="$___X_CMD_CLAUDE_CODE_HOME_PATH/history.jsonl"
+
+    local session_cwd="$(
+        ___x_cmd jq -r --arg sid "$session_id" 'select(.sessionId == $sid)| .project' "$index" \
+        | ___x_cmd_cmds tail -n 1
+    )"
+    [ -n "$session_cwd" ] || session_cwd="${PWD}"
+
+    if [ "$session_cwd" = "$PWD" ]; then
+        ___x_cmd claude -- --resume "$session_id"
+    else
+        (
+            ___x_cmd_cmds cd "$session_cwd" && ___x_cmd claude -- --resume "$session_id"
+        )
+    fi
+}
+
+___x_cmd_claude_session_prune(){
+    # TODO: Not open to the public for the time being.
+
+    local session_id=
+    ___x_cmd claude session ls --all --json \
+        | ___x_cmd jq -r '.[] | select(.inputs | all(startswith("/"))) | .sessionId' \
+        | while read -r session_id; do
+            ___x_cmd claude session rm --forced "$session_id" || return $?
+        done
+
+    local index="$___X_CMD_CLAUDE_CODE_HOME_PATH/history.jsonl"
+    ___x_cmd_cmds cat "$index" > "${index}.x"
+    ___x_cmd jq -c 'select(.display | test("^/exit\\s*$") | not)' "${index}.x" > "$index"
+    ___x_cmd rmrf "${index}.x"
+}

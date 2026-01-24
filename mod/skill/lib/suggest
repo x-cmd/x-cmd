@@ -1,0 +1,140 @@
+# shellcheck shell=dash
+
+___x_cmd_skill_suggest(){
+    local agent=""
+    local mode="app"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --agent)    agent="$2";
+                        ___x_cmd_skill___agent_check "$agent" || return $?
+                        shift 2 ;;
+            --app|--auto|--print)
+                        mode="${1#--}"; shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local x_=""
+    [ -n "$agent" ] || {
+        ___x_cmd_skill___unit_select_agent_ || return $?
+        agent="$x_"
+        ___x_cmd_skill___agent_check "$agent" || return $?
+    }
+
+    local suggest_list=""
+    x_=""; ___x_cmd_skill_suggest___list_ "$agent" "$@" || return $?
+    suggest_list="$x_"
+
+    [ -n "$suggest_list" ] || {
+        skill:error "No suggestions available."
+        return 1
+    }
+
+    case "$mode" in
+        app)    x_=; ___x_cmd_skill_suggest___fzapp_ "$suggest_list" || return $?
+                suggest_list="$x_"
+                ;;
+        auto)   ;;
+        print)  ___x_cmd_skill_suggest___print_list "$suggest_list"
+                return
+                ;;
+    esac
+
+    [ -n "$suggest_list" ] || return 1
+    local x_id=""; local x_reason=""
+    local IFS="$___X_CMD_UNSEENCHAR_HT"
+    while read -r x_id x_reason; do
+        x_id="${x_id%% *}"
+        ___x_cmd_skill_suggest___exec_agent "$agent" skill add "$x_id"
+    done <<A
+$suggest_list
+A
+}
+
+___x_cmd_skill_suggest___exec_agent(){
+    local agent="$1"; shift
+    case "$agent" in
+        gemini) ___x_cmd gemini cli "$@" ;;
+        *)      ___x_cmd "$agent" "$@"   ;;
+    esac
+}
+
+___x_cmd_skill_suggest___list_(){
+    local agent="$1";       shift
+    local user_str="$*";    shift "$#"
+
+    skill:info "Retrieving existing context files"
+    local context_filelist=""
+    x_=""; ___x_cmd_skill_suggest___exec_agent "$agent" --unit_get_agentfile_ || return $?
+    context_filelist="$x_"; x_=""
+
+    if [ -n "$context_filelist" ]; then
+        local l=""
+        while read -r l; do
+            set -- "$@" --file "$l"
+        done <<A
+$context_filelist
+A
+    fi
+
+    skill:info "Retrieving existing skills"
+    local skill_exist_list; skill_exist_list="$( ___x_cmd_skill_suggest___exec_agent "$agent" skill ls --tsv 2>&1 )" || return $?
+    [ -z "$skill_exist_list" ] || set -- "$@" --attach-text "Already enabled skills:
+$skill_exist_list
+"
+
+    skill:info "Retrieving all available skills"
+    local skill_all_list; skill_all_list="$( ___x_cmd_skill_suggest___exec_agent "$agent" skill ll --tsv 2>&1 )" || return $?
+    set -- "$@" --attach-text "All available skills:
+$skill_all_list
+"
+
+    skill:info "Generating suggested skills for agent[$agent] ..."
+    x_="$(
+        CONTEXT_FILELIST="$context_filelist" \
+        ___x_cmd chat --request --type coco,histsum --no-context-file --debug \
+            --minion "$___X_CMD_ROOT_MOD/skill/lib/data/suggest.yml" "$@" "$user_str"
+    )"
+}
+
+___x_cmd_skill_suggest___fzapp_(){
+    local suggest_list="$1"
+    [ -n "$suggest_list" ] || return 1
+
+    x_="$(
+        NO_COLOR=0 FORCE_COLOR=1 \
+        ___x_cmd_skill_suggest___print_list "$suggest_list" | \
+        ___x_cmd_skill___fzf  \
+            --prompt "[Skills] > " \
+            --marker=">>" \
+            --preview='___x_cmdexe skill info {1}; printf "\n---\n"; ___x_cmdexe skill cat {1}'  \
+            --preview-window='bottom:70%,wrap'      \
+            --header="<Tab/Shift-Tab> to multi-select" \
+            --height='80%' -m
+    )"
+
+    [ -n "$x_" ] || N=skill M="Not selected skill to apply" log:ret:1
+}
+
+___x_cmd_skill_suggest___print_list(){
+    local suggest_list="$1"
+    [ -n "$suggest_list" ] || return 1
+
+    local NO_COLOR="$NO_COLOR"
+    if ! ___x_cmd_is_stdout2tty || ! ___x_cmd_runmode_allow_manual; then
+        [ -n "$FORCE_COLOR" ] || NO_COLOR=1
+    fi
+
+    skill:info "Suggestion skill list"
+    local x_id=""; local x_reason=""
+    local IFS="$___X_CMD_UNSEENCHAR_HT"
+    while read -r x_id x_reason; do
+        if [ "$NO_COLOR" != 1 ]; then
+            printf "\033[0;33m%-32s\033[0;36m\t%s\033[0m\n" "$x_id" "$x_reason"
+        else
+            printf "%s\t%s\n" "$x_id" "$x_reason"
+        fi
+    done <<A
+$suggest_list
+A
+}

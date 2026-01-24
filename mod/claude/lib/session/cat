@@ -1,0 +1,200 @@
+
+___x_cmd_claude_session_cat(){
+    [ $# -gt 0 ]    ||  set - --help
+
+    case "$1" in
+        -h|--help)      ___x_cmd help -m claude session cat;        return 0 ;;
+    esac
+
+    local scope=full
+    local fmt=tsv
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --part)         scope=part      ;;
+            --full)         scope=full      ;;
+            -j|--json)      fmt=json        ;;
+            -t|--tsv)       fmt=tsv         ;;
+            -c|--csv)       fmt=csv         ;;
+            *)              break           ;;
+        esac
+        shift
+    done
+
+    ___x_cmd_claude_session_cat___"${scope}"___"${fmt}" "$@"
+}
+
+# Section: cat --full
+___x_cmd_claude_session_cat___full___json(){
+    local session_id="$1";  [ -n "$session_id" ] || N=claude M="Please provide the session id" log:ret:64
+
+    local session_file="$(___x_cmd_cmds find "$___X_CMD_CLAUDE_CODE_DATA_PATH" -name "${session_id}.jsonl")"
+    [ -n "$session_file" ] || N=claude M="Cannot find the history conversation file -> $session_id" log:ret:64
+    ___x_cmd jq -s '
+        map(
+            select(.type == "user" or .type == "assistant") |
+            {
+                timestamp: .timestamp,
+                role: .message.role,
+                model: .message.model,
+                content: (
+                    if (.message.content | type) == "string" then
+                        .message.content
+                    else
+                        (.message.content | map(select(.type == "text" or .type == "thinking" or .type == "tool_use" or .type == "tool_result")))
+                    end
+                )
+            }
+        )
+    ' "$session_file"
+}
+
+___x_cmd_claude_session_cat___full___tsv(){
+    ___x_cmd_claude_session_cat___full___json "$@" \
+        | ___x_cmd jq -r '
+            def normalize_content:
+                if type == "string" then
+                    .
+                elif type == "array" then
+                    map(
+                        if .type == "text" then .text
+                        elif .type == "thinking" then .thinking
+                        elif .type == "tool_use" then (.name // "")
+                        elif .type == "tool_result" then (.content // "")
+                        else empty
+                        end
+                    )
+                    | join("\n")
+                else
+                    ""
+                end;
+
+            ["time","role","model","content"],
+            (.[] | [
+                .timestamp,
+                .role,
+                .model,
+                (.content | normalize_content)
+            ])
+            | @tsv
+        '
+}
+
+___x_cmd_claude_session_cat___full___csv(){
+    ___x_cmd_claude_session_cat___full___json "$@"  \
+        | ___x_cmd jq -r '
+            def normalize_content:
+                if type == "string" then
+                    .
+                elif type == "array" then
+                    map(
+                        if .type == "text" then .text
+                        elif .type == "thinking" then .thinking
+                        elif .type == "tool_use" then (.name // "")
+                        elif .type == "tool_result" then (.content // "")
+                        else empty
+                        end
+                    )
+                    | join("\n")
+                else
+                    ""
+                end;
+
+            ["time","role","model","content"],
+            (.[] | [
+                .timestamp,
+                .role,
+                .model,
+                (.content | normalize_content)
+            ])
+            | @csv
+        '
+}
+# EndSection
+
+# Section: cat --part
+___x_cmd_claude_session_cat___part___json(){
+    local session_id="$1";  [ -n "$session_id" ] || N=claude M="Please provide the session id" log:ret:64
+
+    local session_file="$(___x_cmd_cmds find "$___X_CMD_CLAUDE_CODE_DATA_PATH" -name "${session_id}.jsonl")"
+    [ -n "$session_file" ] || N=claude M="Cannot find the history conversation file -> $session_id" log:ret:64
+
+    ___x_cmd jq -s '
+        def is_noise:
+            tostring | test("^\\s*<(local-command-caveat|command-name|local-command-stdout|bash-input|bash-output)");
+
+        map(select(.type == "user" or .type == "assistant")) |
+
+        map(
+            .message.role as $role |
+            .message.content as $raw_content |
+
+            (
+                if ($raw_content | type) == "string" then
+                    if ($raw_content | is_noise) then empty else $raw_content end
+                else
+                    $raw_content | map(
+                        select(
+                            if $role == "assistant" then
+                                # Assistant: 排除 thinking, tool_use 等，只留 text
+                                .type == "text"
+                            else
+                                (.type == "text" and (.text | is_noise | not))
+                            end
+                        )
+                    )
+                    | if length == 0 then empty else . end
+                end
+            ) as $clean_content |
+
+            select($clean_content != null) |
+            {
+                timestamp: .timestamp,
+                role: $role,
+                model: .message.model,
+                content: $clean_content
+            }
+        ) |
+
+        if length > 4 then
+            [.[0], .[1], .[-2], .[-1]]
+        else
+            .
+        end
+    ' "$session_file"
+}
+
+___x_cmd_claude_session_cat___part___tsv(){
+    ___x_cmd_claude_session_cat___part___json "$@" \
+        | ___x_cmd jq -r '
+            ["timestamp", "role", "model", "content"],
+            (.[] | [
+                .timestamp,
+                .role,
+                (.model // ""),
+                (if (.content | type) == "array" then
+                    (.content | map(.text) | join("\n"))
+                else
+                    .content
+                end)
+            ]) | @tsv
+        '
+}
+
+___x_cmd_claude_session_cat___part___csv(){
+    ___x_cmd_claude_session_cat___part___json "$@" \
+        | ___x_cmd jq -r '
+            ["timestamp", "role", "model", "content"],
+            (.[] | [
+                .timestamp,
+                .role,
+                (.model // ""),
+                (if (.content | type) == "array" then
+                    (.content | map(.text) | join("\n"))
+                else
+                    .content
+                end)
+            ]) | @csv
+        '
+}
+
+# EndSection

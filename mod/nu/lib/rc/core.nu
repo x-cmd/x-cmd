@@ -193,7 +193,7 @@ export def --env --wrapped ___x_cmd_cd [ ...args ] {
             ___x_cmd_nu_rc_xbinexp cd ($args | get 0)
         }
     } else if $arg1 =~ "[-|--][a-zA-Z]+$" {
-        ___x_cmd_nu_rc_xbinexp cd ...$param
+        ___x_cmd_nu_rc_xbinexp cd ...$args
         return
     } else {
         ___x_cmd_nu_rc_xbinexp cd $arg1

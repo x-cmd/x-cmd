@@ -1,0 +1,92 @@
+
+___x_cmd_claude_session_fz(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m claude session fz;              return 0 ;;
+        ls)             shift; ___x_cmd_claude_session_fz___ls "$@" ;    return 0 ;;
+        --fzdata)       shift; ___x_cmd_claude_session_fz___data "$@";   return 0 ;;
+    esac
+
+    ___x_cmd fzf --ensuretableversion || return $?
+    ___x_cmd_claude_session_fz___app
+}
+
+___x_cmd_claude_session_fz___ls(){
+    local scope=project
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -p|--project)   scope=project   ;;
+            -a|--all)       scope=all       ;;
+            *)              break           ;;
+        esac
+        shift
+    done
+
+    ___x_cmd_claude_session_ls --tsv --"${scope}" \
+        | ___x_cmd awk -f "$___X_CMD_ROOT_MOD/claude/lib/awk/session_fz_ls.awk"
+}
+
+___x_cmd_claude_session_fz___app(){
+    claude:info "Find session"
+    ___x_cmd_claude_session_fz___help
+    local session=; session="$( ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe claude session fz --fzdata )" || return $?
+    [ -n "$session" ] || return 0
+
+    local id=
+    ___x_cmd ui select id "NEXT"   \
+        "x claude session resume        $session"   \
+        "x claude session preview       $session"   \
+        "x claude session rm --dry-run  $session"   \
+        "x claude session rm            $session"   \
+        "return"     || return $?
+
+    case "$id" in
+        1)      ___x_cmd claude session resume          "$session" ;;
+        2)      ___x_cmd claude session preview         "$session" ;;
+        3)      ___x_cmd claude session rm --dry-run    "$session" ;;
+        4)      ___x_cmd claude session rm              "$session" ;;
+        # gen skill
+        # ....
+        *)      return 0 ;;
+    esac
+}
+
+___x_cmd_claude_session_fz___help(){
+
+    local ks="\033[0;36m"
+    local vs="\033[0;2m"
+    local nu="\033[0m"
+
+    printf "  ${ks}%-8s ${vs}%-16s"   "[ctlr-a]"       "Show all projects"
+    printf "  ${ks}%-8s ${vs}%-16s"   "[ctlr-p]"       "Show current projects"
+    printf "\n"
+    printf "  ${ks}%-8s ${vs}%-16s"   "[ctlr-r]"       "Change the preview window size"
+    printf "\n"
+    printf "  ${ks}%-20s ${vs}%s" "[ctrl-c] or [ctrl-d] or [ESC]"  "Exit"
+    printf "${nu}\n"
+}
+
+___x_cmd_claude_session_fz___data(){
+    local list_data="$(___x_cmd_claude_session_fz___ls --project)"
+    [ -n "$list_data" ] || list_data="$(___x_cmd_claude_session_fz___ls --all)"
+    printf "%s" "$list_data" \
+        | ___x_cmd_claude_session___fzf
+}
+
+___x_cmd_claude_session___fzf(){
+    FZF_DEFAULT_OPTS="
+--ansi
+--reverse
+--height='80%'
+--tiebreak=index
+--preview-window=right,40%,border
+--bind='ctrl-w:toggle-preview-wrap'
+--bind='ctrl-r:change-preview-window(down,40%,99%,border-horizontal|hidden|right,40%,border)'
+"   ___x_cmd fzf \
+        --delimiter='\t'    \
+        --with-nth=1..-2    \
+        --accept-nth -1     \
+        --freeze-left 1     \
+        --preview='___x_cmdexe claude session preview --part {-1} 2>/dev/null' \
+        --bind 'ctrl-a:reload(___x_cmdexe claude session fz ls --all)'  \
+        --bind 'ctrl-p:reload(___x_cmdexe claude session fz ls --project)'
+}

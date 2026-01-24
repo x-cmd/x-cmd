@@ -9,7 +9,7 @@ BEGIN{
     # rmarr[]: 记录需要删除的项，如 -www.google.com
     # setarr[]: 记录需要修改/添加的项，如 hub.x-cmd.com=192.168.3.1
     n=0
-    for (i = 1; i < oparr[ L ]; i++) {
+    for (i = 1; i <= oparr[ L ]; i++) {
         op = oparr[ i ]
         if (op ~ "^-"){
             rmarr[ substr(op, 2) ] = 1

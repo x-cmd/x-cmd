@@ -11,6 +11,7 @@ NR == 1 {
 }
 $1 == id {
     # Main info section
+    HAS_FOUND_ID = 1
     print c_key "ID:" c_reset "          " c_val $1 c_reset
     print c_key "Name:" c_reset "        " c_val $5 c_reset
     print c_key "Author:" c_reset "      " c_val $6 c_reset
@@ -29,6 +30,12 @@ $1 == id {
     if ($3 != "") {
         print c_key "Reference:" c_reset
         print c_val $3 c_reset
+    }
+}
+
+END{
+    if (!HAS_FOUND_ID) {
+        print c_key "ID:" c_reset "          " c_val  c_reset
     }
 }
 

@@ -1,0 +1,71 @@
+
+___x_cmd_claude_session_rm(){
+    [ $# -gt 0 ]    ||  set - --help
+
+    local mode="forced"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m claude session rm ; return 0;;
+            -f|--forced)    shift; mode="forced"      ;;
+            --dry-run)      shift; mode="dry_run"     ;;
+            *)              break ;;
+        esac
+    done
+
+    ___x_cmd_claude_session_rm___"$mode" "$@" || return $?
+}
+
+
+___x_cmd_claude_session_rm_index(){
+    local session_id="$1"; [ -n "$session_id" ] || N=claude M="Please provide the session id" log:ret:64
+
+    local index="$___X_CMD_CLAUDE_CODE_HOME_PATH/history.jsonl"
+    ___x_cmd_cmds cat "$index" > "${index}.x"
+    ___x_cmd jq -c --arg sid "$session_id" 'select(.sessionId? != $sid)' "${index}.x" > "$index" || return $?
+    ___x_cmd rmrf "${index}.x"
+}
+
+___x_cmd_claude_session_rm_data(){
+    local session_id="$1"; [ -n "$session_id" ] || N=claude M="Please provide the session id" log:ret:64
+
+    local session_path=
+    ___x_cmd_cmds find "$___X_CMD_CLAUDE_CODE_DATA_PATH" -name "*${session_id}*" | while read -r session_path; do
+        ___x_cmd rmrf "$session_path" || return $?
+    done
+}
+
+___x_cmd_claude_session_rm___forced(){
+    local session_id=
+    for session_id in "$@"; do
+        ___x_cmd_claude_session_rm_index "$session_id" \
+            || N=claude M="Failed to remove index entry for session -> $session_id" log:ret:1
+        ___x_cmd_claude_session_rm_data  "$session_id" \
+            || N=claude M="Failed to remove data files for session  -> $session_id" log:ret:1
+        claude:info "Session removed -> $session_id"
+    done
+}
+
+___x_cmd_claude_session_rm___dry_run(){
+    local index="$___X_CMD_CLAUDE_CODE_HOME_PATH/history.jsonl"
+
+    local session_id=; local f_path=; local f_size=; local is_dir=;
+    for session_id in "$@"; do
+        {
+            ___x_cmd jq -r --arg sid "$session_id" '
+                select(.sessionId == $sid) |
+                "META|\(.display)|\(.project)|\( .timestamp / 1000 | strftime("%Y.%m.%d %H:%M") )"
+            ' "$index" | ___x_cmd_cmds head -n 1
+
+            ___x_cmd_cmds find "$___X_CMD_CLAUDE_CODE_DATA_PATH" -name "*${session_id}*" | while read -r f_path; do
+                if [ -e "$f_path" ]; then
+                    f_size="$( ___x_cmd_cmds du -sh -- "$f_path" | awk '{print $1}' )"
+                    [ -d "$f_path" ] && is_dir="1" || is_dir="0"
+                    printf "FILE|$f_path|$f_size|$is_dir\n"
+                fi
+            done
+        } | ___x_cmd awk -v sid="$session_id" -f "$___X_CMD_ROOT_MOD/claude/lib/awk/session_rm.awk"
+    done
+
+    printf "\n"
+    claude:info "Run without --dry-run to execute."
+}
