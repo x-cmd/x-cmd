@@ -1,0 +1,143 @@
+# shellcheck shell=dash
+
+___x_cmd_claude_create(){
+    local all="";
+    local plugin_chrome=""
+    local plugin_serena=""
+    local plugin_openspec=""
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --chrome)       shift; plugin_chrome=1 ;;
+            --serena)       shift; plugin_serena=1 ;;
+            --openspec)     shift; plugin_openspec=1 ;;
+            --cloudfare)    shift; plugin_cloudfare=1 ;;
+
+            --firecrawl)    shift; plugin_firecrawl=1 ;;
+            --supabase)     shift; plugin_supabase=1 ;;
+            --clickhouse)   shift; plugin_clickhouse=1 ;;
+            --vercel)       shift; plugin_vercel=1 ;;
+            --railway)      shift; plugin_railway=1 ;;
+
+            -a|--all)       shift; all=1 ;;
+            -h|--help)      ___x_cmd help -m claude create; return ;;
+            *)              ___x_cmd help -m claude create; return 64 ;;
+        esac
+    done
+
+    if [ -n "$all" ]; then
+        plugin_chrome=1
+        plugin_serena=1
+        plugin_openspec=1
+    fi
+
+    ___x_cmd_claude_create___mcp
+    ___x_cmd_claude_create___hook
+    ___x_cmd_claude_create___skill
+
+    [ -z "$plugin_chrome" ]     || ___x_cmd_claude_create___chrome
+    [ -z "$plugin_serena" ]     || ___x_cmd_claude_create___serena
+    [ -z "$plugin_openspec" ]   || ___x_cmd_claude_create___openspec
+    [ -z "$plugin_cloudfare" ]  || ___x_cmd_claude_create___cloudfare
+}
+
+___x_cmd_claude_create___skill(){
+    claude:info "Setupping default skills ..."
+    ___x_cmd claude skill add \
+        anthropics/frontend-design  \
+        anthropics/skill-creator    #\
+        # continuous-learning-v2   \
+        # strategic-compact
+
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; then
+        if ___x_cmd claude skill suggest --fit; then
+            ___x_cmd ui yesno "Whether to generate suggestions skills ?" || return 0
+            ___x_cmd claude skill suggest
+        fi
+    fi
+}
+
+___x_cmd_claude_create___mcp(){
+    # --scope local/project/user
+    claude:info "Setupping default mcp ..."
+
+    local x_=""; ___x_cmd gh --cfg get_ token 2>/dev/null || true
+    if [ -n "$x_" ]; then
+        claude:info --desc "GitHub operations - PRs, issues, repos" "Adding [MCP=server-github]"
+        ___x_cmd claude -- mcp add github \
+            -e GITHUB_PERSONAL_ACCESS_TOKEN="$( ___x_cmd gh --cfg get token )" \
+            -- npx -y @modelcontextprotocol/server-github
+    fi
+
+    claude:info --desc "Filesystem operations (set your path)" "Adding [MCP=server-filesystem]"
+    ___x_cmd claude -- mcp add filesystem \
+        -- npx -y @modelcontextprotocol/server-filesystem "$PWD"
+
+    claude:info --desc "Persistent memory across sessions" "Adding [MCP=server-memory]"
+    ___x_cmd claude -- mcp add memory \
+        -- npx -y @modelcontextprotocol/server-memory
+
+    claude:info --desc "Chain-of-thought reasoning" "Adding [MCP=sequential-thinking]"
+    ___x_cmd claude -- mcp add sequential-thinking \
+        -- npx -y @modelcontextprotocol/server-sequential-thinking
+
+    # claude:info --desc "Live documentation lookup" "Adding [MCP=context7]"
+    # ___x_cmd claude -- mcp add context7 \
+    #     -- npx -y @upstash/context7-mcp --api-key YOUR_API_KEY
+
+    # claude:info --desc "Magic UI components" "Adding [MCP=magicuidesign/mcp@latest]"
+    # ___x_cmd claude -- mcp add magic \
+    #     -- npx -y @magicuidesign/mcp@latest
+
+}
+
+___x_cmd_claude_create___hook(){
+    claude:info "Setupping default hooks ..."
+    :
+}
+
+___x_cmd_claude_create___chrome(){
+    ___x_cmd_hascmd npx || {
+        claude:info "npx command not found, installing nodejs ..."
+        ___x_cmd env use node || return $?
+    }
+
+    ___x_cmd claude -- mcp add chrome-devtools -- npx -y chrome-devtools-mcp@latest
+}
+
+___x_cmd_claude_create___serena(){
+    ___x_cmd_hascmd uvx || {
+        claude:info "uvx command not found, installing uv ..."
+        ___x_cmd env use uv || return $?
+    }
+
+    ___x_cmd claude -- mcp add serena -- uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project "$PWD"
+}
+
+___x_cmd_claude_create___openspec(){
+    claude:info "Setupping OpenSpec tool"
+    ___x_cmd openspec init --tools claude
+}
+
+___x_cmd_claude_create___cloudfare(){
+    claude:info "Setupping Cloudfare MCP"
+
+    claude:info --desc "Cloudflare documentation search" "Adding [MCP=cloudflare-docs]"
+    ___x_cmd claude -- mcp add-json cloudflare-docs \
+        '{ "type": "http", "url": "https://docs.mcp.cloudflare.com/mcp" }'
+
+    claude:info --desc "Cloudflare Workers builds" "Adding [MCP=cloudflare-workers-builds]"
+    ___x_cmd claude -- mcp add-json cloudflare-workers-builds \
+        '{ "type": "http", "url": "https://builds.mcp.cloudflare.com/mcp" }'
+
+    claude:info --desc "Cloudflare Workers bindings" "Adding [MCP=cloudflare-workers-bindings]"
+    ___x_cmd claude -- mcp add-json cloudflare-workers-bindings \
+        '{ "type": "http", "url": "https://bindings.mcp.cloudflare.com/mcp" }'
+
+    claude:info --desc "Cloudflare observability/logs" "Adding [MCP=cloudflare-observability]"
+    ___x_cmd claude -- mcp add-json cloudflare-observability \
+        '{ "type": "http", "url": "https://observability.mcp.cloudflare.com/mcp" }'
+
+
+    # more 11?
+}

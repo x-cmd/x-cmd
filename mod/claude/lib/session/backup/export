@@ -10,7 +10,7 @@
 # level4: session --> .x-cmd.session.meta.yml -> repo-url:
 
 # level1:       two files
-# onefile:      .x-cmd.sesssion.meta.yml -> protocol: claude-v0. repo-url: original-folder-path:
+# onefile:      .x-cmd.session.meta.yml -> protocol: claude-v0. repo-url: original-folder-path:
 # secondfile:   data
 
 # x-cmd-datastore-session/claude/XXXXXXX/<a lot of session history>
@@ -20,34 +20,110 @@
 # x claude session export
 
 ___x_cmd_claude_session_export(){
-    [ $# -gt 0 ]    ||      set -- "$PWD"
+    [ $# -gt 0 ]    ||      set -- --project "$PWD"
 
-    # local session=""
-    local project="$PWD"
+    local project=""
     local output=""
 
-    # local all=""
-
-    local op="$1";          shift
     while [ $# -gt 0 ]; do
         case "$1" in
+            -h|--help)      ___x_cmd help -m claude session export "$@"; return 0;;
             -p|--project)   project="$2";   N=claude M="Please provide argument after $1" arg:2:shift ;;
-
-            # -s|--session)   session="$2";   N=claude M="Please provide argument after $1" arg:2:shift ;;
-
             -o|--output)    output="$2";    N=claude M="Please provide argument after $1" arg:2:shift ;;
-
-            # --all)        all=1;  shift ;;
             *)              break ;;
         esac
     done
 
-    # create a .x-cmd.metadata.yml -> repo: github.com:xxx/xxx
+    local x_=
+    # git remote get-url origin: There is a risk of embedded token/username-password information leakage.
+    local git_url="$(___x_cmd git rev-parse --show-toplevel 2>/dev/null)"
+    [ -n "$git_url" ] || git_url=null
+    local timestamp="$(___x_cmd date timestamp)"
+
+    [ -n "$project" ] || project="$PWD"
+    [ -d "$project" ] || N=claude M="Directory not found -> $project" log:ret:1
+
+    project="$(___x_cmd abspath "$project")"
+    ___x_cmd_claude_session___pathconver_ "$project" || return $?
+    local project_name="$x_"
+    local data_path="$___X_CMD_CLAUDE_CODE_DATA_PATH/$project_name"
+    local tmp="$___X_CMD_CLAUDE_TMP_PATH/${project_name}.${timestamp}"
+
+    local dest=
+    case "$output" in
+        -)  dest="hub"
+            ___x_cmd_claude_session_export___defaultname_ "$project" "$git_url" "$timestamp"
+            output="$tmp/$x_" ;;
+        "") dest="local"
+            ___x_cmd_claude_session_export___defaultname_ "$project" "$git_url" "$timestamp"
+            output="$PWD/$x_" ;;
+        *)  dest="local"      ;;
+    esac
+
+    claude:info "Exporting session data from project: $project"
+    [ -d "$data_path" ] || N=claude M="No session data found for project -> $project" log:ret:1
+    ___x_cmd mkdirp "$tmp/x-cmd-datastore-session/claude"
+    (
+        ___x_cmd cd "$tmp"
+        claude:debug "Filtering history for project: $project"
+        ___x_cmd jq -c --arg project "$project" 'select(.project == $project)' "$___X_CMD_CLAUDE_CODE_HOME_PATH/history.jsonl" > "$tmp/x-cmd-datastore-session/claude/history.jsonl"
+
+        claude:debug "Copying session data from: $data_path"
+        ___x_cmd cp -r "$data_path"/* "$tmp/x-cmd-datastore-session/claude/"
+        ___x_cmd_claude_session_export___create_meta_ "$project" "$git_url" > "$tmp/x-cmd-datastore-session/claude/.x-cmd.session.meta.yml"
+
+        claude:debug "Creating archive: $output"
+        ___x_cmd z "$output" "x-cmd-datastore-session" || return $?
+
+        if [ "$dest" = "hub" ]; then
+            ___x_cmd_claude_session_export___upload_hub "$output"
+        fi
+    ) || {
+        ___x_cmd rmrf "$tmp" "$output"
+        return 1
+    }
+
+    ___x_cmd rmrf "$tmp"
+    claude:info "Session data exported to: $output"
+}
+
+___x_cmd_claude_session_export___create_meta_(){
+    local project="$1"
+    local git_url="$2"
+
+    local releasetag=; ___x_cmd_readr releasetag < "$___X_CMD_ROOT_MOD/version/lib/data/releasetag"
+    {
+        printf "x-cmd: %s\n"            "$releasetag"
+        printf "protocol: %s\n"         "claude-v0"
+        printf "repo: %s\n"             "$git_url"
+        printf "original-folder: %s\n"  "$project"
+    }
+}
+
+___x_cmd_claude_session_export___upload_hub(){
+    local file="$1"
+    ___x_cmd hub file upload -f "$file"
 }
 
 # backup ...
-___x_cmd_claude_session_defaultname(){
-    # default name is   github_com_repo_name.<timestamp>.tar.gz
-
+___x_cmd_claude_session_export___defaultname_(){
+    # default name is github_com_repo_name.<timestamp>.tar.gz
     # show your command to import ...
+    local project="$1"
+    local git_url="$2"
+    local timestamp="$3"
+
+    if [ "$git_url" = "null" ]; then
+        x_="${project##*/}"
+    else
+        x_="${git_url#git@*}"
+        x_="${x_//[^[:alnum:]]/-}"
+    fi
+
+    x_="$x_.${timestamp}.tar.gz"
+}
+
+___x_cmd_claude_session___pathconver_(){
+    [ -n "$1" ] || return 1
+    x_="${1//[^[:alnum:]]/-}"
 }

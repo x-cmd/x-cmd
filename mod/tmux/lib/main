@@ -1,0 +1,92 @@
+# shellcheck shell=dash
+
+___x_cmd log init tmux
+
+xrc:mod:lib tmux load quickenter plan/_index
+
+___x_cmd_tmux___main(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m tmux       "$@"; return  ;;
+        --setup|--clear)
+                        ___x_cmd_tmux___"${op#--}"  "$@"        ;;
+
+        "")             ___x_cmd_tmux_load                      ;;
+        load)           ___x_cmd_tmux_load "$@"                 ;;
+        :*)             ___x_cmd_tmux_quickenter "${op#:}"      ;;
+
+        --|--runmain)   ___x_cmd___tmux_origin      "$@"        ;;
+        --man)          ___x_cmd___tmux_man         "$@"        ;;
+
+        *)
+                        local x_
+                        ___x_cmd_tmux___abbr_ "$@"
+                        if ___x_cmd_tmux___abbr_ "$op"; then
+                            ___x_cmd___tmux_origin "$x_" "$@"
+                        elif [ -f "$op" ]; then
+                            ___x_cmd_tmux_load "$@"
+                        else
+                            ___x_cmd___tmux_origin "$op" "$@"
+                        fi
+    esac
+}
+
+___x_cmd___tmux_origin(){
+    if ___x_cmd_hascmd tmux; then
+        ___X_CMD_TMUX_BIN="$___X_CMD_TMUX_BIN" command tmux "$@"
+    else
+        x:debug "Tmux Command Not Found. Using tmux with pkg xbin."
+
+        ___x_cmd pkg xbin init tmux ___x_cmd___tmux_origin ___X_CMD_TMUX_BIN || return 1
+        ___x_cmd___tmux_origin "$@"
+    fi
+}
+
+___x_cmd_tmux___abbr_(){
+    case "$1" in
+        msg)                    x_=display-message  ;;
+        pop)                    x_=display-popup    ;;
+        src)                    x_=source-file      ;;
+        # menu)                   x_=display-menu "$@"          ;;
+        prompt)                 x_=command-prompt   ;;
+        confirm)                x_=confirm-before   ;;
+
+        *)                      return 1
+    esac
+}
+
+# deprecated
+___x_cmd_tmux___init(){
+    [ -z "$___X_CMD_TMUX____INIT" ] || return 0
+    ___x_cmd_tmux___setup
+    ___X_CMD_TMUX____INIT=1
+}
+
+___x_cmd_tmux___setup(){
+    local fp="$___X_CMD_ROOT_DATA/tmux/config"
+    ___x_cmd mkdirp "$fp"
+
+    fp="$fp/x-cmd.tmux.conf"
+    [ -f "$fp" ] || ___x_cmd_cmds cp "$___X_CMD_ROOT_MOD/tmux/lib/config/x-cmd.tmux.conf" "$fp"
+
+    local data="source-file '$fp'   # boot up x-cmd"
+
+    [ -f "$HOME/.tmux.conf" ]   ||  printf "" >"$HOME/.tmux.conf"
+
+    ___x_cmd boot initrcfile1 "$data" "$HOME/.tmux.conf"
+    tmux:info "x-cmd's tmux config is activated in $fp"
+}
+
+___x_cmd_tmux___clear(){
+    local fp="$HOME/.tmux.conf"
+
+    [ -f "$fp" ] || return 0
+    tmux:info "Clearing startup x-cmd in $fp"
+
+    local x_
+    ___x_cmd rat_ "$fp" || break
+    printf "%s" "$x_" | command grep -v 'boot up x-cmd' > "$fp"
+}
+

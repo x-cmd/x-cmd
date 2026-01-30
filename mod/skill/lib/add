@@ -15,8 +15,38 @@ ___x_cmd_skill_add(){
 
     local i=;
     for i in "$@"; do
-        ___x_cmd_skill_add___unit "$i" "$dir" || return $?
+        case "$i" in
+            mcp/*)  ___x_cmd_skill_add___mcp "$i" "$dir" || return $?              ;;
+            *)      ___x_cmd_skill_add___unit "$i" "$dir" || return $?      ;;
+        esac
     done
+}
+
+___x_cmd_skill_add___mcp(){
+    local mcpid="$1"
+    local name="${mcpid#mcp/*}"
+
+    local config="$(___x_cmd jq -c --arg name "$name" '.[$name]? | (.stdio // .http)' "$___X_CMD_SKILL_FULL_MCP_FILE" )"
+    [ "$config" != 'null' ] || {
+            skill:error "Not found MCP[$mcpid]"
+            return 1
+    }
+
+    local IFS=; local id=; local reference=; local desc=
+    while IFS=$'\t' read -r id _ reference _ _ _ _ desc; do
+        if [ "$id" = "$mcpid" ]; then
+            skill:info --reference "$reference" --description "$desc" "Loading MCP configuration."
+            break
+        fi
+    done < "$___X_CMD_SKILL_FULL_INDEX_FILE"
+
+    case "$dir" in
+        *.claude/*)
+                        ___x_cmd claude mcp add-json "$name" "${config}" >/dev/null || return $?
+                        skill:info "Successfully added MCP[$mcpid]"                     ;;
+        *.gemini/*)     N=skill M="Temporarily not supported -> gemini-cli" log:ret:64  ;;
+        *.codex/*)      N=skill M="Temporarily not supported -> codex"      log:ret:64  ;;
+    esac
 }
 
 ___x_cmd_skill_add___unit(){

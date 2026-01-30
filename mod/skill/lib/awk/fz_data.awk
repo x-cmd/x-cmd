@@ -35,7 +35,7 @@ function prepare_fmt( pop_fmt,     fmt ){
     license = $4
     name    = $5
     author  = $6
-    description = $7
+    description = $8
 
     # Determine formatting based on author/usage patterns
     _fmt = fmt_cool

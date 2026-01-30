@@ -20,7 +20,7 @@ $1 == id {
 
     # Description section
     print c_key "Description:" c_reset
-    print c_val wrap_text($7, 70) c_reset
+    print c_val wrap_text($8, 70) c_reset
     print ""
 
     # URLs section

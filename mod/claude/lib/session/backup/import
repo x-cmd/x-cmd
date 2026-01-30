@@ -4,45 +4,97 @@
 # x claude session import -p . XXX.tar.gz
 
 ___x_cmd_claude_session_import(){
-    [ $# -gt 0 ]    ||      set -- "$PWD"
+    [ $# -gt 0 ]    ||      set -- --help
 
-    # local session=""
-    local folder="$PWD"
     local project=""
     local input=""
 
-    local op="$1";          shift
     while [ $# -gt 0 ]; do
         case "$1" in
+            -h|--help)      ___x_cmd help -m claude session import "$@"; return 0;;
             -p|--project)   project="$2";   N=claude M="Please provide argument after $1" arg:2:shift ;;
-
-            # TODO:
-            # -s|--session)   session="$2";   N=claude M="Please provide argument after $1" arg:2:shift ;;
-
-            -i|--input)     output="$2";    N=claude M="Please provide argument after $1" arg:2:shift ;;
+            -i|--input)     input="$2";     N=claude M="Please provide argument after $1" arg:2:shift ;;
 
             # rewrite all of the folder information in the file ...
             # --rewrite)      ;;
-
             *)              break ;;
         esac
     done
 
-    [ -z "$project" ]       ||  ___x_cmd_claude_session_pickupsession "$1" ;;
+    [ -n "$input" ]     || input="$1"
+    [ -f "$input" ]     || N=claude M="Please provide valid backup filepath -> $input" log:ret:1
+    [ -n "$project" ]   || project="$PWD"
 
-    local input="$1";       [ -f "$input" ]  ||  N=claude M="Please provide valid backup filepath -> $input"
+    claude:info "Importing session data to project: $project"
 
-    # unzip
-    # move the relative folder ...
-    # rewrite if necessary ...
+    project="$(___x_cmd abspath "$project")"
+    ___x_cmd_claude_session___pathconver_ "$project" || return $?
+    local project_name="$x_"
 
+    local timestamp="$(___x_cmd date timestamp)"
+    local target="$___X_CMD_CLAUDE_CODE_DATA_PATH/$project_name"
+    local tmp="$___X_CMD_CLAUDE_TMP_PATH/${project_name}.${timestamp}"
+
+    ___x_cmd mkdirp "$tmp"
+    ( ___x_cmd_cmds_cd "$tmp" && ___X_CMD_ZUZ_QUIET=1 ___x_cmd uz "$input") || {
+        claude:error "Deflation $input failure."
+        ___x_cmd rmrf "$tmp"
+        return 1
+    }
+
+    local backup_data="$tmp/x-cmd-datastore-session/claude"
+    [ -d "$backup_data" ] && [ -f "$backup_data/.x-cmd.session.meta.yml" ] ||  N=claude M="Invalid backup format -> $input" log:ret:1
+
+    ___x_cmd mkdirp "$target"
+    ___x_cmd rmrf "$backup_data/.x-cmd.session.meta.yml"
+
+    claude:debug "Merging sessions-index.json"
+    ___x_cmd_claude_session_import___merge_sessions_ "$backup_data" "$project" "$target"
+
+    claude:debug "Merging history.jsonl"
+    ___x_cmd_claude_session_import___merge_history_ "$backup_data" "$project"
+
+    claude:debug "Copying session data to: $target"
+    ___x_cmd cp -r "$backup_data"/* "$target/"
+
+    ___x_cmd rmrf "$tmp"
+    claude:info "Session data imported successfully to project: $project"
 }
 
-___x_cmd_claude_session_pickupsession(){
-    :
-    # use the first project name ...
+___x_cmd_claude_session_import___merge_sessions_(){
+    local backup_data="$1"
+    local project="$2"
+    local target="$3"
 
-    # TODO: support all projects ...
+    [ -f "$backup_data/sessions-index.json" ] || return 0
+
+    ___x_cmd jq --arg project "$project" --arg target "$target" '
+        .originalPath = $project
+        | .entries |= map( .projectPath = $project | .fullPath = ($target + "/" + .sessionId + ".jsonl") )
+    ' "$backup_data/sessions-index.json" > "$backup_data/sessions-index.json.tmp"
+
+    if [ -f "$target/sessions-index.json" ] && [ -s "$target/sessions-index.json" ]; then
+        ___x_cmd jq -s '
+            .[0] | .entries = (
+                (.[0].entries + .[1].entries) | group_by(.sessionId) | map(.[-1])
+            )
+        ' "$backup_data/sessions-index.json.tmp" "$target/sessions-index.json" > "$backup_data/sessions-index.json"
+        ___x_cmd rmrf "$backup_data/sessions-index.json.tmp"
+    else
+        ___x_cmd mv "$backup_data/sessions-index.json.tmp" "$backup_data/sessions-index.json"
+    fi
+    ___x_cmd mv "$backup_data/sessions-index.json" "$target/sessions-index.json"
 }
 
+___x_cmd_claude_session_import___merge_history_(){
+    local backup_data="$1"
+    local project="$2"
+
+    [ -f "$backup_data/history.jsonl" ] || return 0
+
+    local target="$___X_CMD_CLAUDE_CODE_HOME_PATH/history.jsonl"
+    ___x_cmd jq --arg project "$project" -n -c 'reduce inputs as $item ({}; .[$item.sessionId] = $item) | .[] | .project = $project' \
+        "$backup_data/history.jsonl" >> "$target"
+    ___x_cmd rmrf "$backup_data/history.jsonl"
+}
 
