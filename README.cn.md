@@ -353,8 +353,8 @@ CLI 工具的世界浩瀚无垠且瞬息万变。x-cmd 就像一位酷炫的向�
 <td width="500px">
 <p align="center">
 <br>
-<a href="https://www.howtogeek.com"><kbd><img alt="How-To Geek's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-howtogeek.webp"></kbd></a><br>
-<a href="https://www.howtogeek.com">How-To Geek</a>
+<a href="https://www.howtogeek.com/i-tried-x-cmd-the-no-sudo-toolbox-that-installs-and-enhances-cli-tools-on-demand"><kbd><img alt="How-To Geek's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-howtogeek.webp"></kbd></a><br>
+<a href="https://www.howtogeek.com/i-tried-x-cmd-the-no-sudo-toolbox-that-installs-and-enhances-cli-tools-on-demand">How-To Geek</a>
 <br>
 </p>
 <samp>
