@@ -171,7 +171,7 @@ ___x_cmd_gram_tarrm___whileremove(){
             *)
                 printf "%s\n" "- W|[gram] We are going to tar and remove -> $target" >&2
 
-                tarfp="$HOME/.x-cmd.gram/$$.$RANDOM.${tarfp##*/}.tar"
+                tarfp="$HOME/.x-cmd.gram/$$.$RANDOM.${target##*/}.tar"
 
                 command rm -f "$tarfp"
                 command tar cvf "$tarfp" "${target}"
