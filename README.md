@@ -341,6 +341,26 @@ This tool is ideal for developers, engineers and CLI power users who want a unif
 <td width="500px">
 <p align="center">
 <br>
+<a href="https://www.howtogeek.com"><kbd><img alt="How-To Geek's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-howtogeek.webp"></kbd></a><br>
+<a href="https://www.howtogeek.com">How-To Geek</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Leading Technology Explainer</li>
+<li>Online Consumer Electronics Guide</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+x-cmd describes itself in many ways, but at its core, it's portable, convenient, and hassle-free. In keeping with that spirit, you can deploy it to any system with a simple curl command.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
 <a href="https://minimaldevops.com/x-cmd-the-swiss-army-knife-of-the-cli-08ade4eea048"><kbd><img alt="Minimal Devops's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-minimaldev.webp"></kbd></a><br>
 <a href="https://minimaldevops.com/x-cmd-the-swiss-army-knife-of-the-cli-08ade4eea048">Minimal Devops</a>
 <br>
@@ -606,6 +626,25 @@ What X-CMD really saves is my brainpower. All the aliases and single-use scripts
 <td width="500px">
 <p align="center">
 <br>
+<a href="https://github.com/ilyydy"><kbd><img alt="Chi Zhang's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-zhangchi.webp"></kbd></a><br>
+<a href="https://github.com/ilyydy">Chi Zhang</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Senior Node.js Developer</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+I often need to switch between about ten machine terminals for work. Syncing script configurations and unifying tool installations has always been a headache. Thanks to x-cmd, it provides a simple and fast solution to achieve consistency across multiple terminals at a very low cost. Life is precious, I use x-cmd.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
 <a href="https://space.bilibili.com/259649365"><kbd><img alt="CoderWanFeng's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-wanfeng.webp"></kbd></a><br>
 <a href="https://space.bilibili.com/259649365">CoderWanFeng</a>
 <br>
@@ -659,6 +698,201 @@ X-CMD is a well-designed, cross-platform, and beginner-friendly modular CLI tool
 </td>
 <td width="500px">
 Want your AI to level up from simple conversations to real engineering power?<br>X-CMD is the secret weapon—it takes care of all the hard system operations.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://infmax.top"><kbd><img alt="Zhongnan Huluwa's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-huluwa.webp"></kbd></a><br>
+<a href="https://infmax.top">Zhongnan Huluwa</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>UCAS-ICT</li>
+<li>Senior Internet Engineer</li>
+<li>Author of iTrending.top</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+I was immediately drawn to x-cmd the first time I saw it. It strikes a rare balance between efficiency and aesthetics, significantly simplifying and standardizing the deployment of terminal tools.<br>In the age of AI, x-cmd feels more alive than ever. As a terminal enthusiast, I sincerely hope x-cmd continues to grow stronger.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://x.com/ssslvky"><kbd><img alt="EricWang's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-ericwang.webp"></kbd></a><br>
+<a href="https://x.com/ssslvky">EricWang</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>MemoV Founder</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+Agents are only as capable as their shell.<br>X-CMD gives you a lightweight, instantly deployable shell interface—so your agents can act fast, automate deeper, and ship real work.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://talent.meetchances.com/jobs?_fr=xcmd"><kbd><img alt="MeetChances's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-meetchances.webp"></kbd></a><br>
+<a href="https://talent.meetchances.com/jobs?_fr=xcmd">MeetChances</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>meetchances.com</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+With the rise of AI Coding, the wheel of technology is turning back to the terminal once again.<br>X-CMD helps experts on the QianShi platform efficiently resolve environment configuration and toolchain issues,<br>significantly improving development and delivery efficiency.<br>Highly recommended for industry professionals — the earlier you adopt X-CMD, the earlier you get off work.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://huaping-fiberglass.com/"><kbd><img alt="Huaping Fiberglass's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-huaping.webp"></kbd></a><br>
+<a href="https://huaping-fiberglass.com/">Huaping Fiberglass</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>huaping-fiberglass.com</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+Sincerely thank the X-CMD team for their guidance! Our operations team has taken the lead in adopting x-cmd and x-cmd hub in internal testing, successfully achieving the sharing of prompts and scripts. We are particularly excited about the immense potential of integrating AI Agents and Skills into our CI/CD and daily workflows. In the AI era, the importance of such capabilities is self-evident, bringing unlimited associations and possibilities. We wish X-CMD great success in the AI era!
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://github.com/Nick2bad4u"><kbd><img alt="Nick Young's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-young.webp"></kbd></a><br>
+<a href="https://github.com/Nick2bad4u">Nick Young</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Senior Systems/Network Engineer at TDS Consulting</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+I used to sync portable apps via Dropbox across multiple PCs. Now, x-cmd has completely replaced that workflow—it’s essentially a massive toolbox containing almost every app I need. It’s significantly quicker and easier than manual setup.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://mk16.de/"><kbd><img alt="Marek Küthe's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-marek22k.webp"></kbd></a><br>
+<a href="https://mk16.de/">Marek Küthe</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Open Source Enthusiast</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+My personal highlight of x-cmd is, on the one hand, the excellent documentation, which includes examples as well as a reference guide for use. On the other hand, it's also the visual presentation.<br>Furthermore, it doesn't "pressure" you and gives you a lot of freedom.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://github.com/DerickIT"><kbd><img alt="Derick's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-derick.webp"></kbd></a><br>
+<a href="https://github.com/DerickIT">Derick</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Head of Technology at Polyflow</li>
+<li>Blockchain Expert</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+The measure of a great tool lies in its ability to maximize efficiency, and x-cmd is no exception. Tailored for developers, it provides an immersive, efficient, and consistent command-line interface experience through minimalist commands. One command in hand, unlocking infinite possibilities.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://note-of-me.top/"><kbd><img alt="Cierra Runis's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-cierrarunis.webp"></kbd></a><br>
+<a href="https://note-of-me.top/">Cierra Runis</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Open Source Enthusiast</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+x-cmd encapsulates common system and network operations into safer, user-friendly commands. Its interactive design lowers the barrier to using and memorizing CLI tools, while its Shell-based implementation eliminates the need for extra runtimes or dependency management—ensuring a pragmatic, reliable, and "out-of-the-box" experience.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<kbd><img alt="Wu Haomian's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-wuhaomian.webp"></kbd><br>
+<b>Wu Haomian</b>
+<br>
+</p>
+<samp>
+<ul>
+<li>Outstanding Physics Teacher</li>
+<li>EdTech Innovator</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+Physics explores the universe; x-cmd masters digital logic. Its intuitive design and AI integration make terminal usage effortless for educators. A perfect tool for non-CS majors to boost efficiency in teaching and research.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://hjj.huaping-fiberglass.com/"><kbd><img alt="Jacky Ho's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-hejiajie.webp"></kbd></a><br>
+<a href="https://hjj.huaping-fiberglass.com/">Jacky Ho</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Sales Director of FRP Products</li>
+<li>Hardware Geek</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+As the head of sales and operations, my core responsibility is to ensure that the value of our technology is accurately and reliably communicated to our customers. x-cmd has become a crucial link for efficient collaboration between me and the operations team. Through the x-cmd hub, we share standardized query and diagnostic scripts, allowing me to understand the system status immediately, communicate with the technical team using accurate data, and even provide clear technical support plans directly to customers. It has unified the "technical language" across departments, greatly improving the efficiency of internal collaboration from problem discovery to solution delivery.
 </td>
 </tr>
 

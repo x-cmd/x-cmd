@@ -353,6 +353,26 @@ CLI 工具的世界浩瀚无垠且瞬息万变。x-cmd 就像一位酷炫的向�
 <td width="500px">
 <p align="center">
 <br>
+<a href="https://www.howtogeek.com"><kbd><img alt="How-To Geek's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-howtogeek.webp"></kbd></a><br>
+<a href="https://www.howtogeek.com">How-To Geek</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>领先的技术解惑媒体</li>
+<li>在线消费电子产品指南</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+x-cmd 有许多种自我描述方式，但其核心在于便携、方便且无忧。秉承这种精神，你只需通过一个简单的 curl 命令即可将其部署到任何系统上。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
 <a href="https://minimaldevops.com/x-cmd-the-swiss-army-knife-of-the-cli-08ade4eea048"><kbd><img alt="Minimal Devops's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-minimaldev.webp"></kbd></a><br>
 <a href="https://minimaldevops.com/x-cmd-the-swiss-army-knife-of-the-cli-08ade4eea048">Minimal Devops</a>
 <br>
@@ -618,6 +638,25 @@ X-CMD 是一款强大的终端美化和功能增强工具，它通过模块化�
 <td width="500px">
 <p align="center">
 <br>
+<a href="https://github.com/ilyydy"><kbd><img alt="张翅's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-zhangchi.webp"></kbd></a><br>
+<a href="https://github.com/ilyydy">张翅</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Node.js 高级开发工程师</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+日常需要在企业内约十台机器终端来回切换工作，如何同步脚步配置和统一安装工具是让我头痛的问题。感谢X-CMD，提供了简便快捷的方案，以极低的成本实现多处终端一致。人生宝贵，我用X-CMD。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
 <a href="https://space.bilibili.com/259649365"><kbd><img alt="程序员晚枫's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-wanfeng.webp"></kbd></a><br>
 <a href="https://space.bilibili.com/259649365">程序员晚枫</a>
 <br>
@@ -671,6 +710,201 @@ X-CMD是一个设计严谨、支持平台广、新手友好的模块化命令行
 </td>
 <td width="500px">
 想让你的 AI 从‘只会聊天’变成‘真能干活’的工程师？<br>用 X-CMD 就对了，它把最难搞的系统操作全包圆了。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://infmax.top"><kbd><img alt="终南山葫芦娃's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-huluwa.webp"></kbd></a><br>
+<a href="https://infmax.top">终南山葫芦娃</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>UCAS-ICT</li>
+<li>互联网高级工程师</li>
+<li>iTrending.top 作者</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+第一次接触 x-cmd 就被它深深吸引：它真正做到了效率与美感并存，大幅简化并规范了终端工具的部署流程。<br>在 AI 时代，x-cmd 更是焕发出新的生命力。作为一名终端爱好者，衷心希望 x-cmd 越来越强大。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://x.com/ssslvky"><kbd><img alt="王子伯炎's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-ericwang.webp"></kbd></a><br>
+<a href="https://x.com/ssslvky">王子伯炎</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>MemoV 创始人</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+agent 时代最需要的 shell expert！超小体积可以最快分发的 shell-use，同时可以让你的 agent 以最快的速度完成任务。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://talent.meetchances.com/jobs?_fr=xcmd"><kbd><img alt="一面千识's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-meetchances.webp"></kbd></a><br>
+<a href="https://talent.meetchances.com/jobs?_fr=xcmd">一面千识</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>meetchances.com</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+随着 AI Coding 的兴起，时代的齿轮再次回到 Terminal。<br>X-CMD 帮助一面千识平台上的专家们高效解决环境配置与工具链问题，大幅提升研发与交付效率。<br>强烈推荐给各位行业专家——早用上 X-CMD，早下班。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://huaping-fiberglass.com/"><kbd><img alt="Huaping Fiberglass's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-huaping.webp"></kbd></a><br>
+<a href="https://huaping-fiberglass.com/">Huaping Fiberglass</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>huaping-fiberglass.com</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+衷心感谢 X-CMD 团队的指导！我们运维团队已率先在内部测试中采用 x-cmd 和 x-cmd hub，成功实现了 prompt 和脚本的共享。我们尤其期待其在 CI/CD 和日常工作流中整合 AI Agent 和 Skill 的巨大潜力。 在 AI 时代，这种能力的重要性不言而喻，它将带来无限的联想和可能。祝愿 X-CMD 能够在 AI 时代大放异彩！
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://github.com/Nick2bad4u"><kbd><img alt="Nick Young's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-young.webp"></kbd></a><br>
+<a href="https://github.com/Nick2bad4u">Nick Young</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>TDS Consulting 资深系统/网络工程师</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+我曾习惯用 Dropbox 同步便携版工具以切换不同电脑。现在，x-cmd 完全取代了这个方案——它本质上是一个巨大的工具箱，涵盖了我几乎所有的应用需求。相比手动配置，使用 x-cmd 显然更快速、更便捷。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://mk16.de/"><kbd><img alt="Marek Küthe's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-marek22k.webp"></kbd></a><br>
+<a href="https://mk16.de/">Marek Küthe</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>开源爱好者</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+我对 x-cmd 印象最深的一点，一方面是它出色的文档，其中既包含了使用示例，也有详细的参考指南；另一方面则是它优秀的视觉呈现。<br>此外，它不会给人带来“强迫感”，而是给予了用户极大的自由度。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://github.com/DerickIT"><kbd><img alt="Derick's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-derick.webp"></kbd></a><br>
+<a href="https://github.com/DerickIT">Derick</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Polyflow 技术负责人</li>
+<li>区块链专家</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+衡量一个优秀工具的标准在于其能否最大限度地提升效率，x-cmd 也不例外。它为开发者量身定制，通过极简的命令，提供了沉浸式、高效且一致的命令行界面体验。一令在手，开启无限可能。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://note-of-me.top/"><kbd><img alt="Cierra Runis's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-cierrarunis.webp"></kbd></a><br>
+<a href="https://note-of-me.top/">Cierra Runis</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>开源爱好者</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+x-cmd 将常见的系统与网络操作封装为更安全、易用的命令，并通过交互式设计降低了命令行的使用与记忆成本；<br>同时，基于 Shell 的实现避免了额外运行时和依赖管理，真正做到即开即用、务实可靠。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<kbd><img alt="吴濠棉's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-wuhaomian.webp"></kbd><br>
+<b>吴濠棉</b>
+<br>
+</p>
+<samp>
+<ul>
+<li>优秀物理教师</li>
+<li>教育科技创新者</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+物理学探索宇宙规律，x-cmd 则诠释了数字世界的极简逻辑。其优雅的交互与 AI 辅助，让非计算机专业的师生也能轻松驾驭终端，极大地提升了备课与演示效率，是教育数字化转型的得力助手。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
+<a href="https://hjj.huaping-fiberglass.com/"><kbd><img alt="何家杰's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-hejiajie.webp"></kbd></a><br>
+<a href="https://hjj.huaping-fiberglass.com/">何家杰</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>玻璃纤维制品销售总监</li>
+<li>硬件极客</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+作为销售与运营负责人，我的工作核心是确保技术价值能精准、可靠地传递给客户。x-cmd 成为了我与运维团队的高效协作纽带。通过 x-cmd hub，我们共享的标准化查询与诊断脚本，让我能第一时间理解系统状态，用准确的数据与技术团队对话，甚至直接为客户提供清晰的技术支持预案。它让跨部门的“技术语言”实现了统一，极大提升了从问题发现到解决方案输出的内部协同效率。
 </td>
 </tr>
 
