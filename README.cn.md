@@ -617,6 +617,27 @@ X-CMD 是一款强大的终端美化和功能增强工具，它通过模块化�
 <td width="500px">
 <p align="center">
 <br>
+<a href="https://blog.csdn.net/zl392321162/article/details/155975226"><kbd><img alt="白晓明's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-baixiaoming.webp"></kbd></a><br>
+<a href="https://blog.csdn.net/zl392321162/article/details/155975226">白晓明</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>坚果派联合创始人</li>
+<li>华为 HDE</li>
+<li>鸿蒙/仓颉 KOL</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+x-cmd 为鸿蒙生态的开发者提供了强大的命令行工具集和 AI 辅助功能，是提高终端操作效率的重要工具。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
 <a href="https://github.com/amslime"><kbd><img alt="王力's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-wangli.webp"></kbd></a><br>
 <a href="https://github.com/amslime">王力</a>
 <br>

@@ -605,6 +605,27 @@ A lightweight and highly efficient CLI toolkit. By seamlessly integrating packag
 <td width="500px">
 <p align="center">
 <br>
+<a href="https://blog.csdn.net/zl392321162/article/details/155975226"><kbd><img alt="Xiaoming Bai's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-baixiaoming.webp"></kbd></a><br>
+<a href="https://blog.csdn.net/zl392321162/article/details/155975226">Xiaoming Bai</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>Co-founder of NutPi</li>
+<li>Huawei HDE</li>
+<li>HarmonyOS/Cangjie KOL</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+x-cmd provides a powerful set of command-line tools and AI-assisted functions for developers in the HarmonyOS ecosystem. It is an important tool for improving terminal operation efficiency.
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
 <a href="https://github.com/amslime"><kbd><img alt="Li Wang's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-wangli.webp"></kbd></a><br>
 <a href="https://github.com/amslime">Li Wang</a>
 <br>
