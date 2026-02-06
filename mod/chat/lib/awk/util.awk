@@ -15,7 +15,7 @@ function chat_str_truncate( str, maxl,            cutl, l, ls, rs ){
     if ( match( rs, "^[^-a-zA-Z0-9+&@#/%?=~_|!:,.; ]+" ) ) {
         rs = substr(rs, RSTART+RLENGTH)
     }
-    return "(truncated)\n" ls "\n<<< omitted " (l - (cutl * 2)) " bytes >>>\n" rs
+    return "(truncated)\n" ls "\n<<< omitted " (l - length(ls) - length(rs)) " bytes >>>\n" rs
 }
 
 function chat_str_is_null( str, extra_field ){
@@ -39,6 +39,7 @@ function chat_str_replaceall( src, is_escape,         _name, ans ){
 function chat_readfile( fp,       str ){
     str = cat( fp )
     if ( cat_is_filenotfound() ) return
+    if ( str == "" ) return
 
     str = str_remove_esc( str )
     str = str_escape_ctrlchar_to_unicode___except_7_13( str )

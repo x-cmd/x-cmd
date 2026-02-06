@@ -892,8 +892,9 @@ function ctrlchar_map_init(           i, c){
 
 function str_escape_ctrlchar_to_unicode___except_7_13(str,       i){
     if ( ___CTRLCHAR_MAP_INIT_FLAG != 1 ) ctrlchar_map_init()
-    # except 7-13
-    for (i=0; i<=6; ++i){
+    # except 7-13, remove \u0000(NUL)
+    gsub( _ctrlchar_map[0], "", str )
+    for (i=1; i<=6; ++i){
         gsub( _ctrlchar_map[i], "\\u" _ctrlchar_map_to_hex[ _ctrlchar_map[i] ], str )
     }
     for (i=14; i<=31; ++i){

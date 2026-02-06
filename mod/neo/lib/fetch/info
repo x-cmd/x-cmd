@@ -1,0 +1,291 @@
+
+
+___x_cmd_neo_fetch___update(){
+    ___x_cmd rmrf "$___X_CMD_NEO_FETCH_CACHE"
+    ___x_cmd mkdirp "$___X_CMD_NEO_FETCH_CACHE"
+
+    local x_
+
+    ___x_cmd_neo_fetch___user_  ; printf "%s\n" "$x_" >"$___X_CMD_NEO_FETCH_CACHE/user"
+    ___x_cmd_neo_fetch___host_  ; printf "%s\n" "$x_" >"$___X_CMD_NEO_FETCH_CACHE/host"
+    ___x_cmd_neo_fetch___kernel_; printf "%s\n" "$x_" >"$___X_CMD_NEO_FETCH_CACHE/kernel"
+    ___x_cmd_neo_fetch___os_    ; printf "%s\n" "$x_" >"$___X_CMD_NEO_FETCH_CACHE/os"
+}
+
+___x_cmd_neo_fetch___user_(){
+    x_="${USER}"
+    [ -z "$x_" ] || return 0
+    [ ! -f "$___X_CMD_NEO_FETCH_CACHE/user" ] || { read -r x_ <"$___X_CMD_NEO_FETCH_CACHE/user" && [ -n "$x_" ]; }
+}
+
+___x_cmd_neo_fetch___host_(){
+    x_="${HOSTNAME}"
+    [ -z "$x_" ] || return 0
+    [ ! -f "$___X_CMD_NEO_FETCH_CACHE/host" ] || { read -r x_ <"$___X_CMD_NEO_FETCH_CACHE/host" && [ -n "$x_" ]; }
+    [ -z "$x_" ] || return 0
+    [ ! -r "/etc/hostname" ] || read -r x_ </etc/hostname 2>/dev/null
+    [ -z "$x_" ] || return 0
+    x_="$(___x_cmd_cmds hostname 2>/dev/null)"
+    [ -z "$x_" ] || return 0
+}
+
+___x_cmd_neo_fetch___os_(){
+    ___x_cmd os name_
+}
+
+___x_cmd_neo_fetch___kernel_(){
+    x_="${___X_CMD_NEO_FETCH_KERNEL:-}"
+    [ -z "$x_" ] || return 0
+    [ ! -f "$___X_CMD_NEO_FETCH_CACHE/kernel" ] || { read -r x_ <"$___X_CMD_NEO_FETCH_CACHE/kernel" && [ -n "$x_" ]; }
+    [ -z "$x_" ] || return 0
+    x_="$(___x_cmd_cmds uname -r)"
+    [ -z "$x_" ] || return 0
+}
+
+___x_cmd_neo_fetch___shell_(){
+    x_="${SHELL##*/}"
+    [ -z "$x_" ] || return 0
+}
+
+___x_cmd_neo_fetch___de_(){
+    x_="${XDG_CURRENT_DESKTOP:-$DESKTOP_SESSION}"
+    [ -z "$x_" ] || return 0
+}
+
+___x_cmd_neo_fetch___editor_(){
+    x_="${VISUAL:-$EDITOR}"
+    x_="${x_##*/}"
+    [ -z "$x_" ] || return 0
+}
+
+___x_cmd_neo_fetch___wm_(){
+    [ -n "$DISPLAY" ] || return 1
+
+    local id; local wm
+    id=$(___x_cmd_cmds xprop -root -notype _NET_SUPPORTING_WM_CHECK 2>/dev/null) || return 1
+    id=${id##* }
+    wm=$(___x_cmd_cmds xprop -id "$id" -notype -len 25 -f _NET_WM_NAME 8t 2>/dev/null) || :
+    case $wm in
+        (*'_NET_WM_NAME = '*)
+            wm=${wm##*_NET_WM_NAME = \"}
+            wm=${wm%%\"*}
+            x_="$wm"
+            return 0
+            ;;
+    esac
+
+    local ps_line
+    while read -r ps_line; do
+        case $ps_line in
+            (*catwm*)       x_=catwm; return 0 ;;
+            (*fvwm*)        x_=fvwm; return 0 ;;
+            (*dwm*)         x_=dwm; return 0 ;;
+            (*2bwm*)        x_=2bwm; return 0 ;;
+            (*monsterwm*)   x_=monsterwm; return 0 ;;
+            (*wmaker*)      x_='Window Maker'; return 0 ;;
+            (*sowm*)        x_=sowm; return 0 ;;
+            (*penrose*)     x_=penrose; return 0 ;;
+        esac
+    done <<-EOF
+        $(___x_cmd_cmds ps x 2>/dev/null)
+EOF
+
+    return 1
+}
+
+___x_cmd_neo_fetch___uptime_(){
+    local s; local d; local h; local m
+
+    ___x_cmd os name_
+    case "$x_" in
+        linux|*Linux*)          [ ! -f /proc/uptime ] || IFS=. read -r s _ < /proc/uptime ;;
+        darwin|*Darwin*|*BSD*|DragonFly*)
+            s=$(___x_cmd_cmds sysctl -n kern.boottime 2>/dev/null)
+            s=${s#*=}
+            s=${s%,*}
+            s=$(($(___x_cmd_cmds date +%s) - s))
+            ;;
+    esac
+
+    [ -n "$s" ] || return 1
+
+    d=$((s / 60 / 60 / 24))
+    h=$((s / 60 / 60 % 24))
+    m=$((s / 60 % 60))
+
+    x_=""
+    case "$d" in ([!0]*) x_="${x_}${d}d " ;; esac
+    case "$h" in ([!0]*) x_="${x_}${h}h " ;; esac
+    case "$m" in ([!0]*) x_="${x_}${m}m" ;; esac
+
+    x_="${x_:-0m}"
+}
+
+___x_cmd_neo_fetch___pkgs_(){
+    local cnt
+
+    ___x_cmd os name_
+    case "$x_" in
+        linux|*Linux*)
+            ___x_cmd_cmds dpkg-query -f '.\n' -W 2>/dev/null | ___x_cmd_cmds wc -l
+            cnt=$?
+            [ "$cnt" -gt 0 ] 2>/dev/null || cnt=""
+            if [ -z "$cnt" ] && ___x_cmd_cmds rpm -qa 2>/dev/null | ___x_cmd_cmds head -1 >/dev/null 2>&1; then
+                cnt=$(___x_cmd_cmds rpm -qa 2>/dev/null | ___x_cmd_cmds wc -l)
+            fi
+            if [ -z "$cnt" ] && ___x_cmd_cmds pacman -Qq 2>/dev/null | ___x_cmd_cmds head -1 >/dev/null 2>&1; then
+                cnt=$(___x_cmd_cmds pacman -Qq 2>/dev/null | ___x_cmd_cmds wc -l)
+            fi
+            if [ -z "$cnt" ] && ___x_cmd_cmds xbps-query -l 2>/dev/null >/dev/null 2>&1; then
+                cnt=$(___x_cmd_cmds xbps-query -l 2>/dev/null | ___x_cmd_cmds wc -l)
+            fi
+            if [ -z "$cnt" ] && ___x_cmd_cmds apk info 2>/dev/null | ___x_cmd_cmds head -1 >/dev/null 2>&1; then
+                cnt=$(___x_cmd_cmds apk info 2>/dev/null | ___x_cmd_cmds wc -l)
+            fi
+            if [ -z "$cnt" ] && ___x_cmd_cmds brew --cellar 2>/dev/null >/dev/null 2>&1; then
+                cnt=$(printf '%s\n' "$(___x_cmd_cmds brew --cellar)"/* 2>/dev/null | ___x_cmd_cmds wc -l)
+            fi
+            ;;
+        darwin|*Darwin*)
+            if ___x_cmd_cmds brew --cellar 2>/dev/null >/dev/null 2>&1; then
+                cnt=$(printf '%s\n' /usr/local/Cellar/* 2>/dev/null | ___x_cmd_cmds wc -l) 2>/dev/null
+            elif ___x_cmd_cmds port version 2>/dev/null >/dev/null 2>&1; then
+                cnt=$(___x_cmd_cmds port installed 2>/dev/null | ___x_cmd_cmds grep -v "No ports are installed" | ___x_cmd_cmds wc -l)
+            fi
+            ;;
+        *BSD*)
+            cnt=$(printf '%s\n' /var/db/pkg/*/ 2>/dev/null | ___x_cmd_cmds wc -l)
+            ;;
+    esac
+
+    cnt=${cnt#"${cnt%%[![:space:]]*}"}
+    cnt=${cnt%"${cnt##*[![:space:]]}"}
+    case "$cnt" in (1?*|[2-9]*) x_="$cnt" ;; *) return 1 ;; esac
+}
+
+___x_cmd_neo_fetch___memory_(){
+    local mem_used; local mem_full; local mem_free; local mem_avail
+
+    ___x_cmd os name_
+    case "$x_" in
+        linux|*Linux*)
+            while IFS=':k ' read -r key val _; do
+                case $key in
+                    MemTotal)       mem_full=$val; mem_used=$((mem_used + val)) ;;
+                    Shmem)          mem_used=$((mem_used + val)) ;;
+                    MemFree|Buffers|Cached|SReclaimable) mem_used=$((mem_used - val)) ;;
+                    MemAvailable)   mem_avail=$val ;;
+                esac
+            done < /proc/meminfo
+
+            case ${mem_avail:-} in
+                *[0-9]*)    mem_used=$(((mem_full - mem_avail) / 1024)) ;;
+                *)          mem_used=$((mem_used / 1024)) ;;
+            esac
+            mem_full=$((mem_full / 1024))
+            ;;
+
+        darwin|*Darwin*)
+            mem_full=$(($(___x_cmd_cmds sysctl -n hw.memsize) / 1024 / 1024))
+            while IFS=:. read -r key val; do
+                case $key in
+                    *' wired'*|*' active'*|*' occupied'*) mem_used=$((mem_used + ${val:-0})) ;;
+                esac
+            done <<-EOF
+                $(___x_cmd_cmds vm_stat 2>/dev/null)
+EOF
+            mem_used=$((mem_used * 4 / 1024))
+            ;;
+
+        *BSD*|DragonFly*)
+            mem_full=$(($(___x_cmd_cmds sysctl -n hw.physmem 2>/dev/null) / 1024 / 1024))
+            mem_free=$(($(___x_cmd_cmds sysctl -n vm.stats.vm.v_free_count 2>/dev/null) * $(___x_cmd_cmds sysctl -n hw.pagesize 2>/dev/null) / 1024 / 1024))
+            mem_used=$((mem_full - mem_free))
+            ;;
+    esac
+
+    x_="${mem_used:-?}M / ${mem_full:-?}M"
+}
+
+___x_cmd_neo_fetch___resolution_(){
+    [ -n "$DISPLAY" ] || return 1
+    x_="$(___x_cmd_cmds xrandr 2>/dev/null | ___x_cmd_cmds grep '\*' | ___x_cmd_cmds head -1 | ___x_cmd_cmds awk '{print $1}')"
+    [ -z "$x_" ] || return 0
+    x_="$(___x_cmd_cmds xdpyinfo 2>/dev/null | ___x_cmd_cmds grep 'dimensions:' | ___x_cmd_cmds awk '{print $2}')"
+    [ -z "$x_" ] || return 0
+}
+
+___x_cmd_neo_fetch___wm_theme_(){
+    [ -n "$DISPLAY" ] || return 1
+    x_="$(___x_cmd_cmds gsettings get org.gnome.shell.extensions.user-theme name 2>/dev/null | ___x_cmd_cmds tr -d \"\')"
+    [ -z "$x_" ] || return 0
+    x_="$(___x_cmd_cmds gconftool-2 -g /apps/metacity/general/theme 2>/dev/null)"
+    [ -z "$x_" ] || return 0
+}
+
+___x_cmd_neo_fetch___theme_(){
+    [ -n "$DISPLAY" ] || return 1
+    x_="$(___x_cmd_cmds gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | ___x_cmd_cmds tr -d \"\')"
+    [ -z "$x_" ] || return 0
+    x_="$(___x_cmd_cmds gconftool-2 -g /desktop/gnome/interface/gtk_theme 2>/dev/null)"
+    [ -z "$x_" ] || return 0
+}
+
+___x_cmd_neo_fetch___icons_(){
+    [ -n "$DISPLAY" ] || return 1
+    x_="$(___x_cmd_cmds gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | ___x_cmd_cmds tr -d \"\')"
+    [ -z "$x_" ] || return 0
+    x_="$(___x_cmd_cmds gconftool-2 -g /desktop/gnome/interface/icon_theme 2>/dev/null)"
+    [ -z "$x_" ] || return 0
+}
+
+___x_cmd_neo_fetch___terminal_(){
+    local term
+    term="${TERM_PROGRAM:-${TERMINAL:-}}"
+    [ -z "$term" ] || { x_="${term##*/}"; return 0; }
+
+    [ -z "$TERM" ] || { x_="$TERM"; return 0; }
+    return 1
+}
+
+___x_cmd_neo_fetch___terminal_font_(){
+    return 1
+}
+
+___x_cmd_neo_fetch___cpu_(){
+    [ ! -f "$___X_CMD_NEO_FETCH_CACHE/cpu" ] || { read -r x_ <"$___X_CMD_NEO_FETCH_CACHE/cpu" && [ -n "$x_" ]; }
+    [ -z "$x_" ] || return 0
+
+    local cpu; local cores; local freq
+
+    ___x_cmd os name_
+    case "$x_" in
+        linux)
+            while IFS=':' read -r key val; do
+                case $key in
+                    "model name"|"Model Name"|"Hardware")
+                        cpu="${val# }"
+                        cpu="${cpu%%" @"*}"
+                        cpu="${cpu%%" CPU"*}"
+                        ;;
+                esac
+            done < /proc/cpuinfo
+            cores=$(___x_cmd_cmds nproc 2>/dev/null || ___x_cmd_cmds grep -c ^processor /proc/cpuinfo 2>/dev/null)
+            ;;
+        darwin)
+            cpu="$(___x_cmd_cmds sysctl -n machdep.cpu.brand_string 2>/dev/null)"
+            cores="$(___x_cmd_cmds sysctl -n hw.ncpu 2>/dev/null)"
+            ;;
+        *BSD*)
+            cpu="$(___x_cmd_cmds sysctl -n hw.model 2>/dev/null)"
+            cores="$(___x_cmd_cmds sysctl -n hw.ncpu 2>/dev/null)"
+            ;;
+    esac
+
+    [ -n "$cpu" ] || return 1
+
+    x_="$cpu"
+    printf "%s\n" "$x_" >"$___X_CMD_NEO_FETCH_CACHE/cpu"
+    [ -z "$cores" ] || x_="${x_} ($cores)"
+}
+

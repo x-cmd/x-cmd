@@ -1,0 +1,66 @@
+
+# killbyport ...
+
+# kill by pid
+# kill by substr
+# kill by exact name
+# kill by prefix
+# kill by suffix
+
+# kill by dir
+# kill by file
+
+# kill by regex -- difficul to unify.
+
+___x_cmd_kill_byport(){
+    ___x_cmd_kill___pkill_allhttp
+}
+
+___x_cmd_kill___pkill_allhttp(){
+    # Find and kill all processes connecting to 80/443 services
+    # Cross-platform: macOS, Linux, Windows (WSL/Git Bash)
+
+    ___x_cmd_kill___http_procs_pipe | while read -r procname; do
+        [ -n "$procname" ] || continue
+        ___x_cmd_kill___cmd -9 "$procname" 2>/dev/null
+        case $? in
+            130)    return 130 ;;
+        esac
+    done
+}
+
+___x_cmd_kill___http_procs_pipe(){
+    local os; os="$(command uname -s)"
+    case "$os" in
+        Linux*|CYGWIN*|MINGW*|MSYS*)
+            # Notice, the alpine/busybox netstat doesn't return PID/name correctly. The best ways should be /proc.
+            if command -v netstat >/dev/null 2>&1 && ! ___x_cmd busybox isimpl netstat; then
+                command netstat -tupn 2>/dev/null | \
+                    ___x_cmd awk '
+                    $1=="tcp"{
+                        split( $5, arr, "[:.]" ); port = arr[2]
+                        if ((port == 80) || (port == 443)) exit( code = 1 );
+                    }
+                    END{
+                        exit( (code == 1) ? 1 : 0 )
+                    }'
+            elif [ -e /proc ]; then
+                local pid_fp; for pid_fp in /proc/*; do
+                    [ -e "$pid_fp/net/tcp" ]     ||  continue
+                    ___x_cmd awk '(NR>1){
+                        split( $3, arr, ":" );  port = int( "0x" arr[2] );
+                        if ((port == 80) || (port == 443))  exit( code=1 )
+                    }
+                    END{
+                        exit( (code == 1) ? 1 : 0 )
+                    }' <"$pid_fp/net/tcp" ||  printf "%s\n" "${pid_fp#/proc/}"
+                done
+            else
+                printf "%s\n" "- W|[gram] netstat and lsof not found. -> $os" >&2
+            fi
+            ;;
+
+        Darwin*)        ___x_cmd_cmds lsof -i :80 -i :443 2>/dev/null | ___x_cmd awk 'NR>1 && !a[$1]++ {print $2}'     ;;
+        *)              printf "%s\n" "- W|[gram] Unsupported os -> $os" >&2 ;;
+    esac
+}

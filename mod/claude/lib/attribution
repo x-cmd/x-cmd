@@ -1,0 +1,99 @@
+
+
+___x_cmd_claude_attribution(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    local op="$1" ; shift
+    case "$op" in
+        -h|--help)          ___x_cmd help -m claude attribution "$@" ; return 0 ;;
+        set|use)            ___x_cmd_claude_attribution_use     "$@" ;;
+        rm|cat)             ___x_cmd_claude_attribution_"$op"   "$@" ;;
+        *)                  N=claude M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+#   ref: https://code.claude.com/docs/en/settings#attribution-settings
+#   settings.local.json
+#   "attribution": {
+#     "commit": "Generated with AI\n\nCo-Authored-By: AI",
+#     "pr": ""
+#   }
+
+___x_cmd_claude_attribution_use(){
+    local msg=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m claude attribution use "$@" ; return 0 ;;
+            --co|--co-author)       msg="\n\nCo-Authored-By: $2" ;      arg:2:shift ;;
+            --msg)                  msg="$2" ;                          arg:2:shift ;;
+            *)                      break ;;
+        esac
+    done
+
+    [ -n "$msg" ] || msg="\n\nCo-Authored-By: AI"
+
+    local x_
+    ___x_cmd_claude_setting_locate_or_create_ || return $?
+    local settings_file="$x_"
+
+    local tmp="$(mktemp)"
+    if ___x_cmd jq --arg msg "$msg" '.attribution.commit = $msg' "$settings_file" > "$tmp" \
+        && ___x_cmd mv "$tmp" "$settings_file"; then
+        claude:debug "Attribution set to: $msg"
+        claude:info "Attribution message set successfully."
+    else
+        claude:error "Failed to set attribution message."
+        ___x_cmd rmrf "$tmp"
+        return 1
+    fi
+}
+
+___x_cmd_claude_attribution_rm(){
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m claude attribution rm "$@" ; return 0 ;;
+            *)                      break ;;
+        esac
+    done
+
+    local x_
+    ___x_cmd_claude_setting_locate_ || {
+        claude:warn "Cannot find any settings.local.json"
+        return 1
+    }
+
+    local settings_file="$x_"
+
+    local tmp="$(mktemp)"
+    if ___x_cmd jq '.attribution.commit = ""' "$settings_file" > "$tmp" \
+        && ___x_cmd mv "$tmp" "$settings_file"; then
+        claude:info "Attribution message removed."
+    else
+        claude:error "Failed to remove attribution message."
+        ___x_cmd rmrf "$tmp"
+        return 1
+    fi
+}
+
+___x_cmd_claude_attribution_cat(){
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m claude attribution cat "$@" ; return 0 ;;
+            *)                      break ;;
+        esac
+    done
+
+    local x_
+    ___x_cmd_claude_setting_locate_ || {
+        claude:warn "Cannot find any settings.local.json"
+        return 1
+    }
+
+    local settings_file="$x_"
+
+    claude:debug "Reading attribution settings from: $settings_file"
+    ___x_cmd rat "$settings_file"
+}

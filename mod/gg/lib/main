@@ -1,0 +1,190 @@
+# shellcheck shell=dash
+
+xrc gemini
+
+___x_cmd log init gg
+# xrc:mod:lib     gg   util
+
+# x gg --> x gemini gg
+
+___x_cmd_gg___main(){
+    local show_source="3"
+    local type=""
+    local gg_provider="gemini"
+    local gg_cache_time="1h"
+    local gg_model="${___X_CMD_GEMINI_DEFAULT_FIRST_MODEL}"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m gg; return;;
+
+            --source|--source-concurrent)
+                            show_source=3;  shift ;;
+            --source-detail)
+                            show_source=2;  shift ;;
+            --source-raw)   show_source=1;  shift ;;        # default with
+            --no-source)    show_source=""; shift ;;
+            --md)           type=md;        shift ;;
+            --raw)          type=raw;       shift ;;
+            --model)        gg_model="$2";
+                            [ -n "$gg_model" ] || N=gg M="Please provide the model" log:ret:64
+                            shift 2 ;;
+            --provider)     gg_provider="$2";
+                            [ -n "$gg_provider" ] || N=gg M="Please provide the provider" log:ret:64
+                            shift 2 ;;
+            --cache-time)   gg_cache_time="$2";
+                            [ -n "$gg_cache_time" ] || N=gg M="Please provide the cache time" log:ret:64
+                            shift 2 ;;
+            *)              break ;;
+        esac
+    done
+    local question="$1"; [ -n "$question" ] || N=gg M="Please provide the question" log:ret:64
+
+    case "$type" in
+        md)     ___x_cmd_gg___md "$@" ;;
+        raw)    ___x_cmd_gg___llm "$@" ;;
+        *)
+                if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
+                    ___x_cmd_gg___md "$@"
+                else
+                    ___x_cmd_gg___llm "$@"
+                fi
+                ;;
+    esac
+}
+
+___x_cmd_gg___md(){
+    ___x_cmd_gg___parse "$@" | ___x_cmd md llm --noless
+}
+
+___x_cmd_gg___llm(){
+    NO_COLOR=1 ___x_cmd_gg___parse "$@"
+}
+
+
+___x_cmd_gg___parse(){
+    local question="$1"; [ -n "$question" ] || N=gg M="Please provide the question" log:ret:64
+
+    local response_str=""; local urllist=""
+    ___x_cmd_gg___raw_ "$question" || return $?
+
+    printf "%s\n" "$response_str"
+
+    [ -n "$urllist" ] || return 0
+
+    case "$show_source" in
+        1)      ___x_cmd_gg___parse_show1 ;;
+        2)      ___x_cmd_gg___parse_show2 ;;
+        3)      ___x_cmd_gg___parse_show3 ;;
+    esac <<A
+$urllist
+A
+
+}
+
+___x_cmd_gg___parse_show1(){
+    printf "\n\n%s\n\n" "---"
+    printf "\n\n%s\n" "## WEB SOURCE"
+    local url=""
+    while read -r url; do
+        [ -n "$url" ] || continue
+        printf "- %s\n" "$url"
+    done
+}
+
+___x_cmd_gg___parse_show2(){
+    local proxy=
+    ___x_cmd_gemini_cur   proxy:=   2>/dev/null
+
+    printf "\n\n%s\n\n" "---"
+    printf "\n\n%s\n" "## WEB SOURCE"
+    local url=""
+    while read -r url; do
+        [ -n "$url" ] || continue
+        {
+            printf "%s: %s\n" "Location" "$url"
+            ____X_CMD_CCMD_ERROR_LOG=0 \
+            ___x_cmd ccmd "$gg_cache_time" -- ___x_cmd proxy runifset "$proxy" \
+                ___x_cmd curl -s --max-time 10 --dump-header - -L "$url"
+        } | ___x_cmd awk0 -f "$___X_CMD_ROOT_MOD/gg/lib/awk/gg_parse.awk"
+    done
+}
+
+___x_cmd_gg___parse_show3(){
+    local proxy=
+    ___x_cmd_gemini_cur   proxy:=   2>/dev/null
+
+    printf "\n\n%s\n\n" "---"
+    printf "\n\n%s\n" "## WEB SOURCE"
+    local url=""
+    (
+    while read -r url; do
+        [ -n "$url" ] || continue
+        (
+            {
+                printf "%s: %s\n" "Location" "$url"
+                ____X_CMD_CCMD_ERROR_LOG=0 \
+                ___x_cmd ccmd "$gg_cache_time" -- ___x_cmd proxy runifset "$proxy" \
+                    ___x_cmd curl -s --max-time 10 --dump-header - -L "$url"
+            } | ___x_cmd awk0 -f "$___X_CMD_ROOT_MOD/gg/lib/awk/gg_parse.awk"
+        )&
+    done
+    wait
+    )
+}
+
+___x_cmd_gg___raw_(){
+    local question="$1"; [ -n "$question" ] || N=gg M="Please provide the question" log:ret:64
+
+    local content; content="$( ____X_CMD_CCMD_ERROR_LOG=0 ___x_cmd ccmd "$gg_cache_time" -- ___x_cmd_gg___raw_inner "$question" "$gg_provider" "$gg_model" )" || {
+        ___x_cmd ccmd - ___x_cmd_gg___raw_inner "$question" "$gg_provider" "$gg_model"
+        return 1
+    }
+
+    local cmdstr; cmdstr="$(
+        ___x_cmd cawk -m j/json,j/jiter,sh -f "$___X_CMD_ROOT_MOD/gg/lib/awk/gg_handle_response.awk" <<A
+$content
+A
+)" || return $?
+
+    [ -n "$cmdstr" ] || return $?
+    eval "$cmdstr" || return $?
+    [ -n "$response_str" ] || {
+        ___x_cmd ccmd - ___x_cmd_gg___raw_inner "$question" "$gg_provider" "$gg_model"
+        gg:error "The response value is empty"
+        return 1
+    }
+}
+
+___x_cmd_gg___raw_inner(){
+    local question="$1";
+    local provider="$2"
+    local model="$3"
+
+    local apikey=
+    local proxy=
+    local url=
+    local header_flag=
+
+    case "$provider" in
+        gemini)
+            ___x_cmd_gemini_has_apikey || return $?
+            ___x_cmd_gemini_cur   apikey:=   proxy:=   2>/dev/null
+            url="https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apikey}"
+            ;;
+        hub)
+            apikey="$( ___x_cmd hub ai convo --get-apikey )" || return $?
+            url="https://agent.x-cmd.com/api/search/query"
+            header_flag="X-Service-Authorization: Bearer ${apikey}"
+            ;;
+        *)  N=gg M="Not support provider ==> $provider" log:ret:64 ;;
+    esac
+    model="$model" \
+    provider="$provider" \
+    question="$question" \
+    ___x_cmd cawk -f "$___X_CMD_ROOT_MOD/gg/lib/awk/gg_handle_request.awk" | \
+        ___x_cmd proxy runifset "$proxy" \
+        ___x_cmd curl -s -X POST "$url" \
+            -H "Content-Type: application/json" \
+            ${header_flag:+-H} ${header_flag:+"${header_flag}"} \
+            -d @-
+}
