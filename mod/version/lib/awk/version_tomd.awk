@@ -1,4 +1,4 @@
-function parse_changelog(O, version, key,       i, j, h, len, _len, __len, mod, mod_type, value){
+function parse_changelog(O, version, key,       i, j, h, len, _len, __len, mod, mod_type, value, language){
     len = O[ kp("1", version, key) L ]
     for (i=1; i<=len; ++i)  {
         mod = juq( O[ kp("1", version, key, i) ] )
@@ -11,7 +11,8 @@ function parse_changelog(O, version, key,       i, j, h, len, _len, __len, mod, 
             __len = O[ kp("1", version, key, mod, juq(mod_type)) L ]
 
             for (h=1; h<=__len; ++h) {
-                value = O[ kp("1", version, key, mod, juq(mod_type), h, "en") ]
+                language = ( v_lang == "cn" ) ? "cn" : "en"
+                value = O[ kp("1", version, key, mod, juq(mod_type), h, language) ]
                 gsub(/\\n/, "\n", value)
                 printf("%s%s\n", "  - ", juq(value))
             }

@@ -1,6 +1,6 @@
 
-if ($env.HOME | is-empty) {
-    $env.HOME = $nu.home-path
+if ($env.HOME? | is-empty) {
+    $env.HOME = (if ("home-dir" in ($nu | columns)) { $nu.home-dir } else { $nu.home-path })
 }
 
 # const ___X_CMD_ROOT = $"($nu.home-path)/.x-cmd.root"  # To dev

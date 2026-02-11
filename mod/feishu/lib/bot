@@ -4,8 +4,8 @@
 
 ___x_cmd_feishu_bot(){
     param:subcmd ___x_cmd_feishu_bot    \
-        send   "send msg"
-
+        send   "send msg"               \
+        react   "react msg"
     param:subcmd:try
     param:run
 
@@ -194,6 +194,26 @@ A
     _____x_cmd_feishu_ui_utils Image
 }
 
+___x_cmd_feishu_bot_react(){
+    param:void
+    case "$1" in
+        -h|--help|"")      ___x_cmd help -m feishu bot react;return 1     ;;
+    esac
+
+    local cur_token=
+    local x_=
+    ____x_cmd_tenant_token || return
+    cur_token="$x_"
+    _____x_cmd_feishu_chat_history | while read -r line; do
+        local chat_id
+        chat_id=$(printf "%s" "$line" | ___x_cmd jq -r '.chat_id')
+        echo "$chat_id"
+        "$@"
+    done | while read -r chat_id && read -r line; do
+        ___x_cmd_feishu_bot_send_msg "$line" "$chat_id"
+    done
+}
+
 ___x_cmd_feishu_bot_send_card() {
     : # TODO: https://open.feishu.cn/document/ukTMukTMukTM/uczM3QjL3MzN04yNzcDN
 }
@@ -226,4 +246,55 @@ _____x_cmd_feishu_ui_utils(){
     else
         ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$res"
     fi
+}
+
+_____x_cmd_feishu_chat_history(){
+    local date
+    date="$(___x_cmd date timestamp)"
+    local chats=
+    chats="$(___x_cmd_chat_id 20)"
+    local chat_id
+    local data
+    while [ -z "$data" ]; do
+        for chat_id in $chats; do
+            data="$(curl -s -X GET "https://open.feishu.cn/open-apis/im/v1/messages?container_id=$chat_id&container_id_type=chat&page_size=20&sort_type=ByCreateTimeDesc&start_time=$date" \
+                -H "Authorization: Bearer $cur_token" | ___x_cmd awk0 -m j/json -m j/jiter '
+{ jiparse_after_tokenize(o, $0); }
+END{
+    kp = SUBSEP "\"1\"" SUBSEP "\"data\"" SUBSEP "\"items\""
+    l = o[ kp L ]
+    for (i=1; i<=l; ++i){
+        kp_i = kp SUBSEP "\""i"\""
+        kp_sender_type = kp_i SUBSEP "\"sender\"" SUBSEP "\"sender_type\""
+        if (o[ kp_sender_type ] == "\"user\""){
+            print jstr0(o, kp_i, " ")
+        }
+    }
+}')"
+        done
+    done
+    printf "%s\n%s" "$data" ""
+}
+
+___x_cmd_feishu_bot_send_msg() {
+    local msg="{\"text\":\"$1\"}"
+    local chat_id="$2"
+    local uuid
+    uuid="$(___x_cmd rand uuid)"
+    local data=""
+
+    data="$(___x_cmd jq -n              \
+            --arg msg "$msg"            \
+            --arg uuid "$uuid"          \
+            --arg chat_id "$chat_id"    \
+            '{
+              content: $msg,
+              msg_type: "text",
+              uuid: $uuid,
+              receive_id: $chat_id
+            }')"
+    printf '%s' "${data}"| curl -s -X POST 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id' \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $cur_token" \
+    -d @-
 }

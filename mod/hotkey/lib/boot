@@ -1,0 +1,64 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_hotkey_boot(){
+    local op="$1";
+    case "$op" in
+        load|setfile|unsetfile|ls)
+                    shift; ___x_cmd_hotkey_boot_"$op" "$@"; return ;;
+        -h|--help)  ___x_cmd help -m hotkey boot; return ;;
+        *)          ___x_cmd help -m hotkey boot >&2; return 64 ;;
+    esac
+}
+
+___x_cmd_hotkey_boot_ls(){
+    local bootfile="$___X_CMD_ROOT_DATA/hotkey/boot"
+    [ -f "$bootfile" ] || {
+        hotkey:info "No hotkey widgets set to boot"
+        return 0
+    }
+
+    ___x_cmd_cmds cat "$bootfile"
+}
+
+___x_cmd_hotkey_boot_load(){
+    local bootfile="$___X_CMD_ROOT_DATA/hotkey/boot"
+    [ -f "$bootfile" ] || return 0
+
+    local widget=""
+    while read -r widget; do
+        ___x_cmd_hotkey_exec --loglevel debug "$widget"
+    done < "$bootfile"
+}
+
+___x_cmd_hotkey_boot_setfile(){
+    local widget="$1"
+    local bootfile="$___X_CMD_ROOT_DATA/hotkey/boot"
+    hotkey:debug "Set hotkey widget $widget to boot list -> $bootfile"
+    if [ ! -f "$bootfile" ]; then
+        ___x_cmd ensurefp "$bootfile"
+        printf "%s\n" "$widget" > "$bootfile"
+    else
+        local bootfiletmp="${bootfile}.tmp"
+        ___x_cmd_cmds awk -v widget="$widget" '
+($0 == widget) { hasfound=1; next; }
+{ print $0; }
+END { if (hasfound != 1) print widget; }
+' "$bootfile" > "$bootfiletmp"
+        ___x_cmd_cmds mv -f "$bootfiletmp" "$bootfile"
+    fi
+}
+
+___x_cmd_hotkey_boot_unsetfile(){
+    local widget="$1"
+    local bootfile="$___X_CMD_ROOT_DATA/hotkey/boot"
+    [ -f "$bootfile" ] || return 0
+
+    local bootfiletmp="${bootfile}.tmp"
+    ___x_cmd_cmds awk -v widget="$widget" '
+($0 == widget) { next; }
+{ print $0; }
+' "$bootfile" > "$bootfiletmp"
+    ___x_cmd_cmds mv -f "$bootfiletmp" "$bootfile"
+
+    [ "$( < "$bootfile" ___x_cmd_cmds wc -l )" -gt 0 ] || ___x_cmd rmrf "$bootfile"
+}
