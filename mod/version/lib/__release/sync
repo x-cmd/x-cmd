@@ -34,16 +34,24 @@ ___x_cmd_version___release_sync(){
 $version_data
 A
 
-    version="${2:-"$cur_version"}"
+    target_version="${2:-"$cur_version"}"
+    local x_; ___x_cmd_version___release_check_ "$target_version" ; state="$x_"
+    ___x_cmd_version___release_sync_ "$mod" "$target_version" "$title" "$state" "$repo"
 
-    local beta="$( ___x_cmd_version_ls_json | ___x_cmd jq -r ".[\"$version\"].beta" )"
-    [ "$beta" != "true" ] || state="--prerelease"
-
-    ___x_cmd_version___release_sync_ "$mod" "$version" "$title" "$state" "$repo"
-
-    if [ "$version" = "$cur_version" ]; then
-        ___x_cmd_version___release_sync_ "$mod" "$old_version" "" "" "$repo"
+    if [ "$target_version" = "$cur_version" ]; then
+        state=""; ___x_cmd_version___release_check_ "$old_version"; state="$x_"
+        ___x_cmd_version___release_sync_ "$mod" "$old_version" "" "$state" "$repo"
     fi
+}
+
+___x_cmd_version___release_check_(){
+    local target_version="$1"
+    local beta="$( ___x_cmd_version_ls_json | ___x_cmd jq -r ".[\"$target_version\"].beta" )"
+    local latest="$( ___x_cmd_version_ls_json | ___x_cmd jq -r ".[\"$target_version\"].latest" )"
+
+    x_=""
+    [ "$beta" != "true" ]   || x_="--prerelease"
+    [ "$latest" != "true" ] || x_="--latest"
 }
 
 ___x_cmd_version___release_sync_(){
@@ -98,6 +106,10 @@ ___x_cmd_version___release_sync_platform(){
     release_id="$(___x_cmd "$mod" repo release ls --csv --repo "$repo" \
         | ___x_cmd csv awk -v version="$version" '{ if( cval(3) ~ version ) print cval(1) }' )"
     [ -n "$release_id" ] || N=x M="not found version=$version release" log:ret:1
+
+    if [ "$state" = "--latest" ] && [ "$mod" != "gh" ]; then
+        state="";
+    fi
 
     if [ "$mod" = "gt" ]; then
         ___x_cmd gt repo release edit --repo "$repo" --body "$platform_desc" --name "$title" --tag "$version" ${state:+"$state"} "$release_id"

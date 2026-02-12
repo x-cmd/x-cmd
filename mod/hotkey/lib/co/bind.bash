@@ -3,6 +3,7 @@
 ___x_cmd_hotkey_co_bind() {
 	local hotkey='\C-x'
 
+	___X_CMD_HOTKEY_CO_EMOJI="${___X_CMD_HOTKEY_CO_EMOJI:-🤖} "
 	___X_CMD_HOTKEY_CO_MODE_ACTIVE=0
 	___X_CMD_HOTKEY_CO_ORIGINAL_PS1="$PS1"
 	___X_CMD_HOTKEY_CO_EXECUTING=0
@@ -12,7 +13,7 @@ ___x_cmd_hotkey_co_bind() {
 			hotkey='\C-x\C-x'
 			___X_CMD_HOTKEY_CO_USE_PREEXEC=1
 			x_replhook_feature="hotkey co widget" ___x_cmd replhook_enable || return
-			[ -z "$BASH_VERSION" ] || ___x_cmd_replhook_trapint_init
+			___x_cmd_replhook_trapint_init
 			;;
 		*)
 			___X_CMD_HOTKEY_CO_USE_PREEXEC=0
@@ -23,8 +24,6 @@ ___x_cmd_hotkey_co_bind() {
 }
 
 ___x_cmd_hotkey_co_toggle_mode() {
-	local emoji="${___X_CMD_HOTKEY_CO_EMOJI:-🤖} "
-
 	if [ "$___X_CMD_HOTKEY_CO_MODE_ACTIVE" = "1" ]; then
 		___x_cmd log :hotkey info "Deactivating co widget"
 		___X_CMD_HOTKEY_CO_MODE_ACTIVE=0
@@ -43,6 +42,7 @@ ___x_cmd_hotkey_co_toggle_mode() {
 		fi
 	else
 		___x_cmd log :hotkey info "Activating co widget"
+		local emoji="$___X_CMD_HOTKEY_CO_EMOJI"
 		___X_CMD_HOTKEY_CO_MODE_ACTIVE=1
 		___X_CMD_HOTKEY_CO_ORIGINAL_PS1="$PS1"
 		PS1="${PS1}${emoji}"
@@ -90,7 +90,7 @@ ___x_cmd_hotkey_co_toggle_mode() {
 				fi
 
 				___X_CMD_HOTKEY_CO_EXECUTING=1
-				___x_cmd hotkey co --exec "$*"
+				___x_cmd hotkey co --exec "[command not found] $*"
 				local ret=$?
 				___X_CMD_HOTKEY_CO_EXECUTING=0
 
@@ -125,7 +125,7 @@ ___x_cmd_hotkey_co_preexec() {
 
 	BASH_COMMAND=""
 	___X_CMD_HOTKEY_CO_EXECUTING=1
-	___x_cmd hotkey co --exec "$cmd"
+	___x_cmd hotkey co --exec "[command not found] $cmd"
 	local ret=$?
 	___X_CMD_HOTKEY_CO_EXECUTING=0
 
