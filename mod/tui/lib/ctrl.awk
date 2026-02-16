@@ -546,12 +546,19 @@ function ctrl_stredit_value_add(o, kp, val,     v, i, b, w, l, s){
 
 }
 
-function ctrl_stredit_value_del(o, kp,      v, p, l){
+function ctrl_stredit_value_del(o, kp,      v, p, l, w, b){
     v = ctrl_stredit_value(o, kp)
     l = ctrl_stredit_cursor_pos(o, kp)
     ctrl_stredit_cursor_backward(o, kp)
     p = ctrl_stredit_cursor_pos(o, kp)
-    o[ kp, "stredit-ctrl", "value" ] = substr(v, 1, p) substr(v, l+1)
+    v = substr(v, 1, p) substr(v, l+1)
+    o[ kp, "stredit-ctrl", "value" ] = v
+
+    # Adjust start-point: if entire remaining content fits in window, reset to 0
+    w = o[ kp, "stredit-ctrl", "width" ]
+    b = o[ kp, "stredit-ctrl", "start-point" ]
+    if ((b > 0) && (wcswidth_cache(v) <= w))
+        o[ kp, "stredit-ctrl", "start-point" ] = 0
 }
 
 # EndSection

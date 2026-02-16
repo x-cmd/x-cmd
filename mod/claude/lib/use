@@ -1,51 +1,170 @@
 # shellcheck shell=dash
 
-___x_cmd_claude_use(){
-    local op="$1"
-    case "$op" in
-        -h|--help)      ___x_cmd help -m claude use; return 0 ;;
-        "")             ___x_cmd help -m claude use; return 64 ;;
-        kimi|deepseek|ds)
-                        shift; ___x_cmd_claude_use___runcmd "$op" "$@" ;;
-        *)              N=claude M="Unknown subcmd -> $op" log:ret:64 ;;
+___x_cmd_claude_unuse(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m claude unuse "$@" ; return 0 ;;
     esac
+
+    local settings_json="${HOME}/.claude/settings.json"
+    if [ ! -f "$settings_json" ]; then
+        claude:info "No settings file found at -> $settings_json"
+        return 0
+    fi
+
+    local tmpfile="${settings_json}.tmp.$$"
+    if ___x_cmd jq \
+        'del(.env.ANTHROPIC_BASE_URL) |
+         del(.env.ANTHROPIC_AUTH_TOKEN) |
+         del(.env.API_TIMEOUT_MS) |
+         del(.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) |
+         del(.env.ANTHROPIC_MODEL) |
+         del(.env.ANTHROPIC_SMALL_FAST_MODEL) |
+         del(.env.ANTHROPIC_DEFAULT_SONNET_MODEL) |
+         del(.env.ANTHROPIC_DEFAULT_OPUS_MODEL) |
+         del(.env.ANTHROPIC_DEFAULT_HAIKU_MODEL)' "$settings_json" > "$tmpfile";
+    then
+        ___x_cmd_cmds mv "$tmpfile" "$settings_json"
+        claude:info "Successfully removed provider settings from -> $settings_json"
+    else
+        ___x_cmd_cmds rm -f "$tmpfile"
+        claude:error "Failed to update settings file"
+        return 1
+    fi
 }
 
-___x_cmd_claude_use___runcmd(){
-    local provider="$1"; shift
+# x claude use other <url> <apikey> <model> <fastmodel>        # configure qwen
 
-    local url="$ANTHROPIC_BASE_URL"
-    local token="$ANTHROPIC_AUTH_TOKEN"
-    local timeout="${API_TIMEOUT_MS:-"60000"}"
-    local model="$ANTHROPIC_MODEL"
-    local fast_model="$ANTHROPIC_DEFAULT_HAIKU_MODEL"
-    local nonessential_traffic="$CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
+___x_cmd_claude_use(){
+    [ $# -gt 0  ]   ||  set -- --help
+
+    local scope=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m claude use "$@" ; return 0 ;;
+            -p|--project)   scope=project ; shift ;;
+            *)              break ;;
+        esac
+    done
+
+    local provider="$1"
+
+    local model=""
+    local apikey=""
+
+    local codeplan_apikey=""
+    local endpoint=""
+
+    claude:provider:fetch:init
 
     case "$provider" in
-        deepseek|ds)
-            url="${url:-"https://api.deepseek.com/anthropic"}"
-            token="${DEEPSEEK_API_KEY:-"$(___x_cmd deepseek --cur get apikey 2>/dev/null)"}"
-            model="${model:-"deepseek-chat"}"
-            fast_model="${fast_model:-"deepseek-chat"}"
-            nonessential_traffic="${nonessential_traffic:-"1"}"
-            ;;
-        kimi)
-            url="${url:-"https://api.moonshot.cn/anthropic"}"
-            token="${MOONSHOT_API_KEY:-"$(___x_cmd moonshot --cur get apikey 2>/dev/null)"}"
-            model="${model:-"kimi-k2-turbo-preview"}"
-            fast_model="${fast_model:-"kimi-k2-turbo-preview"}"
-            ;;
-        *)  claude:error "Unknown provider -> $provider"
-            return 1
-            ;;
-    esac
-    claude:debug --url "$url" --token "$token" --timeout "$timeout" --model "$model" --fast_model "$fast_model" --nonessential_traffic "$nonessential_traffic" "Use provider[$provider] to run claude-code"
+        deepseek|ds)    ___x_cmd_claude_ds___fetch_         ||  return $?   ;;
+        kimi)           ___x_cmd_claude_kimi___fetch_       ||  return $?   ;;
 
-    ANTHROPIC_BASE_URL="${url}"                                        \
-    ANTHROPIC_AUTH_TOKEN="${token}"                                    \
-    API_TIMEOUT_MS="${timeout}"                                        \
-    ANTHROPIC_MODEL="${model}"                                         \
-    ANTHROPIC_DEFAULT_HAIKU_MODEL="${fast_model}"                         \
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${nonessential_traffic}" \
-        ___x_cmd_claude___runcmd "$@"
+        minimax|mm)     ___x_cmd_claude_minimax___fetch_    ||  return $?   ;;
+        mthreads|mt)    ___x_cmd_claude_mthreads___fetch_   ||  return $?   ;;
+        zhipu|glm)      ___x_cmd_claude_zhipu___fetch_      ||  return $?   ;;
+
+        # TODO: qwen , ...
+        doubao|sili|openrouter)
+                        ___x_cmd_claude_"$provider"__fetch_ ||  return $?   ;;
+
+        custom|other)
+                        x_url="$2"
+                        x_apikey="$3"
+                        x_model="$4"
+                        x_fastmodel="${5:-"$x_model"}"
+                        claude:info "Setting provide -> $provider with [url=$x_url] [apikey=$x_apikey] [model=$x_model] [fastmodel=$x_fastmodel]"
+                        ;;
+
+        *)              claude:error "Unknown provider -> $provider"
+                        return 1
+    esac
+
+    claude:debug    \
+        --url "$x_url" --token "$x_apikey" --timeout "$x_timeout"   \
+        --model "$x_model" --fast_model "$x_fastmodel"              \
+        --nonessential_traffic "$x_nonessential_traffic"            \
+        "Use provider[$provider] to run claude-code"
+
+    local settings_json="${HOME}/.claude/settings.json"
+
+    if [ "$scope" = project ]; then
+        local x_=""
+        ___x_cmd_claude_setting_locate_or_create_ || return $?
+        settings_json="$x_"
+    fi
+
+    [ -f "$settings_json" ] || ___x_cmd fprintf "$settings_json" "{}"
+
+    local tmpfile="${settings_json}.tmp.$$"
+    if ___x_cmd jq \
+        --arg url "$x_url" \
+        --arg token "$x_apikey" \
+        --arg timeout "$x_timeout" \
+        --arg model "$x_model" \
+        --arg fastmodel "$x_fastmodel" \
+        '(.env.ANTHROPIC_BASE_URL) = $url |
+         (.env.ANTHROPIC_AUTH_TOKEN) = $token |
+         (.env.API_TIMEOUT_MS) = $timeout |
+         (.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) = "1" |
+         (.env.ANTHROPIC_MODEL) = $model |
+         (.env.ANTHROPIC_SMALL_FAST_MODEL) = $fastmodel |
+         (.env.ANTHROPIC_DEFAULT_SONNET_MODEL) = $model |
+         (.env.ANTHROPIC_DEFAULT_OPUS_MODEL) = $model |
+         (.env.ANTHROPIC_DEFAULT_HAIKU_MODEL) = $fastmodel' "$settings_json" > "$tmpfile"; then
+
+        ___x_cmd_cmds mv "$tmpfile" "$settings_json"
+
+        claude:info "Successfully update file -> $settings_json"
+    fi
+
+    local claude_json="${HOME}/.claude.json"
+    [ -f "$claude_json" ] || touch "$claude_json"
+
+    tmpfile="${claude_json}.tmp.$$"
+    if ___x_cmd jq '.hasCompletedOnboarding = true' "$claude_json" > "$tmpfile"; then
+        ___x_cmd_cmds mv "$tmpfile" "$claude_json"
+        claude:info "Successfully update file -> $claude_json"
+    fi
 }
+
+
+# ___x_cmd_claude_use___runcmd(){
+#     local provider="$1"; shift
+
+#     local url="$ANTHROPIC_BASE_URL"
+#     local token="$ANTHROPIC_AUTH_TOKEN"
+#     local timeout="${API_TIMEOUT_MS:-"60000"}"
+#     local model="$ANTHROPIC_MODEL"
+#     local fast_model="$ANTHROPIC_DEFAULT_HAIKU_MODEL"
+#     local nonessential_traffic="$CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
+
+#     case "$provider" in
+#         deepseek|ds)
+#             url="${url:-"https://api.deepseek.com/anthropic"}"
+#             token="${DEEPSEEK_API_KEY:-"$(___x_cmd deepseek --cur get apikey 2>/dev/null)"}"
+#             model="${model:-"deepseek-chat"}"
+#             fast_model="${fast_model:-"deepseek-chat"}"
+#             nonessential_traffic="${nonessential_traffic:-"1"}"
+#             ;;
+#         kimi)
+#             url="${url:-"https://api.moonshot.cn/anthropic"}"
+#             token="${MOONSHOT_API_KEY:-"$(___x_cmd moonshot --cur get apikey 2>/dev/null)"}"
+#             model="${model:-"kimi-k2-turbo-preview"}"
+#             fast_model="${fast_model:-"kimi-k2-turbo-preview"}"
+#             ;;
+#         *)  claude:error "Unknown provider -> $provider"
+#             return 1
+#             ;;
+#     esac
+#     claude:debug --url "$url" --token "$token" --timeout "$timeout" --model "$model" --fast_model "$fast_model" --nonessential_traffic "$nonessential_traffic" "Use provider[$provider] to run claude-code"
+
+#     ANTHROPIC_BASE_URL="${url}"                                        \
+#     ANTHROPIC_AUTH_TOKEN="${token}"                                    \
+#     API_TIMEOUT_MS="${timeout}"                                        \
+#     ANTHROPIC_MODEL="${model}"                                         \
+#     ANTHROPIC_DEFAULT_HAIKU_MODEL="${fast_model}"                         \
+#     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${nonessential_traffic}" \
+#         ___x_cmd_claude___runcmd "$@"
+# }
