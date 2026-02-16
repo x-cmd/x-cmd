@@ -236,6 +236,8 @@ For commonly used packages, e.g `jq` :
 
 ## License
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 See our [License Explanation](https://www.x-cmd.com/start/license).
 
 ## Other

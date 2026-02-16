@@ -249,6 +249,8 @@ X-CMD 收录的工具软件包，由 [env](https://cn.x-cmd.com/mod/env) 模块�
 
 ## License
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 查看我们的 [License 说明](https://cn.x-cmd.com/start/license)
 
 ## 其他
