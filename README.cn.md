@@ -315,6 +315,25 @@ X-CMD 是一个非常有趣的工具，网罗多种有用的服务以及吸引�
 <td width="500px">
 <p align="center">
 <br>
+<a href="https://nxcode.io"><kbd><img alt="Nxcode's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-nxcode.webp"></kbd></a><br>
+<a href="https://nxcode.io">Nxcode</a>
+<br>
+</p>
+<samp>
+<ul>
+<li>nxcode.io</li>
+</ul>
+</samp>
+</td>
+<td width="500px">
+想让你的 AI 从‘只会聊天’变成‘真能干活’的工程师？<br>用 X-CMD 就对了，它把最难搞的系统操作全包圆了。
+</td>
+</tr>
+
+<tr>
+<td width="500px">
+<p align="center">
+<br>
 <a href="https://github.com/iandol"><kbd><img alt="Ian Max Andolina Ph.D.'s avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-iandol.webp"></kbd></a><br>
 <a href="https://github.com/iandol">Ian Max Andolina Ph.D.</a>
 <br>
@@ -721,25 +740,6 @@ X-CMD是一个设计严谨、支持平台广、新手友好的模块化命令行
 <td width="500px">
 <p align="center">
 <br>
-<a href="https://x.com/nxcode_io"><kbd><img alt="Nxcode's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-nxcode.webp"></kbd></a><br>
-<a href="https://x.com/nxcode_io">Nxcode</a>
-<br>
-</p>
-<samp>
-<ul>
-<li>nxcode.io</li>
-</ul>
-</samp>
-</td>
-<td width="500px">
-想让你的 AI 从‘只会聊天’变成‘真能干活’的工程师？<br>用 X-CMD 就对了，它把最难搞的系统操作全包圆了。
-</td>
-</tr>
-
-<tr>
-<td width="500px">
-<p align="center">
-<br>
 <a href="https://infmax.top"><kbd><img alt="终南山葫芦娃's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-huluwa.webp"></kbd></a><br>
 <a href="https://infmax.top">终南山葫芦娃</a>
 <br>
@@ -837,8 +837,8 @@ agent 时代最需要的 shell expert！超小体积可以最快分发的 shell-
 <td width="500px">
 <p align="center">
 <br>
-<a href="https://mk16.de/"><kbd><img alt="Marek Küthe's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-marek22k.webp"></kbd></a><br>
-<a href="https://mk16.de/">Marek Küthe</a>
+<kbd><img alt="Marek Küthe's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-marek22k.webp"></kbd><br>
+<b>Marek Küthe</b>
 <br>
 </p>
 <samp>
