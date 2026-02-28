@@ -24,7 +24,7 @@ function tapp_canvas_has_changed(){
     ROWS = COLS = 0
 }
 
-function tapp_init0( rows, cols,  r ){
+function tapp_init0( rows, cols,  r, c ){
     r = tapp_canvas_rowsize_recalulate( rows )
     c = tapp_canvas_colsize_recalulate( cols )
     if ((r <= 0) || (c <= 0)) {

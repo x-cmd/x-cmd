@@ -98,10 +98,12 @@ ___x_cmd_docker_refit(){
     local cmd=""
     local workdir=""
 
-    local userabc=""
+    local userai=""
     local script=""
 
     local refitcnmirror=""
+
+    local container_code=""
 
     arg:init docker
     while [ $# -gt 0 ]; do
@@ -136,13 +138,35 @@ ___x_cmd_docker_refit(){
             --xenv)     xenv="$2";      arg:2:shift  ;;
             # --pkgx)     pkgx="$2";      arg:2:shift  ;;  # TODO
 
-            --userabc)  userabc=1;      shift ;;
+            --userai)  userai=1;      shift ;;
             --workdir)  workdir="$2";   arg:2:shift  ;;
 
             --ep)       ep="$2";        arg:2:shift  ;;
             --epxbin)   ep="[ \"/bin/xbin.sh\" ]";
                                         shift  ;;
             --cmd)      cmd="$2";       arg:2:shift  ;;
+
+            --env)      container_code="${container_code}ENV ${2}${___X_CMD_UNSEENCHAR_NEWLINE}" ; arg:2:shift ;;
+            --run)      container_code="${container_code}RUN ${2}${___X_CMD_UNSEENCHAR_NEWLINE}" ; arg:2:shift ;;
+
+
+            --utf8)     container_code="${container_code}
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+"
+                        shift ;;
+
+            --utf8-en)     container_code="${container_code}
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+" ;
+                        shift ;;
+            --utf8-zh)  container_code="${container_code}
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+RUN sed -i 's/^# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && sed -i 's/^# zh_CN.UTF-8/zh_CN.UTF-8/' /etc/locale.gen && locale-gen
+" ;
+                        shift ;;
 
             --script)   script="$2";    arg:2:shift  ;;
 
@@ -157,10 +181,11 @@ ___x_cmd_docker_refit(){
         refitcnmirror="enable"
     }
 
+
     ___x_cmd_docker mirror pull --noupdate "$baseimage" || {
         local errcode="$?"
         case "$errcode" in
-            130)    docker:warn "Intterrupted during pulling image -> $baseimage"; return 130 ;;
+            130)    docker:warn "Interrupted during pulling image -> $baseimage";   return 130 ;;
             *)      N=docker M="Fail to pull image -> $baseimage" log:ret:1 ;;
         esac
     }
@@ -226,7 +251,7 @@ ___x_cmd_docker_refit(){
 
             printf "%s\n" "RUN ___X_CMD_ROOTBIN_SLEEP=0 x-cmd"
 
-            [ -z "$userabc" ]       || ___x_cmd_docker_refit_code_adduser   "$baseimage"    abc abc   "$___X_CMD_DOCKER_SNAP_UID"   # normally 1000
+            [ -z "$userai" ]       || ___x_cmd_docker_refit_code_adduser   "$baseimage"    ai ai   "$___X_CMD_DOCKER_SNAP_UID"   # normally 1000
 
             local xcmd="/root/.x-cmd.root/bin/___x_cmdexe"
 
@@ -253,12 +278,7 @@ ___x_cmd_docker_refit(){
                 ___x_cmd_docker_refit_code_run      '/bin/sh -i /refit/script'
             fi
 
-            [ -z "$userabc" ]       || {
-                ___x_cmd_docker_refit_code_user_workdir     abc     /home/abc
-                USHO=/home/abc
-                ___x_cmd_docker_refit_code_run  "___X_CMD_ROOTBIN_SLEEP=0 x-cmd"
-                # ___x_cmd_docker_refit_code_run  "sh -c '[ -d ${USHO}/.x-cmd.root ] || eval \"\$(curl -q https://get.x-cmd.com)\"'"
-            }
+            [ "$refitcnmirror" = disable ] ||   ___x_cmd_docker_refit_code_run  "if $xcmd websrc testcn; then $xcmd websrc set cn; else $xcmd websrc set inet; fi"
 
             [ -z "$xenv" ]      ||          ___x_cmd_docker_refit_code_run_xenv     "$USHO"     "$xenv"
             [ -z "$pixi" ]      ||          ___x_cmd_docker_refit_code_run_pixi     "$USHO"     "$pixi"
@@ -281,6 +301,31 @@ ___x_cmd_docker_refit(){
 
             [ -z "$ep"  ]       ||          printf "ENTRYPOINT %s\n" "$ep"
             [ -z "$cmd" ]       ||          printf "CMD %s\n" "$cmd"
+
+            ___x_cmd_docker_refit_code_addpath                          \
+                "$USHO/node_modules/.bin"                               \
+                "$USHO/p/bin"                                           \
+                "$USHO/.cargo/bin"                                      \
+                "$USHO/go/bin"                                          \
+                "$USHO/.deno/bin"                                       \
+                "$USHO/.bun/bin"                                        \
+                "$USHO/.local/bin"                                      \
+                "$USHO/.x-cmd.root/bin"                                 \
+                "$USHO/.x-cmd.root/local/data/pkg/sphere/X/l/j/h/bin"   \
+                "$USHO/.pixi/bin"
+
+            # TODO: Consider using umask 055 in /root
+            # TODO: figure it out. It should be 0666
+            ___x_cmd_docker_refit_code_run  "chmod -R go+rx /root"
+
+            [ -z "$container_code" ] || printf "%s\n" "$container_code"
+
+            [ -z "$userai" ]       || {
+                ___x_cmd_docker_refit_code_user_workdir     ai     /home/ai
+                ___x_cmd_docker_refit_code_run  "___X_CMD_ROOTBIN_SLEEP=0 x-cmd"
+                # ___x_cmd_docker_refit_code_run  "sh -c '[ -d ${USHO}/.x-cmd.root ] || eval \"\$(curl -q https://get.x-cmd.com)\"'"
+            }
+
         } >Dockerfile
 
         # TODO: because docker build doesn't rec 130, so we have to trap sigint
@@ -543,4 +588,21 @@ ___x_cmd_docker_refit_code_run_bun(){
     printf "%s\n" \
             "RUN --mount=type=cache,target=${USHO}/.bun/install/cache,uid=1000,gid=1000 \\"    \
             "bun install -g $bun"
+}
+
+___x_cmd_docker_refit_code_addpath(){
+    local IFS=:
+
+    local code="PATH=\"\\\"$*:\$PATH\"\\\""
+    printf  "%s\n"   \
+            "RUN echo $code >/etc/environment"
+
+    printf "ENV PATH=\"%s\"\n" "$*:\${PATH}"
+
+    IFS=" "
+
+    printf "RUN mkdir -p %s\n" "$*"
+    # printf "RUN chmod -R go+rx %s\n" "$*"
+
+    # printf "%s\n" "RUN echo '. /etc/environment' > /etc/bash_env"
 }

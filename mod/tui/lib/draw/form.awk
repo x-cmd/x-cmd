@@ -37,8 +37,8 @@ function draw_form(o, kp, x1, x2, y1, y2, opt, \
 
 function draw_form___on_foot(o, kp, x1, x2, y1, y2, opt,             s){
     if ( ! opt_get( opt, "form.body.change" ) ) return
-    s = "<↓/↑>:Change Edit Row"
-    if (opt_get( opt, "form.is_ctrl_form_sel" )) s = s "    <←/→>:Select Option    <Enter>:Confirm Selection"
+    if (opt_get( opt, "form.is_ctrl_form_sel" )) s = "<↑/↓>:Select    <Enter>:Confirm    <Tab>:Skip"
+    else s = "<Tab/↑/↓>:Change Edit Row    <Enter>:Confirm Form"
     s = th( UI_TEXT_DIM, s )
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) s
 }
@@ -51,7 +51,7 @@ function draw_form___on_box(o, kp, x1, x2, y1, y2, opt,         _color){
 }
 
 function draw_form___on_body(o, kp, x1, x2, y1, y2, opt, \
-    row, col, _width, _desc_width, lw, rw, r, l, i, s, _start, _end){
+    row, col, _width, _desc_width, lw, rw, r, l, i, s, _start, _end, _next_line){
     if (! opt_get( opt, "form.body.change" )) return
     _next_line = "\r\n" painter_right( y1 )
     row = x2-x1;  col = y2-y1+1
@@ -100,11 +100,11 @@ function draw_form___on_cell(o, kp, i, currow, lw, rw, opt,             val, des
     else {
         opt_set( _opt, "line.text",     val )
         opt_set( _opt, "line.width",    rw )
-        opt_set( _opt, "advise.text",   opt_get( opt, "form.edit.advise") )
+
         opt_set( _opt, "cursor.pos",    opt_get( opt, "form.edit.cursor" ) )
         opt_set( _opt, "start.pos",     opt_get( opt, "form.edit.start" ) )
         opt_set( _opt, "display.error", (!_is_matched) )
-        val = draw_lineeditadvise_str_with_cursor_advise(_opt)
+        val = draw_lineedit_str_with_cursor(_opt)
         return TH_FORM_PREFIX_SELECTED desc TH_FORM_INTERVAL_STYLE val
     }
 }

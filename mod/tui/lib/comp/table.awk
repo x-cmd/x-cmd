@@ -322,7 +322,7 @@ function comp_table_change_set_all( o, kp  ) {
     return draw_table_change_set_all( o, kp )
 }
 
-function comp_table_paint( o, kp, x1, x2, y1, y2, color,       _opt, _slct_change, _body_change, _cur_col, _cur_row, _cur_col_true, _cur_row_true, _filter_enable ) {
+function comp_table_paint( o, kp, x1, x2, y1, y2, color,       _opt, _slct_change, _body_change, _cur_col, _cur_row, _cur_col_true, _cur_row_true, _filter_enable, _search_change, _res ){
 
     _search_change = change_is(o, kp, "table.search")
     _slct_change = change_is(o, kp, "table.filter")
@@ -391,7 +391,7 @@ function comp_table_current_position_var(o, kp, s,       a, i, l){
     o[ kp, "cur.pos.row" ] = int( substr(s, RSTART+RLENGTH) )
 }
 
-function comp_table_current_position_set(o, kp,          c, r){
+function comp_table_current_position_set(o, kp,          c, r, m){
     if (o[ kp, "cur.pos" ] != true) return
     if ((c = o[ kp, "cur.pos.col" ]) > 0) {
         comp_table___col_set(o, kp, c)

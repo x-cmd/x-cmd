@@ -1,0 +1,213 @@
+
+___x_cmd_build_release_asdf(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/asdf.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release asdf "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_asdf_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_asdf_build "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_asdf_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_asdf_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory structure
+    ___x_cmd_cmds install -d -m 755 "$dir/bin"
+
+    # Write list-all script
+    ___x_cmd_build_release_asdf_init___write_list_all "$dir"
+
+    # Write install script
+    ___x_cmd_build_release_asdf_init___write_install "$dir"
+
+    # Write download script
+    ___x_cmd_build_release_asdf_init___write_download "$dir"
+
+    build:info "Created $dir with asdf plugin template"
+}
+
+___x_cmd_build_release_asdf_init___write_list_all(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/bin/list-all" << 'EOF'
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# List all available versions
+curl -s https://api.github.com/repos/owner/repo/releases | \
+  grep -o '"tag_name": "[^"]*"' | \
+  sed 's/"tag_name": "//;s/"$//' | \
+  sort -V
+EOF
+    ___x_cmd_cmds chmod +x "$dir/bin/list-all"
+}
+
+___x_cmd_build_release_asdf_init___write_download(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/bin/download" << 'EOF'
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ASDF_INSTALL_TYPE=${ASDF_INSTALL_TYPE:-version}
+ASDF_INSTALL_VERSION=${ASDF_INSTALL_VERSION:-}
+ASDF_DOWNLOAD_PATH=${ASDF_DOWNLOAD_PATH:-}
+
+if [ -z "$ASDF_INSTALL_VERSION" ]; then
+  echo "Missing ASDF_INSTALL_VERSION"
+  exit 1
+fi
+
+if [ -z "$ASDF_DOWNLOAD_PATH" ]; then
+  echo "Missing ASDF_DOWNLOAD_PATH"
+  exit 1
+fi
+
+# Construct download URL
+platform=$(uname -s | tr '[:upper:]' '[:lower:]')
+arch=$(uname -m)
+download_url="https://github.com/owner/repo/releases/download/${ASDF_INSTALL_VERSION}/tool-${platform}-${arch}.tar.gz"
+
+# Download
+curl -Lo "$ASDF_DOWNLOAD_PATH/tool.tar.gz" "$download_url"
+EOF
+    ___x_cmd_cmds chmod +x "$dir/bin/download"
+}
+
+___x_cmd_build_release_asdf_init___write_install(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/bin/install" << 'EOF'
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ASDF_INSTALL_TYPE=${ASDF_INSTALL_TYPE:-version}
+ASDF_INSTALL_VERSION=${ASDF_INSTALL_VERSION:-}
+ASDF_INSTALL_PATH=${ASDF_INSTALL_PATH:-}
+
+if [ -z "$ASDF_INSTALL_VERSION" ]; then
+  echo "Missing ASDF_INSTALL_VERSION"
+  exit 1
+fi
+
+if [ -z "$ASDF_INSTALL_PATH" ]; then
+  echo "Missing ASDF_INSTALL_PATH"
+  exit 1
+fi
+
+# Create install directory
+mkdir -p "$ASDF_INSTALL_PATH/bin"
+
+# Extract downloaded archive
+if [ -f "${ASDF_DOWNLOAD_PATH:-}/tool.tar.gz" ]; then
+  tar -xzf "$ASDF_DOWNLOAD_PATH/tool.tar.gz" -C "$ASDF_INSTALL_PATH/bin"
+else
+  # Direct download fallback
+  platform=$(uname -s | tr '[:upper:]' '[:lower:]')
+  arch=$(uname -m)
+  download_url="https://github.com/owner/repo/releases/download/${ASDF_INSTALL_VERSION}/tool-${platform}-${arch}.tar.gz"
+  curl -L "$download_url" | tar -xz -C "$ASDF_INSTALL_PATH/bin"
+fi
+EOF
+    ___x_cmd_cmds chmod +x "$dir/bin/install"
+}
+
+___x_cmd_build_release_asdf_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    # Check if required scripts exist
+    for script in list-all install; do
+        if [ ! -f "$dir/bin/$script" ]; then
+            build:error "Required script bin/$script not found"
+            return 1
+        fi
+    done
+
+    # Check if scripts are executable
+    for script in "$dir/bin/"*; do
+        if [ -f "$script" ]; then
+            ___x_cmd_cmds chmod +x "$script"
+        fi
+    done
+
+    build:info "Plugin structure validated"
+    build:info "Scripts in bin/:"
+    for script in "$dir/bin/"*; do
+        if [ -f "$script" ]; then
+            build:info "  - $(basename "$script")"
+        fi
+    done
+}
+
+___x_cmd_build_release_asdf_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/bin/list-all" ] || [ ! -f "$dir/bin/install" ]; then
+        build:info --status incomplete --required "bin/list-all bin/install" "ASDF plugin incomplete"
+        return 1
+    fi
+
+    build:info --file "$dir/bin/list-all $dir/bin/install" --status manual_setup_required --m:steps "1. Create GitHub repo: asdf-<tool-name>
+2. Push plugin code
+3. PR to asdf-vm/asdf-plugins" "ASDF manual setup required"
+}

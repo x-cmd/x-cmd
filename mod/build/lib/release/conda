@@ -1,0 +1,213 @@
+
+___x_cmd_build_release_conda(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/conda.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release conda "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_conda_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_conda_build "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_conda_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_conda_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory
+    ___x_cmd_cmds install -d -m 755 "$dir"
+
+    # Write meta.yaml template
+    ___x_cmd_build_release_conda_init___write_meta_yaml "$dir"
+
+    # Write build.sh template
+    ___x_cmd_build_release_conda_init___write_build_sh "$dir"
+
+    build:info "Created $dir with Conda recipe template"
+}
+
+___x_cmd_build_release_conda_init___write_meta_yaml(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/meta.yaml" << 'EOF'
+{% set name = "package-name" %}
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
+  sha256: placeholder
+
+build:
+  number: 0
+  noarch: python
+  script: {{ PYTHON }} -m pip install . -vv
+
+requirements:
+  host:
+    - python >=3.8
+    - pip
+    - setuptools
+  run:
+    - python >=3.8
+
+test:
+  imports:
+    - package_name
+  commands:
+    - pip check
+  requires:
+    - pip
+
+about:
+  home: https://github.com/username/package
+  summary: 'Package description'
+  description: |
+    Longer description of the package.
+  license: MIT
+  license_file: LICENSE
+
+extra:
+  recipe-maintainers:
+    - your-github-username
+EOF
+}
+
+___x_cmd_build_release_conda_init___write_build_sh(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/build.sh" << 'EOF'
+#!/bin/bash
+set -e
+
+$PYTHON -m pip install . -vv
+EOF
+    ___x_cmd_cmds chmod +x "$dir/build.sh"
+}
+
+___x_cmd_build_release_conda_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/meta.yaml" ]; then
+        build:error "meta.yaml not found in $dir"
+        return 1
+    fi
+
+    # Check if conda-build is available
+    if ! ___x_cmd hascmd conda-build; then
+        build:error "conda-build not found. Install: conda install conda-build"
+        return 1
+    fi
+
+    ___x_cmd_build_release_conda_build_local "$dir"
+}
+
+___x_cmd_build_release_conda_build_local(){
+    local dir="$1"
+    build:info "Building with conda-build..."
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    # Build package
+    build:info "Building Conda package..."
+    ___x_cmd_cmds conda-build . || return $?
+
+    ___x_cmd_build_release_conda_show_results "$dir"
+}
+
+___x_cmd_build_release_conda_show_results(){
+    local dir="$1"
+    build:info "Build successful!"
+    build:info "Package location:"
+    ___x_cmd_cmds conda-build . --output 2>/dev/null || true
+}
+
+___x_cmd_build_release_conda_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/meta.yaml" ]; then
+        build:error "meta.yaml not found in $dir"
+        return 1
+    fi
+
+    if ! ___x_cmd hascmd anaconda; then
+        build:info --status tool_missing --action "conda install anaconda-client" --recipe https://github.com/conda-forge/staged-recipes "CONDA tool missing"
+        return 1
+    fi
+
+    if ! ___x_cmd_cmds anaconda whoami >/dev/null 2>&1; then
+        build:info --status not_authenticated --action "anaconda login" --url https://anaconda.org/ "CONDA authentication required"
+        return 1
+    fi
+
+    local pkg_file
+    pkg_file=$(___x_cmd find "$dir" -name "*.tar.bz2" -type f 2>/dev/null | head -1)
+    if [ -z "$pkg_file" ]; then
+        build:error "No .tar.bz2 package found, run: conda build ."
+        return 1
+    fi
+
+    if ___x_cmd_cmds anaconda upload "$pkg_file"; then
+        build:info --status uploaded --file "$(basename "$pkg_file")" "CONDA uploaded successfully"
+    else
+        build:error "anaconda upload failed"
+        return 1
+    fi
+}

@@ -2,28 +2,38 @@
 
 ___x_cmd_skill_add(){
     local dir=""
+    local scope="project"
     while [ "$#" -gt 0 ]; do
         case "$1" in
             -h|--help)      ___x_cmd help -m skill add;             return ;;
             --skill-dir)    [ -n "$2" ] || N=skill M="Please provide the skills dir" log:ret:64
                             dir="$2";   shift 2 ;;
+            --scope)        [ -n "$2" ] || N=skill M="Please provide the scope" log:ret:64
+                            scope="$2"; shift 2 ;;
             *)              break ;;
         esac
     done
 
+    case "$scope" in
+        local|user|project) ;;
+        *) N=skill M="Invalid scope -> $scope, supports: [local|user|project]" log:ret:64 ;;
+    esac
+
     ___x_cmd_skill___data_check             || return $?
 
-    local i=;
+    local i=
     for i in "$@"; do
         case "$i" in
-            mcp/*)  ___x_cmd_skill_add___mcp "$i" "$dir" || return $?              ;;
-            *)      ___x_cmd_skill_add___unit "$i" "$dir" || return $?      ;;
+            mcp/*)  ___x_cmd_skill_add___mcp "$i" "$scope" || return $?  ;;
+            *)      ___x_cmd_skill_add___unit "$i" "$dir" || return $? ;;
         esac
     done
 }
 
 ___x_cmd_skill_add___mcp(){
     local mcpid="$1"
+    local scope="${2:-project}"
+
     local name="${mcpid#mcp/*}"
 
     local config="$(___x_cmd jq -c --arg name "$name" '.[$name]? | (.stdio // .http)' "$___X_CMD_SKILL_FULL_MCP_FILE" )"
@@ -40,12 +50,15 @@ ___x_cmd_skill_add___mcp(){
         fi
     done < "$___X_CMD_SKILL_FULL_INDEX_FILE"
 
-    case "$dir" in
-        *.claude/*)
-                        ___x_cmd claude mcp add-json "$name" "${config}" >/dev/null || return $?
-                        skill:info "Successfully added MCP[$mcpid]"                     ;;
-        *.gemini/*)     N=skill M="Temporarily not supported -> gemini-cli" log:ret:64  ;;
-        *.codex/*)      N=skill M="Temporarily not supported -> codex"      log:ret:64  ;;
+    ___x_cmd claude -- mcp add-json --scope "$scope" "$name" "${config}" || {
+        skill:error "Failed to add MCP[$mcpid] to $scope scope"
+        return 1
+    }
+
+    skill:info "Successfully added MCP[$mcpid] to $scope scope"
+    case "$scope" in
+        project)  skill:info "Config file: .mcp.json" ;;
+        *)        skill:info "Config file: ~/.claude.json" ;;
     esac
 }
 

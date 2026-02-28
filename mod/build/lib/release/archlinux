@@ -1,0 +1,228 @@
+
+___x_cmd_build_release_archlinux(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/archlinux.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release archlinux "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_archlinux_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_archlinux_build "$@"
+            return $?
+            ;;
+        build-docker)
+            shift
+            ___x_cmd_build_release_archlinux_build_docker "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_archlinux_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_archlinux_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory structure
+    ___x_cmd_cmds install -d -m 755 "$dir"
+
+    # Write PKGBUILD template
+    ___x_cmd_build_release_archlinux_init___write_pkgbuild_template "$dir"
+
+    build:info "Created $dir with PKGBUILD template"
+}
+
+___x_cmd_build_release_archlinux_init___write_pkgbuild_template(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/PKGBUILD" << 'EOF'
+# Contributor: Your Name <your@email>
+# Maintainer: Your Name <your@email>
+pkgname=package-name
+pkgver=1.0.0
+pkgrel=0
+pkgdesc="Package description"
+url="https://example.com"
+arch=("any")
+license=("MIT")
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=("SKIP")
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    make DESTDIR="$pkgdir" install
+}
+EOF
+
+    # Write .install template
+    ___x_cmd_cmds cat > "$dir/package.install" << 'EOF'
+post_install() {
+    printf "%s\n" "Package installed successfully"
+}
+
+post_remove() {
+    printf "%s\n" "Package removed"
+}
+EOF
+}
+
+___x_cmd_build_release_archlinux_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/PKGBUILD" ]; then
+        build:error "PKGBUILD not found in $dir"
+        return 1
+    fi
+
+    # Check if we can build locally
+    if ___x_cmd hascmd makepkg; then
+        ___x_cmd_build_release_archlinux_build_local "$dir"
+    else
+        build:error "makepkg not found (use 'build-docker' for Docker build)"
+        return 1
+    fi
+}
+
+___x_cmd_build_release_archlinux_build_local(){
+    local dir="$1"
+    build:info "Building locally with makepkg..."
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    # Build package
+    build:info "Building Arch package..."
+    ___x_cmd_cmds makepkg -f || return $?
+
+    ___x_cmd_build_release_archlinux_show_results "$dir"
+}
+
+___x_cmd_build_release_archlinux_show_results(){
+    local dir="$1"
+    local pkg_files
+    local line
+    pkg_files=$(___x_cmd find "$dir" -name "*.pkg.tar.*" -type f 2>/dev/null)
+
+    if [ -n "$pkg_files" ]; then
+        build:info "Build successful! Generated packages:"
+        while read -r line; do
+            build:info "  $line"
+        done <<EOF
+$pkg_files
+EOF
+    else
+        build:warn "Build completed but no .pkg.tar.* files found"
+    fi
+}
+
+___x_cmd_build_release_archlinux_build_docker(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if ! ___x_cmd hascmd docker; then
+        build:error "docker not found"
+        return 1
+    fi
+
+    build:info "Building with Docker..."
+
+    local dockerfile
+    dockerfile="$___X_CMD_ROOT_MOD/build/lib/release/dockerfile/archlinux-builder.Dockerfile"
+
+    if [ ! -f "$dockerfile" ]; then
+        build:error "Dockerfile not found at $dockerfile"
+        return 1
+    fi
+
+    build:info "Building archlinux-builder image..."
+    ___x_cmd_cmds docker build -f "$dockerfile" -t x-cmd-archlinux-builder . || return $?
+
+    build:info "Running build container..."
+    ___x_cmd_cmds docker run --rm -i -v "$dir:/home/builder/archlinuxbuild" x-cmd-archlinux-builder sh -c '
+        cd /home/builder/archlinuxbuild
+        makepkg -f || exit 1
+    ' || return $?
+
+    ___x_cmd_build_release_archlinux_show_results "$dir"
+}
+
+___x_cmd_build_release_archlinux_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/PKGBUILD" ]; then
+        build:error "PKGBUILD not found in $dir"
+        return 1
+    fi
+
+    if [ ! -f "$dir/.SRCINFO" ]; then
+        build:info --status srcinfo_missing --action "makepkg --printsrcinfo > .SRCINFO" "AUR .SRCINFO missing"
+        return 1
+    fi
+
+    if [ -d "$dir/.git" ]; then
+        local aur_remote
+        aur_remote=$(___x_cmd_cmds git -C "$dir" remote get-url origin 2>/dev/null | grep -o 'aur@aur.archlinux.org' || true)
+        if [ -n "$aur_remote" ]; then
+            ___x_cmd_cmds cd "$dir" || return $?
+            if ___x_cmd_cmds git push 2>/dev/null; then
+                build:info --status pushed --remote "$aur_remote" "AUR pushed successfully"
+                return 0
+            fi
+        fi
+    fi
+
+    build:info --files "$dir/PKGBUILD $dir/.SRCINFO" --status manual_push_required --command "git push aur master" --ssh ssh://aur@aur.archlinux.org/PKGNAME.git "AUR manual push required"
+}

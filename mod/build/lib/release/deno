@@ -1,0 +1,206 @@
+
+___x_cmd_build_release_deno(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/deno.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release deno "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_deno_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_deno_build "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_deno_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_deno_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory
+    ___x_cmd_cmds install -d -m 755 "$dir"
+
+    # Write deno.json template
+    ___x_cmd_build_release_deno_init___write_deno_json "$dir"
+
+    # Write mod.ts template
+    ___x_cmd_build_release_deno_init___write_mod_ts "$dir"
+
+    build:info "Created $dir with Deno module template"
+}
+
+___x_cmd_build_release_deno_init___write_deno_json(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/deno.json" << 'EOF'
+{
+  "name": "@scope/package-name",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./mod.ts",
+    "./utils": "./utils.ts"
+  },
+  "imports": {
+    "$std/": "https://deno.land/std@0.220.0/"
+  },
+  "tasks": {
+    "test": "deno test -A",
+    "fmt": "deno fmt",
+    "lint": "deno lint",
+    "check": "deno check **/*.ts"
+  },
+  "publish": {
+    "include": [
+      "*.ts",
+      "README.md",
+      "LICENSE"
+    ],
+    "exclude": [
+      "*_test.ts",
+      ".github/"
+    ]
+  }
+}
+EOF
+}
+
+___x_cmd_build_release_deno_init___write_mod_ts(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/mod.ts" << 'EOF'
+/**
+ * Package description
+ * @module
+ */
+
+export const VERSION = "0.1.0";
+
+/**
+ * Returns greeting message
+ */
+export function hello(): string {
+  return "Hello, Deno!";
+}
+
+export default hello;
+EOF
+}
+
+___x_cmd_build_release_deno_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/deno.json" ]; then
+        build:error "deno.json not found in $dir"
+        return 1
+    fi
+
+    # Check if deno is available
+    if ! ___x_cmd hascmd deno; then
+        build:error "deno not found. Please install Deno."
+        return 1
+    fi
+
+    ___x_cmd_build_release_deno_build_local "$dir"
+}
+
+___x_cmd_build_release_deno_build_local(){
+    local dir="$1"
+    build:info "Building with Deno..."
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    # Format check
+    build:info "Checking formatting..."
+    ___x_cmd_cmds deno fmt --check || {
+        build:warn "Code not formatted. Run: deno fmt"
+    }
+
+    # Lint
+    build:info "Running linter..."
+    ___x_cmd_cmds deno lint || {
+        build:warn "Linting failed"
+    }
+
+    # Type check
+    build:info "Type checking..."
+    ___x_cmd_cmds deno check **/*.ts || {
+        build:warn "Type checking failed"
+    }
+
+    # Test
+    build:info "Running tests..."
+    ___x_cmd_cmds deno test -A || {
+        build:warn "Tests failed"
+    }
+
+    build:info "Build completed successfully"
+}
+
+___x_cmd_build_release_deno_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/deno.json" ]; then
+        build:error "deno.json not found in $dir"
+        return 1
+    fi
+
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    if ___x_cmd_cmds deno publish; then
+        build:info --status published "JSR published successfully"
+    else
+        build:error "deno publish failed, run: deno login"
+        return 1
+    fi
+}

@@ -2,7 +2,7 @@ function comp_navi_init( o, kp, screen_split ){
     o[ kp, "TYPE" ] = "navi"
     o[ kp, "navi.screen.split" ] = ( int(screen_split) > 0 ) ? int(screen_split) : 3
     comp_navi___cur_col(o, kp, 1)
-    navi_arr_data_trace_col_val(o, kp, col, "", true)
+    navi_arr_data_trace_col_val(o, kp, 1, "", true)
     comp_textbox_init(o, kp SUBSEP "navi.footer")
     ctrl_sw_init( o, kp SUBSEP "IS_DIM", false)
     change_set(o, kp, "navi.footer")
@@ -116,7 +116,7 @@ function comp_navi___sel_data_add( o, kp, rootkp, val,      _kp ){
     _kp = navi_arr_data_sel_kp_get( kp, rootkp )
     comp_gsel_init( o, _kp, "", false )
     comp_gsel_ctrl_loop_sw_set(o, _kp, comp_navi_ctrl_rowloop_sw_get(o, kp))
-    comp_gsel_data_add( o, _Kp, val)
+    comp_gsel_data_add( o, _kp, val)
 }
 
 function comp_navi___get_row_of_preview_kp( o, kp, rootkp, preview_kp, isfuzzy,         i, l, v ){

@@ -1,0 +1,99 @@
+# shellcheck shell=dash
+
+___x_cmd log init claude
+
+xrc:mod:lib     claude  setting/_index
+
+# Main entry point for team subcommand
+___x_cmd_claude_team(){
+    [ $# -gt 0 ] || set -- --help
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)          ___x_cmd help -m claude team "$@"; return 0 ;;
+        enable|on)          ___x_cmd_claude_team_enable    "$@" ;;
+        disable|off)        ___x_cmd_claude_team_disable   "$@" ;;
+        mode)               ___x_cmd_claude_team_mode      "$@" ;;
+        *)                  N=claude M="Unknown subcommand: $op" log:ret:64 ;;
+    esac
+}
+
+# Enable Agent Teams
+___x_cmd_claude_team_enable(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m claude team enable "$@" ; return 0 ;;
+    esac
+
+    local x_
+    local settings_json
+    ___x_cmd_claude_globalsetting_locate_or_create_
+    settings_json="$x_"
+
+    [ -f "$settings_json" ] || ___x_cmd fprintf "$settings_json" "{}"
+
+    local tmpfile="${settings_json}.tmp.$$"
+    if ___x_cmd jq '(.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS) = "1"' "$settings_json" > "$tmpfile"; then
+        ___x_cmd_cmds mv "$tmpfile" "$settings_json"
+        claude:info "Enabled Agent Teams -> $settings_json"
+    else
+        ___x_cmd_cmds rm -f "$tmpfile"
+        claude:error "Failed to enable Agent Teams"
+        return 1
+    fi
+}
+
+# Disable Agent Teams
+___x_cmd_claude_team_disable(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m claude team disable "$@" ; return 0 ;;
+    esac
+
+    local x_
+    local settings_json
+    ___x_cmd_claude_globalsetting_locate_or_create_
+    settings_json="$x_"
+
+    [ -f "$settings_json" ] || ___x_cmd fprintf "$settings_json" "{}"
+
+    local tmpfile="${settings_json}.tmp.$$"
+    if ___x_cmd jq 'del(.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS)' "$settings_json" > "$tmpfile"; then
+        ___x_cmd_cmds mv "$tmpfile" "$settings_json"
+        claude:info "Disabled Agent Teams -> $settings_json"
+    else
+        ___x_cmd_cmds rm -f "$tmpfile"
+        claude:error "Failed to disable Agent Teams"
+        return 1
+    fi
+}
+
+# Set teammate mode
+___x_cmd_claude_team_mode(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m claude team mode "$@" ; return 0 ;;
+    esac
+
+    local mode="$1";    [ -n "$mode" ] || mode="auto"
+    case "$mode" in
+        auto|in-process|tmux)
+            ;;
+        *)
+            N=claude M="Unsupported mode: $mode, use auto or in-process or tmux" log:ret:64
+            ;;
+    esac
+
+    # The settings from the official documentation don't work when added to settings.json.
+    # https://code.claude.com/docs/en/agent-teams#choose-a-display-mode
+    local settings_json="$HOME/.claude.json"
+
+    [ -f "$settings_json" ] || ___x_cmd fprintf "$settings_json" "{}"
+
+    local tmpfile="${settings_json}.tmp.$$"
+    if ___x_cmd jq --arg mode "$mode" '(.teammateMode) = $mode' "$settings_json" > "$tmpfile"; then
+        ___x_cmd_cmds mv "$tmpfile" "$settings_json"
+        claude:info "Set teammate-mode to $mode -> $settings_json"
+    else
+        ___x_cmd_cmds rm -f "$tmpfile"
+        claude:error "Failed to set teammate-mode"
+        return 1
+    fi
+}

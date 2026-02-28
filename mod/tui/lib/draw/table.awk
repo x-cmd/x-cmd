@@ -105,7 +105,7 @@ function draw_table___on_body( o, kp, x1, x2, y1, y2, opt,      _next_line, row,
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) _str
 }
 
-function draw_table___on_cell( o, kp, opt, i, j, w,             ri, ci, v, l, _v_1, s, sl, id ){
+function draw_table___on_cell( o, kp, opt, i, j, w,             ri, ci, v, l, s, sl ){
     ri = model_arr_get(o, kp, "view-row" SUBSEP i)
     ci = layout_avg_get_item(o, kp, j)
     v  = table_arr_get_data(o, kp, ri, ci)
@@ -192,7 +192,7 @@ function draw_table___on_filter(o, kp, x1, x2, y1, y2, opt,         ci, v, _opt)
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) "FILTER: " v
 }
 
-function draw_table___on_search(o, kp, x1, x2, y1, y2, opt,         v, _opt){
+function draw_table___on_search(o, kp, x1, x2, y1, y2, opt,         v, _opt, ci){
     if ( ! change_is(o, kp, "table.search") ) return
     change_unset(o, kp, "table.search")
     ci = opt_get( opt, "cur.col.true" )

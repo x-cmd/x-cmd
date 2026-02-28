@@ -105,7 +105,7 @@ function ctrl_num_rdec( o, kp,  m, v ){
     return o[ kp "val" ] = o[ kp "max" ]
 }
 # TODO: check
-function ctrl_num_add( o, kp, val,      mi, ma, mr, v ){
+function ctrl_num_add( o, kp, val,      mi, ma, v ){
     kp = kp SUBSEP "ctrl-num" SUBSEP
     v = o[ kp "val" ]
     ma = o[ kp "max" ]
@@ -152,7 +152,7 @@ function ctrl_numstr_init( o, kp, min, max ) {
     o[ kp "max" ] = max
 }
 
-function ctrl_numstr_inc( o, kp,             m ){
+function ctrl_numstr_inc( o, kp,             m, v ){
     v = o[ kp "val" ]
     m = o[ kp "max" ]
     if (v < m) {
@@ -208,14 +208,14 @@ function ctrl_numstr_set( o, kp, val ){
     o[ kp "val" ] = val
 }
 
-function ctrl_numstr_addchar( o, kp, val ) {
+function ctrl_numstr_addchar( o, kp, val,         v ) {
     v = o[ kp "val" ] val
     if ( ( int(v) >= int(o[ kp "min" ]) ) && ( int(v) <= int(o[ kp "max" ] )) ) {
         ctrl_numstr_set( o,  v )
     }
 }
 
-function ctrl_numstr_delchar( o, kp ) {
+function ctrl_numstr_delchar( o, kp,         v ) {
     v = o[ kp "val" ]
     ctrl_numstr_set( o, substr(v, 1, length(v) - 1), kp )
 }

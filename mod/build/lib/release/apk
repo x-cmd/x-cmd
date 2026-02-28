@@ -1,0 +1,240 @@
+
+___x_cmd_build_release_apk(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/apk.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release apk "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_apk_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_apk_build "$@"
+            return $?
+            ;;
+        build-docker)
+            shift
+            ___x_cmd_build_release_apk_build_docker "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_apk_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_apk_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Try newapkbuild first
+    if ___x_cmd hascmd newapkbuild; then
+        build:info "Using newapkbuild to generate APKBUILD..."
+        local parent_dir
+        parent_dir=$(___x_cmd_cmds dirname "$dir")
+        local dir_name
+        dir_name=$(___x_cmd_cmds basename "$dir")
+        ___x_cmd_cmds mkdir -p "$parent_dir" || return $?
+        ___x_cmd_cmds cd "$parent_dir" || return $?
+        if ___x_cmd_cmds newapkbuild "$dir_name" 2>/dev/null; then
+            if [ -d "$dir_name" ] && [ "$dir_name" != "$dir" ]; then
+                ___x_cmd_cmds mv "$dir_name"/* "$dir_name/."* "$dir/" 2>/dev/null || true
+                ___x_cmd_cmds rmdir "$dir_name" 2>/dev/null || true
+            fi
+            ___x_cmd_cmds install -d -m 755 "$dir/pkg"
+            build:info "Created $dir using newapkbuild"
+            return 0
+        fi
+        build:warn "newapkbuild failed, using built-in template"
+    fi
+
+    # Fallback: create directory and write template
+    ___x_cmd_cmds install -d -m 755 "$dir/pkg"
+    ___x_cmd_build_release_apk_init___write_apkbuild_template "$dir"
+    build:info "Created $dir with built-in template"
+}
+
+___x_cmd_build_release_apk_init___write_apkbuild_template(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/APKBUILD" << 'EOF'
+# Contributor: Your Name <your@email>
+# Maintainer: Your Name <your@email>
+pkgname=package-name
+pkgver=1.0.0
+pkgrel=0
+pkgdesc="Package description"
+url="https://example.com"
+arch="x86_64"
+license="MIT"
+source="$pkgname-$pkgver.tar.gz"
+build() {
+    cd "$srcdir"
+    ./configure --prefix=/usr
+    make
+}
+package() {
+    make DESTDIR="$pkgdir" install
+}
+EOF
+}
+
+___x_cmd_build_release_apk_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/APKBUILD" ]; then
+        build:error "APKBUILD not found in $dir"
+        return 1
+    fi
+
+    # Check if we can build locally
+    if ___x_cmd hascmd abuild; then
+        ___x_cmd_build_release_apk_build_local "$dir"
+    else
+        build:error "abuild not found (use 'build-docker' for Docker build)"
+        return 1
+    fi
+}
+
+___x_cmd_build_release_apk_build_local(){
+    local dir="$1"
+    build:info "Building locally with abuild..."
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    # Step 1: Generate signing keys
+    build:info "Generating signing keys..."
+    ___x_cmd_cmds abuild-keygen -a -n || return $?
+
+    # Step 2: Run linter
+    build:info "Running apkbuild-lint..."
+    ___x_cmd_cmds apkbuild-lint APKBUILD || {
+        build:error "apkbuild-lint failed"
+        return 1
+    }
+
+    # Step 3: Generate checksums
+    build:info "Generating checksums..."
+    ___x_cmd_cmds abuild checksum || return $?
+
+    # Step 4: Build package
+    build:info "Building package..."
+    ___x_cmd_cmds abuild -r || return $?
+
+    ___x_cmd_build_release_apk_show_results "$dir"
+}
+
+___x_cmd_build_release_apk_show_results(){
+    local dir="$1"
+    local apk_files
+    local line
+    apk_files=$(___x_cmd find "$dir/pkg" -name "*.apk" -type f 2>/dev/null)
+
+    if [ -n "$apk_files" ]; then
+        build:info "Build successful! Generated packages:"
+        while read -r line; do
+            build:info "  $line"
+        done <<EOF
+$apk_files
+EOF
+    else
+        build:warn "Build completed but no .apk files found in pkg/"
+    fi
+}
+
+___x_cmd_build_release_apk_build_docker(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if ! ___x_cmd hascmd docker; then
+        build:error "docker not found"
+        return 1
+    fi
+
+    build:info "Building with Docker..."
+
+    local dockerfile
+    dockerfile="$___X_CMD_ROOT_MOD/build/lib/release/dockerfile/alpine-builder.Dockerfile"
+
+    if [ ! -f "$dockerfile" ]; then
+        build:error "Dockerfile not found at $dockerfile"
+        return 1
+    fi
+
+    build:info "Building alpine-builder image..."
+    ___x_cmd_cmds docker build -f "$dockerfile" -t x-cmd-alpine-builder . || return $?
+
+    build:info "Running build container..."
+    ___x_cmd_cmds docker run --rm -i -v "$dir:/apkbuild" x-cmd-alpine-builder sh -c '
+        printf "%s\n" "builder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+        adduser -D -G abuild builder && chown -R builder /apkbuild
+        cd /apkbuild
+        su -c "mkdir -p /home/builder/packages && abuild-keygen -a -n && apkbuild-lint APKBUILD && abuild checksum && abuild -r" builder || {
+            abuild clean
+            exit 1
+        }
+    ' || return $?
+
+    ___x_cmd_build_release_apk_show_results "$dir"
+}
+
+___x_cmd_build_release_apk_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/APKBUILD" ]; then
+        build:error "APKBUILD not found in $dir"
+        return 1
+    fi
+
+    build:info --file "$dir/APKBUILD" --status mr_required --url https://gitlab.alpinelinux.org/alpine/aports --commit "testing/pkgname: new aport" "APORTS manual action required"
+}

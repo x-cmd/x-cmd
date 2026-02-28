@@ -1,0 +1,235 @@
+
+___x_cmd_build_release_pip(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/pip.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release pip "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_pip_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_pip_build "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_pip_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_pip_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory structure
+    ___x_cmd_cmds install -d -m 755 "$dir/src/package_name"
+
+    # Write pyproject.toml template
+    ___x_cmd_build_release_pip_init___write_pyproject_toml "$dir"
+
+    # Write __init__.py template
+    ___x_cmd_build_release_pip_init___write_init_py "$dir"
+
+    build:info "Created $dir with Python package template"
+}
+
+___x_cmd_build_release_pip_init___write_pyproject_toml(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/pyproject.toml" << 'EOF'
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "package-name"
+version = "0.1.0"
+description = "Package description"
+readme = "README.md"
+authors = [
+    {name = "Your Name", email = "your@email.com"}
+]
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+keywords = ["sample", "package"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "build>=0.8.0",
+    "twine>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/username/package"
+Repository = "https://github.com/username/package"
+Issues = "https://github.com/username/package/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+EOF
+}
+
+___x_cmd_build_release_pip_init___write_init_py(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/src/package_name/__init__.py" << 'EOF'
+"""Package description."""
+
+__version__ = "0.1.0"
+
+
+def hello():
+    """Return greeting."""
+    return "Hello, world!"
+EOF
+}
+
+___x_cmd_build_release_pip_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/pyproject.toml" ]; then
+        build:error "pyproject.toml not found in $dir"
+        return 1
+    fi
+
+    # Check if python is available
+    if ! ___x_cmd hascmd python3; then
+        build:error "python3 not found. Please install Python."
+        return 1
+    fi
+
+    ___x_cmd_build_release_pip_build_local "$dir"
+}
+
+___x_cmd_build_release_pip_build_local(){
+    local dir="$1"
+    build:info "Building with build..."
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    # Install build tools if needed
+    build:info "Installing build dependencies..."
+    ___x_cmd_cmds python3 -m pip install build twine --quiet 2>/dev/null || true
+
+    # Build package
+    build:info "Building package..."
+    ___x_cmd_cmds python3 -m build || return $?
+
+    # Check with twine
+    build:info "Checking distribution with twine..."
+    ___x_cmd_cmds python3 -m twine check dist/* || {
+        build:warn "Twine check found issues"
+    }
+
+    ___x_cmd_build_release_pip_show_results "$dir"
+}
+
+___x_cmd_build_release_pip_show_results(){
+    local dir="$1"
+    local dist_files
+    local line
+    dist_files=$(___x_cmd find "$dir/dist" -name "*.whl" -o -name "*.tar.gz" 2>/dev/null)
+
+    if [ -n "$dist_files" ]; then
+        build:info "Build successful! Generated packages:"
+        while read -r line; do
+            build:info "  $line"
+        done <<EOF
+$dist_files
+EOF
+    else
+        build:warn "No distribution files found in dist/"
+    fi
+}
+
+
+___x_cmd_build_release_pip_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/pyproject.toml" ]; then
+        build:error "pyproject.toml not found in $dir"
+        return 1
+    fi
+
+    if [ ! -d "$dir/dist" ]; then
+        build:error "dist/ not found, run: python -m build"
+        return 1
+    fi
+
+    if [ -z "${TWINE_USERNAME:-}" ] && [ ! -f "$HOME/.pypirc" ]; then
+        build:info --status not_authenticated --action "export TWINE_USERNAME=__token__; export TWINE_PASSWORD=<token>" --token_url https://pypi.org/manage/account/token/ "PYPI authentication required"
+        return 1
+    fi
+
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    if ___x_cmd_cmds python -m twine upload dist/*; then
+        build:info --status published "PYPI published successfully"
+    else
+        build:error "twine upload failed"
+        return 1
+    fi
+}

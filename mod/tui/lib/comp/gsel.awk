@@ -75,11 +75,11 @@ function comp_gsel_handle( o, kp, char_value, char_name, char_type,             
 }
 
 function comp_gsel_ctrl_loop_sw_set(o, kp, tf){     ctrl_sw_init( o, kp SUBSEP "ctrl-loop", tf);               }
-function comp_gsel_ctrl_page_inc(O, kp){
+function comp_gsel_ctrl_page_inc(o, kp){
     if (ctrl_sw_get(o, kp SUBSEP "ctrl-loop"))      return ctrl_page_rinc(o, kp)
     return ctrl_page_inc(o, kp)
 }
-function comp_gsel_ctrl_page_dec(O, kp){
+function comp_gsel_ctrl_page_dec(o, kp){
     if (ctrl_sw_get(o, kp SUBSEP "ctrl-loop"))      return ctrl_page_rdec(o, kp)
     return ctrl_page_dec(o, kp)
 }
@@ -183,6 +183,10 @@ function comp_gsel_get_cur_cell( o, kp,        i ){
 function comp_gsel_get_cur_item(o, kp,          i){
     i = comp_gsel_get_cur_cell( o, kp )
     return comp_gsel_data_get(o, kp, i)
+}
+
+function comp_gsel_matched_count(o, kp){
+    return comp_gsel___slct_data_maxrow(o, kp)
 }
 
 function comp_gsel_get_selected_item(o, kp, _sep,         i, l, v){

@@ -10,7 +10,7 @@ function layout_avg_ele_clear( o, kp ){
     o[ kp, "right.col" ] = 1
 }
 
-function layout_avg_ele_add( o, kp, i, min, max ){
+function layout_avg_ele_add( o, kp, i, min, max,       l ){
     l = o[ kp, "avg-layout" L ] = o[ kp, "avg-layout" L ] + 1
     o[ kp, "avg-layout", l ] = i
     o[ kp, "avg-layout", l, "min" ] = min

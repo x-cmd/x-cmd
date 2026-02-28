@@ -93,10 +93,10 @@ function ml_to_arr( str, col, arr,       a, l, i, k, e, el, _e1, _e1l ){
     return arr[ L ] = k
 }
 
-function ml_to_arr_jascii( str, col, arr,       v, a, l, i, k, e, el ){
-    l = split(v, a, "\r?\n")
+function ml_to_arr_jascii( str, col, arr,       a, l, i, k, e, el ){
+    l = split(str, a, "\r?\n")
     for (i=1; i<=l; ++i) {
-        for (el = length( e = a[i] ); el > column; e = substr(e, col+1))
+        for (el = length( e = a[i] ); el > col; e = substr(e, col+1))
             arr[ ++k ] = substr(e, 1, col)
         arr[ ++k ] = e
     }

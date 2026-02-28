@@ -1,0 +1,277 @@
+
+___x_cmd_build_release_deb(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/deb.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release deb "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_deb_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_deb_build "$@"
+            return $?
+            ;;
+        build-docker)
+            shift
+            ___x_cmd_build_release_deb_build_docker "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_deb_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_deb_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory structure
+    ___x_cmd_cmds install -d -m 755 "$dir/DEBIAN"
+
+    # Write control file template
+    ___x_cmd_build_release_deb_init___write_control_template "$dir"
+
+    # Write maintainer scripts templates
+    ___x_cmd_build_release_deb_init___write_maintainer_scripts "$dir"
+
+    build:info "Created $dir with DEBIAN control templates"
+}
+
+___x_cmd_build_release_deb_init___write_control_template(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/DEBIAN/control" << 'EOF'
+Package: package-name
+Version: 1.0.0
+Architecture: all
+Maintainer: Your Name <your@email>
+Description: Package description
+ Short description continued on next line
+EOF
+}
+
+___x_cmd_build_release_deb_init___write_maintainer_scripts(){
+    local dir="$1"
+    
+    # postinst
+    ___x_cmd_cmds cat > "$dir/DEBIAN/postinst" << 'EOF'
+#!/bin/sh
+set -e
+
+# Post-installation script
+
+exit 0
+EOF
+    ___x_cmd_cmds chmod 755 "$dir/DEBIAN/postinst"
+
+    # postrm
+    ___x_cmd_cmds cat > "$dir/DEBIAN/postrm" << 'EOF'
+#!/bin/sh
+set -e
+
+# Post-removal script
+
+exit 0
+EOF
+    ___x_cmd_cmds chmod 755 "$dir/DEBIAN/postrm"
+
+    # preinst
+    ___x_cmd_cmds cat > "$dir/DEBIAN/preinst" << 'EOF'
+#!/bin/sh
+set -e
+
+# Pre-installation script
+
+exit 0
+EOF
+    ___x_cmd_cmds chmod 755 "$dir/DEBIAN/preinst"
+
+    # prerm
+    ___x_cmd_cmds cat > "$dir/DEBIAN/prerm" << 'EOF'
+#!/bin/sh
+set -e
+
+# Pre-removal script
+
+exit 0
+EOF
+    ___x_cmd_cmds chmod 755 "$dir/DEBIAN/prerm"
+}
+
+___x_cmd_build_release_deb_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/DEBIAN/control" ]; then
+        build:error "DEBIAN/control not found in $dir"
+        return 1
+    fi
+
+    # Check if we can build locally
+    if ___x_cmd hascmd dpkg-deb; then
+        ___x_cmd_build_release_deb_build_local "$dir"
+    else
+        build:error "dpkg-deb not found (use 'build-docker' for Docker build)"
+        return 1
+    fi
+}
+
+___x_cmd_build_release_deb_build_local(){
+    local dir="$1"
+    build:info "Building locally with dpkg-deb..."
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    # Ensure maintainer scripts are executable
+    for script in DEBIAN/postinst DEBIAN/postrm DEBIAN/preinst DEBIAN/prerm; do
+        if [ -f "$script" ]; then
+            ___x_cmd_cmds chmod 755 "$script"
+        fi
+    done
+
+    # Build package
+    build:info "Building Debian package..."
+    ___x_cmd_cmds dpkg-deb --root-owner-group --build . || return $?
+
+    ___x_cmd_build_release_deb_show_results "$dir"
+}
+
+___x_cmd_build_release_deb_show_results(){
+    local dir="$1"
+    local deb_files
+    local line
+    deb_files=$(___x_cmd find "$dir" -maxdepth 1 -name "*.deb" -type f 2>/dev/null)
+
+    if [ -n "$deb_files" ]; then
+        build:info "Build successful! Generated packages:"
+        while read -r line; do
+            build:info "  $line"
+        done <<EOF
+$deb_files
+EOF
+    else
+        build:warn "Build completed but no .deb files found"
+    fi
+}
+
+___x_cmd_build_release_deb_build_docker(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if ! ___x_cmd hascmd docker; then
+        build:error "docker not found"
+        return 1
+    fi
+
+    build:info "Building with Docker..."
+
+    local dockerfile
+    dockerfile="$___X_CMD_ROOT_MOD/build/lib/release/dockerfile/debian-builder.Dockerfile"
+
+    if [ ! -f "$dockerfile" ]; then
+        build:error "Dockerfile not found at $dockerfile"
+        return 1
+    fi
+
+    build:info "Building debian-builder image..."
+    ___x_cmd_cmds docker build -f "$dockerfile" -t x-cmd-debian-builder . || return $?
+
+    build:info "Running build container..."
+    ___x_cmd_cmds docker run --rm -i -v "$dir:/home/builder/debbuild" x-cmd-debian-builder sh -c '
+        cd /home/builder/debbuild
+        chmod 755 DEBIAN/postinst DEBIAN/postrm 2>/dev/null || true
+        dpkg-deb --root-owner-group --build . || exit 1
+    ' || return $?
+
+    ___x_cmd_build_release_deb_show_results "$dir"
+}
+
+___x_cmd_build_release_deb_upload(){
+    local dir=""
+    local ppa=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)       shift; break ;;
+            --ppa)    ppa="$2"; shift 2 ;;
+            --*)      build:error "Unknown option: $1"; return 1 ;;
+            *)        break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    local deb_files
+    deb_files=$(___x_cmd find "$dir" -name "*.deb" -type f 2>/dev/null)
+    if [ -z "$deb_files" ]; then
+        build:info --status no_package_files --action "dpkg-deb --build ." "DEB package files missing"
+        return 1
+    fi
+
+    if [ -n "$ppa" ]; then
+        local changes_file
+        changes_file=$(___x_cmd find "$dir" -name "*.changes" -type f | head -1)
+        if [ -n "$changes_file" ] && ___x_cmd hascmd dput; then
+            if ___x_cmd_cmds dput ppa:"$ppa" "$changes_file"; then
+                build:info --status uploaded --ppa "ppa:$ppa" "DEB uploaded successfully"
+                return 0
+            else
+                build:error "dput upload failed"
+                return 1
+            fi
+        fi
+    fi
+
+    build:info --m:files "$deb_files" --status upload_options --ppa "dput ppa:user/ppa package.changes" --repo "reprepro includedeb distro package.deb" "DEB upload options"
+}

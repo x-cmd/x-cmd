@@ -1,0 +1,355 @@
+
+# shellcheck shell=dash disable=2016
+
+___x_cmd_build_release_rpm(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/rpm.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release rpm "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_rpm_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_rpm_build "$@"
+            return $?
+            ;;
+        build-docker)
+            shift
+            ___x_cmd_build_release_rpm_build_docker "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_rpm_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_rpm_init(){
+    local dir=""
+    local force=0
+    local pkg_type=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --type)  pkg_type="$2"; shift 2 ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory structure
+    ___x_cmd_cmds install -d -m 755 \
+        "$dir/BUILD" \
+        "$dir/RPMS" \
+        "$dir/SOURCES" \
+        "$dir/SPECS" \
+        "$dir/SRPMS" \
+        || return $?
+
+    # Generate spec file
+    ___x_cmd_build_release_rpm_init___generate_spec "$dir" "$pkg_type"
+
+    build:info "Created RPM build directory: $dir"
+}
+
+___x_cmd_build_release_rpm_init___generate_spec(){
+    local dir="$1"
+    local pkg_type="${2:-}"
+    local spec_file="$dir/SPECS/package.spec"
+
+    if ___x_cmd hascmd rpmdev-newspec; then
+        # Auto-detect type if not specified
+        if [ -z "$pkg_type" ]; then
+            pkg_type=$(___x_cmd_build_release_rpm_init___detect_spec_type "$dir")
+        fi
+
+        if [ -n "$pkg_type" ]; then
+            build:info "Using rpmdev-newspec (type: $pkg_type)..."
+            if ___x_cmd_cmds rpmdev-newspec --type "$pkg_type" "$spec_file" 2>/dev/null; then
+                return 0
+            fi
+        else
+            build:info "Using rpmdev-newspec..."
+            if ___x_cmd_cmds rpmdev-newspec "$spec_file" 2>/dev/null; then
+                return 0
+            fi
+        fi
+        build:warn "rpmdev-newspec failed, using built-in template"
+    fi
+
+    ___x_cmd_build_release_rpm_init___write_spec_template "$dir"
+}
+
+___x_cmd_build_release_rpm_init___detect_spec_type(){
+    local dir="$1"
+    local parent_dir
+    parent_dir=$(___x_cmd_cmds dirname "$dir")
+
+    if [ -f "$parent_dir/setup.py" ] || [ -f "$parent_dir/pyproject.toml" ] || [ -f "$parent_dir/requirements.txt" ]; then
+        printf "%s\n" "python"
+        return 0
+    fi
+
+    if [ -f "$parent_dir/Cargo.toml" ]; then
+        printf "%s\n" "rust"
+        return 0
+    fi
+
+    if [ -f "$parent_dir/package.json" ]; then
+        printf "%s\n" "nodejs"
+        return 0
+    fi
+
+    if [ -f "$parent_dir/Gemfile" ]; then
+        printf "%s\n" "ruby"
+        return 0
+    fi
+
+    if [ -f "$parent_dir/Makefile" ] || [ -f "$parent_dir/configure.ac" ] || [ -f "$parent_dir/CMakeLists.txt" ]; then
+        printf "%s\n" "c"
+        return 0
+    fi
+}
+
+___x_cmd_build_release_rpm_init___write_spec_template(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/SPECS/package.spec" << 'EOF'
+Name:           package-name
+Version:        1.0.0
+Release:        1%{?dist}
+Summary:        Package description
+BuildArch:      noarch
+
+License:        MIT
+URL:            https://example.com
+
+Source0:        %{name}-%{version}.tar.gz
+
+BuildRequires:  gcc, make
+Requires:       some-dependency
+
+%description
+Package description
+
+
+%prep
+%autosetup
+
+
+%build
+%configure
+make %{?_smp_mflags}
+
+
+%install
+make install DESTDIR=%{buildroot}
+
+
+%files
+%{_bindir}/your-command
+%{_mandir}/man1/your-command.1.*
+
+
+%changelog
+* Mon Jan 01 2024 Your Name <your@email> - 1.0.0-1
+- Initial package
+EOF
+}
+
+___x_cmd_build_release_rpm_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    local spec_files
+    spec_files=$(___x_cmd find "$dir/SPECS" -name "*.spec" -type f 2>/dev/null)
+
+    if [ -z "$spec_files" ]; then
+        build:error "No .spec file found in $dir/SPECS/"
+        return 1
+    fi
+
+    local spec_count
+    spec_count=$(printf "%s\n" "$spec_files" | ___x_cmd_cmds wc -l)
+
+    if [ "$spec_count" -eq 1 ]; then
+        ___x_cmd_build_release_rpm_build_local "$dir" "$spec_files"
+    else
+        build:error "Multiple .spec files found. Please specify one."
+        local line
+        while read -r line; do
+            build:info "  $line"
+        done <<EOF
+$spec_files
+EOF
+        return 1
+    fi
+}
+
+___x_cmd_build_release_rpm_build_local(){
+    local dir="$1"
+    local spec_file="$2"
+    build:info "Building locally with rpmbuild..."
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    # Step 1: Run linter
+    build:info "Running rpmlint..."
+    ___x_cmd_cmds rpmlint "$spec_file" || {
+        build:error "rpmlint failed (use --force to skip)"
+        return 1
+    }
+
+    # Step 2: Install build dependencies
+    if ___x_cmd hascmd dnf; then
+        build:info "Installing build dependencies (dnf builddep)..."
+        ___x_cmd_cmds sudo dnf builddep -y "$spec_file" || {
+            build:warn "Some build dependencies failed to install"
+        }
+    elif ___x_cmd hascmd yum; then
+        build:info "Installing build dependencies (yum-builddep)..."
+        ___x_cmd_cmds sudo yum-builddep -y "$spec_file" || {
+            build:warn "Some build dependencies failed to install"
+        }
+    fi
+
+    # Step 3: Build package
+    build:info "Building RPM packages..."
+    ___x_cmd_cmds rpmbuild --define "_topdir $dir" -ba "$spec_file" || return $?
+
+    ___x_cmd_build_release_rpm_show_results "$dir"
+}
+
+___x_cmd_build_release_rpm_show_results(){
+    local dir="$1"
+    local rpm_files
+    local line
+    rpm_files=$(___x_cmd find "$dir/RPMS" -name "*.rpm" -type f 2>/dev/null)
+
+    if [ -n "$rpm_files" ]; then
+        build:info "Build successful! Generated packages:"
+        while read -r line; do
+            build:info "  $line"
+        done <<EOF
+$rpm_files
+EOF
+    else
+        build:warn "Build completed but no .rpm files found in RPMS/"
+    fi
+}
+
+___x_cmd_build_release_rpm_build_docker(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if ! ___x_cmd hascmd docker; then
+        build:error "docker not found"
+        return 1
+    fi
+
+    build:info "Building with Docker..."
+
+    local dockerfile
+    dockerfile="$___X_CMD_ROOT_MOD/build/lib/release/dockerfile/fedora-builder.Dockerfile"
+
+    if [ ! -f "$dockerfile" ]; then
+        build:error "Dockerfile not found at $dockerfile"
+        return 1
+    fi
+
+    build:info "Building fedora-builder image..."
+    ___x_cmd_cmds docker build -f "$dockerfile" -t x-cmd-fedora-builder . || return $?
+
+    build:info "Running build container..."
+    ___x_cmd_cmds docker run --rm -i -v "$dir:/home/builder/rpmbuild" x-cmd-fedora-builder sh -c '
+        groupadd abuild && useradd -m -G abuild builder && chown -R builder /home/builder/rpmbuild
+        cd /home/builder/rpmbuild
+        spec_file=$(find SPECS -name "*.spec" -type f | head -n1)
+        [ -z "$spec_file" ] && { printf "%s\n" "No .spec file found" >&2; exit 1; }
+        su -c "rpmbuild --define \"_topdir /home/builder/rpmbuild\" -ba \$spec_file" builder || exit 1
+    ' || return $?
+
+    ___x_cmd_build_release_rpm_show_results "$dir"
+}
+
+___x_cmd_build_release_rpm_upload(){
+    local dir=""
+    local copr_project=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)     shift; break ;;
+            --copr) copr_project="$2"; shift 2 ;;
+            --*)    build:error "Unknown option: $1"; return 1 ;;
+            *)      break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    local srpm_file
+    srpm_file=$(___x_cmd find "$dir/SRPMS" -name "*.src.rpm" -type f 2>/dev/null | head -1)
+    if [ -z "$srpm_file" ]; then
+        build:info --status no_srpm --action "rpmbuild -bs SPECS/package.spec" "RPM SRPM missing"
+        return 1
+    fi
+
+    if [ -n "$copr_project" ] && ___x_cmd hascmd copr-cli; then
+        if ___x_cmd_cmds copr-cli build "$copr_project" "$srpm_file"; then
+            build:info --status submitted --copr "$copr_project" --srpm "$srpm_file" "RPM submitted to COPR"
+            return 0
+        else
+            build:error "copr-cli build failed"
+            return 1
+        fi
+    fi
+
+    build:info --srpm "$srpm_file" --m:rpms "$(___x_cmd find "$dir/RPMS" -name "*.rpm" 2>/dev/null)" --status upload_options --copr "copr-cli build <project> $(basename "$srpm_file")" --fedora "https://bugzilla.redhat.com/enter_bug.cgi?product=Fedora&component=Package%%20Review" "RPM upload options"
+}

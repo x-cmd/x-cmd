@@ -14,13 +14,13 @@ function draw_navi_initial_col(o, kp, c){
     o[ kp, "initial.col" ] = c
 }
 
-function draw_navi_initial_col_decrement(o, kp, cur_col){
+function draw_navi_initial_col_decrement(o, kp, cur_col,       c){
     c = o[ kp, "initial.col" ]
     if (cur_col != c) return
     o[ kp, "initial.col" ] = c - 1
 }
 
-function draw_navi_paint( o, kp, x1, x2, y1, y2, is_dim, opt,       _draw_clear, _draw_sel, _draw_preview, _draw_box ){
+function draw_navi_paint( o, kp, x1, x2, y1, y2, is_dim, opt,       _draw_clear, _draw_sel, _draw_preview, _draw_box, w ){
     if ( ! change_is(o, kp, "navi.body") ) return
     change_unset(o, kp, "navi.body")
     draw_navi_unava( o, kp, -1 )
@@ -67,7 +67,7 @@ function draw_navi___paint_null_data( x1, x2, y1, y2,        v){
 
 function draw_navi___paint_body_sel(o, kp, rootkp, x1, x2, y1, y2, is_dim, opt,        s){
     if (draw_navi_curcol_should_preview(opt) || is_dim) s = painter_vline_ends( x1-1, x2+1, y2 ); y2--
-    return s draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, ((draw_navi___paint_is_dim(o, kp)) ? true : is_dim), false, opt )
+    return s draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, ((draw_navi___paint_is_dim(o, kp)) ? true : is_dim), opt )
 }
 
 function draw_navi___paint_preview( o, kp, x1, x2, y1, y2, opt,            c, r, s, rootkp ){
@@ -87,11 +87,11 @@ function draw_navi___paint_preview( o, kp, x1, x2, y1, y2, opt,            c, r,
     return s
 }
 
-function draw_navi___paint_preview_sel(o, kp, rootkp, x1, x2, y1, y2, opt,             s){
-    return draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, true, true, opt)
+function draw_navi___paint_preview_sel(o, kp, rootkp, x1, x2, y1, y2, opt){
+    return draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, true, opt)
 }
 
-function draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, is_dim, is_preview, opt,          gkp, _draw_gsel, _no_title ) {
+function draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, is_dim, opt,          gkp, _draw_gsel, _no_title ) {
     gkp = navi_arr_data_sel_kp_get( kp, rootkp )
     draw_gsel_change_set_all( o, gkp )
 
