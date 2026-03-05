@@ -10,7 +10,7 @@ function expand_list(o, kp,        i, l){
         expand_value(o, kp SUBSEP jqu(i))
     }
 }
-function expand_dict(o, kp,        i, l, msg, key, delarr, delnum, val, j){
+function expand_dict(o, kp,        i, l, msg, key, delarr, delnum, val, j, val_l){
     if ((msg = comp_advise_get_ref( o, kp )) != true) {
         log_warn( "advise", msg )
         exit(1)
@@ -44,7 +44,7 @@ function expand_dict(o, kp,        i, l, msg, key, delarr, delnum, val, j){
     }
 }
 
-function trim_obj_of_args(o, argstr,            args, argl, kp, nextkp, i, delnum, l, optarg_id, delarr, trigger){
+function trim_obj_of_args(o, argstr,            args, argl, kp, nextkp, i, delnum, l, optarg_id, delarr, trigger, j, jl, key){
     comp_advise_prepare_argarr(argstr, args, " ")
     kp = nextkp = Q2_1
     argl = args[ L ]

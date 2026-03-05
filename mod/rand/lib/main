@@ -1,16 +1,18 @@
 # shellcheck        shell=dash
 
-xrc:mod:lib     rand        uuidv7
+xrc:mod:lib     rand        uuidv7  str
 
 # TODO: rewrite this module using the awk lib.
 
 ___x_cmd_rand___main(){
-    [ $# -gt 0 ]    ||  set -- --help
+    [ $# -gt 0 ]    ||  set -- int
 
     local op="$1";      shift
     case "$op" in
         -h|--help)      ___x_cmd help -m rand ;;
-        uuid|uuidv7|string|alpha|alphanum|lowercase|uppercase|int|float|decimal|digit)
+        uuid|uuidv7|\
+        int_|int|float_|float|decimal_|decimal|digit_|digit|ip|\
+        string|alpha|alphanum|email|lower|upper)
                         ___x_cmd_rand_"$op" "$@" ;;
         *)              N=rand M="Unsupuported subcmd -> $op" log:ret:64 ;;
     esac
@@ -30,89 +32,84 @@ ___x_cmd_rand_uuid(){
     fi
 }
 
-# Refer https://gist.github.com/earthgecko/3089509
-# TODO: just using the awk.
-___x_cmd_rand_string(){
-    local LENGTH=${1:-32}
-    local CHARSET=${2:-'a-zA-Z0-9'}
-    # LC_CTYPE setting according to https://wxnacy.com/2018/03/07/tr-Illegal-byte-sequence/
-    LC_CTYPE="$___X_CMD_LOCALE_DEF_C" tr -"$___X_CMD_LOCALE_DEF_C" -d "$CHARSET" < /dev/random | fold -w "$LENGTH" | head -n 1
-}
-
-___x_cmd_rand_alphanum(){ ___x_cmd_rand_string "$@"; }
-___x_cmd_rand_alpha(){ ___x_cmd_rand_string "${1:-32}" 'a-zA-Z'; }
-___x_cmd_rand_lowercase(){ ___x_cmd_rand_string "${1:-32}" 'a-z'; }
-___x_cmd_rand_uppercase(){ ___x_cmd_rand_string "${1:-32}" 'A-Z'; }
-
-# TODO: just using the awk.
-___x_cmd_rand_ip_address(){
-    echo "$(___x_cmd_rand_int 0 255).$(___x_cmd_rand_int 0 255).$(___x_cmd_rand_int 0 255).$(___x_cmd_rand_int 0 255)"
-}
-
-___x_cmd_rand_email_address(){
-    :
-}
-
-___x_cmd_rand_valid_user_name(){
-    :
-}
-
-
 if [ -n "$RANDOM" ]; then
     ___x_cmd_rand_int_(){
-        local ST=${1:?start number} EN=${2:?end number} SIZE=${3:-0}
-        x_=$(( ( RANDOM % (EN-ST) )  + ST ))
-    }
-
-    # ash, bash, zsh
-    # TODO: padding zero in the beginning
-    ___x_cmd_rand_int(){
-        local x_
-        ___x_cmd_rand_int_ "$@" || return $?
-        printf "%s\n" "$x_"
-    }
-
-    ___x_cmd_rand_decimal(){
-        printf "%.${1:-3}f" "$(printf '0x0.%04xp1' $RANDOM)"
-    }
-
-    # TODO: make it right.
-    ___x_cmd_rand_digit(){
-        printf "%0${1:-3}s" "$RANDOM"
+        local ST="${1:-0} "
+        local EN="${2:-32767}"
+        x_=$(( ( RANDOM % (EN-ST+1) )  + ST ))
     }
 else
     ___x_cmd_rand_int_(){
-        x_="$( ___x_cmd_rand_int "$@" )"
-    }
-    
-    # Refer https://unix.stackexchange.com/questions/140750/generate-random-numbers-in-specific-range
-    ___x_cmd_rand_int(){
-        local ST=${1:?start number}
-        local EN=${2:?end number}
+        # x_="$( ___x_cmd_rand_int "$@" )"
+        local ST="${1:-0} "
+        local EN="${2:-32767}"
 
-        local SIZE=${3:-0}
-
-        printf "%0${SIZE}d\n" $(( ( $(od -An -N2 -i /dev/random) % (EN-ST) )  + ST ))
-    }
-
-    ___x_cmd_rand_decimal(){
-        printf "%.${1:-3}f" "0x0.$(od -N 8 -An -tx1 /dev/urandom | tr -d ' ')"
-    }
-
-    # TODO: make it right.
-    ___x_cmd_rand_digit(){
-        printf "%.${1:-6}s" "$(od -N 3 -An -i /dev/urandom | tr -d ' ')"
+        x_="$(( ( $(___x_cmd_cmds od -An -N2 -i /dev/random) % (EN-ST+1) )  + ST ))"
     }
 fi
 
-# TODO: make it right.
-___x_cmd_rand_float(){
-    local int floating 
-    int="$(___x_cmd_rand_int "${1:?start number}" "${2:?end number}")"
-    floating="$(___x_cmd_rand_digit "${3:-3}")"
-    if [ "$floating" -eq 0 ]; then
-        printf "%d" "$int"
-    else
-        printf "%s" "$int.$floating"
-    fi
+___x_cmd_rand_int(){
+    local x_
+    ___x_cmd_rand_int_  "$@" || return $?
+    printf "%d\n" "$x_"
 }
+
+___x_cmd_rand_digit_(){
+    local n="${1:-3}"
+    x_=""
+    case "$n" in
+        1)      ___x_cmd_rand_int_ 10    19     ;;
+        2)      ___x_cmd_rand_int_ 100   199    ;;
+        3)      ___x_cmd_rand_int_ 1000  1999   ;;
+        4)      ___x_cmd_rand_int_ 10000 19999  ;;
+        *)      
+                local i=$((n+4))
+                local ret=""
+                while [ $((i=i-4)) -ge 4 ]; do
+                    ___x_cmd_rand_int_ 10000 19999
+                    ret="${ret}${x_#?}"
+                done
+                case "$i" in
+                    3|2|1)
+                        ___x_cmd_rand_digit_ "$i"
+                        ret="${ret}${x_}"
+                esac
+                x_="$ret"
+                return 0
+    esac
+    x_="${x_#?}"
+}
+
+___x_cmd_rand_digit(){
+    local x_
+    ___x_cmd_rand_digit_ "$@"   ||  return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_rand_decimal_(){
+    ___x_cmd_rand_digit_ "$1"   || return $?
+    x_="0.${x_}"
+}
+
+___x_cmd_rand_decimal(){
+    local x_
+    ___x_cmd_rand_decimal_  "$@"    || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_rand_float_(){
+    local begin="${1:-0}"
+    local end="${2:-32767}"
+    local decimal_length="${3:-3}"
+
+    ___x_cmd_rand_int_ "$begin" "$end"      || return $?  ;   local int="$x_"
+    ___x_cmd_rand_digit "$decimal_length"   || return $?
+    x_="${int}.${x_}"
+}
+
+___x_cmd_rand_float(){
+    local x_
+    ___x_cmd_rand_float_        || return $?
+    printf "%s\n" "$x_"
+}
+

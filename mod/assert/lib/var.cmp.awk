@@ -1,5 +1,9 @@
 BEGIN{
     STATE = 0
+    # System vars change naturally in subshells, ignore them
+    ignore["PPID"] = 1
+    ignore["SHLVL"] = 1
+    ignore["_"] = 1
 }
 
 function exitnow( code ){

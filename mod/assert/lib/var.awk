@@ -4,24 +4,39 @@ function get_varname( str ){
 
 function skip_var( data,  n ){
     n = get_varname( data )
-    if ( n == "FUNCNAME")                       return 1
-    if ( n == "BASH_LINENO")                    return 1
-    if ( n == "_")                              return 1
-    if ( n == "ZSH_EVAL_CONTEXT")               return 1
-    if ( n == "HISTCMD")                        return 1
-    if ( n == "SECONDS")                        return 1
 
-    if ( n == "BASH_COMMAND")                   return 1
-    if ( n == "PROMPT_COMMAND")                 return 1
+    # Skip by prefix patterns (fast path - filters most variables)
+    # [_'\-0-9@]     : invalid chars (_, -, ', digits, @)
+    # (ZSH|zsh|BASH|DASH|ASH|KASH)_ : shell-specific prefixes
+    # x_exectime_    : x-cmd internal timing
+    if (n ~ /^[_'\-0-9@]/) return 1
+    # Skip by shell-specific prefixes
+    if (n ~ /^(ZSH|zsh|ZLS|zle|ZLE|zls|ZFTP|zftp|BASH|DASH|ASH|KASH|x|X)_/) return 1
 
-    # if ( n ~ "^__vsc")                          return 1
-    if ( n ~ "^__vsc")                          return 1
-
-
-    # vscode env
-    if ( n == "main")                           return 1
-
-    # TODO: add more variables to ignore...
+    # Skip exact variable names (shell dynamic/special variables)
+    if (n == "FUNCNAME")        return 1
+    if (n == "PPID")            return 1
+    if (n == "SHLVL")           return 1
+    if (n == "HISTCMD")         return 1
+    if (n == "SECONDS")         return 1
+    if (n == "TTYIDLE")         return 1
+    if (n == "EPOCHREALTIME")   return 1
+    if (n == "EPOCHSECONDS")    return 1
+    if (n == "epochtime")       return 1
+    if (n == "RANDOM")          return 1
+    if (n == "SRANDOM")         return 1
+    if (n == "ZDOTDIR")         return 1
+    if (n == "KEYMAP")          return 1
+    if (n == "WIDGET")          return 1
+    if (n == "LASTWIDGET")      return 1
+    if (n == "ERRNO")           return 1
+    if (n == "LINENO")          return 1
+    if (n == "COLUMNS")         return 1
+    if (n == "LINES")           return 1
+    if (n == "POSIXLY_CORRECT") return 1
+    if (n == "PIPESTATUS")      return 1
+    if (n == "PROMPT_COMMAND")  return 1
+    if (n == "main")            return 1
 
     return 0
 }
@@ -37,9 +52,15 @@ BEGIN {
 
 {
     if (STATE == 1) {
-        data = data "\n" $0
+        data = data "\001\002\003" $0
     } else {
         data = $0
+        # Skip lines without '=' (e.g., dynamic variables like zsh EPOCHREALTIME, EPOCHSECONDS)
+        if (data !~ "=") {
+            STATE = 0
+            next
+        }
+
         if ( data ~ /^zzzzzzzzzzzzzzzzzzzzzzzzzzzz=/)   exit 0
         if (data ~ /^[A-Za-z0-9_]+=$/) {
             STATE = 0
@@ -52,18 +73,16 @@ BEGIN {
             output( data )
             next
         }
-    }
-    # ^[A-Za-z0-9_]+='[^'\\]*(((\\\\)|(\\'))*[^']*)*'$
-    if (data ~ /^[A-Za-z0-9_]+='([^'\\]*(\\\\|\\')*[^']*)'$/) {
-        STATE = 0
-        gsub("\n", "\001\002\003", data)
-        output( data )
+
+        if (data ~ /^[A-Za-z0-9_]+='/) {
+            STATE = 1
+        }
     }
 
-    if(data ~ /(^[-'0-9@_\\].*)|(^ZSH_.*)|(^zsh_.*)|(^BASH_.*)|(^DASH_.*)|(ASH_.*)|(^KASH_.*) /){
-            STATE = 0
-            next
-    }else {
-        STATE = 1
+    # Check for complete single-quoted variable (ends with ')
+    if (data ~ /^[A-Za-z0-9_]+='([^']|('\\''))*'$/) {
+        STATE = 0
+        output( data )
+        next
     }
 }

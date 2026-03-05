@@ -1,6 +1,7 @@
 
 { if ($0 != "") jiparse_after_tokenize(obj, $0); }
 END{
+    if (LIST_DESC_SEP == "") LIST_DESC_SEP = "\t"  # Default separator if not provided externally
     ARGSTR = ENVIRON[ "ARGSTR" ]
     comp_advise_prepare_argarr(ARGSTR, args, " ")
     obj_prefix = comp_advise_locate_obj_prefix( obj, args )

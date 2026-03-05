@@ -266,14 +266,21 @@ function generate_subcmd_help_tip( obj, kp,          _res, i, l, arr, k, _id){
     return "Run '"_res"' for more information on a command\n\n"
 }
 
-function generate_name_help( obj, kp,       n, d, _str){
+function generate_name_help( obj, kp,       n, d, _str, _kp_name){
     kp = kp SUBSEP "\"#name\""
     if (aobj_is_null( obj, kp)) return
     _str = generate___title("NAME:") "\n"
     n = obj[ kp ]
     if ( n == "{" ) {
         n = obj[ kp, 1 ]
-        if ((d = obj[ kp, n ]) == "null") d = aobj_get_value_with_local_language(obj, kp, ___X_CMD_LANG)
+        _kp_name = kp SUBSEP n
+        d = obj[ _kp_name ]
+        if ( d == "null" ) {
+            d = aobj_get_value_with_local_language(obj, kp, ___X_CMD_LANG)
+        } else if ( d == "{" ) {
+            # Support nested format: alias: { en: ..., cn: ... }
+            d = aobj_get_value_with_local_language(obj, _kp_name, ___X_CMD_LANG)
+        }
     }
     _str = _str COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_UI_CMD juq(n) COMP_HELPDOC_UI_END ( aobj_str_is_null(d) ? "" : " - " aobj_uq(d) ) "\n"
     return _str "\n"

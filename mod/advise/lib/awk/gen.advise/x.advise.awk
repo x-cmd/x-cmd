@@ -66,7 +66,7 @@ function get_mod_desc_of_advise_file(o, keypath, key, filepath,         kp, _, c
     return true
 }
 
-function handle(o, mod, filepath,           _, _q2_mod, _mod_kp, _name_kp, n, d, k){
+function handle(o, mod, filepath,           _, _q2_mod, _mod_kp){
     _q2_mod = jqu(mod)
     _mod_kp = SUBSEP Q2_1 SUBSEP _q2_mod
     jdict_put( o, SUBSEP Q2_1, _q2_mod, "{")

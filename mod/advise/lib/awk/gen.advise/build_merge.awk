@@ -30,7 +30,7 @@ function parse_yml_data_after_tokenize( obj, text,       _arr, _arrl, i, j, item
     IS_YML_DATA = false
 }
 
-function parse_jsons_after_tokenize( o, text ){
+function parse_jsons_after_tokenize( o, text,       _ ){
     if ( text == X_CMD_ADVISE_ERREXIT ) exit(1)
     jiparse_after_tokenize(_, text)
     if ( JITER_LEVEL != 0 ) return
