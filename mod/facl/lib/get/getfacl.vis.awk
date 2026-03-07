@@ -69,6 +69,5 @@ BEGIN{
         "%s\t%s\t%s\t%s\n" : \
         "%s,%s,%s,%s\n"
 
-    printf "\n"
     handle()
 }

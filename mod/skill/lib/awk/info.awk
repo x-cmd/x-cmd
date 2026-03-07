@@ -35,7 +35,8 @@ $1 == id {
 
 END{
     if (!HAS_FOUND_ID) {
-        print c_key "ID:" c_reset "          " c_val  c_reset
+        print c_key "Not found skill info: " c_reset c_val id c_reset
+        exit 1
     }
 }
 

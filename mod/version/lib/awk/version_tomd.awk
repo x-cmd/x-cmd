@@ -59,6 +59,10 @@ END{
 
     if( change[ "change" ] != "" ) {
         printf("%s\n\n", "## 📃 Changelog")
+        _tmp = version
+        gsub(/\./, "", _tmp)
+        img = "x-cmd-" _tmp
+        printf("%s\n\n", "![" img "](https://codeberg.org/x-cmd/img/raw/branch/main/assets/" img ".en.webp)")
         parse_changelog(O, version, "change")
     }
 }

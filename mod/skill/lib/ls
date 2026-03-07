@@ -175,16 +175,76 @@ A
 ___x_cmd_skill_ls___preview_get_file_desc_(){
     local skillfile="$1"
     [ -f "$skillfile" ] || return 1
-    local n=0; local l=""; local desc=""
+    local n=0; local l=""; local desc=""; local block_indicator=""
     x_=""
-    while read -r l; do
-        desc="${l#"description: "}"
-        [ "$l" = "$desc" ] || {
-            x_="$desc"
-            break
-        }
+    while IFS= read -r l; do
         n=$(( n + 1 ))
-        [ "$n" -le 10 ] || break
+        [ "$n" -le 30 ] || break
+
+        # Check for description: line
+        desc="${l#"description: "}"
+        if [ "$l" != "$desc" ]; then
+            # Found description line
+            case "$desc" in
+                \|*)
+                    # Literal block scalar (|)
+                    block_indicator="|"
+                    continue
+                    ;;
+                \>*)
+                    # Folded block scalar (>)
+                    block_indicator=">"
+                    continue
+                    ;;
+                "")
+                    # Empty value, check next line for indented content
+                    continue
+                    ;;
+                *)
+                    # Single line value
+                    x_="$desc"
+                    break
+                    ;;
+            esac
+        fi
+
+        # Inside block scalar - collect indented lines
+        if [ -n "$block_indicator" ]; then
+            case "$l" in
+                [\ #\t]*)
+                    # Indented line - strip leading whitespace and add to result
+                    local stripped="$l"
+                    # Remove leading spaces and tabs
+                    while [ "${stripped# }" != "$stripped" ] || [ "${stripped#\t}" != "$stripped" ]; do
+                        stripped="${stripped# }"
+                        stripped="${stripped#\t}"
+                    done
+                    if [ -n "$stripped" ]; then
+                        if [ -z "$x_" ]; then
+                            x_="$stripped"
+                        else
+                            if [ "$block_indicator" = "|" ]; then
+                                # Literal: join with space for compact display
+                                x_="$x_ $stripped"
+                            else
+                                # Folded: join with space
+                                x_="$x_ $stripped"
+                            fi
+                        fi
+                    fi
+                    ;;
+                *)
+                    # Non-indented line ends the block
+                    break
+                    ;;
+            esac
+        fi
     done < "$skillfile"
+
+    # Limit result length to avoid very long descriptions
+    if [ "${#x_}" -gt 500 ]; then
+        x_="$(printf "%s" "$x_" | ___x_cmd_cmds cut -c1-497)___"
+    fi
+
     [ -n "$x_" ]
 }

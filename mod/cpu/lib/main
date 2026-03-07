@@ -1,7 +1,66 @@
 # shellcheck shell=dash
 
+___x_cmd log init cpu
+
 ___x_cmd_cpu___main(){
-    # ... Migrate the code from ls to this repo
-    ___x_cmd ls :cpu
+    [ $# -gt 0 ]    ||              set -- info
+
+    local subcmd="$1";              shift
+    case "$subcmd" in
+        -h|--help)                  ___x_cmd help -m cpu "$@" ; return 0 ;;
+        info)                       ___x_cmd_cpu_info "$@" ;;
+        endianness|endian|endi)     ___x_cmd_cpu_endianness "$@" ;;
+        *)                          N=cpu M="Unknown subcmd -> $subcmd" log:ret:64 ;;
+    esac
 }
 
+___x_cmd_cpu_info(){
+    if ___x_cmd os is darwin; then
+        cpu:debug "Using sysctl command"
+        ___x_cmd_cmds sysctl -a | ___x_cmd_cmds grep machdep\.cpu | ___x_cmd_cmds_awk -v FS=. '{ split($3, arr, ": "); printf("%-25s: %s\n", arr[1], arr[2]); }'
+    else
+        cpu:debug "Using /proc/cpuinfo"
+        ___x_cmd_cmds_awk '
+            /^processor|^model name|^cpu cores|^cpu MHz|^vendor_id|^cache size/ {
+                gsub(/\t/, " ");
+                printf("%-25s: %s\n", $1, substr($0, index($0, ":") + 2))
+            }
+        '</proc/cpuinfo 2>/dev/null || {
+            cpu:error "Failed to read /proc/cpuinfo"
+            return 1
+        }
+    fi
+}
+
+___x_cmd_cpu_endianness(){
+    local x_=""
+    ___x_cmd_cpu_endianness_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_cpu_endianness_(){
+    x_=""
+    if ___x_cmd os is darwin; then
+        local byteorder
+        byteorder="$(sysctl -n hw.byteorder 2>/dev/null)" || return 1
+        case "$byteorder" in
+            1234)   x_=l        ;;
+            4321)   x_=b        ;;
+            *)      return 1    ;;
+        esac
+        return 0
+    fi
+
+    local exe=/proc/self/exe
+    [ -e "$exe" ] || {
+        exe=/bin/sh
+        [ -e "$exe" ] && [ ! -L "$exe" ] || exe=/bin/bash
+    }
+
+    x_="$(___x_cmd_cmds head -c 6 "$exe" | ___x_cmd_cmds tail -c 1)"
+    case "$x_" in
+        "$___X_CMD_UNSEENCHAR_001")     x_=l ;;
+        "$___X_CMD_UNSEENCHAR_002")     x_=b ;;
+        *)                              return 1 ;;
+    esac
+}
