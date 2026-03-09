@@ -1,30 +1,184 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC3028
 
 ___X_CMD_BAKMAN_DATA="$___X_CMD_ROOT_DATA/bakman"
 
 ___x_cmd_bakman___main(){
-    [ "$#" -gt 0 ] ||   set -- -h
+    [ "$#" -gt 0 ] ||   set -- --help
     local op="$1";      shift
     case "$op" in
-        backup|restore)
-                ___x_cmd_bakman___"$op" "$@" ;;
-        -h|--help)
-                x help -m bakman "$@" >&2
-                return 64                     ;;
+        -h|--help)              ___x_cmd help -m bakman "$@"; return 0 ;;
+        backup)                 shift; ___x_cmd_bakman_backup "$@" ;;
+        restore)                shift; ___x_cmd_bakman_restore "$@" ;;
+        list|ls)                shift; ___x_cmd_bakman_list "$@" ;;
+        clean)                  shift; ___x_cmd_bakman_clean "$@" ;;
+        latest)                 shift; ___x_cmd_bakman_latest "$@" ;;
+        *)                      N=bakman M="Unknown subcmd -> $op" log:ret:64 ;;
     esac
 }
 
-___x_cmd_bakman___backup(){
+# Internal version: uses x_ variable for efficiency
+___x_cmd_bakman_backup_(){
     local fp="$1"
+    [ -n "$fp" ] || {
+        N=bakman M="missing file operand" log:ret:1
+        return 1
+    }
+    [ -e "$fp" ] || {
+        N=bakman M="'$fp' does not exist" log:ret:1
+        return 1
+    }
 
-    local date; date="$(x date vlid)"
+    local date
+    date="$(___x_cmd date vlid)" || return 1
     local backupfp="$___X_CMD_BAKMAN_DATA/$fp.$date"
-    x ensurefp "$backupfp"
-    ___x_cmd_cmds_cp "$fp" "$backupfp"
+    
+    x_="$backupfp"
+    ___x_cmd ensurefp "$backupfp" || return $?
+    ___x_cmd_cmds_cp "$fp" "$backupfp" || return $?
 }
 
-# TODO: implement in the future.
-___x_cmd_bakman___restore(){
-    :
+# Public version: calls internal and prints result
+___x_cmd_bakman_backup(){
+    local x_
+    ___x_cmd_bakman_backup_ "$@" || return $?
+    bakman:info "backed up '$1' -> '$x_'"
+    printf "%s\n" "$x_"
 }
 
+# Internal version: uses x_ variable
+___x_cmd_bakman_restore_(){
+    local fp="$1"
+    local version="$2"
+
+    [ -n "$fp" ] || {
+        N=bakman M="missing file operand" log:ret:1
+        return 1
+    }
+
+    local backupfp
+    if [ -n "$version" ]; then
+        backupfp="$___X_CMD_BAKMAN_DATA/$fp.$version"
+        [ -e "$backupfp" ] || {
+            N=bakman M="backup '$version' not found" log:ret:1
+            return 1
+        }
+    else
+        ___x_cmd_bakman_latest_ "$fp" || return $?
+        backupfp="$x_"
+        [ -n "$backupfp" ] || {
+            N=bakman M="no backup found for '$fp'" log:ret:1
+            return 1
+        }
+    fi
+
+    x_="$backupfp"
+    ___x_cmd ensurefp "$fp" || return $?
+    ___x_cmd_cmds_cp "$backupfp" "$fp" || return $?
+}
+
+# Public version
+___x_cmd_bakman_restore(){
+    local x_
+    ___x_cmd_bakman_restore_ "$@" || return $?
+    bakman:info "restored '$x_' -> '$1'"
+}
+
+# Internal version: uses x_ variable
+___x_cmd_bakman_list_(){
+    local fp="$1"
+    local pattern
+
+    if [ -n "$fp" ]; then
+        pattern="$___X_CMD_BAKMAN_DATA/$fp".*
+    else
+        pattern="$___X_CMD_BAKMAN_DATA"/*
+    fi
+
+    x_=""
+    local count=0
+    local f
+    for f in $pattern; do
+        [ -e "$f" ] || continue
+        [ "$f" = "$pattern" ] && continue
+        count=$((count + 1))
+        x_="$x_$(___x_cmd basename "$f")\n"
+    done
+
+    [ "$count" -gt 0 ] || return 0
+    # Remove trailing newline
+    x_="${x_%\\n}"
+}
+
+# Public version
+___x_cmd_bakman_list(){
+    local x_
+    ___x_cmd_bakman_list_ "$@"
+    if [ -z "$x_" ]; then
+        bakman:info "no backups found"
+        return 0
+    fi
+    printf "%b\n" "$x_"
+}
+
+___x_cmd_bakman_clean(){
+    local fp="$1"
+    local keep="${2:-5}"
+
+    [ -n "$fp" ] || {
+        N=bakman M="missing file operand" log:ret:1
+        return 1
+    }
+
+    local pattern="$___X_CMD_BAKMAN_DATA/$fp".*
+    local tmpfile
+    tmpfile="$(___x_cmd mktemp)" || return 1
+
+    local f
+    for f in $pattern; do
+        [ -e "$f" ] || continue
+        [ "$f" = "$pattern" ] && continue
+        printf "%s\n" "$f"
+    done | ___x_cmd sort -r > "$tmpfile"
+
+    local count=0
+    local removed=0
+    while read -r f; do
+        count=$((count + 1))
+        if [ "$count" -gt "$keep" ]; then
+            ___x_cmd_cmds_rm "$f"
+            bakman:info "removed '$f'"
+            removed=$((removed + 1))
+        fi
+    done < "$tmpfile"
+
+    ___x_cmd_cmds_rm "$tmpfile"
+    bakman:info "kept $keep newest backups for '$fp' (removed $removed)"
+}
+
+# Internal version: uses x_ variable
+___x_cmd_bakman_latest_(){
+    local fp="$1"
+    local pattern="$___X_CMD_BAKMAN_DATA/$fp".*
+    local latest=""
+
+    local f
+    for f in $pattern; do
+        [ -e "$f" ] || continue
+        [ "$f" = "$pattern" ] && continue
+        [ -z "$latest" ] && latest="$f"
+        [ "$f" -nt "$latest" ] && latest="$f"
+    done
+
+    x_="$latest"
+}
+
+# Public version
+___x_cmd_bakman_latest(){
+    local x_
+    ___x_cmd_bakman_latest_ "$@"
+    if [ -z "$x_" ]; then
+        bakman:info "no backup found for '$1'"
+        return 1
+    fi
+    printf "%s\n" "$x_"
+}

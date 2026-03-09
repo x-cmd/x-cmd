@@ -1,0 +1,133 @@
+# shellcheck shell=sh disable=SC2039,SC1090,SC3043,SC2263
+
+# x free - Display memory usage in Linux free command format
+
+xrc:mod:lib     free
+
+___x_cmd log init free
+
+___X_CMD_FREE_AWKDIR="$___X_CMD_ROOT_MOD/free/lib/awk"
+
+___x_cmd_free___main(){
+    [ "$#" -gt 0 ] || set -- run
+    
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m free "$@"; return 0 ;;
+    esac
+    
+    # Parse all options
+    local format="table"
+    local header=1
+    local human=0
+    local seconds=0
+    local count=0
+    
+    # Put $op back for parsing
+    set -- "$op" "$@"
+    
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --csv)          format="csv";       shift ;;
+            --tsv)          format="tsv";       shift ;;
+            --no-header)    header=0;           shift ;;
+            -s|--seconds)   seconds="$2"; arg:2:shift ;;
+            -c|--count)     count="$2";   arg:2:shift ;;
+            run)            shift ;;
+            *)              shift ;;
+        esac
+    done
+    
+    # Auto human mode for interactive tty
+    if [ "$format" = "table" ] && [ "$human" -eq 0 ] && ___x_cmd_is_stdout2tty; then
+        human=1
+    fi
+    
+    # Use native free command when possible
+    if [ "$format" = "table" ] && [ "$seconds" -eq 0 ] && [ "$count" -eq 0 ] && ___x_cmd_hascmd free && ! ___x_cmd os is darwin; then
+        if [ "$human" -eq 1 ]; then ___x_cmd_cmds free -h; else ___x_cmd_cmds free; fi
+        return
+    fi
+    
+    # Platform dispatch
+    if ___x_cmd os is darwin; then
+        ___x_cmd_free___run_darwin
+    else
+        ___x_cmd_free___run_linux
+    fi
+}
+
+___x_cmd_free___run_linux(){
+    if [ -r /proc/meminfo ]; then
+        ___x_cmd_free___run_loop "linux"
+    else
+        N=free M="Unable to get memory info" log:ret:1
+    fi
+}
+
+___x_cmd_free___run_darwin(){
+    ___x_cmd_free___run_loop "darwin"
+}
+
+___x_cmd_free___run_loop(){
+    local platform="$1"
+    local iteration=0
+    
+    # Default -s 1 when -c is set without -s
+    if [ "$count" -gt 0 ] && [ "$seconds" -eq 0 ]; then
+        seconds=1
+    fi
+    
+    while true; do
+        if [ "$count" -gt 0 ] && [ "$iteration" -ge "$count" ]; then
+            break
+        fi
+        
+        # Only print header on first iteration
+        local current_header="$header"
+        if [ "$iteration" -gt 0 ]; then
+            current_header=0
+        fi
+        
+        if [ "$platform" = "darwin" ]; then
+            ___x_cmd_free___run_darwin_once "$current_header"
+        else
+            ___x_cmd_free___run_linux_once "$current_header"
+        fi
+        
+        iteration=$((iteration + 1))
+        
+        if [ "$seconds" -eq 0 ] || ([ "$count" -gt 0 ] && [ "$iteration" -ge "$count" ]); then
+            break
+        fi
+        
+        sleep "$seconds" || return 130
+    done
+}
+
+___x_cmd_free___run_linux_once(){
+    local current_header="${1:-$header}"
+    local NO_COLOR=0
+    ___x_cmd_is_stdout2tty || NO_COLOR=1
+    ___x_cmd_cmds_awk -v format="$format" -v header="$current_header" -v human="$human" -v NO_COLOR="$NO_COLOR" \
+        -f "$___X_CMD_FREE_AWKDIR/share.awk" \
+        -f "$___X_CMD_FREE_AWKDIR/linux.awk" \
+        /proc/meminfo
+}
+
+___x_cmd_free___run_darwin_once(){
+    local current_header="${1:-$header}"
+    local NO_COLOR=0
+    ___x_cmd_is_stdout2tty || NO_COLOR=1
+    local ___X_CMD_FREE_SYSCTL_DATA
+    ___X_CMD_FREE_SYSCTL_DATA=$(sysctl hw.pagesize hw.memsize vm.swapusage 2>/dev/null)
+    export ___X_CMD_FREE_SYSCTL_DATA
+    
+    vm_stat 2>/dev/null | ___x_cmd_cmds_awk \
+        -v format="$format" \
+        -v header="$current_header" \
+        -v human="$human" \
+        -v NO_COLOR="$NO_COLOR" \
+        -f "$___X_CMD_FREE_AWKDIR/share.awk" \
+        -f "$___X_CMD_FREE_AWKDIR/darwin.awk"
+}
