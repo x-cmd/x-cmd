@@ -9,7 +9,7 @@ ___x_cmd_ssh_x_setup___main(){
     ___X_CMD_WEBSRC_REGION="${2:-"$___X_CMD_WEBSRC_REGION"}"
 
     ! { command -v x >/dev/null 2>&1 || command -v x-cmd >/dev/null 2>&1 || [ -f /bin/x-cmd ] || [ -f "$___X_CMD_ROOT/X" ]; } || {
-        ___x_cmd_ssh_x_setup___log "x-cmd is already installed  in the destination environment for SSH"
+        ___x_cmd_ssh_x_setup___log "x-cmd is already installed in the destination environment for SSH"
         return 0
     }
 
