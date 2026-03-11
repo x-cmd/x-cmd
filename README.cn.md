@@ -9,7 +9,7 @@
 <h1 align="center"><a href="https://cn.x-cmd.com/">X-CMD</a></h1>
 
 <p align="center">
-  <b>在云上施展弹指神通 ~</b>
+  <b>AI Agents 的最佳拍档</b>
   <br>
   <a href="https://cn.x-cmd.com/">https://x-cmd.com</a>
 </p>

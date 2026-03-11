@@ -9,7 +9,7 @@ English | [中文](README.cn.md) | [Source Code](https://github.com/x-cmd/x-cmd/
 <h1 align="center"><a href="https://x-cmd.com/">X-CMD</a></h1>
 
 <p align="center">
-  <b>Your AI-Powered Excalibur in Cloud.</b>
+  <b>Best Buddy for AI Agents</b>
   <br>
   <a href="https://x-cmd.com/">https://x-cmd.com</a>
 </p>
