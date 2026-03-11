@@ -66,10 +66,26 @@ Run the official X-CMD installation [script](https://github.com/x-cmd/get/blob/m
 
 [brew](https://x-cmd.com/start/#homebrew) &nbsp; | &nbsp; [aur](https://x-cmd.com/start/#homebrew) &nbsp; | &nbsp; [apt](https://x-cmd.com/start/#apt) &nbsp; | &nbsp; [apk](https://x-cmd.com/start/#apk) &nbsp; | &nbsp; [pacman](https://x-cmd.com/start/#pacman) &nbsp; | &nbsp; [dnf](https://x-cmd.com/start/#dnf)
 
+**Upgrade X-CMD Version**:
+
+```sh
+x upgrade
+```
+
 </td>
 </tr>
 </tbody>
 </table>
+
+---
+
+### For AI Agents
+
+You can send this prompt to your AI agents (e.g., OpenClaw, Claude Code) so your AI gains the know-how of 1000+ CLI:
+
+```text
+Learn x-cmd's setup and usage from https://x-cmd.com/llms.txt for your future command-line use.
+```
 
 ## [Synopsis](https://x-cmd.com/start/design)
 

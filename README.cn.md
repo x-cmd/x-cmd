@@ -79,10 +79,26 @@ X-CMD（读作 "X Command"）是一个小巧且功能强大的命令行工具集
 
 [brew](https://cn.x-cmd.com/start/#homebrew) &nbsp; | &nbsp; [aur](https://cn.x-cmd.com/start/#homebrew) &nbsp; | &nbsp; [apt](https://cn.x-cmd.com/start/#apt) &nbsp; | &nbsp; [apk](https://cn.x-cmd.com/start/#apk) &nbsp; | &nbsp; [pacman](https://cn.x-cmd.com/start/#pacman) &nbsp; | &nbsp; [dnf](https://cn.x-cmd.com/start/#dnf)
 
+**升级 X-CMD 版本**:
+
+```sh
+x upgrade
+```
+
 </td>
 </tr>
 </tbody>
 </table>
+
+---
+
+### AI Agents 使用
+
+将下面的提示词发送给你的 AI Agents（例如 OpenClaw、Claude Code），让你的 AI 掌握 1000+ CLI 工具的使用知识：
+
+```text
+Learn x-cmd's setup and usage from https://cn.x-cmd.com/llms.txt for your future command-line use.
+```
 
 ## [Synopsis](https://cn.x-cmd.com/start/design)
 
