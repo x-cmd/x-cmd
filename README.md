@@ -81,7 +81,8 @@ x upgrade
 
 ### For AI Agents
 
-You can send this prompt to your AI agents (e.g., OpenClaw, Claude Code) so your AI gains the know-how of 1000+ CLI:
+Send this prompt to your AI agents (e.g., OpenClaw, Claude Code) <br>
+Let your AI gain the know-how of 1,000+ command-line tools.
 
 ```text
 Learn x-cmd's setup and usage from https://x-cmd.com/llms.txt for your future command-line use.

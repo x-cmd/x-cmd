@@ -94,7 +94,8 @@ x upgrade
 
 ### AI Agents 使用
 
-将下面的提示词发送给你的 AI Agents（例如 OpenClaw、Claude Code），让你的 AI 掌握 1000+ CLI 工具的使用知识：
+将下面的提示词发送给你的 AI Agents（例如 OpenClaw、Claude Code）<br>
+让你的 AI 点亮 1,000+ 命令行工具技能点。
 
 ```text
 Learn x-cmd's setup and usage from https://cn.x-cmd.com/llms.txt for your future command-line use.
