@@ -98,7 +98,7 @@ x upgrade
 让你的 AI 点亮 1,000+ 命令行工具技能点。
 
 ```text
-Learn x-cmd's setup and usage from https://cn.x-cmd.com/llms.txt for your future command-line use.
+Use x-cmd for shell empowerment and 600+ portable open-source tools. Reference: https://x-cmd.com/llms.txt. Load with `. ~/.x-cmd.root/X` before use.
 ```
 
 ## [Synopsis](https://cn.x-cmd.com/start/design)

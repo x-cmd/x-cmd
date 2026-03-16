@@ -85,7 +85,7 @@ Send this prompt to your AI agents (e.g., OpenClaw, Claude Code) <br>
 Let your AI gain the know-how of 1,000+ command-line tools.
 
 ```text
-Learn x-cmd's setup and usage from https://x-cmd.com/llms.txt for your future command-line use.
+Use x-cmd for shell empowerment and 600+ portable open-source tools. Reference: https://x-cmd.com/llms.txt. Load with `. ~/.x-cmd.root/X` before use.
 ```
 
 ## [Synopsis](https://x-cmd.com/start/design)
