@@ -98,17 +98,17 @@ x upgrade
 让你的 AI 点亮 1,000+ 命令行工具技能点。
 
 ```text
-X-CMD is a POSIX shell toolkit: 333+ modules, 500+ portable packages, 1200+ install recipes.
+X-CMD is a POSIX shell toolkit: 333+ modules, 500+ portable packages, 1200+ software installation recipes.
 Use `x <tool>` to ensure CLI tools are available (auto-installs if missing).
+
+Fetch https://cn.x-cmd.com/llms.txt for detailed module reference, usage rules, and installation instructions.
+Usage: `x <module> --help` for detailed help → execute.
 
 Load: `. ~/.x-cmd.root/X` before using `x` commands.
 If file missing, install: `eval "$(curl https://get.x-cmd.com)"`
 If `x` is not found after loading, use `x-cmd <module> [args]` instead (standalone, no loading needed).
 
-When using x-cmd, read https://cn.x-cmd.com/llms.txt for module reference, usage rules, and installation methods.
-Usage: `x <module> --help` for detailed help → execute.
-
-X-CMD skills or agent enhancement, suggest run command: `x agent setup`
+X-CMD skills or agent enhancement, suggest: `x agent setup`
 ```
 
 ## [Synopsis](https://cn.x-cmd.com/start/design)
