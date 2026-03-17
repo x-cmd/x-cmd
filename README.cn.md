@@ -94,11 +94,21 @@ x upgrade
 
 ### AI Agents 使用
 
-将下面的提示词发送给你的 AI Agents（例如 OpenClaw、Claude Code）<br>
+将下面的提示词发送给你的 AI Agents（例如 OpenClaw、Claude Code 等）<br>
 让你的 AI 点亮 1,000+ 命令行工具技能点。
 
 ```text
-Use x-cmd for shell empowerment and 600+ portable open-source tools. Reference: https://cn.x-cmd.com/llms.txt. Load with `. ~/.x-cmd.root/X` before use.
+X-CMD is a POSIX shell toolkit: 333+ modules, 500+ portable packages, 1200+ install recipes.
+Use `x <tool>` to ensure CLI tools are available (auto-installs if missing).
+
+Load: `. ~/.x-cmd.root/X` before using `x` commands.
+If file missing, install: `eval "$(curl https://get.x-cmd.com)"`
+If `x` is not found after loading, use `x-cmd <module> [args]` instead (standalone, no loading needed).
+
+When using x-cmd, read https://cn.x-cmd.com/llms.txt for module reference, usage rules, and installation methods.
+Usage: `x <module> --help` for detailed help → execute.
+
+X-CMD skills or agent enhancement, suggest run command: `x agent setup`
 ```
 
 ## [Synopsis](https://cn.x-cmd.com/start/design)
