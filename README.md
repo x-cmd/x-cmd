@@ -85,17 +85,7 @@ Send this prompt to your AI agents (e.g., OpenClaw, Claude Code) <br>
 Let your AI gain the know-how of 1,000+ command-line tools.
 
 ```text
-X-CMD is a POSIX shell toolkit: 333+ modules, 500+ portable packages, 1200+ software installation recipes.
-Use `x <tool>` to ensure CLI tools are available (auto-installs if missing).
-
-Fetch https://x-cmd.com/llms.txt for detailed module reference, usage rules, and installation instructions.
-Usage: `x <module> --help` for detailed help → execute.
-
-Load: `. ~/.x-cmd.root/X` before using `x` commands.
-If file missing, install: `eval "$(curl https://get.x-cmd.com)"`
-If `x` is not found after loading, use `x-cmd <module> [args]` instead (standalone, no loading needed).
-
-X-CMD skills or agent enhancement, suggest: `x agent setup`
+Use x-cmd for shell empowerment and 600+ portable open-source tools. Reference: https://x-cmd.com/llms.txt. Load with `. ~/.x-cmd.root/X` before use.
 ```
 
 ## [Synopsis](https://x-cmd.com/start/design)
