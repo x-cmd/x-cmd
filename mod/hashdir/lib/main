@@ -1,0 +1,54 @@
+# shellcheck shell=dash
+___x_cmd_hashdir___main(){
+    [ $# -gt 0 ] || {
+        ___x_cmd help -m hashdir 1>&2
+        return 64
+    }
+
+    local op="$1";  shift
+    case "$op" in
+        --md5|--sha1|--sha256|--sha384|--sha512)    ___x_cmd_hashdir_cal "${op#--}"     "$@" ;;     # This is the main function
+        --cal)                                      ___x_cmd_hashdir_cal "$@"   ;;                    # This is a inner function
+        -h|--help)                                  ___x_cmd help -m hashdir    ;;
+
+        *)                                          ___x_cmd_hashdir_cal md5 "$op" "$@" ;;
+    esac
+}
+
+___x_cmd_hashdir_cal(){
+    local HASH="$1";  shift
+    case "$HASH" in
+        md5|sha1|sha256|sha384|sha512)
+            while [ $# -gt 0 ]; do
+                ___x_cmd_hashdir_cal_main "$1" | ___x_cmd hash "$HASH"
+                shift
+            done
+            ;;
+        *)
+            x:error "hashdir cal unknown hash ==> $HASH"
+    esac
+}
+
+___x_cmd_hashdir_cal_main(){(
+    local dir="${1:?Provide diretory}"
+    ___x_cmd_cmds_cd "$dir" || {
+        x:error "Cannot cd into directory: $dir"
+        return 1
+    }
+
+    ___x_cmd find --cmd . | LC_ALL="$___X_CMD_LOCALE_DEF_C" ___x_cmd_cmds sort | while read -r line; do
+        [ "$line" != "." ] || continue
+        if [ -d "$line" ]; then
+            printf "%s\n" "${line#./}"
+        else
+            # ___x_cmd log :hashdir debug "Calculating HASH[$HASH] of $line"
+            printf "%s %s\n" "$(___x_cmd "$HASH" "$line")" "${line#./}"
+        fi
+    done | {
+        if ! ___x_cmd_runmode_allow_chatty; then
+            ___x_cmd_cmds cat
+        else
+            ___x_cmd ui rotate --clear --raw -n 3 --prompt-running "Calculating the [hash=$HASH] value of the [directory=$PWD]..."
+        fi
+    }
+)}

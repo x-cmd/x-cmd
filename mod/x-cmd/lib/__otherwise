@@ -1,0 +1,165 @@
+
+___X_CMD___OTHERWISE_LOADED=1
+
+___x_cmd_main___otherwise(){
+    local op="$1";  shift
+    case "$op" in
+        i)                                  ___x_cmd_main   install                 "$@" ;;
+        uni|uno|arg1|arg2|join|prln)        ___x_cmd_main   line            "$op"   "$@" ;;
+        md5|sha1|sha256|sha384|sha512)      ___x_cmd_main   hash            "$op"   "$@" ;;
+        base64|unbase64)                    ___x_cmd_cmds                   "$op"   "$@" ;;
+        # deprecated readl|rl ...
+        readl|rl)                           ___x_cmd_readl                          "$@" ;;
+        readeval|reval)                     ___x_cmd_reval                          "$@" ;;
+        login)                              ___x_cmd_main   hub login               "$@" ;;
+
+        sh|ksh|ash)                         ___x_cmd_main   shellengine     "$op"   "$@" ;;
+        z|uz|uzr)                           ___x_cmd_main   zuz             "$op"   "$@" ;;
+
+        o)                                  ___x_cmd_main   open                    "$@" ;;
+
+        li)                                 ___x_cmd_main   ccal                    "$@" ;;
+
+        usr)                                ___x_cmd_main   user                    "$@" ;;
+        sl)                                 ___x_cmd_main   sleep                   "$@" ;;  # experimental
+
+        run)                                ___x_cmd solo   --exec                  "$@" ;;
+        tlfz)                               ___x_cmd tldr   --fz                    "$@" ;;
+
+        ds)                                 ___x_cmd deepseek                       "$@" ;;
+
+        cr)                                 ___x_cmd create                         "$@" ;;
+
+        ffch)                               ___x_cmd fastfetch                      "$@" ;;
+
+        //)                                 ___x_cmd snap                           "$@" ;;
+
+        unix2dos|unix2mac|mac2unix|mac2dos|dos2mac)
+                                            ___x_cmd dos2unix --"$op"               "$@" ;;
+
+
+        wrangler|cfw)                       ___x_cmd cf wrangler                    "$@" ;;
+
+        manr)                               ___x_cmd man --remote                   "$@" ;;
+
+        # https://*|http://*|ftp://*|ssh://|sftp://*|*:*)
+        #                                     ___x_cmd solo run                       "$@" ;;
+
+        *)                                  ___x_cmd_main___otherwise_other "$op"   "$@" ;;
+    esac
+}
+
+___x_cmd_main_otherwise_which(){
+    # Notice: ___X_CMD_NO_LOCAL=1 we should accept the local file
+    local ___X_CMD_NO_LOCAL=1
+    case "$op" in
+        */*|*\.*)       ___X_CMD_NO_LOCAL= ;;
+    esac
+    ___x_cmd_which_one "$op" 2>/dev/null
+}
+
+___x_cmd_main___otherwise_other(){
+    local op="$1";   shift
+
+    [ ! -f "$___X_CMD_ROOT_MOD/cosmo/lib/mod/$op" ] || {
+        . "$___X_CMD_ROOT_MOD/cosmo/lib/mod/$op"
+        "___x_cmd_${op}" "$@" ;     return
+    }
+
+    local ___x_cmd_main_otherwise_code
+
+    local ___X_CMD_WHICH_ONE_RESULT
+    local ___X_CMD_WHICH_ONE_RESOURCE_TYPE
+
+    if ___x_cmd_main_otherwise_which; then
+        x:debug "Executing Resource [type=$___X_CMD_WHICH_ONE_RESOURCE_TYPE] [file=$___X_CMD_WHICH_ONE_RESULT]"
+        case "$___X_CMD_WHICH_ONE_RESOURCE_TYPE" in
+            # workspace)      ___x_cmd_exe_workspace  "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+            local)          ___x_cmd    runfile   "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+            *)              ___x_cmd    runfile   "$___X_CMD_WHICH_ONE_RESULT" "$@" ;;
+        esac
+        ___x_cmd_main_otherwise_code=$?
+        x:debug "Resource Executed [type=$___X_CMD_WHICH_ONE_RESOURCE_TYPE] [file=$___X_CMD_WHICH_ONE_RESULT] [code=$___x_cmd_main_otherwise_code]"
+        return "$___x_cmd_main_otherwise_code"
+    fi
+
+    # reference: https://github.com/x-bash/pkg/pull/59
+    local ___X_CMD_STR___DASH2UNDERLINE=; ___x_cmd_str___dash2underline "$op"
+    # TODO: deprecated. We should avoid this.
+    if command -v "___x_cmd_${___X_CMD_STR___DASH2UNDERLINE}" 2>/dev/null 1>&2; then
+        "___x_cmd_${___X_CMD_STR___DASH2UNDERLINE}" "$@"
+        return
+    fi
+
+    # TODO: If we fail to introduct from xbin. Please provide the interface, ask user for what he/she wants and whether set the alias for that module globally.
+    ___x_cmd_main_otherwise_code=$?
+    if ___x_cmd snap --genfun "$op" "___x_cmd_${___X_CMD_STR___DASH2UNDERLINE}"; then
+        "___x_cmd_${___X_CMD_STR___DASH2UNDERLINE}" "$@"
+        return
+    fi
+
+    ___x_cmd_main___otherwise_other___app "$op" "$@"
+}
+
+___x_cmd_main___otherwise_other___app(){
+    local kw="$1"
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; } || {
+        # local str
+        # str="$(___x_cmd_main___otherwise_other___app "$kw" | ___x_cmd_cmds awk '(NF<10){ printf("%s, ", $0); }; END{ printf("...[total %s]\n", NF); }')"
+        x:error "___x_cmd_which_one fail [code=${___x_cmd_main_otherwise_code}]"
+        return 1
+    }
+
+    local candidate
+    candidate="$(___x_cmd_main___otherwise_other___app___list | ___x_cmd_main___otherwise_other___app___grep "$kw" )" 2>/dev/null
+    [ -n "$candidate" ] || N=x M="No candidate found -> $kw" log:ret:64
+
+    local mod; local ___X_CMD_PICK_DATA="$candidate"
+    mod="$( ___x_cmd pick )" || return $?
+
+    [ -n "$mod" ] || return 1       # TODO: The SIGINT return 0, instead of 130.
+    mod="${mod%% *}"
+    mod="${mod%%"$___X_CMD_UNSEENCHAR_011"*}"
+
+    local id
+    ___x_cmd ui select id "next"        \
+        "Execute -> x $mod"             \
+        "Execute -> x $mod --help"      \
+        "Nothing"
+
+    case "$id" in
+        1)      ___x_cmd "$mod" ;;
+        2)      ___x_cmd "$mod" --help ;;
+        *)      return 1
+    esac
+}
+
+___x_cmd_main___otherwise_other___app___list(){
+    # list all xbin, lightweightmod ...
+    # we can consider using csv app ...
+    ___x_cmd advise gen_x_advise
+    ___x_cmd advise subcmd list_with_desc -f "$___X_CMD_ADVISE_MAN_CACHE_X_ADVISE_JSO" --sep "\t-- [mod]:"
+    ___x_cmd snap --ls --pkglist-desc "\t-- [snap]:"
+}
+
+___x_cmd_main___otherwise_other___app___grep(){
+    ___x_cmd_cmds awk -v kw="$1" '
+        BEGIN{ kw = tolower(kw); gsub("^[^a-z0-9]+", "", kw); }
+        {
+            name = tolower($0)
+            if (match(name, "[ \t\v]")) name = substr(name, 1, RSTART - 1)
+            if (index(name, kw)) {
+                ++arrl
+                name_l = length(name)
+                if (name_width < name_l) name_width = name_l
+                arr[ arrl, "name" ] = substr($0, 1, name_l)
+                arr[ arrl, "desc" ] = substr($0, name_l + 1)
+            }
+        }
+        END{
+            for (i = 1; i <= arrl; i++) {
+                print sprintf("%-" name_width "s", arr[ i, "name" ] ) arr[ i, "desc" ]
+            }
+        }
+'
+}

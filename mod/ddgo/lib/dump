@@ -1,0 +1,177 @@
+# shellcheck shell=bash disable=SC2034
+___x_cmd_ddgo___dump(){
+    local format=app;
+    local top=;
+    local nocache=
+
+    local IFS=" "
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --top)      top="$2";
+                        ___x_cmd is int "$2" || N=ddgo M="Please provide an int after --top"   log:ret:1;
+                        shift 2;
+                        ;;
+            --json)     format="json";      shift   ;;
+            --yml)      format="yml" ;      shift   ;;
+            --csv)      format="csv" ;      shift   ;;
+            --raw)      format="raw" ;      shift   ;;
+            --llm)      format="llm" ;      shift   ;;
+            --nocache)  nocache=1 ;         shift   ;;
+
+            -h|--help)  ___x_cmd help -m ddgo  dump  "$@"; return 0 ;;
+            *)          break ;;
+        esac
+    done
+
+    ddgo:info "Dumping search for $*"
+    local x_;   ___x_cmd_ddgo___url_ "$@"
+    ___x_cmd_ddgo___dump_"$format" "$x_"
+}
+
+___x_cmd_ddgo___dump_app(){
+    if ___x_cmd_is_stdout2tty; then
+        # local HAS_COLOR=1
+        ___X_CMD_CSV_APP_SHBIN_CODE="
+            xrc ddgo ; local top=$top; local nocache=$nocache;" \
+            ___x_cmd_ddgo_dump___view_app___ "$@"
+    else
+        ___x_cmd_ddgo___dump_yml "$@"
+    fi
+}
+
+___x_cmd_ddgo___dump_llm___combine(){
+    printf "\n%s\n" "==="
+    printf "%s\n" "Searching ddgo -> $*"
+    printf "%s\n\n" "==="
+    ___x_cmd_cmds cat
+}
+
+___x_cmd_ddgo___dump_llm(){
+    local x_;   ___x_cmd_ddgo___url_ "$@"
+
+    ___x_cmd_ddgo___dump_csv "$x_" | \
+        ___x_cmd_ddgo___dump_llm___combine "$1"
+}
+
+___x_cmd_ddgo___csv_raw(){
+    ___x_cmd_ddgo___dump_yml "$@" | ___x_cmd y2j |\
+        ___x_cmd ja 2c .short .long .url .update
+}
+
+___x_cmd_ddgo___dump_csv(){
+    ___x_cmd_ddgo___csv_raw "$@" |\
+        ___x_cmd csv header --add Title,Msg,Url,Update
+}
+
+___x_cmd_ddgo___dump_yml(){
+    local data
+    data="$(___x_cmd_ddgo___dump_raw "$@")"
+    [ -n "$data" ] || return 1
+    ___x_cmd_ddgo___parse_yml <<A
+$data
+A
+}
+
+___x_cmd_ddgo___dump_json(){
+    ___x_cmd_ddgo___dump_yml "$@" | ___x_cmd y2j
+}
+
+___x_cmd_ddgo___dump_raw(){
+    {
+        if [ -z "$nocache" ]; then
+            ___x_cmd ccmd 1d -- ___x_cmd_ddgo___execlink -dump "$1"
+        else
+            ___x_cmd_ddgo___execlink -dump "$1"
+        fi
+    } || {
+        ddgo:error "Failed to fetch data from ddgo"
+        # if ___x_cmd_ddgo___isproxyset; then
+        #     ddgo:error "Timeout when visiting duckduckgo.com."
+        #     ddgo:info "You have set proxy, check your proxy settings."
+        #     ddgo:info "[TIPS] You can set proxy for ddgo -> x ddgo init"
+        #     ddgo:info "[TIPS] You can set proxy in this shell session -> x proxy set <proxy>"
+        #     return 1
+        # else
+            ddgo:error "Timeout when visiting duckduckgo.com."
+            ddgo:info "[TIPS] You can set proxy for ddgo -> x ddgo init"
+            ddgo:info "[TIPS] You can set proxy in this shell session -> x proxy set <proxy>"
+            return 1
+        # fi
+    }
+}
+
+___x_cmd_ddgo___top(){
+    ___x_cmd_ddgo___dump --top 10 "$@"
+}
+
+___x_cmd_ddgo___hop(){
+    ___x_cmd_ddgo___dump --top 1 "$@" | ___x_cmd_cmds cat
+}
+
+___x_cmd_ddgo_dump___view_app___(){
+    local ___X_CMD_CSV_APP_DATA_Update=
+    local ___X_CMD_CSV_APP_DATA_Msg=
+    local ___X_CMD_CSV_APP_DATA_Url=
+    local ___X_CMD_CSV_APP_DATA_Title=
+
+    ___x_cmd csv --app --header  Title,Msg,Url,Update               \
+                --clear                                             \
+                --return var                                        \
+                --action o Open 'Open on website'                   \
+                --action c Copy 'Copy URL'                          \
+                --processor '___x_cmd_ddgo_dump___view_app_open'    \
+                --table-view Title,Update                           \
+                --preview Title,Msg,Url                             \
+                ___x_cmd_ddgo___csv_raw "$@"
+
+    [ -n "$___X_CMD_CSV_APP_DATA_Msg" ] || return 0
+    local id=
+    ___x_cmd ui select id "Next move for ddgo information:"     \
+        "start the ai chat"                                     \
+        "dump selected result"                                  \
+        "open selected url on broswer"                          \
+        "view search results in Duckduckgo.com"                 \
+        "dump all result"                                       \
+        "Exit"
+
+    case "$id" in
+        1)      {
+                    ___x_cmd_ddgo___dump_yml "$@"
+                    printf "%s\n" "===Selected Result is==="
+
+                } | ___x_cmd chat --no-context-file --request -p
+                ;;
+        2)      ___x_cmd_ddgo_dump___dump_current_line ;;
+        3)      ___x_cmd browse open "$___X_CMD_CSV_APP_DATA_Url" ;;
+        4)      ___x_cmd browse open "$1" ;;
+        5)      ___x_cmd_ddgo___dump_yml "$@" | ___x_cmd bat -l yaml    ;;
+        *)      return
+    esac
+}
+
+___x_cmd_ddgo_dump___view_app_open(){
+    local op="$*"; local url=
+    case "$op" in
+        x:request:o*)
+            op="${op##*"$___X_CMD_UNSEENCHAR_001"}"
+            url="$(___x_cmd_cmds printf "%s" "$op" | ___x_cmd csv awk '{printf("%s", cval(3))}')"
+            ___x_cmd browse open "$url"
+            ;;
+        x:request:c*)
+            op="${op##*"$___X_CMD_UNSEENCHAR_001"}"
+            url="$(___x_cmd_cmds printf "%s" "$op" | ___x_cmd  csv awk '{printf("%s", cval(3))}')"
+            ___x_cmd pb --cp "$url"
+            ;;
+    esac
+}
+
+
+___x_cmd_ddgo_dump___dump_current_line(){
+    ___x_cmd cawk -m csv,ui/ui\
+                  -E ___X_CMD_CSV_APP_DATA_Title,___X_CMD_CSV_APP_DATA_Msg,___X_CMD_CSV_APP_DATA_Url \
+                  -E ___X_CMD_CSV_APP_DATA_Update,___X_CMD_CSV_APP_DATA_AI_headline \
+                  -E ___X_CMD_CSV_APP_DATA_AI_comment,___X_CMD_CSV_APP_DATA_AI_Mark \
+                  -f "$___X_CMD_ROOT_MOD/ddgo/lib/awk/totty.awk"
+
+}
+

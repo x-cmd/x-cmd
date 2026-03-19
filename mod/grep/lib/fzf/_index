@@ -1,0 +1,130 @@
+# shellcheck shell=dash
+
+___x_cmd_grep___fzf(){
+    ___x_cmd_grep___fzfapp "$@"
+}
+
+___x_cmd_grep___fzfapp(){
+    [ $# -gt 0 ] || set -- -
+
+    local line=2000
+
+    arg:init:x grep
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m grep --fz; return 0 ;;
+            -n|--line)      line="$2" ; arg:2:shift ;;
+            *)              break ;;
+        esac
+    done
+
+    local fp="$1"
+    if [ "$fp" = '-' ] && [ -t 0 ];then
+        fp='.'
+    fi
+
+    local pidofsubshell; pidofsubshell="$(___x_cmd pidofsubshell)"
+    local ___X_CMD_GREP_FZF_APP_DIR=
+    local _grep_fp=
+    case "${fp}" in
+        -)
+            ___X_CMD_GREP_FZF_APP_DIR="$___X_CMD_ROOT_TMP/grep.${pidofsubshell}.d"
+            ___x_cmd mkdirp "$___X_CMD_GREP_FZF_APP_DIR"
+            ___x_cmd_cmds cat            > "$___X_CMD_GREP_FZF_APP_DIR/source"
+            _grep_fp="$___X_CMD_GREP_FZF_APP_DIR/source"
+            ;;
+        *)
+            if [ -f "$fp" ]; then
+                ___X_CMD_GREP_FZF_APP_DIR="${fp}.grep.${pidofsubshell}.d"
+                ___x_cmd mkdirp "$___X_CMD_GREP_FZF_APP_DIR"
+                ___x_cmd_cmds cat "${fp}"    > "$___X_CMD_GREP_FZF_APP_DIR/source"
+                _grep_fp="$___X_CMD_GREP_FZF_APP_DIR/source"
+            elif [ -d "$fp" ];then
+                ___X_CMD_GREP_FZF_APP_DIR="${fp}.grep.${pidofsubshell}.d"
+                ___x_cmd mkdirp "$___X_CMD_GREP_FZF_APP_DIR"
+                _grep_fp="$fp"
+            else
+                M="The specified file or directory does not exist --> $fp" N=grep log:ret:1
+            fi
+            ;;
+    esac
+
+    ___x_cmd_compat_syncfs "$_grep_fp" 2>/dev/null
+
+    (
+        # TODO - bug: In a zsh environment, if you exit a ui select step using Ctrl-C, the cache won't be automatically cleared.
+        trap '___x_cmd rmrf "$___X_CMD_GREP_FZF_APP_DIR";' EXIT
+        local filter=
+        while true; do
+            filter="$( ___X_CMD_GREP_FZPREVIEW_LINE="$line" ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe grep --fzdata "$_grep_fp" "$filter")"
+
+            [ -n "$filter" ] || return $?
+            local id=
+            ___x_cmd ui select id "Next for $filter"            \
+                "Copy this filter to pastboard"                 \
+                "Copy this part of the data to pastboard"       \
+                "Print filter"                                  \
+                "Print data"                                    \
+                "Modify the filter"                             \
+                "Exit"
+            case "$id" in
+                1)      printf "%s" "$filter" | ___x_cmd pb
+                        return 0 ;;
+                2)      ___x_cmd_grep___query "$_grep_fp" "$filter" | ___x_cmd pb
+                        return 0 ;;
+                3)      printf "%s" "$filter"
+                        return 0 ;;
+                4)      ___x_cmd_grep___query "$_grep_fp" "$filter"
+                        return 0 ;;
+                5)      continue ;;
+                *)      return 0 ;;
+            esac
+        done
+    )
+
+}
+
+___x_cmd_grep___fz_data(){
+    ___x_cmd_grep___fzfapp___actual "$@"
+}
+
+___x_cmd_grep___fzfapp___actual(){
+    local _grep_fp="${1:-.}"
+    local filter="${2:-""}"
+
+    ___x_cmd fzf               \
+        --header="<Please type grep arguments>"     \
+        --reverse --no-info --height='80%'          \
+        --query="$filter" --print-query             \
+        --preview-window='wrap,down,99%'            \
+        --preview="___x_cmdexe grep --fzfapppreview ${_grep_fp} {q}" <<A
+A
+}
+
+___x_cmd_grep___fzfapppreview(){
+    local fp="$1";  shift
+    if [ -z "$*" ] && [ -f "$fp" ];then
+        ___x_cmd_cmds cat "$fp"
+        return
+    fi
+
+    {
+        ___x_cmd_grep___query "$fp" --color=always "$@" || {
+            printf "\n\n[ERR=%d]\n=== %s ===\n\n" \
+                "$?"    "Content of file or directory : $fp"
+        }
+    } 2>&1 | ___x_cmd_cmds head -n "${___X_CMD_GREP_FZPREVIEW_LINE}"
+}
+
+# x grep --fzfapp .
+# filter: -E 'https?://[a-zA-Z0-9./?=_-]+'
+___x_cmd_grep___query(){
+    local fp="${1:-.}";  shift
+    if [ -f "$fp" ]; then
+        eval ___x_cmd_grep___cmd "$*" "$fp"
+    elif [ -d "$fp" ];then
+        eval ___x_cmd_grep___cmd "$*" -Hnr --exclude-dir='.git' "$fp"
+    else
+        M="The specified file or directory does not exist --> $fp" N=grep log:ret:1
+    fi
+}

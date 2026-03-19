@@ -1,0 +1,272 @@
+# shellcheck shell=bash disable=SC2207,SC2034,SC1090,SC2120
+# Section : adviser helper function: ls lsd seq get_result
+
+___x_cmd_advise__ls(){ local IFS="$___X_CMD_ADVISE_IFS_INIT"; candidate_exec_arr=( $(___x_cmd_cmds_ls "$@") ); }
+
+___x_cmd_advise__dir(){
+    if [ -z "$candidate_prefix" ]; then
+        if [ -n "$ZSH_VERSION" ]; then
+            _path_files -/
+            return
+        elif command -v _filedir >/dev/null 2>&1; then
+            _filedir -d
+            return
+        fi
+    fi
+    local localdir="${1:-${cur:-""}}"
+    local IFS="$___X_CMD_ADVISE_IFS_INIT"
+    candidate_nospace_arr=( $( ___x_cmd_advise_exec___list_filepath_ "$localdir" -d 2>/dev/null ) )
+}
+
+___x_cmd_advise__file(){
+    if [ -z "$candidate_prefix" ]; then
+        if [ -n "$ZSH_VERSION" ]; then
+            _files
+            return
+        elif command -v _filedir >/dev/null 2>&1; then
+            _filedir
+            return
+        fi
+    fi
+    local localdir="${1:-${cur:-""}}"
+    local IFS="$___X_CMD_ADVISE_IFS_INIT"
+    candidate_nospace_arr=( $( ___x_cmd_advise_exec___list_filepath_ "$localdir" 2>/dev/null ) )
+}
+
+___x_cmd_advise_exec___stdout(){
+    local cur="$cur"
+    local IFS="$___X_CMD_ADVISE_IFS_INIT";
+    candidate_exec_arr+=( $(
+        eval "${1:-"$candidate_exec_stdout"}" 2>/dev/null | while read -r i; do
+            [ -n "$i" ] || continue
+            [ -z "$cur" ] || [ "${i}" != "${i#*"${cur}"}" ] || continue
+            [ -z "$ZSH_VERSION" ] || i="${i/:/\\:}"
+            printf "%s\n" "$i"
+        done
+    ) )
+}
+
+___x_cmd_advise_exec___stdout_nospace(){
+    local cur="$cur"
+    local IFS="$___X_CMD_ADVISE_IFS_INIT";
+    candidate_nospace_arr+=( $(
+        eval "${1:-"$candidate_exec_stdout_nospace"}" 2>/dev/null | while read -r i; do
+            [ -n "$i" ] || continue
+            [ -z "$cur" ] || [ "${i}" != "${i#*"${cur}"}" ] || continue
+            [ -z "$ZSH_VERSION" ] || i="${i/:/\\:}"
+            printf "%s\n" "$i"
+        done
+    ) )
+}
+
+___x_cmd_advise_exec___list_filepath_(){
+    {
+        if [ -z "$1" ]; then
+            ___x_cmd_cmds_ls
+        elif command -v compgen 2>/dev/null 1>&2; then
+            if [[ ${1-} == \~* && $1 != */* ]]; then
+                compgen -P '~' -u -- "${1#\~}"
+            else
+                compgen -f -- "${1-}"
+            fi
+        else
+            local cur="${1#\\}"; local dir=; local name=; local l
+            case "$cur" in
+                */)     dir="${cur}";;
+                */*)    dir="${cur%/*}/"; name="${cur##*/}" ;;
+                *)      name="$cur" ;;
+            esac
+            (
+                [ -z "$dir" ] || eval "___x_cmd_cmds_cd ${dir} 2>/dev/null;"
+                ___x_cmd_cmds_ls ${name:+"-a"}
+            ) | while read -r l; do
+                [[ "${l}" == "$name"* ]] || continue
+                printf "%s\n" "${dir}${l}"
+            done
+        fi
+    } | ___x_cmd_advise_exec___list_filepath_inner_ "$@"
+}
+
+___x_cmd_advise_exec___list_filepath_inner_(){
+    local cur="$1"
+    local extend=; eval "[ ${cur-} = '${cur-}' ]" || extend=1
+    local folder=; [ "$2" != -d ] || folder=1
+    local l; while read -r l; do
+        [ -n "$l" ] || continue
+        if [ -d "$l" ]; then
+            l="${l}/"
+        elif [ -n "$extend" ] && eval "[ -d $l ]"; then
+            l="${l}/"
+        elif [ -n "$folder" ]; then
+            continue
+        fi
+        printf "%s\n" "$l"
+    done
+}
+
+# 1/10
+___x_cmd_advise__seq(){
+    candidate_nospace_arr=( $( ___x_cmd_cmds_awk -v range="$1" -v cur="${cur:-"0"}" '
+function inside(num, start, end, step){
+    if ( (num < start) || (num > end) ) return 0
+    if ( ( num - start ) % step == 0 ) return 1
+    return 0
+}
+
+BEGIN{
+    if ((cur != "") && (cur !~ /^[0-9]+$/)) exit(0)
+    split(range, arr, /\//)
+    start = int(arr[1]); end = int(arr[2]); step = int(arr[3]); cur = int(cur)
+    if (step == 0) step = 1
+    cur = cur * 10
+    for (i=0; i<=9; ++i) {
+        newnum = cur + i
+        if (inside(newnum, start, end, step) == 1) print newnum
+    }
+}
+' )
+    )
+}
+
+___x_cmd_advise__shift_comp_words(){
+    if [ "$offset" -gt 0 ]; then
+        local tmp=("${COMP_WORDS[@]:$offset}")
+        COMP_WORDS=("${tmp[@]}")
+        COMP_LINE="${tmp[*]}"
+        COMP_CWORD="${#tmp[@]}"
+        [ -n "$ZSH_VERSION" ] || COMP_CWORD=$((COMP_CWORD-1))
+    fi
+}
+
+___x_cmd_advise__comp_get_module(){
+    module="${COMP_WORDS[0]}"
+    [ -z "$ZSH_VERSION" ] || module="${COMP_WORDS[1]}"
+}
+
+___x_cmd_advise__comp_from_x(){
+    local offset="${1:-$offset}"
+    local module="$2"
+    local COMP_WORDS=("${COMP_WORDS[@]}"); local COMP_LINE="$COMP_LINE"; local COMP_CWORD="$COMP_CWORD"
+    ___x_cmd_advise__shift_comp_words
+    [ -n "$module" ] || ___x_cmd_advise__comp_get_module
+    [ -n "$module" ] || return 1
+
+    local x_=; ___x_cmd_advise___main __get_mod_advise_jso_ "$module" || return $?
+
+    [ "$___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST" != "${___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST#*"${___X_CMD_UNSEENCHAR_NEWLINE}${module}${___X_CMD_UNSEENCHAR_NEWLINE}"}" ] || \
+    xrc "$module" # 2>/dev/null
+    candidate_exec=
+    eval "$(___x_cmd_advise_get_result_from_awk "$x_")" 2>/dev/null
+    eval "$candidate_exec" 2>/dev/null
+}
+
+___x_cmd_advise__comp_from_xcmd(){
+    local offset="${1:-$offset}"
+    local module="$2"; local filepath
+    local COMP_WORDS=("${COMP_WORDS[@]}"); local COMP_LINE="$COMP_LINE"; local COMP_CWORD="$COMP_CWORD"
+    ___x_cmd_advise__shift_comp_words
+    [ -n "$module" ] || ___x_cmd_advise__comp_get_module
+    [ -n "$module" ] || return 1
+
+    filepath="$(___x_cmd_advise_man_which x-cmd "$module")"
+    [ -f "$filepath" ] || return 1
+
+    ___x_cmd_advise___main __load_xcmd_advise_util_file "$module" || return $?
+    ___x_cmd_advise_man_load x-cmd "$module"
+    local _candidate_arr=("${candidate_arr[@]}")
+    candidate_exec=
+    eval "$(___x_cmd_advise_get_result_from_awk "$filepath")" 2>/dev/null
+    eval "$candidate_exec" 2>/dev/null
+    _candidate_arr+=("${candidate_arr[@]}")
+    local IFS="$___X_CMD_ADVISE_IFS_INIT"
+    candidate_arr=( $( printf "%s\n" "${_candidate_arr[@]}" | ___x_cmd_cmds_awk -v FS=":" '!a[$1]++' ))
+}
+
+___x_cmd_advise__comp_from_origin(){
+    local offset="${1:-$offset}"
+    local module="$2"
+    local COMP_WORDS=("${COMP_WORDS[@]}"); local COMP_LINE="$COMP_LINE"; local COMP_CWORD="$COMP_CWORD"
+    ___x_cmd_advise__shift_comp_words
+    [ -n "$module" ] || ___x_cmd_advise__comp_get_module
+    [ -n "$module" ] || return 1
+
+    local IFS=" $___X_CMD_UNSEENCHAR_NEWLINE"
+    local x_=""
+    # TODO: must have map from command to function name and script path
+    if [ -n "$ZSH_VERSION" ]; then
+        local words=( "${COMP_WORDS[@]}" )
+        local CURRENT="$COMP_CWORD"
+        ___x_cmd_advise_man_which___completion_getfile_ "$module"
+        if [ -f "$x_" ]; then
+            . "$x_" 2>/dev/null 1>&2
+        elif ___x_cmd_advise___get_completion_function_ "$module"; then
+            "$x_" 2>/dev/null 1>&2
+        else
+            return 1
+        fi
+    else
+        ___x_cmd_advise_man_which___completion_getfile_ "$module"
+        if [ -f "$x_" ]; then
+            . "$x_" 2>/dev/null 1>&2
+            command -v "_${module}" 2>/dev/null 1>&2 || return 1
+            "_${module}" 2>/dev/null 1>&2
+        elif ___x_cmd_advise___get_completion_function_ "$module"; then
+            "$x_" 2>/dev/null 1>&2
+        else
+            return 1
+        fi
+    fi
+}
+
+___x_cmd_advise__comp_list_cmd_name_(){
+    [ "$___X_CMD_ADVISE__COMP_IS_LIST_CMD_NAME" = 1 ] || return 0
+    local module="$1"
+    local IFS="$___X_CMD_ADVISE_IFS_INIT";
+    candidate_exec_arr+=( $(
+        {
+            ___x_cmd_advise_man_ls x-cmd
+            ___x_cmd_advise_man_ls completion
+        } 2>/dev/null | while read -r l; do
+            l="${l#_}"
+            [ -z "$module" ] || [ "$l" != "${l#"$module"}" ] || continue
+            printf "%s\n" "$l"
+        done
+    ) )
+}
+
+___x_cmd_advise__comp_from_xcmd_or_origin(){
+    local offset="${1:-$offset}"
+    local module="$2"
+    local COMP_WORDS=("${COMP_WORDS[@]}"); local COMP_LINE="$COMP_LINE"; local COMP_CWORD="$COMP_CWORD"
+    ___x_cmd_advise__shift_comp_words
+    [ -n "$module" ] || ___x_cmd_advise__comp_get_module
+    [ -n "$module" ] || {
+        ___x_cmd_advise__comp_list_cmd_name_
+        return
+    }
+
+    ___x_cmd_advise__comp_from_xcmd 0 "$module" \
+        || ___x_cmd_advise__comp_from_origin 0 "$module" \
+        || ___x_cmd_advise__comp_list_cmd_name_ "$module"
+}
+
+___x_cmd_advise__comp_exec(){
+    local offset="${1:-$offset}"; shift
+    local COMP_WORDS=("${COMP_WORDS[@]}"); local COMP_LINE="$COMP_LINE"; local COMP_CWORD="$COMP_CWORD"
+    ___x_cmd_advise__shift_comp_words
+    local IFS=" $___X_CMD_UNSEENCHAR_NEWLINE"
+    if [ -n "$ZSH_VERSION" ]; then
+        local words=( "${COMP_WORDS[@]}" )
+        local CURRENT="$COMP_CWORD"
+    fi
+    "$@" 2>/dev/null 1>&2
+}
+
+## EndSection
+
+## Section man advise
+___x_cmd_advise_man__list(){
+    local IFS="$___X_CMD_ADVISE_IFS_INIT"
+    candidate_exec_arr=( $(___x_cmd_advise_man_ls "${1:-x-cmd}") )
+}
+## EndSection

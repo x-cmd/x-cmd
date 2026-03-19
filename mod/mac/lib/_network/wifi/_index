@@ -1,0 +1,119 @@
+# shellcheck shell=dash
+
+___x_cmd_mac_wifi(){
+    [ "$#" -gt 0 ] || set -- status
+
+    local ___X_CMD_MAC_WIFI_DEVICE=
+    ___x_cmd_mac_wifi_reload___device_
+
+    local op="$1";  shift
+    case "$op" in
+        # forget|history
+        status|enable|disable|scan|\
+        prefer|connect|proxy)
+            ___x_cmd_mac_wifi_"$op"                "$@" ;;
+        -h|--help)
+            ___x_cmd help -m mac wifi                   ;;
+        *)  N=mac M="Unknown subcmd -> $op" log:ret:64  ;;
+    esac
+}
+
+___x_cmd_mac_wifi_reload___device_(){
+    ___X_CMD_MAC_WIFI_DEVICE="$(
+        ___x_cmd_mac___cmd networksetup -listallhardwareports | ___x_cmd_cmds awk '/Hardware Port: Wi-Fi/ {found=1};found && /Device:/ {print $2; exit}'
+    )"
+}
+
+___x_cmd_mac_wifi_enable(){
+    ___x_cmd_mac___cmd networksetup -setairportpower "${___X_CMD_MAC_WIFI_DEVICE}" on
+}
+
+___x_cmd_mac_wifi_disable(){
+    ___x_cmd_mac___cmd networksetup -setairportpower "${___X_CMD_MAC_WIFI_DEVICE}" off
+}
+
+___x_cmd_mac_wifi_status(){
+    printf "Current Wi-Fi Interfaces: %s\n" "${___X_CMD_MAC_WIFI_DEVICE}"
+    ___x_cmd_mac___cmd networksetup -getairportnetwork "${___X_CMD_MAC_WIFI_DEVICE}"
+    # ___x_cmd sudo wdutil info
+}
+
+___x_cmd_mac_wifi_scan(){
+    # https://github.com/x-cmd/x-cmd/issues/188#issue-2889552064
+    ___x_cmd_mac___cmd system_profiler SPAirPortDataType | ___x_cmd_cmds awk 'NF'
+}
+
+___x_cmd_mac_wifi_prefer(){
+    [ "$#" -gt 0 ] || set -- --help
+
+    local op="$1";  shift
+    case "$op" in
+        ls|forget)
+            ___x_cmd_mac_wifi_prefer_"$op"               "$@" ;;
+        -h|--help)
+            ___x_cmd help -m mac wifi prefer                  ;;
+        *)  N=mac M="Unknown subcmd -> $op" log:ret:64        ;;
+    esac
+}
+
+___x_cmd_mac_wifi_connect(){
+    local ssid="$1";        [ -n "$ssid" ]      || N=mac M="Please provide ssid" log:ret:64
+    local ssid_pwd="$2";    [ -n "$ssid_pwd" ]  || N=mac M="Please provide ssid password " log:ret:64
+    ___x_cmd_mac___cmd networksetup -setairportnetwork "${___X_CMD_MAC_WIFI_DEVICE}" "${ssid}" "${ssid_pwd}"
+}
+
+___x_cmd_mac_wifi_prefer_ls(){
+    ___x_cmd_mac___cmd networksetup -listpreferredwirelessnetworks "${___X_CMD_MAC_WIFI_DEVICE}"
+}
+
+___x_cmd_mac_wifi_prefer_forget(){
+    local ssid="$1";    [ -n "$ssid" ] || N=mac M="Please provide ssid" log:ret:64
+    ___x_cmd_mac___cmd networksetup -removepreferredwirelessnetwork "${___X_CMD_MAC_WIFI_DEVICE}" "${ssid}"
+}
+
+___x_cmd_mac_wifi_proxy(){
+    [ "$#" -gt 0 ] || set -- status
+
+    local op="$1";  shift
+    case "$op" in
+        status|enable|disable)
+            ___x_cmd_mac_wifi_proxy_"$op"                "$@" ;;
+        -h|--help)
+            ___x_cmd help -m mac wifi proxy              "$@" ;;
+        *)  N=mac M="Unknown subcmd -> $op" log:ret:64        ;;
+    esac
+}
+
+___x_cmd_mac_wifi_proxy_status(){
+    # ___x_cmd_cmds scutil --proxy
+    printf "HTTP:\n"
+    ___x_cmd_mac___cmd networksetup -getwebproxy              Wi-Fi | ___x_cmd_cmds awk '{ print "  " $0 }'
+    printf "HTTPS:\n"
+    ___x_cmd_mac___cmd networksetup -getsecurewebproxy        Wi-Fi | ___x_cmd_cmds awk '{ print "  " $0 }'
+    printf "SOCKS:\n"
+    ___x_cmd_mac___cmd networksetup -getsocksfirewallproxy    Wi-Fi | ___x_cmd_cmds awk '{ print "  " $0 }'
+}
+
+___x_cmd_mac_wifi_proxy_enable(){
+    local server=
+    local port=
+
+    case "$1" in
+        *:*)  server="${1%:*}";    port="${1#*:}" ;;
+        *)    server="127.0.0.1";  port="${1}"    ;;
+    esac
+
+    [ -n "$port" ] || N=mac M="Please provide the correct proxy -> <server ip>:<port>" log:ret:64
+
+    local proxy_type=
+    for proxy_type in "web" "secureweb" "socksfirewall"; do
+        ___x_cmd_mac___cmd networksetup -set"${proxy_type}proxy" Wi-Fi "${server}" "${port}"
+    done
+}
+
+___x_cmd_mac_wifi_proxy_disable(){
+    local proxy_type=
+    for proxy_type in "web" "secureweb" "socksfirewall"; do
+        ___x_cmd_mac___cmd networksetup -set"${proxy_type}proxystate" Wi-Fi off
+    done
+}

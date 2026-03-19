@@ -1,0 +1,147 @@
+# shellcheck shell=dash
+
+# ___X_CMD_DOCKER_IMAGE_PREFIX
+
+___x_cmd_docker_images(){
+    [ $# -gt 0 ]        || set -- --auto
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m docker images          ;;
+        *)              ___x_cmd_docker_images_main "$op" "$@"  ;;
+    esac
+}
+
+___x_cmd_docker_images_main(){
+    local IMAGE_OPTS=
+    local format=auto
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --auto|--app)       format="${1#--}";   shift ;;
+
+            --tsv)              format=tsv;         shift ;;
+            --csv)              format=csv;         shift ;;
+
+            -j|--json)          format=json;        shift ;;
+            --jlist)            format=jlist;       shift ;;
+
+            -r|--raw)           format=raw;         shift ;;
+
+            -a|--all|--digests|--no-trunc|-q|--quiet)
+                        ___x_cmd cmdstr IMAGE_OPTS "$1"
+                        shift ;;
+            -f|--filter|--format)
+                        [ -n "$2" ] || N=docker M="The '$1' parameter cannot be empty." log:ret:64
+                        ___x_cmd cmdstr IMAGE_OPTS "$1" "$2"
+                        shift 2 ;;
+
+            *)          N=docker M="Unkown options ==> $1" log:ret:64 ;;
+        esac
+    done
+
+    ___x_cmd_docker_images___"$format" "$@"
+}
+
+
+___x_cmd_docker_images___auto(){
+    if ___x_cmd_is_stdout2tty; then     ___x_cmd_docker_images___app "$@"
+    else                                ___x_cmd_docker_images___tsv "$@"
+    fi
+}
+
+___x_cmd_docker_images___raw(){
+    eval ___x_cmd___docker_origin images "$IMAGE_OPTS" "\"\$@\""
+}
+
+___x_cmd_docker_images___jlist(){
+    if [ -z "$___X_CMD_DOCKER_IMAGE_PREFIX" ]; then
+        ___x_cmd_docker_images___raw --format '{{json .}}' "$@"
+    else
+        ___x_cmd_docker_images___raw --format '{{json .}}' "$@" | \
+            ___x_cmd jq --arg prefix "$___X_CMD_DOCKER_IMAGE_PREFIX" -s '.[] | select(.Repository | startswith( $prefix ))'
+    fi
+}
+
+___x_cmd_docker_images___json(){
+    ___x_cmd_docker_images___jlist "$@" | ___x_cmd jq -s .
+
+    # ___x_cmd jo .\*
+    # ___x_cmd jq -s .
+}
+
+
+___x_cmd_docker_images___tsv(){     ___x_cmd_docker_images___xsv tsv "$@" ; }
+___x_cmd_docker_images___csv(){     ___x_cmd_docker_images___xsv csv "$@" ; }
+___x_cmd_docker_images___xsv(){
+    local format="${1:-tsv}"; shift  # tsv|csv
+
+    ___x_cmd_docker_images___jlist "$@" | \
+    ___x_cmd ja jlist "to${format}"     .ID .Repository     .Tag         .UniqueSize   .VirtualSize   .CreatedAt   .CreatedSince |\
+        ___x_cmd "$format" header --add  id repository     tag           unique_size   virtual_size   created_at   created_since
+}
+
+# TODO: export image, rm image, info image, push image
+___x_cmd_docker_images___app(){
+
+    local ___X_CMD_CSV_APP_DATA_id=""
+    local ___X_CMD_CSV_APP_DATA_repository=""
+    local ___X_CMD_CSV_APP_DATA_tag=""
+    local ___X_CMD_CSV_APP_DATA_unique_size=""
+    local ___X_CMD_CSV_APP_DATA_virtual_size=""
+    local ___X_CMD_CSV_APP_DATA_created_at=""
+    local ___X_CMD_CSV_APP_DATA_created_since=""
+
+    ___x_cmd_docker_images___app_ "$@"
+}
+
+___x_cmd_docker_images___app_(){
+    local image_id=""
+    local repository=""
+    local tag=""
+
+    docker:info "Ctrl-D to exit. Ctrl-C to interrupt."
+    local ___X_CMD_CSV_APP_SHBIN_CODE=
+
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc docker; " \
+        ___x_cmd csv app --clear --return var \
+            -- ___x_cmd_docker_images_main "$@" --csv || return 1
+
+    image_id="$___X_CMD_CSV_APP_DATA_id"
+    repository="$___X_CMD_CSV_APP_DATA_repository"
+    tag="$___X_CMD_CSV_APP_DATA_tag"
+
+    local name="${repository}:${tag:-latest}"
+
+    [ -n "$image_id" ] || return 0
+
+    local ___X_CMD_DOCKER_IMG_EXIT=""
+    ___x_cmd_docker_images___app_choose "$image_id" "$name"     ||  return $?
+
+    # TODO: in the future, that will be a app loop
+    [ -z "$___X_CMD_DOCKER_IMG_EXIT" ] || {
+        return 0
+    }
+}
+
+___x_cmd_docker_images___app_choose(){
+    local imageid="$1"
+    local imagename="$2"
+
+    local id=
+    local cmd=
+    ___x_cmd ui select id,cmd               \
+        "Next for image: ${imagename}"      \
+        "x docker inspect  $imageid"        \
+        "x docker image pull ${imagename}"  \
+        "x docker rmi      $imageid"        \
+        "x docker rmi -f   $imageid"        \
+        "EXIT"                              || return $?
+
+    docker:debug "run command -> $cmd"
+    ___X_CMD_DOCKER_IMG_EXIT=""
+    case "$cmd" in
+        EXIT)       ___X_CMD_DOCKER_IMG_EXIT=1 ; return 0;  ;;
+        *)          eval "$cmd"
+    esac
+}

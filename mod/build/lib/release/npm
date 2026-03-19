@@ -1,0 +1,192 @@
+
+___x_cmd_build_release_npm(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/npm.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release npm "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_npm_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_npm_build "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_npm_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_npm_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory
+    ___x_cmd_cmds install -d -m 755 "$dir"
+
+    # Write package.json template
+    ___x_cmd_build_release_npm_init___write_package_json "$dir"
+
+    # Write index.js template
+    ___x_cmd_build_release_npm_init___write_index_js "$dir"
+
+    build:info "Created $dir with npm package template"
+}
+
+___x_cmd_build_release_npm_init___write_package_json(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/package.json" << 'EOF'
+{
+  "name": "@scope/package-name",
+  "version": "0.1.0",
+  "description": "Package description",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Your Name <your@email>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/username/repo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/username/repo/issues"
+  },
+  "homepage": "https://github.com/username/repo#readme"
+}
+EOF
+}
+
+___x_cmd_build_release_npm_init___write_index_js(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/index.js" << 'EOF'
+export function hello() {
+  return 'Hello, world!';
+}
+
+export default hello;
+EOF
+}
+
+___x_cmd_build_release_npm_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/package.json" ]; then
+        build:error "package.json not found in $dir"
+        return 1
+    fi
+
+    # Check if npm is available
+    if ! ___x_cmd hascmd npm; then
+        build:error "npm not found. Please install Node.js."
+        return 1
+    fi
+
+    ___x_cmd_build_release_npm_build_local "$dir"
+}
+
+___x_cmd_build_release_npm_build_local(){
+    local dir="$1"
+    build:info "Building with npm..."
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    # Install dependencies
+    if [ -f "package-lock.json" ] || [ -d "node_modules" ]; then
+        build:info "Installing dependencies..."
+        ___x_cmd_cmds npm ci || ___x_cmd_cmds npm install || return $?
+    fi
+
+    # Run tests if available
+    build:info "Running tests..."
+    ___x_cmd_cmds npm test 2>/dev/null || {
+        build:warn "No tests defined or tests failed"
+    }
+
+    # Check formatting if prettier/eslint available
+    if ___x_cmd hascmd npx; then
+        build:info "Checking code style..."
+        npx eslint . 2>/dev/null || true
+    fi
+
+    build:info "Build completed"
+}
+
+___x_cmd_build_release_npm_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/package.json" ]; then
+        build:error "package.json not found in $dir"
+        return 1
+    fi
+
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    if ! ___x_cmd_cmds npm whoami >/dev/null 2>&1; then
+        build:info --status not_authenticated --action "npm login" --registry https://www.npmjs.com/ "NPM authentication required"
+        return 1
+    fi
+
+    local pkg_name pkg_version
+    pkg_name=$(___x_cmd_cmds node -p "require('./package.json').name" 2>/dev/null)
+    pkg_version=$(___x_cmd_cmds node -p "require('./package.json').version" 2>/dev/null)
+
+    if ___x_cmd_cmds npm publish; then
+        build:info --status published --package "${pkg_name}@${pkg_version}" "NPM published successfully"
+    else
+        build:error "npm publish failed"
+        return 1
+    fi
+}

@@ -1,0 +1,71 @@
+# shellcheck shell=dash
+
+___x_cmd log init host
+
+xrc:mod:lib     host        cat
+
+___x_cmd_host___main(){
+    [ "$#" -gt 0 ] ||   set -- app
+
+    local op="$1";      shift
+    case "$op" in
+        # TODO: tag|is) ;;
+        cat|fz|app|ed|get)
+            "___x_cmd_host_${op}" "$@"    ;;
+        -h|--help)
+                ___x_cmd help -m host "$@"
+                return 0                ;;
+        *)
+            N=host M="unsupported subcmd ==> $op" log:ret:64 ;;
+    esac
+}
+
+___X_CMD_HOST_FILEPATH="/etc/hosts"
+if [ -n "$MSYS" ]; then
+    ___X_CMD_HOST_FILEPATH="/C/Windows/System32/drivers/etc/hosts"
+fi
+
+
+___x_cmd_host_get(){
+    [ $# -gt 0 ] || set -- --help
+    case "$1" in
+        -h|--help)  ___x_cmd help -m host get "$@" ; return 0 ;;
+    esac
+
+    <"$___X_CMD_HOST_FILEPATH" \
+    ___x_cmd_cmds_awk -v host_key="$1" \
+    '
+        NF == 0   { next; }
+        $1 ~ "^#" { next; }
+        ($2==host_key){
+            print $1;
+        }
+    '
+}
+
+___x_cmd_host_modify(){
+    host:debug "Backup the host file"
+    ___x_cmd bakman backup "$___X_CMD_HOST_FILEPATH"
+    host:warn "Changing host file require priviledge."
+    ___x_cmd sudo tee "$___X_CMD_HOST_FILEPATH" >/dev/null <<A
+$1
+A
+}
+
+___x_cmd_host_ed(){
+    [ $# -gt 0 ] || set -- --help
+    case "$1" in
+        -h|--help)  ___x_cmd help -m host ed "$@" ; return 0 ;;
+    esac
+    
+    local IFS=" "
+
+    local data
+    data="$(___x_cmd_cmds_awk     \
+        -v args="$*"        \
+        -f "$___X_CMD_ROOT_MOD/host/lib/ed.awk" <"$___X_CMD_HOST_FILEPATH")" \
+        || return 0 # unchanged
+
+    ___x_cmd_host_modify "$data" || return $?
+    host:info "Hosts file updated safely with sudo."
+}

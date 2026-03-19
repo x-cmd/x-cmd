@@ -1,0 +1,82 @@
+# shellcheck shell=dash
+
+___x_cmd log init gcal
+xrc:mod:lib     gcal   __runcmd cfg
+
+___x_cmd_gcal___main(){
+    [ "$#" -gt 0 ] ||   set -- --defaultrun
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m gcal "$@";    return 0 ;;
+        --|--runmain)   ___x_cmd_gcal___runmain "$@" ;;
+        --defaultrun)   ___x_cmd_gcal___defaultrun "$@" ;;
+
+        cc)             ___x_cmd_gcal_cc "$@" ;;
+
+        cur|--cur)      ___x_cmd_gcal_cur "$@" ;;
+        cfg|--cfg)      ___x_cmd_gcal_cfg "$@" ;;
+        init|--init)    ___x_cmd_gcal_init "$@" ;;
+
+        *)              ___x_cmd_gcal___defaultrun "$op" "$@"  ;;
+    esac
+}
+
+___x_cmd_gcal___defaultrun(){
+    local cfg_cc; local cfg_highlight; local cfg_type;
+
+    {
+        ___x_cmd gcal --cfg --var cfg_cc=cc cfg_type=type # cfg_highlight=highlight
+    } 2>/dev/null
+
+    # TODO: in the futue, fix the cfg val transpose problem.
+    # if [ -n "$cfg_highlight" ]; then
+    #     set -- -H "$cfg_highlight" "$@"
+    # else
+    #     set -- -H '\e[35;1;7m:\e[0m:\e[34;1m:\e[0m' "$@"
+    # fi
+
+    set -- -H '\e[36;1;7m:\e[0m:\e[34;1m:\e[0m' "$@"
+
+    # [ -n "$cfg_highlight" ]     || cfg_highlight="\033[35;1;7m:\033[0m:\033[34;1m:\033[0m"
+    # [ -z "$cfg_highlight" ]     || set -- -H "$cfg_highlight" "$@"
+
+    [ "$cfg_type" = special ]   || set -- --type=standard   "$@"
+
+    if [ "$cfg_cc" != auto ]; then
+        [ -n "$cfg_cc" ] || set -- -q "$cfg_cc" "$@"
+    else
+        if [ "$___X_CMD_LANG" = zh ]; then
+            set -- -q CN --chinese-holidays --chinese-flexible-holidays "$@"
+        else
+            case "$LC_ALL" in
+                en_us|en_US)    set -- US_NY        "$@" ;;                # TODO: how to judge which holiday ...
+                *_gb|*_GB)      set -- -q GB_EN     "$@" ;;
+                *_de|*_DE)      set -- -q DE_BE     "$@" ;;
+                *_jp|*_JP)      set -- --japanese-holidays "$@" ;;
+
+                *)              local code="${LC_ALL#*_}"
+                                if ___x_cmd_gcal_cc -s | ___x_cmd_cmds awk -v code="$code" 'BEGIN{ code=toupper(code); ret=1; } code==$0{ ret=0; exit; }; END{ exit(ret); }'; then
+                                    set -- -q "${code}"
+                                fi
+            esac
+        fi
+    fi
+
+    ___x_cmd_gcal___runcmd -- "$@"
+}
+
+
+___x_cmd_gcal_cc(){
+    local verbose=1
+    case "$1" in
+        -h|--help)          ___x_cmd help -m gcal cc "$@"; return 0 ;;
+        --short|-s)        verbose=""
+    esac
+
+    if [ "$verbose" = 1 ]; then
+        ___x_cmd_gcal___runcmd -- -hh | ___x_cmd_cmds grep 'Holidays in' | ___x_cmd_cmds awk '{ printf("%s ", $1); $1 = ""; print; }'
+    else
+        ___x_cmd_gcal___runcmd -- -hh | ___x_cmd_cmds grep 'Holidays in' | ___x_cmd_cmds awk '{ print $1 }'
+    fi
+}

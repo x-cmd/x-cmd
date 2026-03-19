@@ -1,0 +1,159 @@
+# Author:       Li Junhao       l@x-cmd.com
+# shellcheck    shell=dash      disable=SC2016
+# license:      GPLv3
+
+___x_cmd_humantime___main(){
+    [ $# -gt 0 ]    ||      set -- auto
+    local op="$1";  shift
+    case "$op" in
+        -h|--help)
+                    ___x_cmd help -m humantime ;    return 0 ;;
+        sec|sec_|tosec|tosec_|in|auto|op)
+                    "___x_cmd_humantime_${op}"      "$@" ;;
+
+        gt|ge|lt|le|eq)
+                    ___x_cmd_humantime_op  "-${op}" "$@" ;;
+
+        *)          ___x_cmd_humantime_auto   "$op" "$@" ;;
+    esac
+}
+
+___x_cmd_humantime_auto(){
+    [ $# -gt 0 ] || set -- "${EPOCHSECONDS:-"$( ___x_cmd date timestamp )"}"
+
+    case "$1" in -h|--help) ___x_cmd help -m humantime auto "$@" ; return 0 ;; esac
+
+    if ___x_cmd is int "$1"; then
+        ___x_cmd_humantime_sec      "$1"
+    else
+        ___x_cmd_humantime_tosec    "$1"
+    fi
+}
+
+
+___x_cmd_humantime_sec(){
+    [ $# -gt 0 ] || set -- --help
+    case "$1" in
+        -h|--help)  ___x_cmd help -m humantime sec "$@" ; return 0 ;;
+    esac
+    local x_
+    ___x_cmd_humantime_sec_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_humantime_sec_(){
+    local arg="${1:?Provide second argument}"
+    local frac=""
+    case "$arg" in
+        *.*)    frac="${arg#*.}"; frac="${frac:+".$frac"}";
+                arg="${arg%%.*}" ;;
+    esac
+
+    local res
+    x_=""
+
+    res="$(( arg % 60 ))"
+    [ -z "$res" ] || x_="${res}${frac}s${x_}"
+    arg="$((arg / 60))"
+    [ "$arg" -gt 0 ] || return 0
+
+    res="$(( arg % 60 ))"
+    [ -z "$res" ] || x_="${res}m${x_}"
+    arg="$(( arg / 60 ))"
+    [ "$arg" -gt 0 ] || return 0
+
+    res="$(( arg % 24 ))"
+    [ -z "$res" ] || x_="${res}h${x_}"
+    arg="$(( arg / 24 ))"
+    [ "$arg" -gt 0 ] || return 0
+
+    x_="${arg}d${x_}"
+}
+
+
+___x_cmd_humantime_tosec(){
+    [ $# -gt 0 ] || set -- --help
+    case "$1" in
+        -h|--help)  ___x_cmd help -m humantime tosec "$@" ; return 0 ;;
+    esac
+    local x_
+    ___x_cmd_humantime_tosec_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_humantime_tosec_(){
+    local human="${1}"
+    local res=0
+    local num
+
+    while [ -n "$human" ]; do
+        if [ "$human" != "${human#*d}" ]; then
+            num="${human%%d*}"
+            res=$(( res + num * 24 * 60 * 60 ))
+            human="${human#*d}"
+            continue
+        fi
+
+        if [ "$human" != "${human#*h}" ]; then
+            num="${human%%h*}"
+            res=$(( res + num * 60 * 60 ))
+            human="${human#*h}"
+            continue
+        fi
+
+        if [ "$human" != "${human#*m}" ]; then
+            num="${human%%m*}"
+            res=$(( res + num * 60 ))
+            human="${human#*m}"
+            continue
+        fi
+
+        if [ "$human" != "${human#*s}" ]; then
+            num="${human%%s*}"
+            res=$(( res + num ))
+            human="${human#*s}"
+            continue
+        fi
+
+        res=$(( res + human ))
+        break
+    done
+
+    x_=$res
+}
+
+___x_cmd_humantime_op(){
+    local op="$1"
+
+    local ret=""
+    local x_=""
+    while [ $# -gt 0 ]; do
+        ___x_cmd_humantime_tosec_ "$1"
+        ret="${ret} ${x_} "
+        shift
+    done
+
+    eval set -- "$ret"
+
+    while [ $# -ge 2 ]; do
+        [ "$1" "$op" "$2" ]   ||  return 1
+        shift
+    done
+}
+
+___x_cmd_humantime_in(){
+    [ $# -gt 0 ] || set -- --help
+    case "$1" in
+        -h|--help)  ___x_cmd help -m humantime in "$@" ; return 0 ;;
+    esac
+    local date=${1:?Provide human time unit}; shift
+    local x_
+    ___x_cmd_humantime_tosec_ "$date" || return $?
+
+    local i; for i in "$@"; do
+        if [ "$i" -ge "$x_" ]; then
+            x:debug "Expect within $date($x_) but get $i"
+            return 1
+        fi
+    done
+}

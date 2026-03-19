@@ -1,0 +1,90 @@
+
+
+___x_cmd_agent_unify(){
+
+    local AGENT_FP="$HOME/AGENTS.md"
+
+    local CLAUDE_FP="$HOME/CLAUDE.md"
+    local CODEX_FP="$HOME/.codex/AGENTS.md"
+    local GEMINI_FP="$HOME/.gemini/GEMINI.md"
+
+    if [ ! -e "$AGENT_FP" ]; then
+        if [ -e "$CLAUDE_FP" ]; then
+            agent:info "Found CLAUDE.md, migrating to AGENTS.md"
+            ___x_cmd mv "$CLAUDE_FP" "$AGENT_FP"
+            ___x_cmd ln -s "$AGENT_FP" "$CLAUDE_FP"
+        elif [ -e "$CODEX_FP" ]; then
+            agent:info "Found Codex AGENTS.md, migrating to AGENTS.md"
+            ___x_cmd mv "$CODEX_FP" "$AGENT_FP"
+            ___x_cmd ln -s "$AGENT_FP" "$CODEX_FP"
+        elif [ -e "$GEMINI_FP" ]; then
+            agent:info "Found Gemini GEMINI.md, migrating to AGENTS.md"
+            ___x_cmd mv "$GEMINI_FP" "$AGENT_FP"
+            ___x_cmd ln -s "$AGENT_FP" "$GEMINI_FP"
+        else
+            ___x_cmd_agent_setup
+        fi
+    fi
+
+    ___x_cmd_agent_unify___try "$CLAUDE_FP" "$GEMINI_FP" "$CODEX_FP"
+
+}
+
+___x_cmd_agent_unify___try(){
+    local errcode
+
+    local op=""
+    while [ $# -gt 0 ]; do
+        op="$1"; shift
+        if [ ! -e "$op" ]; then
+            agent:info "Creating symlink: $op -> $AGENT_FP"
+            ___x_cmd_cmds ln -s "$AGENT_FP" "$op"
+            continue
+        fi
+
+        local share_prompt="
+We are going to let claude, codex, gemini, opencode and other agents using the same user-level PROMPT.
+$CLAUDE_FP $CODEX_FP $GEMINI_FP will then soft linked to $AGENT_FP
+You are the assistant to help us incorporate the AGENTS prompts in file $op into $AGENT_FP.
+
+You MUST only OUTPUT the new incorporated content for the new $AGENT_FP between two === as following example.
+===
+<new incorporated content> for $AGENT_FP
+===
+"
+
+        if ! ___x_cmd agent isready; then
+
+            x:info                      \
+                --tip "x agent init"    \
+                --tip "x llm init"      \
+                "Both 'x agent' or 'x llm' are not ready. Please setup according to the tips. You can also manually incorporated the file $op into $AGENT_FP by yourself."
+            continue
+        fi
+
+        local x_
+        agent:info "We have backed up the file -> $op"
+
+        ___x_cmd agent request --file "$op" --file "$AGENT_FP" "$share_prompt
+You MUST only OUTPUT the new incorporated content for the new $AGENT_FP between two === as following example.
+===
+<new incorporated content> for $AGENT_FP
+===
+" || errcode=$?
+
+        case "$errcode" in
+            130)        agent:info "RECV SIGINT. EXIT. "; return 130 ;; #L=agent M="RECV SIGINT. EXIT." log:ret:130
+            0)          ;;
+            *)          x:info "[ERR=$?] Fail to incorported the file using llm. You can retry later or manually incorporated the file $op into $AGENT_FP by yourself."; continue ;;
+        esac
+
+        x_="${x_#*===}"
+        x_="${x_%===*}"
+
+        ___x_cmd fprintf "$AGENT_FP" "%s\n" "$x_"
+        ___x_cmd bakman backup "$op"
+        ___x_cmd_cmds rm -f "$op"
+        ___x_cmd_cmds ln -s "$AGENT_FP" "$op"
+    done
+}
+

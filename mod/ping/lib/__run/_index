@@ -1,0 +1,138 @@
+# shellcheck shell=dash disable=SC2016
+
+xrc:mod:lib     ping        __run/busybox   __run/win   __run/inetutils  __run/iputils  __run/mac
+
+___x_cmd_ping___run(){
+    local wait=1
+    local count=0
+    # local port=icmp
+    # local path=/
+
+    local format=auto
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --auto)                 format="${1#--}";   shift   ;;
+            --verbose)              format=verbose;     shift   ;;
+            -m|--heatmap)           format=heatmap;     shift   ;;
+            -b|-bar)                format=bar;         shift   ;;
+            -r|--raw)               format=raw;         shift   ;;
+            --csv|--tsv)            format="${1#--}";   shift   ;;
+
+            -w)                     wait="$2";    [ $# -ge 2 ] || N=ping M="Please provide a timeout" log:ret:64;   shift 2 ;;
+            -c)                     count="$2";   [ $# -ge 2 ] || N=ping M="Please provide a count"   log:ret:64;   shift 2 ;;
+            --help|-h)              ___x_cmd help -m ping --run;  return   ;;
+            *)                      break
+        esac
+    done
+
+    local x_=""
+    ___x_cmd_ping___run___typeofping_
+    local typeofping="$x_"
+
+    if ! ___x_cmd user isroot && [ "$typeofping" = busybox ]; then
+        ping:info "busybox icmp require priviledge"
+        ___x_cmd sudo echo "sudo priviledge granted."
+    fi
+
+    [ $# -gt 0 ] || {
+        ping:info "Default ping target -> bing.com"
+        set - bing.com
+    }
+
+    ___x_cmd_ping___run___"$format" "$@"
+}
+
+___x_cmd_ping___run___auto(){
+    if ___x_cmd_is_stdout2tty; then     ___x_cmd_ping___run___verbose "$@"
+    else                                ___x_cmd_ping___run___tsv     "$@"
+    fi
+}
+
+___x_cmd_ping___run___tsv(){        MODE="tsv"      ___x_cmd_ping___run___impl "$@"; }
+___x_cmd_ping___run___csv(){        MODE="csv"      ___x_cmd_ping___run___impl "$@"; }
+___x_cmd_ping___run___verbose(){    MODE="verbose"  ___x_cmd_ping___run___impl "$@"; }
+
+___x_cmd_ping___run___bar(){        MODE="bar"      ___x_cmd_ping___run___impl "$@"; }
+___x_cmd_ping___run___heatmap(){    MODE="heatmap"  ___x_cmd_ping___run___impl "$@"; }
+
+___x_cmd_ping___run___raw(){
+    local x_=""
+    ___x_cmd os name_ || return $?
+
+    case "$x_" in
+        win)    ___x_cmd_ping___run___win_raw       "$@";   return ;;
+        darwin) ___x_cmd_ping___run___mac_raw       "$@";   return ;;
+    esac
+
+    ___x_cmd_hascmd ping || {
+        USE_BUSYBOX_BIN=1 ___x_cmd_ping___run___busybox_raw "$@"
+        return
+    }
+
+    case "$typeofping" in
+        inetutils)  ___x_cmd_ping___run___inetutils_raw     "$@"    ;;
+        iputils)    ___x_cmd_ping___run___iputils_raw       "$@"    ;;
+        busybox)    ___x_cmd_ping___run___busybox_raw       "$@"    ;;
+
+        *)
+                    ping:warn "This ping implemenation is not tested. Try it with best effort."
+                    ___x_cmd_ping___run___busybox_raw   "$@" ;  ;;
+    esac
+}
+
+___x_cmd_ping___run___impl(){
+    local x_=""
+    ___x_cmd os name_ || return $?
+
+    case "$x_" in
+        win)    ___x_cmd_ping___run___win           "$@";   return ;;
+        darwin) ___x_cmd_ping___run___mac           "$@";   return ;;
+    esac
+
+    ___x_cmd_hascmd ping || {
+        USE_BUSYBOX_BIN=1 ___x_cmd_ping___run___busybox "$@"
+        return
+    }
+
+    case "$typeofping" in
+        inetutils)  ___x_cmd_ping___run___inetutils "$@"    ;;
+        iputils)    ___x_cmd_ping___run___iputils   "$@"    ;;
+        busybox)    ___x_cmd_ping___run___busybox   "$@"    ;;
+        *)
+                    ping:warn "This ping implemenation is not tested. Try it with best effort."
+                    ___x_cmd_ping___run___busybox   "$@" ;  ;;
+    esac
+}
+
+___x_cmd_ping___run___awk(){
+    if [ "$(___x_cmd awk impl)" = "mawk" ]; then    LC_ALL="$___X_CMD_LOCALE_DEF_C" ___x_cmd_cmds mawk -W interactive "$@"
+    else                                            LC_ALL="$___X_CMD_LOCALE_DEF_C" ___x_cmd_cmds_awk "$@"
+    fi
+}
+
+___x_cmd_ping___run___typeofping_(){
+    x_="$(
+        ___x_cmd_cmds ping -V 2>&1 | ___x_cmd_cmds awk -v retval="unknown" '
+
+    $0~/inetutils/{
+        retval = "inetutils"
+        exit
+    }
+
+    $0~/iputils/{
+        retval = "iputils"
+        exit
+    }
+
+    $0~/BusyBox/{
+        retval = "busybox"
+        exit
+    }
+
+    END{
+        print retval
+    }
+    '
+    )"
+}

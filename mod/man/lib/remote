@@ -1,0 +1,94 @@
+
+
+# arch
+# ubuntu
+# alpine
+
+# debian
+# kali
+
+# raspbian
+
+___x_cmd_man_remote(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    local mode=arch
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)                  ___x_cmd help -m man remote "$@" ;;
+            --arch|--ubuntu)            mode="${1#--}" ; shift ;;
+            *)                          break ;;
+        esac
+    done
+
+    ___x_cmd_man_remote___"$mode" "$@"
+}
+
+___x_cmd_man_remote___arch(){
+    local command="$1"
+    local section="${2:-1}"
+    local lang="${LANG%%_*}"
+    lang="${lang:-en}"
+
+    local addr="https://man.archlinux.org/man"
+    local ext="raw"
+
+    local name="${command}.${section}.${ext}"
+
+    local full_path="${addr}/${name}"
+
+    ___X_CMD_MAN_CACHE="$___X_CMD_ROOT_DATA/man/arch"
+    ___x_cmd mkdirp "$___X_CMD_MAN_CACHE"
+
+    [ -f "$___X_CMD_MAN_CACHE/$name" ] || {
+        man:info "Man page not found locally, fetching from $full_path"
+        ___x_cmd curl --fail -sS "$full_path" >"$___X_CMD_MAN_CACHE/$name" || return $?
+    }
+
+    ___x_cmd_man_run "$___X_CMD_MAN_CACHE/$name"
+}
+
+# default to 24.04
+
+___x_cmd_man_remote___ubuntu(){
+    local command="$1"
+    local section="${2:-1}"
+    local release="${3:-noble}"
+
+    # Ubuntu uses .gz format: https://manpages.ubuntu.com/manpages.gz/<release>/man<section>/<cmd>.<section>.gz
+    local addr="https://manpages.ubuntu.com/manpages.gz/${release}/man${section}"
+    local ext="gz"
+
+    local name="${command}.${section}.${ext}"
+    local decompressed="${name%.gz}"
+
+    local full_path="${addr}/${name}"
+
+    ___X_CMD_MAN_CACHE="$___X_CMD_ROOT_DATA/man/ubuntu/${release}"
+    ___x_cmd mkdirp "$___X_CMD_MAN_CACHE"
+
+    [ -f "$___X_CMD_MAN_CACHE/$name" ] || {
+        man:info "Man page not found locally, fetching from $full_path"
+        ___x_cmd curl --fail -sS "$full_path" >"$___X_CMD_MAN_CACHE/$name" || return $?
+        ___x_cmd_cmds gunzip -c "$___X_CMD_MAN_CACHE/$name" >"$___X_CMD_MAN_CACHE/$decompressed"
+    }
+
+    ___x_cmd_man_run "$___X_CMD_MAN_CACHE/$decompressed"
+}
+
+
+# Debian: only provides HTML format, no raw man pages
+___x_cmd_man_remote___debian(){
+    N=man M='Debian man pages are HTML only. Use --ubuntu instead.' log:ret:1
+}
+
+# Raspbian: site is down (502), no web man pages available
+___x_cmd_man_remote___rasbian(){
+    N=man M='Raspbian man pages are not available online' log:ret:1
+}
+
+# Alpine: no web man pages available, use apk instead
+___x_cmd_man_remote___alpine(){
+    N=man M='Alpine Linux does not host man pages online. Use: apk add <package>-doc' log:ret:1
+}
+

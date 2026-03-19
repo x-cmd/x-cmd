@@ -1,0 +1,300 @@
+# shellcheck shell=sh disable=SC2154,SC2120,SC3043,SC2034
+
+# Reference: https://open.feishu.cn/document/ukTMukTMukTM/ucTM5YjL3ETO24yNxkjN#8b0f2a1b
+
+___x_cmd_feishu_bot(){
+    param:subcmd ___x_cmd_feishu_bot    \
+        send   "send msg"               \
+        react   "react msg"
+    param:subcmd:try
+    param:run
+
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_feishu bot --help
+    else
+        ___x_cmd_feishu bot send "$@"
+    fi
+    return
+}
+
+___x_cmd_feishu_bot_send() {
+    param:subcmd ___x_cmd_feishu_bot_send         \
+        --text             "send text"            \
+        --richtext         "send rich text msg"   \
+        --share_chat       "send group card"      \
+        --raw              "send raw json"        \
+        --image            "send image"
+        # card             "send card"
+
+    param:subcmd:try
+    param:run
+
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_feishu bot send --help
+    else
+        ___x_cmd_feishu_bot_send_text "$@"
+    fi
+    return
+}
+
+___x_cmd_feishu_bot_send_text() {
+    param:scope     feishu
+    param:dsl <<A
+option:
+    #1              "Provide text"              <content>:text
+    --webhook       "webhook"                   <>=""
+    --json|-j       "output origin json data"
+A
+    param:run
+    local text="$1"
+    local res ; res="$(___x_cmd_feishu_bot___send_json <<A
+{
+    "msg_type": "text",
+    "content": {
+        "text": "$text"
+    }
+}
+A
+)" || return 1
+    _____x_cmd_feishu_ui_utils Text
+}
+
+___x_cmd_feishu_bot_send_raw() {
+    param:scope             feishu
+    param:dsl <<A
+option:
+    #1              "Provide raw json"          <raw>:json
+    --webhook       "webhook"                   <>=""
+    --json|-j       "output origin json data"
+
+A
+    param:run
+
+    local raw="${1}"; [ "$raw" != "-" ] || raw="$(___x_cmd_cmds_cat)"
+    local res ; res="$(___x_cmd_feishu_bot___send_json <<A
+$raw
+A
+)" || return 1
+    _____x_cmd_feishu_ui_utils Raw
+}
+
+
+___x_cmd_feishu_bot_send_richtext() {
+    param:scope     feishu
+    param:dsl <<A
+option:
+    --text|m            "Text content"                  <>
+    --title             "The title of the richtext"     <>=""
+    --url|m             "Hyperlink content [ <text> <herf> ]"
+            <>=""
+            <>=""
+    --at|m              "Provide @person username and userID. [ <user_id> <user_name> ]"
+            <>=""
+            <>=""
+    --image_key|m       "Provide the key you obtained from the upload image interface [ <image_key> ]"  <>=""
+    --webhook           "webhook"                       <>=""
+    --json|-j           "output origin json data"
+A
+    param:run
+
+    local IFS="
+"
+    local i; local all; local text
+    for i in $(param_marg text); do
+        text=$(param_marg_get text "$i")
+        all="$all$(___x_cmd jo dict "tag:text" "text:$text")"
+    done
+
+    local href
+    for i in $(param_marg url); do
+        text=$(param_marg_get url "$i" 1)
+        href=$(param_marg_get url "$i" 2)
+        [ -z "$text" ] || all="$all$(___x_cmd jo dict "tag:a" "text:$text" "href:$href")"
+    done
+
+    local user_id; local user_name
+    for i in $(param_marg at); do
+        user_id=$(param_marg_get at "$i" 1)
+        user_name=$(param_marg_get at "$i" 2)
+        [ -z "$user_id" ] || all="$all$(___x_cmd jo dict "tag:at" "user_id:$user_id" "user_name:$user_name")"
+    done
+
+    local image
+    for i in $(param_marg image_key); do
+        image="$(param_marg_get image_key "$i")"
+        [ -z "$image" ] || all="$all$(___x_cmd jo dict "tag:img" "image_key:$image")"
+    done
+
+
+    # TODO: Order about the content option is not correct
+    # TODO: Support multiple content array
+    local res ; res="$(___x_cmd_feishu_bot___send_json <<A
+{
+	"msg_type": "post",
+	"content": {
+		"post": {
+			"zh_cn": {
+				"title": "${title}",
+				"content": [
+					[
+                        $(printf "%s" "$all" | ___x_cmd jo)
+                    ]
+				]
+			}
+		}
+	}
+}
+A
+)" || return 1
+    _____x_cmd_feishu_ui_utils richtext
+}
+
+___x_cmd_feishu_bot_send_share_chat() {
+    param:scope     feishu
+    param:dsl <<A
+option:
+    --chat_id           "Provide share chat id"    <chat_id>:
+    --webhook           "webhook"                   <>=""
+    --json|-j           "output origin json data"
+A
+    param:run
+
+    local res ; res="$(___x_cmd_feishu_bot___send_json <<A
+{
+    "msg_type": "share_chat",
+    "content":{
+        "share_chat_id": "$chat_id"
+    }
+}
+A
+)" || return 1
+    _____x_cmd_feishu_ui_utils Share_chat
+}
+
+___x_cmd_feishu_bot_send_image() {
+    param:scope     feishu
+    param:dsl <<A
+option:
+    --image_key     "Provide the key you obtained from the upload image interface"    <image_key>:image_key
+    --webhook       "webhook"                                                         <>=""
+    --json|-j       "output origin json data"
+
+A
+    param:run
+
+    local res; res="$(___x_cmd_feishu_bot___send_json <<A
+{
+    "msg_type": "image",
+    "content":{
+        "image_key": "$image_key"
+    }
+}
+A
+)" || return 1
+    _____x_cmd_feishu_ui_utils Image
+}
+
+___x_cmd_feishu_bot_react(){
+    param:void
+    case "$1" in
+        -h|--help|"")      ___x_cmd help -m feishu bot react;return 1     ;;
+    esac
+
+    local cur_token=
+    local x_=
+    ____x_cmd_tenant_token || return
+    cur_token="$x_"
+    _____x_cmd_feishu_chat_history | while read -r line; do
+        local chat_id
+        chat_id=$(printf "%s" "$line" | ___x_cmd jq -r '.chat_id')
+        echo "$chat_id"
+        "$@"
+    done | while read -r chat_id && read -r line; do
+        ___x_cmd_feishu_bot_send_msg "$line" "$chat_id"
+    done
+}
+
+___x_cmd_feishu_bot_send_card() {
+    : # TODO: https://open.feishu.cn/document/ukTMukTMukTM/uczM3QjL3MzN04yNzcDN
+}
+
+_____x_cmd_feishu_ui_utils(){
+    if  [ -n "$json" ]; then
+        printf "%s\n" "$res"
+        return
+    fi
+    case "$1" in
+        Text)
+            msg="Sent text message successfully"
+            ;;
+        Raw)
+            msg="Sent message successfully"
+            ;;
+        richtext)
+            msg="Sent rich text message successfully"
+            ;;
+        Image)
+            msg="Sent image: $image_key  successfully"
+            ;;
+        Share_chat)
+            msg="Sent group business card: $chat_id  successfully"
+            ;;
+    esac
+    local statu ; statu="$(printf "%s" "$res" | {  ___x_cmd jo env .StatusMessage ; echo "$StatusMessage" ; })"
+    if [ "$statu" = "success" ]; then
+        ___x_cmd_ui_tf true "$msg"
+    else
+        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$res"
+    fi
+}
+
+_____x_cmd_feishu_chat_history(){
+    local date
+    date="$(___x_cmd date timestamp)"
+    local chats=
+    chats="$(___x_cmd_chat_id 20)"
+    local chat_id
+    local data
+    while [ -z "$data" ]; do
+        for chat_id in $chats; do
+            data="$(curl -s -X GET "https://open.feishu.cn/open-apis/im/v1/messages?container_id=$chat_id&container_id_type=chat&page_size=20&sort_type=ByCreateTimeDesc&start_time=$date" \
+                -H "Authorization: Bearer $cur_token" | ___x_cmd awk0 -m j/json -m j/jiter '
+{ jiparse_after_tokenize(o, $0); }
+END{
+    kp = SUBSEP "\"1\"" SUBSEP "\"data\"" SUBSEP "\"items\""
+    l = o[ kp L ]
+    for (i=1; i<=l; ++i){
+        kp_i = kp SUBSEP "\""i"\""
+        kp_sender_type = kp_i SUBSEP "\"sender\"" SUBSEP "\"sender_type\""
+        if (o[ kp_sender_type ] == "\"user\""){
+            print jstr0(o, kp_i, " ")
+        }
+    }
+}')"
+        done
+    done
+    printf "%s\n%s" "$data" ""
+}
+
+___x_cmd_feishu_bot_send_msg() {
+    local msg="{\"text\":\"$1\"}"
+    local chat_id="$2"
+    local uuid
+    uuid="$(___x_cmd rand uuid)"
+    local data=""
+
+    data="$(___x_cmd jq -n              \
+            --arg msg "$msg"            \
+            --arg uuid "$uuid"          \
+            --arg chat_id "$chat_id"    \
+            '{
+              content: $msg,
+              msg_type: "text",
+              uuid: $uuid,
+              receive_id: $chat_id
+            }')"
+    printf '%s' "${data}"| curl -s -X POST 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id' \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $cur_token" \
+    -d @-
+}

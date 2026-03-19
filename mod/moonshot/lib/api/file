@@ -1,0 +1,101 @@
+# shellcheck shell=dash
+
+___x_cmd_moonshot_api_file(){
+    local op="$1"; shift
+    [ $# -gt 0 ]    ||      set - ls
+    case "$op" in
+        upload|info|content|ls|rm)
+            ___x_cmd_moonshot_api_file_"$op" "$@" ;;
+        -h|--help)
+            ___x_cmd help -m moonshot file "$@"          ;;
+    esac
+}
+
+___x_cmd_moonshot_api_file_upload(){
+    local X_help_cmd='___x_cmd help -m moonshot file upload';   help:arg-null:parse
+    local file_fp="$1"
+    [ -n "$file_fp" ] || N=moonshot M="Please provide a file path" log:ret:1
+    local file_purpose="${2:-"file-extract"}"
+
+    local apikey=""; local endpoint=""; local proxy=""
+    ___x_cmd_moonshot___get_apikey_endpoint_proxy_ || return $?
+    ___x_cmd proxy runifset "$proxy" \
+        ___x_cmd curl -X POST "$endpoint/v1/files" -H "Authorization: Bearer $apikey" \
+           -F "file=@${file_fp}" \
+           -F "purpose=$file_purpose"
+}
+
+___x_cmd_moonshot_api_file_info(){
+    local X_help_cmd='___x_cmd help -m moonshot file info';   help:arg-null:parse
+    local file_id="$1"
+    [ -n "$file_id" ] || N=moonshot M="Please provide a file ID" log:ret:1
+
+    local apikey=""; local endpoint=""; local proxy=""
+    ___x_cmd_moonshot___get_apikey_endpoint_proxy_ || return $?
+    ___x_cmd proxy runifset "$proxy" \
+        ___x_cmd curl -sS "$endpoint/v1/files/$file_id" -H "Authorization: Bearer $apikey" | ___x_cmd j2y
+}
+
+___x_cmd_moonshot_api_file_content(){
+    local X_help_cmd='___x_cmd help -m moonshot file content';   help:arg-null:parse
+     local file_id="$1"
+    [ -n "$file_id" ] || N=moonshot M="Please provide a file ID" log:ret:1
+
+    local apikey=""; local endpoint=""; local proxy=""
+    ___x_cmd_moonshot___get_apikey_endpoint_proxy_ || return $?
+    ___x_cmd proxy runifset "$proxy" \
+        ___x_cmd curl -sS "$endpoint/v1/files/$file_id/content" -H "Authorization: Bearer $apikey" | \
+        ___x_cmd jo .content | \
+        ___x_cmd bat
+}
+
+___x_cmd_moonshot_api_file_ls(){
+    local X_help_cmd='___x_cmd help -m moonshot file ls';   help:arg:parse
+    local apikey=""; local endpoint=""; local proxy=""
+    ___x_cmd_moonshot___get_apikey_endpoint_proxy_ || return $?
+    local data=""
+    data="$( ___x_cmd proxy runifset "$proxy" \
+        ___x_cmd curl -X GET -sS "$endpoint/v1/files" -H "Authorization: Bearer $apikey" | ___x_cmd jo .data )" || return $?
+    if [ -z "$data" ] || [ "$data" = "[]" ]; then
+        moonshot:error "No files found"
+        return 1
+    fi
+
+    local ___X_CMD_CSV_APP_DATA_ID=
+    local ___X_CMD_CSV_APP_DATA_Object=
+    local ___X_CMD_CSV_APP_DATA_Filename=
+    local ___X_CMD_CSV_APP_DATA_Purpose=
+    local ___X_CMD_CSV_APP_DATA_Status=
+
+    printf "%s\n" "$data" | \
+        ___x_cmd ja 2c .id .object .bytes .filename .purpose .status |\
+        ___x_cmd csv header --add  ID Object Bytes Filename Purpose Status |\
+        ___x_cmd csv app --return var
+
+        [ -n "$___X_CMD_CSV_APP_DATA_ID" ] || return 0
+        local id=""
+        ___x_cmd ui select id "What to do NEXT for file: $___X_CMD_CSV_APP_DATA_Filename(ID = $___X_CMD_CSV_APP_DATA_ID)" \
+            "Get Content"    \
+            "Remove file"    \
+            "EXIT" || return $?
+
+        case "$id" in
+            1)      ___x_cmd_moonshot_api_file_content "$___X_CMD_CSV_APP_DATA_ID" ;;
+            2)      ___x_cmd_moonshot_api_file_rm "$___X_CMD_CSV_APP_DATA_ID"      ;;
+            3)
+                    moonshot:info "EXIT [code=0]"
+                    return 0 ;;
+        esac
+}
+
+___x_cmd_moonshot_api_file_rm(){
+    local X_help_cmd='___x_cmd help -m moonshot file rm';   help:arg-null:parse
+    local file_id="$1"
+    [ -n "$file_id" ] || N=moonshot M="Please provide a file ID" log:ret:1
+
+    local apikey=""; local endpoint=""; local proxy=""
+    ___x_cmd_moonshot___get_apikey_endpoint_proxy_ || return $?
+    ___x_cmd proxy runifset "$proxy" \
+        ___x_cmd curl -X DELETE -sS  "$endpoint/v1/files/$file_id" -H "Authorization: Bearer $apikey" | ___x_cmd j2y
+}
+

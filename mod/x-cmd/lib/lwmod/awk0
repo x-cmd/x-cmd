@@ -1,0 +1,105 @@
+
+
+# 1. never use interactive mode
+# 2. always use awk code file
+
+___x_cmd_awk0(){
+    arg:init:x  awk0
+
+    local AWK0_ARG
+    local modfp=""
+
+    local locale=auto
+
+    local codefp=""
+
+    local rootfp="${___X_CMD_ROOT_TMP}/awk0/code"
+    ___x_cmd mkdirp "$rootfp"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -v)         arg:add AWK0_ARG "$1"      "$2" ;   arg:2:shift ;;  # Notice: only provide val which contains one line.
+            -f)         arg:add AWK0_ARG "$1"      "$2" ;   arg:2:shift ;;
+
+            -m)
+                        modfp="${___X_CMD_ROOT_MOD}/awk/lib/${2}.awk"
+                        [ -f "$modfp" ] ||  N=awk0 M="Unknown mod -> $2" arg:ret:64
+                        arg:add AWK0_ARG -f "$modfp";       arg:2:shift ;;
+
+            --locale)   locale="$2";    arg:2:shift ;;
+
+            -c)
+                        codefp="${rootfp}/$(___x_cmd str md5 "$2").awk"
+                        printf "%s\n" "$2" >"$codefp"
+                        arg:add AWK0_ARG -f "$codefp"
+                        arg:2:shift
+                        ;;
+
+            *)          break
+                        ;;
+        esac
+    done
+
+    [ $# -eq 0 ] || {
+        local IFS=' '
+        local code="$*"
+        codefp="${rootfp}/$(___x_cmd str md5 "$code").awk"
+        printf "%s\n" "$code" >"$codefp"
+        arg:add AWK0_ARG -f "$codefp"
+    }
+
+    local RE_INTERVAL_EXPRESSIONS_SUPPORTED=1
+
+    ___x_cmd_awk0___init || return $?
+
+    ___X_CMD_AWK0_IMPL="${___X_CMD_AWK0_IMPL_BINPATH##*/}"
+
+    case "$___X_CMD_AWK0_IMPL" in
+        mawk)         RE_INTERVAL_EXPRESSIONS_SUPPORTED=0 ;;
+    esac
+
+    if [ "$locale" = auto ]; then
+        case "$___X_CMD_AWK0_IMPL" in
+            gawk)       locale=C.UTF-8 ;;
+            *)          locale=C ;;
+        esac
+    fi
+
+    if ___x_cmd_is_termux; then
+        locale=C.UTF-8
+    fi
+
+    eval RE_INTERVAL_EXPRESSIONS_SUPPORTED=\"\$RE_INTERVAL_EXPRESSIONS_SUPPORTED\" \
+    LC_ALL=\"\$locale\" ___X_CMD_AWK0_IMPL=\"\$___X_CMD_AWK0_IMPL\" \
+    '"$___X_CMD_AWK0_IMPL_BINPATH"' -f "${___X_CMD_ROOT_MOD}/awk/lib/core.awk" "$AWK0_ARG"
+}
+
+___x_cmd_awk0___init(){
+    if [ -n "$___X_CMD_AWK0_IMPL_BINPATH" ] && [ -e "$___X_CMD_AWK0_IMPL_BINPATH" ]; then
+        return 0
+    fi
+
+    ___X_CMD_AWK0_IMPL_BINPATH=""
+
+    local newpath="$___X_CMD_ROOT_DATA/awk0/binexisted"
+
+    ___x_cmd mkdirp "$newpath"
+
+    if [ -f "$newpath/awk" ]; then
+        read -r ___X_CMD_AWK0_IMPL_BINPATH <"$newpath/awk"
+        [ ! -e "$___X_CMD_AWK0_IMPL_BINPATH" ] || return 0
+        ___X_CMD_AWK0_IMPL_BINPATH=""
+    fi
+
+    {
+        command -v gawk || command -v mawk || command -v awk
+    } 2>/dev/null >"$newpath/awk"
+
+    if [ -f "$newpath/awk" ]; then
+        read -r ___X_CMD_AWK0_IMPL_BINPATH <"$newpath/awk"
+        [ ! -e "$___X_CMD_AWK0_IMPL_BINPATH" ] || return 0
+        ___X_CMD_AWK0_IMPL_BINPATH=""
+    fi
+
+    return 1
+}

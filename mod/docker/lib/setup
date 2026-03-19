@@ -1,0 +1,209 @@
+# shellcheck shell=dash disable=SC2016
+
+# x docker setup --user el <container-name>
+
+# The demo and testcase:
+# x docker start --name bscratch -d scratch
+# x docker setup bscratch
+# x docker exec -it bscratach sh
+
+# How to setup
+# 1. create a readonly volume for /var/x-cmd/global, include bin/curl, bin/busybox
+# 2. volume /bin/x get the source from /var/cmd/global
+# 3. [optional] /etc/bashrc => if [ -f "$HOME/.x-cmd.root/X" ]; then . "$HOME/.x-cmd.root/X"; else eval "$(x init)"; fi
+
+___X_CMD_DOCKER_CACHE="$___X_CMD_ROOT_CACHE/docker"
+# ___X_CMD_DOCKER_TMP="$___X_CMD_ROOT_TMP/docker"
+
+___x_cmd_docker_setup(){
+    # local user
+
+    # while [ $# -eq 0 ]; do
+    #     case "$1" in
+    #         --user)
+    #             user="$$2"
+    #             shift 2
+    #             ;;
+    #         *)
+    #             break
+    #     esac
+    # done
+    case "$1" in
+        -h|--help) ___x_cmd help -m docker setup; return ;;
+    esac
+
+    local container
+    while [ $# -gt 0 ]; do
+        container="$1"; shift
+        if ! command docker start "$container" >/dev/null 2>&1; then
+            docker:error "Container '$container' does not exist"
+            return 1
+        fi
+
+        # TODO: get id
+        # TODO: then using cache to hint this container already setup
+
+        if ! ___x_cmd_docker_setup_prepare___exec "$container"; then
+            docker:error "Failed to setup container '$container'"
+            return 1
+        fi
+
+        # TODO: setup user
+        # local IFS=,
+        # if [ -z "$user" ]; then
+        #     x:info "Login any user, then try eval \`x install\`"
+        #     x:info "If you using scratch image, try we have inject busybox into environment. try running x:"
+        # fi
+        # for e in $user; do
+        #     [ -n "$e" ] || return $?
+        #     ___x_cmd_docker_setup_init "$container" "$e"
+        # done
+    done
+}
+
+
+# scratch image or distro image -- #/bin/sh # /bin/x -- deploy new path image
+# busybox/alpine image -- with wget -- eval `wget -O- https://get.x-cmd.com`
+# debian image -- without wget/curl -- using inject is the only convinient way
+# other big image -- with curl -- eval `wget -O- https://get.x-cmd.com`
+
+# ___x_cmd_docker_xup(){
+#     :
+#     # x docker xup <container name>
+#     local container="${container}"
+
+#     # Find out the arch
+#     # Find out the /bin/sh exists or NOT
+#     # Find out whether /bin/curl exists
+
+#     docker cp "$BUSYBOX" $container:/var/x-cmd/x.tgz
+#     docker cp "$CURL_FP" $container:/bin/curl
+
+#     docker cp "$BUSYBOX_FP" $container:/bin/busybox
+
+# }
+
+# prepare environment ==> download curl, busybox
+___x_cmd_docker_setup_prepare(){
+    case "$1" in
+        run)    shift; ___x_cmd_docker_setup_prepare___run "$@" ;;
+        exec)   shift; ___x_cmd_docker_setup_prepare___exec "$@" ;;
+        *) ;;
+    esac
+}
+
+___x_cmd_docker_setup_prepare___exec(){
+    local container="$1"
+    local need_setup=; local x_osname=; local x_arch=; local need_busybox=; local need_curl=; local need_x=
+    ___x_cmd_docker_setup_prepare___get_info_form_container_ "$container"                           || return $?
+
+    [ -n "$need_setup" ] || {
+        docker:info "Container has already been setup"
+        return 0
+    }
+
+    local x_=
+    if [ -n "$need_busybox" ]; then
+        docker:info "Try to inject ==> busybox"
+        ___x_cmd_docker_setup_prepare___get_pkg_path_ busybox "$x_osname/$x_arch"                   || return $?
+        command docker cp "$x_" "$container:/bin/busybox"                                           || return $?
+    fi
+
+    if [ -n "$need_curl" ]; then
+        docker:info "Try to inject ==> curl"
+        ___x_cmd_docker_setup_prepare___get_pkg_path_ curl "$x_osname/$x_arch"                      || return $?
+        command docker cp "$x_" "$container:/bin/curl"                                              || return $?
+
+        docker:info "Try to inject ==> ca-certificates"
+        ___x_cmd cacert which_
+        command docker cp -L "$x_" "$container:/etc/ssl/certs/ca-certificates.crt" 2>/dev/null      || return $?
+    fi
+
+    if [ -n "$need_x" ]; then
+        docker:info "Try to inject ==> /bin/x-cmd"
+        if [ -f "$___X_CMD_ROOT_SHARED/version/archive/$___X_CMD_VERSION.tgz" ]; then
+            docker:debug "Inject $___X_CMD_ROOT_SHARED/version/archive/$___X_CMD_VERSION.tgz"
+            command docker cp "$___X_CMD_ROOT_SHARED/version/archive/$___X_CMD_VERSION.tgz" "$container:/usr/share/x-cmd/v/latest.tgz"  || return $?
+        else
+            docker:debug "Inject $___X_CMD_ROOT/v/$___X_CMD_VERSION"
+            command docker cp "$___X_CMD_ROOT/v/$___X_CMD_VERSION"                          "$container:/usr/share/x-cmd/v/latest"      || return $?
+        fi
+        command docker cp "$___X_CMD_ROOT_MOD/x-cmd/lib/bin/x-cmd" "$container:/bin/x-cmd"          || return $?
+    fi
+
+    docker:info "Successfully injected x-cmd into the Docker container. Run \`x-cmd\` to initialize it inside."
+}
+
+___x_cmd_docker_setup_prepare___run(){
+    local image="$1"
+    local container; container="$( command docker run -it -d "$image" )"            || return $?
+
+    local need_setup=; local x_osname=; local x_arch=; local need_busybox=; local need_curl=; local need_x=
+    ___x_cmd_docker_setup_prepare___get_info_form_container_ "$container"           || return $?
+    command docker container rm -f "$container" >/dev/null
+
+    local x_=
+    if [ -n "$need_budybox" ]; then
+        docker:info "Bind mount a volume ==> /bin/busybox"
+        ___x_cmd_docker_setup_prepare___get_pkg_path_ busybox "$x_osname/$x_arch"   || return $?
+        ___x_cmd cmdstr ___X_CMD_DOCKER_RUN_OPTS -v "$x_:/bin/busybox"
+    fi
+
+    if [ -n "$need_curl" ]; then
+        docker:info "Bind mount a volume ==> /bin/curl"
+        ___x_cmd_docker_setup_prepare___get_pkg_path_ curl "$x_osname/$x_arch"      || return $?
+        ___x_cmd cmdstr ___X_CMD_DOCKER_RUN_OPTS -v "$x_:/bin/curl"
+
+        ___x_cmd cacert which_ || return $?
+        ___x_cmd cmdstr ___X_CMD_DOCKER_RUN_OPTS -v "$x_:/etc/ssl/certs/ca-certificates.crt:ro"
+    fi
+
+    if [ -n "$need_x" ]; then
+        docker:info "Bind mount a volume ==> /bin/x-cmd"
+        local copyfile=
+        if [ -f "$___X_CMD_ROOT_SHARED/version/archive/$___X_CMD_VERSION.tgz" ]; then
+            copyfile="$___X_CMD_ROOT_SHARED/version/archive/$___X_CMD_VERSION.tgz:/usr/share/x-cmd/v/latest.tgz"
+        else
+            copyfile="$___X_CMD_ROOT/v/$___X_CMD_VERSION:/usr/share/x-cmd/v/latest"
+        fi
+        docker:debug "Inject $copyfile"
+        ___x_cmd cmdstr ___X_CMD_DOCKER_RUN_OPTS                        \
+            -e ___X_CMD_WEBSRC_REGION="$___X_CMD_WEBSRC_REGION"         \
+            -v "$___X_CMD_ROOT_MOD/x-cmd/lib/bin/x-cmd:/bin/x-cmd:ro"   \
+            -v "${copyfile}:ro"
+
+        local hubfile="${___X_CMD_ROOT_CFG}/hub/X.cfg.yml"
+        if [ -f "$hubfile" ]; then
+            xrc hub
+            if ___x_cmd_hub_docker_verify_ 2>/dev/null >&2; then
+                ___x_cmd cmdstr ___X_CMD_DOCKER_RUN_OPTS                \
+                    -v "${hubfile}:/usr/share/x-cmd/cfg/hub/X.cfg.yml:ro"
+            fi
+        fi
+    fi
+
+    docker:info "Successfully injected x-cmd into the Docker container. Run \`x-cmd\` to initialize it inside."
+}
+
+___x_cmd_docker_setup_prepare___get_info_form_container_(){
+    local container="$1"
+    docker:debug "Get container information ==> $container"
+    need_setup=; x_osname=; x_arch=; need_busybox=; need_curl=; need_x=
+
+    local setup_script; setup_script="$( ___x_cmd_cmds_cat "$___X_CMD_ROOT_MOD/docker/lib/data/setup.sh" )"
+    eval "$( command docker exec "$container" sh -c "${setup_script}; ___x_cmd_docker_setup___getinfo" || printf "return 1\n" )" || return 1
+}
+
+___x_cmd_docker_setup_prepare___get_pkg_path_(){
+    x_=; local name="$1"; local osarch="$2"
+    docker:debug "Prepare $name $osarch to $___X_CMD_DOCKER_CACHE"
+    ___x_cmd pkg sphere add --sphere X --sphereroot "$___X_CMD_DOCKER_CACHE"  --osarch "$osarch" "$name" || {
+        docker:error "Fail to prepare $name $osarch"
+        return 1
+    }
+    docker:debug "Get $name $osarch xbin path"
+    x_="$( ___x_cmd pkg xbin path --sphere X --sphereroot "$___X_CMD_DOCKER_CACHE" --osarch "$osarch" "$name")" || {
+        docker:error "Fail to get $name $osarch bin path"
+        return 1
+    }
+}

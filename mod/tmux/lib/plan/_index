@@ -1,0 +1,103 @@
+
+___x_cmd_tmux_plan(){
+    :
+}
+
+___x_cmd_tmux_plan_apply(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local fp=""
+    local str=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -f|--file)      fp="$2";    arg:2:shift ;;
+            *)              break ;;
+        esac
+    done
+
+
+    eval "$(
+        [ -z "$fp" ] || {
+            ___x_cmd_tmux_plan_apply___file "$fp"
+            return $?
+        }
+
+        ___x_cmd_tmux_plan_apply___str "$@"
+    )"
+}
+
+___x_cmd_tmux_plan_apply___file(){
+    local fp="$1"
+
+    case "$fp" in
+        *.json) ___x_cmd_tmux___pipe2code <"$fp" ;;
+        *.yml)  ___x_cmd y2j <"$fp" | ___x_cmd_tmux___pipe2code ;;
+        *)      N=tmux M="Unexpected filetype. Accept json or yml only." log:ret:1 ;;
+    esac
+}
+
+___x_cmd_tmux_plan_apply___str(){
+    local x_=""
+
+    ___x_cmd_tmux_plan_apply___str_transform_ "$@" || {
+        tmux:warn "Fail to transform: $@"
+        return 1
+    }
+
+    x_="$(___x_cmd y2j  <<A
+$x_
+A
+)"
+
+    ___x_cmd_tmux___pipe2code  <<A
+$x_
+A
+}
+
+___x_cmd_tmux_plan_apply___str_transform(){
+    local x_
+    ___x_cmd_tmux_plan_apply___str_transform_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+# x tmux plan apply 'top' '@ds' / 'top' '@gemini'
+___x_cmd_tmux_plan_apply___str_transform_(){
+
+    local session="session-project-$$"
+    local name="name-$$-$RANDOM"
+
+    local content="
+name: $session
+windows:
+- name: $name
+  panes:
+"
+
+    local pane_init="  - panes:
+"
+
+    local pane="$pane_init"
+
+    x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            "/"|"\/\/")
+                        shift;
+                        [ "$pane" = "$pane_init" ] || \
+                            content="${content}${___X_CMD_UNSEENCHAR_NEWLINE}${pane}"
+                        pane="$pane_init"
+                        ;;
+            *)
+                        ___x_cmd_shq1_ "$1"
+                        pane="${pane}    - ${x_}${___X_CMD_UNSEENCHAR_NEWLINE}"
+                        shift ;;
+        esac
+    done
+
+    [ "$pane" = "$pane_init" ] || \
+        content="${content}${___X_CMD_UNSEENCHAR_NEWLINE}${pane}"
+
+    x_="$content"
+}

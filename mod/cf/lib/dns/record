@@ -1,0 +1,134 @@
+# shellcheck shell=sh   disable=SC3043,2154
+
+___x_cmd_cf_dns(){
+    param:scope     ___x_cmd_cf
+    param:subcmd    ___x_cmd_cf_dns                  \
+        ls              "List DNS records"                   \
+        info            "Get DNS record information"         \
+        delete          "Delete DNS record"                  \
+        update          "Update a DNS record"                \
+        create          "Create a new DNS record for a zone"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_cf_dns  _param_help_doc
+    return 1
+}
+
+# Section: record ls
+# https://developers.cf.com/api/operations/dns-records-for-a-zone-list-dns-records
+___x_cmd_cf_dns_ls(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    #1              "The id of the zone"                                                <>:Number
+    --page          "Page number of paginated results"                                  <>:Number="1"
+    --name          "DNS record name (or @ for the zone apex) in Punycode"              <>=""
+    --order         "Field to order DNS records by"                                     <>="type"  = type name content ttl proxide
+    --match         "Whether to match all search requirements or at least one (any)"    <>="all"   = all any
+    --content       "DNS record content"                                                <>=""
+    --per_page      "Number of results per page"                                        <>:Number="20"
+    --direction     "Direction to order DNS records in"                                 <>="desc"  = asc desc
+    --json|-j       "output in json format"
+'
+    param:run
+    [ -n "$1" ] || N=cf M="Require argument as zone id" log:ret:64
+    local zone_id="$1"
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_cf_curl get "/zones/${zone_id}/dns_records" page name order match content per_page direction
+    else
+        ___x_cmd_cf_curl get "/zones/${zone_id}/dns_records" page name order match content per_page direction | {
+        x jo .result | x jo 2c .id .type .name .content .proxied .ttl | x csv header --add Id Type Name Content Proxied TTL | x csv app
+        }
+    fi
+}
+# EndSection
+
+# Section: record create
+# x cf dns create --name "github" --type TXT --content "github.com"
+# https://developers.cf.com/api/operations/dns-records-for-a-zone-create-dns-record
+___x_cmd_cf_dns_create(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    --zone_id       "The id of the zone,If not provided, the default zone id is used"                       <>=""
+    --name          "DNS record name (or @ for the zone apex) in Punycode"                                  <>:String
+    --type          "Record type"                                                                           <>:String
+    --content       "A valid IPv4 address"                                                                  <>:String
+    --proxied       "Whether the record is receiving the performance and security benefits of Cloudflare"   <>:bole=""
+    --comment       "Comments or notes about the DNS record. This field has no effect on DNS responses"     <>=""
+    --ttl           "Time To Live (TTL) of the DNS record in seconds"                                       <>:Number=""
+    --tags          "Custom tags for the DNS record. This field has no effect on DNS responses"             <>=""
+    --json|-j       "output in json format"
+'
+    param:run
+
+    tags="$(x jo ["$tags"])"
+    local gen_cf_json=""
+    gen_cf_json="$(param:option2json -zone_id)"
+    ___x_cmd_cf_curl post "/zones/${zone_id}/dns_records" "gen_cf_json"
+}
+# EndSection
+
+# Section: get record
+# https://developers.cf.com/api/operations/dns-records-for-a-zone-dns-record-details
+___x_cmd_cf_dns_info(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    #1              "Dns record id"                                                         <>:String
+    --zone_id       "The id of the zone,If not provided, the default zone id is used"       <>=""
+    --json|-j       "output in json format"
+'
+    param:run
+
+    ___x_cmd_cf_curl get "/zones/${zone_id}/dns_records/$1"
+}
+# EndSection
+
+# Section: delete record
+# https://developers.cf.com/api/operations/dns-records-for-a-zone-delete-dns-record
+___x_cmd_cf_dns_delete(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    #1              "Dns record id"                     <>:String
+    --zone_id       "The id of the zone,If not provided, the default zone id is used"                      <>=""
+    --json|-j       "output in json format"
+    --yes|-y        "Ignore remove prompt interception"
+'
+    param:run
+
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove the Dns record $1 ?" || return
+    ___x_cmd_cf_curl delete "/zones/${zone_id}/dns_records/$1"
+}
+# EndSection
+
+# Section: record update
+# https://developers.cf.com/api/operations/dns-records-for-a-zone-update-dns-record
+___x_cmd_cf_dns_update(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    #1              "Dns record id"                                                                         <>:String
+    --zone_id       "The id of the zone,If not provided, the default zone id is used"                       <>=""
+    --name          "DNS record name (or @ for the zone apex) in Punycode"                                  <>=""
+    --type          "Record type"                                                                           <>=""
+    --content       "A valid IPv4 address"                                                                  <>=""
+    --proxied       "Whether the record is receiving the performance and security benefits of Cloudflare"   <>:bole=""
+    --comment       "Comments or notes about the DNS record. This field has no effect on DNS responses"     <>=""
+    --ttl           "Time To Live (TTL) of the DNS record in seconds"                                       <>:Number=""
+    --tags          "Custom tags for the DNS record. This field has no effect on DNS responses"             <>=""
+    --json|-j       "output in json format"
+'
+    param:run
+
+    tags="$(x jo ["$tags"])"
+    local gen_cf_json=""
+    gen_cf_json="$(param:option2json -zone_id)"
+    cf:debug "cf: $gen_cf_json"
+    ___x_cmd_cf_curl put "/zones/${zone_id}/dns_records/$1"
+}
+# EndSection

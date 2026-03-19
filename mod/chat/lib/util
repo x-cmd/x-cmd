@@ -1,0 +1,138 @@
+# shellcheck shell=dash
+
+___x_cmd_chat_jqu(){
+    local IFS=" "
+
+    # The code jqu should be enhanced
+    printf "%s" "$*" | ___x_cmd_cmds_awk '
+{
+    text = (text == "") ? $0 : (text "\n" $0)
+}
+END{
+    gsub(/\\/, "&\\", text)
+    gsub("\n", "\\n", text)
+    gsub("[\r]", "\\r", text)
+    gsub("[\t]", "\\t", text)
+    gsub("[\v]", "\\v", text)
+    gsub(/"/, "\\\"", text)
+    printf("\"%s\"", text)
+}
+'
+
+}
+
+___x_cmd_chat_send(){
+    local cur_provider=""
+
+    if [ -n "$___X_CMD_CHAT_NORMAL_ALIAS" ]; then
+        case "$___X_CMD_CHAT_NORMAL_ALIAS" in
+            gemini|mistral|lms|gh|grok)
+                    cur_provider="$___X_CMD_CHAT_NORMAL_ALIAS"  ;;
+            o)      cur_provider=ollama ;;
+            l)      cur_provider=llmf   ;;
+            gpt)    cur_provider=openai ;;
+            gpt4t)  cur_provider=openai; set -- --model gpt-4-turbo "$@"    ;;
+            gpt4)   cur_provider=openai; set -- --model gpt-4.1 "$@"        ;;
+
+            gpt4o)  cur_provider=openai; set -- --model gpt-4o "$@"         ;;
+            gpt4om) cur_provider=openai; set -- --model gpt-4o-mini "$@"    ;;
+
+            gpt41)  cur_provider=openai; set -- --model gpt-4.1 "$@"        ;;
+            gpt41m) cur_provider=openai; set -- --model gpt-4.1-mini "$@"   ;;
+            gpt41n) cur_provider=openai; set -- --model gpt-4.1-nano "$@"   ;;
+
+            gpto1)  cur_provider=openai; set -- --model o1-preview "$@"     ;;
+            gpto1m) cur_provider=openai; set -- --model o1-mini "$@"        ;;
+            ds)     cur_provider=deepseek ;;
+            dsr1)   cur_provider=deepseek;  set -- --model deepseek-reasoner    "$@" ;;
+            doubao) cur_provider=doubao ;;
+            kimi)   cur_provider=moonshot ;;
+            sili)   cur_provider=siliconflow ;;
+            or)     cur_provider=openrouter ;;
+            glm)    cur_provider=zhipu ;;
+            *)      return 1 ;;
+        esac
+    fi
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --provider)     cur_provider="$2";  shift 2 ;;
+            *)              break ;;
+        esac
+    done
+
+    [ -n "$cur_provider" ] || {
+        local x_=; ___x_cmd_chat_provider get_ || return $?
+        cur_provider="$x_"
+    }
+
+    chat:debug --provider "$cur_provider" --m:cmd "$*" "request api"
+    case "$cur_provider" in
+        gh) ___x_cmd gh model chat request "$@"         ;;
+        *)  ___x_cmd "$cur_provider" chat request "$@"  ;;
+    esac
+}
+
+___x_cmd_chat_json(){
+    [ "$#" -gt 0 ] || set -- "$(___x_cmd_cmds_cat)"
+    local IFS=" "
+    local msg; msg='
+        {
+            role: user,
+            content: '$(___x_cmd_chat_jqu "Your response only contains answer in json format without extra description.
+$*")'
+        }'
+    ___x_cmd_chat_request json "" "$msg"
+}
+
+___x_cmd_chat_yml(){
+    [ "$#" -gt 0 ] || set -- "$(___x_cmd_cmds_cat)"
+    local IFS=" "
+    local msg; msg='
+        {
+            role: user,
+            content: '$(___x_cmd_chat_jqu "Your response only contains answer in yml format without extra description.
+$*")'
+        }'
+    ___x_cmd_chat_request yml "" "$msg"
+}
+
+___x_cmd_chat_csv(){
+    [ "$#" -gt 0 ] || set -- "$(___x_cmd_cmds_cat)"
+    local IFS=" "
+    local msg; msg='
+        {
+            role: user,
+            content: '$(___x_cmd_chat_jqu "Your response only contains answer in csv format without extra description.
+$*")'
+        }'
+    ___x_cmd_chat_request csv "" "$msg"
+}
+
+___x_cmd_chat_model_ls(){
+    local provider="$1"
+    ___x_cmd_chat_provider___validate "$provider" 2>/dev/null || return $?
+
+    {
+        case "$provider" in
+            openai|gemini|grok)
+                ___x_cmd "$provider" model ls --fast ;;
+            ollama)
+                ___x_cmd ollama ls | ___x_cmd_cmds awk -v FS=, 'NR>1{ print $1; }' ;;
+            mistral|moonshot|siliconflow|openrouter)
+                ___x_cmd "$provider" model ls --csv | ___x_cmd_cmds awk -v FS=, 'NR>1{ print $1; }' ;;
+            llmf)
+                xrc llmf;   ___x_cmd_llmf_advise___ls_model ;;
+            lms)
+                xrc lms;    ___x_cmd_lms___ls_model ;;
+            gh)
+                ___x_cmd gh model ls --advise ;;
+            deepseek)
+                printf "%s\n" deepseek-v3.2 deepseek-chat deepseek-reasoner ;;
+            doubao)
+                ___x_cmd doubao model ls --advise ;;
+            zhipu)
+                printf "%s\n" glm-4.7 glm-4.6 glm-4.5 glm-4.5-air glm-4.5-x glm-4.5-airx glm-4.5-flash glm-4-plus glm-4-air-250414 glm-4-airx glm-4-flashx glm-4-flashx-250414 glm-z1-air glm-z1-airx glm-z1-flash glm-z1-flashx ;;
+        esac
+    } 2>/dev/null
+}

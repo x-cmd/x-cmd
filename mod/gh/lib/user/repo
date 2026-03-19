@@ -1,0 +1,162 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gh_user_repo(){
+    param:scope  ___x_cmd_github
+    param:subcmd ___x_cmd_gh_user_repo                    \
+        ls          "Interactive UI list repo of user"    \
+        ll          "List all repos"                      \
+        create      "Create user repo"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_user_repo_ls
+}
+
+# Section: List
+# shellcheck disable=SC2120
+___x_cmd_gh_user_repo_ls() {
+    if ___x_cmd_gx_has_format_args "$@"; then
+        ___x_cmd_gh_user_repo_ll "$@"
+        return
+    fi
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --type          "visibility"                                <>:Authority="all"
+    --affiliation   "affiliation"                               <>:UserGroup="owner"
+    --sort          "sort"                                      <>:UserSort="created"
+    --direction     "direction"                                 <>:Direction="desc"
+    --per_page      "Results per page"                          <>="30"
+    --page          "Page number of the results to fetch."      <>="1"
+'
+    param:run
+    local url
+    if [ -n "$1" ]; then
+        url="/users/$1/repos"
+    else
+        url="/user/repos"
+    fi
+    if ___x_cmd_gx_is_interactive_env; then
+        local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+        local ___X_CMD_TUI_TABLE_CUR_LINE
+        local ___X_CMD_TUI_TABLE_CUR_ITEM
+        local visibility="$type"
+        local ___X_CMD_GH_TUI_TABLE_REQUSET_DATA=''
+        ___x_cmd_gh_tui_app --url "$url" --visibility "$visibility" --affiliation "$affiliation" --sort "$sort" --direction "$direction" --page "$page" --per_page "$per_page" \
+            --request-code '___x_cmd_gh_get_multi "$url" visibility affiliation sort direction' \
+            --error-msg "Get user repo list fail" \
+            --end ___x_cmd_gh_user_repo_app_status_handler \
+            "user.repo.app.awk"
+    else
+        ___x_cmd_gh_get_multi "$url" visibility affiliation sort direction page per_page | \
+        ___x_cmd jo 2c  .full_name
+    fi
+}
+
+# shellcheck disable=SC2119
+___x_cmd_gh_user_repo_app_status_handler(){
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_CUR_LINE"  ;;
+            "c")            ___x_cmd_gh_user_repo_create                       ;;
+            *)              return   ;;
+    esac
+}
+
+# EndSection
+
+# Section: List
+# shellcheck disable=SC2154,2034
+# https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user
+# https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user
+___x_cmd_gh_user_repo_ll() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --type          "visibility"                                <>:Authority="all"
+    --affiliation   "affiliation"                               <>:UserGroup="owner"
+    --sort          "sort"                                      <>:UserSort="updated"
+    --direction     "direction"                                 <>:Direction="desc"
+    --per_page      "Results per page"                          <>:Per_page="30"
+    --page          "Page number of the results to fetch."      <>:Numbers="1"
+
+    --json|-j       "output origin json data"
+    --csv           "output csv data"
+    --yml           "output yml data"
+'
+    param:run
+
+    local url=""
+    if [ -n "$1" ]; then
+        url="/users/$1/repos"
+    else
+        url="/user/repos"
+    fi
+    local visibility="$type"
+
+    if ___x_cmd_gx_output_is_format; then
+        ___x_cmd_gh_get_multi "$url" visibility affiliation sort direction | ___x_cmd_gx_output_format
+    else
+        ___x_cmd_gh_get_multi "$url" visibility affiliation sort direction | \
+            ___x_cmd jo 2c            .full_name  .visibility .description        | \
+            ___x_cmd csv header --add  RepoPath    Visibility  Description        | \
+            if [ -n "$csv" ]; then  ___x_cmd_cmds cat
+            else                    ___x_cmd_gh_st_tab  -           10          100%
+            fi
+
+    fi
+}
+
+# EndSection
+
+# Section: Create
+# shellcheck disable=SC2034,2154,2120
+# https://docs.github.com/en/rest/repos/repos#create-a-repository-for-the-authenticated-user
+___x_cmd_gh_user_repo_create() {
+    param:scope     ___x_cmd_github
+    param:dsl       '
+type:
+    access  =   private public
+option:
+    #1                          "repo names"                                                            <>
+    --access                    "private,public"                                                        <>:access=private
+    --description               "description"                                                           <>:Repo_Description=""
+    --homepage                  "homepage"                                                              <>=""
+    --team_id                   "the id of the team that will be granted access to this repository"     <>=""
+
+    --gitignore_template        "The desired language or platform to apply to the .gitignore."          <>:Ignore=""
+    --license_template          "The license keyword of the open source license for this repository."   <>:License=""
+
+    --no_issues                 "Whether to disable issue"
+    --no_projects               "Whether to disable has_projects"
+    --no_wiki                   "Whether to disable wiki"
+    --auto_init                 "auto init README"
+    --no_squash_merge           "Whether to allow squash merges for pull requests."
+    --no_merge_commit           "Whether to allow merge commits for pull requests."
+    --no_rebase_merge           "Whether to allow rebase merges for pull requests."
+    --allow_auto_merge          "Whether to allow Auto-merge to be used on pull requests,Default:false"
+    --delete_branch_on_merge    "Whether to delete head branches when pull requests are merged"
+    --has_downloads             "Whether downloads are enabled."
+    --is_template               "can be used to generate new repositories"
+    --json|-j                   "output json data"
+'
+    param:run
+
+    local private=true
+    [ "$access" = "public" ] && private=false
+
+    local name="${___X_CMD_TX}"
+    local gen_gh_json
+    gen_gh_json="$(
+        param:option2json +name +private -access \
+        'has_issues=^no_issues'                   'allow_merge_commit=^no_merge_commit'     'has_projects=^no_projects'   \
+        'allow_rebase_merge=^no_rebase_merge'     'allow_squash_merge=^no_squash_merge'     'has_wiki=^no_wiki'
+        )"
+
+    for name in "$@"; do
+        gh:debug "$(x tmpl "$gen_gh_json"  "${name##*/}")"
+        ___x_cmd tmpl "$gen_gh_json"  "${name##*/}" | ___x_cmd_gh_curl post "/user/repos" "@-" | ___x_cmd_gh_repo____ui_handler Creating
+    done
+}
+# EndSection
+

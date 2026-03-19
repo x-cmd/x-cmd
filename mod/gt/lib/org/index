@@ -1,0 +1,157 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043,3057
+
+# define lazy loader
+# ___x_cmd_definelazyloader   ___x_cmd_gt_org_member           gt/lib/org/member
+
+xrc:mod:lib     gt                   \
+                org/repo/_index
+
+___x_cmd_gt_org(){
+    param:scope     ___x_cmd_gt
+    param:subcmd ___x_cmd_gt_org                            \
+        ls                      "List all org"              \
+        info                    "Show org information"      \
+        create                  "Create org"                \
+        issue                   "org issues     management" \
+        repo                    "org repo       management" \
+        "membership|member"     "org membership management" \
+        apply                   "manage org by declare configure"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_org _param_help_doc
+    return 1
+}
+
+# Section: List & Info
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5UserOrgs
+___x_cmd_gt_org_ls(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    --page          "page"                                          <>="1"
+    --per_page      "per_page"                                      <>="30"
+    --admin         "list only authorized users managed org"
+
+    --json|-j       "output origin json data"
+    --csv           "output csv data"
+    --yml           "output yml data"
+'
+    param:run
+    if ___x_cmd_gx_output_is_format; then
+        ___x_cmd_gt_get_multi "/user/orgs" admin | ___x_cmd_gx_output_format
+    else
+        ___x_cmd_gt_get_multi "/user/orgs" admin | \
+            x jo 2c             .id .name .follow_count .repos_url  | \
+            x csv header --add   Id  Name  FollowCount  Url         | \
+            if [ -n "$csv" ]; then  ___x_cmd_cmds cat
+            else                    x csv static_tab
+            fi
+    fi
+}
+
+# shellcheck disable=SC2154
+# https://gitee.com/api/v5/swagger#/getV5OrgsOrg
+___x_cmd_gt_org_info(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1            "Provide organization path"     <>=""
+    --json|-j     "output origin json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(organization path), received empty' arg:ret:64
+
+    ___x_cmd_gt_curl get "/orgs/$1" | \
+        ___x_cmd_gt_org____ui_handler Info "$1"
+}
+# EndSection
+
+# Section: Create
+# shellcheck disable=SC2181
+# https://gitee.com/api/v5/swagger#/postV5UsersOrganization
+___x_cmd_gt_org_create(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1              "organization name"                 <>
+    --org           "organization path"                 <>=""
+    --description   "description"                       <>=""
+    --json|-j       "output origin json data"
+'
+    param:run
+
+    [ -n "$1" ] || M='accepts 1 arg(organization name), received empty' arg:ret:64
+    org=${org:-$1}
+    local name="$1"
+    local gen_gt_json=""
+    gen_gt_json="$(param:option2json +name)"
+    gt:debug "$gen_gt_json"
+
+    ___x_cmd_gt_curl post "/users/organization" "gen_gt_json" | \
+        ___x_cmd_gt_org____ui_handler Creating "$name"
+}
+# EndSection
+
+# Section: Quit
+# shellcheck disable=SC2181,SC2034,2154
+# https://gitee.com/api/v5/swagger#/deleteV5UserMembershipsOrgsOrg
+___x_cmd_gt_org_quit(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+options:
+    #1         "orgs"                                       <>
+    --yes|-y   "Ignore remove prompt interception"
+'
+    param:run
+    local _org="${1?:"Please provide organization path"}"
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure quit organization: $(___x_cmd_ui bold red "${_org##*/}") ?" || return
+    ___x_cmd_gt_curl del "/user/memberships/orgs/${_org##*/}" | (
+        [ -z "$___X_CMD_GT_IN_TEST" ] || { ___x_cmd_cmds_cat; return; }
+        x jo env . gt_resp_err=.message gt_resp_err=.error
+        if ___x_cmd_gt_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Quit $_org organization"
+        else
+            ___x_cmd_ui_tf false "Quit $_org organization failure:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: org UI
+___x_cmd_gt_org____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        ___x_cmd_cmds_cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        local _id=""
+        case "$1" in
+            Creating)
+                x jo env . _id=.id gt_resp_err=.message gt_resp_err=.error
+                _inf_msg="[Success]: $1 $2 organization"
+                _err_msg="$1 $2 organization failure:"
+            ;;
+            Info)
+                x jo env . _id=.id gt_resp_err=.message gt_resp_err=.error \
+                    _name=.name public=.public follow_count=.follow_count owner=.owner.name
+                _inf_msg="Organization information:"
+                _err_msg="No find any organization data by $2:"
+            ;;
+        esac
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}" ${_name:+"Name: $_name"} ${public:+"Public: $public"}\
+                ${follow_count:+"Follow: $follow_count"} ${owner:+"Owner: $owner"} ${login:+"Login_path: $login"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

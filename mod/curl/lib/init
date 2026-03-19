@@ -1,0 +1,107 @@
+# Author:       Li Junhao           l@x-cmd.com
+# shellcheck    shell=sh            disable=SC2039,SC1090,SC3043,SC2263
+# License:      GPLv3
+
+___x_cmd___curl___not_secure_request_nc(){
+    printf "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\nConnection: close\r\n\r\n" "$url_path" "$host" | nc "$host" 80
+}
+
+___x_cmd___curl___not_secure_request_bash()(
+    host="$host" url_path="$url_path" bash -c '
+        exec 88<>"/dev/tcp/$host/80"
+        printf "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\nConnection: close\r\n\r\n" "$url_path" "$host" >&88
+        command cat <&88
+        exec 88>&- >&2
+        exec 88<&- >&2
+    '
+)
+
+___X_CMD___CURL_HTTP_NOT_SECURE_REQUEST_HANDLER_R="$(printf "\r")"
+___x_cmd_curl___not_secure_request_handler(){
+    local file="$1"; [ -n "$file" ] || M='Provide cache filepath' N=curl log:ret:64
+    local line
+    while read -r line; do
+        line="${line%"${___X_CMD___CURL_HTTP_NOT_SECURE_REQUEST_HANDLER_R}"}"
+        if [ "$line" = "" ]; then
+            break
+        fi
+    done
+    command cat >"$file"
+}
+
+# Test: ___x_cmd___curl___not_secure_get gitee.com/ a.txt
+___x_cmd___curl___not_secure_get(){
+    local url_path="$1"; [ -n "$url_path" ] || M='Provide url path' N=curl log:ret:64
+    local file="$2";     [ -n "$file" ]     || M='Provide cache filepath' N=curl log:ret:64
+    local sha="$3";      [ -n "$sha" ]      || M='Provide cache sha' N=curl log:ret:64
+
+    url_path="${url_path#http*://}"
+    host="${url_path%%/*}"
+    local origin_path="$url_path"
+    url_path="${url_path#*/}"
+    if [ "$url_path" = "$origin_path" ]; then
+        url_path=""
+    fi
+    url_path="/$url_path"
+    if ___x_cmd_hascmd curl >/dev/null; then
+        ___x_cmd___curl_not_secure_request(){
+            ___x_cmd_cmds curl -L -o "$file" "http://${host}${url_path}"
+        }
+    elif ___x_cmd_hascmd wget >/dev/null; then
+        ___x_cmd___curl_not_secure_request(){
+            ___x_cmd_cmds wget "http://${host}${url_path}" -O "$file"
+        }
+    elif ___x_cmd_hascmd bash 1>/dev/null; then
+        ___x_cmd___curl_not_secure_request(){
+            ___x_cmd___curl___not_secure_request_bash | ___x_cmd_curl___not_secure_request_handler "$file"
+        }
+    elif ___x_cmd_hascmd nc 1>/dev/null; then
+        ___x_cmd___curl_not_secure_request(){
+           ___x_cmd___curl___not_secure_request_nc | ___x_cmd_curl___not_secure_request_handler "$file"
+        }
+    else
+        printf "Not support without wget, bash or nc." >&2
+        return 1
+    fi
+
+    ___x_cmd ensurefp "$file"
+    [ ! -e "${file%/*}/curl" ] || return 0
+    ___x_cmd___curl_not_secure_request
+
+    local tarsha=; tarsha="$(___x_cmd sha256 "$file")"
+    { [ "$sha" = "${tarsha%% *}" ] && tar zxf "$file" -C "${file%/*}"; } || N=curl M="$file sha256 match fail" log:ret:1
+}
+
+___x_cmd___curl___download_curl(){
+    ___x_cmd os name_; ___x_cmd os arch_
+    local name="$___X_CMD_OS_NAME_"
+    local arch="$___X_CMD_OS_ARCH_"
+
+    local url
+    if [ "$___X_CMD_WEBSRC_REGION" = "cn" ];then
+        url="${1:-"x-cmd-resource.oss-cn-heyuan.aliyuncs.com/curl"}"
+    else
+        url="${1:-"gh.x-cmd.com"}"
+    fi
+
+    case "${arch}" in
+        x86_64|amd64|x64)   arch=x64;;
+        aarch64|arm64)      arch=arm64;;
+    esac
+
+    local app="${2:-"${name}.${arch}.0"}"
+    local target="$___X_CMD_ROOT_DATA/pkg/bin/curl"
+    local sha
+    case "${app}" in
+        darwin.arm64*)   sha="748d83c662037ea9976f43e60381ea3f4e1d24e51957d7aa428d9196188650db";;
+        darwin.x64*)     sha="a97ded54446ad56ae8994a6fc4ccb3ae75c44652fa4afa960eae36af59296a8c";;
+        linux.arm64*)    sha="a0d7a5df54f13b58639cabd1f011984bc2ce6c064317d1b0873b558b7f8769aa";;
+        linux.x64*)      sha="f0fb2d7112a4d61d4bd9e8cf501794a8b0ebf3306a0a4a544c14aacb7ebacf77";;
+        win.x64*)        sha="e249c3de723b78cee2a09255224dfc83aad5f1fc2496b6f16e14914cedaec2c0";;
+    esac
+    if [ ! -e "${target}/curl" ];then
+        x:info "The local curl version has limited functionality and is automatically replaced with curl version 8.5."
+        x:debug "___x_cmd fslock run curl_${app} ___x_cmd___curl___not_secure_get http://${url}/${app}.tar.gz ${target}/${app}.tar.gz $sha"
+        ___x_cmd fslock run "curl_${app}" ___x_cmd___curl___not_secure_get "http://${url}/${app}.tar.gz" "${target}/${app}.tar.gz" "$sha" >&2
+    fi
+}

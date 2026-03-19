@@ -1,0 +1,105 @@
+# shellcheck shell=dash disable=SC2120
+
+___x_cmd_apt_install(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m apt install ; return 0 ;;
+    esac
+
+    local ___X_CMD_APT___FILTER="${___X_CMD_APT___FILTER}"
+    if [ $# -eq 0 ]; then
+        ___x_cmd_apt_install___app
+    else
+        ___x_cmd_apt___exec install "$@"
+    fi
+}
+
+___x_cmd_apt_install___app(){
+    {
+        [ -f "/var/lib/apt/lists/lock" ] || [ -f "${TERMUX__ROOTFS%/files}/cache/apt/pkgcache.bin" ]
+    } || {
+        apt:info "The first use of apt is detected and the local software repository list is ready to be updated."
+        ___x_cmd apt update || return 1
+        ___x_cmd_apt___repo_lsname > "$___X_CMD_APT_CACHE_PATH/lsname"
+    }
+
+    {
+        ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual
+    } || {
+        ___x_cmd_apt___lsraw
+        return 0
+    }
+
+    apt:info "Use 'x apt -h' for help."
+    apt:info "Select a package to install, or view information."
+
+    local software=
+    local x_=
+    if [ "$___X_CMD_APT___FILTER" = "fzf" ];then
+        software="$( ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe apt --fzdata )" || return $?
+    else
+        ___x_cmd_apt___lsraw_ || return $?
+        local datafile="$x_"
+        x_=; ___x_cmd storeread_ ___x_cmd pick --width 40 --col 10 --datafile "$datafile"
+        software="$x_"
+    fi
+
+    [ -n "$software" ] || {
+        apt:info "Exit because no software is selected."
+        return 1
+    }
+
+    local id=
+    # TODO: Maybe view the source code, or open install information
+    ___x_cmd ui select id "What to do NEXT"    \
+        "x apt install   $software"     \
+        "x apt reinstall $software"     \
+        "x apt show      $software"     \
+        "browse repo of  $software"     \
+        "apt --help"                    \
+        "EXIT"     || return $?
+    case "$id" in
+        1)      ___x_cmd apt install   "$software" ;;
+        2)      ___x_cmd apt reinstall "$software" ;;
+        3)      ___x_cmd apt show      "$software" ;;
+        # 4)      ___x_cmd install       "$software" ;;
+        4)      ___x_cmd_apt___repo_browse "$software" ;;
+        5)      ___x_cmd help -m apt ;;
+        6)      return 0 ;;
+    esac
+}
+
+___x_cmd_apt_install___fz_data(){
+    ___x_cmd yq --preparecmd
+    ___x_cmd_apt___lsraw \
+        | ___x_cmd_apt_install___fzf            \
+            --preview='___x_cmdexe apt --fzfpreview {1}'  \
+            --preview-window=right:70%:wrap
+}
+
+___x_cmd_apt_install___fzf_preview(){
+    ___x_cmd apt show "$1" 2>/dev/null | ___x_cmd_cmds_awk '
+BEGIN{
+    LSTYLE="\033[36m";
+    RSTYLE="\033[32m";
+    ESTYLE="\033[0m";
+}
+match($0, "^[^ ]+:"){
+    print LSTYLE substr($0, 1, RLENGTH-1) ESTYLE ":" RSTYLE substr($0, RLENGTH+1) ESTYLE;
+    next;
+}
+{ print RSTYLE $0 ESTYLE; }
+'
+    printf "\n%s\n" "------------ A simplied version for -> dpkg -L $1 -------------"
+    ___x_cmd_cmds dpkg -L "$1" 2>/dev/null | \
+        ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/apt/lib/awk/tree.awk"
+}
+
+___x_cmd_apt_install___fzf(){
+    FZF_DEFAULT_OPTS="
+--ansi
+--reverse
+--height='80%'
+--bind='ctrl-w:toggle-preview-wrap'
+--bind='ctrl-r:change-preview-window(right,70%|down,40%,99%,border-horizontal|hidden|right)'
+"   ___x_cmd fzf "$@"
+}

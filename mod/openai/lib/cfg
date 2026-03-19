@@ -1,0 +1,86 @@
+# shellcheck shell=dash disable=SC2034
+
+xrc cfgy
+___x_cmd_openai_cfg(){
+    [ "$#" -gt 0 ] || {
+        ___x_cmd_openai_init
+        return
+    }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m openai --cfg ;;
+        apikey=*)       ___x_cmd_openai_cfg___invoke "$op" "$@"
+                        ! ___x_cmd_openai_has_apikey 2>/dev/null >&2 || ___x_cmd chat --setalias openai gpt
+                        ;;
+        def_)           ___x_cmd_openai_def_ "$@" ;;
+        *)              ___x_cmd_openai_cfg___invoke "$op" "$@" ;;
+    esac
+}
+
+___x_cmd_openai_def_(){
+    local op="$1";
+    case "$op" in
+        model)      x_="$___X_CMD_OPENAI_DEFAULT_FIRST_MODEL" ;;
+        endpoint)   x_="$___X_CMD_OPENAI_DEFAULT_ENDPOINT" ;;
+        *) ;;
+    esac
+}
+
+___x_cmd_openai_cur(){
+    local X_help_cmd=; X_help_cmd='___x_cmd help -m openai --cur' help:arg:parse
+    ___x_cmd_openai_cfg --current "$@"
+}
+
+___x_cmd_openai_init(){
+    local cur_apikey=; local cur_model=; local cur_maxtoken=; local cur_proxy=; local cur_endpoint=;
+
+    if [ -f "$(___x_cmd_openai_cur --get config)" ]; then
+        ___x_cmd_openai_cur cur_apikey:=apikey cur_model:=model cur_maxtoken:=maxtoken cur_proxy:=proxy cur_endpoint:=endpoint 2>/dev/null
+    fi
+
+    openai:info "To get OpenAI's API key -> https://platform.openai.com/api-keys"
+
+    ___x_cmd_openai_cfg___invoke --init ${cur_apikey:+"--ctrl_exit_strategy"}   \
+        apikey      "Set up the API key of openai ai"                           \
+                    "$cur_apikey"   '=~*' "^[A-Za-z0-9_-]+$" --                  \
+        model       "Set the model of openai ai"                                \
+                    "${cur_model:-"$___X_CMD_OPENAI_DEFAULT_FIRST_MODEL"}"      \
+                        '=' gpt-5.4 gpt-5.4-pro gpt-5 gpt-5-mini gpt-5-nano       \
+                            gpt-4.1 gpt-4.1-mini gpt-4.1-nano                   \
+                            gpt-4o gpt-4o-mini                                  \
+                            o1-mini --                                          \
+        maxtoken    "Set the maxtoken of openai ai"                             \
+                    "${cur_maxtoken:-4096 }"  --                                \
+        proxy       "Set up the network proxy for API requests"                 \
+                    "$cur_proxy" '=~'    "^([a-z0-9]+://)?[0-9.:]+$"   --       \
+        endpoint    "Set up the endpoint (optional)"                            \
+                    "${cur_endpoint:-"$___X_CMD_OPENAI_DEFAULT_ENDPOINT"}" || return $?
+
+    ! ___x_cmd_openai_has_apikey 2>/dev/null >&2 || ___x_cmd chat --setalias openai gpt
+}
+
+___x_cmd_openai_has_apikey(){
+    local apikey=
+    ___x_cmd_openai_cur apikey:= 2>/dev/null
+    [ -n "$apikey" ] || {
+        openai:error "Please setting up your apikey first ==> 'x openai --cfg apikey=<your apikey>'"
+        openai:warn "You can get the apikey from ==>  https://platform.openai.com/api-keys"
+        return 1
+    }
+}
+
+# Config setting the key.
+# set the default prompt
+
+___X_CMD_OPENAI_CFG_VARLIST="apikey,model,maxtoken,proxy,seed,temperature,endpoint"
+___x_cmd_openai_cfg___invoke(){
+    ___x_cmd_cfgy_obj                                               \
+        --prefix            ___X_CMD_OPENAI_CFG_DATA                \
+        --default-config    "${___X_CMD_ROOT_CFG}/openai/X.cfg.yml" \
+        --current-config    "${___X_CMD_OPENAI_LOCAL_CONFIG}"       \
+        --current-profile   "${___X_CMD_OPENAI_LOCAL_PROFILE}"      \
+        --varlist           "$___X_CMD_OPENAI_CFG_VARLIST"          \
+        "$@"
+}
+

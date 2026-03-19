@@ -1,0 +1,73 @@
+# shellcheck shell=dash
+
+___x_cmd_pkgx___download(){
+    ___x_cmd_pkgx___download_inner "$@"
+
+    ___x_cmd_pkgx___is_activated || {
+        pkgx:info \
+            --tip 'Add pkgx to the PATH environment -> x pkgx --activate' \
+            "To use softwares installed globally by pkgx, you have to add pkgx bin folder to PATH"
+    }
+}
+
+___x_cmd_pkgx___download_inner(){
+    local pkgx_os="$(uname)"
+    local pkgx_arch="$(uname -m)"
+
+    local url="https://pkgx.sh/${pkgx_os}/${pkgx_arch}.tgz"
+    local ball="$___X_CMD_PKGX_DOWNLOAD_PATH/pkgx.$pkgx_os.$pkgx_arch.tgz"
+
+    pkgx:info "Trying download ==> pkgx"
+    ___x_cmd rmrf "$ball"
+    ___x_cmd_pkgx___download___ball "$url" "$ball"      || N=pkgx M="Download failed." log:ret:1
+    # TODO-END
+
+    pkgx:info "Trying populate ==> pkgx"
+    ___x_cmd_pkgx___download_populate___ball "$ball"    || N=pkgx M="Populate failed." log:ret:1
+
+    pkgx:info "pkgx download successfully!"
+}
+
+___x_cmd_pkgx___download___ball(){
+    local url="$1";  [ -n "$url" ]  || return
+    local ball="$2"; [ -n "$ball" ] || return
+    ___x_cmd ensurefp "$ball"
+
+    pkgx:info \
+        -m "Download pkgx, thanks to the courtesy of ${url%/"${url#*//*/}"}" \
+        --url "$url" --ball "$ball" --name "pkgx"
+
+    (
+        trap '___x_cmd_pkgx___download_remove___ball "$ball"; return 130;' INT
+        ___x_cmd curl --progress-bar --location --retry-max-time 10 --retry 0 "$url" > "$ball" || {
+            ___x_cmd_pkgx___download_remove___ball "$ball"
+            return 1
+        }
+    )
+}
+
+___x_cmd_pkgx___download_remove___ball(){
+    local ball="$1"
+    pkgx:info "Trying to remove $ball"
+    [ ! -f "$ball" ] || ___x_cmd rmrf "$ball"                    || N=pkgx M="Remove $ball failed"    log:ret:1
+}
+
+___x_cmd_pkgx___download_populate___ball(){
+    local ball="$1"
+
+    local bin_dir="$___X_CMD_PKGX_BIN_PATH"
+    local bin_path="$bin_dir/pkgx"
+    ___x_cmd ensurefp "$bin_path"
+
+    pkgx:info  --ball "$ball" --target_dir "$bin_dir" "Unpacking"
+    [ ! -f "$bin_path" ] || ___x_cmd mv "$bin_path" "$bin_path.back"
+    ___X_CMD_ZUZ_QUIET=1 ___x_cmd uzr "$ball" "$bin_dir"  || {
+        [ ! -f "$bin_path.back" ] || ___x_cmd mv "$bin_path.back" "$bin_path"
+        N=pkgx M="Fail to unzip $ball" log:ret:1
+    }
+    [ ! -f "$bin_path.back" ] || ___x_cmd rmrf "$bin_path.back"
+    ___x_cmd_cmds chmod +x "$bin_dir/pkgx"
+
+    pkgx:info "The 'pkgx' binary is installed into '${bin_dir}'."
+}
+

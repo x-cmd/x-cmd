@@ -1,0 +1,72 @@
+# shellcheck shell=dash disable=SC2034
+
+xrc cfgy
+___x_cmd_chat_cfg(){
+    [ "$#" -gt 0 ] || {
+        ___x_cmd_chat_init
+        return
+    }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)          ___x_cmd help -m chat --cfg ;;
+        *)                  ___x_cmd_chat_cfg___invoke "$op" "$@" ;;
+    esac
+}
+
+___x_cmd_chat_cur(){
+    local X_help_cmd=; X_help_cmd='___x_cmd help -m chat --cur' help:arg:parse
+    ___x_cmd_chat_cfg --current "$@"
+}
+
+___X_CMD_CHAT_CFG_VARLIST="history,provider,session,minion,userlang,stream,reasoning,context_filename"
+
+___x_cmd_chat_init(){
+    local cur_history=; local cur_provider=; local cur_stream=; local cur_reasoning=; local cur_context_filename=;
+    if [ -f "$(___x_cmd_chat_cur --get config)" ]; then
+        ___x_cmd_chat_cur cur_provider:=provider cur_history:=history cur_stream:=stream cur_reasoning:=reasoning cur_context_filename:=context_filename 2>/dev/null
+    fi
+
+    ___x_cmd_chat_cfg___invoke --init --ctrl_exit_strategy          \
+        provider    "Select the AI provider"                        \
+                    "${cur_provider:-auto}"                         \
+                        '='    auto gemini openai mistral deepseek grok gh moonshot zhipu siliconflow openrouter ollama llmf lms --   \
+        stream      "Use streaming response"                        \
+                    "${cur_stream:-"false"}"    '=' false true --   \
+        reasoning   "Show reasoning process"                        \
+                    "${cur_reasoning:-"false"}" '=' false true --   \
+        context_filename "Set up the context file name"             \
+                    "${cur_context_filename:-"AGENTS.md"}" --       \
+        history     "Set up the number of context history records"  \
+                    "${cur_history:-10}"  '=~'    "^[0-9]+$"  || return $?
+
+    ___x_cmd_chat_cur cur_provider:=provider
+    if [ "$cur_provider" = "auto" ]; then
+        ___x_cmd_chat_cfg___invoke set provider=""
+        local x_=; ___x_cmd_chat_provider_get_ || return $?
+        chat:debug "Automatically redirect to [provider=${x_}]"
+        cur_provider="$x_"
+    fi
+
+    case "$cur_provider" in
+        openai|gemini|mistral|deepseek|grok|gh|moonshot|doubao|zhipu|siliconflow|openrouter|ollama|lms)
+                chat:info "x $cur_provider init"
+                ___x_cmd "$cur_provider" init  ;;
+        llmf|hub)   ;;
+        *)
+                ___x_cmd_chat_cfg___invoke set provider=""
+                N=chat M="Not support provider=$cur_provider" log:ret:64 ;;
+    esac
+
+}
+
+___x_cmd_chat_cfg___invoke(){
+    ___x_cmd_cfgy_obj                                               \
+        --prefix            ___X_CMD_CHAT_CFG_DATA                  \
+        --default-config    "${___X_CMD_ROOT_CFG}/chat/X.cfg.yml"   \
+        --current-config    "${___X_CMD_CHAT_LOCAL_CONFIG}"         \
+        --current-profile   "${___X_CMD_CHAT_LOCAL_PROFILE}"        \
+        --varlist           "$___X_CMD_CHAT_CFG_VARLIST"            \
+        "$@"
+}
+

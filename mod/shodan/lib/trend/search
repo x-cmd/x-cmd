@@ -1,0 +1,63 @@
+# shellcheck shell=bash
+# https://developer.shodan.io/api/trends
+___x_cmd_shodan_trend_search(){
+    [ $# -gt 0 ] ||         set -- -h
+
+    local op="$1";          shift
+    case "$op" in
+        -h|--help)          ___x_cmd help -m shodan trend search ;;
+
+        filter|filters)     ___x_cmd_shodan_trend_search_filter ;;
+        facet|facets)       ___x_cmd_shodan_trend_search_facet ;;
+
+        --)                 ___x_cmd_shodan_trend_search___main        "$@" ;;
+        *)                  ___x_cmd_shodan_trend_search___main "$op"  "$@" ;;
+    esac
+}
+
+___x_cmd_shodan_trend_search___main(){
+    local X_help_cmd='x help -m shodan trend search --';   help:arg-null:parse
+    shodan:arg:format:raw:json2app:all
+
+    local query="$1"
+    local facet="$2"
+
+    [ -n "$query" ] ||  N=shodan M="Required query" log:ret:64
+
+    set -- -d "query=$query"
+    [ -z "$facet" ] || set -- "$@" -d "facets=$facet"
+
+    ___x_cmd_shodan_trend_search___main___"$format" "$@"
+}
+
+
+___x_cmd_shodan_trend_search___main___app(){
+    local data; data="$( ___x_cmd_shodan_trend_search___main___raw "$@" )" || shodan:data:ret
+    ___x_cmd_pipevar    data  | ___x_cmd_shodan_trend_search___parse_json2csv |\
+    ___x_cmd csv app --width 30%,30% --return print
+}
+
+
+___x_cmd_shodan_trend_search___main___json(){
+    local data; data="$( ___x_cmd_shodan_trend_search___main___raw "$@" )" || shodan:data:ret
+    ___x_cmd_pipevar    data
+}
+
+___x_cmd_shodan_trend_search___main___raw(){
+    ___x_cmd ccmd 10m --  ___x_cmd_shodan_ourl get \
+        "https://trends.shodan.io/api/v1/search" "$@"
+}
+
+___x_cmd_shodan_trend_search___parse_json2csv(){
+    local error=
+    local matches=
+    local total=
+    ___x_cmd jo env . .matches .error .total
+    [ -z "$error" ] || N=shodan M="$error" log:ret:1
+    printf "%s" "$matches"            |\
+        ___x_cmd ja 2c .month .count  |\
+        total="${total}"               \
+        ___x_cmd csv awk '{print cval(1)","cval(2)} END{print "total,"ENVIRON[ "total" ]}' |\
+        ___x_cmd csv header --add month count
+}
+

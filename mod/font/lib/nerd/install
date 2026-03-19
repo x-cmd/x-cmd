@@ -1,0 +1,82 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_font_nerd_install(){
+    local style=auto
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --auto|--gh|--cb)       style="${1#--}";            shift;;
+            --win|--darwin|--linux) ___X_CMD_FONT_OS="${1#--}"; shift;  ___x_cmd_font___init;;
+            -h|--help)              ___x_cmd help -m font nerd install; return ;;
+            *)                      break ;;
+        esac
+    done
+
+    ___x_cmd_font_nerd_install___"$style" "$@"
+}
+
+___x_cmd_font_nerd_install___auto(){
+    if ___x_cmd websrc is cn; then
+        ___x_cmd_font_nerd_install___cb     "$@"
+    else
+        ___x_cmd_font_nerd_install___gh     "$@"
+    fi
+}
+
+___x_cmd_font_nerd_install___gh(){
+    local name="${1:?'Provide font name, e.g: FiraCode'}"
+    ___x_cmd_font_nerd_install___handler "$name" \
+        "https://github.com/ryanoasis/nerd-fonts/releases/download/${___X_CMD_FONT_NERD_VERSION}/${name}.tar.xz"
+}
+
+___x_cmd_font_nerd_install___cb(){
+    local name="${1:?'Provide font name, e.g: FiraCode'}"
+    ___x_cmd_font_nerd_install___handler "$name" \
+        "https://codeberg.org/x-cmd-sourcecode/nerd-fonts/releases/download/${___X_CMD_FONT_NERD_VERSION}/${name}.tar.xz"
+}
+
+___x_cmd_font_nerd_install___handler(){
+    local name="${1:?'Provide font name, e.g: FiraCode'}"
+    local source="${2:?'Provide font resource link'}"
+    local target="${___X_CMD_FONT_CACHE}/${___X_CMD_FONT_NERD_VERSION}/${name}.tar.xz"
+
+    font:info --source "$source" --target "$target" "Download ${name} resource file..."
+    ___x_cmd mkdirp  "${___X_CMD_FONT_CACHE}/${___X_CMD_FONT_NERD_VERSION}" || return
+    ___x_cmd curl -L "$source" -o "$target" || return
+
+    # unzip
+    local tmp="${___X_CMD_FONT_TMP}/${___X_CMD_FONT_NERD_VERSION}/${name}"
+    ___X_CMD_ZUZ_QUIET=1 ___x_cmd uz "$target" "$tmp" || {
+        font:error "Fail to extract $target"
+        return 1
+    }
+
+    # cp and refresh
+    case "$___X_CMD_FONT_OS" in
+        win)        ___x_cmd_font_install___win "$tmp" || return $? ;;
+
+        termux)     printf "%s\n" "Choose a font as the termux font:"
+                    local target_file=""
+                    target_file="$(___x_cmd_cmds ls "$tmp" | ___x_cmd_cmds grep -iE '\.(otf|ttf)$' | ___x_cmd pick)"
+                    [ -n "$target_file" ] || return $?
+                    ___x_cmd_font_install___termux "${tmp}/${target_file}" || return $?
+
+                    ___x_cmd_cmds termux-reload-settings || {
+                        font:warn \
+                            --tip "However, font is likely already installed—apply in terminal settings. Please take a look." \
+                            "Execute termux-reload-settings command failed"
+                    } ;;
+
+        *)          ___x_cmd_font_install___linux_darwin "$tmp" || return $?
+                    ___x_cmd_font_refresh "$___X_CMD_FONT_DIR"  || {
+                        font:warn \
+                            --tip "However, font is likely already installed—apply in terminal settings. Please take a look before installing the missing tools." \
+                            "Font cache refresh failed (tool unavailable)."
+                    }
+                    ;;
+    esac
+
+    ___x_cmd ui tf true "${name} Font Installation Successful, [Tips]:" \
+        "$(printf "Set up your terminal font 👉 \033[32m\033[4m%s\033[0m\n"   "https://x-cmd.com/mod/font/cookbook-2")"   \
+        "$(___x_cmd_font_nerd_info "$name" | ___x_cmd_cmds grep 'Family')"
+}

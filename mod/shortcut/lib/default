@@ -1,0 +1,86 @@
+# shellcheck shell=dash
+
+___x_cmd_shortcut_default(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m shortcut default; return ;;
+    esac
+    local defaultfp="$___X_CMD_ROOT_MOD/shortcut/lib/default.config.yml"
+    local userfp="$___X_CMD_SHORTCUT_CONFIG"
+    ___x_cmd ensurefp "$userfp"
+    [ -f "$defaultfp" ] || N=shortcut M="Not found default config file" log:ret:1
+    shortcut:info "Reset to use the default shortcut config file"
+    ___x_cmd cp -f "$defaultfp" "$userfp" || return $?
+    shortcut:info "Initialized default shortcut config file"
+    ___X_CMD_SHORTCUT_NOAUTO_COMPILE_ALL=1 ___x_cmd_shortcut_init || return $?
+    ___x_cmd_shortcut_compile_all_auto
+}
+
+___x_cmd_shortcut_default_merge(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m shortcut default_merge; return ;;
+    esac
+
+    local userfp="$___X_CMD_SHORTCUT_CONFIG"
+    if [ ! -f "$userfp" ]; then
+        ___x_cmd_shortcut_default
+        return
+    fi
+
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; } || {
+        shortcut:error "Not supported in non-interactive mode"
+        return 1
+    }
+
+    local defaultfp="$___X_CMD_ROOT_MOD/shortcut/lib/default.config.yml"
+    [ -f "$defaultfp" ] || N=shortcut M="Not found default config file" log:ret:1
+    local data; data="$(
+    {
+        ___x_cmd_cmds cat "$defaultfp"
+        printf "%s\n" "---"
+        ___x_cmd_cmds cat "$userfp"
+    } | ___x_cmd cawk \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/re.awk"              \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"              \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk"          \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk"         \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk"           \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yutil.awk"           \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/ystr.awk"            \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.value.awk"    \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.json.awk"     \
+        -f "$___X_CMD_ROOT_MOD/yml/lib/yparse.awk"          \
+        -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/util.awk"   \
+        -f "$___X_CMD_ROOT_MOD/shortcut/lib/awk/default.merge.awk"
+    )" || return $?
+    [ -n "$data" ] || N=shortcut M="Data error" log:ret:1
+
+    local usertmpfp="$userfp.tmp"
+    printf "%s\n" "$data" > "$usertmpfp"
+
+    (
+        trap '___x_cmd rmrf "$usertmpfp"' EXIT
+        shortcut:info "Check merged edited file data"
+        ___x_cmd bat -l yml --wrap never --color always "$usertmpfp" || return $?
+        local id=""
+        ___x_cmd ui select id "Next step"   \
+            "Confirm using this data"       \
+            "Confirm using this data, then edit with \`x vim\`  command" \
+            "Confirm using this data, then edit with \`x open\` command" \
+            "Cancel not using this data"  || return $?
+        case "$id" in
+            1)  ___x_cmd mv -f "$usertmpfp" "$userfp" || return $? ;;
+            2)  ___x_cmd mv -f "$usertmpfp" "$userfp" || return $?
+                ___x_cmd vim "$userfp" || return $?
+                ;;
+            3)  ___x_cmd mv -f "$usertmpfp" "$userfp" || return $?
+                ___x_cmd open "$userfp" || return $?
+                ;;
+            *)  ___x_cmd rmrf "$usertmpfp"
+                shortcut:info "Cancelled, exit 1"
+                return 1
+                ;;
+        esac
+    ) || return $?
+
+    ___x_cmd_shortcut_compile_all_auto
+}

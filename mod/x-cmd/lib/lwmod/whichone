@@ -1,0 +1,128 @@
+
+# Now it is only for x script, not for xrc any more...
+
+# RETURN ___X_CMD_WHICH_ONE_RESULT, ___X_CMD_WHICH_ONE_RESOURCE_TYPE
+___x_cmd_whichone(){
+    ___X_CMD_WHICH_ONE_RESOURCE_TYPE=
+    ___X_CMD_WHICH_ONE_RESULT=
+
+    local RESOURCE_NAME="${1:?Provide resource name for ___x_cmd_which_one}"
+
+    local ___X_CMD_WHICHONE_UPDATE=""
+    local ___X_CMD_WHICHONE_TIMEOUT=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --update)       ___X_CMD_WHICHONE_UPDATE=1;         shift ;;
+            --timeout)      ___X_CMD_WHICHONE_TIMEOUT="$2";
+                            [ $# -ge 2 ] || N=x M="Please provide argument after --timeout" log:ret:64;
+                            shift 2 ;;
+            *)
+                RESOURCE_NAME="$1"
+                case "$1" in
+                    ??*://*)                ___x_cmd_whichone___handlenetres    "$@" ;;
+                    /*|?:/*)                ___x_cmd_whichone___handlelocal     "$@" ;;
+                    *:*)                    ___x_cmd_whichone___handlehub       "$@" ;;
+                    *)                      ___x_cmd_whichone___handlelocal     "$@" ;;
+                esac
+                return
+                ;;
+        esac
+    done
+}
+
+___x_cmd_whichone___handlelocal(){
+    x:debug "Resource recognized as local file: $RESOURCE_NAME"
+
+    [ -f "$RESOURCE_NAME" ] || {
+        x:warn "Local file not exists ==> $RESOURCE_NAME"
+        return 32   # FILENOTFOUND
+    }
+
+    ___X_CMD_WHICH_ONE_RESULT="$RESOURCE_NAME"
+    ___X_CMD_WHICH_ONE_RESOURCE_TYPE=local
+    return 0
+}
+
+___x_cmd_whichone___handlehub(){
+    ___X_CMD_WHICH_ONE_RESOURCE_TYPE=hub
+    local x_ ;
+    local return_code=0; ___x_cmd hub file which_ "$RESOURCE_NAME" || return_code=$?
+    ___X_CMD_WHICH_ONE_RESULT="$x_"
+    return $return_code
+    # Will set ___X_CMD_WHICH_ONE_RESOURCE_TYPE=1 if from unknow source
+}
+
+___x_cmd_whichone___handlenetres(){
+    local uri="$1";             shift
+    case "$uri" in
+        https://*|http://*)     ___x_cmd_whichone___handle_http     "$uri"      ;;
+        sftp://*|ssh://*)       ___x_cmd_whichone___handle_ssh      "$uri"      ;;
+        ftp://*)                ___x_cmd_whichone___handle_ftp      "$uri"      ;;
+        *)                      N=x M="Unknown protocol -> $uri"    log:ret:64  ;;
+    esac
+}
+
+# Try to handle the path using a pure posix script ... At most one awk invocation.
+___x_cmd_whichone___handle__name_(){
+    local name="$1"
+    # consider using other encoding ...
+    x_="$(printf "%s\n" "${name}" | base64 | tr -d '\r\n')" || return $?
+    ___x_cmd mkdirp "$___X_CMD_ROOT_DATA/whichone/resource"
+    name="${name#=*://}"
+    name="$(printf "%s\n" "${name}" | ___x_cmd_cmds awk '{ gsub(/[^\\.A-Za-z0-9_]/, "_", $0); print; }' )" || return $?
+    x_="$___X_CMD_ROOT_DATA/whichone/resource/BASE64-URL-${x_}-${name}"
+}
+
+___X_CMD_WHICHONE_TIMEOUT_DEFAULT=10m
+___x_cmd_whichone___handle_requireupdate(){
+    local tgt="$1"
+
+    [ -z "$___X_CMD_WHICHONE_UPDATE" ]  || return 0
+    [ -f "$tgt" ]                       || return 0
+
+    ! ___x_cmd fileage --in "${___X_CMD_WHICHONE_TIMEOUT:-$___X_CMD_WHICHONE_TIMEOUT_DEFAULT}" "$tgt"
+}
+
+# TODO: we should try handle 130 correctly
+
+___x_cmd_whichone___handle_http(){
+    local uri="$1"
+    local TGT;  ___x_cmd_whichone___handle__name_ "$uri";   TGT="$x_"
+
+    ___x_cmd_whichone___handle__name_ "$uri";   TGT="$x_"
+    if ___x_cmd_whichone___handle_requireupdate "$TGT"; then
+        x:info "httpget $uri $TGT"
+        CACHE="$TGT" ___x_cmd httpget "$uri"    ||  N=x M="Fail to load http resource due to network error or other: $uri " log:ret:1
+    fi
+
+    ___X_CMD_WHICH_ONE_RESOURCE_TYPE=http
+    ___X_CMD_WHICH_ONE_RESULT="$TGT"
+}
+
+___x_cmd_whichone___handle_ssh(){
+    local uri="$1"
+    local TGT;  ___x_cmd_whichone___handle__name_ "$uri";   TGT="$x_"
+
+    uri="${uri#*://}"
+    if ___x_cmd_whichone___handle_requireupdate "$TGT"; then
+        x:info  "scp $uri $TGT"
+        ___x_cmd_cmds scp "$uri" "$TGT" >/dev/null 2>&1     ||  N=x M="Fail to load scp resource due to network error or other: $uri " log:ret:1
+    fi
+
+    ___X_CMD_WHICH_ONE_RESOURCE_TYPE=ssh
+    ___X_CMD_WHICH_ONE_RESULT="$TGT"
+}
+
+___x_cmd_whichone___handle_ftp(){
+    local uri="$1"
+    local TGT;  ___x_cmd_whichone___handle__name_ "$uri";   TGT="$x_"
+
+    if ___x_cmd_whichone___handle_requireupdate "$TGT"; then
+        x:info  "curl -s --fail $uri > $TGT"
+        ___x_cmd curl -s --fail "$uri" >"$TGT"      ||  N=x M="Fail to load scp resource due to network error or other: $uri " log:ret:1
+    fi
+
+    ___X_CMD_WHICH_ONE_RESOURCE_TYPE=ftp
+    ___X_CMD_WHICH_ONE_RESULT="$TGT"
+}

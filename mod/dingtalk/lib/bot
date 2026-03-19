@@ -1,0 +1,316 @@
+# shellcheck shell=dash disable=SC2154,SC2120,SC3043
+
+# Reference: https://open.dingtalk.com/document/group/custom-robot-access
+
+___x_cmd_dingtalk_bot(){
+    param:subcmd ___x_cmd_dingtalk_bot    \
+        send   "send msg"
+
+    param:subcmd:try
+    param:run
+
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_dingtalk bot --help
+    else
+        ___x_cmd_dingtalk bot send "$@"
+    fi
+    return
+}
+
+___x_cmd_dingtalk_bot_send() {
+    param:subcmd ___x_cmd_dingtalk_bot_send             \
+        --text             "send text"                  \
+        --link             "send link msg"              \
+        --markdown         "send markdown msg"          \
+        --richtext         "send richtext"              \
+        --raw              "send raw json"              \
+        --sing_action      "send sing action card"      \
+        --multi_action     "send multi action card"
+
+    param:subcmd:try
+    param:run
+
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_dingtalk bot send --help
+    else
+        ___x_cmd_dingtalk_bot_send_text "$@"
+    fi
+    return
+}
+
+___x_cmd_dingtalk_bot_send_text() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    #1                  "Provide text"                                      <>:text
+    --at_mobile         "The cell phone number of the person being @"       <>=""
+    --at_userid         "The userid of the person being @"                  <>=""
+    --webhook           "webhook"                                           <>=""
+    --atall|-a          "Notify all member of the group"
+    --json|-j           "output origin json data"
+
+A
+    param:run
+    local text="$1"
+    local atall="${atall:-false}"
+    at_mobile="$(___x_cmd_dingtalk___get_mobiles "${at_mobile}")"
+    at_userid="$(___x_cmd_dingtalk___get_mobiles "${at_userid}")"
+    local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "text",
+    "text": {
+        "content": "$text"
+    },
+    "at": {
+        "atMobiles":[ ${at_mobile} ],
+        "atUserIds":[ ${at_userid} ],
+        "isAtAll": $atall
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Text
+}
+
+___x_cmd_dingtalk_bot_send_raw() {
+    param:scope             dingtalk
+    param:dsl <<A
+option:
+    #1                  "Provide raw json"              <raw>:json
+    --webhook           "webhook"                       <>=""
+    --json|-j           "output origin json data"
+
+A
+    param:run
+
+    local raw="${1}"; [ "$raw" != "-" ] || raw="$(___x_cmd_cmds_cat)"
+    local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
+$raw
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Raw
+}
+
+___x_cmd_dingtalk_bot_send_link() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    --text          "Provide text"                  <>:text
+    --title         "Provide title"                 <>
+    --url           "Provide url"                   <>
+    --picurl        "Provide picurl"                <>=""
+    --webhook       "webhook"                       <>=""
+    --json|-j       "output origin json data"
+A
+    param:run
+
+    local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "link",
+    "link": {
+        "text": "${text}",
+        "title": "${title}",
+        "picUrl": "${picurl}",
+        "messageUrl": "${url}"
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Link
+}
+
+___x_cmd_dingtalk_bot_send_markdown() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    #1                  "Provide text"                                      <>
+    --title             "Provide title"                                     <>
+    --at_mobile         "The cell phone number of the person being @"       <>=""
+    --at_userid         "The userid of the person being @"                  <>=""
+    --webhook           "webhook"                                           <>=""
+    --atall|-a          "Notify all member of the group"
+    --json|-j           "output origin json data"
+
+A
+    param:run
+    local text="$1"
+    local atall="${atall:-false}"
+    at_mobile=$(___x_cmd_dingtalk___get_mobiles "${at_mobile}")
+    at_userid=$(___x_cmd_dingtalk___get_mobiles "${at_userid}")
+
+    local res; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "markdown",
+    "markdown": {
+        "title": "$title",
+        "text":  "$text"
+    },
+    "at": {
+        "atMobiles": [ ${at_mobile} ],
+        "atUserIds": [ ${at_userid} ],
+        "isAtAll": $atall
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Markdown
+}
+
+___x_cmd_dingtalk_bot_send_sing_action() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    --text                  "Provide text"                                  <>:text
+    --title                 "Provide title"                                 <>
+    --btn|m                 "Provide button titles and action links . [ <title> <url> ] "
+        <title>:title
+        <url>:url
+    --webhook               "webhook"                                       <>=""
+    --btn_horizontal        "The buttons are arranged horizontally"
+    --json|-j               "output origin json data"
+A
+    param:run
+
+
+    local btnOrientation=0
+    [ -z "$btn_horizontal" ] || btnOrientation=1
+
+    local linktitle; local linkurl
+    for i in $(param_marg btn); do
+        linktitle="$(param_marg btn "$i" 1)"
+        linkurl="$(param_marg btn "$i" 2)"
+    done
+
+    local res ; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "actionCard",
+    "actionCard": {
+        "title": "$title",
+        "text": "$text",
+        "btnOrientation": $btnOrientation,
+        "singleTitle": "$linktitle",
+        "singleURL": "$linkurl"
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Action
+}
+
+___x_cmd_dingtalk_bot_send_multi_action() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    --text                  "Provide text"                                  <>:text
+    --title                 "Provide title"                                 <>
+    --btn|m                 "Provide button titles and action links . [ <title> <url> ] "
+        <title>:title
+        <url>:url
+    --webhook               "webhook"                                       <>=""
+    --btn_horizontal        "The buttons are arranged horizontally"
+    --json|-j               "output origin json data"
+A
+    param:run
+
+    local btnOrientation=0
+    [ -z "$btn_horizontal" ] || btnOrientation=1
+    local IFS="
+"
+    local all; local actionTitle ; local actionURL
+    for i in $(param_marg btn); do
+        actionTitle="$(param_marg btn "$i" 1)"
+        actionURL="$(param_marg btn "$i" 2)"
+        all="$all$(x jo dict "title:$actionTitle" "actionURL:$actionURL")"
+    done
+
+    local res; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "actionCard",
+    "actionCard": {
+        "title": "$title",
+        "text":  "$text",
+        "btnOrientation": "$btnOrientation",
+        "btns": [
+            $(printf "%s" "$all" | ___x_cmd jo)
+        ]
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils Actioncards
+}
+
+___x_cmd_dingtalk_bot_send_richtext() {
+    param:scope     dingtalk
+    param:dsl <<A
+option:
+    --card|m            "Provide multiple action card in following format. [ <title> <url> <picurl> ] ..."
+        <title>:text
+        <url>:url
+        <picurl>:url
+    --webhook           "webhook"                   <>=""
+    --json|-j           "output origin json data"
+
+A
+    param:run
+
+    local IFS="
+"
+    local all; local title ; local messageURL ; local picURL
+    for i in $(param_marg card); do
+        title=$(param_marg_get card "$i" 1)
+        messageURL=$(param_marg_get card "$i" 2)
+        picURL=$(param_marg_get card "$i" 3)
+        all="$all$(x jo dict "title:$title" "messageURL:$messageURL" "picURL:$picURL")"
+
+    done
+
+    local res; res="$(___x_cmd_dingtalk_bot___send_json <<A
+{
+    "msgtype": "feedCard",
+    "feedCard": {
+        "links": [
+            $(printf "%s" "$all" | ___x_cmd jo)
+        ]
+    }
+}
+A
+)" || return 1
+    _____x_cmd_dingtalk_ui_utils richtext
+}
+
+_____x_cmd_dingtalk_ui_utils(){
+    if  [ -n "$json" ]; then
+        printf "%s\n" "$res"
+        return
+    fi
+    case "$1" in
+        Text)
+            msg="Sent text message successfully"
+            ;;
+        Raw)
+            msg="Sent message  successfully"
+            ;;
+        Markdown)
+            msg="Sent markdown message successfully"
+            ;;
+        Link)
+            msg="Sent link message successfully"
+            ;;
+        Action)
+            msg="Sent separate jump ActionCard message successfully"
+            ;;
+        Actioncards)
+            msg="Sent Overall jump ActionCard message successfully"
+            ;;
+        richtext)
+            msg="Sent richtext message successfully"
+            ;;
+    esac
+    local statu ; statu="$(printf "%s" "$res" | {  x jo env .errmsg ; echo "$errmsg" ; })"
+    if [ "$statu" = "ok" ]; then
+        ___x_cmd_ui_tf true "$msg"
+    else
+        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$res"
+    fi
+}

@@ -1,0 +1,94 @@
+# shellcheck shell=dash
+
+
+___x_cmd_skill_use(){
+    ___x_cmd_skill_add --scope user "$@" 
+}
+
+___x_cmd_skill_add(){
+    local dir=""
+    local scope="project"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m skill add;             return ;;
+            --skill-dir)    [ -n "$2" ] || N=skill M="Please provide the skills dir" log:ret:64
+                            dir="$2";   shift 2 ;;
+            --scope)        [ -n "$2" ] || N=skill M="Please provide the scope" log:ret:64
+                            scope="$2"; shift 2 ;;
+            *)              break ;;
+        esac
+    done
+
+    case "$scope" in
+        local|user|project) ;;
+        *) N=skill M="Invalid scope -> $scope, supports: [local|user|project]" log:ret:64 ;;
+    esac
+
+    ___x_cmd_skill___data_check             || return $?
+
+    local i=
+    for i in "$@"; do
+        case "$i" in
+            mcp/*)  ___x_cmd_skill_add___mcp "$i" "$scope" || return $?  ;;
+            *)      ___x_cmd_skill_add___unit "$i" "$dir" || return $? ;;
+        esac
+    done
+}
+
+___x_cmd_skill_add___mcp(){
+    local mcpid="$1"
+    local scope="${2:-project}"
+
+    local name="${mcpid#mcp/*}"
+
+    local config="$(___x_cmd jq -c --arg name "$name" '.[$name]? | (.stdio // .http)' "$___X_CMD_SKILL_FULL_MCP_FILE" )"
+    [ "$config" != 'null' ] || {
+            skill:error "Not found MCP[$mcpid]"
+            return 1
+    }
+
+    local IFS=; local id=; local reference=; local desc=; local _
+    while IFS="$___X_CMD_UNSEENCHAR_HT" read -r id _ reference _ _ _ _ desc; do
+        if [ "$id" = "$mcpid" ]; then
+            skill:info --reference "$reference" --description "$desc" "Loading MCP configuration."
+            break
+        fi
+    done < "$___X_CMD_SKILL_FULL_INDEX_FILE"
+
+    ___x_cmd claude -- mcp add-json --scope "$scope" "$name" "${config}" || {
+        skill:error "Failed to add MCP[$mcpid] to $scope scope"
+        return 1
+    }
+
+    skill:info "Successfully added MCP[$mcpid] to $scope scope"
+    case "$scope" in
+        project)  skill:info "Config file: .mcp.json" ;;
+        *)        skill:info "Config file: ~/.claude.json" ;;
+    esac
+}
+
+___x_cmd_skill_add___unit(){
+    local skillid="$1"; [ -n "$skillid" ] || N=skill M="Please provide the skill id" log:ret:64
+    local dir="$2";     [ -n "$dir" ]     || N=skill M="Please provide the dir" log:ret:64
+
+    local datadir="$___X_CMD_SKILL_FULL_DATA_DIR/$skillid"
+
+    local x_id=""; local x_url=""; local x_reference=""; local x_license=""
+    local x_name=""; local x_author=""; local x_description=""
+    ___x_cmd_skill___data_get_index_record_ "$skillid" || return $?
+
+    [ -d "$datadir" ] || {
+        ___x_cmd_skill___data_install_from_web "$x_url" "$skillid" "$x_reference" "$x_license" "$x_author" || {
+            skill:error --datadir "$datadir" "Not found skill[$skillid]"
+            return 1
+        }
+    }
+
+    local target="$dir/$x_name"
+    ___x_cmd rmrf "$target"
+    ___x_cmd ensurefp "$target"
+    ___x_cmd_cmds cp -rf "$datadir" "$target"
+
+    skill:info "Successfully activated skill[$skillid]"
+}
+

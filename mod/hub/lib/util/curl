@@ -1,0 +1,76 @@
+# shellcheck shell=dash disable=SC2030,SC2031
+
+___x_cmd_hub_u_curl_header(){
+    local key="$1"
+    [ -n "$key" ] || M='Provide key' N=hub log:ret:64
+
+    < "$___X_CMD_HUB_TMP/header.$$.out" ___x_cmd_cmds awk -v key="$key" '
+        BEGIN { FS=": "; }
+        $1 == key { print $2; exit 0; }
+    '
+}
+
+___x_cmd_hub_u_curl_resp_code(){
+    < "$___X_CMD_HUB_TMP/header.$$.out" ___x_cmd_cmds_awk '($1 ~ "HTTP/(1.*|2)$" && $3 != "Connection" && $4 != "established" && $2 != "302") {
+        print  int($2);
+        exit(0)
+    }'
+}
+
+# example:
+#   ___x_cmd_hub_u_curl get /api/v0/file/cat "res=${remotefp}"
+#   ___x_cmd_hub_u_curl post /api/v0/file/cat "res=${remotefp}" -F "file=@$file"
+#   ___x_cmd_hub_u_curl post /api/v0/file/cat "res=${remotefp}" -F "file=@$file" -H "Content-Type: application/octet-stream"
+___x_cmd_hub_u_curl()(
+    local method="$1"
+    local url_path="$2"; shift 2
+    local ___X_CMD_SERVICE_URL="${___X_CMD_OTHER_SERVICE_URL:-"$___X_CMD_HUB_SERVICE_URL"}"
+    [ -n "$method" ]   || M='Provide token' N=hub log:ret:64
+    [ -n "$url_path" ] || M='Provide url_path' N=hub log:ret:64
+
+    local json_header="-H 'Content-Type: application/json'"
+    local file=""; local header=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --data-binary)
+                json_header="" file="$file --data-binary '$2'" ; shift 2 ;;
+            -F) file="$file -F '$2'"; json_header=""           ; shift 2 ;;
+            -H) header="$header -H '$2'"                        ; shift 2 ;;
+            *)  break ;;
+        esac
+    done
+
+    local resp_path="$___X_CMD_HUB_TMP/resp.$$.out"
+    local header_path="$___X_CMD_HUB_TMP/header.$$.out"
+    ___x_cmd rmrf "$resp_path" "$header_path"
+
+    local token; token="$(___x_cmd_hub_u_get_token)" || return
+    [ -z "$token" ] || header="$header -H 'Authorization: $token'"
+
+    local cmd="___x_cmd curl -sSL"
+    case "$method" in
+        get)    cmd="$cmd -X GET -G" ;;
+        put)    cmd="$cmd -X PUT" ;;
+        post)   cmd="$cmd -X POST" ;;
+        patch)  cmd="$cmd -X PATCH" ;;
+        delete) cmd="$cmd -X DELETE" ;;
+        *)      hub:error "Unknown method: $method" ;;
+    esac
+
+    cmd="$cmd -D '$header_path' \
+        $header $json_header $(___x_cmd curl gencode "$@") $file \
+        '$___X_CMD_SERVICE_URL$url_path'"
+
+    hub:debug "Exec cmd: $cmd"
+    eval "$cmd"
+    ___x_cmd_hub_u_curl_resp_http_check
+)
+
+___x_cmd_hub_u_curl_resp_http_check(){
+    local http_resp_code=
+    http_resp_code="$(___x_cmd_hub_u_curl_resp_code)"
+    case "$http_resp_code" in
+        2*)  return 0 ;;
+        *)   return 1 ;;
+    esac
+}

@@ -1,0 +1,120 @@
+# shellcheck shell=bash disable=2059,2154,2317
+
+___x_cmd_theme_linecount_ps1=2
+
+# zsh: https://unix.stackexchange.com/questions/517025/zsh-clear-scrollback-buffer/531178#531178
+___x_cmd_theme_transient_unit___clear(){
+    if [ -z "$___X_CMD_THEME_TRANSIENT_ENABLE" ]; then
+        command clear -x 2>/dev/null
+        return 0
+    fi
+
+    ___x_cmd __ttyupdate
+    local row="$((LINES - ___x_cmd_theme_linecount_ps1 - ___x_cmd_theme_linecount_headline))"
+    local _newline="";     local _lines="$row"
+    while [ "$_lines" -gt 0 ]; do
+        _lines=$((_lines - 1))
+        _newline="${_newline}\n"
+    done
+    [ -n "$ZSH_VERSION" ] || [ "${BASH_VERSINFO[0]}" -gt 3 ] || row="$((___x_cmd_theme_linecount_ps1 + row))"
+    printf "${_newline}\033[${row}A\033[J\033[2K"
+    row="$((___x_cmd_theme_linecount_ps1-1))"
+    printf "\033[${row}A\0337\033[${row}B"
+
+    if [ -n "$ZSH_VERSION" ]; then
+        { zle && zle .reset-prompt && zle -R; } 2>/dev/null
+    else
+        __bp_interactive_mode 2>/dev/null
+    fi
+
+    ___X_CMD_REPLHOOK_CAPTURE_CLEAR=1
+}
+
+___x_cmd_theme_transient_unit___preexec(){
+    ! ___x_cmd_replhook_debug_inside_trapl || { ___X_CMD_REPLHOOK_CAPTURE_CLEAR=1; return; }
+    ! ___x_cmd_replhook_debug_inside_trapc || { ___X_CMD_REPLHOOK_CAPTURE_INTERRUPT=1; return; }
+
+    ___x_cmd_theme_transient_unit___restore "$@"
+}
+
+___X_CMD_THEME_TRANSIENT_UNIT___PRECMD_HISTCMD=$HISTCMD
+___x_cmd_theme_transient_unit___precmd(){
+    ___X_CMD_THEME_EXIT_STATUS="$?"
+
+    # save data
+    ___X_CMD_THEME_TRANSIENT_OLDPWD="$___X_CMD_THEME_TRANSIENT_PWD"
+    ___X_CMD_THEME_TRANSIENT_PWD="$PWD"
+
+    if [ -n "${___X_CMD_REPLHOOK_CAPTURE_INTERRUPT}" ]; then
+        ___X_CMD_REPLHOOK_CAPTURE_INTERRUPT=
+    elif [ -n "$ZSH_VERSION" ]; then
+        [ -n "$___X_CMD_THEME_TRANSIENT_UNIT___RESTORE_DONE" ] || ___x_cmd_theme_transient_unit___restore
+        ___X_CMD_THEME_TRANSIENT_UNIT___RESTORE_DONE=
+    else
+        local curhistcmd=
+        case "$BASH_VERSION" in
+            4.*|3.*)
+                    curhistcmd="$(history 1)" # trim the space
+                    local IFS=" ";  local tmp=
+                    # shellcheck disable=SC3011
+                    read -r curhistcmd tmp <<<"$curhistcmd"
+                    ;;
+            *)      curhistcmd="$HISTCMD" ;;
+        esac
+        [ "${___X_CMD_THEME_TRANSIENT_UNIT___PRECMD_HISTCMD:-0}" -ne "$curhistcmd" ] || {
+            [ -z "$HISTCONTROL" ] || local XT_TRANSIENT_MSG="Ignore displaying the current command line because \`HISTCONTROL=${HISTCONTROL}\`."
+            ___x_cmd_theme_transient_unit___restore
+        }
+        ___X_CMD_THEME_TRANSIENT_UNIT___PRECMD_HISTCMD="$curhistcmd"
+    fi
+
+    ___x_cmd_theme_transient_unit___save
+}
+
+___x_cmd_theme_transient_unit___save(){
+    printf "\r\n\r\n\r\n\033[3A\0337"
+    ___X_CMD_THEME_TRANSIENT_UNIT___RESTORE_DONE=
+    ___X_CMD_REPLHOOK_CAPTURE_CLEAR=
+    ___X_CMD_REPLHOOK_CAPTURE_INTERRUPT=
+
+
+    local ___X_CMD_THEME_PS1_OUTSIDE=1
+    local X_headline=
+    ___x_cmd_theme_headline 2>/dev/null
+    printf "%s" "$X_headline"
+}
+
+___x_cmd_theme_transient_unit___restore(){
+    # Notice: If you write the command and want to preserve it in the screen without execution, ctrl-c is your choice.
+    ___X_CMD_THEME_TRANSIENT_UNIT___RESTORE_DONE=1
+
+    [ "$___X_CMD_THEME_TRANSIENT_STYLE" != cwd ] || \
+        [ "$___X_CMD_THEME_TRANSIENT_OLDPWD" = "$___X_CMD_THEME_TRANSIENT_PWD" ] || return
+
+    printf "\0338\r\033[J\033[2K"
+
+    local ___X_CMD_THEME_PS1_OUTSIDE=1
+    local cmdline="${XT_TRANSIENT_MSG:-$1}"
+    [ -z "$cmdline" ] || XT_transient_theme "$cmdline"
+}
+
+XT_transient_ps1(){
+    :
+}
+
+___x_cmd_theme_transient_unit___ps1(){
+    printf "\r"
+
+    [ -z "$___X_CMD_THEME_TRANSIENT_PS1" ] || {
+        printf "$___X_CMD_THEME_TRANSIENT_PS1"
+        return
+    }
+
+    local X_ps1=; XT_transient_ps1
+    [ -z "$X_ps1" ] || {
+        printf "%s" "$X_ps1"
+        return
+    }
+
+    printf "\033[${___X_CMD_THEME_COLOR_CODE:-32}m%s\033[0m" "> "
+}

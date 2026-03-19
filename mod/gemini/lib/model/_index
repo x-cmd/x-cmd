@@ -1,0 +1,112 @@
+# shellcheck shell=dash
+
+xrc ourl
+___x_cmd_gemini_model(){
+    [ $# -gt 0 ]    ||  set - ls
+
+    local op="$1";      shift
+    case "$op" in
+        ls|ll|set|get)          ___x_cmd_gemini_model_"$op" "$@"            ;;
+        -h|--help)              ___x_cmd help -m gemini model               ;;
+        *)                      ___x_cmd help -m gemini model >&2; return 1 ;;
+    esac
+}
+
+___x_cmd_gemini_model_get(){
+    local X_help_cmd='___x_cmd help -m gemini model get'; help:arg:parse
+    local model=""
+    ___x_cmd_gemini_cur model:=  2>/dev/null
+    printf "%s\n" "$model"
+}
+
+___x_cmd_gemini_model_set(){
+    local X_help_cmd='___x_cmd help -m gemini model set'; help:arg-null:parse
+    local model="$1"
+    ___x_cmd gemini --cfg set model="$model"
+}
+
+___x_cmd_gemini_model_ll(){
+    local X_help_cmd='___x_cmd help -m gemini model ll'; help:arg:parse
+    ___x_cmd_gemini_model_ls___csv | ___x_cmd csv static_tab
+}
+
+___x_cmd_gemini_model_ls(){
+    [ $# -gt 0 ]    ||  set - --app
+
+    local op="$1"
+    local format=
+    case "$op" in
+        --csv|--app|--fast)
+                    format="${op#--}" ;;
+        -j|--json)  format=json      ;;
+        -y|--yml)   format=yml       ;;
+        -h|--help)  ___x_cmd help -m gemini model ls  "$@"; return ;;
+        *)          M="Not support $op" N=gemini log:ret:1 ;;
+    esac
+
+    "___x_cmd_gemini_model_ls___${format}"
+}
+
+___x_cmd_gemini_model_ls___app(){
+    if ! { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; }; then
+        ___x_cmd_gemini_model_ls___csv "$@"
+        return $?
+    fi
+
+    local ___X_CMD_CSV_APP_DATA_CURROW=
+    local data; data="$( ___x_cmd_gemini_model_ls___csv )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd csv --app --return line
+    local model="${___X_CMD_CSV_APP_DATA_CURROW%%,*}"
+    [ -n "$model" ] || return $?
+
+    local id=
+    ___x_cmd ui select id "NEXT" \
+        "Set the [model=$model] as the default model for Gemini AI" \
+        "Stdout the model name" \
+        "return" || return $?
+
+    case "$id" in
+        1)  ___x_cmd_gemini_cfg model="$model"
+            gemini:info "Successfully set [model=$model] as the default model for Gemini AI"
+            ;;
+        2)  printf "%s\n" "$model" ;;
+        *)  return ;;
+    esac
+}
+
+___x_cmd_gemini_model_ls___csv(){
+    local data; data="$( ___x_cmd_gemini_model_ls___raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd jo .models \
+        | ___x_cmd jo 2c .name .description .supportedGenerationMethods .inputTokenLimit .outputTokenLimit .temperature .topP .topK  \
+        | ___x_cmd cawk -m csv -f "$___X_CMD_ROOT_MOD/csv/lib/awk/csva.awk" \
+            -f "$___X_CMD_ROOT_MOD/gemini/lib/awk/model_ls.awk"
+}
+
+___x_cmd_gemini_model_ls___json(){
+    local data; data="$( ___x_cmd_gemini_model_ls___raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd jo fmt
+}
+
+___x_cmd_gemini_model_ls___yml(){
+    local data; data="$( ___x_cmd_gemini_model_ls___raw )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd j2y
+}
+
+___x_cmd_gemini_model_ls___raw(){
+    ___x_cmd_gemini_has_apikey || return $?
+    local apikey=; local proxy=
+    ___x_cmd_gemini_cur apikey:= proxy:= 2>/dev/null
+    ____X_CMD_CCMD_ERROR_LOG=0 \
+    ___x_cmd ccmd 1d -- ___x_cmd proxy runifset "$proxy" ___x_cmd curl --fail "${___X_CMD_GEMINI_ENDPOINT}/v1beta/models?key=${apikey}"
+}
+
+___x_cmd_gemini_model_ls___fast(){
+    local apikey=; local proxy=
+    ___x_cmd_gemini_cur apikey:= proxy:= 2>/dev/null
+    if [ -z "$apikey" ] || [ ! -f "$( ___x_cmd ccmd which ___x_cmd proxy runifset "$proxy" ___x_cmd curl --fail "${___X_CMD_GEMINI_ENDPOINT}/v1beta/models?key=${apikey}" )" ]; then
+        printf "%s\n" gemini-3-pro-preview gemini-2.5-pro gemini-2.5-flash gemini-2.0-flash gemini-2.0-flash-lite
+    else
+        ___x_cmd_gemini_model_ls___csv | ___x_cmd_cmds awk -v FS=, 'NR>1{ print $1; }'
+    fi
+}
+

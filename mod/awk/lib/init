@@ -1,0 +1,137 @@
+# shellcheck shell=dash
+
+___x_cmd_awk_init(){
+    # command gawk
+    # Notice: I could just detect but it involve subshell invoked, the cost of which is not worth it.
+
+    # bsd awk cannot -f -e
+    # busybox awk -f -e cannot works ==> This is very important.
+    # all code using the awk
+
+    if ___x_cmd hascmd gawk; then      ___X_CMD_AWK_IMPL=gawk
+    elif ___x_cmd hascmd mawk; then    ___X_CMD_AWK_IMPL=mawk
+    elif ! ___x_cmd hascmd awk; then   ___X_CMD_AWK_IMPL=awk
+    else
+        # BUG: If the user remove the original awk. The file need update.
+        # AWK inside check the current awk is as what ___X_CMD_AWK_IMPL told us.
+        if [ "${___X_CMD_ROOT_CACHE}/awk/current_awk" -nt "${___X_CMD_ROOT_MOD}/awk/lib/init" ]; then
+            . "${___X_CMD_ROOT_CACHE}/awk/current_awk"
+        else
+            ___x_cmd_awk___update_current_awk
+        fi
+    fi
+}
+
+___x_cmd_awk___update_current_awk(){
+    ___x_cmd_awk_impl_ || return 1
+    x:debug "Update current awk => $___X_CMD_AWK_IMPL"
+    ___x_cmd ensurefp "${___X_CMD_ROOT_CACHE}/awk/current_awk"
+    printf "%s=%s\n" ___X_CMD_AWK_IMPL "$___X_CMD_AWK_IMPL" > "${___X_CMD_ROOT_CACHE}/awk/current_awk"
+}
+
+___x_cmd_awk_impl_(){
+    ___x_cmd hascmd awk || {
+        ___X_CMD_AWK_IMPL=awk
+        return 1
+    }
+
+    local helpmsg;      helpmsg="$(___x_cmd_cmds_awk -Wv 2>&1)"
+    case "$helpmsg" in
+        *mawk*)         ___X_CMD_AWK_IMPL=mawk     ;;
+        *GNU*|*gawk*)   ___X_CMD_AWK_IMPL=gawk     ;;
+        *BusyBox*)      ___X_CMD_AWK_IMPL=busybox  ;;
+        *nawk*)         ___X_CMD_AWK_IMPL=nawk     ;;
+        *)              ___X_CMD_AWK_IMPL=bsdawk   ;;
+    esac
+}
+
+___x_cmd_awk___get_utf8_(){
+    [ -z "$___X_CMD_AWK_LANGUAGE_UTF8" ] || return 0
+    if [ "${___X_CMD_ROOT_CACHE}/awk/utf8" -nt "${___X_CMD_ROOT_MOD}/awk/lib/init" ]; then
+        . "${___X_CMD_ROOT_CACHE}/awk/utf8"
+    else
+        ___x_cmd_awk___update_utf8
+    fi
+}
+
+___x_cmd_awk___update_utf8(){
+    ___x_cmd ensurefp "${___X_CMD_ROOT_CACHE}/awk/utf8"
+    ___X_CMD_AWK_LANGUAGE_UTF8="$(
+        {
+            printf "%s\n" "$___X_CMD_LOCALE_DEF_UTF8"
+            ___x_cmd_cmds locale -a 2>/dev/null | { ___x_cmd_cmds grep -i -e 'utf8\|utf-8'; } 2>/dev/null
+        } | while read -r l; do
+            errmsg="$( ( LC_ALL="$l" true ) 2>&1 )"
+            [ -z "$errmsg" ] || continue
+            printf "%s\n" "$l"
+            break
+        done
+    )"
+    [ -n "$___X_CMD_AWK_LANGUAGE_UTF8" ] || ___X_CMD_AWK_LANGUAGE_UTF8="$___X_CMD_LOCALE_DEF_UTF8"
+    printf "%s=%s\n" ___X_CMD_AWK_LANGUAGE_UTF8 "$___X_CMD_AWK_LANGUAGE_UTF8" > "${___X_CMD_ROOT_CACHE}/awk/utf8"
+}
+
+___x_cmd_awk_init
+
+___x_cmd_awk_impl(){
+    [ -n "$___X_CMD_AWK_IMPL" ] || ___x_cmd_awk_impl_
+    printf "%s\n" "$___X_CMD_AWK_IMPL"
+}
+
+# Notice:
+#   mawk -W interactive RS must be \n
+#   On Windows, gawk with C.utf8 is faster than with C
+
+___X_CMD_AWK_LANGUAGE="$___X_CMD_LOCALE_DEF_C"
+! ___x_cmd_is_termux || ___X_CMD_AWK_LANGUAGE="$___X_CMD_LOCALE_DEF_UTF8"
+case "$___X_CMD_AWK_IMPL" in
+    gawk)
+        ___x_cmd_awk___inner(){
+            ___x_cmd_cmds gawk "$@"
+        }
+
+        if ___x_cmd os is win || ___x_cmd os is wsl; then
+            ___x_cmd_awk___get_utf8_
+            ___X_CMD_AWK_LANGUAGE="$___X_CMD_AWK_LANGUAGE_UTF8"
+        fi
+        ;;
+    mawk)
+        ___x_cmd_awk___inner(){
+            if [ "$AWK_IS_INTERACTIVE" != 1 ]; then
+                RE_INTERVAL_EXPRESSIONS_SUPPORTED=0 \
+                ___x_cmd_cmds mawk "$@"
+            else
+                RE_INTERVAL_EXPRESSIONS_SUPPORTED=0 \
+                ___x_cmd_cmds mawk -W interactive "$@"
+            fi
+        }
+        ;;
+    *)  ___x_cmd_awk___inner(){
+            ___x_cmd_cmds_awk "$@"
+        }
+        ;;
+esac
+
+___x_cmd_awk_version_(){
+    x_=""
+    local helpmsg; helpmsg="$( ___x_cmd_cmds_awk -Wv 2>/dev/null || ___x_cmd_cmds_awk --version 2>&1 )"
+    case "$helpmsg" in
+        *mawk*|*GNU*|*gawk*)
+                    read -r x_ <<A
+$helpmsg
+A
+                    ;;
+        *BusyBox*)
+                    x_="$( ___x_cmd_cmds grep -e BusyBox <<A
+$helpmsg
+A
+)"
+                    ;;
+        *)          x_="$helpmsg"   ;;
+    esac
+}
+
+___x_cmd_awk_version(){
+    local x_=; ___x_cmd_awk_version_
+    printf "%s\n" "$x_"
+}

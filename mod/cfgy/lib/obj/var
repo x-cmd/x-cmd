@@ -1,0 +1,88 @@
+# shellcheck shell=dash disable=1090
+# TODO: Make it into import syntax <newvar>:=<var>
+___x_cmd_cfgy_obj_var(){
+    local X_help_cmd="${X_help_cmd:-x help -m cfgy obj --var}"
+    cfgy:arg:config-profile:all
+
+    [ $# -ge 1 ] || {
+        cfgy:error "Invalid argument, requires at least one varname"
+        return 64
+    }
+
+    [ -z "$config" ] || {
+        ___x_cmd_cfgy_obj_fvar_     \
+            "$config"               \
+            "$profile" "$@"
+        return
+    }
+
+    if ___x_cmd_cfgy_obj_isloaded; then
+        ___x_cmd_cfgy_obj_var___main \
+            "$profile" "$@"
+    else
+        ___x_cmd_cfgy_obj_fvar_     \
+            "$___X_CMD_CFGY_OBJ_DEFAULT_CONFIG" \
+            "$profile" "$@"
+    fi
+
+}
+
+___x_cmd_cfgy_obj_fvar_(){
+    [ $# -ge 3 ] || {
+        cfgy:error "___x_cmd_cfgy_obj_fvar_ takes at least three argument ==> <config> <profile> <varname[=configvar]> [...varname[=configvar]]"
+        return 1
+    }
+    local config="${1}"
+    local profile="$2"
+    shift 2
+
+    cfgy:debug "Loading from $config"
+    local x_=;  ___x_cmd_cfgy_obj___loadinner_ --local "$config" || return $?
+    . "$x_"
+    ___x_cmd_cfgy_obj_var___main "${profile:-X}" "$@"
+}
+
+___x_cmd_cfgy_obj_var___main(){
+    local profile="$1"; shift 1
+
+    if [ -z "$profile" ]; then
+        if ___x_cmd_cfgy_inner_get_value_ "$___X_CMD_CFGY_OBJ_PREFIX" current; then
+            profile="${x_}"
+        else
+            cfgy:debug "___x_cmd_cfgy_obj_var___main() using x-cmd default profile name X. For current profile not found."
+            profile=X
+        fi
+    fi
+
+    local x_=
+    ___x_cmd_cfgy_inner_get_profile_idx_ "$___X_CMD_CFGY_OBJ_PREFIX" "${profile}" || return $?
+
+    local envvar
+    local cfgvar
+
+    local code
+    local X_cfgy_varname=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+        *=*)
+            envvar="${1%%=*}"
+            cfgvar="${1#*=}"
+            ;;
+        *)
+            envvar="$1"
+            cfgvar="$1"
+            ;;
+        esac
+        X_cfgy_varname="$cfgvar" cfgy:check:varname
+        cfgvar="${___X_CMD_CFGY_OBJ_PREFIX}_${x_}_${cfgvar}"
+
+        code="$code
+        [ \"\${${cfgvar}+1}\" != 1 ] || ${envvar}=\$${cfgvar}
+        "
+
+        shift
+    done
+
+    cfgy:debug -c "$code" "___x_cmd_cfgy_obj_var___main() code generated"
+    eval "${code}"
+}

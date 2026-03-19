@@ -1,0 +1,59 @@
+
+___x_cmd_aur_ls(){
+    [ $# -gt 0 ]    ||  set -- --tsv
+
+    local filter=0.001
+
+    local format=tsv
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m aur ls "$@"; return 0 ;;
+            --csv|--tsv|--json)     format="${1#--}" ;;
+
+            -f|--filter)            filter="$2"  ;      arg:2:shift; continue ;;
+            -a|--all)               filter=0.000 ;      ;;
+        esac
+        shift
+    done
+
+    ___x_cmd_aur_ls___"$format"
+}
+
+___x_cmd_aur_ls___csv(){
+    format=csv ___x_cmd_aur_ls___tsv
+}
+
+___x_cmd_aur_ls___tsv(){
+    format=tsv ___x_cmd_aur_ls___xsv
+}
+
+___x_cmd_aur_ls___xsv(){
+    ___x_cmd_aur_ls___json | ___x_cmd jq -r --argjson pop_filter_val "${filter}" '
+    # Data rows
+    (
+      .[]
+      | select(.Popularity >= $pop_filter_val)
+      | [
+        .ID,
+        .Popularity,
+        .NumVotes,
+        .Name,
+        .Version,
+        (.Description // ""), # Handle null by converting to empty string
+        (.OutOfDate // ""),   # Handle null by converting to empty string
+        (.Maintainer // ""),  # Handle null by converting to empty string
+        (.Submitter // ""),   # Handle null by converting to empty string
+        .FirstSubmitted,
+        .LastModified,
+        (.URL // ""),         # Handle null by converting to empty string
+        .PackageBaseID,
+        (.PackageBase // ""), # Handle null by converting to empty string
+        (.URLPath // "")      # Handle null by converting to empty string
+      ] | @'"${format}"'
+    )'
+}
+
+___x_cmd_aur_ls___json(){
+    ___x_cmd_aur_update___ifneed_pipe | ___x_cmd_cmds gzip -d
+}
+

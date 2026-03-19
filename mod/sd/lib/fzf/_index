@@ -1,0 +1,122 @@
+# shellcheck shell=dash
+
+___x_cmd_sd___fzf(){
+    ___x_cmd_sd___fzfapp "$@"
+}
+
+___x_cmd_sd___fzfapp(){
+    [ $# -gt 0 ] || set -- -
+
+    local fp="$1"
+    local pidofsubshell; pidofsubshell="$(___x_cmd pidofsubshell)"
+
+    local ___X_CMD_SD_FZF_APP_DIR=
+    case "${fp}" in
+        -)
+            ___X_CMD_SD_FZF_APP_DIR="$___X_CMD_ROOT_TMP/sd.${pidofsubshell}.d"
+            ___x_cmd mkdirp "$___X_CMD_SD_FZF_APP_DIR"
+            ___x_cmd_cmds cat            > "$___X_CMD_SD_FZF_APP_DIR/source"
+            ;;
+        *)
+            [ -f "$fp" ] || N=sd M="The specified file does not exist --> $fp" log:ret:1
+            ___X_CMD_SD_FZF_APP_DIR="${fp}.sd.${pidofsubshell}.d"
+            ___x_cmd mkdirp "$___X_CMD_SD_FZF_APP_DIR"
+            ___x_cmd_cmds cat  "${fp}"   > "$___X_CMD_SD_FZF_APP_DIR/source"
+    esac
+
+    ___x_cmd_compat_syncfs "$___X_CMD_SD_FZF_APP_DIR/source" 2>/dev/null
+
+    (
+    trap '___x_cmd rmrf "$___X_CMD_SD_FZF_APP_DIR";' EXIT
+    while true; do
+        local expression
+        expression="$(
+                ___X_CMD_SD_FZF_APP_DIR="$___X_CMD_SD_FZF_APP_DIR"   \
+                ___X_CMD_RUNMODE="$___X_CMD_RUNMODE"                 \
+                ___x_cmdexe sd --fzdata "$expression"
+        )"
+
+        [ -n "$expression" ] || return
+        local id=
+        ___x_cmd ui select id "Next for [expression=$expression]"   \
+            "Copy this expression to pastboard"                     \
+            "Print preview data"                                    \
+            "Modify the file content using this expression"         \
+            "Modify the expression"                                 \
+            "Exit"
+        case "$id" in
+            1)      sd:info "run command =>  x pb -c '$expression'"
+                    ___x_cmd pb -c "$expression"
+                    return 0 ;;
+            2)      ___x_cmd_sd___cmd --preview $(printf "%s" "$expression") "$___X_CMD_SD_FZF_APP_DIR/source"
+                    return 0 ;;
+            3)      sd:info "run command =>  x sd $expression  $fp"
+                    [ -f "$fp" ] || N=sd M="file not exist."  log:ret:1
+                    ___x_cmd_sd___cmd $(printf "%s" "$expression")  "$fp"
+                    return 0 ;;
+            4)      continue ;;
+            *)      break
+                    return 0 ;;
+        esac
+    done
+    )
+}
+
+___x_cmd_sd___fzfprompt(){
+    case "$FZF_PROMPT" in
+        "diff>"*)
+            printf "%s\n" "raw> "
+            ;;
+        *)
+            printf "%s\n" "diff> "
+            ;;
+    esac
+}
+
+___x_cmd_sd___fz_data(){
+    local expression="$1"
+    fpfolder="$___X_CMD_SD_FZF_APP_DIR"
+    ___x_cmd fzf                                \
+        --header="<Please type sd arguments> Use ctrl-s to switch preview mode"  \
+        --bind='ctrl-s:transform-prompt(x sd --fzfprompt)+refresh-preview'     \
+        --prompt='raw> '                        \
+        --reverse --no-info --height='80%'      \
+        --query="$expression" --print-query     \
+        --preview-window='down,99%'             \
+        --preview="___x_cmdexe sd --fzfapppreview {q} ${fpfolder}" <<A
+A
+}
+
+___x_cmd_sd___fzfapppreview(){
+    local mode="$FZF_PROMPT"
+    local str="$1"; shift
+    local fp="$*"
+    local modified_content
+
+    {
+        case "$str" in
+            "")
+                ___x_cmd_sd___fzfapppreview___error "$fp"
+                ;;
+            *)
+                case "$mode" in
+                    diff\>*)
+                        if ! modified_content="$( eval ___x_cmd_sd___cmd "$str" <"$fp/source" )"; then
+                            ___x_cmd_sd___fzfapppreview___error "$fp"
+                        else
+                            printf "%s\n" "$modified_content" | ___x_cmd_cmds diff -u --color=always "$fp/source" -
+                        fi
+                        ;;
+                    *)
+                        eval ___x_cmd_sd___cmd --preview "$str" "$fp/source" || ___x_cmd_sd___fzfapppreview___error "$fp"
+                esac
+                ;;
+        esac
+    } 2>&1 | ___x_cmd_cmds head -n 2000
+}
+
+___x_cmd_sd___fzfapppreview___error(){
+    local fp="$1"
+    printf "\n=== %s ===\n\n" "Content of file : $fp/source"
+    ___x_cmd_cmds cat "$fp/source"
+}

@@ -1,0 +1,48 @@
+# shellcheck shell=dash
+
+# x hub file link https://get.x-cmd.com/ get
+___x_cmd_hub_file_link(){
+    local X_help_cmd='___x_cmd_hub___help file link'
+    help:arg-null:parse
+
+    local force=; local public=
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --force|-f)      force=true;  shift ;;
+            --public)        public=true; shift ;;
+            *) break ;;
+        esac
+    done
+
+    local url="$1"       ; [ -n "$url" ]      || M='Provide url'              N=hub log:ret:64
+
+    local remotefp="$2"  ; [ -n "$remotefp" ] || M='Provide remote file path' N=hub log:ret:64
+    remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
+
+    hub:debug "Upload url=$url to $remotefp"
+    local check_url="${url#*'http://'}"
+    check_url="${check_url#*'https://'}"
+    if [ "${check_url}" = "${url}" ];then
+        ___x_cmd_ui_tf false "link url is invalid : ${url}"
+        return 1
+    fi
+    ___x_cmd_hub_u_curl get "/api/v0/file/upload/url?res=$(___x_cmd url encode "$remotefp")&force=${force}" | {
+        local oss_url=; local msg=
+        ___x_cmd jo env . oss_url=.url .msg
+        [ -n "$oss_url" ] || {
+            ___x_cmd_hub_u_handle_resp false "Failed to put $url to $remotefp:"
+            return 1
+        }
+
+        hub:debug "Upload $oss_url"
+        printf "%s\n\n%s" "srctype: link" "$url" \
+            | ___x_cmd curl -X PUT -sSL "$oss_url"  -H "Content-Type: application/octet-stream" --data-binary @- || {
+            ___x_cmd_ui_tf false "Failed to put $url to $remotefp" >&2
+            return 1
+        }
+
+        ___x_cmd_ui_tf true "Upload $url to $remotefp"
+    }
+
+    [ -z "$public" ] || ___x_cmd_hub_access___set_public "$remotefp"
+}

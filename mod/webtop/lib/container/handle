@@ -1,0 +1,76 @@
+# shellcheck shell=dash
+
+___x_cmd_webtop_container_handle(){
+    case "$#" in
+        0)      N=webtop M="Please provide container name or id" log:ret:64 ;;
+        3)      ___x_cmd_webtop_container_handle_inside "$@" ;;
+        *)
+                local id=""
+                local state=""
+                local name="$1"
+
+                local data
+
+                data="$(___x_cmd_webtop_container_ps --tsv | ___x_cmd_cmds awk -v FS='\t' -v kw="$name" '
+                NR==1{ next }
+                ($1!~kw)&&($2!~kw){ next }
+                {
+                    print $1
+                    print $2
+                    print $11
+                    exit
+                }')"
+
+
+                [ -n "$data" ] || N="webtop" M="Fail to get container -> $name" log:ret:64
+
+                {
+                    read -r id
+                    read -r name
+                    read -r state
+                } <<A
+$data
+A
+                ___x_cmd_webtop_container_handle_inside "$id" "$name" "$state"
+                ;;
+    esac
+}
+
+___x_cmd_webtop_container_handle_inside(){
+
+    local container_id="$1"
+    local container_name="$2"
+    local state="$3"
+
+            set --          "x webtop home cd           $container_name"
+            set --  "$@"    "x webtop restart      --id $container_id"
+
+    case "$state" in
+        paused)
+            set --          "x webtop unpause      --id $container_id"      "$@"
+            set --  "$@"    "x webtop stop         --id $container_id"
+            ;;
+        exited)
+            set --          "x webtop start        --id $container_id"      "$@"
+            set --  "$@"    "x webtop rm           --id $container_id"
+            ;;
+        running)
+            set --          "x webtop bash              $container_name"    "$@"
+            set --          "x webtop open              $container_name"    "$@"
+            set --  "$@"    "x webtop pause        --id $container_id"
+            set --  "$@"    "x webtop stop         --id $container_id"
+            ;;
+    esac
+            set --  "$@"    "x docker container rm -f   $container_id"
+            set --  "$@"    "x docker container inspect $container_id"
+            set --  "$@"    "x webtop all"
+
+
+    local id=
+    local cmd=
+    ___x_cmd ui select id,cmd \
+        "Next for container: $container_name" "$@"  "return 1"  || return 1
+    webtop:debug "run command -> $cmd"
+
+    eval "$cmd"
+}

@@ -1,0 +1,107 @@
+
+___x_cmd_claude_router_setup(){
+    local config_file="$HOME/.claude-code-router/config.json"
+
+    local provider=""
+    local model=""
+    local apikey=""
+    local proxy=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m claude router setup ; return 0 ;;
+            --gemini|--openai|--deepseek|--openrouter)
+                                    provider="${1#*--}";
+                                    [ $# -ge 2 ] || N=claude M="Please provide argument after $1" log:ret:64 ;
+                                    model="$2";       shift 2 ;;
+            --apikey)               [ $# -ge 2 ] || N=claude M="Please provide argument after $1" log:ret:64 ;
+                                    apikey="$2";     shift 2 ;;
+            --proxy)                [ $# -ge 2 ] || N=claude M="Please provide argument after $1" log:ret:64 ;
+                                    proxy="$2";     shift 2 ;;
+            *)                      break ;;
+        esac
+    done
+
+    if [ -z "$provider" ]; then
+        provider="gemini"
+        model="gemini-2.5-flash"
+    fi
+    [ -n "$apikey" ] || apikey=; ___x_cmd "$provider" --cur apikey:= 2>/dev/null
+    [ -n "$proxy" ]  || proxy=;  ___x_cmd "$provider" --cur proxy:=  2>/dev/null
+
+    ___x_cmd ensurefp "$config_file"
+    ___x_cmd_claude_router_setup_templates "$provider" "$model" "$apikey" "$proxy" > "$config_file" || return $?
+    claude:info --provider "$provider" --model "$model" --config-file "$config_file" "Regenerated configuration file for claude-code-router."
+
+    claude:info --cmd 'x claude router restart' "Restart the Claude code router service to reload the configuration."
+    ___x_cmd claude router restart
+}
+
+
+___x_cmd_claude_router_setup_templates(){
+    local provider="$1"
+    local model="$2"
+    local apikey="$3"
+    local proxy="$4"
+
+    {
+        printf "{ \n"
+        [ -z "$proxy" ] || printf "\"PROXY_URL\": \"%s\"," "$proxy"
+        printf "\"Providers\": [\n"
+        ___x_cmd_claude_router_setup___templates_provider "$provider" "$model" "$apikey"
+        printf "\n],\n"
+        printf "\"Router\": { \"default\": \"%s,%s\" }\n" "$provider" "$model"
+        printf "}\n"
+    } | ___x_cmd jo fmt
+}
+
+___x_cmd_claude_router_setup___templates_provider(){
+    local name="$1"
+    local models="[\"$2\"]"
+    local apikey="$3"
+
+    local api_base_url=""
+    local transformer=""
+    case "$name" in
+        gemini)
+            api_base_url="https://generativelanguage.googleapis.com/v1beta/models/"
+            transformer='{
+              "use": ["gemini"]
+            }'
+            ;;
+        openai)
+            api_base_url="https://api.openai.com/v1/chat/completions"
+            transformer='{
+              "use": [
+                [
+                  "maxcompletiontokens",
+                  { "max_completion_tokens": 128000 },
+                  "temperature",
+                  { "temperature": 0.5 }
+                ],
+                "enhancetool"
+              ]
+            }'
+            ;;
+        deepseek)
+            api_base_url="https://api.deepseek.com/chat/completions"
+            transformer='{
+              "use": ["deepseek"],
+              "deepseek-chat": {
+                "use": ["tooluse"]
+              }
+            }'
+            ;;
+        openrouter)
+            api_base_url="https://openrouter.ai/api/v1/chat/completions"
+            transformer='{
+              "use": ["openrouter"]
+            }'
+            ;;
+        *)
+            N=claude M="The ${name} configuration template is not currently supported." log:ret:1 ;;
+    esac
+
+    printf "{ \"name\": \"%s\", \"api_base_url\": \"%s\", \"apikey\": \"%s\", \"models\": %s, \"transformer\": %s},\n" \
+        "$name" "$api_base_url" "$apikey" "$models" "$transformer"
+}
+

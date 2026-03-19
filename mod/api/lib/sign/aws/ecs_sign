@@ -1,0 +1,89 @@
+# shellcheck    shell=sh            disable=SC2039,SC1090,SC3043,SC2263,2154,2086
+___x_cmd_aws_sign___auth_header(){
+    local access_key_id="${access_key_id:-"$(___x_cmd aws config get access_key_id)"}"
+    local access_key_secret="${access_key_secret:-"$(___x_cmd aws config get access_key_secret)"}"
+    local algorithm='AWS4-HMAC-SHA256'
+    local signed_headers
+
+    eval "$( (  local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
+                printf "%s\n" "${action:+"Action=${action}"}" "${version:+"Version=${version}"}" "$*") | command sort | {
+        ___x_cmd_cmds_awk -v FS="="  -v method="$method" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/url.awk" \
+                    -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"  \
+                    -f "$___X_CMD_ROOT_MOD/aws/lib/awk/sign.awk"
+    })"
+    if [ -n "$_file_path" ]; then
+        payload_hash=$(___x_cmd sha256 "${_file_path}")
+    else
+        payload_hash=$(printf "%s" "${gen_aws_json}" | ___x_cmd openssl sha256)
+        payload_hash="${payload_hash##*"(stdin)= "}"
+    fi
+
+    eval "$( (  local IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
+                printf "%s" "${canonical_headers}") | command sort |
+             ___x_cmd_cmds_awk -v FS=":"  \
+             -f "$___X_CMD_ROOT_MOD/awk/lib/sh.awk"  \
+             -f "${___X_CMD_ROOT_MOD}/aws/lib/awk/header.awk"
+            )"
+
+
+    local canonical_request_sha256
+    ___x_cmd_aws_header_structure <<A
+$method
+$canonical_uri
+$request_parameters
+$canonical_headers
+$signed_headers
+$payload_hash
+A
+
+
+    local credential_scope
+    credential_scope="$datestamp/$region/$service/aws4_request"
+    local string_to_sign
+    string_to_sign=$(printf "%s\n%s\n%s\n%s" $algorithm  $amzdate $credential_scope "$canonical_request_sha256")
+
+    sign1="$(printf "%s" "$datestamp" | ___x_cmd openssl sha256 -hmac "AWS4$access_key_secret")"
+    sign2="$(printf "%s" "$region" | ___x_cmd openssl sha256 -hex -mac HMAC -macopt hexkey:"${sign1##*"(stdin)= "}")"
+    sign3="$(printf "%s" "$service" | ___x_cmd openssl sha256 -hex -mac HMAC -macopt hexkey:"${sign2##*"(stdin)= "}")"
+    sign4="$(printf "%s" "aws4_request" | ___x_cmd openssl sha256 -hex -mac HMAC -macopt hexkey:"${sign3##*"(stdin)= "}")"
+    local signature
+    signature="$(printf "%s"  "$string_to_sign" | ___x_cmd openssl sha256 -hex -mac HMAC -macopt hexkey:"${sign4##*"(stdin)= "}")"
+    signature="${signature##*"(stdin)= "}"
+
+    header="-H \"Authorization:${algorithm} Credential=${access_key_id}/${credential_scope}, SignedHeaders=${signed_headers}, Signature=${signature}\""
+}
+___x_cmd_aws_header_structure(){
+    local canonical_request
+    canonical_request="$(___x_cmd_cmds_cat)"
+    api:debug "sign string:${canonical_request}"
+    canonical_request_sha256=$(printf "%s" "$canonical_request" | ___x_cmd openssl sha256)
+    canonical_request_sha256="${canonical_request_sha256##*"(stdin)= "}"
+}
+
+___x_cmd_aws_ec2_url_gen(){
+    local method="${1}"
+    local canonical_uri="${2}"
+    shift 2
+    local service="${service:-"ec2"}"
+    local region="${region:-"us-east-1"}"
+    local host="${host:-"${service}.${region}.amazonaws.com"}"
+    local version="${version}"
+    local _file_path="${_file_path}"
+    local request_parameters
+    local amzdate
+    amzdate="$(date -u +%Y%m%dT%H%M%SZ)"
+    local datestamp="${amzdate%%T*}"
+    local canonical_headers="host:$host
+x-amz-date:$amzdate
+${aws_ec2_header}"
+    local payload_hash
+    local header
+    ___x_cmd_aws_sign___auth_header "$@"
+    if [ "${service}" = "s3" ]; then
+        local oss_header="x-amz-content-sha256:${payload_hash}"
+    fi
+    url="$(___x_cmd curl gencode "${canonical_headers}" "${oss_header:+${oss_header}}") ${header} ${_file_path:+"-T \"${_file_path}\""} \"https://${host}${canonical_uri}${request_parameters:+"?${request_parameters}"}\""
+    api:debug "Url:${url}"
+}

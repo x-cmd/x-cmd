@@ -1,0 +1,101 @@
+# shellcheck shell=dash disable=SC2016
+
+# Section: id
+___x_cmd_chat___exec_repl___id_previous_app_(){
+    local dir="$___X_CMD_CHAT_SESSION_DIR/sh"
+    [ -d "$dir" ] || N=chat M="Not found the previous repl session" log:ret:1
+    ___x_cmd_runmode_allow_manual || N=chat M="Please use in an interactive environment" log:ret:1
+
+    chat:info "Select previous session"
+    ___x_cmd storerat_ ___x_cmd_chat___exec_repl___id_previous_app_fzf_ "$dir" || return $?
+    x_="${x_%%"$___X_CMD_UNSEENCHAR_HT"*}"
+    [ -n "$x_" ]
+}
+
+___x_cmd_chat___exec_repl___id_previous_app_fzf_(){
+    local dir="$1"
+    local l=""; local l_id=""; local l_date=""; local l_last_date=""; local l_first_date=""
+    local stats_file=""; local content_file=""; local topic=""
+    ___x_cmd find --cmd "$dir" -path '*/chat.response/done' 2>/dev/null | while ___x_cmd_readr l; do
+        l="${l#"$dir"/}"; l="${l%"/chat.response/done"}"
+        l_id="${l%/*}"
+        l_date="${l##*/}"
+        printf "%s %s\n" "$l_date" "$l_id"
+    done | ___x_cmd_cmds sort -r | ___x_cmd_cmds awk '
+{
+    if ($2 != last_id){
+        if ( last_id != "" ) print last_id " " first_date " " last_date
+        first_date = last_date = $1
+        last_id = $2
+    } else {
+        last_date = $1
+        last_id = $2
+    }
+}
+END{
+    print last_id " " first_date " " last_date
+}
+'   | while read -r l_id l_last_date l_first_date; do
+        [ -n "$l_id" ] || continue
+        stats_file="$dir/$l_id/stats.yml"; topic=""
+        content_file="$dir/$l_id/$l_first_date/chat.request/content"
+        if [ -f "$stats_file" ]; then
+            topic="$( < "$stats_file" ___x_cmd_cmds awk 'match($0, "^topic: "){ print substr($0, RLENGTH+1); exit(0); }' )"
+        elif [ -f "$content_file" ]; then
+            < "$content_file" read -r topic
+        fi
+        printf "\033[36m%s\033[0m\t\033[32m%s\033[0m\t\033[90m%s\033[0m\n" "sh/${l_id}" "${l_last_date%%__*}" "${topic}"
+    done | {
+        FZF_DEFAULT_OPTS="
+            --exact
+            --ansi
+            --reverse
+            --height='80%'
+            --preview-window=right:60%:wrap
+            --preview='___x_cmdexe chat --repl-export-raw {1}'
+            --bind='ctrl-w:toggle-preview-wrap'
+            --bind='ctrl-r:change-preview-window(right,80%|down,40%,99%,border-horizontal|hidden|right)'
+        " ___x_cmd fzf
+    }
+}
+
+___x_cmd_chat___exec_repl___id_previous_(){
+    local dir="$___X_CMD_CHAT_SESSION_DIR/sh/$$"
+    [ -d "$dir" ] || return $?
+
+    x_="1"
+    local i; for i in "$dir"/*; do
+        i="${i#"$dir"/}"
+        [ "$i" -le "$x_" ] || x_="$i"
+    done 2>/dev/null
+    x_="sh/$$/$x_"
+}
+
+___x_cmd_chat___exec_repl___id_(){
+    x_=""
+    local dir="$___X_CMD_CHAT_SESSION_DIR/sh/$$"
+    local acc=1
+    [ ! -d "$dir" ] || {
+        local i; for i in "$dir"/*; do
+            acc="$((acc+1))"
+        done 2>/dev/null
+    }
+    x_="sh/$$/$acc"
+}
+
+___x_cmd_chat___exec_repl___session_runid_(){
+    x_=""
+    local session="$1"
+    local dir="$___X_CMD_CHAT_SESSION_DIR/$session"
+    local acc=1
+    [ ! -d "$dir" ] || {
+        local i; while ___x_cmd_readr l; do
+            acc="$((acc+1))"
+        done <<A
+$( ___x_cmd find --cmd "$dir" -path '*/chat.response/done' 2>/dev/null )
+A
+    }
+    x_="$acc"
+}
+
+# EndSection

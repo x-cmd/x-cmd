@@ -1,0 +1,118 @@
+# shellcheck shell=dash
+
+# In the future we will support the next-token
+
+# x osv q --name --ecosyste --version --
+
+___x_cmd_osv_query(){
+    [ "$#" -gt 0 ] || M='Provide a package or commit' N=osv log:ret:1
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m osv query;  return 0 ;;
+        --json)         ___x_cmd_osv_query___json        "$@" ;;
+        --yml)          ___x_cmd_osv_query___yml         "$@" ;;
+        --csv)          ___x_cmd_osv_query___csv         "$@" ;;
+        --co|,)         X_CO_MSHOT_CMD="x osv query" ___x_cmd co --mshot "$@" ;;
+        *)              ___x_cmd_osv_query___app  "$op" "$@" ;;
+    esac
+}
+
+# TODO:
+#   fail: x osv q -p "mruby"
+___x_cmd_osv_query___inner_(){
+    local q=""
+    local t=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -p|--pkg)
+                    case "$2" in
+                        *,*)    t='{"ecosystem": "'${2%%,*}'", "name": "'${2##*,}'"}'   ;;
+                        *:*)    t='{"purl": "'${2}'"}'                                  ;;
+                        *)      t='{"name": "'${2}'"}'                                  ;;
+                    esac
+                    q="$q"'"package": '${t}','
+                    shift 2;;
+            -c|--commit)
+                    q="$q"'"commit": "'${2}'",'
+                    shift 2;;
+            -v|-version)
+                    q="$q"'"version": "'${2}'",'
+                    shift 2;;
+            --next_page_token)
+                    q="$q"'"next_page_token": "'${2}'",'
+                    shift 2;;
+            *)      M="Unknown option: $1"                               N=osv log:ret:1 ;;
+        esac
+    done
+
+    ___x_cmd_osv_query___verify_request "$q" || {
+        osv:error \
+            --e.g. 'x osv q -p jq -v 1.7.1'     \
+            --e.g. 'x osv q -p OSS-Fuzz,jq'     \
+            --e.g. 'x osv q -p pkg:generic/jq'  \
+            "There is an error in the command options. Please refer to the following format for adjustment."
+        return 1
+    }
+
+    local api_url="https://api.osv.dev/v1/query"
+    local api_query='{ '$q' }'
+    osv:debug --api_url "$api_url" --query "$api_query" "run cmd -> curl -d $api_query $api_url"
+    ___x_cmd ccmd 1h -- ___x_cmd curl -d "$api_query" "$api_url"
+}
+
+___x_cmd_osv_query___verify_request(){
+    case "$1" in
+        *"commit"*)            return 0 ;;
+        *"package"*)
+            case "$1" in
+                *"purl"*)      return 0 ;;
+                *"ecosystem"*) return 0 ;;
+                *"version"*)   return 0 ;;
+            esac
+            ;;
+    esac
+    return 1
+}
+
+
+___x_cmd_osv_query___csv(){
+    ___x_cmd_osv_query___json "$@" \
+        | ___x_cmd jo 2c           \
+            .id .modified          \
+            .summary .details .published .references    \
+            .aliases .source .affected .schema_version  \
+        | ___x_cmd csv header --add  \
+            id modified              \
+            summary details published references \
+            aliases source affected schema_version
+}
+
+___x_cmd_osv_query___yml(){
+    ___x_cmd_osv_query___raw "$@" | ___x_cmd j2y
+}
+
+___x_cmd_osv_query___json(){
+    ___x_cmd_osv_query___raw "$@" | ___x_cmd jo fmt
+}
+
+___x_cmd_osv_query___raw(){
+    # using jo to handle regular the json
+    ___x_cmd_osv_query___inner_ "$@" | ___x_cmd jo 1.vulns
+}
+
+___x_cmd_osv_query___app(){
+    local data=
+    local line_count=
+    data="$(___x_cmd_osv_query___csv "$@")"
+    line_count="$(printf "%s" "$data" | wc -l)"
+
+    if [ "$line_count" -gt 1 ]; then
+        printf "%s\n" "$data" | ___x_cmd csv app \
+            --width "20%,20%,-,-,-,-,-,-,-,-"     \
+            --table-width 40%                     \
+            --preview summary,details,published,references,aliases,source,affected,schema_version
+    else
+        osv:info "Not found issue"
+    fi
+}

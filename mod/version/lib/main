@@ -1,0 +1,69 @@
+# shellcheck shell=dash
+
+xrc:mod:lib     pkg         envvar
+xrc:mod:lib     version     current ls verify __release/_index  __app   system/_index archive/_index
+
+___x_cmd_version___main(){
+    [ $# -gt 0 ] ||     set  --  --app
+
+    local op="$1";      shift
+    case "$op" in
+        --app)          ___x_cmd_version___"${op#--}"   "$@"        ;;
+        --pack)         ___x_cmd_version___pack         "$@"        ;;
+
+        s|system)       ___x_cmd_version_system         "$@"        ;;
+        # i|install)      ___x_cmd_version_install        "$@"        ;;
+
+        fzf|ls|current|sum|verify|calsum|archive)
+                        ___x_cmd_version_"$op"          "$@"        ;;
+        release)        ___x_cmd_version___release      "$@"        ;;
+        --help|-h)      ___x_cmd help -m version                    ;;
+        *)              ___x_cmd help -m version >&2 ; return 64    ;;
+    esac
+}
+
+
+___x_cmd_version_sum(){
+    if [ "$#" -le 0 ]; then
+        ___x_cmd_version_current_sum_ || return $?
+        printf "%s\n" "${___X_CMD_VERSION_SUM}"
+    else
+        local x_version="$1"
+        local x_=; ___x_cmd_version___get_info_file_ || return $?
+        < "$x_" x_version="$x_version" ___x_cmd cawk -m j/json,j/jiter -f "$___X_CMD_ROOT_MOD/version/lib/awk/version_sum.awk"
+    fi
+}
+
+___x_cmd_version_calsum(){
+    local dir="${1:-$___X_CMD_ROOT_CODE}"
+    x:debug --dir "$dir" "version calsum"
+
+    if [ -d "$dir/adv" ]; then
+        {
+            ___x_cmd sha512 "$dir/X"
+            ___x_cmd hashdir --sha512 "$dir/mod"
+            ___x_cmd hashdir --sha512 "$dir/adv"
+        } | ___x_cmd sha512
+    else
+        x:error "this is not a valid release version because it does not contain adv directory generated."
+        return 1
+    fi
+}
+
+___x_cmd_version___pack()(
+    local version="${1:-"$___X_CMD_VERSION"}"
+    local tgzfile="${2:-"$___X_CMD_ROOT_SHARED/version/archive/$version.tgz"}"
+    local codedir="$___X_CMD_ROOT/v/$version"
+    [ -d "$codedir" ]               || N=x M="Not found x-cmd [version=$version] code folder" log:ret:1
+    ___x_cmd_cd0 "$codedir"         || N=x M="Cannot cd to $codedir" log:ret:1
+    ___x_cmd ensurefp "$tgzfile"    || return $?
+    ___x_cmd rmrf "$tgzfile"        || return $?
+
+    x:info "Compress $codedir to $tgzfile"
+    {
+        printf "%s\n" .x-cmd
+        printf "%s\n" *
+    } | command grep -v README | command grep -v changelog | ___X_CMD_ZUZ_QUIET=1 x z "$tgzfile" >/dev/null
+
+    [ -f "$tgzfile" ]
+)

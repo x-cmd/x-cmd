@@ -1,0 +1,69 @@
+
+# x ssh deploy-x-cmd
+___x_cmd_ssh_x_setup(){
+    local ___X_CMD_SSH_OPTS=''
+    local ___X_CMD_SCP_OPTS=''
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                ___x_cmd help -m ssh --setup; return ;;
+            -p)  # SSH port, SCP needs uppercase -P
+                ___x_cmd cmdstr ___X_CMD_SSH_OPTS "$1" "$2"
+                ___x_cmd cmdstr ___X_CMD_SCP_OPTS "-P" "$2"
+                shift 2 ;;
+            -B|-b|-c|-E|-e|-F|-I|-i|-J|-l|-m|-O|-o|-Q|-S)
+                # Options accepted by both ssh and scp
+                ___x_cmd cmdstr ___X_CMD_SSH_OPTS "$1" "$2"
+                ___x_cmd cmdstr ___X_CMD_SCP_OPTS "$1" "$2"
+                shift 2 ;;
+            -D|-L|-R|-W|-w)
+                # SSH-only options (port forwarding), not applicable to scp
+                ___x_cmd cmdstr ___X_CMD_SSH_OPTS "$1" "$2"
+                shift 2 ;;
+            -*)
+                # Single-dash flags accepted by both
+                ___x_cmd cmdstr ___X_CMD_SSH_OPTS "$1"
+                ___x_cmd cmdstr ___X_CMD_SCP_OPTS "$1"
+                shift ;;
+            *)  break
+        esac
+    done
+
+    local target="$1"
+    [ -n "$target" ] || N=ssh M="Please provide the destination value" log:ret:1
+    ssh:info "Injecting x-cmd to $target"
+    local origin_codefile="$___X_CMD_ROOT_SHARED/version/archive/$___X_CMD_VERSION.tgz"
+    [ -f "$origin_codefile" ] || ___x_cmd version --pack || return $?
+
+    # Step 1: Create directory on remote host using SSH
+    eval "set -- $___X_CMD_SSH_OPTS"
+    command ssh "$@" -o "ControlMaster=auto" -o "ControlPath=~/.ssh/master-%r@%h:%p" "$target" \
+        "command mkdir -p \$HOME/.x-cmd.root/global/shared/version/archive" || return $?
+
+    # Step 2: Transfer file using SCP with proper option translation
+    # -C enables compression for faster transfer of large files
+    eval "set -- $___X_CMD_SCP_OPTS"
+    command scp "$@" -C -q -o "ControlMaster=auto" -o "ControlPath=~/.ssh/master-%r@%h:%p" \
+        "$origin_codefile" "$target:\$HOME/.x-cmd.root/global/shared/version/archive/$___X_CMD_VERSION.tgz" || return $?
+
+    # Step 3: Execute setup script using SSH
+    eval "set -- $___X_CMD_SSH_OPTS"
+    ssh:info "Executing x-cmd initialization"
+    local setup_script; setup_script="$( ___x_cmd_cmds_cat "$___X_CMD_ROOT_MOD/ssh/lib/data/setup.sh" )"
+    command ssh "$@" -o "ControlMaster=auto" -o "ControlPath=~/.ssh/master-%r@%h:%p" "$target" \
+        "${setup_script}; ___x_cmd_ssh_x_setup___main $___X_CMD_VERSION $___X_CMD_WEBSRC_REGION;"
+}
+
+
+# x ssh deploy-pkg <target-machine> <pkg1> <pkg2> <pkg3>
+# Just download the pkg
+___x_cmd_ssh_x_pkg(){
+    # download the pkg of the target platform
+    # scp the pkg package to the platform
+    local tmpsuffix; tmpsuffix=$(x date vlid).$$
+    command scp "$package" "$target":"~/.x-cmd.root.tmp.$tmpsuffix"
+    command ssh target x pkg install -f ".x-cmd.root.tmp.$tmpsuffix"
+}
+
+

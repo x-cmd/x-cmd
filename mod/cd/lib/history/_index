@@ -1,0 +1,114 @@
+# shellcheck shell=dash disable=SC2153,2120,2034
+
+xrc:mod:lib     cd      history/util        history/ls
+
+___x_cmd_cd_history(){
+    local X_help_cmd="x help -m cd --history"
+
+    [ "$#" -gt 0 ] ||       set -- ls
+
+    local op="$1";          shift
+    case "$op" in
+        ls)                 ___x_cmd_cd_history___ls --rev "$@" ;;
+
+        head|rm|clear|maxnum|trim|which|has|\
+            top|uniq|match|ps1)
+                            ___x_cmd_cd_history___"${op}" "$@"  ;;
+
+        --help|-h)          help:show:ret:0  ;;
+        *)                  help:show:ret:64 ;;
+    esac
+}
+
+# very less used
+___x_cmd_cd_history___clear(){
+    cd:warn "Clear up history"
+    [ ! -f "$___X_CMD_CD_DATA/history" ] || ___x_cmd rmrf "$___X_CMD_CD_DATA/history"
+    [ ! -f "$___X_CMD_CD_DATA/history.reverse" ] || ___x_cmd rmrf "$___X_CMD_CD_DATA/history.reverse"
+}
+
+___x_cmd_cd_history___which(){
+    printf "%s\n" "$___X_CMD_CD_DATA/history"
+}
+
+___x_cmd_cd_history___trim(){
+    cd:info "Trim history, remove invalid directory records"
+    local list_trim=""
+    local l=""
+    while read -r l; do
+        [ -d "$l" ] || {
+            cd:info "rm => $l"
+            continue
+        }
+        list_trim="${list_trim}${l}
+"
+        done <<A
+$( ___x_cmd_cd_history___ls )
+A
+    printf "%s\n" "$list_trim" > "$___X_CMD_CD_DATA/history"
+}
+
+___x_cmd_cd_history___rm(){
+    local list; list="$( ___x_cmd_cd_history___ls )"
+
+    if [ $# -le 0 ]; then
+        ___x_cmd_runmode_allow_chatty || N=cd M="Please provide the directory path" log:ret:1
+        local l=; while read -r l; do
+            [ -n "$l" ] || continue
+            set -- "$@" "$l"
+        done <<A
+$( printf "%s\n" "$list" | ___x_cmd_cd_util___reverse | ___x_cmd pick --limit no-limit )
+A
+        [ $# -gt 0 ] || {
+            cd:info "No directory path selected to delete"
+            return
+        }
+    fi
+
+    local l_tmp=; local r_tmp=; local x_
+    local nl="$___X_CMD_UNSEENCHAR_NEWLINE"
+    local list_new="${nl}${list}${nl}"
+    while [ "$#" -ne 0 ]; do
+        x_="$1"; shift
+
+        l_tmp="${list_new%%"${nl}${x_}${nl}"*}"
+        if [ "$l_tmp" = "$list_new" ]; then
+            cd:info "Not found in history -> $x_"
+        else
+            cd:info "Removed from history -> $x_"
+            r_tmp="${list_new#*"${nl}${x_}${nl}"}"
+            list_new="${l_tmp}${nl}${r_tmp}"
+        fi
+    done
+    list_new="${list_new#"$nl"}"
+    list_new="${list_new%"$nl"}"
+    if [ "$list_new" != "$list" ]; then
+        printf "%s\n" "$list_new" > "$___X_CMD_CD_DATA/history"
+    fi
+}
+
+___x_cmd_cd_history___has(){
+    [ "$#" -gt 0 ] || return 1
+    local list; list="$( ___x_cmd_cd_history___ls )"
+    [ -n "$list" ] || return 1
+
+    local x_=
+    local nl="$___X_CMD_UNSEENCHAR_NEWLINE"
+    list="${nl}${list}${nl}"
+    while [ "$#" -ne 0 ]; do
+        x_="$1"; shift
+        case "$x_" in
+            /*)     ;;
+            *)      [ ! -d "$x_" ] || ___x_cmd abspath_ "$x_" ;;
+        esac
+
+        if [ "${list%%"${nl}${x_}${nl}"*}" = "$list" ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+___x_cmd_cd_history___head(){
+    ___x_cmd_cd_history___ls --rev | ___x_cmd_cd_util___head "$1"
+}

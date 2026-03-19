@@ -1,0 +1,177 @@
+# shellcheck shell=bash disable=SC2034,2206
+___X_CMD_ADVISE_IFS_INIT="$___X_CMD_UNSEENCHAR_NEWLINE"
+___x_cmd_advise_completer() {
+    # Interesting ... Passing
+    ___x_cmd_advise_run ""
+}
+
+# TODO:
+___x_cmd_advise_update(){
+    local name="$1"
+    [ -n "$name" ] || N=advise M="Provide command name" log:ret:64
+    local x_=; ___x_cmd_advise___main which_ "$1"
+    if [ -f "$x_" ] && [ -z "$(find "$x_" -mtime -1)" ]; then
+        ___x_cmd rmrf "$x_"
+        ___x_cmd_advise_init "$name"
+    fi
+}
+
+___x_cmd_advise_init(){
+    local X_help_cmd; X_help_cmd='___x_cmd help -m advise init' help:arg-null:parse
+    local name="${1}";  [ -n "$name" ] || N=advise M="Provide command name" log:ret:64
+    local op="${2}"
+    local alias_value="${3}"
+    local filepath="$___X_CMD_ADVISE_TMPDIR/$name"
+
+    ___x_cmd mkdirp "$___X_CMD_ADVISE_TMPDIR"
+
+    if [ "-" = "$op" ]; then ___x_cmd_cmds_cat >"$filepath"
+    elif [ -f "$op" ]; then
+        { [ -f "$filepath" ] && [ "$filepath" -nt "$op" ] ; } || {
+            advise:debug "Copy $op to $filepath"
+            ___x_cmd_cmds_cp "$op" "$filepath"
+        }
+    else
+        local x_=; ___x_cmd_advise___main __get_mod_advise_jso_ "$name" || {
+            advise:debug "Not found [filepath=${op:-"$x_"}]"
+            advise:error "advise init not found advise jso file of '$name'"
+            return 64
+        }
+
+        { [ -f "$filepath" ] && [ "$filepath" -nt "$x_" ] ; } || {
+            advise:debug "Copy $x_ to $filepath"
+            ___x_cmd_cmds_cp "$x_" "$filepath"
+        }
+
+        [ "$___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST" != "${___X_CMD_ADVISE_NOT_SUITABLE_XRC_MOD_LIST#*"${___X_CMD_UNSEENCHAR_NEWLINE}${name}${___X_CMD_UNSEENCHAR_NEWLINE}"}" ] || \
+        xrc "$name"
+    fi
+
+    local comp_name="$name"
+    local comp_func="___x_cmd_advise_completer"
+    if [ -n "$alias_value" ]; then
+        comp_func="___x_cmd_advise_completer_alias_$name"
+        [ -z "$ZSH_VERSION" ] || comp_name="$alias_value"
+        eval "$comp_func(){
+            ___x_cmd_advise_run \"${alias_value}\"
+        }"
+    fi
+
+    ___x_cmd_advise_load_complete "$comp_func" "$comp_name"
+}
+
+___x_cmd_advise___is_completion_loaded(){
+    local cmd="$1"
+    if [ -n "$BASH_VERSION" ]; then
+        complete -p "$cmd" >/dev/null 2>&1
+    elif [ -n "$ZSH_VERSION" ]; then
+        [ -n "$_comps" ] && [ -n "${_comps[$cmd]}" ]
+    else
+        advise:error "Current checks for command completion loading are only available in 'bash' and 'zsh'"
+        return 1
+    fi
+}
+
+___x_cmd_advise___get_completion_function_(){
+    local cmd="$1"
+    [ -n "$cmd" ] || return 1
+    x_=""
+    if [ -n "$BASH_VERSION" ]; then
+        local tmpstr
+        tmpstr="$( complete -p "$cmd" 2>/dev/null )" || return 1
+        tmpstr="${tmpstr#*" -F "}"
+        x_="${tmpstr%% *}"
+    elif [ -n "$ZSH_VERSION" ]; then
+        [ -n "$_comps" ] && x_="${_comps[$cmd]}"
+    else
+        return 1
+    fi
+    [ -n "$x_" ]
+}
+
+___x_cmd_advise___get_completion_function(){
+    local x_=""; ___x_cmd_advise___get_completion_function_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_advise_load_complete(){
+    [ -z "$___X_CMD_ADVISE_PREPARE_FAILED" ] || return $?
+    local comp_func="$1"; shift
+    advise:debug --comp_func "$comp_func" --comp_name "$*" "load complete"
+    if [ -n "$ZSH_VERSION" ]; then                      compdef "$comp_func" "$@"
+    elif [[ "$BASH_VERSION" =~ (^3.*|^4.[0-3]) ]]; then complete -o nospace -F "$comp_func" "$@"
+    else                                                complete -o nospace -o nosort -F "$comp_func" "$@"
+    fi
+}
+
+___x_cmd_advise_get_result_from_awk(){
+    [ -n "$1" ] || N=advise M="Please provide non-empty value" log:ret:64
+    local IFS="$___X_CMD_UNSEENCHAR_002"
+    local s="${COMP_WORDS[*]}"
+    s="${s#*"$IFS"}"
+
+    # Handle the case that the last word has "@" or ":" in bash.
+    COMP_LINE="${COMP_WORDS[*]}"
+    local cur_1="${COMP_WORDS[COMP_CWORD-1]}"
+    case "$cur_1" in
+        *@|*:)
+            if [ "${COMP_LINE% }" != "${COMP_LINE}" ]; then
+                s="${s%"$cur_1""$IFS""$cur"}"
+                s="${s}${cur_1}$cur"
+            fi
+            ;;
+    esac
+    ___x_cmd_advise___main __get_result_from_awk_ "$1" "$s"
+}
+
+if [ -n "$BASH_VERSION" ]; then
+___x_cmd_advise___ltrim_bash_completions(){
+    local cur="$1"; shift
+    local prefix_word; local i; while [ "$#" -ge 1 ]; do
+        i=${#COMPREPLY[*]}
+        ((i == 0)) && return 0
+        if [[ $cur == *$1* && $COMP_WORDBREAKS == *$1* ]]; then
+            prefix_word=${cur%"${cur##*"$1"}"}
+            COMPREPLY=("${COMPREPLY[@]}")
+            while ((i-- > 0)); do
+                COMPREPLY[i]=${COMPREPLY[i]#"$prefix_word"}
+            done
+        fi
+        shift
+    done
+}
+
+# TODO: has bugs
+___x_cmd_advise___ltrim_bash_comp_words(){
+    local IFS=' '
+    [ "$COMP_LINE" != "${COMP_WORDS[*]}" ] || return $?
+    IFS="$___X_CMD_UNSEENCHAR_002"
+    local nline="${COMP_WORDS[*]}"
+    ((${#COMP_WORDS[*]} == 0)) && return 0
+    local prefix_word; local suffix_word;
+    while [ "$#" -ge 1 ]; do
+        if [[ $COMP_WORDBREAKS == *$1* && $nline == *$1* ]]; then
+            prefix_word="${nline%%"${___X_CMD_UNSEENCHAR_002}${1}"*}"
+            suffix_word="${nline#*"${1}${___X_CMD_UNSEENCHAR_002}"}"
+            [ "$suffix_word" != "$nline" ] || suffix_word=
+            nline="${prefix_word}${1}${suffix_word}"
+        fi
+        shift
+    done
+    COMP_WORDS=( $nline )
+    [ "$nline" == "${nline%"$___X_CMD_UNSEENCHAR_002"}" ] || COMP_WORDS+=("")
+    COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))
+}
+
+# Changed the global COMP_WORDBREAKS
+___x_cmd_advise___ltrim_bash_comp_wordbreaks(){
+    local prefix_word; while [ "$#" -ge 1 ]; do
+        if [[ $COMP_WORDBREAKS == *$1* ]]; then
+            prefix_word="${COMP_WORDBREAKS%%"$1"*}"
+            COMP_WORDBREAKS="${prefix_word}${COMP_WORDBREAKS#*"$1"}"
+        fi
+        shift
+    done
+}
+
+fi

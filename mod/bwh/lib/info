@@ -1,0 +1,141 @@
+# shellcheck    shell=dash disable=SC2154,SC2034
+___x_cmd_bwh_info(){
+    [ "$#" -gt 0 ] ||   set --  brief
+
+    local op="$1"; shift
+
+    case "$op" in
+        live)                       ___X_CMD_BWH_API_CACHE="" ___x_cmd_bwh_info___live "$@" ;;
+        brief)                      ___x_cmd_bwh_info___"$op" ;;
+        *)
+            local ___X_CMD_BWH_API_CACHE=${___X_CMD_BWH_API_CACHE:-10s}
+            case "$op" in
+                get)                        ___x_cmd_bwh_info___runapi "$op" "$1" getServiceInfo         ;;
+                availableos)                ___x_cmd_bwh_info_availableos ;;
+                auditlog)                   ___x_cmd_bwh_info___runapi "$op" "$1" getAuditLog            ;;
+                ratelimit)                  ___x_cmd_bwh_info___runapi "$op" "$1" getRateLimitStatus     ;;
+                rawusagestats)              ___x_cmd_bwh_info___runapi "$op" "$1" getRawUsageStats       ;;
+                suspensiondetails)          ___x_cmd_bwh_info___runapi "$op" "$1" getSuspensionDetails   ;;
+
+                -h|--help)                  ___x_cmd_bwh_help info ;;
+                *)                          N=bwh M="Unknown subcmd ==> $op" log:ret:64
+            esac
+        ;;
+    esac
+}
+
+___x_cmd_bwh_info___live(){
+    ___x_cmd_bwh_info___runapi "$op" "$1" getLiveServiceInfo
+}
+
+___x_cmd_bwh_info___runapi_(){
+    case "$2" in
+        --help|-h)
+            ___x_cmd_bwh_help info "$1";
+            return ;;
+    esac
+    local error=;
+    ccmd:init
+    ___x_cmd_bwh_api "$3" | {
+        tee /dev/stdout /dev/stderr | {
+            ___x_cmd jo env . .error
+            if [ "$error" != 0 ]; then
+                ccmd:invalidate
+                return 1
+            fi
+        }
+    } 2>/dev/stdout
+}
+
+___x_cmd_bwh_info___runapi(){
+    if ! ___x_cmd_bwh_is_not_interactive_env; then
+        ___x_cmd_bwh_info___runapi_ "$@" | ___x_cmd bat -l json
+    else
+        ___x_cmd_bwh_info___runapi_ "$@"
+    fi
+
+}
+
+___x_cmd_bwh_info___brief(){
+    {
+        ___X_CMD_BWH_API_CACHE=${___X_CMD_BWH_API_CACHE:-120s} ___x_cmd_bwh_info___live
+    } | {
+        local message=; local error=; local data_counter=; local plan_monthly_data=; local data_next_reset=
+        local ssh_port=; local ve_used_disk_space_b=; local ve_disk_quota_gb=; local load_average=;
+        local swap_total_kb=; local swap_available_kb=; local ip=;  local live_hostname=
+        ___x_cmd jo env . \
+            .error  .message \
+            .data_counter   .plan_monthly_data      .data_next_reset        \
+            .ssh_port       .ve_used_disk_space_b   .ve_disk_quota_gb       \
+            .load_average   .swap_total_kb          .swap_available_kb      \
+            ip=.ip_addresses.1  \
+            .live_hostname
+
+        case "$error" in
+            ""|0)
+                ;;
+            *)
+                bwh:error --error "$error" --msg "$message" "Fail."
+                return 1
+        esac
+
+        [ -n "$data_counter" ] || return 1
+
+        printf "ip:      \t%s\n"                "$ip"
+        printf "hostname:\t%s\n"                "$live_hostname"
+        printf "load:     \t%5s\n"              "$load_average"
+
+        local swap_percent=0
+        if [ -n "$swap_total_kb" ] && [ "$swap_total_kb" -gt 0 ]; then
+            swap_percent="$(( swap_available_kb * 100 / swap_total_kb ))"
+        fi
+
+        printf "swap(MB):\t%-5s =\t%s / %s\n"       \
+            "${swap_percent} %"                     \
+            "$((swap_available_kb/1024))" "$((swap_total_kb / 1024))"
+
+        local ve_disk_percent=0
+        if [ -n "$ve_disk_quota_gb" ] && [ "$ve_disk_quota_gb" -gt 0 ]; then
+            ve_disk_percent="$(( ve_used_disk_space_b * 100 / ve_disk_quota_gb / 1024 / 1024 / 1024))"
+        fi
+
+        printf "disk(MB):\t%-5s =\t%s / %s\n"       \
+            "${ve_disk_percent} %"                  \
+            "$((ve_used_disk_space_b/1024/1024))" "$((ve_disk_quota_gb * 1024))"
+
+        local bandwidth_percent=0
+        if [ -n "$plan_monthly_data" ] && [ "$plan_monthly_data" -gt 0 ]; then
+            bandwidth_percent="$(( data_counter * 100 / plan_monthly_data ))"
+        fi
+
+        printf "bandwidth(GB):\t%-5s = %s / %s\n"   \
+            "${bandwidth_percent} %"                \
+            "$((data_counter / 1024 / 1024 / 1024))" "$((plan_monthly_data / 1024 / 1024 / 1024))"
+        printf "next-reset:\t%s\n" "$(___x_cmd date ts "$data_next_reset")"
+    }
+}
+
+___x_cmd_bwh_info_availableos(){
+    ! ___x_cmd_bwh_is_not_interactive_env || {
+        ___X_CMD_BWH_API_CACHE=${___X_CMD_BWH_API_CACHE:-24h} ___x_cmd_bwh_info___runapi availableos "" getAvailableOS
+        return
+    }
+    local error=; local message=; local installed=; local templates=
+    ___X_CMD_BWH_API_CACHE=${___X_CMD_BWH_API_CACHE:-""}       \
+    ___x_cmd_bwh_info___runapi availableos "" getAvailableOS | {
+        ___x_cmd jo env . .error .message .installed   .templates
+        case "$error" in
+            ""|0)       ;;
+            *)
+                bwh:error --error "$error" --msg "$message" "Fail."
+                return 1
+        esac
+        printf "%s:\t%s\n" installed "$installed"
+
+        # TODO: using x pick for this ...
+        printf "%s\n" "$templates" | ___x_cmd jo list2line | ___x_cmd pick --col 6 --width -
+    }
+}
+
+
+

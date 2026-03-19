@@ -1,0 +1,102 @@
+# shellcheck shell=dash disable=2034,3028
+
+# ___X_CMD_CHAT_SESSION_DIR="$___X_CMD_ROOT_DATA/chat/session"
+
+xrc:mod:lib     gemini      chat/exec
+___x_cmd_gemini_chat(){
+    local X_help_cmd='___x_cmd help -m gemini chat'; help:arg-null:parse
+    local op="$1";
+    case "$op" in
+        request|preparehistory|exec) #  preparehistory ？？
+            shift; ___x_cmd_gemini_chat_"$op"   "$@"   ;;
+        *)  N=gemini M="Not support such [subcmd=$op]" log:ret:64
+    esac
+}
+
+# inner
+
+# ___x_cmd gemini chat --request --timeline X --history 3 --question "" --example ""
+___x_cmd_gemini_chat_request(){
+    local X_help_cmd='___x_cmd help -m gemini chat request'; help:arg:parse
+    ___x_cmd chat --exec --provider gemini "$@"
+}
+
+___x_cmd_gemini_chat_request___launch(){
+    local session_dir
+    local chatid
+    ___x_cmd_readr session_dir
+    ___x_cmd_readr chatid
+
+    local content_dir="$session_dir/$chatid"
+    { [ -d "$session_dir" ] && [ -n "$chatid" ]; } || return 1
+    [ -d "$content_dir" ] || return 1
+    # generate a file for running
+    ___x_cmd_gemini_chat_request___trapexit(){
+        gemini:debug "Remove chat.running file"
+        ___x_cmd rmrf "$content_dir/chat.running"
+    }
+
+    printf "%s\n" $$ >"$content_dir/chat.running"
+    trap '___x_cmd_gemini_chat_request___trapexit' EXIT
+
+    {
+        local model=""; local is_stream=""; local is_reasoning=""
+        ___x_cmd_readr model
+        ___x_cmd_readr is_stream
+        ___x_cmd_readr is_reasoning
+        local request_body_file="$content_dir/gemini.request.body.yml"
+        [ -f "$request_body_file" ] || return $?
+
+        local _exitcode=0
+        if [ -z "$count_token" ]; then
+            ___x_cmd retry --max 3 --interval 3 ___x_cmd_gemini_chat_request___try
+        else
+            ___x_cmd retry --max 3 --interval 3 ___x_cmd_gemini_count_request___try
+        fi
+        _exitcode="$?"
+        printf "[MODEL-RECV-AT] %s\n" "${EPOCHREALTIME:-"$(date +%s)"}" >> "$XCMD_CHAT_ENACTALL_DRAWFILE"
+        printf "[EXITCODE] %s\n" "$_exitcode" >> "$XCMD_CHAT_ENACTALL_DRAWFILE"
+        [ "$_exitcode" = 0 ] || printf "[BREAK] %s\n" "$_exitcode" >> "$XCMD_CHAT_ENACTALL_LOGFILE"
+
+        ___x_cmd_gemini_chat_request___trapexit
+        [ "$_exitcode" -eq 0 ] || false
+    } || {
+        ___x_cmd_gemini_chat_request___trapexit
+        return 1
+    }
+}
+
+___x_cmd_gemini_chat_request___try(){
+    gemini:debug "Sending request to gemini server"
+    ___x_cmd_chat___exec__confirm_before_request || return $?
+
+    local _md5; _md5="$(< "$request_body_file" ___x_cmd str md5 )"
+    local exitcode=0
+    [ ! -d "$content_dir/chat.response" ] || ___x_cmd rmrf "$content_dir/chat.response"
+    {
+        < "$request_body_file" \
+        ____X_CMD_CCMD_ERROR_LOG=0 \
+        ___x_cmd ccmd "$cache_time" -- \
+            ___x_cmd_gemini_request_generaxwtecontent "$model" "$is_stream" "$_md5" \
+        | ___x_cmd cawk -i -E session_dir,chatid,is_stream,is_reasoning,is_debug,XCMD_CHAT_ENACTALL_LOGFILE,XCMD_CHAT_ENACTALL_DRAWFILE,___X_CMD_PRICE_DATA_DIR   \
+            -m j/json,j/jiter,j/jcp,re,u/unicode                \
+            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/history.awk"    \
+            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/util.awk"       \
+            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/minion.awk"     \
+            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/creq.awk"       \
+            -f "$___X_CMD_ROOT_MOD/chat/lib/awk/cres.awk"       \
+            -f "$___X_CMD_ROOT_MOD/price/lib/awk/llmp.awk"      \
+            -f "$___X_CMD_ROOT_MOD/gemini/lib/awk/gemini.awk"   \
+            -f "$___X_CMD_ROOT_MOD/gemini/lib/awk/gemini_stream_output_util.awk" \
+            -f "$___X_CMD_ROOT_MOD/gemini/lib/awk/handle_response.awk"
+    }
+    exitcode=$?
+    case $exitcode in
+        0)  return 0 ;;
+        2)  ___X_CMD_RETRY_ABORT=1; exitcode=1 ;;
+    esac
+
+    ___x_cmd ccmd - ___x_cmd_gemini_request_generaxwtecontent "$model" "$is_stream" "$_md5"
+    ___x_cmd rmrf "$content_dir/chat.response" "$content_dir/gemini.response.yml"
+    return "$exitcode"
+}

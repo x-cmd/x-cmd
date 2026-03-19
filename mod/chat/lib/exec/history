@@ -1,0 +1,125 @@
+# shellcheck shell=dash disable=2016
+
+___x_cmd_chat___exec_repl_history(){
+    local op="$1"
+    case "$op" in
+        add|ls|get|clear|init|app)
+            shift; ___x_cmd_chat___exec_repl_history_"$op" "$@" ;;
+        *) ;;
+    esac
+}
+
+___x_cmd_chat___exec_repl_history_app(){
+    local cmd
+    ___x_cmd ui select ,cmd "Next"          \
+        "Initialize repl history record"    \
+        "Clear all repl history record"     \
+        "Continue the loop"    || return $?
+
+    case "$cmd" in
+        Init*)  ___x_cmd_chat___exec_repl_history_init  ;;
+        Clear*) ___x_cmd_chat___exec_repl_history_clear ;;
+        *)      return ;;
+    esac
+}
+
+___x_cmd_chat___exec_repl_history_clear(){
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+    [ -f "$fp" ] || ___x_cmd ensurefp "$fp"
+    printf "\n" > "$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+}
+
+___x_cmd_chat___exec_repl_history_add(){
+    local text="$1"
+    [ -n "$text" ] || return $?
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+    [ -f "$fp" ] || ___x_cmd_chat___exec_repl_history_init || return $?
+    {
+        [ ! -f "$fp" ] || ___x_cmd_cmds cat "$fp"
+    } | text="$text" ___x_cmd_cmds awk -v RS='\001\002\003' '
+BEGIN{
+    text = ENVIRON["text"]
+    gsub( "(\\\\|[ \t\b\v\n])*$", "", text )
+    print RS " " text
+    text = " " text "\n"
+}
+(NR >= 5000){ exit(0); }
+(($0 != "" ) && ($0 != text)){ printf("%s%s", RS, $0); }
+' > "${fp}.tmp" || return $?
+    ___x_cmd_cmds mv -f "${fp}.tmp" "$fp"
+}
+
+___x_cmd_chat___exec_repl_history_init(){
+    local dir="$___X_CMD_CHAT_SESSION_DIR"
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+
+    if [ ! -d "$dir" ]; then
+        ___x_cmd_chat___exec_repl_history_clear
+    else
+        local l=""
+        local fplist; fplist="$(
+            ___x_cmd find --cmd "$dir" -type f -path '*/chat.request/question' 2>/dev/null | while ___x_cmd_readr l; do
+                [ "$l" = "${l#"$dir/X/"}" ]     || continue
+                [ "$l" = "${l#"$dir/tmp/"}" ]   || continue
+                d="${l%"/chat.request/question"}"
+                printf "%s %s\n" "${d##*/}" "$l"
+            done | ___x_cmd_cmds sort -r
+        )"
+        [ -n "$fplist" ] || return 0
+
+        local fptmp="${fp}.tmp"
+        ___x_cmd ensurefp "$fptmp"
+        while read -r l; do
+            l="${l#* }"
+            [ -f "$l" ] || continue
+            printf "\001\002\003 "
+            ___x_cmd_cmds cat "$l"
+        done > "$fptmp" <<A
+${fplist}
+A
+        < "$fptmp" ___x_cmd_cmds awk -v RS='\001\002\003' '
+!_[$0]{ _[$0]=1; printf("%s%s", RS, $0); }
+' > "$fp"
+        ___x_cmd rmrf "$fptmp"
+    fi
+}
+
+___x_cmd_chat___exec_repl_history_ls(){
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+    [ -f "$fp" ] || ___x_cmd_chat___exec_repl_history_init || return $?
+    {
+        ___x_cmd_chat___exec_repl_shortcut___ls "\001\002\003 "
+        ___x_cmd_cmds cat "$fp"
+    } | ___x_cmd_cmds awk '
+        ($1 == "\001\002\003"){
+            $1 = ""
+            if (!_[$0] ) {
+                _[$0] = 1
+                printf("\033[90m%04s\033[0m%s\n", ++id, $0)
+            }
+        }
+    '
+}
+
+___x_cmd_chat___exec_repl_history_get(){
+    local id="$1"
+    [ -n "$id" ] || return $?
+    local fp="$___X_CMD_CHAT_SESSION_DIR/.history.repl"
+    [ -f "$fp" ] || return $?
+
+    {
+        ___x_cmd_chat___exec_repl_shortcut___ls "\001\002\003 "
+        ___x_cmd_cmds cat "$fp"
+    } | ___x_cmd_cmds awk -v id="$id" '
+    ( $1 == "\001\002\003" ){
+        if (++num == id) {
+            $1 = ""
+            print substr( $0, 2 )
+            while (getline) {
+                if ($1 == "\001\002\003") exit
+                else print $0
+            }
+        }
+    }
+    '
+}

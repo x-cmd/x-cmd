@@ -1,0 +1,100 @@
+
+
+___x_cmd_termux_pd_mirror(){
+    local ___X_CMD_TERMUX_PD_MIRROR_SOURCES=
+    ___x_cmd_termux_pd_mirror___ensure || return $?
+
+    [ "$#" -gt 0 ] ||  set -- --help
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m termux pd mirror   "$@" ;;
+
+        ls|set|unset)
+                        ___x_cmd_termux_pd_mirror_"$op"     "$@" ;;
+        use)            ___x_cmd_termux_pd_mirror_set       "$@" ;;
+        unuse)          ___x_cmd_termux_pd_mirror_unset     "$@" ;;
+        *)              N=termux M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_termux_pd_mirror___ensure(){
+    ___X_CMD_TERMUX_PD_MIRROR_SOURCES='/data/data/com.termux/files/usr/etc/proot-distro'
+    [ -d "$___X_CMD_TERMUX_PD_MIRROR_SOURCES" ] || N=termux M="proot-distro folder not found. Please reinstall using 'x termux pd prep'" log:ret:1
+}
+
+___x_cmd_termux_pd_mirror_ls(){
+    printf "%s\n" \
+        "Code          Url                                                      Name"             \
+        "official      https://github.com/termux/proot-distro                   官方镜像"           \
+        "cb            https://codeberg.org/x-cmd-sourcecode/proot-distro       Codeberg 镜像"
+
+        # "tuna          https://mirrors.tuna.tsinghua.edu.cn         清华大学镜像"            \
+        # "bfsu          https://mirrors.bfsu.edu.cn                  北京外国语大学镜像"       \
+}
+
+___x_cmd_termux_pd_mirror_advise_ls(){
+    ___x_cmd_termux_pd_mirror_ls | ___x_cmd_cmds_awk 'NR >1 { print $1 }'
+}
+
+___x_cmd_termux_pd_mirror___url(){
+    ___x_cmd_termux_pd_mirror_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+# ___x_cmd_termux_pd_mirror_isset(){
+#     ___x_cmd_cmds grep TERMUX_PROOT_DISTR_URL https://github.com/termux/proot-distro 1>/dev/null 2>/dev/null
+# }
+
+___x_cmd_termux_pd_mirror___util_save(){
+        local dst_path="${1}"
+        local app_name="${2}"
+        local rollback_file="$___X_CMD_ROOT_DATA/mirror/${app_name}.bak"
+        ! [ -f "$rollback_file" ] || return 0
+        ___x_cmd ensurefp "$rollback_file"
+        ___x_cmd_cmds_cp "$dst_path" "$rollback_file" || return 1
+}
+
+___x_cmd_termux_pd_mirror___util_rollback_original () {
+        local dst_path="${1}"
+        local app_name="${2}"
+        local rollback_file="$___X_CMD_ROOT_DATA/mirror/${app_name}.bak"
+        [ -f "$rollback_file" ] || N=mirror M="Not found rollback file." log:ret:1
+        ___x_cmd_cmds_cp "$rollback_file" "$dst_path" || return 1
+}
+
+___x_cmd_termux_pd_mirror_set(){(
+    [ "$#" -gt 0 ] ||   set -- official
+    case "$1" in
+        -h|--help) ___x_cmd help -m termux pd mirror set "$@";    return ;;
+    esac
+
+    local url
+    url="$(___x_cmd_termux_pd_mirror___url "${1}")" || return $?
+    if [ -z "$url" ]; then
+        termux:error "Invalid mirror name: $1"
+        return 1
+    fi
+    termux:info "Setting termux proot-distro mirror $url"
+
+    # In the future, we provide a mirror size
+    local metafile
+    while read -r metafile; do
+        ___x_cmd_termux_pd_mirror___util_save "$___X_CMD_TERMUX_PD_MIRROR_SOURCES/$metafile" "termux.proot-distro.$metafile" || N=termux M="Save proot-distro original sources list failed." log:ret:1
+        ___x_cmd_cmds sed -E -i "s|https://[^ ]*/releases/|$url/releases/|g" "$___X_CMD_TERMUX_PD_MIRROR_SOURCES/$metafile"
+    done <<A
+$(___x_cmd fsiter "$___X_CMD_TERMUX_PD_MIRROR_SOURCES")
+A
+
+)}
+
+___x_cmd_termux_pd_mirror_unset(){
+    # In the future, we provide a mirror size
+    local metafile
+    while read -r metafile; do
+        ___x_cmd_termux_pd_mirror___util_rollback_original "$___X_CMD_TERMUX_PD_MIRROR_SOURCES/$metafile" "termux.proot-distro.$metafile" || return $?
+        ___x_cmd rmrf "$___X_CMD_ROOT_DATA/mirror/termux.proot-distro.$metafile"
+    done <<A
+$(___x_cmd fsiter "$___X_CMD_TERMUX_PD_MIRROR_SOURCES")
+A
+}

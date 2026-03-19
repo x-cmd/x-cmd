@@ -1,0 +1,56 @@
+# shellcheck shell=dash
+
+___x_cmd_ollama_chat(){
+    local X_help_cmd='x help -m ollama chat'; help:arg-null:parse
+    local op="$1";
+    case "$op" in
+        request|exec)
+            shift; ___x_cmd_ollama_chat_"$op" "$@" ;;
+        --model-has-pull)
+            shift; ___x_cmd_ollama_chat_model_has_pull "$@" ;;
+        *)  N=ollama M="Not support such option '$op'" log:ret:64
+    esac
+}
+
+___x_cmd_ollama_chat_request(){
+    local X_help_cmd='x help -m ollama chat request'; help:arg:parse
+
+    ___x_cmd_ollama_is_installed || return $?
+    ___x_cmd chat --exec --provider ollama "$@"
+}
+
+___x_cmd_ollama_chat_model_has_pull(){
+    local model="$1"
+    [ -n "$model" ] || N=ollama M="Please provide a model name"   log:ret:64;
+    [ "$model" != "${model%:*}" ] || model="${model}:latest"
+
+    local l
+    while read -r l; do
+        [ "$l" = "${l%%"${model}"*}" ] || return 0
+    done <<A
+$(___x_cmd_ollama___bin ls)
+A
+    return 1
+}
+
+___x_cmd_ollama_chat_exec(){
+    local cur_endpoint=""
+    ___x_cmd_ollama_cur cur_endpoint:=endpoint   2>/dev/null
+
+    if [ -z "$cur_endpoint" ]; then
+        local model="${model}";
+        [ -n "$model" ] || {
+            local x_=; ___x_cmd_ollama_def_ model
+            model="$x_"
+        }
+        ___x_cmd_ollama_chat_model_has_pull "$model" || {
+            ollama:error "Not found [model ==> $model], try pulling it first -> 'x ollama pull $model'"
+            return 1
+        }
+    fi
+
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER='ollama'   \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_PROVIDER_NAME='ollama'  \
+    ___X_CMD_OPENAI_CHAT_ACTUAL_REQUEST_URL="${cur_endpoint}/api/chat" \
+    ___x_cmd openai chat exec "$@"
+}

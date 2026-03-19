@@ -1,0 +1,69 @@
+# shellcheck shell=dash
+
+___x_cmd_docker_daemon_proxy(){
+    [ "$#" -gt 0 ] || set - --help
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)              ___x_cmd help -m docker daemon proxy;  return  ;;
+        set|unset|info)         ___x_cmd_docker_daemon_proxy_"$op"      "$@"   ;;
+    esac
+}
+
+___x_cmd_docker_daemon_proxy_info(){
+    ___x_cmd_docker_daemon_check     || return 1
+    [ -f "/etc/docker/daemon.json" ] || return 0
+    ___x_cmd jq '.proxies' /etc/docker/daemon.json
+}
+
+___x_cmd_docker_daemon_proxy_set(){
+    ___x_cmd_docker_daemon_check || return 1
+
+    case "$1" in
+        -h|--help)  ___x_cmd help -m docker daemon proxy set; return ;;
+        "")         N=docker M="Please provide a proxy"   log:ret:64 ;;
+        http*://*)  proxy="$1" ;;
+        *)          proxy="http://${1}" ;;
+    esac
+
+    local daemon_json=""
+    local daemon_file="/etc/docker/daemon.json"
+
+    daemon_json="$(
+        if [ -f "$daemon_file" ]; then
+            ___x_cmd_cmds cat "$daemon_file"
+        else
+            printf "%s\n" "{}"
+        fi | ___x_cmd jq '. + { "proxies": { "http-proxy": "'"${proxy}"'", "https-proxy": "'"${proxy}"'" } }'
+    )" # Using variable passing to the jq expression
+
+    docker:info "using sudo update [file=$daemon_file]"
+    ___x_cmd sudo tee "$daemon_file" >/dev/null <<A
+$daemon_json
+A
+
+    docker:info --cmd "x docker daemon restart" "Restart the Docker and the daemon for the new configuration to be loaded."
+}
+
+___x_cmd_docker_daemon_proxy_unset(){
+    case "$1" in
+        -h|--help)  ___x_cmd help -m docker daemon proxy unset; return ;;
+    esac
+
+    local daemon_file="/etc/docker/daemon.json"
+    ___x_cmd_docker_daemon_check || return 1
+    [ -f "$daemon_file" ]        || return 0
+
+    local proxy
+    proxy="$(___x_cmd jq -r '.proxies."http-proxy"' "$daemon_file")"
+    [ -n "$proxy" ] || {
+        docker:warn "Proxy not set in daemon file"
+        return 0
+    }
+
+    docker:info "using sudo update [file=$daemon_file]"
+    ___x_cmd jq '. + { "proxies": { "http-proxy": "", "https-proxy": "" } }' "$daemon_file" \
+        | ___x_cmd sudo tee "$daemon_file" >/dev/null
+
+    docker:info --cmd "x docker daemon restart" "Restart the Docker and the daemon for the new configuration to be loaded."
+}

@@ -1,0 +1,160 @@
+# shellcheck shell=dash
+
+___x_cmd_gl_user_gpg(){
+    param:scope     ___x_cmd_gl
+    param:subcmd ___x_cmd_gl_user_gpg                \
+        ls          "List GPG keys for user"         \
+        create      "Create a GPG key for user"      \
+        info        "Output a GPG key information"   \
+        rm          "Remove a GPG key for user"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_user_gpg _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.gitlab.com/ee/api/users.html#list-all-gpg-keys
+___x_cmd_gl_user_gpg_ls(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --user          "specified user_path or .id=<user_id>. default current user"    <>=""
+    --page          "page"                                                          <>:NatureNumber="1"
+    --per_page      "per_page"                                                      <>:NatureNumber="30"
+    --json|-j       "output origin json data"
+'
+    param:run
+    local _url="/user/gpg_keys"
+    [ -z "$user" ] || {
+        local _avt_name="$user"; ___x_cmd_gl____transform_avt_name || return
+        _url="/users/${_avt_name}/gpg_keys"
+    }
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_curl get "$_url"
+    else
+        ___x_cmd_gl_curl get "$_url" | \
+            x jo 2c              .id  .created_at .key  | \
+            x csv header --add    ID   CREATED_AT  KEY  | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Info
+# https://docs.gitlab.com/ee/api/users.html#get-a-specific-gpg-key
+___x_cmd_gl_user_gpg_info(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "GPG key id"                                                    <>
+    --user          "specified user_path or .id=<user_id>. default current user"    <>=""
+    --json|-j       "output origin json data"
+'
+    param:run
+    local _url="/user/gpg_keys/$1"
+    [ -z "$user" ] || {
+        local _avt_name="$user"; ___x_cmd_gl____transform_avt_name || return
+        _url="/users/${_avt_name}/gpg_keys/$1"
+    }
+
+    ___x_cmd_gl_curl get "$_url" | ___x_cmd_gl_user_gpg____ui_handler Getting
+}
+# EndSection
+
+# Section: Create
+# https://docs.gitlab.com/ee/api/users.html#add-a-gpg-key
+___x_cmd_gl_user_gpg_create(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "A GPG key. stdin(-)"                                           <>
+    --user          "specified user_path or .id=<user_id>. default current user"    <>=""
+    --json|-j       "output origin json data"
+'
+    param:run
+    local key="$1"
+    [ "$key" != '-' ] || key="$(___x_cmd_cmds_cat)"
+
+    local gen_gl_json=""
+    gen_gl_json="$(param:option2json -json +key)"
+    gl:debug "$gen_gl_json"
+
+    local _url="/user/gpg_keys"
+    [ -z "$user" ] || {
+        local _avt_name="$user"; ___x_cmd_gl____transform_avt_name || return
+        _url="/users/${_avt_name}/gpg_keys"
+    }
+    ___x_cmd_gl_curl post "$_url" "gen_gl_json" | ___x_cmd_gl_user_gpg____ui_handler Creating
+}
+# EndSection
+
+# Section: Remove
+# https://docs.gitlab.com/ee/api/users.html#delete-a-gpg-key
+# shellcheck disable=SC2154
+___x_cmd_gl_user_gpg_rm(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "GPG key ID"                                                        <>
+    --user          "specified user_path or .id=<user_id>. default current user"        <>=""
+    --yes|-y        "Ignore remove prompt interception"
+    --json|-j       "output origin json data"
+'
+    param:run
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to remove the $(___x_cmd_ui bold red "GPG key $1") ?" || return
+
+    local _url="/user/keys/$1"
+    [ -z "$user" ] || {
+        local _avt_name="$user"; ___x_cmd_gl____transform_avt_name || return
+        _url="/users/${_avt_name}/keys/$1"
+    }
+    ___x_cmd_gl_curl del "$_url" | (
+        x jo env . gl_resp_err=.error gl_resp_msg=.message
+        if ___x_cmd_gl_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Delete GPG key $1"
+        else
+            ___x_cmd_ui_tf false " [Fail] Delete GPG key $1 failure:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: GPG UI
+___x_cmd_gl_user_gpg____ui_handler(){
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        ___x_cmd_cmds_cat
+        ___x_cmd_gl_http_error
+        return
+    fi
+    (
+        local _id=""
+        case "$1" in
+            Getting)
+                _inf_msg="$1 GPG key information successfully"
+                _err_msg="$1 GPG key information failure"
+                x jo env . _id=.id gl_resp_err=.error gl_resp_msg=.message \
+                    created_at=.created_at   key=.key
+                ;;
+            Creating)
+                _inf_msg="$1 GPG key successfully"
+                _err_msg="$1 GPG key failure"
+                x jo env . _id=.1.id gl_resp_err=.error gl_resp_msg=.message \
+                    created_at=.1.created_at   key=.1.key
+                ;;
+        esac
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" "ID: $_id" ${created_at:+"Created_At: $created_at"} ${key:+"Key: |"}
+            x str ml wrap "$(printf "%s\n" "$key")" '      '
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

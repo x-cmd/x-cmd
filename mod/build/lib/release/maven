@@ -1,0 +1,200 @@
+
+___x_cmd_build_release_maven(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/maven.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release maven "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_maven_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_maven_build "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_maven_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_maven_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    ___x_cmd_cmds install -d -m 755 "$dir/src/main/java/com/example"
+    ___x_cmd_cmds install -d -m 755 "$dir/src/test/java/com/example"
+    ___x_cmd_build_release_maven_init___write_pom_xml "$dir"
+    ___x_cmd_build_release_maven_init___write_app_java "$dir"
+    build:info "Created $dir with Maven project template"
+}
+
+___x_cmd_build_release_maven_init___write_pom_xml(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/pom.xml" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>package-name</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
+
+    <name>Package Name</name>
+    <description>Package description</description>
+    <url>https://github.com/username/package</url>
+
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.0</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+EOF
+}
+
+___x_cmd_build_release_maven_init___write_app_java(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/src/main/java/com/example/App.java" << 'EOF'
+package com.example;
+
+public class App {
+    public static void main(String[] args) {
+        System.out.println("Hello, World!");
+    }
+
+    public String getGreeting() {
+        return "Hello, Maven!";
+    }
+}
+EOF
+}
+
+___x_cmd_build_release_maven_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/pom.xml" ]; then
+        build:error "pom.xml not found in $dir"
+        return 1
+    fi
+
+    if ! ___x_cmd hascmd mvn; then
+        build:error "mvn not found. Please install Maven."
+        return 1
+    fi
+
+    ___x_cmd_build_release_maven_build_local "$dir"
+}
+
+___x_cmd_build_release_maven_build_local(){
+    local dir="$1"
+    build:info "Building with Maven..."
+    ___x_cmd_cmds cd "$dir" || return $?
+    ___x_cmd_cmds mvn compile || return $?
+    ___x_cmd_cmds mvn package -DskipTests || return $?
+    ___x_cmd_build_release_maven_show_results "$dir"
+}
+
+___x_cmd_build_release_maven_show_results(){
+    local dir="$1"
+    local line
+    while read -r line; do
+        build:info "  $line"
+    done <<EOF
+$(___x_cmd find "$dir/target" -name "*.jar" -type f 2>/dev/null)
+EOF
+}
+
+___x_cmd_build_release_maven_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/pom.xml" ]; then
+        build:error "pom.xml not found in $dir"
+        return 1
+    fi
+
+    if ! grep -q "distributionManagement" "$dir/pom.xml"; then
+        build:info --status distribution_not_configured --hint "add <distributionManagement> to pom.xml" --jitpack_alternative "git tag v0.1.0 && git push origin v0.1.0" "MAVEN configuration required"
+        return 1
+    fi
+
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    if ___x_cmd_cmds mvn deploy -DskipTests; then
+        build:info --status deployed "MAVEN deployed successfully"
+    else
+        build:error "mvn deploy failed"
+        return 1
+    fi
+}

@@ -1,0 +1,141 @@
+# shellcheck shell=dash
+
+# TODO: adding the md5 command lookup table.
+
+# ___x_cmd_ccmd_age(){
+#     local x_
+#     ___x_cmd_ccmd_age_ "$@" || return
+#     printf "%s\n" "$x_"
+# }
+
+# ___x_cmd_ccmd_age_(){
+#     printf "%s\n" "$___X_CMD_CCMD_AGE"
+#     # if [ "$#" -eq 0 ]; then
+#         # return 0
+#     # fi
+#     # TODO: Provide ccmmd to get the age of cache
+# }
+
+# x ccmd -- curl aaa aa aa
+# x ccmd is-result-from-cache
+___x_cmd_ccmd_isresultfromcache(){
+    [ "$___X_CMD_CCMD_AGE" -ne -1 ]
+}
+
+___X_CMD_CCMD_EXEC_LAST_FP=
+alias ccmd:init="local ___X_CMD_CCMD_EXEC_LAST_FP 2>/dev/null; ___X_CMD_CCMD_EXEC_LAST_FP="
+alias ccmd:invalidate="___x_cmd_ccmd_invalidate"
+alias ccmd:cat='cat "$___X_CMD_CCMD_EXEC_LAST_FP"'
+alias ccmd:clear='___X_CMD_CCMD_EXEC_LAST_FP=; ___x_cmd_ccmd_clear'
+
+___x_cmd_ccmd_exec(){
+    if [ "$#" -eq 0 ]; then
+        M="ccmd" help:ret:0
+    fi
+
+    local IFS=" "
+    local expiration=
+    local filepath=
+
+    while [ ! "$1" = -- ]; do
+        if [ "$#" -eq 0 ]; then
+            ccmd:error "PANIC: Expect -- and its following command"
+            M="ccmd" help:ret:64
+        fi
+        if [ -z "$expiration" ]; then       expiration="$1"
+        elif [ -z "$filepath" ]; then       filepath="$1"
+        else
+            ccmd:error "More than 3 arguments before --."
+            M="ccmd" help:ret:64
+            # EX_USAGE=64         # The command was used incorrectly, e.g., with the wrong number of arguments, a bad flag, a bad syntax in a parameter, or whatever.
+        fi
+        shift
+    done
+
+    shift
+
+    expiration=${expiration:-1d}
+    local x_=
+    if ! ___x_cmd___ccmd_expire_in_second_ "$expiration"; then
+        ccmd:error "PANIC: Expiration should match pattern n[dmwsh]."
+        M="ccmd --" help:ret:64
+        # EX_DATAERR=65       # The input data was incorrect in some way. This should only be used for user's data and not system files.
+    fi
+    expiration="$x_"
+
+    ___X_CMD_CCMD_AGE=-1
+
+    if [ "$1" = "--help" ] || [ "$1" = "-h" ];then
+        M="ccmd --" help:ret:0
+    fi
+    if [ -z "$filepath" ]; then
+        filepath="${___X_CMD_CCMD_CACHE:-$___X_CMD_CCMD_CACHEPATH_DEFAULT}"
+        ___x_cmd mkdirp "$filepath"
+        if ! filepath="$filepath/$(___x_cmd_ccmd___md5 "$@")";then
+            ccmd:error "The data or command to be cached is empty."
+            return 1
+        fi
+    fi
+
+    if ___x_cmd fileage --get_ "$filepath"; then
+        if [ "$x_" -lt "$expiration" ]; then
+            ccmd:debug "Using cache in Cache Path: $filepath"
+            ___X_CMD_CCMD_AGE="$x_"
+            ___X_CMD_CCMD_EXEC_LAST_FP="$filepath"
+            ___x_cmd_cmds_cat "$filepath"
+            return
+        fi
+    fi
+
+    ccmd:debug "FILEPATH doesn't exists or older than ${expiration} second. Update"
+    ccmd:debug "Caching command: $*"
+
+    local TEMP_PATH="$filepath.x-bash.origin.65c10911d8b8591219a21ebacf46da01"
+    if ___x_cmd tee "$TEMP_PATH" -- "$@"; then
+        if ___x_cmd_cmds_mv "$TEMP_PATH" "$filepath" 2>/dev/null; then
+            ___X_CMD_CCMD_EXEC_LAST_FP="$filepath"
+            return 0
+        else
+            if [ -f "$filepath" ];then
+                ccmd:debug "skip mv: already moved by another process => $filepath"
+                return 0
+            else
+                ccmd:error "mv $filepath fail"
+                return 1
+            fi
+        fi
+    else
+        local code=$?
+        [ -n "$____X_CMD_CCMD_ERROR_LOG" ] || ccmd:error "command errexit with code=$code ==> $*"
+        ___x_cmd_cmds_rm "$TEMP_PATH"
+        return "$code"
+    fi
+}
+
+___x_cmd___ccmd_expire_in_second_(){
+    x_=0
+    local fmt="${1:?Provide time}"
+    case "$fmt" in
+        *w) x_=$(( ${fmt%w} * 60 * 60 * 24 * 7 ))   ;;
+        *d) x_=$(( ${fmt%d} * 60 * 60 * 24 ))   ;;
+        *h) x_=$(( ${fmt%h} * 60 * 60 ))   ;;
+        *m) x_=$(( ${fmt%m} * 60 ))   ;;
+        *s) x_=$(( ${fmt%s} ))   ;;
+        *)  x_=; return 1
+    esac
+    return 0
+}
+
+
+# ___x_cmd___ccmd_validate_time_format(){
+#     local tmp
+#     case "${1:?Provide time}" in
+#         *d) tmp=d   ;;
+#         *m) tmp=m   ;;
+#         *w) tmp=w   ;;
+#         *s) tmp=s   ;;
+#         *h) tmp=h   ;;
+#     esac
+#     [ "${1%"$tmp"*}" -gt 0 ] 2>/dev/null
+#     return $?
+# }

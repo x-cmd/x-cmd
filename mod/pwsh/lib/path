@@ -1,0 +1,154 @@
+# shellcheck shell=dash disable=SC2120,SC2016
+___x_cmd_pwsh_path(){
+    ___x_cmd os is win || ___x_cmd os is wsl || N=pwsh M='pwsh path is only available on Windows' log:ret:1
+    [ $# -gt 0 ] || set -- ls
+
+    local op="$1";      shift
+    case "$op" in
+        add_pwsh|win_to_linux|win_to_linux_|linux_to_win|linux_to_win_)
+            ___x_cmd_pwsh_path___"$op" "$@"
+            ;;
+        import|import2wsl)
+            ___x_cmd_pwsh_path_import2wsl
+            ;;
+        ls)
+            ___x_cmd_pwsh_path_"$op" "$@"
+            ;;
+
+        --help|-h)
+            ___x_cmd help -m pwsh path
+            ;;
+        *)
+            N=pwsh M="Unsupport subcmd ==> $op" log:ret:64
+            ;;
+    esac
+}
+
+___x_cmd_pwsh_path_import2wsl(){
+    local IFS=;
+    local e; while read -r e; do
+        PATH="$PATH:$e"
+    done <<A
+$(___x_cmd_pwsh_path_ls)
+A
+
+    ___x_cmd path uniq
+}
+
+___x_cmd_pwsh_path_ls(){
+    local pre=; [ ! -d /mnt ] || pre="/mnt"
+    ___x_cmd_pwsh_path_cmd | ___x_cmd_cmds_awk -F : -v pre="$pre" '
+(state==1){
+    if ($0~"^----------") exit ;
+    printf("%s/%s", pre, $1)
+    printf("%s\n", $2)
+
+    next
+}
+
+($0~"^----------"){
+    state=1
+}
+'
+}
+
+___x_cmd_pwsh_path_cmd(){
+    ___x_cmd pwsh "echo '----------'; \$env:Path -split ';' | ForEach-Object { \$_ -replace '\\\\', '/' }; echo '----------';" | sed 's/^\(.\)/\L\1/'
+}
+
+___x_cmd_pwsh_path___add_pwsh(){
+    local x_=;
+    ___x_cmd_pwsh_path___win_to_linux_ "$( ___x_cmd pwsh -ExecutionPolicy RemoteSigned -NoProfile -Command 'Write-Output $PSHome' )" || return $?
+    ___x_cmd path add_existed_folder "$x_"
+}
+
+
+___x_cmd_pwsh_path___win_to_linux_(){
+    x_="$( ___x_cmd_pwsh_path___win_to_linux "$@" )" || return $?
+    [ -n "$x_" ]
+}
+
+___x_cmd_pwsh_path___win_to_linux(){
+    local fp="$1"
+    [ -n "$fp" ] || N=pwsh M="Please provide a windows style path" log:ret:64
+    if ___x_cmd hascmd wslpath; then
+        ___x_cmd_cmds wslpath -u "$fp" 2>/dev/null | ___x_cmd_cmds sed 's/\r$//g'
+    else
+        local prefix=
+        ! ___x_cmd os is wsl || prefix="/mnt"
+        ___x_cmd_cmds awk -v prefix="$prefix" '
+{
+    fp = $0
+    gsub("\\\\", "/", fp)
+    if (fp ~ "^[A-Za-z]:") {
+        fp = prefix "/" tolower( substr(fp, 0, 1) ) substr(fp, 3)
+    }
+    else if (match(fp, "^//wsl.localhost/[^/]+")) {
+        fp = substr(fp, RLENGTH+1)
+    }
+    print fp
+}
+'  <<A
+$fp
+A
+    fi
+}
+
+___x_cmd_pwsh_path___linux_to_win(){
+    local x_=; ___x_cmd_pwsh_path___linux_to_win_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_pwsh_path___linux_to_win_(){
+    x_=""
+    local fp="$1"
+    [ -n "$fp" ] || N=pwsh M="Please provide a linux style path" log:ret:64
+    case "$fp" in
+        /mnt/*)
+            x_="$(
+___x_cmd_cmds awk -v fp="$fp" '
+BEGIN{
+    fp = substr(fp, 6)
+
+    if ((id = index(fp,"/")) > 0 ) {
+        disk = substr(fp, 0, id-1)
+        main_path = substr(fp, id+1)
+        gsub("/", "\\", main_path)
+        print disk ":\\" main_path
+    } else {
+        print fp ":\\"
+    }
+}
+'
+)"
+            ;;
+        /*)
+            if ___x_cmd os is wsl; then
+                x_=; ___x_cmd_pwsh___get_wsl_distro_ || {
+                    x_="$fp"
+                    return 1
+                }
+                x_="\\\\wsl.localhost\\${x_}$( printf "%s\n" "$fp" | ___x_cmd_cmds sed 's/\//\\/g' )"
+            else
+                x_="$(
+___x_cmd_cmds awk -v fp="${fp#/}" '
+BEGIN{
+    if ((id = index(fp,"/")) > 0 ) {
+        disk = substr(fp, 0, id-1)
+        main_path = substr(fp, id+1)
+        gsub("/", "\\", main_path)
+        print disk ":\\" main_path
+    } else {
+        print fp ":\\"
+    }
+}
+'
+)"
+            fi
+            ;;
+        *)
+            x_="$fp"
+            ;;
+    esac
+}
+

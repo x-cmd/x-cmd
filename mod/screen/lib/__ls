@@ -1,0 +1,78 @@
+
+
+___x_cmd_screen___ls(){
+
+    local fmt=auto
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --csv)      fmt=csv ;;
+            --tsv)      fmt=tsv ;;
+            --app)      fmt=app ;;
+            --raw)      fmt=raw ;;
+            *)          break  ;;
+        esac
+        shift
+    done
+
+    ___x_cmd_screen___ls___"$fmt"
+}
+
+
+___x_cmd_screen___ls___raw(){
+    ___x_cmd_screen___runmain -ls
+}
+
+
+___x_cmd_screen___ls___csv(){     ___x_cmd_screen___ls___xsv ","    ; }
+___x_cmd_screen___ls___tsv(){     ___x_cmd_screen___ls___xsv "\t"   ; }
+
+___x_cmd_screen___ls___xsv(){
+    ___x_cmd_screen___ls___raw | command awk -v sep="${1:-"\t"}" '
+BEGIN{
+    print "id" sep "pid" sep "status"
+}
+$0~/^[ \t]+/{
+    pid = $1
+    gsub("[.][^$]+$", "", pid)
+    gsub("[()]", "", $2)
+    print pid sep $1  sep $2
+}
+'
+}
+
+___x_cmd_screen___ls___auto(){
+    if ___x_cmd_is_stdout2tty; then     ___x_cmd_screen___ls___app
+    else                                ___x_cmd_screen___ls___tsv
+    fi
+}
+
+___x_cmd_screen___ls___app(){
+    local ___X_CMD_CSV_APP_DATA_pid=""
+    local ___X_CMD_CSV_APP_DATA_socket=""
+    local ___X_CMD_CSV_APP_DATA_status=""
+
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc screen; " \
+        ___x_cmd csv app --clear --return var ___x_cmd_screen___ls --csv || return $?
+
+    set -- \
+        "x screen            # create a new session"        \
+        "x screen -wipe      # wipe out all dead session"   \
+        "return 0"
+
+    [ -z "$___X_CMD_CSV_APP_DATA_pid" ] || {
+        case "$___X_CMD_CSV_APP_DATA_status" in
+            Dead)           set -- "x screen -wipe $___X_CMD_CSV_APP_DATA_pid" "$@" ;;
+            Detached)       set -- "x screen -r $___X_CMD_CSV_APP_DATA_pid"    "$@" ;;
+            Attached)       set -- "x screen -x $___X_CMD_CSV_APP_DATA_pid"    "$@" ;;
+        esac
+    }
+
+    local id=""
+    local cmd=""
+    ___x_cmd ui select id,cmd \
+        "Next for socket: $___X_CMD_CSV_APP_DATA_socket" "$@"     || return $?
+
+    eval "$cmd"
+
+}

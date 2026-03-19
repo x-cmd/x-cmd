@@ -1,0 +1,98 @@
+
+___x_cmd_termux_pkg___fz(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m termux pkg install ; return 0 ;;
+    esac
+
+    if ___x_cmd_is_stdout2tty; then
+        ___x_cmd_termux_pkg___fzapp
+    else
+        ___x_cmd_termux_pkg___lsraw
+    fi
+}
+
+___x_cmd_termux_pkg___lsraw(){
+    ___x_cmd_apt___lsraw
+}
+
+___x_cmd_termux_pkg___fzapp(){
+    {
+        [ -f "/var/lib/apt/lists/lock" ] || [ -f /data/data/com.termux/cache/apt/pkgcache.bin ]
+    } || {
+        termux:info "The first use of apt is detected and the local software repository list is ready to be updated."
+        ___x_cmd_cmds pkg update || return 1
+        ___x_cmd_apt___repo_lsname > "$___X_CMD_APT_CACHE_PATH/lsname"
+    }
+
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; }  || {
+        ___x_cmd_termux_pkg___lsraw
+        return 0
+    }
+
+    termux:info "Use 'x termux pkg -h' or 'm pkg -h' for help."
+    termux:info "Select a package to install, or view information."
+
+    local software=
+    local x_=
+
+    software="$( ___X_CMD_RUNMODE="$___X_CMD_RUNMODE" ___x_cmdexe termux pkg --fzdata )" || return $?
+
+    [ -n "$software" ] || {
+        termux:info "Exit because no software is selected."
+        return 1
+    }
+
+    local id=
+    # TODO: Maybe view the source code, or open install information
+    ___x_cmd ui select id "What to do NEXT"    \
+        "pkg install   $software"               \
+        "pkg reinstall $software"               \
+        "pkg show      $software"               \
+        "browse repo of  $software"             \
+        "pkg --help"                            \
+        "EXIT"     || return $?
+
+    case "$id" in
+        1)      ___x_cmd_cmds pkg install   "$software" ;;
+        2)      ___x_cmd_cmds pkg reinstall "$software" ;;
+        3)      ___x_cmd_cmds pkg show      "$software" ;;
+        # 4)      ___x_cmd install       "$software" ;;
+        4)      ___x_cmd_termux_pkg___repo_browse "$software" ;;
+        5)      ___x_cmd help -m pkg ;;
+        6)      return 0 ;;
+    esac
+}
+
+___x_cmd_termux_pkg___fz_data(){
+    ___x_cmd yq --preparecmd
+    ___x_cmd_termux_pkg___lsraw \
+        | ___x_cmd_termux_pkg___fzf            \
+            --preview='___x_cmdexe termux pkg --fzfpreview {1}'  \
+            --preview-window=right:70%:wrap
+}
+
+___x_cmd_termux_pkg___fzf_preview(){
+    ___x_cmd_cmds pkg show "$1" 2>/dev/null | ___x_cmd_cmds_awk '
+BEGIN{
+    LSTYLE="\033[36m";
+    RSTYLE="\033[32m";
+    ESTYLE="\033[0m";
+}
+match($0, "^[^ ]+:"){
+    print LSTYLE substr($0, 1, RLENGTH-1) ESTYLE ":" RSTYLE substr($0, RLENGTH+1) ESTYLE;
+    next;
+}
+{ print RSTYLE $0 ESTYLE; }
+'
+}
+
+___x_cmd_termux_pkg___fzf(){
+    FZF_DEFAULT_OPTS="
+--ansi
+--reverse
+--height='80%'
+--bind='ctrl-w:toggle-preview-wrap'
+--bind='ctrl-r:change-preview-window(right,70%|down,40%,99%,border-horizontal|hidden|right)'
+"   ___x_cmd fzf "$@"
+}
+

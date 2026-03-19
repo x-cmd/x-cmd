@@ -1,0 +1,31 @@
+{ if ($0 != "") jiparse_after_tokenize(obj, $0); }
+END{
+    ARGSTR = ENVIRON[ "ARGSTR" ]
+    HELP_ARG_SEP = ENVIRON[ "HELP_ARG_SEP" ]
+    TH_HETHEME_NAME_COLOR       = escape_char033( ENVIRON[ "___X_CMD_HELP_NAME_COLOR" ] )
+    TH_HETHEME_DESC_COLOR       = escape_char033( ENVIRON[ "___X_CMD_HELP_DESC_COLOR" ] )
+    TH_HETHEME_TITLE_COLOR      = escape_char033( ENVIRON[ "___X_CMD_HELP_TITLE_COLOR" ] )
+    TH_HETHEME_RULE_COLOR       = escape_char033( ENVIRON[ "___X_CMD_HELP_RULE_COLOR" ] )
+    TH_HETHEME_CMD_COLOR        = escape_char033( ENVIRON[ "___X_CMD_HELP_CMD_COLOR" ] )
+    TH_HETHEME_OTHER_NAME_COLOR = escape_char033( ENVIRON[ "___X_CMD_HELP_OTHER_NAME_COLOR" ] )
+    TH_HETHEME_OTHER_DESC_COLOR = escape_char033( ENVIRON[ "___X_CMD_HELP_OTHER_DESC_COLOR" ] )
+    TH_HETHEME_TLDR_CMD_COLOR   = escape_char033( ENVIRON[ "___X_CMD_HELP_TLDR_CMD_COLOR" ] )
+    TH_HETHEME_TLDR_DESC_COLOR  = escape_char033( ENVIRON[ "___X_CMD_HELP_TLDR_DESC_COLOR" ] )
+    TH_HELP_POSITION_ORDER  = ENVIRON[ "___X_CMD_HELP_POSITION_ORDER" ]
+
+    comp_advise_prepare_argarr(ARGSTR, args, HELP_ARG_SEP)
+    obj_prefix = comp_advise_locate_obj_prefix( obj, args )
+
+    if (obj_prefix == "") exit(0)
+    print_helpdoc_init(NO_COLOR, TH_HETHEME_NAME_COLOR, TH_HETHEME_DESC_COLOR, TH_HETHEME_TITLE_COLOR,
+        TH_HETHEME_RULE_COLOR, TH_HETHEME_CMD_COLOR,
+        TH_HETHEME_OTHER_NAME_COLOR, TH_HETHEME_OTHER_DESC_COLOR,
+        TH_HETHEME_TLDR_CMD_COLOR, TH_HETHEME_TLDR_DESC_COLOR,
+        TH_HELP_POSITION_ORDER, TH_HELP_POSITION_ORDER_ARR)
+    printf( "%s", print_helpdoc( obj, obj_prefix, COLUMNS, TH_HELP_POSITION_ORDER_ARR ) )
+}
+
+function panic( s ){
+    log_error( "help", s )
+    exit(1)
+}

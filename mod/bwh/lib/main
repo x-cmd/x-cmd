@@ -1,0 +1,91 @@
+# shellcheck shell=bash disable=2120
+
+___x_cmd log init bwh
+
+xrc arg param ui pick
+
+xrc:mod:lib     bwh                 \
+    arg                             \
+    api cfg iso ipv6 info           \
+    ctrl shell                      \
+    snapshot backup migrate         \
+    statuspage privateip policyviolation sshkey
+
+___x_cmd_bwh___main(){
+    [ $# -gt 0 ] || set -- info
+
+    bwh:arg:local
+    while [ $# -gt 0 ]; do
+        bwh:arg:config-profile
+        local op="$1"; shift 1;
+        case "$op" in
+            -h|--help)      ___x_cmd_bwh_help;                              return ;;
+
+            *=*|*_|*,*)     ___x_cmd_bwh_cfg___invoke current "$op" "$@";   return ;;
+            cur|current)    ___x_cmd_bwh_cfg___invoke current "$@";         return ;;
+
+            cfg|--cfg)      ___x_cmd_bwh_cfg                  "$@";         return ;;
+            init|--init)    ___x_cmd_bwh_init                     ;         return ;;
+
+            sshkey|iso|\
+            privateip|policyviolation|\
+            info)           "___x_cmd_bwh_${op}" "$@";                      return ;;
+
+            start|stop|restart|kill)
+                                ___x_cmd_bwh___ctrl_op "$op";               return ;;
+
+            resetrootpassword)  ___x_cmd_bwh___ctrl_op resetRootPassword    return ;;
+
+            sethostname|setptr|migrate|ipv6|sh|clonefromexternalserver|\
+            reinstall|snapshot|backup|unsuspend|statuspage)
+                # x bwh cfg load ${___X_CMD_BWH_LOCAL_CONFIG:+"$___X_CMD_BWH_LOCAL_CONFIG"}
+                            "___x_cmd_bwh_${op}" "$@";                      return ;;
+            *)              bwh:error "Unknown command ==> $op";            return 64
+        esac
+    done
+}
+
+___x_cmd_bwh_help(){
+    ___x_cmd help -m bwh "$@"
+}
+
+# shellcheck disable=SC2142
+alias bwh:handle:o='
+    local O="${O:-DEFAULT}";
+    case "$1" in
+        :*) O="${op#:}"; shift
+    esac
+'
+
+___x_cmd_bwh_current(){
+    ___x_cmd_bwh_cfg current "$@"
+}
+
+
+___x_cmd_bwh___ctrl_op(){
+    bwh:arg:is-not-help || {
+        ___x_cmd_bwh_help "$1"
+        return 0
+    }
+    ___x_cmd_bwh_api "$1"
+}
+
+
+___x_cmd_bwh_advise_iso(){
+    local IFS=$'\n'
+    candidate_exec_arr="($(___x_cmd ccmd 1h -- ___x_cmd_bwh_advise_iso_ | ___x_cmd_cmds_awk '{print $0}'))"
+}
+
+___x_cmd_bwh_advise_iso_(){
+    # TODO: extract the template attributes using ja
+    ___x_cmd_bwh iso ls  | ___x_cmd ja 'END{
+         l = O[ kp(1, "templates") L ]
+         for (i=1; i<=l; ++i) print juq(O[ kp(1, "templates", i) ])
+    }'
+}
+
+
+___x_cmd_bwh_is_not_interactive_env() {
+    ! ___x_cmd_is_stdout2tty || ! ___x_cmd_runmode_allow_manual
+}
+

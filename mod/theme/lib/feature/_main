@@ -1,0 +1,146 @@
+# shellcheck shell=dash disable=2034,1090
+# feature:
+#   transient_enable        ==> default: always
+
+#   exectime            ==> default: disable in low computing power machine git bash, otherwise will be enabled.
+#   time                ==> default: auto
+
+#   htag_docker         ==> default: host
+#   htag_ssh            ==> default: host-ip
+
+#   mini_enable             ==> auto, always, never
+#   mini_cwd            ==> full, auto, 1, 2, 3
+#   mini_newline        ==> auto, always, never
+
+___x_cmd_theme_feature_use(){
+    local X_help_cmd=;  X_help_cmd='x help -m theme feature use' help:arg-null:parse
+
+    local terminal=default
+    local vendor=theme
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --default|--vscode|--gnome|--iterm|--apple|--kde|--ide|--windows|--konsole)
+                terminal="${1#--}"; shift ;;
+            --vendor)
+                vendor="$2";
+                ___x_cmd_theme_boot___check_vendor "$vendor" || return $?
+                shift 2 ;;
+            *)  break ;;
+        esac
+    done
+
+    local feature="$1"; local data="$2"
+    [ -n "$feature" ]   || N=theme M="Please provide feature name" log:ret:64
+    [ -n "$data" ]      || N=theme M="Please provide feature[$feature] data" log:ret:64
+    shift 2
+    local x_name=; local x_data=;
+
+    if [ "$vendor" = theme ]; then
+        ___x_cmd_theme_feature___envset "$vendor" "$terminal" "$feature" "$data" "$@" || return
+        ___x_cmd_theme_envy set "${x_name#XT_}" "$x_data"
+
+        if ___x_cmd_theme_boot current_vendor_eq theme; then
+            local x_=; ___x_cmd_theme_boot current_name_get_ || return
+            theme:info "Reload the global config of theme"
+            ___x_cmd_theme_rc_load "$x_"
+        fi
+    else
+        case "$feature" in
+            zshplugin)  ;;
+            *) N="$vendor" M="The [feature=$feature] is not currently supported by [vendor=$vendor]" log:ret:1 ;;
+        esac
+        ___x_cmd_theme_feature___envset "$vendor" "$terminal" "$feature" "$data" "$@" || return
+        ___x_cmd_theme_envy set "${x_name#XT_}" "$x_data" || return
+        ___x_cmd log ":${vendor}" info "Successfully set [feature=$feature] to '$data'"
+    fi
+}
+
+___x_cmd_theme_feature_try(){
+    local X_help_cmd=;  X_help_cmd='x help -m theme feature try' help:arg:parse
+    ___x_cmd_theme_boot current_vendor_eq theme || {
+        theme:info "The prompt theme vendor being used is not 'theme' in the current shell environment"
+        return 1
+    }
+    local feature="$1"; local data="$2"
+    [ -n "$feature" ]   || N=theme M="Please provide feature name" log:ret:64
+    [ -n "$data" ]      || N=theme M="Please provide feature[$feature] data" log:ret:64
+    shift 2
+    local x_name=; local x_data=;
+    ___x_cmd_theme_feature___envset theme "$___X_CMD_THEME_TERM_VENDOR" "$feature" "$data" "$@" || return
+
+    local x_=; ___x_cmd_theme_boot current_name_get_ || return
+    theme:info "Reload the global config of theme"
+    ___x_cmd_theme_rc_load "$x_"
+}
+
+___x_cmd_theme_feature___envset(){
+    local vendor="$1"
+    local terminal="$2";
+    local feature="$3";
+    local data="$4"
+    local x_=
+    shift 4
+
+    ___x_cmd_theme_feature___is "$feature" || N=theme M="Not support feature[$feature]" log:ret:64
+    case "$data" in
+        --help|-h)  X_help_cmd="x help -m theme feature try $feature" help:show:ret:64 ;;
+    esac
+
+    case "$feature" in
+        mini_cwd)
+            case "$data" in
+                full|auto|1|2|3)    ;;
+                *)  N=theme M="feature[$feature] expect [always|never|auto] but get '$data'" log:ret:64
+                    ;;
+            esac
+            ;;
+        symbol)
+            case "$data" in
+                -t|--topic)
+                    case "$1" in
+                        byzantine|sumer|egypt|china|dao|france|en|rune|ljh|auto) data="$1" ;;
+                        *)  N=theme M="feature[$feature] topic not support '$1'" log:ret:64
+                            ;;
+                    esac
+                    ;;
+
+                -c|--custom)
+                    data="custom$1"
+                    ;;
+                *)
+                    N=theme M="feature[$feature] not support '$data'" log:ret:64
+                    ;;
+            esac
+            ;;
+        emoji)
+            case "$data" in
+                -t|--topic)
+                    local x_file=;  ___x_cmd_theme_which___emoji_getfile_ "$1" || return
+                    [ -f "$x_file" ]  || {
+                        theme:error "feature[$feature] topic not support '$1', you can try to update theme resource package, use \`x theme update\`"
+                        return 1
+                    }
+                    x_=;  . "$x_file"
+                    data="$x_"
+                    ;;
+                null)   data="" ;;
+            esac
+            ;;
+        *)
+            case "$data" in
+                always|never|auto)  ;;
+                *)  N=theme M="feature[$feature] expect [always|never|auto] but get '$data'" log:ret:64
+                    ;;
+            esac
+            ;;
+    esac
+
+    local name="XT_${vendor}_feature_${terminal}_${feature}"
+    ___x_cmd_validenvname "$name" || return
+    x_=; ___x_cmd_shq1_ "$data"
+    theme:debug --name "$name" --data "$x_"
+    eval "$name"="$x_"
+    x_name="$name"
+    x_data="$data"
+}
+

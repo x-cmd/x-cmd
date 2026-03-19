@@ -1,0 +1,103 @@
+# shellcheck shell=dash
+xrc ourl
+___x_cmd_mistral_model_ls(){
+    [ $# -gt 0 ]    ||      set - --app
+    local op="$1"
+    local format=
+    case "$op" in
+        --csv)      format=csv       ;;
+        --app)      format=app       ;;
+        -y|--yml)   format=yml       ;;
+        -j|--json)  format=json      ;;
+        -h|--help)  ___x_cmd help -m mistral model ls  "$@"; return ;;
+        *)          M="Not support $op" N=mistral log:ret:1 ;;
+    esac
+
+
+    "___x_cmd_mistral_model_ls___${format}"
+}
+
+___x_cmd_mistral_model_ls___app(){
+    if ! { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; }; then
+        ___x_cmd_mistral_model_ls___csv "$@"
+        return $?
+    fi
+    local ___X_CMD_CSV_APP_DATA_CURROW=
+    local data; data="$( ___x_cmd_mistral_model_ls___csv )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd csv --app --return line
+
+    if [ -n "$___X_CMD_CSV_APP_DATA_CURROW" ] ; then
+        local select_id="${___X_CMD_CSV_APP_DATA_CURROW%%,*}"
+        local id=""
+        mistral:info "Select model -> $select_id"
+        ___x_cmd ui select id "What to do NEXT" \
+        "set model: $select_id"    \
+        "EXIT"     || return $?
+
+        case "$id" in
+            1)  ___x_cmd_mistral_model_set "$select_id" ;;
+            2)
+                mistral:info "EXIT [code=0]"
+                return 0 ;;
+        esac
+    fi
+}
+
+___x_cmd_mistral_model_ls___csv(){
+    local data; data="$( ___x_cmd_mistral_model_ls___json )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd_mistral_model_ls___parse_json2csv
+}
+
+___x_cmd_mistral_model_ls___yml(){
+    local data; data="$( ___x_cmd_mistral_model_ls___json )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd j2y
+}
+
+___x_cmd_mistral_model_ls___json(){
+    ___x_cmd_mistral_model_ls_raw
+}
+
+___x_cmd_mistral_model_ls___parse_json2csv(){
+    ___x_cmd jo .data | ___x_cmd ja 2c .id .name .description .owned_by \
+        .capabilities.completion_chat \
+        .capabilities.completion_fim \
+        .capabilities.function_calling \
+        .capabilities.fine_tuning \
+        .capabilities.vision \
+        .capabilities.classification \
+        .max_context_length \
+        .default_model_temperature \
+        .aliases \
+        .type \
+        .deprecation \
+        .deprecation_replacement_model \
+                | ___x_cmd csv header --add  Id Name Description Owned_by  \
+                    Completion_chat Completion_fim Function_calling Fine_tuning Vision Classification \
+                    Max_context_length Default_model_temperature Aliases Type Deprecation \
+                    Deprecation_replacement_model
+
+}
+
+___x_cmd_mistral_model_ls_raw(){
+    ___x_cmd ccmd 1d -- ___x_cmd_mistral_model_ls_raw___inner
+}
+
+___x_cmd_mistral_model_ls_raw___inner(){
+    local apikey=
+    ___x_cmd_mistral_cur apikey:=  2>/dev/null
+    local data=; data="$(
+        ___x_cmd curl \
+            -sS  "$___X_CMD_MISTRAL_DEFAULT_ENDPOINT/v1/models"          \
+            --header 'Content-Type: application/json'        \
+            --header 'Accept: application/json'              \
+            --header "Authorization: Bearer $apikey"
+    )"
+
+    [ "$(printf "%s\n" "$data" | ___x_cmd jo .object)" = "\"list\"" ] || {
+        mistral:error -m "$data"
+        return 1
+    }
+
+    printf "%s\n" "$data"
+}
+

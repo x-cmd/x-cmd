@@ -1,0 +1,169 @@
+
+# Section : cmdline, url
+___x_cmd_ui_cmdline(){
+    local X_help_cmd=; X_help_cmd='x help -m ui cmdline' help:arg:parse
+    local prompt=${1:-">"}
+
+    # if [ ! -t 0 ]; then
+    if [ $# -gt 1 ]; then
+        shift;
+        printf "$(___x_cmd_ui bold yellow)${prompt} $(___x_cmd_ui normal white)%s$(___x_cmd_ui end)\n" "$*"
+    else
+        local line
+        while read -r line; do
+            printf "$(___x_cmd_ui bold yellow)${prompt} $(___x_cmd_ui normal white)%s$(___x_cmd_ui end)\n" "$line"
+        done
+    fi
+}
+
+___x_cmd_ui_url(){
+    printf "$(___x_cmd_ui smul)%s$(___x_cmd_ui rmul)" "${1:?Provide URL}"
+}
+# EndSection
+
+# Section : sep
+___x_cmd_ui_sep(){
+    local X_help_cmd=; X_help_cmd='x help -m ui sep' help:arg:parse
+    # local maxw="${2:-$COLUMNS}"
+
+    # TODO: Introducing a much better solution
+    # printf "%s\n" "$(seq -f "\xE2\x80\x95" -s '' "$COLUMNS")"
+    # local sep
+    # sep="$(seq -f "${1:-—}" -s '' "$maxw")"
+    # printf "%0.s${1:-—}" {1..$maxw}
+    # printf "%s\n" "$sep"
+    # printf "%0.s${1:-—}" $(seq 1 "${2:-$COLUMNS}")
+    ___x_cmd_cmds_awk -v sep="${1:-—}" -v maxw="${2:-$COLUMNS}" 'BEGIN{ for(i=1;i<=maxw;i++){ c=c sep; }; print c}'
+    # printf "\n"
+}
+
+___x_cmd_ui_draw_seperator(){
+    local sep=""
+    local _i=1
+    local maxw
+    maxw="$(___x_cmd_ui col)"
+    while [ "$_i" -lt "$maxw" ];do
+        sep="$sep""${1:-—}"
+        _i="$((_i+1))"
+    done
+    printf "$sep\n"
+}
+# EndSection
+
+# Section : spin
+___x_cmd_ui_spin(){
+    local X_help_cmd=; X_help_cmd='x help -m ui spin' help:arg-null:parse
+    local c=$(( $1 % 4 ))
+    local i
+    case "$c" in
+        0)  printf "\\"  ;;
+        1)  printf "|"   ;;
+        2)  printf "/"   ;;
+        3)  printf "-"   ;;
+    esac
+}
+
+# EndSection
+
+# Section : progressbar
+
+# shellcheck disable=SC2120
+
+___x_cmd_ui_progressbar(){
+    local X_help_cmd=; X_help_cmd='x help -m ui progressbar' help:arg:parse
+    local BATCH_SIZE=1
+    local op=
+    while op="$1"; do
+        case "$op" in
+            --size)     BATCH_SIZE="$2"
+                        [ -n "$BATCH_SIZE" ] || N=ui M="Provide num of batch size" log:ret:64
+                        shift 2
+                        ;;
+            *)          break ;;
+        esac
+    done
+
+    ___x_cmd tty update
+    COLUMNS="$COLUMNS" \
+    BATCH_SIZE="$BATCH_SIZE" \
+    ___x_cmd cawk -m ui/ui -f "$___X_CMD_ROOT_MOD/ui/lib/awk/pbar.awk"
+}
+
+
+# EndSection
+
+# Section : screen design -- tput screen facility
+___x_cmd_ui_screen() {
+    ___x_cmd_ui_tput screen_save
+    eval "$@"
+    ___x_cmd_ui_tput screen_restore
+}
+
+___x_cmd_ui_banner() {
+    # echo -n ${BG:-$UI_BG_BLUE}${FG:-$UI_FG_WHITE}
+    local FG
+    local BG
+    FG=$(tput setaf "${1:-$UI_WHITE}")
+    BG=$(tput setab "${2:-$UI_BLUE}")
+    echo "$FG$BG"
+    clear
+    ___x_cmd_cmds_cat
+}
+
+RUN_CMD_WITH_INFO() {
+    local INFO=$1
+    shift 1
+    INFO "======================\n"
+    INFO "$INFO\n"
+    INFO "======================\n"
+    eval "$@"
+}
+
+RUN_CMD_WITH_STEP() {
+    local STEP=$1
+    local INFO="STEP $STEP: $2"
+    shift 2
+    RUN_CMD_WITH_INFO "$INFO" "$@"
+}
+
+# EndSection
+
+# Section : check_cmd
+___x_cmd_ui_check_cmd_run(){
+    local msg="${1:?Please Provide message}"; shift
+
+    # TODO: Consider using trap or other method to interrupt the par animation
+    local filepath
+    filepath="$TMPDIR/___x_cmd_ui_check_cmd_run.$$.$(x date timestamp).txt"
+    {
+        eval "$@"
+        printf "%s" "$?" > "$filepath"
+    } | {
+        local i="-"
+        local FMT="\r$(___x_cmd_ui blue)$(___x_cmd_ui bold)%s       $(___x_cmd_ui end)$(___x_cmd_ui yellow)%s$(___x_cmd_ui end)"
+        printf "$FMT" "$i" "$msg"
+        while [ ! -f "$filepath" ]; do
+            sleep 0.1
+            case "$i" in
+                -)  i="\\"  ;;
+                \\) i="|"   ;;
+                \|) i="/"   ;;
+                /)  i="-"   ;;
+            esac
+            printf "$FMT" "$i" "$msg"
+        done
+        return "$(___x_cmd_cmds_cat "$filepath"; ___x_cmd rmrf "$filepath" 2>/dev/null)"
+    }
+}
+
+___x_cmd_ui_check_cmd(){
+    local msg="${1:?Please Provide message}";
+    if ___x_cmd_ui_check_cmd_run "$@"; then
+        printf "\r$(___x_cmd_ui green)$(___x_cmd_ui bold)%s       %s$(___x_cmd_ui end)"  "√" "$msg"
+    else
+        local code=$?
+        printf "\r$(___x_cmd_ui red)$(___x_cmd_ui bold)%s       %s$(___x_cmd_ui end)"    "X" "$msg"
+        return "$code"
+    fi
+}
+# EndSection

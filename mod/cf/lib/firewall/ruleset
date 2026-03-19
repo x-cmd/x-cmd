@@ -1,0 +1,223 @@
+# shellcheck shell=sh   disable=SC3043,2154
+
+___x_cmd_cf_ruleset(){
+    param:scope     ___x_cmd_cf
+    param:subcmd    ___x_cmd_cf_ruleset                  \
+        ls              "List ruleset records"                   \
+        info            "Get ruleset record information"         \
+        rule            "ruleset rule manage"                    \
+        delete          "Delete ruleset record"                  \
+        update          "Update a ruleset record"                \
+        create          "Create a new ruleset record for a zone"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_cf_ruleset  _param_help_doc
+    return 1
+}
+
+# Section: ruleset ls
+# https://developers.cf.com/ruleset-engine/rulesets-api/view/#list-existing-rulesets
+___x_cmd_cf_ruleset_ls(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    --zone_id        "The id of the zone,If not provided, the default zone id is used"           <>=""
+    --json|-j        "output in json format"
+'
+    param:run
+        
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_cf_curl get "/zones/${zone_id}/rulesets"
+    else
+        ___x_cmd_cf_curl get "/zones/${zone_id}/rulesets" | {
+        x jo .result | x jo 2c .id .name .kind .phase | x csv header --add Id Name Kind Phase | x csv app
+        }
+    fi
+}
+# EndSection
+
+# Section: ruleset create
+# x cf ruleset create --name "my_ruselet" --phase http_request_firewall_managed --kind zone
+# https://developers.cf.com/ruleset-engine/rulesets-api/create/
+___x_cmd_cf_ruleset_create(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    --zone_id           "The id of the zone,If not provided, the default zone id is used"                       <>=""
+    --name              "A human-readable name for the ruleset"                                                 <>:String
+    --kind              "The kind of the ruleset"                                                               <>:String   = custom root zone
+    --phase             "The name of the phase where the ruleset will be created"                               <>:String
+    --rules             "supply a list of rules for the ruleset"                                                <>=""
+    --description       "An informative description of the ruleset"                                             <>=""
+    --json|-j           "output in json format"
+'
+    param:run
+    
+    local gen_cf_json=""
+    gen_cf_json="$(param:option2json -zone_id -json)"
+    cf:debug "data: $gen_cf_json"
+    ___x_cmd_cf_curl post "/zones/${zone_id}/rulesets" "gen_cf_json"
+}
+# EndSection
+
+# Section: ruleset info
+# https://developers.cf.com/ruleset-engine/rulesets-api/view/#view-a-specific-ruleset
+___x_cmd_cf_ruleset_info(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    #1              "The unique ID of the ruleset"                                                  <>:String
+    --zone_id       "The id of the zone,If not provided, the default zone id is used"               <>=""
+    --json|-j       "output in json format"
+'
+    param:run
+    
+    ___x_cmd_cf_curl get "/zones/${zone_id}/rulesets/$1"
+}
+# EndSection
+
+# Section: ruleset delete
+# https://developers.cf.com/ruleset-engine/rulesets-api/delete/
+___x_cmd_cf_ruleset_delete(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    #1              "The unique ID of the ruleset"                                                       <>:String
+    --zone_id       "The id of the zone,If not provided, the default zone id is used"                    <>=""
+    --yes|-y        "Ignore remove prompt interception"
+    --json|-j       "output in json format"
+'
+    param:run
+    
+    ___x_cmd_cf_curl delete "/zones/${zone_id}/rulesets/$1"
+}
+# EndSection
+
+# Section: ruleset update
+# https://developers.cf.com/ruleset-engine/rulesets-api/update/
+___x_cmd_cf_ruleset_update(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    #1              "The unique ID of the ruleset"                                                          <>:String
+    --zone_id       "The id of the zone,If not provided, the default zone id is used"                       <>=""
+    --phase         "The name of the phase where the ruleset will be created"                               <>=""
+    --rules         "supply a list of rules for the ruleset"                                                <>=""
+    --description   "An informative description of the ruleset"                                             <>=""
+    --json|-j       "output in json format"
+'
+    param:run
+    
+    local gen_cf_json=""
+    gen_cf_json="$(param:option2json -zone_id -id)"
+    cf:debug "cf: $gen_cf_json"
+    ___x_cmd_cf_curl put "/zones/${zone_id}/ruleset_records/$1"
+}
+# EndSection
+
+___x_cmd_cf_ruleset_rule(){
+    param:scope     ___x_cmd_cf
+    param:subcmd    ___x_cmd_cf_ruleset_rule      \
+        ls              "List ruleset rules"              \
+        delete          "Delete ruleset rule"             \
+        update          "Update a rule in a ruleset"      \
+        create          "Adds a new rule to ruleset"
+
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_cf_ruleset_rule  _param_help_doc
+    return 1
+}
+
+# Section: rule ls
+___x_cmd_cf_ruleset_rule_ls(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    --ruleset_id    "The unique ID of the ruleset"                                                  <>:String
+    --zone_id       "The id of the zone,If not provided, the default zone id is used"               <>=""
+    --json|-j       "output in json format"
+'
+    param:run
+    
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_cf_curl get "/zones/${zone_id}/rulesets/${ruleset_id}"
+    else
+        ___x_cmd_cf_curl get "/zones/${zone_id}/rulesets/${ruleset_id}" | {
+        x jo .result.rules | x jo 2c .id .description .action .enabled | x csv header --add Id Description Action Enabled | x csv app
+        }
+    fi
+
+}
+# EndSection
+
+# Section: rule create
+# x cf ruleset rule create --ruleset_id 28a29b5aa8f84132a45eab72b3f96307 --action challenge --expression "ip.src ne 1.1.1.1"
+# https://developers.cf.com/ruleset-engine/rulesets-api/add-rule/
+___x_cmd_cf_ruleset_rule_create(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    --ruleset_id            "The unique ID of the ruleset"                                                          <>:String
+    --zone_id               "The id of the zone,If not provided, the default zone id is used"                       <>=""
+    --logging_enabled       "Whether to generate a log when the rule matches"                                       <>:String
+    --action                "The action to perform when the rule matches"                                           <>:String   = challenge block
+    --expression            "The expression defining which traffic will match the rule"                             <>:String
+    --ref                   "The reference of the rule"                                                             <>=""
+    --enabled               "Whether the rule should be executed"                                                   <>:bole="true"
+    --description           "An informative description of the ruleset"                                             <>=""
+    --json|-j               "output in json format"
+'
+    param:run
+    
+    local gen_cf_json=""
+    gen_cf_json="$(param:option2json -zone_id -ruleset_id)"
+    cf:debug    "data : $gen_cf_json"
+    ___x_cmd_cf_curl post "/zones/${zone_id}/rulesets/${ruleset_id}/rules" "gen_cf_json"
+}
+# EndSection
+
+# Section: rule delete
+# https://developers.cf.com/ruleset-engine/rulesets-api/delete-rule/
+___x_cmd_cf_ruleset_rule_delete(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    #1              "rule id"                                                                       <>:String
+    --ruleset_id    "The unique ID of the ruleset"                                                  <>:String
+    --zone_id       "The id of the zone,If not provided, the default zone id is used"               <>=""
+    --json|-j       "output in json format"
+'
+    param:run
+    
+    ___x_cmd_cf_curl delete "/zones/${zone_id}/rulesets/${ruleset_id}/rules/$1"
+}
+# EndSection
+
+# Section: rule update
+# https://developers.cf.com/ruleset-engine/rulesets-api/update-rule/
+___x_cmd_cf_ruleset_rule_update(){
+    param:scope     ___x_cmd_cf
+    param:dsl       '
+option:
+    #1                      "rule id"                                                                               <>:String
+    --ruleset_id            "The unique ID of the ruleset"                                                          <>:String
+    --zone_id               "The id of the zone,If not provided, the default zone id is used"                       <>=""
+    --action                "The action to perform when the rule matches"                                           <>:String   = challenge block
+    --expression            "The expression defining which traffic will match the rule"                             <>:String
+    --ref                   "The reference of the rule"                                                             <>=""
+    --enabled               "Whether the rule should be executed"                                                   <>:bole="true"
+    --description           "An informative description of the ruleset"                                             <>=""
+    --logging_enabled       "Whether to generate a log when the rule matches"                                       <>=""
+    --json|-j               "output in json format"
+'
+    param:run
+    
+    local gen_cf_json=""
+    gen_cf_json="$(param:option2json -zone_id -ruleset_id)"
+    ___x_cmd_cf_curl patch "/zones/${zone_id}/rulesets/${ruleset_id}/rules/$1" "gen_cf_json"
+}
+# EndSection

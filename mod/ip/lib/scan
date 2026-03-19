@@ -1,0 +1,113 @@
+
+# first   -> x ip map 192.168.31.0
+# second  -> x ip map 192.168.31.0/24 -p 22/23/80/8080
+# 0.5s for timeout -> 256 -> 128s -> 100 并发
+
+# ping parallel must use job ... 100 jobs -> write files ...
+# 0.01s -> ping in parallel ... -> interval --> 0.2s
+
+# using 100 connections ...
+# default parallel is 20
+# timeout is 0.5, but expected 100ms
+
+# so 256 ip curl is 1.5s
+# so 65536 is around 300s --> users should use zmap
+
+# curl parallel is ok
+
+___x_cmd_ip_scan(){
+    [ $# -gt 0 ] || set -- --ping
+
+    local op="$1";  shift
+    case "$op" in
+        --ping)
+            ___x_cmd_ip_scan_"${op#--}" "$@"
+    esac
+}
+
+___x_cmd_ip_scan_ping(){
+    ___x_cmd_hasbin nmap || {
+
+        # using other nping, or zping
+
+        local id
+        ___x_cmd ui select id "nmap NOT found."    \
+            "Install nmap using: x env use nmap"        \
+            "Using raw ping by sh"      \
+            "Abort"
+
+        case "$id" in
+            1)      ___x_cmd env use nmap ;;
+            2)      ___x_cmd_ip_scan_rawping "$@" ;;
+            3)      return 1
+        esac
+    }
+
+    # using nmap
+
+}
+
+
+___x_cmd_ip_scan_nmap(){
+    :
+}
+
+___x_cmd_ip_scan_rawping(){
+    local ip
+    # Get the current ip
+    if [ $# -eq 0 ]; then
+        while read -r ip; do
+            [ -n "$ip" ] || continue
+            ___x_cmd is ip "$ip" || {
+                ip:warn "Invalide [ip=$ip]"
+                continue
+            }
+            ___x_cmd_ip_scan_rawping_test "$ip"
+            case "$?" in
+                130)
+                    ip:warn "Interrupted when testing [ip=$ip]"
+                    return 130
+            esac
+        done
+    else
+        while [ $# -gt 0 ]; do
+            ip="$1";    shift
+            ___x_cmd is ip "$ip" || {
+                ip:warn "Invalide [ip=$ip]"
+                continue
+            }
+            ___x_cmd_ip_scan_rawping_test "$ip"
+            case "$?" in
+                130)
+                    ip:warn "Interrupted when testing [ip=$ip]"
+                    return 130
+            esac
+        done
+    fi
+}
+
+___x_cmd_ip_scan_rawping_test(){
+    local ip="$1"
+    local s
+    local err
+    ip:info "testsing [ip=$ip]"
+    s="$(___x_cmd_cmds ping -c 1 -t 1 "$ip")"
+    err=$?
+    case "$err" in
+        130)
+            ip:warn "Interrupted when testing [ip=$ip]"
+            return 130 ;;
+        0)
+            return 0 ;;
+        *)
+            return $err ;;
+    esac
+
+    # case "$s" in
+    #     *\ received*)
+    #         printf "%s\n" "$ip"
+    #         return 0
+    #         ;;
+    # esac
+    # return 1
+}

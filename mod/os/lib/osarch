@@ -1,0 +1,202 @@
+# shellcheck    shell=sh    disable=SC3043  # xrc
+
+# Section: uname
+___x_cmd_os_lsuname(){
+    printf "%s\n" linux darwin sunos freebsd openbsd aix cygwin msys mingw
+}
+
+___x_cmd_os_uname_(){
+    if [ -z "$___X_CMD_OS_UNAME_" ]; then
+        ___x_cmd_os_getuname_ || return $?
+        ___X_CMD_OS_UNAME_="$x_"
+    else
+        x_="$___X_CMD_OS_UNAME_"
+    fi
+}
+
+___x_cmd_os_getuname_(){
+    case "$( ___x_cmd_cmds uname -a )" in
+        Linux\ *)                               x_=linux        ;;
+        Darwin\ *)                              x_=darwin       ;;
+        SunOS\ *)                               x_=sunos        ;;
+        FreeBSD\ *)                             x_=freebsd      ;;
+        OpenBSD\ *)                             x_=openbsd      ;;  # TODO: Netbsd?
+        AIX\ *)                                 x_=aix          ;;
+        CYGWIN*)                                x_=win-cygwin   ;;
+        MSYS*)                                  x_=win-msys     ;;
+        MINGW*)                                 x_=win-mingw    ;;
+        Windows*)                               x_=win ;;
+        *)                                      return 1
+    esac
+}
+
+___x_cmd_os_uname() {
+    local x_=; ___x_cmd_os_uname_ || return $?
+    if [ "$#" -eq 0 ]; then
+        printf "%s\n" "$___X_CMD_OS_UNAME_"
+    else
+        ___x_cmd case "$___X_CMD_OS_UNAME_" "$@"
+    fi
+}
+
+# EndSection
+
+# Section: name
+___x_cmd_os_lsname(){
+    printf "%s\n" linux darwin sunos freebsd openbsd aix win
+}
+
+___X_CMD_OS_NAME_FP="$___X_CMD_ROOT_DATA/os/name"
+___x_cmd_os_name_(){
+    x_=""
+
+    if [ -n "$___X_CMD_OS_NAME_" ]; then
+        x_="$___X_CMD_OS_NAME_"
+        return
+    fi
+
+    if [ -f "$___X_CMD_OS_NAME_FP" ]; then
+        read -r x_<"$___X_CMD_OS_NAME_FP"
+    fi
+
+    if [ -z "$x_" ]; then
+        ___x_cmd_os_getname_ || return $?
+        ___x_cmd fprintf    "$___X_CMD_OS_NAME_FP"   "%s\n" "$x_"
+    fi
+
+    ___X_CMD_OS_NAME_="$x_"
+}
+
+___x_cmd_os_getname_(){
+    case "$(command uname -a)" in
+        Linux\ *)                               x_=linux ;;
+        Darwin\ *)                              x_=darwin ;;
+        SunOS\ *)                               x_=sunos ;;
+        FreeBSD\ *)                             x_=freebsd ;;
+        OpenBSD\ *)                             x_=openbsd ;;         # TODO: Netbsd?
+        AIX\ *)                                 x_=aix ;;
+        CYGWIN* | MSYS* | MINGW*|Windows*)      x_=win ;;
+        *)                                      return 1
+    esac
+}
+
+___x_cmd_os_is(){
+    local x_=;
+    case "$1" in
+        wsl)        ___x_cmd_os_is_wsl ;;
+        termux)     ___x_cmd_is_termux ;;
+        gitbash)    ___x_cmd_os_is_gitbash ;;
+        *)          ___x_cmd_os_name_
+                    [ "$x_" = "$1" ]
+                    ;;
+    esac
+}
+
+___x_cmd_os_is_wsl(){
+    [ -n "$WSL_INTEROP" ]
+}
+
+___x_cmd_os_is_gitbash(){
+    [ -n "$MSYSTEM" ]
+}
+
+
+___x_cmd_os_name() {
+    # Notcie: ___X_CMD_OS_NAME_ is remained in this environment as cache. Don't make it local.
+
+    # x_:run ___x_cmd_os_name_
+    # TODO: Add case.
+    #  x os name --ret abc,cde,efg
+    # x:ret <var1> <var2> <var3>
+    # ret=a,b,c x os name
+    # x_=cde x os name
+
+    local x_=""; ___x_cmd_os_name_ || return $?
+    if [ "$#" -eq 0 ]; then
+        printf "%s\n" "$x_"
+    else
+        ___x_cmd case "$x_" "$@"
+    fi
+}
+
+# EndSection
+
+
+# Section: arch
+___x_cmd_os_lsarch(){
+    printf "%s\n" x64 x64 arm64 armv7l
+}
+
+
+___X_CMD_OS_ARCH_FP="$___X_CMD_ROOT_DATA/os/arch"
+
+___x_cmd_os_arch_() {
+    x_=""
+
+    if [ -n "$___X_CMD_OS_ARCH_" ]; then
+        x_="$___X_CMD_OS_ARCH_"
+        return 0
+    fi
+
+    if [ -f "$___X_CMD_OS_ARCH_FP" ]; then
+        read -r x_<"$___X_CMD_OS_ARCH_FP"
+    fi
+
+    if [ -z "$x_" ]; then
+        ___x_cmd_os_getarch_  || return $?
+        ___x_cmd fprintf    "$___X_CMD_OS_ARCH_FP"   "%s\n" "$x_"
+    fi
+
+    ___X_CMD_OS_ARCH_="$x_"
+}
+
+___x_cmd_os_arch(){
+    local x_=""; ___x_cmd_os_arch_ "$@" || return $?
+
+    if [ "$#" -eq 0 ]; then
+        printf "%s\n" "$x_"
+    else
+        ___x_cmd case "$x_" "$@"
+    fi
+}
+
+___x_cmd_os_getarch_(){
+        local HOST_ARCH=""
+
+        x_=""
+        ___x_cmd_os_name_
+        local osname="$x_"
+
+        if [ "${osname}" = "sunos" ]; then
+            # first try to use pkgsrc to guess the most appropriate arch.
+            if HOST_ARCH=$(pkg_info -Q MACHINE_ARCH pkg_install 2>/dev/null); then
+                HOST_ARCH=$(echo "${HOST_ARCH}" | command tail -1)
+            else
+                # If it's not available, use isainfo to get the instruction set supported by the kernel.
+                HOST_ARCH=$(isainfo -n)
+            fi
+        elif [ "${osname}" = "aix" ]; then
+            HOST_ARCH=ppc64
+        else
+            HOST_ARCH="$(command uname -m)"
+        fi
+
+        x_=""
+        case "${HOST_ARCH}" in
+            x86_64 | amd64)     x_="x64" ;;
+            i*86)               x_="x86" ;;
+            aarch64)            x_="arm64" ;;
+            *)                  x_="${HOST_ARCH}" ;;     # TODO: Consider 32bit arm? For router or raspberry pi 3?
+        esac
+
+        # If running a 64bit ARM kernel but a 32bit ARM userland, change ARCH to 32bit ARM (armv7l)
+        if [ "$osname" = "Linux" ] && [ "${x_}" = arm64 ]; then
+            local L
+            L=$(___x_cmd_cmds_ls -dl /sbin/init 2>/dev/null) #                                         if /sbin/init is 32bit executable
+            if [ "$(od -An -t x1 -j 4 -N 1 "${L#*-> }")" = ' 01' ]; then
+                x_=armv7l
+            fi
+        fi
+}
+
+# EndSection

@@ -1,0 +1,442 @@
+# shellcheck shell=dash
+
+# Section: functions to be removed.
+# TODO: Removed.
+___x_cmd_evex(){
+    if [ "$#" -lt 2 ]; then
+        eval "${1:-:}"
+    else
+        "$@"
+    fi
+}
+
+# TODO: Removed.
+___x_cmd_eval(){
+    if [ "$#" -lt 2 ]; then
+        eval "${1:-:}"
+    else
+        # "$@"
+        local ___x_cmd_evex_op="$1"; shift
+        eval "$___x_cmd_evex_op" "\"\$@\""
+    fi
+}
+
+
+# TODO: remove this function in the future. Put it in str module ...
+case "$___X_CMD_SHELL" in
+    dash|"")
+        ___x_cmd_str___dash2underline(){
+            local part=; local x_="$1"
+            while [ -n "$x_" ]; do
+                part="${x_%%-*}"
+                [ "$part" != "$x_" ] || break
+                x_="${part}_${x_#*-}"
+            done
+            ___X_CMD_STR___DASH2UNDERLINE="$x_"
+        }
+        ;;
+    *)
+        ___x_cmd_str___dash2underline(){
+            ___X_CMD_STR___DASH2UNDERLINE="${1//-/_}"
+        }
+        ;;
+esac
+# EndSection
+
+# Section: whichbin hascmd hasbin
+___x_cmd_hascmd(){
+    command -v "${1:?Provide command name}" 1>/dev/null 2>/dev/null
+}
+
+___x_cmd_hasbin(){
+    local x_
+    ___x_cmd_whichbin_ "$1"
+}
+
+
+if [ -z "$MSYS" ]; then
+___x_cmd_whichbin___check_(){
+    local fp="$1/$2"
+    [ -f "$fp" ] || return 1
+    if [ -x "$fp" ]; then
+        x_="$fp"
+    else
+        x_=
+        return 1
+    fi
+}
+
+else
+___x_cmd_whichbin___check_(){
+    local fp="$1/$2"
+    [ -f "$fp" ] || return 1
+    if [ -x "$fp" ]; then
+        x_="$fp"
+    elif [ -x "$fp.exe" ]; then
+        x_="$fp.exe"
+    else
+        x_=
+        return 1
+    fi
+}
+
+fi
+
+if [ -z "$ZSH_VERSION" ]; then
+    ___x_cmd_whichbin_(){
+        local exe="$1"
+        local IFS=:; local p; for p in $PATH; do
+            ___x_cmd_whichbin___check_ "$p" "$exe" || continue
+            return 0
+        done
+        return 1
+    }
+else
+    ___x_cmd_whichbin_(){
+        local exe="$1"
+        local IFS=" ";
+        local p; while read -r p; do
+            ___x_cmd_whichbin___check_ "$p" "$exe" || continue
+            return 0
+        done <<A
+${PATH//:/
+}
+A
+        return 1
+    }
+
+fi
+# EndSection
+
+# Section: Original INNER facility
+___X_CMD_INNER_PATH="$PATH"
+
+___x_cmd_inner_cd(){
+    ___x_cmd_cmds_cd "$@"
+}
+# EndSection
+
+# Section: cd0 and ___x_cmd_cmds_cd
+___x_cmd_cd0(){
+    local OLDPWD0="$OLDPWD"
+    ___x_cmd_cmds_cd "$1" 2>/dev/null || {
+        x:error "cd cannot be performed to the directory[$1], it might not exist"
+        return 1
+    }
+    OLDPWD="$OLDPWD0"
+}
+
+if [ -n "${ZSH_VERSION}" ]; then
+# `command cd` will not execute buildin command `cd` in zsh, refer: https://linux.die.net/man/1/zshbuiltins
+___x_cmd_cmds_cd(){
+    builtin cd "$@" 1>/dev/null || return $?
+}
+elif [ -n "${BASH_VERSION}" ] ; then
+___x_cmd_cmds_cd(){
+    builtin cd "$@" || return $?
+}
+else
+___x_cmd_cmds_cd(){
+    command cd "$@" || return $?
+}
+fi
+
+___x_cmd_readr(){
+    read -r "$@"
+}
+# EndSection
+
+# Section: cmds
+# cmds is short for cmdshim
+___x_cmd_cmds(){
+    [ $# -gt 0 ] || N=x M="___x_cmd_cmds expect at least one argument" log:ret:64
+
+    local op="$1";  shift
+    case "$op" in
+        cd|mv|cp|mkdir|rm|touch|awk|ls|cat|sleep|ln)
+                            ___x_cmd_cmds_"$op"         "$@" ;;
+        --)                 ___x_cmd_cmds_run           "$@" ;;
+        *)                  ___x_cmd_cmds_run "$op"     "$@" ;;
+    esac
+}
+
+___x_cmd_cmds_run(){
+    local x_
+    ___x_cmd_whichbin_ "$1" || {
+        x:error "command not found -> $1"
+        return 127   # just like command return
+    }
+    shift
+    "$x_" "$@"
+}
+
+[ -f "${___X_CMD_ROOT_DATA}/cmdshim/code" ] || {
+    . "$___X_CMD_ROOT_MOD/x-cmd/lib/lwmod/cmdshim"
+    ___x_cmd_cmdshim___init
+} || return $?
+
+. "${___X_CMD_ROOT_DATA}/cmdshim/code"
+
+# EndSection
+
+# Section: is interactive control
+# ___X_CMD_IS_INTERACTIVE_FORCE=
+___X_CMD_IS_INTERACTIVE_ENABLE=1
+
+___x_cmd_interactive_disable(){
+    ___X_CMD_IS_INTERACTIVE_ENABLE=
+}
+
+___x_cmd_interactive_enable(){
+    ___X_CMD_IS_INTERACTIVE_ENABLE=1
+}
+
+___x_cmd_interactive(){
+    case "$1" in
+        disable)    ___x_cmd_interactive_disable ;;
+        *)          ___x_cmd_interactive_enable  ;;
+    esac
+}
+
+# Deprecated: this funtion ... Always return true ...x
+___x_cmd_is_interactive(){
+    # x:warn "Deprecated. It always returns true. "
+    return 0
+
+    # [ -z "$___X_CMD_IS_INTERACTIVE_FORCE" ] || return 0
+
+    # [ -n "$___X_CMD_IS_INTERACTIVE_ENABLE" ] && ___x_cmd_is_interactive_tty
+}
+
+# Deprecated: rename to ___x_cmd_is_interactive_shell
+___x_cmd_is_interactive_tty(){
+    ___x_cmd_is_interactiveshell
+}
+
+___x_cmd_is_interactiveshell(){
+    [ "${-#*i}" != "$-" ]
+}
+
+___x_cmd_is_repl(){
+    # [ -n "$___X_CMD_REPL_TYPE" ] || [ "${-#*i}" != "$-" ]
+    [ "${-#*i}" != "$-" ]
+}
+
+# For scenario -> different output for tty/file/pipe
+___x_cmd_is_stdout2tty(){
+    [ -t 1 ]
+}
+
+___x_cmd_is_cygwin(){
+    [ -e "/cygdrive" ]
+}
+
+___x_cmd_is_msys(){
+    [ -n "$MSYSTEM" ]
+}
+
+___x_cmd_is_termux(){
+    [ -n "$TERMUX_VERSION" ]
+}
+
+___x_cmd_is_ish(){
+    [ -e /proc/ish ]
+}
+
+___x_cmd_is_suitable_pkg(){
+    ! { ___x_cmd_is_termux || ___x_cmd_is_ish; }
+}
+
+___x_cmd_is_suitable_advise_env(){
+    [ -z "$___X_CMD_ADVISE_DISABLE" ] || return 1
+    if [ -n "$BASH_VERSION" ]; then
+        return 0
+    elif [ -n "$ZSH_VERSION" ]; then
+        case "$ZSH_VERSION" in
+            2.*|3.*|4.*|5.0*)   return 1 ;;
+            *)                  return 0 ;;
+        esac
+    else
+        return 1
+    fi
+}
+
+___x_cmd_is_suitable_advise_repl(){
+    ___x_cmd_is_suitable_advise_env && ___x_cmd_is_repl
+}
+# EndSection
+
+# Section: functions that must be loaded: ___x_cmd_abspath_   ___x_cmd_shq1_
+___x_cmd_abspath_(){
+    local target_path="${1:?Please provide path}"
+
+    case "$target_path" in
+        \~/*)        target_path="$HOME/${target_path#*/}" ;;
+    esac
+
+    case "$target_path" in
+        /)          x_=/ ;;
+        .)          x_="$PWD" ;;
+        \~)         x_="$HOME" ;;
+        *)
+                    target_path="${target_path%/}"
+                    local basename="${target_path##*/}"
+                    if [ "$basename" = "$target_path" ]; then
+                        x_="$PWD/$target_path"
+                    else
+                        local x___ORIGIN_PWD="$PWD"
+                        ___x_cmd_cd0 "${target_path%"$basename"}" || return $?
+                        case "$basename" in
+                            \.)     x_="$PWD" ;;
+                            \.\.)   ___x_cmd_cd0 .. || return 1
+                                    x_="$PWD" ;;
+                            *)      x_="${PWD%/}/$basename"
+                        esac
+                        x_="$x_"
+                        ___x_cmd_cd0 "$x___ORIGIN_PWD" || return $?
+                    fi
+    esac
+}
+
+___x_cmd_shq1_(){
+    local i="$1"
+
+    [ -n "$i" ] || {
+        x_="''"
+        return 0
+    }
+
+    local r="'"
+
+    while [ -n "$i" ]; do
+        case "$i" in
+            *\'*)
+                r="${r}${i%%\'*}'\\''"
+                i="${i#*\'}"
+                [ -n "$i" ] || r="${r}'"
+                ;;
+            *)
+                r="${r}${i}'"
+                break
+        esac
+    done
+
+    x_="$r"
+}
+# EndSection
+
+# Section: exitcode exception handle
+___x_cmd_ex_init(){
+    ___X_CMD_EX_EXIT_LOGGER=${1:-ex}
+    ___X_CMD_EX_EXIT_CODE="${2:-0}"
+}
+
+___x_cmd_ex_err_int(){
+    [ -z "$M" ] ||  ___x_cmd_log_pr :"$___X_CMD_EX_EXIT_LOGGER" "[recv SIGINT] ${M}"
+}
+
+___x_cmd_ex_err_msg(){
+    [ -z "$M" ] ||  ___x_cmd_log_pr :"$___X_CMD_EX_EXIT_LOGGER" "[EXIT=$___X_CMD_EX_EXIT_CODE] ${M}"
+}
+
+___x_cmd_ex_if_int(){
+    [ "$___X_CMD_EX_EXIT_CODE" -ne 130 ] || { ___x_cmd_ex_err_int; return 130; }
+}
+
+___x_cmd_ex_if_err(){
+    [ "$___X_CMD_EX_EXIT_CODE" -eq 0 ]   || { ___x_cmd_ex_err_msg; return "$___X_CMD_EX_EXIT_CODE"; }
+}
+
+alias ex:init='local ___X_CMD_EX_EXIT_CODE; local ___X_CMD_EX_EXIT_LOGGER; ___x_cmd_ex_init'
+alias ex:save='___X_CMD_EX_EXIT_CODE=$?'
+alias ex:ret:if-int='___x_cmd_ex_if_int || return 130'
+alias ex:ret:if-err='___x_cmd_ex_if_err || return $?'
+# EndSection
+
+# Section: runmode
+
+# No human interfere
+
+___X_CMD_RUNMODE="${___X_CMD_RUNMODE:-"$___X_CMD_RUNMODE_AUTO"}"
+
+___X_CMD_RUNMODE_AUTO=0
+
+# ___X_CMD_RUNMODE_AI=1
+# ___X_CMD_RUNMODE_HUMANAI=5
+
+___X_CMD_RUNMODE_MANUAL=5
+
+___X_CMD_RUNMODE_CHATTY=9
+
+# To prevent hang in script
+___x_cmd_runmode_is_auto(){     [ "${___X_CMD_RUNMODE:-0}" -le 0 ]; }
+___x_cmd_runmode_is_manual(){   [ "${___X_CMD_RUNMODE:-0}" -ge 5 ]; }
+___x_cmd_runmode_is_chatty(){   [ "${___X_CMD_RUNMODE:-0}" -ge 9 ]; }
+
+# If there
+___X_CMD_DEVTTY_FP=/dev/tty
+
+___x_cmd_runmode_is_interatable(){
+    # [ -n "$___X_CMD_DEVTTY_FP" ]
+    # [ -e "$___X_CMD_DEVTTY_FP" ]
+    [ -e "$___X_CMD_DEVTTY_FP" ] # && [ -w "$___X_CMD_DEVTTY_FP" ]
+}
+
+___x_cmd_runmode_allow_auto(){     [ "${___X_CMD_RUNMODE:-0}" -le 0 ]; }
+___x_cmd_runmode_allow_manual(){   [ "${___X_CMD_RUNMODE:-0}" -ge 5 ] && ___x_cmd_runmode_is_interatable; }
+___x_cmd_runmode_allow_chatty(){   [ "${___X_CMD_RUNMODE:-0}" -ge 9 ] && ___x_cmd_runmode_is_interatable; }
+
+
+    # {
+    #     [ -e /dev/tty ] || return 1
+    #     [ ! -t 0 ]
+    # }
+
+
+# EndSection
+
+# Section: compat: syncfs tab
+___x_cmd_compat_syncfs(){
+    # gitbash: -f
+    # For centos-7.9
+    # This function mostly used in /dev/tty. In some environment, there is no /dev/tty.
+    if ___x_cmd_cmds sync -f "$___X_CMD_ROOT/X" 2>/dev/null; then
+        ___x_cmd_compat_syncfs(){
+            [ -e "$1" ]     || return 0
+            ___x_cmd_cmds sync -f "$@"
+        }
+    else
+        ___x_cmd_compat_syncfs(){
+            [ -e "$1" ]     || return 0
+            ___x_cmd_cmds sync "$@"
+        }
+    fi && ___x_cmd_compat_syncfs "$@"
+}
+
+## Deprecated, just in case.
+___x_cmd_tab(){
+    x:warn "tab module is renamed to cutt"
+    ___x_cmd cutt "$@"
+}
+# EndSection
+
+# Section: pkgfasboot
+___x_cmd_pkgbootfast(){
+    local sphere_name=X
+    local cacherc="$___X_CMD_ROOT_DATA/pkg/sphere/$sphere_name/.x-cmd/link/env.rc.sh"
+    if [ ! -f "$cacherc" ]; then
+        ___x_cmd pkg sphere fastboot init --sphere "$sphere_name" || return $?
+    fi
+
+    [ ! -f "$cacherc" ] || . "$cacherc"
+}
+
+# Section: setting ___X_CMD_LANG
+if [ -f "$___X_CMD_ROOT_DATA/lang/custom.txt" ]; then
+    read -r ___X_CMD_LANG <"$___X_CMD_ROOT_DATA/lang/custom.txt"
+else
+    case "$LANG" in
+        zh_*)       ___X_CMD_LANG=zh ;;
+        *)          ___X_CMD_LANG=en ;;
+    esac
+fi

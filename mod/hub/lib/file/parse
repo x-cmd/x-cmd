@@ -1,0 +1,71 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_file_parse(){
+    local src="$1"; [ -n "$src" ] || M='Provide source file path' N=hub log:ret:64
+    local dst="$2"; [ -n "$dst" ] || M='Provide destination file path' N=hub log:ret:64
+    local remotefp="$3"; [ -n "$remotefp" ] || M='Provide remote file path' N=hub log:ret:64
+
+    <"$src" ___x_cmd_hub_file_parse_stream "$remotefp" >"$dst"
+}
+
+___x_cmd_hub_file_parse_stream(){
+
+    local remotefp="$1"; [ -n "$remotefp" ] || M='Provide remote file path' N=hub log:ret:64
+    local srctype=
+    local compress=
+    local keyname=
+
+    while read -r line; do
+        case "$line" in
+            srctype:\ *)    srctype="${line#*": "}" ;;
+            compress:\ *)   compress="${line#*": "}"    ;;
+            keyname:\ *)    keyname="${line#*": "}" ;;      # None means no such key ...
+            "")             break ;;
+        esac
+    done
+
+    if [ "$srctype" = link ]; then
+        local url; url="$(___x_cmd_cmds_cat)"
+        hub:debug "curl link: $url"
+        ___x_cmd curl -sSfL "$url"
+        return
+    fi
+
+    if [ -n "$keyname" ]; then
+        local x_=
+        ___x_cmd_hub_file___get_filekey_from_header || return 1
+        local filekey="$x_"
+    fi
+
+    hub:debug "srctype=$srctype, compress=$compress, keyname=$keyname"
+
+    case "$compress" in
+        xz) [ -n "$keyname" ] || { ___x_cmd_hub_file___unxz ; return 0; }
+            ___x_cmd_hub_file___decrypt_file "$filekey" | ___x_cmd_hub_file___unxz
+            ;;
+        *)  [ -n "$keyname" ] || { ___x_cmd_cmds_cat ; return 0; }
+            ___x_cmd_hub_file___decrypt_file "$filekey" ;;
+    esac
+}
+
+___x_cmd_hub_file___unxz(){
+    if command -v xz >/dev/null; then
+        command xz -d
+    else
+        ___x_cmd 7za x -si -so -txz 2>/dev/null
+    fi
+}
+
+___x_cmd_hub_file___xz(){
+    # NOTE: xz compress is not supported by busybox
+    ___x_cmd 7za a dummy -so -si -txz 2>/dev/null
+}
+
+___x_cmd_hub_file___get_filekey_from_header(){
+    ___x_cmd_hub_keypair_get_key_path_ "$keyname" private || return 1
+    x_="$(printf "%s" "$___X_CMD_HUB_CAT_FILEKEY" | \
+        ___x_cmd_hub_file___decrypt_filekey "$x_")" || {
+        ___x_cmd_ui_tf false "Failed to decrypt filekey to $filekey" >&2
+        return 1
+    }
+}

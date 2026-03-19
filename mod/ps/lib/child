@@ -1,0 +1,60 @@
+# shellcheck shell=dash
+
+___x_cmd_ps___child(){
+    if ___x_cmd hascmd ps; then
+        ___x_cmd_ps___child_fromps "$@"
+    else
+        ___x_cmd_ps___child_fromfile "$@"
+    fi
+}
+
+___x_cmd_ps___child_fromfile(){
+    local ppid="$1"
+    local pid=
+    kill -0 "$ppid" 2>/dev/null || return 1
+
+    local childfp="/proc/$ppid/task/$ppid/children"
+    if [ -f "$childfp" ]; then
+        ___x_cmd_cmds awk '{ for (i=1; i<=NF; i++) print $i; }' "$childfp" | while read -r pid; do
+            [ -n "$pid" ] || continue
+            ___x_cmd_ps___child_fromfile "$pid" || continue
+            printf "%s\n" "$pid"
+        done
+    else
+        local fp
+        for fp in /proc/*/*; do
+            case "$fp" in
+                /proc/[0-9]*/ppid)
+                        read -r pid < "$fp"
+                        [ "$pid" = "$ppid" ] || continue
+                        pid="${fp#"/proc/"}"
+                        pid="${pid%%/*}"
+                        ___x_cmd_ps___child_fromfile "$pid" || continue
+                        printf "%s\n" "$pid"
+                    ;;
+                *)  continue    ;;
+            esac
+        done 2>/dev/null
+    fi
+}
+
+___x_cmd_ps___child_fromps(){
+    local ppid="$1"
+    local pid=
+    kill -0 "$ppid" 2>/dev/null || return 1
+    { ___x_cmd_cmds ps -e -o user,pid,ppid 2>/dev/null || ___x_cmd_cmds ps -ef 2>/dev/null; } | \
+        ___x_cmd_cmds awk -v ppid="$ppid" '$3 == ppid {print $2}' | while read -r pid; do
+            ___x_cmd_ps___child_fromps "$pid" || continue
+            printf "%s\n" "$pid"
+        done
+}
+
+___x_cmd_ps___child_frompgrep(){
+    local ppid="$1"
+    local pid=
+    kill -0 "$ppid" 2>/dev/null || return 1
+    ___x_cmd_cmds pgrep -P "$ppid" | while read -r pid; do
+        ___x_cmd_ps___child_frompgrep "$pid" || continue
+        printf "%s\n" "$pid"
+    done
+}

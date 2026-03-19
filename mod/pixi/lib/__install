@@ -1,0 +1,104 @@
+# shellcheck shell=dash
+
+___x_cmd_pixi___install(){
+    if [ -f "$___X_CMD_PIXI_BIN_PATH/$___X_CMD_PIXI_BIN" ]; then
+        pixi:info "Pixi is already installed."
+    else
+        ___x_cmd_pixi___download_inner "$@" || return $?
+    fi
+
+    ___x_cmd_pixi___activate_auto
+}
+
+# TODO: introducing environment variable ... ASSUME_REMOVE_PIXI_HOME
+___x_cmd_pixi___uninstall(){
+    local ASSUME_REMOVE_PIXI_HOME="${ASSUME_REMOVE_PIXI_HOME}"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --assume-remove-data)
+                case "$2" in
+                    yes|no)     ASSUME_REMOVE_PIXI_HOME="$2"; shift 2 ;;
+                    *)          N=pixi M="Only accept yes or no following --assume-remove-data" log:ret:64 ;;
+                esac
+                ;;
+
+            *)
+                N=pixi M="Unsupported option -> $1" log:ret:64 ;;
+        esac
+    done
+
+    if ___x_cmd_hascmd pixi; then
+        # pixi cache: https://pixi.sh/latest/features/environment/#caching-packages
+        ___x_cmd pixi clean cache --yes || return $?
+        pixi:info "Pixi caching packages were successfully purged."
+    fi
+
+    {
+        ___x_cmd_pixi___deactivate
+        ___x_cmd rmrf "$___X_CMD_ROOT_BOOT/pixi.disable" "$___X_CMD_PIXI_BIN_PATH/$___X_CMD_PIXI_BIN"
+    } || return $?
+
+    pixi:info "'pixi' binary is removed."
+
+    case "$ASSUME_REMOVE_PIXI_HOME" in
+        yes)        ___x_cmd_pixi___uninstall___rm; return ;;
+        no)         ;;
+        *)
+                    if ___x_cmd_runmode_allow_manual; then
+                        if ___x_cmd ui yesno "Do you want to remove ~/.pixi directory, which contains globally installed packages data ?"; then
+                            ! ___x_cmd_pixi___uninstall___rm || return 0
+                        fi
+                    fi
+    esac
+
+    pixi:info \
+        --cmd "rm -rf ~/.pixi"  \
+        "Pixi data can be manually removed by executing the following command."
+}
+
+___x_cmd_pixi___uninstall___rm(){
+    local pixi_home="$HOME/.pixi"
+    if ___x_cmd rmrf "${pixi_home}"; then
+        pixi:info "Directory removed -> ${pixi_home}"
+        return 0
+    else
+        pixi:error "Fail to remove directory -> ${pixi_home}"
+        return 1
+    fi
+}
+
+___x_cmd_pixi___get_latest_version_(){
+    local latest_version=
+    if ___x_cmd websrc is cn;then
+        latest_version="$(___x_cmd cb repo release latest -r x-cmd-sourcecode/pixi | grep "TagName:")"
+    else
+        latest_version="$(___x_cmd gh repo release latest -r x-cmd-sourcecode/pixi | grep "Tag:")"
+    fi
+    x_="${latest_version#*v}"
+}
+
+___x_cmd_pixi___upgrade(){
+    [ -f "$___X_CMD_PIXI_BIN_PATH/$___X_CMD_PIXI_BIN" ] || {
+        pixi:error "Pixi is not installed."
+        return 1
+    }
+
+    local version=
+    version="$(___x_cmd_pixi___runmain --version)"
+    version="${version#* }"
+
+    local x_=
+    local latest_version=
+    x_=; ___x_cmd_pixi___get_latest_version_
+    latest_version="$x_"
+
+    [ "$version" != "$latest_version" ] || {
+        pixi:info "Pixi is already up-to-date (version $version)."
+        return 0
+    }
+
+    pixi:info "Pixi will be updated from $version to $latest_version"
+    ___x_cmd_pixi___download || return $?
+    pixi:info "Pixi has been updated to version $latest_version."
+}

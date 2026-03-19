@@ -1,0 +1,130 @@
+# shellcheck shell=dash
+
+___x_cmd_cd_search___home(){
+    local x_="${1}";  shift
+    ___x_cmd_cd_pick_ \
+    ___x_cmd find --cmd "$HOME" \
+        -path "$HOME/Library" -prune \
+        -o -path "$HOME/.*" -prune \
+        -o -path "*/.git" -prune \
+        -o -name "*${x_}*" -type d -print || return $?
+    ___x_cmd_cd_origin "$x_" "$@"
+}
+
+___x_cmd_cd_search___xcmdroot(){
+    ___x_cmd_cd_goto___pickfromfind "$___X_CMD_ROOT"  "$@"
+}
+
+___x_cmd_cd_search___root(){
+    ___x_cmd_cd_goto___pickfromfind /                 "$@"
+}
+
+___x_cmd_cd_search___path(){
+    ___x_cmd_cd_goto___pickfromfind .                 "$@"
+}
+
+___x_cmd_cd_goto___pickfromfind(){
+    local startpath="$1"
+    local pattern="$2"
+    shift 2
+
+    local x_=;
+    local maxdepth=3     # default depth
+
+    ___x_cmd_cd_pick_ ___x_cmd find --cmd "$startpath" -maxdepth "$maxdepth" -path "*$pattern*" -type d -print
+    local errcode=$?
+
+    case "$errcode" in
+        130)        return 130 ;;
+        0)          ;;
+        *)
+                    cd:warn "Cannot find folder -> $pattern"
+                    maxdepth=6
+                    local id
+                    ___x_cmd ui select id  "Next"  \
+                        "Search deeper with maxdepth=$maxdepth"  \
+                        "Search deeper without maxdepth limit"  \
+                        "Abort"
+
+                    case "$id" in
+                        1)  ___x_cmd_cd_pick_ ___x_cmd find --cmd "$startpath" -maxdepth "$maxdepth" -path "*$pattern*" -type d -print || return ;;
+                        2)  ___x_cmd_cd_pick_ ___x_cmd find --cmd "$startpath" -path "*$pattern*" -type d -print || return ;;
+                        *)  return ;;
+                    esac
+    esac
+
+    ___x_cmd_cd_origin "$x_" "$@"
+}
+
+___x_cmd_cd_search___history(){
+    local x_=; ___x_cmd_cd_pick_ ___x_cmd_cd_search___history_home || return $?
+    ___x_cmd_cd_origin "$x_" "$@"
+}
+
+___x_cmd_cd_search___history_match(){
+    local p="$1"; shift
+    local x_=; ___x_cmd_cd_pick_ ___x_cmd_cd_history___match "$p" || return $?
+    ___x_cmd_cd_origin "$x_" "$@"
+}
+
+___x_cmd_cd_search___history_home(){
+    ___x_cmd_cd_history___top "$HOME"
+    ___x_cmd_cd_history___ls --rev
+}
+
+
+___x_cmd_cd_goto___pickfromiter_new(){
+    local MKDIRP="$1";  shift
+    local x_=""; MKDIRP="$MKDIRP" ___x_cmd_cd_pick_ ___x_cmd_cd_search___iter_enhance "$1" "$2" || return $?
+    shift 2
+    case "$x_" in
+        "mkdir -p "*)
+            local newdir="${x_#"mkdir -p "}"
+            ___x_cmd ui yesno "Create directdory -> ${newdir}" || return $?
+            ___x_cmd mkdirp "${newdir}" || return $?
+            ___x_cmd_cd_origin "${newdir}"
+            ;;
+        *)
+            ___x_cmd_cd_origin "$x_" "$@"
+            ;;
+    esac
+}
+
+___x_cmd_cd_search___iter_enhance(){
+    ___x_cmd_cd_search___iter "$@"
+    [ -z "$MKDIRP" ] || printf "mkdir -p %s\n" "$MKDIRP"
+}
+
+
+___x_cmd_cd_goto___pickfromiter(){
+    local x_=; ___x_cmd_cd_pick_ ___x_cmd_cd_search___iter "$1" "$2" || return $?
+    shift 2
+    ___x_cmd_cd_origin "$x_" "$@"
+}
+
+___x_cmd_cd_search___iter()(
+    local root="${1:-"."}"
+    local iter_path="$2"
+    ___x_cmd_cmds_cd "$root" 2>/dev/null || return $?
+    local cur="${iter_path%%/*}"
+    local elem=
+    if [ "$cur" = "$iter_path" ]; then
+        # this is final
+        if [ "${cur%*}" = "$cur" ]; then
+            cur="$cur*"
+        fi
+        eval "___x_cmd_cmds_ls -d $cur/" 2>/dev/null | while read -r elem; do
+            printf "%s\n" "${root%/}/$elem"
+        done
+    else
+        if [ "${cur%*}" = "$cur" ]; then
+            cur="$cur*"
+        fi
+
+        iter_path="${iter_path#*/}"
+        eval "___x_cmd_cmds_ls -d $cur/" 2>/dev/null | while read -r elem; do
+            ___x_cmd_cd_search___iter "${root%/}/$elem" "$iter_path"
+        done
+    fi
+)
+

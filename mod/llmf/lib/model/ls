@@ -1,0 +1,92 @@
+# shellcheck shell=dash
+
+___x_cmd_llmf_model_ls(){
+    local format=app
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -j|--json)      format=json     ;;
+            -c|--csv)       format=csv      ;;
+            -y|--yml)       format=yml      ;;
+            --app)          format=app      ;;
+
+            -h|--help)      ___x_cmd help -m llmf model ls; return ;;
+            *)              break ;;
+        esac
+        shift
+    done
+
+    ___x_cmd_llmf_model_ls___"$format"
+
+}
+
+# Section: inner
+___x_cmd_llmf_model_ls___json(){
+    local dir="$___X_CMD_LLMF_MODEL_DATA_CACHE"
+    local logstr="Local models data"
+    case "$1" in
+        --all) shift; dir="$___X_CMD_LLMF_MODEL_DATA_INFO"; logstr="Models metadata" ;;
+    esac
+
+    ___x_cmd_llmf___prepare_metadata || return $?
+    [ -d "$dir" ] || {
+        llmf:error "$logstr is empty"
+        return 1
+    }
+
+    (
+        ___x_cmd_cmds cd "$dir" || return $?
+        ___x_cmd find --cmd . -type f 2>/dev/null | while read -r l; do
+            [ "$l" = "${l%".log"}" ] || continue
+            l="${l#"./"}"
+            l="${l%"."*}"
+            printf "%s\n" "$l"
+        done
+    ) | ___x_cmd_llmf_model_ls___json_inner
+
+}
+
+___x_cmd_llmf_model_ls___json_inner(){
+    ___x_cmd_llmf___prepare_metadata || return $?
+    dirpath="$___X_CMD_LLMF_MODEL_DATA_INFO" ___x_cmd cawk -m j/json,j/jiter,j/jcp \
+        -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/parse_info.awk"
+}
+
+___x_cmd_llmf_model_ls___csv(){
+    local datalist; datalist="$( ___x_cmd_llmf_model_ls___json "$@" )" || return $?
+    [ -n "$datalist" ] || return $?
+    ___x_cmd cawk -m j/json,j/jiter,csv -f "$___X_CMD_ROOT_MOD/llmf/lib/awk/json2csv.awk" <<A
+$datalist
+A
+}
+
+___x_cmd_llmf_model_ls___app_(){
+    x_=
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc llmf ;" \
+    ___x_cmd storeread_ ___x_cmd csv app --return print --clear ___x_cmd_llmf_model_ls___csv "$@"
+    [ -n "$x_" ] || return $?
+    x_="$( ___x_cmd csv awk 'CNR==1{ print cval(1) "/" cval(2) "/" cval(3) "." cval(4); }' <<A
+$x_
+A
+)"
+}
+
+___x_cmd_llmf_model_ls___app(){
+    local x_=; ___x_cmd_llmf_model_ls___app_ "$@" || return $?
+    local model="$x_"
+    local _cmd
+    ___x_cmd ui select ,_cmd "What to do Next" \
+        "x llmf model default set   $model" \
+        "x llmf model which         $model" \
+        "x llmf model info          $model" \
+        "x llmf model remove        $model" \
+        "return 0" || return $?
+
+    [ -n "$_cmd" ] || return $?
+    llmf:info -c "$_cmd" "Execution"
+    eval "$_cmd"
+
+    ! ___x_cmd_llmf___hascmd 2>/dev/null >&2 || ___x_cmd shortcut enable --by category llmf
+}
+
+# EndSection
+

@@ -1,0 +1,293 @@
+# shellcheck shell=dash
+
+___x_cmd log init pldg
+
+xrc:mod:lib     pldg        exec    pp
+
+___x_cmd_pldg___main(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local stdio=""
+    local rpath=""
+    local wpath=""
+    local cpath=""
+    local dpath=""
+    local chown=""
+    local flock=""
+    local tty=""
+    local recvfd=""
+    local sendfd=""
+    local fattr=""
+    local inet=""
+    local unix=""
+    local id=""
+    local dns=""
+    local proc=""
+    local exec=""
+    local prot_exec=""
+    local vminfo=""
+    local tmppath=""
+
+    local fs_all=""
+    local fs_allrx=""
+
+    local fs_sysbin=""
+    local fs_localbin=""
+    local fs_font=1
+
+    local fs_home=""
+    local fs_ws=""
+    local fs_pwd=""
+
+    local fplist=""
+
+    local arglist=""
+
+    local tracemode=""
+    local pp=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m pldg "$@" ; return 0 ;;
+
+            --pp|--print-policy)
+                            pp=1 ;;
+
+            --trace)        tracemode="$2";   arg:2:shift; continue ;;
+
+            -0|-1|-2|-3|-4|-5|-6|-7|-8|-9)
+                            ___x_cmd_pldg___main_handle "${1#-}" ;;
+
+            --no-net)       inet="";    dns="";   unix=""   ;;
+            --net)          inet=1;     dns=1;    unix=1    ;;
+
+            --tty)          tty=1       ;;
+            --notty)        tty=""      ;;
+
+            --home)         fs_home=1   ;;
+            --no-home)      fs_home=""  ;;
+            --pwd)          fs_pwd=1    ;;
+            --no-pwd)       fs_pwd=""   ;;
+            --ws)           fs_ws=1     ;;
+            --no-ws)        fs_ws=""    ;;
+
+            -v)             arg:add fplist              -v  "$2";       arg:2:shift; continue ;;
+
+            -V)             fs_all=1    ;;
+
+            --all)          fs_all=1    ;;
+            --allrx)        fs_allrx=1  ;;
+
+                        # Inner function
+            --wd|--workdir)
+                            [ -n "$2" ] || N=pldg M="Expected directory path after -> $1" log:ret:64
+                            [ -d "$2" ] || ___x_cmd mkdirp "$2" || N=pldg M="Fail to create directory -> $2" log:ret:1
+                            arg:add fplist             -v "rwxc:$2" ;     arg:2:shfit; continue ;;
+
+
+            --wf|--workfile)
+                            [ -n "$2" ] || N=pldg M="Expected file path after -> $1" log:ret:64
+                            [ -f "$2" ] || {
+                                ___x_cmd ensurefp "$2"  || N=pldg M="Fail to create directory for file -> $2" log:ret:1
+                                printf "">"$2"
+                            }
+                            arg:add fplist             -v "rwxc:$2";      arg:2:shift; continue ;;
+
+            --root)         fs_root=1   ;;
+
+            -g|-u|-c|-C|-M|-O|-P|-F|-T)
+                            arg:add arglist            "$1" "$2";       arg:2:shift; continue ;;
+
+            -q|-k|-n|-D|-N) arg:add arglist            "$1" ;;
+
+            --no)           ___x_cmd_pldg___main_handle_perm deny  "$2"; arg:2:shift; continue ;;
+            -p)             ___x_cmd_pldg___main_handle_perm allow "$2"; arg:2:shift; continue ;;
+
+            --)             shift; break ;;
+            *)              break ;;
+        esac
+        shift
+    done
+
+    ___x_cmd_pldg___main_run "$@"
+}
+
+___x_cmd_pldg___main_isperm(){
+    case "$1" in
+        stdio|rpath|wpath|cpath|dpath|chown|flock|tty|recvfd|sendfd|fattr|inet|unix|id|dns|proc|exec|prot_exec|vminfo|tmppath)
+            return 0 ;;
+        *)
+            return 1 ;;
+    esac
+}
+
+___x_cmd_pldg___main_handle_perm(){
+    local op="$1"
+    local str="$2"
+    local x_
+    local perm
+
+    case "$op" in
+        allow)      op=1    ;;
+        deny)       op="''" ;;
+    esac
+
+    local code=""
+    ___x_cmd line from_ "$str"
+
+    while read -r perm; do
+        ___x_cmd_pldg___main_isperm "$perm" || continue
+        code="${code}${perm}=${op}
+"
+    done <<A
+$x_
+A
+
+    eval "$code"
+}
+
+___x_cmd_pldg___main_handle___main(){
+    local msg="$1";     shift
+    local IFS=" "
+
+    [ -z "$pp" ] || {
+        printf "   %s\n" "$msg" >&2
+        printf "   Enable features -> %s\n" "$*"
+    }
+
+    local code=""
+    while [ $# -gt 0 ]; do
+        code="$code $1=1; "
+        shift
+    done
+
+    eval "$code"
+}
+
+___x_cmd_pldg___main_handle(){
+    local l=$1
+
+    [ "$l" -ge 1 ] || return 0
+
+    ___x_cmd_pldg___main_handle___main \
+        "level 1: Support program designed for computation or data processing, interacting via standard input and output. Eg. echo hi" \
+        stdio   rpath   exec    proc    prot_exec   \
+        fs_sysbin
+
+    [ "$l" -ge 2 ] || return 0      # ls and other command
+
+    ___x_cmd_pldg___main_handle___main \
+        "level 2: device, tmpfs and sysctl support" \
+        tmppath   fattr   recvfd    sendfd      \
+        fs_localbin
+
+    [ "$l" -ge 3 ] || return 0      # file-based commands, with local bin support
+
+    ___x_cmd_pldg___main_handle___main \
+        "level 3: Support programs installed in home folder." \
+        wpath   cpath   dpath    flock     vminfo
+
+    [ "$l" -ge 4 ] || return 0      # editor, interactive commands
+
+    ___x_cmd_pldg___main_handle___main \
+        "level 4: Interactive TUI App, bash" \
+        tty   id   chown    unix
+
+    [ "$l" -ge 5 ] || return 0      # bash
+
+    ___x_cmd_pldg___main_handle___main \
+        "level 5: X-CMD" \
+        fs_xcmd
+
+    [ "$l" -ge 6 ] || return 0
+
+    ___x_cmd_pldg___main_handle___main \
+        "level 6: GUI App ~" \
+        fs_font
+
+    [ "$l" -ge 7 ] || return 0      # firefox/chrome
+
+    ___x_cmd_pldg___main_handle___main \
+        "level 7: Sohpisticated GUI App like Web Browswer, or Electron based application." \
+        dns inet
+
+
+    [ "$l" -ge 8 ] || return 0      # ...
+
+    [ "$l" -ge 9 ] || return 0
+
+    ___x_cmd_pldg___main_handle___main \
+        "level 9: Enable all features and all fs access." \
+        fs_all
+}
+
+___x_cmd_pldg___main_run(){
+    local perm=""
+
+    [ -z "$stdio"       ] || perm="${perm} stdio"
+    [ -z "$rpath"       ] || perm="${perm} rpath"
+    [ -z "$wpath"       ] || perm="${perm} wpath"
+    [ -z "$cpath"       ] || perm="${perm} cpath"
+    [ -z "$dpath"       ] || perm="${perm} dpath"
+    [ -z "$chown"       ] || perm="${perm} chown"
+    [ -z "$flock"       ] || perm="${perm} flock"
+    [ -z "$tty"         ] || perm="${perm} tty"
+    [ -z "$recvfd"      ] || perm="${perm} recvfd"
+    [ -z "$sendfd"      ] || perm="${perm} sendfd"
+    [ -z "$fattr"       ] || perm="${perm} fattr"
+    [ -z "$inet"        ] || perm="${perm} inet"
+    [ -z "$unix"        ] || perm="${perm} unix"
+    [ -z "$id"          ] || perm="${perm} id"
+    [ -z "$dns"         ] || perm="${perm} dns"
+    [ -z "$proc"        ] || perm="${perm} proc"
+    [ -z "$exec"        ] || perm="${perm} exec"
+    [ -z "$prot_exec"   ] || perm="${perm} prot_exec"
+    [ -z "$vminfo"      ] || perm="${perm} vminfo"
+    [ -z "$tmppath"     ] || perm="${perm} tmppath"
+
+    arg:add arglist -p "$perm"
+
+    if [ -n "$fs_all" ]; then
+        arg:add arglist -V
+    else
+        arglist="$arglist $fplist"
+
+        [ -z "$fs_root"     ] ||    arg:add arglist -v "rwcx:/"
+        [ -z "$fs_allrx"    ] ||    arg:add arglist -v "rx:/"
+
+        [ -z "$fs_font"     ] ||    arg:add arglist -v "r:/usr/share/front"             # TODO
+        [ -z "$fs_xcmd"     ] ||    arg:add arglist -v "rwc:$___X_CMD_ROOT" -v "rx:${___X_CMD_ROOT_DATA}/pkg/sphere"
+
+        [ -z "$fs_localbin" ] ||    {
+            arg:add arglist                 \
+                -v "rx:$HOME/.local/bin"    \
+                -v "rx:$___X_CMD_ROOT/bin"  -v "rx:${___X_CMD_ROOT_DATA}/pkg/sphere"    \
+                -v "rx:$HOME/.bun/bin"      -v "rx:$HOME/.deno/bin"   -v "rwcx:$HOME/.npm/bin"
+        }
+
+        [ -z "$fs_pwd"      ] ||    arg:add arglist -v "rwcx:$PWD"
+        [ -z "$fs_home"     ] ||    arg:add arglist -v "rwcx:$HOME"
+
+        [ -z "$fs_ws"       ] ||    {
+            local x_
+            ___x_cmd wsroot_ || N=pldg M="Cannot local wsroot in current directory -> $PWD" log:ret:64
+            arg:add arglist -v "rwcx:$x_"
+        }
+
+    fi
+
+    [ -z "$pp" ] || {
+        pldg:info "Sandbox policy -> $arglist"
+        local IFS=' '
+        pldg:info                   \
+            --policy "$arglist"     \
+            --cmdstr "$*"           \
+            "Execution"
+
+        ___x_cmd_pldg_pp
+    }
+
+    eval ___x_cmd_pldg___exec "$arglist" \"\$@\"
+}
+
+

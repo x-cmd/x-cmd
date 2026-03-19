@@ -1,0 +1,115 @@
+# shellcheck shell=dash
+
+# x gh , 'add collaborator ljh to repo x-cmd/abc ( push permission )'
+# X_CO_MSHOT_CMD="command seed ..." ___x_cmd_co --mshot "<USER-REQUSET>"
+
+
+___x_cmd_co___context(){
+    [ "$#" -gt 0 ] || {
+        ___x_cmd help -m co -c >&2
+        return 64
+    }
+
+    local X_CO_MSHOT_CMD="x $1"
+    shift; ___x_cmd_co___mshot "$@"
+}
+
+___x_cmd_co___mshot(){
+    local X_CO_MSHOT_CMD="$X_CO_MSHOT_CMD"
+    local provider=""
+    local model=""
+    # [ $# -gt 0 ]    ||  set -- -h
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --provider)     provider="$2"; [ -n "$2" ] || N=co M="Please provide provider value" log:ret:64;    shift 2 ;;
+            --model)        model="$2";    [ -n "$2" ] || N=co M="Please provide model value" log:ret:64;       shift 2 ;;
+            -h|--help)      ___x_cmd help -m co --mshot; return 0 ;;
+            *)              break ;;
+        esac
+    done
+
+    [ -n "$X_CO_MSHOT_CMD" ] || N=co M="Please provide command seed, X_CO_MSHOT_CMD is empty" log:ret:64
+    co:debug --X_CO_MSHOT_CMD "$X_CO_MSHOT_CMD" --provider "$provider" --model "$model" mshot
+
+    local user_request="$*";
+    [ -n "$user_request" ] || {
+        { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; } || N=co M="Please provide user request" log:ret:64
+        user_request="$(___x_cmd ted)" || return $?
+    }
+    eval set -- "$X_CO_MSHOT_CMD"
+
+    local x_
+    x_=; ___x_cmd_co___mshot_prepare_context_ "$provider" "$model" "$user_request" "$@" || return $?
+    local help_document="$x_"
+
+    local options_before_argument="
+Note: The commands you generate must put OPTIONS before ARGS. Do not put ARGS before OPTIONS.
+"
+
+    local data; data="$(
+        basic_cmd="$*" \
+        help_document="$help_document" \
+        task="$user_request" \
+        options_before_argument="$options_before_argument" \
+        ___x_cmd_co___mshot_llm mshot "$provider" "$model"
+    )" || return $?
+
+    ___x_cmd_co___parse_llm_result "$data" "$help_document" "$options_before_argument"
+}
+
+___x_cmd_co___mshot_prepare_context_(){
+    ___x_cmd_co___mshot_prepare_context___dfs_ "$@"
+}
+
+___x_cmd_co___mshot_prepare_context___dfs_(){
+    local provider="$1";
+    local model="$2"
+    local user_request="$3";    shift 3
+
+    local IFS=" "
+
+    while true; do
+        # __x_cmd advise hascmd "$@"                              || break
+        context="$( ___x_cmd advise simple --field 'desc|tldr|subcmd' --failfast "$@" )"   || break
+        result="$(
+            help_document="$context" \
+            task="$user_request" \
+            ___x_cmd_co___mshot_llm mshot.dfs "$provider" "$model" --silent
+        )" || return $?
+
+        case "$result" in
+            *"<SUBCMD>"*"</SUBCMD>"*)
+                result="${result##*"<SUBCMD>"}"
+                result="${result%"</SUBCMD>"*}"
+                ;;
+            *)  return ;;
+        esac
+
+        case "$result" in
+            null|NULL)      break ;;
+        esac
+
+        # jsut preserve
+        # [ "$result" = "${result##* }" ] || break
+        result="${result%%|*}"
+        set -- "$@" "$result"
+
+        co:info "Now dig deeper for context with command -> $*"
+    done
+
+    co:info "Now generate the context based on -> $*"
+    x_="$( ___x_cmd advise simple --dfs "$@" | ___x_cmd_cmds head -n 500 )"
+}
+
+___x_cmd_co___mshot_prepare_context___embs(){
+    :
+}
+
+___x_cmd_co___mshot_llm(){
+    local name="$1";
+    local provider="$2";
+    local model="$3";   shift 3
+    [ -z "$model" ] || set -- --model "$model" "$@"
+    [ -z "$provider" ] || set -- --provider "$provider" "$@"
+    ___x_cmd_co___request "$name" "$@"
+}

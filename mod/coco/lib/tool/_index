@@ -1,0 +1,73 @@
+# shellcheck shell=dash
+
+xrc:mod:lib     coco        \
+    tool/enactall   tool/bfind   tool/findgrep   tool/mcp   tool/readfile   tool/writefile  tool/shcmd tool/histsum \
+    tool/diffv4a    tool/create_temp   tool/update_stats   tool/get_x_cmd_help tool/gg
+
+___x_cmd_coco_tool(){
+    [ $# -gt 0 ]    ||  set -- --help
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m coco tool "$@" ;   shift ;;
+        *)              if ___x_cmd_coco_toolspec___check "$op"; then
+                            ___x_cmd_coco_"$op" "$@"
+                            return
+                        fi
+                        N=coco M="Unknown subcommand ==> $op" log:ret:64
+                        ;;
+    esac
+}
+
+___x_cmd_coco_tool___enactcmd(){
+    local folder="$1"
+    local fcidx="$2"
+    local name="$3"
+    local args="$4"
+    local desc="$5"
+
+    local fcall_dir="$folder/function-call/$fcidx"
+
+    local X_COCO_TOOL_ENACTCMD_FOLDER="$folder"
+    local X_COCO_TOOL_ENACTCMD_FCALL_DIR="$fcall_dir"
+
+    local cmdcode=0
+    local cmdstatus='called'
+    local cmdarg=""
+    local cmdarglog=""
+    local parsejson; parsejson="$( ___x_cmd_coco___parse_json_args_ "$args" )"
+    [ -z "$parsejson" ] || eval "$parsejson"
+
+    coco:info ${desc:+"--desc"} ${desc:+"$desc"} \
+        "Function calling -> x coco $name $cmdarglog"
+    printf "%s\n" "$cmdstatus"     > "$fcall_dir/status"
+
+    (
+        ___x_cmd log coco/debug 2>/dev/null
+        eval "___x_cmd_coco_${name}" "$cmdarg" \
+            1>"$fcall_dir/stdout" 2>"$fcall_dir/stderr"
+    )
+    cmdcode="$?"
+
+    if [ "$cmdcode" = 0 ]; then
+        cmdstatus=succeeded
+        [ "$is_enactnone" = 1 ] || ___x_cmd ui tf true "exitcode: $cmdcode"
+    else
+        cmdstatus=failed
+        [ "$is_enactnone" = 1 ] || ___x_cmd ui tf false "exitcode: $cmdcode"
+    fi
+
+    printf "%s\n" "$cmdstatus"  > "$fcall_dir/status"
+    printf "%s\n" "$cmdcode"    > "$fcall_dir/exitcode"
+    printf "[FUNCTION-CALL-END] %s\n" "$fcidx" >>"$folder/log"
+}
+
+# json to file ... => cmdarg, arg_desc, arg_folder, arg_keyword ...
+___x_cmd_coco___parse_json_args_(){
+    local json="$1"
+    [ -n "$json" ] || return 1
+    format="$format" \
+    ___x_cmd awk0 -m j/json -m j/jiter -m sh \
+        -f "$___X_CMD_ROOT_MOD/coco/lib/awk/parse_json_args.awk" <<A
+$json
+A
+}

@@ -1,0 +1,122 @@
+# shellcheck shell=dash
+
+xrc:mod:lib hub keypair/ls keypair/rm keypair/save keypair/load keypair/gen
+
+___x_cmd_hub_keypair(){
+    local X_help_cmd='___x_cmd_hub___help keypair'
+    help:arg-null:parse
+
+    local op="$1"; shift
+    case "$op" in
+        gen|save|load|ls|rm)
+            "___x_cmd_hub_keypair_$op" "$@" ; return ;;
+        *) ___x_cmd_hub_u_subcmd_invalid keypair "$@";  return ;;
+    esac
+}
+
+___x_cmd_hub_keypair_get_key_path_(){
+    local keyname="$1"; [ -n "$keyname" ] || M='Provide key name' N=hub log:ret:64
+    local keytype="$2"; [ -n "$keytype" ] || M='Provide key type' N=hub log:ret:64
+
+    x_=; ___x_cmd_hub_keypair___keypath_ "$keyname" "$keytype" || return 1
+    ___x_cmd mkdirp "${x_%/*}"
+    [ -f "$x_" ] || {
+        hub:info "No $keytype key '$keyname', try to load from server"
+        NO_LOG=1 ___x_cmd_hub_keypair___download "$keyname" "$keytype" || {
+            case "$(___x_cmd_hub_u_curl_resp_code)" in
+                404)
+                    hub:info "No $keytype key '$keyname' found at server, try to generate"
+                    ___x_cmd_hub_keypair_gen "$keyname" || return 1
+                    ;;
+                *)  hub:error "Failed to load $keytype key"
+                    return 1 ;;
+            esac
+        }
+    }
+}
+
+___x_cmd_hub_keypair___download(){
+    local keyname="$1" ; [ -n "$keyname" ] || M='Provide key name' N=hub log:ret:64
+    local keytype="$2" ; [ -n "$keytype" ] || M='Provide key type' N=hub log:ret:64
+
+    # Download key
+    local resp=
+    resp="$(___x_cmd_hub_u_curl get "/api/v0/key/$keyname" type=="$keytype")" || {
+        [ -n "$NO_LOG" ] || ___x_cmd_hub_u_handle_resp false "Failed to get rsakey for $___X_CMD_HUB_KEYPAIR_NAME"
+        return 1
+    }
+
+    local x_ ; ___x_cmd_hub_keypair___keypath_ "$keyname" "$keytype" || return 1
+    if [ "$keytype" = "public" ]; then
+        printf "%s" "$resp" > "$x_"
+    elif [ "$keytype" = "private" ]; then
+        printf "%s" "$resp" | ___x_cmd openssl enc -d -A -base64 > "${x_}.enc"
+        ___x_cmd_hub_keypair___decrypt_private_key "$x_" || return 1
+    else
+        hub:error "Unknown key type '$keytype'"
+        return 1
+    fi
+}
+
+___x_cmd_hub_keypair___download_pubkey_list(){
+    local user_list="$1"
+    [ -n "$user_list" ] || M='Provide user_list' N=hub log:ret:64
+
+    user_list="$(printf "%s" "{name:[${user_list}]}" | ___x_cmd jo fmt)"
+    hub:debug "user_list ==> $user_list"
+
+    # TODO: use pipe to handle response after update x curl
+    local resp=
+    resp="$(___x_cmd_hub_u_curl post /api/v0/key/get/pubkey/list user_list)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to get public key list"
+        return 1
+    }
+
+    printf "%s" "$resp" | ( ___x_cmd jo env .\* .username .key -- '___x_cmd_hub_keypair___single_pubkey_to_file "${username}" "${key}"' )
+}
+
+___x_cmd_hub_keypair___single_pubkey_to_file(){
+    local username="$1"; [ -n "$username" ] || M='Provide username'   N=hub log:ret:64
+    local pubkey="$2";   [ -n "$pubkey" ]   || M='Provide pubkey'     N=hub log:ret:64
+
+    local x_=; ___x_cmd_hub_u_userdir_ "$username" || return 1
+    ___x_cmd mkdirp "$x_/keypair"
+    local key_path=; key_path="$x_/keypair/default_public.pem"
+    printf "%s" "${pubkey}" > "${key_path}"
+}
+
+___x_cmd_hub_keypair___decrypt_private_key(){
+    local key_path="$1"; [ -n "$key_path" ] || M='Provide key_path' N=hub log:ret:64
+    local enc_path="${1}.enc"
+
+    hub:info "Please input password for encrypt private key"
+    local password=
+    while true ; do
+        if ! ___x_cmd_runmode_allow_manual ; then
+            hub:error "Password required, but not in interactive tty"
+            return 1
+        fi
+
+        ___X_CMD_TUI_FORM_FINAL_COMMAND=""
+        ___x_cmd tui form password      "Password"           ""  '=~*'  '^.*$' || return 1
+        [ -n "$___X_CMD_TUI_FORM_FINAL_COMMAND" ] || {
+            hub:info "Canceled"
+            ___x_cmd rmrf "$enc_path"
+            return 1
+        }
+
+        hub:debug "x openssl enc -d -aes-256-cbc -in $enc_path -out $key_path -pbkdf2 -pass pass:$password"
+        ___x_cmd openssl enc -d -aes-256-cbc -in "$enc_path" -out "$key_path" -pbkdf2 -pass "pass:$password" 2>/dev/null || {
+            hub:error "Failed to decrypt private key, or password not match, please try again"
+            ___x_cmd rmrf "$key_path"
+            continue
+        }
+        break
+    done
+}
+
+___x_cmd_hub_keypair___keypath_(){
+    local keyname="$1"; [ -n "$keyname" ] || M='Provide key name' N=hub log:ret:64
+    local keytype="$2"; [ -n "$keytype" ] || M='Provide key type' N=hub log:ret:64
+    x_="$___X_CMD_HUB_DATA/me-${___X_CMD_HUB_LOCAL_PROFILE:-"X"}/keypair/${keyname}_${keytype}.pem"
+}

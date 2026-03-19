@@ -1,0 +1,79 @@
+# shellcheck shell=dash disable=SC2034,SC2154
+
+# https://developer.godaddy.com/doc/endpoint/domains#/v1/recordGet
+___x_cmd_gddy_domain_record_ls(){
+    local X_help_cmd='x help -m gddy domain record ls';    help:arg:parse
+    ___x_cmd_gx_is_interactive_env || { ___x_cmd_gddy_domain_record_ls___json "$@"; return; }
+    param:scope     ___x_cmd_gddy
+    param:dsl    '
+options:
+    #1             "Domain whose DNS Records are to be retrieved"                       <>
+    --shopper_id   "Shopper ID which owns the domain"                                   <>=""
+    --type         "DNS Record Type for which DNS Records are to be retrieved"          <>=""     = A AAAA CNAME MX NS SOA SRV TXT
+    --name         "DNS Record Name for which DNS Records are to be retrieved"          <>=""
+    --offset       "Number of results to skip for pagination"                           <>="0"
+    --limit        "Maximum number of items to return"                                  <>=""
+
+    --json|-j      "output raw JSON data"
+'
+    param:run
+
+    gddy:arg:format:all
+
+    ___x_cmd_gddy_domain_record_ls___"${format}" "$@"
+}
+
+___x_cmd_gddy_domain_record_ll(){
+    local X_help_cmd='x help -m gddy domain record ll';    help:arg-null:parse
+    local data; data="$( ___x_cmd_gddy_domain_record_ls___csv "$@" )" || ourl:data:ret
+    ___x_cmd_pipevar    data    x csv static_tab
+}
+
+___x_cmd_gddy_domain_record_ls___app(){
+    local data; data="$( ___x_cmd_gddy_domain_record_ls___csv "$@" )" || ourl:data:ret
+    ___x_cmd_gddy_http_error || return 1
+
+    ___x_cmd_pipevar    data    x csv app
+
+    local id
+    x ui select id "Next move for [Domain=$domain]:"   \
+        "x gddy domain record add  $1"   \
+        "x gddy domain record edit $1"   \
+        "x gddy domain record rm   $1"   \
+        "x open https://dcc.godaddy.com/control/portfolio/$1/settings?tab=dns" \
+        "Exit"
+
+    case "$id" in
+        1)      x gddy domain record add  "$1" ;;
+        2)      x gddy domain record edit "$1" ;;
+        3)      x gddy domain record rm   "$1" ;;
+        4)      x open "https://dcc.godaddy.com/control/portfolio/$1/settings?tab=dns" ;;
+        5)      return
+    esac
+}
+
+___x_cmd_gddy_domain_record_ls___csv(){
+    local data; data="$(___x_cmd_gddy_domain_record_ls___raw "$@" )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd_gddy_domain_record_ls___parse_json2csv
+    ___x_cmd_gddy_http_error || return 1
+}
+
+
+___x_cmd_gddy_domain_record_ls___json(){
+    local data; data="$( ___x_cmd_gddy_domain_record_ls___raw "$@" )" || ourl:data:ret
+    ___x_cmd_pipevar    data
+    ___x_cmd_gddy_http_error || return 1
+}
+
+
+___x_cmd_gddy_domain_record_ls___raw(){
+    gddy:info "Getting domain record list data"
+    ___x_cmd_gddy_ourl get "/v1/domains/$1/records/${type}/${name}" \
+        --data-urlencode "offset=$offset" --data-urlencode "limit=$limit"
+}
+
+___x_cmd_gddy_domain_record_ls___parse_json2csv(){
+    x ja 2c .type .name .data .ttl  | \
+        x csv header --add Type Name Data ttl
+}
+

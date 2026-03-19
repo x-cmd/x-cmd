@@ -1,0 +1,136 @@
+# shellcheck shell=sh disable=SC3043
+
+# reference: https://docs.brew.sh/Manpage#environment
+___x_cmd_brew___mirror(){
+    [ "$#" -gt 0 ] || { ___x_cmd_brew___mirror___app ; return ; }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+            ___x_cmd help -m brew mirror "$@"
+            return   ;;
+    esac
+
+    ___x_cmd hascmd brew || N=brew M="[command=brew] not found." log:ret:1
+    case "$op" in
+        ls|set|current|unset)
+                ___x_cmd_brew___mirror_"${op}"               "$@" ;;
+        *)      N=brew M="subcommand not found." log:ret:1        ;;
+    esac
+}
+
+___x_cmd_brew___mirror___app(){
+    local _SELECT
+    ___x_cmd ui select "_SELECT" \
+        "Methods:" \
+            "Set brew mirror (default is tuna)" \
+            "List all the brew mirror candidates" \
+            "Get current brew mirror" \
+            "Reset the brew mirror to the original official"
+
+    case "$_SELECT" in
+        1)  ___x_cmd_brew___mirror_set       ;;
+        2)  ___x_cmd_brew___mirror_ls        ;;
+        3)  ___x_cmd_brew___mirror_current   ;;
+        4)  ___x_cmd_brew___mirror_unset     ;;
+        *)  brew:info "Canceled";   return 1 ;;
+    esac
+
+}
+
+___x_cmd_brew___mirror_ls(){
+    printf "%s\n" \
+        "Code          Url                                      Name"                 \
+        "official      https://github.com/Homebrew              Homebrew 官方源"       \
+        "ali           https://mirrors.aliyun.com               阿里云镜像"             \
+        "tuna          https://mirrors.tuna.tsinghua.edu.cn     清华大学镜像"           \
+        "bfsu          https://mirrors.bfsu.edu.cn              北京外国语大学镜像"      \
+        "ustc          https://mirrors.ustc.edu.cn              中国科学技术大学源镜像"   \
+        "sjtu          https://mirror.sjtu.edu.cn               上海交通大学镜像"
+}
+
+___x_cmd_brew___mirror_advise_ls(){
+    ___x_cmd_brew___mirror_ls | awk 'NR >1 { print $1 }'
+}
+
+___x_cmd_brew___mirror___url(){
+    ___x_cmd_brew___mirror_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+___x_cmd_brew___mirror_current(){
+    brew:info "Showing content of envfile -> $HOMEBREW_PREFIX/etc/homebrew/brew.env"
+    ___x_cmd_brew_envfile cat
+}
+
+___x_cmd_brew___mirror_set(){
+    ___x_cmd_brew___mirror_init4comp
+
+    [ "$#" -gt 0 ] ||   set -- ali
+    case "$1" in
+        -h|--help)
+            ___x_cmd help -m brew mirror replace "$@"
+            return   ;;
+    esac
+
+    local url=
+    url="$(___x_cmd_brew___mirror___url "${1}")" || return 1
+    brew:info "Setting brew mirror $url"
+
+    # TODO: Need to check when adding new mirror source
+    local X_homebrew_api_domain="$url/homebrew-bottles/api"
+    local X_homebrew_bottle_domain="$url/homebrew-bottles"
+    local X_homebrew_brew_git_remote="$url/brew.git"
+    local X_homebrew_core_git_remote="$url/homebrew-core.git"
+    case "$1" in
+        official)
+            X_homebrew_api_domain="https://formulae.brew.sh/api"
+            X_homebrew_bottle_domain="https://ghcr.io/v2/homebrew/core"
+            ;;
+        ali)
+            X_homebrew_bottle_domain="$url/homebrew/homebrew-bottles"
+            X_homebrew_brew_git_remote="$url/homebrew/brew.git"
+            X_homebrew_core_git_remote="$url/homebrew/homebrew-core.git"
+            ;;
+        tuna|bfsu)
+            X_homebrew_brew_git_remote="$url/git/homebrew/brew.git"
+            X_homebrew_core_git_remote="$url/git/homebrew/homebrew-core.git"
+            ;;
+        sjtu)
+            X_homebrew_bottle_domain="$url/homebrew-bottles/bottles"
+            X_homebrew_brew_git_remote="https://mirrors.sjtug.sjtu.edu.cn/git/brew.git"
+            X_homebrew_core_git_remote="https://mirrors.sjtug.sjtu.edu.cn/git/homebrew-core.git"
+            ;;
+    esac
+
+    brew:info "Write to $HOMEBREW_PREFIX/etc/homebrew/brew.env"
+    ___x_cmd_brew_envfile write                                           \
+        HOMEBREW_API_DOMAIN         "$X_homebrew_api_domain"              \
+        HOMEBREW_BOTTLE_DOMAIN      "$X_homebrew_bottle_domain"           \
+        HOMEBREW_BREW_GIT_REMOTE    "$X_homebrew_brew_git_remote"         \
+        HOMEBREW_CORE_GIT_REMOTE    "$X_homebrew_core_git_remote"         || return 1
+
+    brew:info "Now brew update"
+    ___x_cmd_brew___exec update --verbose || return 1
+    brew:info "brew update done."
+}
+
+___x_cmd_brew___mirror_unset(){
+    ___x_cmd_brew___mirror_set official || return 1
+    ___x_cmd_brew_envfile clear
+}
+
+___x_cmd_brew___mirror_init4comp(){
+    brew:debug "Reset the brew mirror to the original official"
+    unset HOMEBREW_API_DOMAIN
+    unset HOMEBREW_BOTTLE_DOMAIN
+    unset HOMEBREW_BREW_GIT_REMOTE
+    unset HOMEBREW_CORE_GIT_REMOTE
+
+    brew:info "Remove HOMEBREW_API_DOMAIN HOME_BOTTLE_DOMAIN HOMEBREW_BREW_GIT_REMOTE HOMEBREW_CORE_GIT_REMOTE from boot rc"
+    ___x_cmd boot rc del homebrew-bottle-domain
+    ___x_cmd boot rc del homebrew-api-domain
+    ___x_cmd boot rc del homebrew-brew-git-remote
+    ___x_cmd boot rc del homebrew-core-git-remote
+}
+

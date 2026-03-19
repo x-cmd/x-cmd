@@ -1,0 +1,81 @@
+# shellcheck shell=dash
+
+___x_cmd log init smart
+xrc:mod:lib     smart     ddgo
+
+___x_cmd_smart___main(){
+    [ "$#" -gt 0 ] ||   set -- --app
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m smart;  return   ;;
+        --app)          ___x_cmd_smart___app              ;;
+        --exec)         ___x_cmd_smart___exec       "$@"  ;;
+        --ls)           ___x_cmd_smart___list_disk  "$@"  ;;
+        :|ddgo)         ___x_cmd_smart___ddgo       "$@"  ;;
+        *)              ___x_cmd_smart___exec "$op" "$@"  ;;
+    esac
+}
+
+___x_cmd_smart___exec(){
+    if ___x_cmd os is linux; then
+        ___x_cmd snap --preparecmd smartctl  || return $?
+        smart:info "Require priviledge using sudo module"
+        ___x_cmd sudo ___x_cmd snap --run smartctl "$@"
+    else
+        ___x_cmd snap --run smartctl "$@"
+    fi
+}
+
+___x_cmd_smart___app(){
+    if ! ___x_cmd_is_stdout2tty; then
+        ___x_cmd smart -h
+        return 64
+    else
+        ___x_cmd_cmds_cat >/dev/tty <<A
+X-CMD module smart is a shallow wrapper of package smartctl.
+We provide a simple guiding tui. ${___X_CMD_UNSEENCHAR_033}[7;1mCtrl-C${___X_CMD_UNSEENCHAR_033}[0m to interupt.
+If you want to know more, use \`${___X_CMD_UNSEENCHAR_033}[33;1mx smart -h${___X_CMD_UNSEENCHAR_033}[0m\`
+A
+        ___x_cmd ui sep >/dev/tty
+
+        local disk=
+        ___x_cmd tty update
+        local x_=""
+        ___X_CMD_PICK_SHBIN_CODE="xrc smart;" \
+            ___x_cmd storerat_ ___x_cmd pick --col "$COLUMNS" --ask "Pick the disk you want to view SMART information: " --ctrl-c-clear ___x_cmd_smart___list_disk || return $?
+
+        [ -n "$x_" ] || return 1
+        while read -r disk; do
+            x:info --command "x smart --exec -a $disk" "showing SMART for disk ==> $disk"
+            ___x_cmd ui sep >/dev/tty
+
+            ___x_cmd smart --exec -a "$disk" || return $?
+        done <<A
+$x_
+A
+    fi
+}
+
+___x_cmd_smart___list_disk(){
+    local x_=""; ___x_cmd os name_
+    case "$x_" in
+        darwin)
+            ___x_cmd_cmds diskutil list | ___x_cmd_cmds_awk '($1 ~ "^/dev/"){
+                print $1
+            }'
+            ;;
+
+        win)
+            ___x_cmd_cmds df | ___x_cmd_cmds_awk 'match($1, ":"){
+                print substr($1, 1, RSTART)
+            }'
+            ;;
+
+        linux)
+            ___x_cmd_cmds df | ___x_cmd_cmds_awk '($1 ~ "^/dev/"){
+                print $1
+            }'
+            ;;
+    esac
+}

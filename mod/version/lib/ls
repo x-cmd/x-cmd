@@ -1,0 +1,64 @@
+# shellcheck shell=dash
+
+___x_cmd_version_ls(){
+    [ $# -gt 0 ] || set - --nv
+
+    local op="$1"; shift
+    case "$op" in
+        --nv|--json|--yml)  ___x_cmd_version_ls_"${op#--*}"  "$@"  ;;
+        -h|--help)          ___x_cmd help -m version ls; return           ;;
+    esac
+}
+
+
+___x_cmd_version_ls_nv(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_chatty; then
+        ___x_cmd jo nav -- ___x_cmd version ls --json
+    else
+        ___x_cmd_version_ls_json
+    fi
+}
+
+
+___x_cmd_version_ls_json(){
+    local x_=; ___x_cmd_version___get_info_file_ || return $?
+    < "$x_" ___x_cmd jo fmt
+}
+
+___x_cmd_version_ls_yml(){
+    ___x_cmd_version_ls_json | ___x_cmd j2y
+}
+
+___x_cmd_version___get_info_file_(){
+    local version_index_jso_file="$___X_CMD_ROOT_DATA/version/index.jso"
+    local version_index_yml_file="$___X_CMD_ROOT_DATA/version/index.yml"
+
+
+    if [ ! -f "$version_index_jso_file" ] || [ "$version_index_jso_file" -ot "$___X_CMD_ROOT_METADATA/version_sum" ] || ! ___x_cmd fileage --in 1d "$version_index_jso_file"; then
+        local url=
+        if ! ___x_cmd websrc is cn; then
+            url="https://raw.githubusercontent.com/x-cmd/release/main"
+        else
+            url="https://oss.resource.x-cmd.com/x-cmd/release"
+        fi
+        url="$url/index.yml"
+        x:info "Download version index from $url"
+        ___x_cmd ensurefp "$version_index_yml_file"
+        ___x_cmd curl -L "$url" > "$version_index_yml_file"  || {
+            ___x_cmd rmrf "$version_index_yml_file"
+            x:error "Fail to download from $url"
+            return 1
+        }
+
+        < "$version_index_yml_file" ___x_cmd y2j | ___x_cmd jo > "$version_index_jso_file"
+        [ "$( < "$version_index_jso_file" command wc -l)" -gt 1000 ] || {
+            x:error "version index file data amiss"
+            return 1
+        }
+    fi
+    x_="$version_index_jso_file"
+    [ -f "$x_" ] || {
+        x:error "Not found version index file"
+        return 1
+    }
+}

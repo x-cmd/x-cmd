@@ -1,0 +1,58 @@
+# shellcheck shell=dash
+
+# convert the file into
+___x_cmd_whisper_prepare(){
+    local x_=; ___x_cmd_whisper_prepare_ "$@" || return
+    printf "%s\n" "$x_"
+}
+___x_cmd_whisper_prepare_(){
+    x_=""
+    [ $# -gt 0 ]            || N=whisper M="Specify at least one audio file to be recognized"   log:ret:1
+    local fileName="${1}"
+    [ -f "${fileName}" ]    || N=whisper M="File ${fileName} does not exist"                    log:ret:1
+
+    # TODO: check 16000Hz ?
+    if [ "${fileName##*.}" = wav ]; then
+        x_="${fileName}"
+        return 0
+    fi
+
+    local outName="${fileName%.*}.whisper.tmp.x-cmd.16khz.wav"
+
+    [ ! -e "$outName" ] || {
+        whisper:info "file ${outName} already exists"
+
+        ___x_cmd_runmode_allow_chatty || {
+            x_="$outName"
+            return 0
+        }
+        local id=
+        ___x_cmd ui select id "What next"       \
+            "considered it already converted"   \
+            "remove file -> $outName"           \
+            "EXIT" || return
+        case "$id" in
+            1)      x_="$outName"; return 0  ;;
+            2)      ___x_cmd rmrf "$outName" ;;
+            *)      return 1    ;;
+        esac
+    }
+
+    whisper:info "converting ${fileName} to ${outName} in wav format with 16000Hz"
+    local logfp="$outName.log"
+    {
+        if ___x_cmd_runmode_allow_chatty; then
+            ___x_cmd log uirotate x ffmpeg -i "${fileName}" -ar 16000 "${outName}" -y
+        else
+            ___x_cmd ffmpeg -i "${fileName}" -ar 16000 "${outName}" -y 2>"$logfp"
+        fi
+    } || {
+        [ ! -f "$logfp" ] || {
+            ___x_cmd_cmds cat "$logfp" 1>&2
+            ___x_cmd rmrf "$logfp"
+        }
+        return 1
+    }
+    [ ! -f "$logfp" ] || ___x_cmd rmrf "$logfp"
+    x_="$outName"
+}

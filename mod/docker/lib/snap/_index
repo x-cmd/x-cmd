@@ -1,0 +1,161 @@
+
+xrc:mod:lib     docker      snap/util
+
+# ___X_CMD_DOCKER_APK_CACHE="$___X_CMD_ROOT_CACHE/alpine/apk/cache"
+# ___X_CMD_DOCKER_APT_CACHE="$___X_CMD_ROOT_CACHE/alpine/apt/cache"
+# ___X_CMD_DOCKER_DNF_CACHE="$___X_CMD_ROOT_CACHE/alpine/dnf/cache"
+
+# use case:
+# xd snap jq
+# xd snap --pkg nodejs  node
+# xd snap --alpine apk/openjdk:java   # xal openjdk:java
+
+# xd snap alpine/apk/openjdk11.3:java
+# xd snap s/alpine/apk/openjdk11.3:java
+# xd snap apk/openjdk11.3:java
+
+___x_cmd_docker_snap(){
+    # LIST='START_OPTS RUN_TOPS name image usecache daemon' arg:local:empty
+    local START_OPTS=""
+    local RUN_OPTS=""
+
+    local name=""
+    local image=""
+    local imagetype=""
+
+    local x_=""
+
+    local usecache=1
+    local daemon=""
+
+    arg:init docker
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m docker snap "$@"; return 0 ;;
+
+            -)                      name=x;             shift 1 ;;
+            -n|--name)              name="$2";          arg:2:shift ;;
+
+            --nocache)              usecache="";        shift 1 ;;
+            --img|--image)          image="$2";         arg:2:shift ;;      # Or provide a magic, like  xal =jdk
+            --imagetype)            imagetype="${2}";   arg:2:shift ;;
+
+            -d|--daemon)            daemon=1;           shift 1 ;;
+
+            -v|--volume)            arg:add START_OPTS "$1"      "$2" ;   arg:2:shift ;;
+            -p|--port|--publish)    arg:add START_OPTS --publish "$2" ;   arg:2:shift ;;
+
+            --net|--network)        arg:add START_OPTS --network "$2" ;   arg:2:shift ;;
+
+            --link)                 arg:add START_OPTS --link    "$2" ;   arg:2:shift ;;
+            --restart)              arg:add START_OPTS --restart "$2" ;   arg:2:shift ;;
+
+            --dind|--home|--priv|--*=*)
+                                    arg:add START_OPTS "$1" ;             shift 1 ;;
+
+            --pwd)                  arg:add START_OPTS  --pwd ;
+                                    arg:add RUN_OPTS    --workdir /p ;    shift 1 ;;
+            -e|--env)               arg:add RUN_OPTS    --env   "$2" ;    arg:2:shift ;;
+
+            --ws)                   shift 1 ;;
+
+            --user)                 arg:add RUN_OPTS --user "$2" ;        arg:2:shift ;;
+            -r|--root)              arg:add RUN_OPTS --user root ;        shift 1 ;;
+
+            --*)                    arg:invalid:ret:64 ;;
+            -*)                     image="${___X_CMD_DOCKER_IMAGE_PREFIX}$1"; shift 1 ;;     # Inner use, don't document.
+
+            *)                      break ;;
+        esac
+    done
+
+    [ -n "$imagetype" ] || {
+        imagetype="$(___x_cmd docker --cur get snapdefault 2>/dev/null)"
+        [ -n "$imagetype" ] || imagetype="alpine"
+    }
+
+
+    [ -z "$name" ] || ___x_cmd str startswith "$name" "${___X_CMD_DOCKER_IMAGE_PREFIX}"      || {
+        name="${___X_CMD_DOCKER_IMAGE_PREFIX}${name}"
+    } # N=docker M="Please provide container name with prefix -> ${___X_CMD_ALPINE_PREFIX}-" log:ret:64
+
+    ! { [ -n "$daemon" ] && [ -z "$name" ]; }                                           || N=docker M="Please provide container name for daemon -> $daemon" log:ret:64
+
+    [ $# -gt 0 ]    || set -- bash
+
+    local REFIT_PKG="";    local REFIT_SYS="";      local REFIT_CMD="$1";  shift
+
+    case "$REFIT_CMD" in
+        x|x-cmd|xcmd)
+            REFIT_CMD=___x_cmdexe
+            arg:add RUN_OPTS    --env   ___X_CMD_RUNMODE=9  # In the future, use 5
+            ;;
+    esac
+
+    # ___x_cmd_docker_snap___parse__ "$REFIT_CMD" "$imagetype" || {
+    #     errcode=$?
+    #     docker:warn "Unknown command recipe in ___x_cmd_docker_snap -> $REFIT_CMD"
+    #     return $errcode
+    # }
+
+    # if [ -n "$usecache" ]; then
+    #     [ -n "$REFIT_SYS" ] || {    ___x_cmd_docker_snap___defaultpkgsys_ "$imagetype";     REFIT_SYS="$x_";    }
+    #     case "$REFIT_SYS" in
+    #         apk)            arg:add START_OPTS -v "$___X_CMD_DOCKER_APK_CACHE":/etc/apk/cache ;;
+    #         apt)            arg:add START_OPTS -v "$___X_CMD_DOCKER_APT_CACHE":/var/cache/apt
+    #                         # arg:add START_OPTS -v "$___X_CMD_DOCKER_APT_CACHE":/var/cache/apt
+    #                         ;;
+
+    #         dnf)            arg:add START_OPTS -v "$___X_CMD_DOCKER_DNF_CACHE":/var/cache/dnf ;;
+    #     esac
+    # fi
+
+    if [ -z "$image" ]; then
+        ___x_cmd_docker_simg_prepare_ --imagetype "$imagetype" "${REFIT_CMD}"    || return $?;
+        image="$x_"
+    else
+        N=docker M="Currently unsupported running cmd with image specified" log:ret:64
+        # ___x_cmd_docker_snap___imageprefix_ "$imagetype" || return $?
+        # ___x_cmd str startswith "$image" "${x_}-"     \
+        #     || N=docker M="Image name should be prefixed with '${x_}-'" log:ret:64
+    fi
+
+    case "${REFIT_CMD}" in
+        *:*)        REFIT_CMD="${REFIT_CMD#*:}"
+    esac
+
+    ___x_cmd_docker_snap___run "${REFIT_CMD}" "$@"
+}
+
+___x_cmd_docker_snap___run(){
+    if [ -n "$daemon" ]; then
+        ___x_cmd cmdstr RUN_OPTS -d
+    else
+        [ ! -t 0 ]          || ___x_cmd cmdstr RUN_OPTS --tty
+        ___x_cmd cmdstr RUN_OPTS --init -i      # ___x_cmd cmdstr RUN_OPTS --tty
+    fi
+
+    if [ -z "$name" ]; then
+        ___x_cmd_docker_snap___getname_ "$imagetype";    name="$x_"
+        ___x_cmd cmdstr RUN_OPTS --rm
+        docker:debug    --image "$image"    \
+                        "Starting anonymous [container=$name], with auto-remove enabled."
+    else
+        docker:info     --image "$image"    --FYI-cmd-to-remove-container "docker rm -f $name" \
+                        "Named container detected; Container will remain after execution. Auto-removal ( --rm ) is disabled."
+    fi
+
+    local IFS=' '
+    docker:debug "docker command -> ___x_cmd docker run $START_OPTS --name ${name} $RUN_OPTS $image"
+    docker:debug "command argument -> $*"
+
+    eval ___x_cmd docker run         "$START_OPTS" --name "${name}"          "$RUN_OPTS" "$image" "\"\$@\""
+    # ___x_cmd_docker_snap___eval         ___x_cmd docker run         "$START_OPTS" --name "${name}"          "$RUN_OPTS" "$image" "\"\$@\""
+}
+
+___x_cmd_docker_snap___eval(){
+    local IFS=' '
+    local cmdstr="$*"
+    docker:debug --cmd "$cmdstr" "eval"
+    eval "$cmdstr"
+}

@@ -1,0 +1,163 @@
+# shellcheck shell=dash
+
+___x_cmd_gl_user_ssh(){
+    param:scope     ___x_cmd_gl
+    param:subcmd    ___x_cmd_gl_user_ssh                    \
+        ls          "List public SSH keys for user"         \
+        create      "Create a public SSH key for user"      \
+        info        "Output a public SSH key information"   \
+        rm          "Remove a public SSH key for user"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gl_user_ssh _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.gitlab.com/ee/api/users.html#list-ssh-keys
+___x_cmd_gl_user_ssh_ls(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    --user          "specified user_path or .id=<user_id>. default current user"    <>=""
+    --page          "page"                                                          <>:NatureNumber="1"
+    --per_page      "per_page"                                                      <>:NatureNumber="30"
+    --json|-j       "output origin json data"
+'
+    param:run
+    local _url="/user/keys"
+    [ -z "$user" ] || {
+        local _avt_name="$user"; ___x_cmd_gl____transform_avt_name || return
+        _url="/users/${_avt_name}/keys"
+    }
+
+    if [ -n "$json" ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gl_get_multi "$_url"
+    else
+        ___x_cmd_gl_get_multi "$_url" | \
+            x jo 2c              .id .title .key .expires_at | \
+            x csv header --add   ID  TITLE  KEY  EXPIRES_AT  | \
+            x csv static_tab
+    fi
+}
+# EndSection
+
+# Section: Info
+# https://docs.gitlab.com/ee/api/users.html#single-ssh-key
+___x_cmd_gl_user_ssh_info(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "key id of SSH"                                                 <>
+    --user          "specified user_path or .id=<user_id>. default current user"    <>=""
+    --json|-j       "output origin json data"
+'
+    param:run
+    local _url="/user/keys/$1"
+    [ -z "$user" ] || {
+        local _avt_name="$user"; ___x_cmd_gl____transform_avt_name || return
+        _url="/users/${_avt_name}/keys/$1"
+    }
+
+    ___x_cmd_gl_curl get "$_url" | ___x_cmd_gl_user_ssh____ui_handler Getting
+}
+# EndSection
+
+# Section: Create
+# https://docs.gitlab.com/ee/api/users.html#add-ssh-key
+___x_cmd_gl_user_ssh_create(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "The public SSH key. stdin(-)"                                       <>
+    --title         "A descriptive name for the new key. default is key prefix"          <>=""
+    --user          "Add SSH for user. user_path or .id=<user_id>. default current user" <>=""
+    --expires_at    "Expiration date of the SSH key(YYYY-MM-DDTHH:MM:SSZ)"               <>=""
+    --usage_type    "Scope of usage for the SSH key"                                     <>="auth_and_signing"    = auth signing auth_and_signing
+
+    --json|-j       "output origin json data"
+'
+    param:run
+    local key="$1"
+    [ "$key" != '-' ] || key="$(___x_cmd_cmds_cat)"
+    [ -n "$title" ]   || title="$(printf "%s" "$key" | command cut -b 1-20)"
+
+    local gen_gl_json=""
+    gen_gl_json="$(param:option2json -json +key)"
+    gl:debug "$gen_gl_json"
+
+    local _url="/user/keys"
+    [ -z "$user" ] || {
+        local _avt_name="$user"; ___x_cmd_gl____transform_avt_name || return
+        _url="/users/${_avt_name}/keys"
+    }
+    ___x_cmd_gl_curl post "$_url" "gen_gl_json" | ___x_cmd_gl_user_ssh____ui_handler Creating
+}
+# EndSection
+
+# Section: Remove
+# https://docs.gitlab.com/ee/api/users.html#delete-ssh-key-for-current-user
+# shellcheck disable=SC2154
+___x_cmd_gl_user_ssh_rm(){
+    param:scope     ___x_cmd_gl
+    param:dsl       '
+options:
+    #1              "SSH key ID"                                                        <>
+    --user          "specified user_path or .id=<user_id>. default current user"        <>=""
+    --yes|-y        "Ignore remove prompt interception"
+    --json|-j       "output origin json data"
+'
+    param:run
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure to remove the $(___x_cmd_ui bold red "SSH key $1") ?" || return
+
+    local _url="/user/keys/$1"
+    [ -z "$user" ] || {
+        local _avt_name="$user"; ___x_cmd_gl____transform_avt_name || return
+        _url="/users/${_avt_name}/keys/$1"
+    }
+    ___x_cmd_gl_curl del "$_url" | (
+        x jo env . gl_resp_err=.error gl_resp_msg=.message
+        if ___x_cmd_gl_http_error; then
+            ___x_cmd_ui_tf  true "[Success]: Delete SSH key $1"
+        else
+            ___x_cmd_ui_tf false " [Fail] Delete SSH key $1 failure:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection
+
+# Section: SSH UI
+___x_cmd_gl_user_ssh____ui_handler(){
+    if  [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        ___x_cmd_cmds_cat
+        ___x_cmd_gl_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Getting)
+                _inf_msg="$1 SSH key information successfully"
+                _err_msg="$1 SSH key information failure"
+                ;;
+            Creating)
+                _inf_msg="$1 a SSH key successfully"
+                _err_msg="$1 a SSH key failure"
+                ;;
+        esac
+        local _id=""
+        x jo env . _id=.id gl_resp_err=.error gl_resp_msg=.message \
+            title=.title   key=.key   created_at=.created_at   expires_at=.expires_at   usage_type=.usage_type
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" "ID: $_id" ${title:+"Title: $title"} ${key:+"Key: $key"} ${created_at:+"Created_At: $created_at"} \
+                ${expires_at:+"Expires_At: $expires_at"} ${usage_type:+"Usage_Type: $usage_type"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:"
+            ___x_cmd_gl____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

@@ -1,0 +1,74 @@
+# shellcheck shell=dash disable=SC2154,SC2034
+xrc ourl
+
+___x_cmd_moonshot_model_ls(){
+    [ $# -gt 0 ]    ||      set - --app
+    local op="$1"
+    local format=
+    case "$op" in
+        --csv)      format=csv       ;;
+        --app)      format=app       ;;
+        -y|--yml)   format=yml       ;;
+        -j|--json)  format=json      ;;
+        -h|--help)  ___x_cmd help -m moonshot model ls  "$@"; return ;;
+        *)          M="Not support $op" N=moonshot log:ret:1  ;;
+    esac
+
+
+    "___x_cmd_moonshot_model_ls___${format}"
+}
+
+
+___x_cmd_moonshot_model_ls___app(){
+    if ! { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; }; then
+        ___x_cmd_moonshot_model_ls___csv "$@"
+        return $?
+    fi
+
+    local ___X_CMD_CSV_APP_DATA_CURROW=
+    local data; data="$( ___x_cmd_moonshot_model_ls___csv )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd csv --app --return line
+
+    if [ -n "$___X_CMD_CSV_APP_DATA_CURROW" ] ; then
+        local select_id="${___X_CMD_CSV_APP_DATA_CURROW%%,*}"
+        local id=""
+        moonshot:info "Select model -> $select_id"
+        ___x_cmd ui select id "What to do NEXT" \
+        "set model: $select_id"    \
+        "EXIT"     || return $?
+
+        case "$id" in
+            1)  ___x_cmd_moonshot_model_set "$select_id" ;;
+            2)
+                moonshot:info "EXIT [code=0]"
+                return 0 ;;
+        esac
+    fi
+}
+
+___x_cmd_moonshot_model_ls___csv(){
+    local data; data="$( ___x_cmd_moonshot_model_ls___json )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd_moonshot_model_ls___parse_json2csv
+
+}
+
+___x_cmd_moonshot_model_ls___json(){
+    ___x_cmd_moonshot_model_ls_raw
+}
+
+___x_cmd_moonshot_model_ls___yml(){
+    local data; data="$( ___x_cmd_moonshot_model_ls___json )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd j2y
+}
+
+___x_cmd_moonshot_model_ls___parse_json2csv(){
+    ___x_cmd jo .data | ___x_cmd ja 2c .id .object .owned_by \
+        | ___x_cmd csv header --add  Id Object OwnedBy
+}
+
+___x_cmd_moonshot_model_ls_raw(){
+    local apikey=""; local endpoint=""; local proxy=""
+    ___x_cmd_moonshot___get_apikey_endpoint_proxy_ || return $?
+    ___x_cmd proxy runifset "$proxy" \
+        ___x_cmd curl -sS  "$endpoint/v1/models" -H "Authorization: Bearer $apikey"
+}

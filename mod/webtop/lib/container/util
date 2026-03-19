@@ -1,0 +1,91 @@
+# shellcheck shell=dash
+
+# x webtop run -p 6901 firefox
+# x webtop stop chrome
+
+
+
+___x_cmd_webtop_container_start(){
+    local x_=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m webtop start         ; return ;;
+            --id)       x_="$2";    shift 2 ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$x_" ] || ___x_cmd_webtop_container_id_ "$1" || N=webtop M="Not found any container" log:ret:1
+    ___x_cmd docker start "$x_"
+}
+
+___x_cmd_webtop_container_name(){
+    ___x_cmd webtop ps --csv        | \
+        command awk -v FS=, -v id="$1" '$1==id{ print $2; }'
+}
+
+___x_cmd_webtop_container_find_title_by_kw(){
+    ___x_cmd webtop ps --csv        | \
+        command awk -v FS=, -v kw="$1" '
+function ppp(){
+    gsub("^[^:]+:", "", $4)
+    gsub("x-webtop-", "", $2)
+    print $2 "-" $4
+    exit
+}
+match($2, kw){ ppp(); }; match($1, kw){ ppp(); }
+'
+
+}
+
+# running, pause, exited
+___x_cmd_webtop_container_foreach(){
+    local state="$1"
+    # TODO: change the grep to awk
+    ___x_cmd webtop ps --csv        | \
+        command grep ",$state,"     | \
+        command awk -v FS=, '{ print $1; print $2; }'
+}
+
+___x_cmd_webtop_container_foreachrunning(){
+    ___x_cmd_webtop_container_foreach running
+}
+
+___x_cmd_webtop_container_foreachpaused(){
+    ___x_cmd_webtop_container_foreach paused
+}
+
+___x_cmd_webtop_container_foreachstopped(){
+    ___x_cmd_webtop_container_foreach exited
+}
+
+
+___x_cmd_webtop_container_bash(){
+    local x_=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m webtop bash         ; return ;;
+            --id)       x_="$2";    shift 2 ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$x_" ] || {
+        if [ -n "$1" ]; then
+            ___x_cmd_webtop_container_id_ "$1" || N=webtop M="Not found any container" log:ret:1
+        else
+            # TODO: consider using default container ?
+            webtop:error "Abort because no container id or keyword is provided."
+            # ___x_cmd_webtop ps
+            return 1
+        fi
+    }
+
+    ___x_cmd docker exec -it "$x_" bash
+}
+
+
+# x docker rm --force --all
+___x_cmd_webtop_container_rmfa(){
+    ___x_cmd docker rmfa --prefix "x-webtop-" "$@"
+}

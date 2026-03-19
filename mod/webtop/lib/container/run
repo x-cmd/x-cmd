@@ -1,0 +1,244 @@
+# shellcheck shell=dash
+
+# x webtop run ubuntu-xfce
+
+# default we will never expose https port
+# x webtop run -p 127.0.0.1:3000 --name x-webtop-3000 ubuntu-kde
+
+# x webtop run -p 127.0.0.1:3000 --name x-webtop-3000 ubuntu-kde
+
+# home -> /home
+# wd -> /wd
+# x webtop run -v home,pwd ubuntu-kde 1
+
+___x_cmd_webtop_container_run(){
+    case "$1" in
+        -h|--help)  ___x_cmd help -m webtop container run;  return ;;
+    esac
+
+    local port=""
+    local sslport=""
+    local tag=""
+    local idx=""
+
+    local name
+
+    local user=""
+    local password=""
+
+    local shm=512m  # In the future, it will be 1G
+
+    local update=""
+
+    local tz=""
+    local lc=""
+
+    local x_=""
+
+    local dind=""
+    local priv=""
+
+    local dri=""
+    local nvidia=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -p|--port)      port="$2";      shift 2 ;;
+            # --sslport)      sslport="$2";   shift 2 ;;  # TODO: We will support in the future
+
+            --lc)           lc="$2";        shift 2 ;;
+            --tz)           tz="$2";        shift 2 ;;
+
+            --dind)         dind=1;         shift 1 ;;
+            --priv)         priv=1;         shift 1 ;;
+
+            --dri)          dri=1;          shift 1 ;;
+            --nvidia)       nvidia=1;       shift 1 ;;
+
+            -u|--user)      user="$2";      shift 2 ;;
+            -P|--password)  password="$3";  shift 2 ;;
+
+            --shm)          shm="$2";       shift 2 ;;
+            --update)       update=1;       shift 1 ;;
+            --name)         name="$2";      shift 2 ;;
+            *)              break ;;
+        esac
+    done
+
+    if [ -n "$1" ];then
+        tag="$1"; shift
+    else
+        # TODO: get default tag ... for custom ...
+
+        local os; local desktop;
+        os="$(___x_cmd webtop --cfg get os 2>/dev/null)"
+        [ -n "$os" ] || os=ubuntu
+        desktop="$(___x_cmd webtop --cfg get desktop 2>/dev/null)"
+        [ -n "$desktop" ] || {
+            case "$os" in
+                el)         desktop=xfce    ;;
+                alpine)
+                            desktop=mate    ;;  # because kde is unavaible. Try xfce if available.
+                *)          desktop=kde     ;;
+            esac
+        }
+
+        tag="${os}-${desktop}"
+        webtop:info "Using default tag -> $tag"
+    fi
+
+    ___x_cmd_webtop_image_tag_normal_ "$tag" || N=webtop M="Invalid webtop image tag -> $tag" log:ret:64
+    tag="$x_"
+
+    case "$tag" in
+        alpine-xfce|alpine-kde|el-kde)
+            N=webtop M="Currently unsupported webtop image tag -> $tag" log:ret:64
+    esac
+
+    webtop:info "normal image tag -> $tag"
+
+    ########################### BEGIN ###########################
+
+    idx="$1"
+
+    ___x_cmd_webtop_container_run___handle_idx_port || return 1
+
+    [ -n "$name" ] || {
+        name="x-webtop-${port#*:}"
+        # webtop:info "container name -> $name"
+    }
+
+    name="x-webtop-${name#x-webtop-}"
+    ###########################  END  ###########################
+
+    local image="${___X_CMD_WEBTOP_URL_PREFIX}/webtop:$tag"
+
+    ___x_cmd_webtop_image_pull ${update:+"--update"} "$image" \
+            || N=webtop M="Fail to pull image -> $image"                log:ret:1
+
+    local container_id
+    container_id="$( ___x_cmd_webtop_container_run___docker "$@" )" || return $?
+
+    webtop:info             \
+        --name "$name"      \
+        --image "$image" --port "$port"             \
+        --warning "Don't expose the [port=$port] to the public unless you are aware of the risks." \
+        --next "x open http://localhost:${port#*:}" \
+        "Running container [id=$container_id]"
+
+    ___x_cmd_webtop_container_start___ui "$container_id" "$name" "$port"
+}
+
+___x_cmd_webtop_container_run___handle_idx_port(){
+    local x_
+    local id
+
+    if [ -z "$idx" ]; then
+        idx=0
+    fi
+
+    ___x_cmd_webtop_container_portassign_get_ "${tag}" "$idx"  ||    N=webtop M="Invalid webtop tag -> $tag" log:ret:1
+
+    local name="x-webtop-${x_}"
+    if ! ___x_cmd docker container exist "${name}"; then
+        port="$x_"
+    else
+        ___x_cmd ui select id "Container [name=${name}] already existed. Next" \
+            "Operate the container -> $name"        \
+            "Create a new container"                \
+            "abort"
+
+        case "$id" in
+            1)  ___x_cmd_webtop_container_handle "${name}"
+                return 1    ;;
+            2)  idx=""      ;;
+            *)  return 1    ;;
+        esac
+    fi
+
+    [ -n "$port" ] || {
+        ___x_cmd_webtop_container_portassign_get_ "${tag}" "${idx}"   \
+            || N=webtop M="Cannot find an available port from [40000-49999]. Please specify a port using -p|--port" log:ret:1
+        webtop:info "Using avaiable port -> $x_"
+        port="$x_"
+    }
+
+    case "$port" in
+        *:*)    ;;
+        *)      port="127.0.0.1:$port" ;;
+    esac
+}
+
+___x_cmd_webtop_container_run___docker(){
+    # [ -z "$sslport" ] || set -- -p "$sslport:3001"
+
+    local x_
+    # ___x_cmd home -o "$name" which_ || N=webtop M="Fail to create folder" log:ret:1
+    local homefolder; homefolder="$___X_CMD_WEBTOP_HOME_DIR/$name"
+    if [ -d "$homefolder" ]; then
+        webtop:info "Reusing existed home folder -> $homefolder"
+    else
+        webtop:info "Creating homefolder -> $homefolder"
+        ___x_cmd ensurefp "$homefolder"
+    fi
+
+    local uid; uid="$(___x_cmd_cmds id -u)"         ||  N=webtop M="Fail to fetch user id."     log:ret:1
+    local gid; gid="$(___x_cmd_cmds id -g)"         ||  N=webtop M="Fail to fetch group id."    log:ret:1
+
+    [ -n "$tz" ] || {
+        tz="$(___x_cmd webtop --cfg get timezone 2>/dev/null)"
+        [ -n "$tz" ] || tz="$(___x_cmd tz name)"
+    }
+    # [ -n "$lc" ] || lc="${LANG:-"en_US.UTF-8"}"
+    [ -n "$lc" ] || {
+        lc="$(___x_cmd webtop --cfg get locale 2>/dev/null)"
+        [ -n "$lc" ] || lc=auto
+    }
+
+    case "$lc" in
+        auto)
+            case "${LC_ALL:-${LANG}}" in
+                zh*)        lc=zh_CN.UTF-8 ;;
+                ja*)        lc=ja_JP.UTF-8 ;;
+                ko*)        lc=ko_KR.UTF-8 ;;
+                ar*)        lc=ar_AE.UTF-8 ;;
+                ru*)        lc=ru_RU.UTF-8 ;;
+                es*)        lc=es_MX.UTF-8 ;;
+                de*)        lc=de_DE.UTF-8 ;;
+                fr*)        lc=fr_FR.UTF-8 ;;
+                nl*)        lc=nl_NL.UTF-8 ;;
+                it*)        lc=it_IT.UTF-8 ;;
+                *)          lc=en_US.UTF-8 ;;
+            esac
+    esac
+
+    local title; title="${name#x-webtop-}-${image#*:}"
+
+    [ -n "$user" ]      || user="$(___x_cmd webtop --cfg get user 2>/dev/null)"
+    [ -n "$password" ]  || password="$(___x_cmd webtop --cfg get password 2>/dev/null)"
+
+    [ -z "$dind" ]          ||  set -- "$@" -v /var/run/docker.sock:/var/run/docker.sock
+    [ -z "$priv" ]          ||  set -- "$@" --privileged
+    [ -z "$dri" ]           ||  set -- "$@" --device /dev/dri:/dev/dri
+    [ -z "$user" ]          ||  set -- "$@" -e CUSTOM_USER="$user"
+    [ -z "$password" ]      ||  set -- "$@" -e PASSWORD="$password"
+
+    [ -z "$dri" ]           ||  set -- "$@" --device /dev/dri:/dev/dri
+    [ -z "$nvidia" ]        ||  set -- "$@" --gpus all --runtime nvidia
+
+    ___x_cmd_cmds docker run -d             \
+        --name="$name"                      \
+        --security-opt seccomp=unconfined   \
+        -e PUID="${uid}"                    \
+        -e PGID="${gid}"                    \
+        -e TZ="${tz}"                       \
+        -e LC_ALL="${lc}"                   \
+        -e SUBFOLDER=/                      \
+        -e TITLE="$title"                   \
+        -v "$homefolder":/config            \
+        -p "${port}:3000"                   \
+        --shm-size="$shm"                   \
+        --restart unless-stopped            \
+        "$@"                                \
+        "$image"
+}

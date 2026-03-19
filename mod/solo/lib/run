@@ -1,0 +1,64 @@
+# shellcheck shell=dash
+
+___X_CMD_SOLO_WORKSPACE_ROOT=$___X_CMD_ROOT_DATA/solo/ws
+
+___x_cmd_solo___make(){
+    ___X_CMD_SOLO_NORUN=1 ___x_cmd_solo___run "$@"
+}
+
+___x_cmd_solo___run(){
+    local update=""
+    local ___X_CMD_SOLO_WORKSPACE_ROOT="${___X_CMD_SOLO_WORKSPACE_ROOT}"
+
+    arg:init:x solo
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                            if [ -z "$___X_CMD_SOLO_NORUN" ]; then
+                                ___x_cmd help -m solo run   "$@"
+                            else
+                                ___x_cmd help -m solo make  "$@"
+                            fi
+                            return 0
+                            ;;
+
+            --root)         ___X_CMD_SOLO_WORKSPACE_ROOT="$2";  arg:2:shift ;;
+            --update)       update=1;   shift ;;
+            *)              break
+        esac
+    done
+
+    [ $# -gt 0 ]    ||      N=solo M="Pleaes provide script filepath" log:ret:64
+    local srcfile="$1";     shift
+
+    solo:prepare:path "$srcfile"                    || return $?
+
+    if [ -n "$update" ] || ___x_cmd_solo___isoutdated "${absfp}" "${wsfp}"; then
+        ___x_cmd_solo___reinit  "$absfp"            || return $?
+    fi
+
+    ___x_cmd_solo___trymake "$wsdp"                 || return $?
+
+    [ -z "$___X_CMD_SOLO_NORUN" ]                   || return 0
+
+    ___x_cmd_source "${wsdp}/.x-cmd/run"  "$@"      || return $?
+}
+
+
+___x_cmd_solo___trymake(){
+    local wsdp="$1"
+    [ -f "$wsdp/.x-cmd/make.done" ] || {
+        solo:info "Building using -> x ws make"
+        (
+            ___x_cmd_cd0            "$wsdp"         || return $?
+            ___x_cmd_source ".x-cmd/make"           || {
+                local code=$?
+                solo:warn "Failed to initialize the project, please check the running environment. Or use x env use <language>"
+                ___x_cmd rmrf "$wsdp"
+                return $code
+            }
+            printf "\n" >".x-cmd/make.done"
+        )
+    }
+}
+

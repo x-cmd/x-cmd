@@ -1,0 +1,107 @@
+# shellcheck shell=dash
+
+___x_cmd log init links
+
+xrc:mod:lib     links       aiget   dump    util    cfg
+
+___x_cmd_links___main(){
+    [ "$#" -gt 0 ] ||       set - --help
+    local op="$1"; shift
+    case "$op" in
+        dump)               ___x_cmd_links_dump                 "$@" ;;
+        browse)             ___x_cmd_links___exec               "$@" ;;
+        source)             ___x_cmd_links_dump --source        "$@" ;;
+
+        url|url_)
+                            ___x_cmd_links___"$op"              "$@" ;;
+
+        --exec|--)          ___x_cmd_links___exec               "$@" ;;
+        -h|--help)          ___x_cmd_links___exec --help         ;;
+
+        --cfg)              ___x_cmd_links_cfg                  "$@" ;;
+
+        *)                  ___x_cmd_links___auto "$op"         "$@" ;;
+    esac
+}
+
+___x_cmd_links___auto(){
+    # links:info "Executing cmd -> x links dump $*"
+    # ___x_cmd_links_dump "$@"
+    ___x_cmd_links___exec "$@"
+}
+
+___x_cmd_links___exec(){
+    local proxy=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --http_proxy)   proxy=1; set -- -http-proxy   "${2#*://}" "$@" ; shift 2; ;;
+            --https_proxy)  proxy=1; set -- -https-proxy  "${2#*://}" "$@" ; shift 2; ;;
+            --socks_proxy)  proxy=1; set -- -socks-proxy  "${2#*://}" "$@" ; shift 2; ;;
+            *)              break
+        esac
+    done
+
+    # We can sense the environment also ...
+    # cosmox
+
+    if [ -z "$proxy" ]; then
+        if   [ -n "${proxy:=${HTTPS_PROXY:-$https_proxy}}" ]; then
+            set -- -https-proxy "${proxy#*://}" "$@"
+        elif [ -n "${proxy:="${HTTP_PROXY:-$http_proxy}"}" ]; then
+            set -- -http-proxy "${proxy#*://}"  "$@"
+        elif [ -n "${proxy:="${ALL_PROXY:-$all_proxy}"}"   ]; then
+            set -- -socks-proxy "${proxy#*://}" "$@"
+        fi
+    fi
+
+    if [ -z "$proxy" ]; then
+        ___x_cmd_links_cur proxy:= 2>/dev/null
+        case "$proxy" in
+            https*://)      set -- -https-proxy "${proxy#*://}"     "$@" ;;
+            http*://)       set -- -http-proxy "${proxy#*://}"      "$@" ;;
+            sock*://)       set -- -socks-proxy "${proxy#*://}"     "$@" ;;
+            *)              set -- -socks-proxy "$proxy"            "$@" ;;
+        esac
+        links:debug "Using config proxy."
+    fi
+
+    if [ -z "$timeout" ]; then
+        local timeout
+        ___x_cmd_links_cur timeout:= 2>/dev/null
+        [ -z "$timeout" ] ||    ___X_CMD_LINKS_TIMEOUT="$timeout"
+    fi
+
+
+    ___x_cmd_links___hasbin || return 1
+
+    [ -n "$___X_CMD_LINKS_TIMEOUT" ] || {
+        ___x_cmd cosmo links "$@"
+        return
+    }
+
+    set -- "$___X_CMD_LINKS_TIMEOUT" "/bin/sh" "$___X_CMD_ROOT_MOD/cosmo/lib/bin/exec.sh" links "$@"
+
+    if ___x_cmd_hascmd timeout; then
+        ___X_CMD_ROOT_CODE="$___X_CMD_ROOT_CODE" \
+        ___x_cmd_cmds timeout       "$@"
+    else
+        ___X_CMD_ROOT_CODE="$___X_CMD_ROOT_CODE" \
+        ___x_cmd cosmo timeout      "$@"
+    fi
+}
+
+___x_cmd_links___hasbin(){
+    xrc cosmo
+    local x_;  ___x_cmd_cosmo___which_ links ||  ___x_cmd cosmo --add links
+}
+
+# ___x_cmd_links___proxy(){
+#     --http_proxy)
+#                 case "$2" in
+#                     http://*)   cmd="$cmd -http-proxy ${2#*://}"   ;;
+#                     https://*)  cmd="$cmd -https-proxy ${2#*://}"  ;;
+#                     socks://*)  cmd="$cmd -socks-proxy ${2#*://}"  ;;
+#                     *)          N=link M="proxy must be http://host:<port> https://host:<port> sock://[user@]<host>:<port>" log:ret:64 ;;
+#                 esac
+#             ;;
+# }

@@ -1,0 +1,102 @@
+# shellcheck shell=dash disable=SC2142
+
+
+___x_cmd_functor___main(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m functor "$@";    return 0 ;;
+
+        *)              ;;
+    esac
+}
+
+
+alias x:functor:init='___x_cmd_functor_generate_ "$@"; eval "$x_"'
+alias x:functor:fini='___x_cmd_functor_fini'
+
+___X_CMD_functor_IDX=0
+___x_cmd_functor_generate_(){
+    local op="$1";
+    case "$op" in
+        eval)           shift;  ___x_cmd_functor_generate_eval_    "$@" ;;
+        \'*\'|\"*\")            ___x_cmd_functor_generate_eval_    printf "$@" ;;
+        \{*)
+                        ___x_cmd_functor_generate_normal_  $(($#+1))
+                        x_="set -- awk \"\$@\"; ${x_}"
+                        ;;
+        *)              ___x_cmd_functor_generate_normal_  $#
+    esac
+
+    # x:info "code is $x_"
+}
+
+___x_cmd_functor_generate_eval_(){
+    ___X_CMD_functor_IDX=$((___X_CMD_functor_IDX+1))
+    local IFS=" "
+    x_="
+    local x_functor=X_functor_${___X_CMD_functor_IDX}
+    X_functor_${___X_CMD_functor_IDX}(){
+        $*
+    }"
+}
+
+___x_cmd_functor_generate_normal_(){
+    [ -n "$1" ] || {
+        x:error "Require argument number for function generate"
+        return 64
+    }
+    local argsize="${1}"
+
+    ___X_CMD_functor_IDX=$((___X_CMD_functor_IDX+1))
+
+    local code_local=
+    local code_funcname="X_functor_${___X_CMD_functor_IDX}"
+    local code_func=
+
+    local i=0;
+    local X_prefix="_X${___X_CMD_functor_IDX}_"
+    while [ $i -lt "$argsize" ]; do
+        i=$((i+1))
+        code_local="${code_local}local ${X_prefix}${i}=\"\${$i}\"; "
+        code_func="${code_func}\"\$${X_prefix}${i}\" "
+    done
+
+    x_="
+    local x_functor=$code_funcname
+    ${code_local}
+    ${code_funcname}(){
+        $code_func
+    }"
+}
+
+
+___x_cmd_functor_fini(){
+    ___X_CMD_functor_IDX=$((___X_CMD_functor_IDX-1))
+    unset -f "X_functor_${___X_CMD_functor_IDX}"
+}
+
+
+alias x:functor:consumer:init='___x_cmd_functor_consumer_generate_ "$@"; eval "$x_"'
+alias x:functor:consumer:fini='___x_cmd_functor_fini'
+
+___x_cmd_functor_consumer_generate_(){
+    local op="$1";
+    case "$op" in
+        eval)           shift;  ___x_cmd_functor_generate_eval_     "$@" ;;
+        \'*\'|\"*\")            ___x_cmd_functor_generate_eval_     printf "$@" ;;
+        *)                      ___x_cmd_functor_generate_eval_     "$@" ;;
+    esac
+
+    # x:info "code is $x_"
+}
+
+___x_cmd_functor_consuemr_demo(){
+    x:functor:consumer:init
+    for i in $(seq 3); do
+        "$x_functor" "$i" "$i"
+    done
+    x:functor:consumer:fini
+}
+

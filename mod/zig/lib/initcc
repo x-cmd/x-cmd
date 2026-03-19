@@ -1,0 +1,93 @@
+# shellcheck shell=dash
+___x_cmd_zig_checkcc(){
+    ___x_cmd_hascmd make    ||   return 1
+    ___x_cmd_hascmd cc      ||   return 1
+    ___x_cmd_hascmd gcc     ||   return 1
+    ___x_cmd_hascmd c++     ||   return 1
+    ___x_cmd_hascmd g++     ||   return 1
+    ___x_cmd_hascmd ar      ||   return 1
+}
+
+___x_cmd_zig_initcc(){
+    local zigpath="${1}"
+
+    local x_
+    if [ -n "$zigpath" ]; then
+        ___x_cmd_abspath_ "$zigpath" || N=zig M="provide the correct path to the zig" log:ret:1
+        zigpath="$x_"
+        "$zigpath" --help >/dev/null 2>&1 || N=zig M="zig binary path provided is INVALID" log:ret:64
+    else
+        ___x_cmd_hascmd zig || {
+            zig:info "FYI -- You can directly run as follow -> x zig initcc [zigpath]"
+            ___x_cmd_zig___ensure || return
+        }
+
+        ___x_cmd_whichbin_ zig
+        zigpath="$x_"
+    fi
+
+    zig:info "zig path -> $zigpath"
+
+    local dir="$___X_CMD_ROOT_DATA/zig/ccbin"
+    x mkdirp "$dir"
+
+    [ ! -f "$dir/DONE" ]    ||  {
+        read -r x_ <"$dir/DONE"
+        if [ "$x_" = "$zigpath" ]; then
+            zig:info "zig cc environment already existed."
+            ___x_cmd_zig_initcc___addpath "$dir"
+            return 0
+        fi
+        ___x_cmd_cmds rm -f "${dir}"/*
+    }
+
+    ___x_cmd_cosmo___install make "$dir" || N=zig M="Fail to install cosmo make" log:ret:1
+    ___x_cmd_zig_initcc___shiming "$dir" || N=zig M="Fail to create shim bin"    log:ret:1
+    printf "%s\n" "$zigpath" >"$dir/DONE"
+
+    ___x_cmd_zig_initcc___addpath "$dir" || N=zig M="Fail to initcc add path"    log:ret:1
+}
+
+___x_cmd_zig_initcc___addpath(){
+    zig:info "adding to PATH -> $1"
+    PATH="$1":"$PATH"
+}
+
+___x_cmd_zig_initcc___shiming(){
+    ___x_cmd_zig_initcc___code c++ "$1/cpp"
+    ___x_cmd_zig_initcc___code c++ "$1/g++"
+    ___x_cmd_zig_initcc___code c++ "$1/c++"
+
+    ___x_cmd_zig_initcc___code cc "$1/gcc"
+    ___x_cmd_zig_initcc___code cc "$1/cc"
+
+    ___x_cmd_zig_initcc___code ar "$1/ar"
+    ___x_cmd_zig_initcc___code ranlib "$1/ranlib"
+
+    ___x_cmd_cmds chmod +x "$1"/*
+}
+
+___x_cmd_zig_initcc___code(){
+    local name="$1"
+    local shimpath="$2"
+
+    zig:info "Create shim for $name -> $shimpath"
+
+    local x_=""
+    ___x_cmd_whichbin_ zig;             local zigbinpath="$x_"
+    ___x_cmd_shq1_ "$zigbinpath";       local zigbinpath_quoted="$x_"
+
+    printf "%s\n" "
+#! /bin/sh
+
+${zigbinpath_quoted} $name \"\$@\"
+" >"${shimpath}"
+
+    local x_path=; ___x_cmd_shim__gen_batcode_unix_to_windows "$zigbinpath" || return
+    printf "%s\n" "
+@echo off
+
+\"$x_path\" $name %*
+" >"${shimpath}.bat"
+
+}

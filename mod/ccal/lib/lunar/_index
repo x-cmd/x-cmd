@@ -1,0 +1,124 @@
+
+xrc:mod:lib   ccal      lunar/cat
+
+___x_cmd_ccal_lunar(){
+    [ $# -gt 0 ] ||     set -- ls
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m ccal lunar     "$@"; return 0 ;;
+        ls)             ___x_cmd_ccal_lunar_ls ;;
+        cat)            ___x_cmd_ccal_lunar_cat         "$@" ;;
+        fz)             ___x_cmd_ccal_lunar_cat --fz    "$@" ;;
+        update)         ___x_cmd_ccal_lunar_update      "$@" ;;
+
+        *)              ___x_cmd_ccal_lunar_cat "$op"   "$@" ;;
+    esac
+}
+
+___x_cmd_ccal_lunar___runmain(){
+    [ $# -gt 0 ] || {
+        ___x_cmd_ccal_lunar_ls
+    }
+}
+
+___x_cmd_ccal_lunar_ls(){
+    ___x_cmd seq 1900:2099 | while read -r year; do
+        ___x_cmd seq 1:12 | while read -r month; do
+            ___x_cmd_ccal_lunar_cat "$year" "$month"
+        done
+    done
+}
+
+___X_CMD_CCAL_DATA="$___X_CMD_ROOT_DATA/ccal/data"
+___X_CMD_CCAL_DATA_VERSION=v0.0.6
+___X_CMD_CCAL_DATA_FILE="$___X_CMD_CCAL_DATA/ccal-data-${___X_CMD_CCAL_DATA_VERSION}.tar.xz"
+
+___x_cmd_ccal_lunar_prepare(){
+    ___x_cmd mkdirp "$___X_CMD_CCAL_DATA"
+
+    [ ! -f "$___X_CMD_CCAL_DATA_FILE" ] || return 0
+
+    ccal:info "正在准备农历数据, 仅在 ccal 首次启动时发生 | Preparing lunar data. This is a one-time process that occurs on the initial start."
+
+    ___x_cmd_ccal_lunar_download || return $?
+    ___x_cmd_ccal_lunar_prepare_index || return $?
+}
+
+___x_cmd_ccal_lunar_download(){
+    local retcode=$?
+
+    local url="https://codeberg.org/x-cmd/ccal-data/releases/download/${___X_CMD_CCAL_DATA_VERSION}/ccal-data.tar.xz"
+
+    ccal:info "Download data from -> $url"
+
+    ___x_cmd curl --fail "$url" >"${___X_CMD_CCAL_DATA_FILE}.bak" || {
+        retcode=$?
+        ccal:error "Aborted: Failed to download ccal-data. Please check your network connection."
+        return $retcode
+    }
+
+    # TODO: Defensive programming -> test the bak and ensure it works.
+
+    ___x_cmd_cmds mv "${___X_CMD_CCAL_DATA_FILE}.bak" "${___X_CMD_CCAL_DATA_FILE}"
+}
+
+# 年 轩辕纪年 生肖 月数 (春节 清明 端午 中秋 日期)  # 三元 灶马头
+
+# TODO: in the future, the data will be generated inside the data
+
+___X_CMD_CCAL_LUNAR_INDEX_FOLDER="$___X_CMD_CCAL_DATA/$___X_CMD_CCAL_DATA_VERSION/cache"
+
+___x_cmd_ccal_lunar_prepare_index(){
+    [ ! -d "$___X_CMD_CCAL_LUNAR_INDEX_FOLDER" ] || return 0
+
+    local output_folder="${___X_CMD_CCAL_LUNAR_INDEX_FOLDER}"
+
+    ___x_cmd mkdirp -p "${output_folder}.bak"
+
+    {
+        ___x_cmd zuz cat "$___X_CMD_CCAL_DATA_FILE" ccal-data/index/year.tsv    >"${output_folder}.bak/year.tsv" && \
+        ___x_cmd zuz cat "$___X_CMD_CCAL_DATA_FILE" ccal-data/index/month.tsv   >"${output_folder}.bak/month.tsv"
+    } 2>/dev/null || {
+        ccal:warn "Fail to extract index from the ccal-data. Now regenerate it according to the data."
+        ___x_cmd ccal lunar cat -a |   \
+        ___x_cmd_cmds awk   \
+            -v output_folder="${output_folder}.bak"             \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/gongli.awk"     \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/lunar.awk"      \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ccal.awk"       \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ymd.awk"        \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/prepare.awk"
+    } || {
+        ccal:error "Fail to prepare lunar index for year and month view"
+        ___x_cmd_cmds rm -rf "${output_folder}.bak"
+        return 1
+    }
+
+    ccal:info "Lunar index for year and month view is now ready."
+
+    ___x_cmd mv -f "${output_folder}.bak" "$output_folder"
+}
+
+___x_cmd_ccal_lunar_generate_index(){
+    local output_folder="${1:?output folder.}"
+    ___x_cmd_cmds awk   \
+            -v output_folder="${output_folder}"                 \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/gongli.awk"     \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/lunar.awk"      \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ccal.awk"       \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/ymd.awk"        \
+            -f "$___X_CMD_ROOT_MOD/ccal/lib/awk/prepare.awk"
+}
+
+___x_cmd_ccal_lunar_update(){
+    ccal:info "Update ccal resource"
+
+    rm -f "$___X_CMD_CCAL_DATA_FILE"
+    ___x_cmd_ccal_lunar_download        || return $?
+    ___x_cmd_ccal_lunar_prepare_index   || return $?
+
+    ___x_cmd ccmd invalidate ___x_cmd_ccal_lunar_cat___tsv0_all
+    ccal:info "Update the ccal resource success"
+}
+

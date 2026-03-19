@@ -1,0 +1,162 @@
+# shellcheck shell=dash
+
+___x_cmd_dnf___xmirror(){
+    local ___X_CMD_DNF_MIRROR_SOURCES=
+    local ___X_CMD_DNF_MIRROR_UPDATES_SOURCES=
+    local ___X_CMD_OS_RELEASE=
+    ___x_cmd_dnf___xmirror___ensure || return $?
+
+    [ "$#" -gt 0 ] || { ___x_cmd_dnf___xmirror___app ; return ; }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)
+                ___x_cmd help -m dnf mirror                  "$@" ;;
+        ls|replace|current|rollback)
+                ___x_cmd_dnf___xmirror_"${op}"               "$@" ;;
+        set)    ___x_cmd_dnf___xmirror_replace               "$@" ;;
+        unset)  ___x_cmd_dnf___xmirror_rollback              "$@" ;;
+        *)      N=dnf M="subcommand not found."    log:ret:1      ;;
+    esac
+}
+
+___x_cmd_dnf___xmirror___ensure(){
+    ___x_cmd_hascmd dnf || N=dnf M="[command=dnf] not found." log:ret:1
+
+    ___X_CMD_OS_RELEASE="$(___x_cmd os release)"
+    case "$___X_CMD_OS_RELEASE" in
+        *Fedora*|*fedora*)
+            ___X_CMD_OS_RELEASE="fedora"
+            ___X_CMD_DNF_MIRROR_SOURCES="/etc/yum.repos.d/fedora.repo"
+            ___X_CMD_DNF_MIRROR_UPDATES_SOURCES="/etc/yum.repos.d/fedora-updates.repo"
+            ;;
+        # TODO: centos10, centos9, centos stream
+        # *CentOS*|*centos*)
+        #     ___X_CMD_OS_RELEASE="centos"
+        #     ___X_CMD_DNF_MIRROR_SOURCES="/etc/yum.repos.d/CentOS-Base.repo"
+        #     ___X_CMD_DNF_MIRROR_UPDATES_SOURCES=
+        #     ;;
+        *)
+            N=dnf M="Unsupported system: $___X_CMD_OS_RELEASE" log:ret:1
+            ;;
+    esac
+}
+
+___x_cmd_dnf___xmirror___app(){
+    local _SELECT
+    ___x_cmd ui select "_SELECT" \
+        "Methods:" \
+            "Set dnf mirror (default is ali)" \
+            "Get current dnf mirror" \
+            "List all the dnf mirror candidates" \
+            "Rollback the dnf mirror to the original official"
+
+    case "$_SELECT" in
+        1)  ___x_cmd_dnf___xmirror replace       ;;
+        2)  ___x_cmd_dnf___xmirror current       ;;
+        3)  ___x_cmd_dnf___xmirror ls            ;;
+        4)  ___x_cmd_dnf___xmirror rollback      ;;
+        *)  dnf:info "Canceled" ;        return 1 ;;
+    esac
+}
+
+___x_cmd_dnf___xmirror_ls(){
+    printf "%s\n" \
+        "Code       Url                                      Name"                \
+        "ali        https://mirrors.aliyun.com               阿里云镜像"            \
+        "huawei     https://mirrors.huaweicloud.com          华为云镜像"            \
+        "tuna       https://mirrors.tuna.tsinghua.edu.cn     清华大学镜像"          \
+        "ustc       https://mirrors.ustc.edu.cn              中国科学技术大学镜像"    \
+        "bfsu       https://mirrors.bfsu.edu.cn              北京外国语大学镜像"
+}
+
+___x_cmd_dnf___xmirror_advise_ls(){
+    ___x_cmd_dnf___xmirror_ls | ___x_cmd_cmds_awk 'NR >1 { print $1 }'
+}
+
+___x_cmd_dnf___xmirror_current(){
+    ___x_cmd_cmds_cat "$___X_CMD_DNF_MIRROR_SOURCES"
+}
+
+___x_cmd_dnf___xmirror___url(){
+    ___x_cmd_dnf___xmirror_ls | \
+        ___x_cmd_mirror___util_get_url_by_name "$1"
+}
+
+___x_cmd_dnf___xmirror_replace(){
+    [ "$#" -gt 0 ] ||   set -- ali
+    case "$1" in
+        -h|--help) ___x_cmd help -m mirror dnf replace "$@";    return ;;
+    esac
+
+    ___x_cmd_dnf___xmirror_save || N=dnf M="Save dnf original sources list failed." log:ret:1
+
+    # ___x_cmd_proxy___util_backup $src_dir dnf
+
+    local url
+    url="$(___x_cmd_dnf___xmirror___url "${1}")" || return $?
+    if [ -z "$url" ]; then
+        dnf:error "Invalid mirror name: $1"
+        return 1
+    fi
+    dnf:info "Setting dnf mirror $url"
+
+    case "$___X_CMD_OS_RELEASE" in
+        *Fedora*|*fedora*)
+            ___x_cmd_dnf___xmirror_replace___fedora
+            ;;
+        *)
+            N=dnf M="Unsupported system: $___X_CMD_OS_RELEASE" log:ret:1
+            ;;
+    esac
+}
+
+___x_cmd_dnf___xmirror_replace___fedora(){
+    if [ "$(id -u)" -ne 0 ]; then
+        dnf:warn "using sudo"
+        ___x_cmd sudo sed -i -e "s/^#baseurl/baseurl/g" -e "s/^metalink/#metalink/g" \
+            "$___X_CMD_DNF_MIRROR_SOURCES" "$___X_CMD_DNF_MIRROR_UPDATES_SOURCES"
+        ___x_cmd sudo sed -E -i "s|baseurl=http[^ ]*/Everything/|baseurl=$url/fedora/releases/\$releasever/Everything/|g" \
+            "$___X_CMD_DNF_MIRROR_SOURCES"
+        ___x_cmd sudo sed -E -i "s|baseurl=http[^ ]*/Everything/|baseurl=$url/fedora/updates/\$releasever/Everything/|g" \
+            "$___X_CMD_DNF_MIRROR_UPDATES_SOURCES"
+        ___x_cmd sudo dnf clean all
+        ___x_cmd sudo dnf makecache --refresh
+    else
+        ___x_cmd_cmds sed -i -e "s/^#baseurl/baseurl/g" -e "s/^metalink/#metalink/g" \
+            "$___X_CMD_DNF_MIRROR_SOURCES" "$___X_CMD_DNF_MIRROR_UPDATES_SOURCES"
+        ___x_cmd_cmds sed -E -i "s|baseurl=http[^ ]*/Everything/|baseurl=$url/fedora/releases/\$releasever/Everything/|g" \
+            "$___X_CMD_DNF_MIRROR_SOURCES"
+        ___x_cmd_cmds sed -E -i "s|baseurl=http[^ ]*/Everything/|baseurl=$url/fedora/updates/\$releasever/Everything/|g" \
+            "$___X_CMD_DNF_MIRROR_UPDATES_SOURCES"
+        ___x_cmd_cmds dnf clean all
+        ___x_cmd_cmds dnf makecache --refresh
+    fi
+}
+
+___x_cmd_dnf___xmirror_save(){
+    ___x_cmd_mirror___util_save "$___X_CMD_DNF_MIRROR_SOURCES" "dnf"
+    if [ -f "$___X_CMD_DNF_MIRROR_UPDATES_SOURCES" ]; then
+        ___x_cmd_mirror___util_save "$___X_CMD_DNF_MIRROR_UPDATES_SOURCES" "dnf.patch"
+    fi
+}
+
+___x_cmd_dnf___xmirror_rollback(){
+    ___x_cmd_mirror___util_rollback_original "$___X_CMD_DNF_MIRROR_SOURCES" "dnf" || return $?
+    if [ -f "$___X_CMD_DNF_MIRROR_UPDATES_SOURCES" ]; then
+        ___x_cmd_mirror___util_rollback_original "$___X_CMD_DNF_MIRROR_UPDATES_SOURCES" "dnf.patch" || return $?
+    fi
+    ___x_cmd rmrf "$___X_CMD_ROOT_DATA/mirror/dnf"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        ___x_cmd sudo dnf clean all
+        ___x_cmd sudo dnf makecache --refresh
+    else
+        ___x_cmd_cmds dnf clean all
+        ___x_cmd_cmds dnf makecache --refresh
+    fi
+}
+# EndSection
+
+
+

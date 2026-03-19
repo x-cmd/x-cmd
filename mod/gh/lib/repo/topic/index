@@ -1,0 +1,117 @@
+# shellcheck shell=dash disable=SC3043,SC2027,2086
+# shellcheck disable=
+
+___x_cmd_gh_repo_topic(){
+    param:scope  ___x_cmd_github
+    param:subcmd ___x_cmd_gh_repo_topic            \
+        ls              "List all repo topics"     \
+        replace         "Replace all repo topics"  \
+        add             "Add repo topics"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_repo_topic _param_help_doc
+    return 1
+}
+
+# Section: List
+# https://docs.github.com/en/rest/repos/repos#get-all-repository-topics
+___x_cmd_gh_repo_topic_ls(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                          <>:RepoName
+    --per_page      "Results per page"                                  <>=30
+    --page          "Page number of the results to fetch."              <>=1
+
+    --json|-j       "output origin json data"
+    --csv           "output csv data"
+    --yml           "output yml data"
+'
+    param:run
+
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    if ___x_cmd_gx_output_is_format; then
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/topics" | ___x_cmd_gx_output_format
+    else
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/topics"  | \
+            ___x_cmd jo    .names | \
+            ___x_cmd jo 2c .      | \
+            if [ -n "$csv" ]; then  ___x_cmd_cmds cat
+            else                    ___x_cmd csv static_tab
+            fi
+    fi
+}
+# EndSection
+
+# Section: Replace
+# https://docs.github.com/en/rest/repos/repos#replace-all-repository-topics
+# shellcheck disable=2154
+___x_cmd_gh_repo_topic_replace(){
+    param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "An array of topics to add to the repository.(separated by commas)"     <>
+    --repo|-r       "<owner_path>/<repo_path>"                                              <>:RepoName
+    --yes|-y        "Ignore remove prompt interception"
+    --json|-j       "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    [ "$yes" = "true" ]  || ___x_cmd_ui_yesno "Are you sure to $(___x_cmd_ui bold red "replace") $owner_repo repo topices ?" || return
+    ___x_cmd jo "{names:[${1}]}" | ___x_cmd_gh_curl put "/repos/${owner_repo}/topics" "@-" | ___x_cmd_gh_topic____ui_handler Replace
+}
+# EndSection
+
+# Section: Add
+___x_cmd_gh_repo_topic_add(){
+param:scope     ___x_cmd_github
+    param:dsl       '
+options:
+    #1              "Add topics to add to the repository.(separated by commas)"     <>
+    --repo|-r       "<owner_path>/<repo_path>"                                      <>:RepoName
+    --json|-j       "output json data"
+'
+    param:run
+    ___x_cmd_gh_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>"' arg:ret:64
+    local pre_list=""; pre_list="$(
+        ___x_cmd_gh_get_multi "/repos/${owner_repo}/topics" | ___x_cmd ja 'END{
+                l = O[ kp(1, "names") L ]
+                for (i=1; i<=l; ++i) _names = _names " " O[ kp(1, "names", i) ]
+                print _names
+            }'
+        )"
+
+    ___x_cmd jo "{names:[${pre_list},${1}]}" | ___x_cmd_gh_curl put "/repos/${owner_repo}/topics" "@-" | ___x_cmd_gh_topic____ui_handler Add
+}
+# EndSection
+
+# Section: UI Handler
+___x_cmd_gh_topic____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        ___x_cmd_cmds_cat
+        ___x_cmd_gh_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Add|Replace)
+                _inf_msg="[Success]: $1 repo topics"
+                _err_msg="$1 repo topics failure:"
+                ;;
+        esac
+        local _names=""
+        ___x_cmd jo env . _names=.names gh_resp_msg=.message gh_resp_err=.errors
+        if [ -n "$_names" ]; then
+            ___x_cmd_ui_tf  true "$_inf_msg"
+        else
+            ___x_cmd_ui_tf false "$_err_msg" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+# EndSection

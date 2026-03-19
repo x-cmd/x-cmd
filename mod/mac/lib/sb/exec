@@ -1,0 +1,58 @@
+
+
+___x_cmd_mac_sb___exec(){ (
+    [ -n "$tracemode" ] || {
+        ___X_CMD_MAC_SB___EXEC0="___x_cmd_cmds" ___x_cmd_mac_sb___exec0 "$@"
+        return $?
+    }
+
+    local tmpfile="$tracemode"
+
+    [ "$tracemode" != "-" ] || {
+        tmpfile="$___X_CMD_ROOT_TMP/mac/sb/tmpfile.$$"
+    }
+
+    ___x_cmd ensurefp "$tmpfile"
+
+    (
+        ___x_cmd_cmds sleep 0.3
+        read -r pid <"$tmpfile"
+        mac:info "sandbox exec PID -> $pid"
+        # ___x_cmd_cmds log stream --style compact --predicate "processID == $pid AND sender == \"Sandbox\""  >"$tmpfile"
+        exec log stream --style compact --predicate "sender == \"Sandbox\" AND message CONTAINS \"($pid)\""  >"$tmpfile"
+    ) &
+
+    local logpid=$!
+
+    mac:info "log collector PID -> $logpid"
+
+    (
+        trap 'kill -s INT "$logpid" || kill -9 "$logpid"' EXIT
+        (
+            ___x_cmd pidofsubshell >"$tmpfile"
+            ___x_cmd_cmds sleep 1
+            ___X_CMD_MAC_SB___EXEC0=exec ___x_cmd_mac_sb___exec0 "$@"
+        )
+    )
+    local errcode=$?
+
+    [ "$tracemode" != "-" ] || {
+
+        printf "\n\n%s\n"       "----------------------"
+        ___x_cmd_cmds cat "$tmpfile">&2
+        printf "\n%s\n\n"       "----------------------"
+        ___x_cmd rmrf "$tmpfile"
+    }
+
+    mac:info "Exit Code -> $errcode"
+
+    return $errcode
+) }
+
+
+___x_cmd_mac_sb___exec0(){
+    "${___X_CMD_MAC_SB___EXEC0:-___x_cmd_cmds}" sandbox-exec              \
+        -D "HOME=$HOME"                     \
+        -D ___X_CMD_ROOT="$___X_CMD_ROOT"   \
+        "$@"
+}

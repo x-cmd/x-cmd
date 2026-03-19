@@ -1,0 +1,109 @@
+# shellcheck shell=dash disable=2120
+
+## Section: version、update and download
+
+___X_CMD_TLDR_LANG_VERSION="v0.0.1"
+___x_cmd_tldr_version(){
+    ___x_cmd_tldr_version_pages_ "$@" || return $?
+    printf "paegs:\t%s\n" "$___X_CMD_TLDR_PAGES_VERSION"
+    printf "lang:\t%s\n" "$___X_CMD_TLDR_LANG_VERSION"
+}
+
+___x_cmd_tldr_version_pages_(){
+    [ -n "$___X_CMD_TLDR_PAGES_VERSION" ] || {
+        local x_;   ___x_cmd_tldr_version_pages___from_yml_ || return $?
+        ___X_CMD_TLDR_PAGES_VERSION="$x_"
+    }
+}
+
+___x_cmd_tldr_version_pages___from_yml_(){
+    local index="$___X_CMD_TLDR_DIR_DATA/index.yml"
+    { [ -f "$index" ] && [ "$1" != --update ]; } || \
+        ( ___x_cmd fslock run "tldr.index" ___x_cmd_tldr_download index.yml "$index" ) || return $?
+    read -r x_ < "$index"
+    x_="${x_#* }"
+    [ -n "$x_" ] || {
+        tldr:error "Latest version in index.yml is invalid"
+        return 1
+    }
+}
+
+___x_cmd_tldr_update(){
+    local lang="$1"; local x_
+    x_=; ___x_cmd_tldr_version_pages___from_yml_ --update       || return $?
+    local pages_version="$x_"
+
+    if [ -n "$lang" ]; then
+        ___x_cmd_tldr_download_unzip_pages "$pages_version" "$lang" --update   || return $?
+    else
+        x_=; ___x_cmd_tldr_lang get_ || return $?;
+        lang="$x_"
+        ___x_cmd_tldr_download_unzip_pages "$pages_version" "$lang" --update   || return $?
+        [ "$lang" = en ] || ___x_cmd_tldr_download_unzip_pages "$pages_version" en --update   || return $?
+    fi
+
+    ___x_cmd_tldr_download_unzip_lang "$___X_CMD_TLDR_LANG_VERSION" --update || return $?
+    ___x_cmd_tldr_lang___listfp_ --update || return $?
+    ___x_cmd_tldr___fz_cleanup
+}
+
+___x_cmd_tldr_lang_perpare(){
+    tldr:debug "tldr lang check => ${___X_CMD_TLDR_DIR_DATA}/lang/${___X_CMD_TLDR_LANG_VERSION}"
+    [ -d "${___X_CMD_TLDR_DIR_DATA}/lang/${___X_CMD_TLDR_LANG_VERSION}" ] || \
+        ( ___x_cmd fslock run "tldr.lang" ___x_cmd_tldr_download_unzip_lang "$___X_CMD_TLDR_LANG_VERSION" ) || return $?
+}
+
+___x_cmd_tldr_pages_prepare(){
+    local lang="$1"; local x_
+    [ -n "$lang" ] || { x_=; ___x_cmd_tldr_lang get_ || return $?; lang="$x_"; }
+    ___x_cmd_tldr_version_pages_ || return $?
+    tldr:debug "tldr pages check => ${___X_CMD_TLDR_DIR_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.${lang}"
+    [ -d "${___X_CMD_TLDR_DIR_DATA}/${___X_CMD_TLDR_PAGES_VERSION}/pages.${lang}" ] || \
+        ( ___x_cmd fslock run "tldr.pages.${lang}" ___x_cmd_tldr_download_unzip_pages "$___X_CMD_TLDR_PAGES_VERSION" "$lang" ) || return $?
+
+}
+
+___x_cmd_tldr_download_unzip_lang(){
+    local version="$1"
+    local tgz_path="${___X_CMD_TLDR_DIR_CACHE}/lang/${version}.tar.xz"
+    { [ -f "$tgz_path" ] && [ "$2" != --update ]; } || {
+        ___x_cmd_tldr_download "lang/${version}.tar.xz" "$tgz_path" || return $?
+    }
+
+    local data_path="${___X_CMD_TLDR_DIR_DATA}/lang/${version}"
+    ___x_cmd rmrf "$data_path";    ___x_cmd mkdirp "$data_path"
+    ! ___x_cmd uz "$tgz_path" "$data_path" || tldr:info "The lang/${version} already UPDATED"
+}
+
+___x_cmd_tldr_download_unzip_pages(){
+    local version="$1";     local lang="$2"
+    local tgz_path="${___X_CMD_TLDR_DIR_CACHE}/${version}/pages.${lang}.tar.xz"
+
+    { [ -f "$tgz_path" ] && [ "$3" != --update ]; } || {
+        local page_lang="pages.${lang}"
+        ___x_cmd_tldr_download "$version/$page_lang.tar.xz" "$tgz_path"
+    } || return $?
+
+    local data_path="${___X_CMD_TLDR_DIR_DATA}/${version}/pages.${lang}"
+    ___x_cmd rmrf "$data_path";    ___x_cmd mkdirp "$data_path"
+    ___x_cmd uz "$tgz_path" "$data_path" || {
+        ___x_cmd rmrf "$tgz_path" "$data_path"
+        return 1
+    }
+    tldr:info "The pages.${lang} version already UPDATED to $version"
+}
+
+___x_cmd_tldr_download(){
+    arg:1:nonempty
+    local src="$1";     local dst="${2:-$1}"
+    tldr:info "Download tldr $src from x-cmd/tldr"
+    ___x_cmd httpget gitx x-cmd tldr nightly "dist/$src" "${dst}.tmp" - || {
+        tldr:error "Fail to download $src from x-cmd/tldr"
+        ___x_cmd rmrf "${dst}.tmp"
+        return 1
+    }
+    ___x_cmd rmrf "${dst}"
+    ___x_cmd_cmds_mv "${dst}.tmp" "${dst}"
+}
+
+## EndSection

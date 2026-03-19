@@ -1,0 +1,131 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2039,3043
+
+___x_cmd_gt_user_repo(){
+    param:scope     ___x_cmd_gt
+    param:subcmd ___x_cmd_gt_user_repo              \
+        ls          "Interactive UI show repo of user"  \
+        ll          "List repo of user"                 \
+        create      "Create user's repo"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gt_user_repo_ls
+}
+
+# Section: List
+# https://gitee.com/api/v5/swagger#/getV5UserRepos
+# https://gitee.com/api/v5/swagger#/getV5UsersUsernameRepos
+# shellcheck disable=SC2154,SC2034,SC2120
+___x_cmd_gt_user_repo_ls(){
+    if ___x_cmd_gx_has_format_args "$@"; then
+        ___x_cmd_gt_user_repo_ll "$@"
+        return
+    fi
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    Authority = all public private
+    Group = owner collaborator organization_member enterprise_member admin
+    Sort = created updated pushed full_name
+    Direction = desc asc
+options:
+    --type          "visibility"        <>:Authority="all"
+    --affiliation   "affiliation"       <>:Group="owner"
+    --sort          "sort"              <>:Sort="created"
+    --direction     "direction"         <>:Direction="desc"
+    --page          "page"              <>="1"
+    --per_page      "per_page"          <>="20"
+'
+    param:run
+    local url=
+    local visibility="$type"
+    if [ -n "$1" ]; then
+        url="/users/$1/repos"
+    else
+        url="/user/repos"
+    fi
+
+    if ___x_cmd_gx_is_interactive_env; then
+        local ___X_CMD_TUI_TABLE_FINAL_COMMAND
+        local ___X_CMD_TUI_TABLE_CUR_LINE
+        local ___X_CMD_TUI_TABLE_CUR_ITEM
+
+        ___x_cmd_gt_tui_app  --url "$url" --visibility "$visibility" --affiliation "$affiliation" --sort "$sort" --direction "$direction"  --page "$page" --per_page "$per_page" \
+            --request-code '___x_cmd_gt_get_multi "$url" visibility affiliation sort direction page per_page'   \
+            --error-msg "Couldn't find any data" \
+            --end ___x_cmd_gt_user_repo_app_status_handler \
+            "user.repo.app.awk"
+
+    else
+        ___x_cmd_gt_get_multi "$url" visibility affiliation sort direction page per_page | x jo 2c  .full_name
+    fi
+}
+
+___x_cmd_gt_user_repo_app_status_handler(){
+    if [ ! -t 1 ] || [ -n "$ENFORCE_JSON" ]; then
+        ___x_cmd_gt_http_error
+        return
+    fi
+    local repo_name
+    repo_name="${___X_CMD_TUI_TABLE_CUR_LINE##*RepoPath: }"
+    repo_name=${repo_name%%
+NAME:*}
+    case "$___X_CMD_TUI_TABLE_FINAL_COMMAND" in
+            "ENTER")        printf "%s\n" "$___X_CMD_TUI_TABLE_FINAL_COMMAND"  ;;
+            "c")            ___x_cmd_gt_repo_create                            ;;
+            "u")            ___x_cmd_gt_repo_edit   "$repo_name"               ;;
+            "d")            ___x_cmd_gt_repo_rm     "$repo_name"               ;;
+            *)              return   ;;
+    esac
+}
+# EndSection
+
+# Section: Repo List
+# TODO: resolve `--limt` option cal offset list
+# https://gitee.com/api/v5/swagger#/getV5UserRepos
+# https://gitee.com/api/v5/swagger#/getV5UsersUsernameRepos
+# shellcheck disable=SC2154,SC2034
+___x_cmd_gt_user_repo_ll(){
+    param:scope     ___x_cmd_gt
+    param:dsl       '
+type:
+    Authority = all public private
+    Group = owner collaborator organization_member enterprise_member admin
+    Sort = created updated pushed full_name
+    Direction = desc asc
+options:
+    --type          "visibility"                <>:Authority="all"
+    --affiliation   "affiliation"               <>:Group="owner"
+    --sort          "sort"                      <>:Sort="updated"
+    --direction     "direction"                 <>:Direction="desc"
+    --page          "page"                      <>="1"
+    --per_page      "per_page"                  <>="30"
+
+    --json|-j       "output origin json data"
+    --csv           "output csv data"
+    --yml           "output yml data"
+'
+    param:run
+
+    local visibility="$type"
+    local url=""
+    if [ -n "$1" ]; then
+        url="/users/$1/repos"
+    else
+        url="/user/repos"
+    fi
+
+    if ___x_cmd_gx_output_is_format; then
+        ___x_cmd_gt_get_multi "$url" visibility affiliation sort direction per_page page | ___x_cmd_gx_output_format
+    else
+        ___x_cmd_gt_get_multi "$url" visibility affiliation sort direction page per_page | \
+            x jo 2c                 .full_name  .private    .description   | \
+            x csv header --add       RepoPath    IsPrivate   Description   | \
+            if [ -n "$csv" ]; then  ___x_cmd_cmds cat
+            else                    x csv static_tab
+            fi
+    fi
+}
+
+# EndSection

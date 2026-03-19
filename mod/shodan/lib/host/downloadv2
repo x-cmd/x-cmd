@@ -1,0 +1,56 @@
+# shellcheck shell=dash
+
+# using the search to query all data
+
+# x curl -svvv -w "data: ${#1}\n" -G "https://api.shodan.io/tools/httpheaders?data=[1-3]" --data-urlencode a=3  -o /dev/null 2>a.out
+___x_cmd_shodan_host_download(){
+    local limit=1000
+    local IFS=" "
+    local query=""
+    local file=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -a|--all)       limit=-1;       shift 1 ;;
+            --limit)        limit="$2";     shift 2 ;;
+            -f|--file)      file="$2";      shift 2 ;;
+            *)              query="$*";     break   ;;
+        esac
+    done
+
+    [ -n "$file" ] || file="x_shodan_data.json"
+    ! [ -f "$file" ] || N=shodan M="File already exists: $file" log:ret:1
+
+    local count=
+    count=$( ___x_cmd_shodan_host_count "$@" | x jo . .total) || return
+    x is int "$count" || N=shodan M="Fail to fetch count=$count" log:ret:1
+    shodan:info "total [count=$count]"
+
+    if [ "$limit" -gt 0 ] && [ "$limit" -lt "$count" ]; then
+        shodan:info "Download only top $limit with Limit=$limit"
+        count="$limit"
+    fi
+
+    local page="$((  (count-1)/100 + 1  ))"
+    shodan:info "Number of pages is $page"
+    shodan:info "Target file ==> $file"
+
+    local tmpdirp=".x-cmd.shodan.dir"
+    x mkdirp "$tmpdirp"
+
+    set -- "/shodan/host/search?page=[1-$page]" --fail-early --fail-with-body --dump-header
+    set -- "$@" --data-urlencode "query=$query"
+
+    ___x_cmd_shodan_curl_get "$@" | {
+        ourl:parse:local
+        while ___x_cmd_ourl parse header ; do
+            if ___x_cmd_ourl parse_isok; then
+                { ___x_cmd_ourl parse body | x jq '.matches[]'; } || return
+            else
+                err="$(___x_cmd_ourl parse body)"
+                shodan:error --code "$XOH_code" "$err"
+            fi
+        done
+    } >"$file" # using pipe to zip the data ...
+}
+

@@ -1,0 +1,290 @@
+# shellcheck shell=dash disable=SC2016,2034,2154
+
+# reference: https://developer.work.weixin.qq.com/document/path/91770#%E6%96%87%E6%9C%AC%E7%B1%BB%E5%9E%8B
+
+___x_cmd_qywx_bot___send_json() {
+    local request="$1"
+    [ -n "$request" ] || request="$(___x_cmd_cmds_cat)"
+    request="$( printf "%s\n" "$request" | ___x_cmd jo n | ___x_cmd jo t " " )"
+
+    [ -n "$webhook" ] || {
+        local webhook
+        ___x_cmd_qywx_cur webhook:= 2>/dev/null
+        [ -n "$webhook" ] || N=qywx M="Please setting up your webhook first ==> 'x qywx --cfg webhook=<your webhook url>'" log:ret:1
+    }
+
+    qywx:debug  --webhook "$webhook" --request "$request"
+    ___x_cmd_http post json "$webhook" "$request"
+}
+
+___x_cmd_qywx_bot___upload_media_(){
+    local filepath=""; local type="file"
+    local op="$1"
+    case "$op" in
+        --file|--voice) type="${op#--}"; shift ;;
+    esac
+    filepath="$1"
+    [ -f "$filepath" ] || N=qywx M="Not found file -> $filepath" log:ret:1
+
+    x_=""; ___x_cmd_qywx___get_key_ "$webhook" || return $?
+    local webhook_key="$x_"; x_=""
+
+    local res=""; res="$( ___x_cmd curl -X POST  \
+        -H 'Content-Type: multipart/form-data' -F "file=@${filepath}"  \
+        "https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?type=${type}&key=${webhook_key}" \
+    )" || return $?
+
+    [ -n "$res" ] || N=qywx M="Failed to upload media" log:ret:1
+
+    local errcode=""; local errmsg=""; local media_id=""
+    ___x_cmd jo env . .errcode .errmsg .media_id << A
+$res
+A
+
+    if [ "$errcode" = 0 ]; then
+        x_="$media_id"
+    else
+        qywx:error --errmsg "$errmsg" "Failed to upload media"
+        return 1
+    fi
+}
+
+___x_cmd_qywx_bot(){
+    param:subcmd ___x_cmd_qywx_bot    \
+        send   "send msg"
+
+    param:subcmd:try
+    param:run
+
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_qywx bot --help
+    else
+        ___x_cmd_qywx bot send "$@"
+    fi
+    return
+}
+
+___x_cmd_qywx_bot_send() {
+    param:subcmd ___x_cmd_qywx_bot_send       \
+        --text             "send text"        \
+        --markdown         "send markdown"    \
+        --image            "send image"       \
+        --raw              "send raw json"    \
+        --richtext         "send richtext"    \
+        --file             "send file"
+        # --textcard         "send textcard"
+        # --newscard         "send newscard"
+
+    param:subcmd:try
+    param:run
+
+    if [ "$#" -eq 0 ]; then
+        ___x_cmd_qywx bot send --help
+    else
+        ___x_cmd_qywx_bot_send_text "$@"
+    fi
+    return
+}
+
+___x_cmd_qywx_bot_send_text() {
+    param:scope     qywx
+    param:dsl <<A
+option:
+    #1                           "Provide text"                                                                                         <>=""
+    --mentioned_list             "A list of userids to alert specified members of the group"                                            <>=""
+    --mentioned_mobile_list      "List of mobile phone numbers, reminding group members corresponding to mobile phone numbers"          <>=""
+    --webhook                    "webhook"                                                                                              <>=""
+    --pipe|-p                    "pipe"
+    --json|-j                    "output origin json data"
+A
+    param:run
+
+    local text
+
+    if [ -n "$pipe" ]; then
+        text="$(___x_cmd_cmds_cat)"
+    else
+        text="$1"
+    fi
+
+    local res=; res="$(___x_cmd_qywx_bot___send_json '
+{
+    "msgtype": "text",
+    "text": {
+        "content": '"$( ___x_cmd_qywx_jqu "$text" )"',
+        "mentioned_list":[ '"${mentioned_list}"' ],
+        "mentioned_mobile_list":[ '"${mentioned_mobile_list}"' ]
+    }
+}
+'
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent text successfully" "$format"
+}
+
+___x_cmd_qywx_bot_send_raw() {
+    param:scope             qywx
+    param:dsl <<A
+option:
+    #1            "Provide raw json"                     <raw>:json
+    --webhook     "webhook"                              <>=""
+    --json|-j     "output origin json data"
+A
+    param:run
+
+    local raw="${1}"; [ "$raw" != "-" ] || raw="$(___x_cmd_cmds_cat)"
+    local res=; res="$(___x_cmd_qywx_bot___send_json "$raw")" || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent message successfully" "$format"
+}
+
+___x_cmd_qywx_bot_send_markdown() {
+    param:scope     qywx
+    param:dsl <<A
+option:
+    #1              "Provide text"              <>=""
+    --pipe|-p       "pipe"
+    --webhook       "webhook"                   <>=""
+    --json|-j       "output origin json data"
+A
+    param:run
+    local text;
+    if [ -n "$pipe" ]; then
+        text="$(___x_cmd_cmds_cat)"
+    else
+        text="$1"
+    fi
+
+    local res=; res="$(___x_cmd_qywx_bot___send_json '
+{
+    "msgtype": "markdown",
+    "markdown": {
+        "content": '"$( ___x_cmd_qywx_jqu "$text" )"'
+    }
+}
+'
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent markdown successfully" "$format"
+}
+
+___x_cmd_qywx_bot_send_image() {
+    param:scope     qywx
+    param:dsl <<A
+option:
+    #1              "Provide image path"              <>:string
+    --webhook       "webhook"                         <>=""
+    --json|-j       "output origin json data"
+A
+    param:run
+    local image_path="$1"
+    [ -f "$image_path" ] || N=qywx M="Not found image -> $image_path" log:ret:1
+
+    local md5=;     md5="$(___x_cmd md5 "$image_path")"
+    local base64=;  base64="$(___x_cmd base64 -w 0 "$image_path")"
+    local res=;     res="$(___x_cmd_qywx_bot___send_json '
+{
+    "msgtype": "image",
+    "image": {
+		"md5": '"$md5"',
+        "base64": '"$( ___x_cmd_qywx_jqu "$base64" )"'
+    }
+}
+'
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent image successfully" "$format"
+}
+
+___x_cmd_qywx_bot_send_richtext() {
+    param:scope     qywx
+    param:dsl <<A
+option:
+    --url                   "url"                           <>:string
+    --title                 "title"                         <>:string
+    --picurl                "picurl"                        <>=""
+    --description           "description"                   <>=""
+    --webhook               "webhook"                       <>=""
+    --json|-j               "output origin json data"
+A
+    param:run
+    local res=; res="$(___x_cmd_qywx_bot___send_json <<A
+{
+    "msgtype": "news",
+    "news": {
+        "articles" : [
+            {
+                "title" : "$title",
+                "description" : "$description",
+                "url" : "$url",
+                "picurl" : "$picurl"
+            }
+        ]
+    }
+}
+A
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent richtext successfully" "$format"
+}
+
+
+___x_cmd_qywx_bot_send_file() {
+    param:scope     qywx
+    param:dsl <<A
+option:
+    --media_id      "file id"                   <>=""
+    --webhook       "webhook"                   <>=""
+    --json|-j       "output origin json data"
+A
+    param:run
+
+    [ -n "$media_id" ] || {
+        local x_=""; ___x_cmd_qywx_bot___upload_media_ "$@" || return $?
+        media_id="$x_"
+    }
+
+    local res
+    res="$(___x_cmd_qywx_bot___send_json <<A
+{
+    "msgtype": "file",
+    "file": {
+ 		"media_id": "$media_id"
+    }
+}
+A
+)"  || return
+    local format=; format="${json:+json}"
+    ___x_cmd_qywx____ui_utils "$res" "Sent file successfully" "$format"
+}
+
+
+___x_cmd_qywx_bot_send_textcard() {
+    : #TODO: https://developer.work.weixin.qq.com/document/path/91770#%E6%96%87%E6%9C%AC%E9%80%9A%E7%9F%A5%E6%A8%A1%E7%89%88%E5%8D%A1%E7%89%87
+}
+
+
+___x_cmd_qywx_bot_send_newscard() {
+     : #TODO: https://developer.work.weixin.qq.com/document/path/91770#%E5%9B%BE%E6%96%87%E5%B1%95%E7%A4%BA%E6%A8%A1%E7%89%88%E5%8D%A1%E7%89%87
+}
+
+___x_cmd_qywx____ui_utils(){
+    local res="$1"; local msg="$2"; local format="$3"
+    [ -n "$res" ] || return
+    if [ -n "$json" ]; then
+        printf "%s\n" "$res"
+        return
+    fi
+
+    {
+        local statu
+        ___x_cmd jo env . statu=.errmsg
+        if [ "$statu" = "ok" ]; then
+            ___x_cmd_ui_tf true "$msg"
+        else
+            ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$res"
+        fi
+    } <<A
+$res
+A
+}

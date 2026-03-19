@@ -1,0 +1,166 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_account_info() {
+    local X_help_cmd='___x_cmd_hub___help account info'
+    help:arg:parse
+
+    local json=
+    case "$1" in
+        -j | --json) shift; json=true ;;
+    esac
+
+    # TODO: to show what platform is binded
+    ___x_cmd_hub_get_userinfo
+}
+
+___x_cmd_hub_account_rename() {
+    local X_help_cmd='___x_cmd_hub___help account rename'
+    help:arg-null:parse
+
+    local new_name="$1"
+    if [ -z "$new_name" ]; then
+        ___x_cmd_ui_tf false "New username is empty, please provide a new username" >&2
+        ___x_cmd_hub___help account rename
+        return 1
+    fi
+    hub:info "Usernames on x-cmd hub will default to having the prefix 'u-' added. The updated username will be u-${new_name}."
+    local resp; resp="$(___x_cmd_hub_u_curl patch /api/v0/account -- "name=${new_name}")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to rename account:"
+        return 1
+    }
+    printf "%s" "$resp" | {
+        local name=
+        ___x_cmd jo env . .name
+        ___x_cmd_hub_u_handle_resp true "Rename successfully => $name"
+    }
+}
+
+___x_cmd_hub_account_region() {
+    local X_help_cmd='___x_cmd_hub___help account rename'
+    help:arg-null:parse
+
+    local region="$1"
+    if [ -z "$new_name" ]; then
+        ___x_cmd_ui_tf false "New username is empty, please provide a new username" >&2
+        ___x_cmd_hub___help account rename
+        return 1
+    fi
+    hub:info "Usernames on x-cmd hub will default to having the prefix 'u-' added. The updated username will be u-${new_name}."
+    local resp; resp="$(___x_cmd_hub_u_curl patch /api/v0/account -- "region=${region}")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to rename account:"
+        return 1
+    }
+    printf "%s" "$resp" | {
+        local name=
+        ___x_cmd jo env . .name
+        ___x_cmd_hub_u_handle_resp true "Rename successfully => $name"
+    }
+}
+
+
+___x_cmd_hub_account_delete() {
+    local X_help_cmd='___x_cmd_hub___help account delete'
+    help:arg:parse
+
+    ___x_cmd ui yesno "Are you sure to delete your account? This operation is irreversible" || return 1
+
+    local x_=; ___x_cmd_hub_u_userdir_ me || return 1
+    local user_dir="$x_"
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl delete /api/v0/account)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to delete account:"
+        return 1
+    }
+
+    ___x_cmd rmrf "$user_dir"
+    {
+        ___x_cmd_hub_cfg --unset token
+        ___x_cmd_hub_cfg --unset service_token
+    } || {
+         ___x_cmd_ui_tf false "Failed to unset token use cfgy"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Delete successfully"
+}
+
+___x_cmd_hub_get_userinfo() {
+    local resp=; resp="$(___x_cmd_hub_u_curl get /api/v0/account/detail)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to get user info:"
+        return 1
+    }
+
+    [ -z "$json" ] || {
+        printf "%s\n" "$resp"
+        return 0
+    }
+    printf "%s" "$resp" | (
+        ___x_cmd jo env . .name .id plan=.plan.name expire=.plan.expireAt .email .region dataUsage=.billing.dataUsage \
+            dataLimit=.plan.dataLimit
+
+        [ -z "$dataUsage" ] || percent="$(___x_cmd_hub_u_percent "$dataUsage" "$dataLimit")"
+        [ -z "$dataUsage" ] || dataUsage="$(___x_cmd_hub_u_unit_suffixes "$dataUsage")"
+        [ -z "$dataUsage" ] || dataLimit="$(___x_cmd_hub_u_unit_suffixes "$dataLimit")"
+
+        ___x_cmd_hub_u_handle_resp true "Account info:" \
+            "name: $name" \
+            "region: $region" \
+            ${email:+"email: $email"} \
+            ${plan:+"plan: $plan"}  \
+            ${dataUsage:+"usage: $dataUsage"} \
+            ${dataLimit:+"limit: $dataLimit"} \
+            ${percent:+"percent: $percent"} \
+            ${expire:+"expire: $expire"}
+    )
+}
+
+# "free" "pro"
+___x_cmd_hub_account_upgrade(){
+    local X_help_cmd='___x_cmd_hub___help account upgrade'
+    help:arg:parse
+
+    local plan=; local type="wechat"
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            --plan)     plan=true; shift ;;
+            --type)     type="$2"; shift 2 ;;
+            *) break ;;
+        esac
+    done
+
+    if [ -z "$plan" ] ; then
+        ___x_cmd ui yesno "Upgrade account plan to pro?" || return 1
+        plan="pro"
+    fi
+
+    ___x_cmd_hub_u_curl post /api/v0/payment -- plan type | {
+        local url=; local id=; local msg=
+        ___x_cmd jo env . url=.codeUrl .id .msg
+        [ -n "$url" ] || {
+            ___x_cmd_hub_u_handle_resp false "Failed to upgrade account plan:"
+            return 1
+        }
+
+        if [ "$type" = "wechat" ]; then
+            ___x_cmd_ui_tf true "Please scan the QR code below to pay"
+            ___x_cmd_hub_qrcode "$url" || return 1
+            ___x_cmd ui yesno "Have you successfully scanned the payment QR code?" || return 1
+        else
+            printf "URL: %s\n" "$url"
+            ___x_cmd ui yesno "Please open the url below to pay, then press [Yes] to continue: " || return 1
+        fi
+
+        ___x_cmd_hub_u_curl get "/api/v0/payment/$id" | {
+            local pay_status=; local msg=
+            ___x_cmd jo env . .msg pay_status=.status
+            [ "$pay_status" = "success" ] || {
+                ___x_cmd_hub_u_handle_resp false "Failed to upgrade account plan:"
+                return 1
+            }
+            ___x_cmd_hub_cfg --unset service_token
+            ___x_cmd_hub_u_handle_resp true "Upgrade plan successfully, plan => $plan"
+        }
+
+    }
+}

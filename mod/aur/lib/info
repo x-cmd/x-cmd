@@ -1,0 +1,77 @@
+
+# https://aur.archlinux.org/rpc/v5/info?arg[]=pkg1&arg[]=pkg2
+
+___x_cmd_aur_info(){
+    [ $# -gt 0 ]  ||    set -- --help
+
+    local COLR=""
+    local indent=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m aur info "$@" ; return 0 ;;
+            --colr)         COLR=1;     ;;
+            --indent)       indent="$2"; arg:2:shift; continue ;;
+            *)              break ;;
+        esac
+        shift
+    done
+
+    if [ -n "$COLR" ] || ___x_cmd_is_stdout2tty; then
+        ___x_cmd_aur_info___colr "$@"
+    else
+        ___x_cmd_aur_info___plain "$@"
+    fi
+}
+
+___x_cmd_aur_info___plain(){
+    ___X_CMD_CUR_INFO_COLR=""           \
+    ___X_CMD_CUR_INFO_INDENT="$indent"  \
+        ___x_cmd_aur_info___raw "$@"
+}
+
+___x_cmd_aur_info___colr(){
+    ___X_CMD_CUR_INFO_COLR=1            \
+    ___X_CMD_CUR_INFO_INDENT="$indent"  \
+        ___x_cmd_aur_info___raw "$@"
+}
+
+___x_cmd_aur_info___raw(){
+    local kw="$1"
+    # TODO: consider fetch information from webservice .
+
+    ___x_cmd_aur_update___ifneed
+
+    ___x_cmd ccmd 1m -- ___x_cmd_aur_info___json "$kw" | ___x_cmd_cmds awk   \
+        -v KEYWORD="$kw"     \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/unixepoch.awk"   \
+        -f "$___X_CMD_ROOT_MOD/aur/lib/awk/info.awk"
+
+}
+
+___x_cmd_aur_info___json(){
+    ___x_cmd_aur_ls___json | ___x_cmd jq -r --arg kw "${1}" '
+    # Data rows
+    (
+      .[]
+      | select( (.ID | tostring == $kw ) or (.Name == $kw) )
+      | [
+        .ID,
+        .Popularity,
+        .NumVotes,
+        .Name,
+        .Version,
+        (.Description // ""), # Handle null by converting to empty string
+        (.OutOfDate // ""),   # Handle null by converting to empty string
+        (.Maintainer // ""),  # Handle null by converting to empty string
+        (.Submitter // ""),   # Handle null by converting to empty string
+        .FirstSubmitted,
+        .LastModified,
+        (.URL // ""),         # Handle null by converting to empty string
+        .PackageBaseID,
+        (.PackageBase // ""), # Handle null by converting to empty string
+        (.URLPath // "")      # Handle null by converting to empty string
+      ] | @tsv
+    )'
+}
+

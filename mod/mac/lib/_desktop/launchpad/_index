@@ -1,0 +1,78 @@
+# shellcheck shell=dash
+
+___x_cmd_mac_launchpad(){
+    [ $# -gt 0 ]   ||   set --  open
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m mac launchpad       ;;
+        open|reset|layout)
+                        ___x_cmd_mac_launchpad_"$op" "$@"    ;;
+        *)              N=mac M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_mac_launchpad_open(){
+    ___x_cmd_mac___cmd open -a Launchpad
+}
+
+___x_cmd_mac_launchpad_reset(){
+    ___x_cmd_mac___cmd defaults write com.apple.dock ResetLaunchPad -bool true
+    ___x_cmd_mac___cmd killall Dock
+    mac:info "The app icons on the Launchpad have been rearranged."
+}
+
+___x_cmd_mac_launchpad_layout(){
+    local cols="${1:-6}"
+    local rows="${2:-6}"
+
+    local total="$(( cols * rows ))"
+
+    if [ "$total" -lt 25 ]; then
+        mac:warn "Setting Launchpad layout to ${cols}x${rows} (${total} items per page) is a small size."
+        mac:warn "This may scatter your apps across pages, requiring manual rearrangement."
+
+        local id
+        ___x_cmd ui select id "Next Move:"    \
+            "Exit."     \
+            "Cointinue with the ${cols}x${rows} layout despite potential app scattering?"
+
+        case "$id" in
+            1)      return ;;
+            2)      ;;
+        esac
+    fi
+
+    ___x_cmd_mac___cmd defaults write com.apple.dock springboard-columns -int "${cols}" || return $?
+    ___x_cmd_mac___cmd defaults write com.apple.dock springboard-rows -int "${rows}"    || return $?
+    ___x_cmd_mac___cmd killall Dock
+
+    mac:info "Successfully set Launchpad layout to ${cols} columns and ${rows} rows."
+}
+
+___x_cmd_mac_launchpad_dbpath(){
+    local p
+    p="$(___x_cmd_mac_launchpad_folder)" || true
+    [ -n "$p" ] || N=mac M="Not found launchpad" log:ret:1
+    printf "%s\n" "$p/db/db"
+}
+
+___x_cmd_mac_launchpad_folder(){
+    command find '/private/var/folders' -name 'com.apple.dock.launchpad' 2>/dev/null
+}
+
+___x_cmd_mac_launchpad_db_run(){
+    local dbpath
+    dbpath="$(___x_cmd_mac_launchpad_dbpath)" || return 1
+    sqlite3 -csv "$dbpath" "$@"
+}
+
+___x_cmd_mac_launchpad_db_table(){
+    ___x_cmd_mac_launchpad_db_run ".table"
+}
+
+___x_cmd_mac_launchpad_db_app(){
+    ___x_cmd_mac_launchpad_db_run "select * from apps"
+}
+
+
+

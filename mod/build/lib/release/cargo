@@ -1,0 +1,193 @@
+
+___x_cmd_build_release_cargo(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/cargo.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release cargo "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_cargo_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_cargo_build "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_cargo_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_cargo_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory structure
+    ___x_cmd_cmds install -d -m 755 "$dir/src"
+
+    # Write Cargo.toml template
+    ___x_cmd_build_release_cargo_init___write_cargo_toml "$dir"
+
+    # Write main.rs template
+    ___x_cmd_build_release_cargo_init___write_main_rs "$dir"
+
+    build:info "Created $dir with Cargo project template"
+}
+
+___x_cmd_build_release_cargo_init___write_cargo_toml(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/Cargo.toml" << 'EOF'
+[package]
+name = "package-name"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your@email>"]
+description = "Package description"
+license = "MIT"
+repository = "https://github.com/username/package"
+
+[dependencies]
+
+[dev-dependencies]
+EOF
+}
+
+___x_cmd_build_release_cargo_init___write_main_rs(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/src/main.rs" << 'EOF'
+fn main() {
+    println!("Hello, world!");
+}
+EOF
+}
+
+___x_cmd_build_release_cargo_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/Cargo.toml" ]; then
+        build:error "Cargo.toml not found in $dir"
+        return 1
+    fi
+
+    # Check if cargo is available
+    if ! ___x_cmd hascmd cargo; then
+        build:error "cargo not found. Please install Rust."
+        return 1
+    fi
+
+    ___x_cmd_build_release_cargo_build_local "$dir"
+}
+
+___x_cmd_build_release_cargo_build_local(){
+    local dir="$1"
+    build:info "Building with cargo..."
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    # Check formatting
+    build:info "Checking formatting..."
+    ___x_cmd_cmds cargo fmt --check || {
+        build:warn "Code is not formatted. Run: cargo fmt"
+    }
+
+    # Run linter
+    build:info "Running clippy..."
+    ___x_cmd_cmds cargo clippy --all-targets --all-features -- -D warnings || {
+        build:warn "Clippy found issues"
+    }
+
+    # Run tests
+    build:info "Running tests..."
+    ___x_cmd_cmds cargo test || {
+        build:warn "Tests failed"
+    }
+
+    # Build release
+    build:info "Building release..."
+    ___x_cmd_cmds cargo build --release || return $?
+
+    ___x_cmd_build_release_cargo_show_results "$dir"
+}
+
+___x_cmd_build_release_cargo_show_results(){
+    local dir="$1"
+    build:info "Build successful!"
+    
+    local binary
+    binary=$(___x_cmd find "$dir/target/release" -maxdepth 1 -type f -executable 2>/dev/null | head -1)
+    
+    if [ -n "$binary" ]; then
+        build:info "Binary: $binary"
+    fi
+}
+
+___x_cmd_build_release_cargo_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    if [ ! -f "$dir/Cargo.toml" ]; then
+        build:error "Cargo.toml not found in $dir"
+        return 1
+    fi
+
+    if [ ! -f "$HOME/.cargo/credentials" ] && [ ! -f "$HOME/.cargo/credentials.toml" ]; then
+        build:info --status not_authenticated --action "cargo login <token>" --token_url https://crates.io/me "CARGO authentication required"
+        return 1
+    fi
+
+    ___x_cmd_cmds cd "$dir" || return $?
+
+    if ___x_cmd_cmds cargo publish; then
+        build:info --status published --crate "$(grep '^name' Cargo.toml | head -1 | cut -d'"' -f2)" "CARGO published successfully"
+    else
+        build:error "cargo publish failed"
+        return 1
+    fi
+}

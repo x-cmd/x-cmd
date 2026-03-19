@@ -1,0 +1,105 @@
+# shellcheck shell=dash
+# TODO: Alternative impelementation: using fifoagent to monitor the bgsingleton
+# So we don't have to use the file to store the pid
+
+___x_cmd_bgsingleton(){
+    local op="$1"; shift
+    case "$op" in
+        run|ls|pid|kill)
+                ___x_cmd_bgsingleton_"$op" "$@"     ;;
+        *)      x:error "Unknown subcommand: $1"    ;;
+    esac
+}
+
+___x_cmd_bgsingleton_ls(){
+    [ -d "$___X_CMD_ROOT_DATA/bgsingleton" ] || return 0
+    x fsiter "$___X_CMD_ROOT_DATA/bgsingleton"
+}
+
+___x_cmd_bgsingleton_pid(){
+    local bgsingleton_name="$bgsingleton_name"
+    [ -n "$bgsingleton_name" ] || M="Provide bgsingleton name" N=bgsingleton log:ret:64
+    [ -f "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name" ] || {
+        x:error "bgsingleton inexisted ==> $bgsingleton_name"
+        return 1
+    }
+    local pidline=; read -r pidline <"$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name"
+    [ -n "$pidline" ] || {
+        x:error "bgsingleton pidline empty ==> $bgsingleton_name"
+        return 1
+    }
+    printf "%s\n" "$pidline"
+}
+
+___x_cmd_bgsingleton_kill___inner(){
+    local bgsingleton_name="$1"
+    # rm -rf "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name"
+    # check all of the pids in the dir
+    [ -f "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name" ] || return 0
+    local pidline=; read -r pidline <"$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name"
+    kill -s KILL "$pidline" 2>/dev/null
+    ___x_cmd_cmds_rm "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name"
+}
+
+___x_cmd_bgsingleton_kill(){
+    if [ "$1" = --all ]; then
+        local l; ___x_cmd_bgsingleton_ls | while read -r l; do
+            x:warn "kill bgsingleton name[$l]"
+            ___x_cmd_bgsingleton_kill___inner "$l"
+        done
+        return
+    fi
+    local bgsingleton_name="${1:-$bgsingleton_name}"
+    [ -n "$bgsingleton_name" ] || M="Provide bgsingleton name" N=bgsingleton log:ret:64
+    ___x_cmd_bgsingleton_kill___inner "$bgsingleton_name"
+}
+
+___x_cmd_bgsingleton_run(){
+    local __WAIT=""
+    case "$1" in
+        --wait)     shift; __WAIT=1      ;;
+    esac
+
+    local bgsingleton_name="$bgsingleton_name"   # Unique bgsingleton_name
+    local pidline=""
+
+    [ -n "$bgsingleton_name" ] || M="Provide bgsingleton name" N=bgsingleton log:ret:64
+    [ ! -f "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name" ] || {
+        read -r pidline <"$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name"
+        if [ ! -e "/proc/$pidline" ] && ! kill -0 "$pidline" >/dev/null 2>&1; then
+            ___x_cmd_cmds_rm "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name"
+        else
+            # [ -z "$__WAIT" ] || while kill -0 "$pidline" 2>/dev/null; do sleep 0.5 || break; done
+            [ -z "$__WAIT" ] || while true; do
+                [ -f "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name" ] || break
+                ___x_cmd_cmds_sleep 0.2 || return
+
+                kill -0 "$pidline" 2>/dev/null || break
+                ___x_cmd_cmds_sleep 0.3 || return
+
+                [ -f "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name" ] || break
+                ___x_cmd_cmds_sleep 0.5 || return
+            done
+            return 0
+        fi
+    }
+
+    if [ -z "$__WAIT" ]; then   ___x_cmd_bgsingleton_run___run "$@" &
+    else                        ___x_cmd_bgsingleton_run___run "$@"
+    fi
+}
+
+___x_cmd_bgsingleton_run___run(){
+    local bgsingleton_name="$bgsingleton_name"
+    x ensurefp "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name"
+    {
+        x pidofsubshell
+        printf "%s\n" "$bgsingleton_name"
+        x date str          # Just in case.
+    } >"$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name"
+
+    trap 'rm -rf "$___X_CMD_ROOT_DATA/bgsingleton/$bgsingleton_name"' EXIT  # What if not deleted?
+    "$@"
+}
+
+# ( bgsingleton_name=ttt x bgsingleton run --wait  eval 'sleep 5; echo aa' )

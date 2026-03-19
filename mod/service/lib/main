@@ -1,0 +1,279 @@
+# shellcheck shell=dash
+
+___x_cmd log init    service
+
+xrc:mod:lib     service     log     util
+
+___X_CMD_SERVICE_FP_DATA="$___X_CMD_ROOT_DATA/service/data"
+
+___x_cmd_service___main(){
+    [ "$#" -gt 0 ] ||   set - -h
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m service "$@" ;;
+        start|stop|restart|log|status|isalive|rm|pause|resume)
+                        ___x_cmd_service_"$op" "$@" ;;
+        *)              ;;
+    esac
+}
+
+___x_cmd_service_restart(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m service restart "$@" ; return 0  ;;
+    esac
+
+    local name="$1"
+    [ -n "$name" ] ||   N=service M="Please provide service name." arg:ret:64
+    shift
+    case "$1" in
+        --)             shift ;;
+        *)              ;;
+    esac
+
+    if ___x_cmd_service_isalive "$name"; then
+        ___x_cmd_service_stop "$name" || {
+            local exitcode=$?
+            service:warn "Service [name=$name] is not stopped. Please try 'x service stop --force $name'"
+            return $exitcode
+        }
+    fi
+
+    ___x_cmd_service_start "$name" -- "$@"
+}
+
+___x_cmd_service_start(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m service restart "$@" ; return 0  ;;
+    esac
+
+    local name="$1"
+    [ -n "$name" ] ||   N=service M="Please provide service name." arg:ret:64
+
+    shift
+    case "$1" in
+        --)             shift ;;
+        *)              ;;
+    esac
+
+    local fp_service="$___X_CMD_SERVICE_FP_DATA/$name"
+    local fp_pid="$fp_service/PID"
+    local logname="$( ___x_cmd date varname ).log"
+    local fp_log="$fp_service/log/$logname"
+    local fp_loglatest="$fp_service/log/LATEST"
+
+    ___x_cmd ensurefp "$fp_pid"
+
+    service:debug "Launching"
+    ___x_cmd fslock run "x-cmd-service-pid-file-lock-$name" ___x_cmd_service_start___launch "$@"
+}
+
+___x_cmd_service_start___launch(){
+    local x_
+    ___x_cmd_service_status_ "$name"
+
+    [ "$x_" != alive ] || {
+        service:info \
+            --hint1 "If you want to restart -> x service restart $name"             \
+            --hint2 "If you want to stop original serivce -> x service stop $name"  \
+            "Abort starting service [name=$name] because it is already alive."
+        return 1
+    }
+
+    service:debug "Service [name=$name] status is $x_"
+
+    (
+        ___x_cmd pidofsubshell_
+        local pid="$x_"
+
+        local fingerprint="$( ___x_cmd ps fingerprint get "$pid" )"
+
+        ___x_cmd fprintf "$fp_pid"          "%s\n" "$pid" "$fingerprint"
+        ___x_cmd fprintf "$fp_loglatest"    "%s\n" "$logname"
+
+        service:debug "Service [name=$name] status is $@"
+        exec nohup "$@" 1>"$fp_log" 2>&1
+    ) &
+}
+
+___x_cmd_service_rm(){
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m service rm "$@" ; return 0 ;;
+            *)              break
+        esac
+    done
+
+    local name="$1"
+    [ -n "$name" ] ||   N=service M="Please provide service name." arg:ret:64
+
+    local fp_pid="$___X_CMD_SERVICE_FP_DATA/$name"
+    ___x_cmd fslock run "x-cmd-service-pid-file-lock-$name" ___x_cmd rmrf "$fp_pid"
+}
+
+___x_cmd_service_stop(){
+    local mode=besteffort   # TODO: normal
+    local timeout=5     # I think it could be 2 or 3
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m service stop "$@" ; return 0 ;;
+
+            -f|--force)     mode=force;     shift 1 ;;
+            --besteffort)   mode=besteffort;   shift 1 ;;
+
+            --timeout)      timeout="$2";   arg:2:shift ;;
+            *)              break ;;
+        esac
+    done
+
+    local name="$1"
+    [ -n "$name" ] ||   N=service M="Please provide service name." arg:ret:64
+
+    local x_
+    ___x_cmd_service_status_ "$name" || return $?
+
+    [ "$x_" != "notfound" ] || {
+        service:error "Service [name=$name] Not Found."
+        return 1
+    }
+
+    local pidpath="$___X_CMD_SERVICE_FP_DATA/$name/PID"
+
+    local x_pid=""
+    local x_url=""
+
+    {
+        read -r x_pid
+        read -r x_timestamp
+    } <"$pidpath"
+
+    case "$mode" in
+        force)
+            {
+                service:debug "Retry stopping with SIGKILL"
+                ___x_cmd_service_stop___kill_then_wait "$name" "$x_pid" "$timeout" KILL
+
+                case "$?" in
+                    0|130)      return $? ;;
+                    *)          false ;;
+                esac
+            } ;;
+        normal)
+            {
+                service:debug "Retry stopping with SIGQUIT"
+                ___x_cmd_service_stop___kill_then_wait "$name" "$x_pid" "$timeout" QUIT
+
+                case "$?" in
+                    0|130)      return $? ;;
+                    *)          false ;;
+                esac
+            } ;;
+        besteffort)
+            {
+                service:debug "Retry stopping with SIGQUIT"
+                ___x_cmd_service_stop___kill_then_wait "$name" "$x_pid" 0 QUIT
+
+                case "$?" in
+                    0|130)      return $? ;;
+                    *)          false ;;
+                esac
+            } || {
+                service:debug "Retry stopping with SIGINT"
+                ___x_cmd_service_stop___kill_then_wait "$name" "$x_pid" 0 INT
+
+                case "$?" in
+                    0|130)      return $? ;;
+                    *)          false ;;
+                esac
+            } || {
+                service:debug "Retry stopping with SIGQUIT"
+                ___x_cmd_service_stop___kill_then_wait "$name" "$x_pid" 0 QUIT
+
+                case "$?" in
+                    0|130)      return $? ;;
+                    *)          false ;;
+                esac
+            } || {
+                service:debug "Retry stopping with SIGKILL"
+                ___x_cmd_service_stop___kill_then_wait "$name" "$x_pid" "$timeout" KILL
+
+                case "$?" in
+                    0|130)      return $? ;;
+                    *)          false ;;
+                esac
+            } ;;
+    esac || {
+        service:warn "Service [name=$name] is not stopped."
+    }
+
+    return 1
+}
+
+
+___x_cmd_service_stop___kill_then_wait(){
+    local name="$1"
+    local x_pid="$2"
+    local timeout="$3"
+    local signal="${4:-"QUIT"}"
+
+    service:debug "Service[name=$name] Try to kill process $x_pid [signal=$signal] [timeout=$timeout]"
+
+    ___x_cmd_service_isalive "$name" "$x_pid"
+
+    local exitcode=$?
+    case "$exitcode" in
+        0)      ___x_cmd_cmds kill -s "$signal" "$x_pid" ;;
+        130)    service:debug "RECV INTTERUPTED" ; return 130 ;;
+        *)      service:info "Service [name=$name] is stopped already. [exitcode=$exitcode]"
+                return 1
+    esac
+
+    while read -r interval; do
+        if ! ___x_cmd_service_isalive "$name" "$x_pid"; then
+            service:info "Service [name=$name] is stopped successfully."
+            return 0
+        fi
+
+        [ "$interval" != 0 ] || continue
+
+        ___x_cmd sleep "$interval"
+    done <<A
+0.1
+0.5
+$timeout
+A
+
+    return 1
+}
+
+___x_cmd_service_pause(){
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m service pause "$@" ; return 0 ;;
+            *)              break
+        esac
+    done
+
+    local name="$1"
+
+    local x_=""
+    ___x_cmd_service_pid_ "$name" || N=service M="Service [name=$name] not found." log:ret:1
+    kill -s STOP "$x_"
+}
+
+___x_cmd_service_resume(){
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m service pause "$@" ; return 0 ;;
+            *)              break
+        esac
+    done
+
+    local name="$1"
+
+    local x_=""
+    ___x_cmd_service_pid_ "$name" || N=service M="Service [name=$name] not found." log:ret:1
+    kill -s CONT "$x_"
+}
+

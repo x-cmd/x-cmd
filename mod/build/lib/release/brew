@@ -1,0 +1,190 @@
+
+___x_cmd_build_release_brew(){
+    local provider=xagent
+    local skill_md="$___X_CMD_ROOT_MOD/build/lib/release/skill/brew.md"
+
+    case "${1:-}" in
+        -h|--help)
+            ___x_cmd help -m build release brew "$@"
+            return 0
+            ;;
+        init)
+            shift
+            ___x_cmd_build_release_brew_init "$@"
+            return $?
+            ;;
+        build)
+            shift
+            ___x_cmd_build_release_brew_build "$@"
+            return $?
+            ;;
+        upload)
+            shift
+            ___x_cmd_build_release_brew_upload "$@"
+            return $?
+            ;;
+        --claude|--minimax|--xagent|--kimi)
+            provider="${1#--}"
+            shift
+            ;;
+    esac
+
+    ___x_cmd agent run \
+        --provider "$provider" \
+        "$skill_md" \
+        "$@" || {
+        build:error "AI service call failed, please check network connection"
+        return 1
+    }
+}
+
+___x_cmd_build_release_brew_init(){
+    local dir=""
+    local force=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)      shift; break ;;
+            --force) force=1; shift ;;
+            --*)     build:error "Unknown option: $1"; return 1 ;;
+            *)       break ;;
+        esac
+    done
+
+    dir="${1:-.}"
+
+    # Handle existing directory
+    if [ -d "$dir" ]; then
+        if [ "$force" = "1" ]; then
+            ___x_cmd_cmds rm -rf "$dir" || return $?
+        else
+            build:error "Directory $dir already exists (use --force to overwrite)"
+            return 1
+        fi
+    fi
+
+    # Create directory
+    ___x_cmd_cmds install -d -m 755 "$dir"
+
+    # Write Formula template
+    ___x_cmd_build_release_brew_init___write_formula_template "$dir"
+
+    build:info "Created $dir with Homebrew Formula template"
+}
+
+___x_cmd_build_release_brew_init___write_formula_template(){
+    local dir="$1"
+    ___x_cmd_cmds cat > "$dir/package.rb" << 'EOF'
+class PackageName < Formula
+  desc "Package description"
+  homepage "https://example.com"
+  url "https://example.com/package-name-1.0.0.tar.gz"
+  sha256 "PLACEHOLDER_SHA256"
+  license "MIT"
+
+  def install
+    # Install files
+    bin.install "bin/package-name"
+    man1.install "man/package-name.1"
+  end
+
+  test do
+    assert_match "version", shell_output("#{bin}/package-name --version")
+  end
+end
+EOF
+}
+
+___x_cmd_build_release_brew_build(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    # Find formula file
+    local formula_files
+    formula_files=$(___x_cmd find "$dir" -name "*.rb" -type f 2>/dev/null)
+
+    if [ -z "$formula_files" ]; then
+        build:error "No .rb formula file found in $dir"
+        return 1
+    fi
+
+    local formula_count
+    formula_count=$(printf "%s\n" "$formula_files" | ___x_cmd_cmds wc -l)
+
+    if [ "$formula_count" -eq 1 ]; then
+        ___x_cmd_build_release_brew_build_local "$dir" "$formula_files"
+    else
+        build:error "Multiple .rb files found. Please specify one."
+        local line
+        while read -r line; do
+            build:info "  $line"
+        done <<EOF
+$formula_files
+EOF
+        return 1
+    fi
+}
+
+___x_cmd_build_release_brew_build_local(){
+    local dir="$1"
+    local formula_file="$2"
+    
+    build:info "Building Homebrew formula..."
+
+    # Check if brew is available
+    if ! ___x_cmd hascmd brew; then
+        build:error "brew not found. Please install Homebrew first."
+        return 1
+    fi
+
+    # Run brew audit on formula
+    build:info "Running brew audit..."
+    ___x_cmd_cmds brew audit --strict "$formula_file" || {
+        build:warn "brew audit found issues"
+        ___x_cmd ui yesno "Continue anyway?" || return $?
+    }
+
+    # Run brew style check
+    build:info "Running brew style check..."
+    ___x_cmd_cmds brew style "$formula_file" || {
+        build:warn "brew style found issues"
+    }
+
+    # Try to install (build) the formula
+    build:info "Installing/building formula..."
+    ___x_cmd_cmds brew install --build-from-source "$formula_file" || {
+        build:error "Formula build failed"
+        return 1
+    }
+
+    # Run test
+    build:info "Running formula test..."
+    local formula_name
+    formula_name=$(___x_cmd_cmds basename "$formula_file" .rb)
+    ___x_cmd_cmds brew test "$formula_name" || {
+        build:warn "Formula test failed"
+    }
+
+    build:info "Formula build and test completed"
+    build:info "Formula file: $formula_file"
+}
+
+___x_cmd_build_release_brew_upload(){
+    local dir="${1:-.}"
+
+    local x_
+    ___x_cmd abspath_ "$dir" || return $?
+    dir="$x_"
+
+    local formula_file
+    formula_file=$(___x_cmd find "$dir" -name "*.rb" -type f | head -1)
+    if [ -z "$formula_file" ]; then
+        build:error "No .rb formula file found in $dir"
+        return 1
+    fi
+
+    build:info --formula "$formula_file" --status manual_pr_required --core https://github.com/Homebrew/homebrew-core --tap "create github.com/user/homebrew-tap" "HOMEBREW manual PR required"
+}

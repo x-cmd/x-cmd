@@ -1,0 +1,98 @@
+# shellcheck shell=dash
+
+# using rerun to fix
+___x_cmd_xx___fix___rerun(){
+    local x_=""
+
+    if [ $# -eq 0 ]; then
+        local x_id=; local x_cmd=;
+        ___x_cmd history last_ || return
+        x_=; ___x_cmd_xx___fix___rerun___cmdstr_ "$x_id" "$x_cmd" || return
+    else
+        local fake_id="CMDARR.${HISTCMD:-0}"
+        x_=; ___x_cmd_xx___fix___rerun___cmdarr_ "$fake_id" "$@" || return
+    fi
+
+    ___x_cmd_xx___execchoicelist "$x_" json
+}
+
+___x_cmd_xx___fix___rerun___cmdarr_(){
+    local _cmdid="$1"; shift
+
+    x_=; ___x_cmd_xx___fix___rerun_cmdresult_filepath_ "$_cmdid" || return
+    if [ -f "$x_" ]; then
+        ___x_cmd ui yesno "Use ai to fix, or exit" || return
+    else
+        local id=;
+        ___x_cmd ui select id "Select the operation you want to fix:" \
+            "Rerun cmd to get stderr result and then use ai" \
+            "Just use ai" \
+            "exit" || return
+        case "$id" in
+            1)  x_=""; ___x_cmd_xx___fix___rerun_cmdresult_ --cmdarr "$_cmdid" "$@" || return ;;
+            2)  x_="" ;;
+            *)  return 1 ;;
+        esac
+    fi
+
+    ___x_cmd_xx___co_fix_ --cmdarr "$x_" "$@"
+}
+
+___x_cmd_xx___fix___rerun___cmdstr_(){
+    local _cmdid="$1"
+    local _cmdstr="$2"
+
+    x_=; ___x_cmd_xx___fix___rerun_cmdresult_filepath_ "$_cmdid" || return
+    if [ -f "$x_" ]; then
+        ___x_cmd ui yesno "Use ai to fix, or exit" || return
+    else
+        local id=;
+        ___x_cmd ui select id "Select the operation you want to fix [cmd=$_cmdstr]:" \
+            "RERUN command for stderr data to query ai" \
+            "Only use command string to query ai" \
+            "Exit" || return
+        case "$id" in
+            1)  x_=""; ___x_cmd_xx___fix___rerun_cmdresult_ --cmdstr "$_cmdid" "$_cmdstr" || return ;;
+            2)  x_="" ;;
+            *)  return 1 ;;
+        esac
+    fi
+
+    ___x_cmd_xx___co_fix_ --cmdstr "$x_" "$_cmdstr"
+}
+
+___x_cmd_xx___fix___rerun_cmdresult_filepath_(){
+    local _cmdid="$1"
+    [ -n "$_cmdid" ] || N=xx M="Not found cmd id" log:ret:1
+    x_="$___X_CMD_ROOT_TMP/xx/cmdlog/$$-${_cmdid}"
+    # [ -f "$x_" ] || ___x_cmd scriptty store fp_ "$_cmdid" $$
+}
+
+___x_cmd_xx___fix___rerun_cmdresult_(){
+    local _cmdid=
+    local _cmdstr=
+
+    local op="$1";  shift
+    case "$op" in
+        --cmdstr)       _cmdid="$1";    _cmdstr="$2"; shift 2 ;;
+        --cmdarr)       _cmdid="$1";    shift 1 ;;
+        *)              N=xx M="Not support such subcmd[$op]" log:ret:64
+                        ;;
+    esac
+
+    x_=; ___x_cmd_xx___fix___rerun_cmdresult_filepath_ "$_cmdid" || return
+    [ ! -f "$x_" ] || return 0
+    xx:info "Rerun cmd stderr result [fp=$x_]"
+    ___x_cmd ensurefp "$x_"
+    (
+        {
+            if [ -n "$_cmdstr" ]; then
+                eval "$_cmdstr"
+            else
+                "$@"
+            fi
+        } 2>"$x_"
+    )
+    return 0
+}
+

@@ -1,0 +1,97 @@
+# shellcheck shell=dash
+
+___x_cmd_asdf___install(){
+    if [ -f "$___X_CMD_ASDF_BIN_PATH/$___X_CMD_ASDF_BIN" ]; then
+        asdf:info "Asdf is already installed."
+    else
+        ___x_cmd_asdf___download_inner "$@" || return $?
+    fi
+
+    ___x_cmd_asdf___activate_auto
+}
+
+___x_cmd_asdf___uninstall(){
+    local ASSUME_REMOVE_ASDF_HOME="${ASSUME_REMOVE_ASDF_HOME}"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --assume-remove-data)
+                case "$2" in
+                    yes|no)     ASSUME_REMOVE_ASDF_HOME="$2"; shift 2 ;;
+                    *)          N=asdf M="Only accept yes or no following --assume-remove-data" log:ret:64 ;;
+                esac
+                ;;
+
+            *)
+                N=asdf M="Unsupported option -> $1" log:ret:64 ;;
+        esac
+    done
+
+    {
+        ___x_cmd_asdf___deactivate
+        ___x_cmd rmrf "$___X_CMD_ROOT_BOOT/asdf.disable" "$___X_CMD_ASDF_BIN_PATH/$___X_CMD_ASDF_BIN"
+    } || return $?
+
+    asdf:info "'asdf' binary is removed."
+
+    case "$ASSUME_REMOVE_ASDF_HOME" in
+        yes)        ___x_cmd_asdf___uninstall___rm; return ;;
+        no)         ;;
+        *)
+                    if ___x_cmd_runmode_allow_manual; then
+                        if ___x_cmd ui yesno "Do you want to remove ~/.asdf directory, which contains globally installed packages data ?"; then
+                            ! ___x_cmd_asdf___uninstall___rm || return 0
+                        fi
+                    fi
+    esac
+
+    asdf:info \
+        --cmd "rm -rf ~/.asdf ~/.tool-versions"  \
+        "Asdf data can be manually removed by executing the following command."
+}
+
+___x_cmd_asdf___uninstall___rm(){
+    local asdf_home="$HOME/.asdf"
+    asdf:info "Directory removing -> ${asdf_home}"
+    ___x_cmd rmrf "${asdf_home}"   || N=asdf M="Fail to remove directory -> ${asdf_home}" log:ret:1
+
+    local asdf_config="$HOME/.tool-versions"
+    asdf:info "File removing -> ${asdf_config}"
+    ___x_cmd rmrf "${asdf_config}" || N=asdf M="Fail to remove file -> ${asdf_config}" log:ret:1
+
+}
+
+___x_cmd_asdf___get_latest_version_(){
+    local latest_version=
+    if ___x_cmd websrc is cn;then
+        latest_version="$(___x_cmd cb repo release latest -r x-cmd-sourcecode/asdf | grep "TagName:")"
+    else
+        latest_version="$(___x_cmd gh repo release latest -r x-cmd-sourcecode/asdf | grep "Tag:")"
+    fi
+    x_="${latest_version##* }"
+}
+
+___x_cmd_asdf___upgrade(){
+    [ -f "$___X_CMD_ASDF_BIN_PATH/$___X_CMD_ASDF_BIN" ] || {
+        asdf:error "Asdf is not installed."
+        return 1
+    }
+
+    local version=
+    version="$(___x_cmd_asdf___runmain --version)"
+    version="${version##* }"
+
+    local x_=
+    local latest_version=
+    x_=; ___x_cmd_asdf___get_latest_version_
+    latest_version="$x_"
+
+    [ "$version" != "$latest_version" ] || {
+        asdf:info "Asdf is already up-to-date (version $version)."
+        return 0
+    }
+
+    asdf:info "Asdf will be updated from $version to $latest_version"
+    ___x_cmd_asdf___download "${latest_version}" || return $?
+    asdf:info "Asdf has been updated to version $latest_version."
+}
