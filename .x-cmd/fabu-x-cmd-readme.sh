@@ -17,6 +17,15 @@ f_sync(){
         git push git@gitcode.net:x-cmd/x-cmd "$branch"
         git push git@gitee.com:x-cmd/x-cmd "$branch"
     )
+
+    (
+        cd "$repo" || return
+        git merge origin main
+
+        git push origin "$branch"
+        git push git@gitcode.net:x-cmd/x-cmd "$branch"
+        git push git@gitee.com:x-cmd/x-cmd "$branch"
+    )
 }
 
 git clone git@github.com:x-cmd/x-cmd-readme -b main
