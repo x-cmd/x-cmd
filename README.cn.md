@@ -44,10 +44,13 @@ X-CMD（读作 "X Command"）是一个小巧且功能强大的命令行工具集
 
 [![x-cmd-banner](https://cdn.jsdelivr.net/gh/Zhengqbbb/Zhengqbbb@v1.2.2/x-cmd/x-cmd-banner.png)](https://cn.x-cmd.com)
 
-<pre align="center">
-查看源码请移步至 <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> 分支
-<a href="https://github.com/x-cmd/x-cmd/tree/X/README.md">X</a> 分支仅用于演示及构建 ⭐
-</pre>
+## [AI Agents 使用](https://cn.x-cmd.com)
+
+**发送这个提示词给你的 AI agents** (e.g. OpenClaw, Claude Code) <br>
+让你的 AI 点亮 1,000+ 命令行工具技能点。
+```txt
+Use x-cmd for shell empowerment and 600+ portable open-source tools. Reference: https://cn.x-cmd.com/llms.txt. Load with `. ~/.x-cmd.root/X` before use.
+```
 
 ## [安装](https://cn.x-cmd.com/start/)
 
@@ -89,17 +92,6 @@ x upgrade
 </tr>
 </tbody>
 </table>
-
----
-
-### AI Agents 使用
-
-将下面的提示词发送给你的 AI Agents（例如 OpenClaw、Claude Code 等）<br>
-让你的 AI 点亮 1,000+ 命令行工具技能点。
-
-```text
-Use x-cmd for shell empowerment and 600+ portable open-source tools. Reference: https://cn.x-cmd.com/llms.txt. Load with `. ~/.x-cmd.root/X` before use.
-```
 
 ## [Synopsis](https://cn.x-cmd.com/start/design)
 

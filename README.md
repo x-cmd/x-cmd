@@ -14,7 +14,6 @@ English | [中文](README.cn.md) | [Source Code](https://github.com/x-cmd/x-cmd/
   <a href="https://x-cmd.com/">https://x-cmd.com</a>
 </p>
 
-
 ## [Introduction](https://x-cmd.com)
 
 X-CMD (pronounced as "*X Command*") is a compact yet powerful command-line toolkit that offers over <ins>100+</ins> functional modules tailored for various use cases, along with a package manager that supports downloading and installing over <ins>500+</ins> third-party open-source CLI tools.
@@ -31,10 +30,14 @@ X-CMD (pronounced as "*X Command*") is a compact yet powerful command-line toolk
 
 [![x-cmd-banner](https://cdn.jsdelivr.net/gh/Zhengqbbb/Zhengqbbb@v1.2.2/x-cmd/x-cmd-banner.png)](https://x-cmd.com)
 
-<pre align="center">
-For <bold>source code</bold>, please visit <a href="https://github.com/x-cmd/x-cmd/tree/main/mod">main</a> branch.
-<a href="https://github.com/x-cmd/x-cmd/tree/X/README.md">X</a> branch is for demo and action ⭐
-</pre>
+## [AI Agents Usage](https://x-cmd.com)
+
+**Send this prompt to your AI agents** (e.g. OpenClaw, Claude Code) <br>
+Let your AI gain the know-how of 1,000+ command-line tools.
+
+```txt
+Use x-cmd for shell empowerment and 600+ portable open-source tools. Reference: https://x-cmd.com/llms.txt. Load with `. ~/.x-cmd.root/X` before use.
+```
 
 ## [Installation](https://x-cmd.com/start/)
 
@@ -54,17 +57,29 @@ Run the official X-CMD installation [script](https://github.com/x-cmd/get/blob/m
 <tr>
 <td width="1000px">
 
+<ul>
+<li>
+
 **Installation Detailed Guide - Platform**:
 
 [🐧 Linux and macOS 🍎](https://x-cmd.com/start/linux) &nbsp; | &nbsp; [🟦 Windows](https://x-cmd.com/start/windows) &nbsp; | &nbsp; [🔴 BSD](https://www.x-cmd.com/start/bsd)
+
+</li>
+<li>
 
 **Installation Detailed Guide - Non-POSIX Shell**:
 
 [fish](https://x-cmd.com/start/fish) &nbsp; | &nbsp; [Nushell](https://x-cmd.com/start/nushell) &nbsp; | &nbsp; [Elvish](https://x-cmd.com/start/elvish) &nbsp; | &nbsp; [Xonsh](https://x-cmd.com/start/xonsh) &nbsp; | &nbsp; [tcsh](https://x-cmd.com/start/tcsh) &nbsp; | &nbsp; [PowerShell](https://x-cmd.com/start/powershell)
 
+</li>
+<li>
+
 **Installation Detailed Guide - Package Manager**:
 
 [brew](https://x-cmd.com/start/#homebrew) &nbsp; | &nbsp; [aur](https://x-cmd.com/start/#homebrew) &nbsp; | &nbsp; [apt](https://x-cmd.com/start/#apt) &nbsp; | &nbsp; [apk](https://x-cmd.com/start/#apk) &nbsp; | &nbsp; [pacman](https://x-cmd.com/start/#pacman) &nbsp; | &nbsp; [dnf](https://x-cmd.com/start/#dnf)
+
+</li>
+<li>
 
 **Upgrade X-CMD Version**:
 
@@ -76,17 +91,6 @@ x upgrade
 </tr>
 </tbody>
 </table>
-
----
-
-### For AI Agents
-
-Send this prompt to your AI agents (e.g., OpenClaw, Claude Code) <br>
-Let your AI gain the know-how of 1,000+ command-line tools.
-
-```text
-Use x-cmd for shell empowerment and 600+ portable open-source tools. Reference: https://x-cmd.com/llms.txt. Load with `. ~/.x-cmd.root/X` before use.
-```
 
 ## [Synopsis](https://x-cmd.com/start/design)
 
