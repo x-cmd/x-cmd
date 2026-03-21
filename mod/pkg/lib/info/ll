@@ -1,15 +1,21 @@
-# shellcheck    shell=sh            disable=SC3043,SC2034      # xrc
+# shellcheck    shell=sh            disable=SC3043,SC2034,SC2120      # xrc
+
+x log init pkg
 
 # Provide infomation for specific pkg and version
 
 # TODO: \\n \n ?
 ___x_cmd_pkg_ll(){
-    ___x_cmd_pkg_ll_inner "\\n"
+    local op="$1"
+    case "$op" in
+        -h|--help)      ___x_cmd help -m pkg ll ;;
+        --csv)          shift; ___x_cmd_pkg_ll___csv "$@" ;;
+        -f|--filter)    shift; ___x_cmd_pkg_ll___filter "$@" ;;
+        *)              ___x_cmd_pkg_ll_inner "\\n" ;;
+    esac
 }
 
 ___x_cmd_pkg_ll_inner()(
-    local X_help_cmd='___x_cmd help -m pkg ll'; help:arg:parse
-    # TODO: Need to be removed in the future
     ___x_cmd_pkg_update___check || return $?
     local sep="${1:-"\\t"}"
     ___x_cmd_cmds_cd "$___X_CMD_PKG_METADATA_PATH" || return $?
@@ -17,6 +23,33 @@ ___x_cmd_pkg_ll_inner()(
         printf "%s${sep}" "${i%"/meta.tt.json"}"
     done 2>/dev/null
 )
+
+___x_cmd_pkg_ll___csv()(
+    local X_help_cmd='___x_cmd help -m pkg ll --csv'; help:arg:parse
+    ___x_cmd_pkg_update___check || return $?
+    [ -d "$___X_CMD_PKG_METADATA_PATH" ] || return $?
+
+    printf "bin,desc.en,desc.cn,homepage,size,license,version\n"
+    local i; for i in "$___X_CMD_PKG_METADATA_PATH"/*/*/info.tt.json; do
+        [ -f "$i" ] || continue
+        printf "%s\n" "$i"
+    done | ___x_cmd cawk -m j/json,j/jiter,csv -f "$___X_CMD_ROOT_MOD/pkg/lib/awk/pkg.ll_csv.awk" # 2>/dev/null
+)
+
+___x_cmd_pkg_ll___filter(){
+    local X_help_cmd='___x_cmd help -m pkg ll --filter'; help:arg:parse
+    ___x_cmd_pkg_update___check || return $?
+
+    local filter="$*"
+    if [ -z "$filter" ]; then
+        pkg:error -h "x pkg ll --filter <keyword>" "Filter keyword is required"
+        return 1
+    fi
+
+    # Output header first, then filter data (skip header line)
+    printf "bin,desc.en,desc.cn,homepage,size,license,version\n"
+    ___x_cmd_pkg_ll___csv | ___x_cmd_cmds tail -n +2 | ___x_cmd fzf --filter="$filter"
+}
 
 ___x_cmd_pkg___split_name_version_(){
     ___x_cmd_pkg___locate_name_version_exist___filepath_ "$@" || \

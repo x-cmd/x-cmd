@@ -24,7 +24,6 @@ x agent setup
 - `~/.opencode/skills/x-cmd/`
 - `~/.agents/skills/x-cmd/`
 
-
 ## OpenClaw（支持：OpenClaw）
 
 ```bash
@@ -97,4 +96,4 @@ x env use jq nodejs python3
 
 ---
 
-*版本: 0.0.6 | 协议: Apache-2.0*
+*版本: 0.0.5 | 协议: Apache-2.0*

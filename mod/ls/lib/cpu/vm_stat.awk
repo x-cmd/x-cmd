@@ -29,7 +29,7 @@ BEGIN{
 NR==1{
     c = NF - 1
     page_size = $c
-    print $c
+    printf("%-30s: %11s ( %12.3f KB )\n", "Size Per Page", page_size, (page_size / 1024))
     FS = ":"
 }
 
@@ -41,10 +41,10 @@ NR>1{
     gsub("^[ ]+", "", value)
     gsub("[ .]+$", "", value)
 
-    value2 = (value * page_size)/1024/1024
+    value2 = (value * page_size)/1024/1024/1024
 
-    value2 = sprintf("%10.3f", value2)
-    printf("%-30s: %10s (\033[1m%15s MB\033[0m)\n", token, value, value2)
+    value2 = sprintf("%5.3f", value2)
+    printf("%-30s: %11s ( \033[1m%12s GB\033[0m )\n", token, value, value2)
 
     # if (value2 > 1024) {
     #     # value2 = value2 / 1024

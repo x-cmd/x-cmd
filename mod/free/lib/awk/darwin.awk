@@ -18,6 +18,10 @@ BEGIN {
         } else if (match(lines[i], /^hw\.memsize: /)) {
             val = substr(lines[i], RLENGTH + 1)
             if (val > 0) total_kb = val / 1024
+        } else if (match(lines[i], /^hw\.memsize_usable: /)) {
+            # Hardware reserved memory (firmware/GPU/EFI)
+            val = substr(lines[i], RLENGTH + 1)
+            if (val > 0) usable_kb = val / 1024
         } else if (match(lines[i], /^vm\.swapusage: /)) {
             swap_line = substr(lines[i], RLENGTH + 1)
         }
@@ -62,7 +66,13 @@ END {
     compressed_kb = compress_occupied_kb
     app_kb = anonymous_kb - purgeable_kb
     cache_kb = filebacked_kb
-    available_kb = speculative_kb + throttled_kb + free_kb
+    available_kb = free_kb + throttled_kb  # true available, excluding speculative
+    
+    # Hardware reserved memory (if hw.memsize_usable is available)
+    hardware_kb = 0
+    if (usable_kb > 0 && total_kb > usable_kb) {
+        hardware_kb = total_kb - usable_kb
+    }
 
     # Parse swap info from sysctl output
     swap_total_kb = 0
@@ -79,89 +89,180 @@ END {
     # Colors
     init_colors(NO_COLOR)
 
+    # Calculate derived metrics for CSV/TSV
+    reusable_kb = purgeable_kb + cache_kb + available_kb
+    mem_used_kb = total_kb - reusable_kb
+    
     # Output
     if (format == "csv") {
-        if (header == 1) print "total,wired,occupied,active,inactive,speculative,throttled,free,kernel,compressed,app,purgeable,cache,available,swap_total,swap_used,compress_stored,compress_occupied,compress_saved"
-        printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
-            total_kb, wired_kb, compress_occupied_kb, active_kb, inactive_kb, speculative_kb, throttled_kb, free_kb,
-            kernel_kb, compressed_kb, app_kb, purgeable_kb, cache_kb, available_kb,
-            swap_total_kb, swap_used_kb, compress_stored_kb, compress_occupied_kb, compress_saved_kb
+        if (header == 1) print "used,reusable,wired,compressed,app,purgeable,cache,available,vm-wired,vm-compressed,vm-active,vm-inactive,vm-spec,vm-free,vm-throt,swap-total,swap-used,swap-free,compress-stored,compress-occupied,compress-saved"
+        printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+            mem_used_kb, reusable_kb,
+            wired_kb, compress_occupied_kb, app_kb, purgeable_kb, cache_kb, available_kb,
+            wired_kb, compress_occupied_kb, active_kb, inactive_kb, speculative_kb, free_kb, throttled_kb,
+            swap_total_kb, swap_used_kb, swap_free_kb,
+            compress_stored_kb, compress_occupied_kb, compress_saved_kb
     } else if (format == "tsv") {
-        if (header == 1) print "total\twired\toccupied\tactive\tinactive\tspeculative\tthrottled\tfree\tkernel\tcompressed\tapp\tpurgeable\tcache\tavailable\tswap_total\tswap_used\tcompress_stored\tcompress_occupied\tcompress_saved"
-        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-            total_kb, wired_kb, compress_occupied_kb, active_kb, inactive_kb, speculative_kb, throttled_kb, free_kb,
-            kernel_kb, compressed_kb, app_kb, purgeable_kb, cache_kb, available_kb,
-            swap_total_kb, swap_used_kb, compress_stored_kb, compress_occupied_kb, compress_saved_kb
+        if (header == 1) print "used\treusable\twired\tcompressed\tapp\tpurgeable\tcache\tavailable\tvm-wired\tvm-compressed\tvm-active\tvm-inactive\tvm-spec\tvm-free\tvm-throt\tswap-total\tswap-used\tswap-free\tcompress-stored\tcompress-occupied\tcompress-saved"
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+            mem_used_kb, reusable_kb,
+            wired_kb, compress_occupied_kb, app_kb, purgeable_kb, cache_kb, available_kb,
+            wired_kb, compress_occupied_kb, active_kb, inactive_kb, speculative_kb, free_kb, throttled_kb,
+            swap_total_kb, swap_used_kb, swap_free_kb,
+            compress_stored_kb, compress_occupied_kb, compress_saved_kb
     } else {
-        # Table format - use fixed-width format for proper alignment
+        # Table format - Linux free style: Mem and Swap at top
+        # Aligned with Detail (6 columns)
         
-        # Phys row header
-        printf(UI_HDR "%-8s %10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
-            "", "wired", "occupied", "active", "inactive", "", "spec", "throt", "free")
+        # Calculate reusable = purgeable + cache + available (for Mem free column)
+        reusable_kb = purgeable_kb + cache_kb + available_kb
+        mem_used_kb = total_kb - reusable_kb
         
-        # Phys row data - build string with colors embedded
-        phys_str = sprintf("%-8s %10s %10s %10s %10s %10s %10s %10s %10s",
-            "Phys:",
-            fmt_human_val(wired_kb),
-            fmt_human_val(compress_occupied_kb),
-            fmt_human_val(active_kb),
-            fmt_human_val(inactive_kb),
-            "-",
-            fmt_human_val(speculative_kb),
-            fmt_human_val(throttled_kb),
-            fmt_human_val(free_kb))
-        # Apply colors after sprintf to avoid width issues
-        gsub(/Phys:/, UI_KEY "Phys:" UI_END, phys_str)
-        print phys_str
-
-        # Logic row header
-        printf(UI_HDR "%-8s %10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
-            "", "kernel", "compressed", "app", "purgeable", "cache", "", "", "available")
+        # Leading empty line
+        print ""
         
-        # Logic row data
-        logic_str = sprintf("%-8s %10s %10s %10s %10s %10s %10s %10s %10s",
-            "Logic:",
-            fmt_human_val(kernel_kb),
-            fmt_human_val(compressed_kb),
-            fmt_human_val(app_kb),
-            fmt_human_val(purgeable_kb),
-            fmt_human_val(cache_kb),
-            "",
-            "",
-            fmt_human_val(available_kb))
-        gsub(/Logic:/, UI_KEY "Logic:" UI_END, logic_str)
-        print logic_str
-
-        # Compress (before Swap) - compressed aligns with Logic.compressed (column 2)
-        # Use dim color for secondary info
-        printf(UI_DIM "%-8s %10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
-            "", "", "compressed", "original", "ratio", "saved", "", "", "")
+        # Header row (aligned with Detail: 6 columns) - no bold
+        printf("  " UI_HDR_OFF "%-8s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+            "", "total", "used", "reusable", "", "", "")
         
-        # Calculate ratio
-        ratio_str = "0%"
-        if (compress_stored_kb > 0) {
-            ratio = (compress_occupied_kb / compress_stored_kb) * 100
-            ratio_str = sprintf("%.0f%%", ratio)
+        # Mem row
+        if (NO_COLOR == 1) {
+            printf("  %-8s %10s %10s %10s (=purgeable + cache + available)\n",
+                "Mem:",
+                fmt_human_val(total_kb),
+                fmt_human_val(mem_used_kb),
+                fmt_human_val(reusable_kb))
+        } else {
+            # Color Mem: label (cyan), total (bold), used (bold red), reusable (bold green)
+            printf("  %s%-8s%s %s%10s%s %s%10s%s %s%10s%s" UI_DIM " (=purgeable + cache + available)" UI_END "\n",
+                UI_KEY, "Mem:", UI_END,
+                UI_HDR, fmt_human_val(total_kb), UI_END,
+                UI_BOLD_RED, fmt_human_val(mem_used_kb), UI_END,
+                UI_BOLD_GREEN, fmt_human_val(reusable_kb), UI_END)
         }
         
-        compress_str = sprintf("%-8s %10s %10s %10s %10s %10s %10s %10s %10s",
-            "",
-            "",
-            fmt_human_val(compress_occupied_kb),
-            fmt_human_val(compress_stored_kb),
-            ratio_str,
-            fmt_human_val(compress_saved_kb),
+        # Swap row (same alignment)
+        swap_str = sprintf("%-8s %10s %10s %10s %10s %10s %10s",
+            "Swap:",
+            fmt_human_val(swap_total_kb),
+            fmt_human_val(swap_used_kb),
+            fmt_human_val(swap_free_kb),
             "", "", "")
-        # Apply dim color
-        if (NO_COLOR != 1) {
-            compress_str = UI_DIM compress_str UI_END
+        gsub(/Swap:/, UI_KEY "Swap:" UI_END, swap_str)
+        print "  " swap_str
+        
+        # Separator line
+        print ""
+        
+        # Identity: app + purgeable + cache = active + inactive + spec
+        # Logic Layer (primary view) - 7 columns (including hardware)
+        print ""
+        if (NO_COLOR == 1) {
+            printf("  %-8s %10s %10s %10s %10s %10s %10s %10s\n",
+                "", "hardware", "wired", "compressed", "app", "purgeable", "cache", "available")
+            printf("  %-8s %10s %10s %10s %10s %10s %10s %10s (=free + throt)\n",
+                "Detail:",
+                fmt_human_val(hardware_kb),
+                fmt_human_val(kernel_kb),
+                fmt_human_val(compressed_kb),
+                fmt_human_val(app_kb),
+                fmt_human_val(purgeable_kb),
+                fmt_human_val(cache_kb),
+                fmt_human_val(available_kb))
+        } else {
+            printf("  %s%-8s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s\n",
+                UI_DIM, "", UI_END,
+                UI_DIM, "hardware", UI_END,
+                UI_DIM, "wired", UI_END,
+                UI_DIM, "compressed", UI_END,
+                UI_DIM UI_UNDERLINE, "app", UI_UNDERLINE_OFF UI_END,
+                UI_DIM UI_UNDERLINE, "purgeable", UI_UNDERLINE_OFF UI_END,
+                UI_DIM UI_UNDERLINE, "cache", UI_UNDERLINE_OFF UI_END,
+                UI_DIM, "available", UI_END)
+            printf("  %s%-8s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s" UI_DIM " (=free + throt)" UI_END "\n",
+                UI_KEY, "Detail:", UI_END,
+                UI_RED_DIM, fmt_human_val(hardware_kb), UI_END,
+                UI_RED, fmt_human_val(kernel_kb), UI_END,
+                UI_RED, fmt_human_val(compressed_kb), UI_END,
+                UI_RED, fmt_human_val(app_kb), UI_END,
+                UI_GREEN, fmt_human_val(purgeable_kb), UI_END,
+                UI_GREEN, fmt_human_val(cache_kb), UI_END,
+                UI_GREEN, fmt_human_val(available_kb), UI_END)
         }
-        print compress_str
+        
+        # Physical Layer (reference - vm_stat raw counters) - 8 columns
+        # spec aligns with cache (column 6), free with available (column 7)
+        print ""
+        if (NO_COLOR == 1) {
+            printf("  %-8s %10s %10s %10s %10s %10s %10s %10s %10s\n",
+                "", "hardware", "wired", "compressed", "active", "inactive", "spec", "free", "throt")
+            printf("  %-8s %10s %10s %10s %10s %10s %10s %10s %10s\n",
+                "vm_stat",
+                fmt_human_val(hardware_kb),
+                fmt_human_val(wired_kb),
+                fmt_human_val(compress_occupied_kb),
+                fmt_human_val(active_kb),
+                fmt_human_val(inactive_kb),
+                fmt_human_val(speculative_kb),
+                fmt_human_val(free_kb),
+                fmt_human_val(throttled_kb))
+        } else {
+            printf("  %s%-8s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s\n",
+                UI_DIM, "", UI_END,
+                UI_DIM, "hardware", UI_END,
+                UI_DIM, "wired", UI_END,
+                UI_DIM, "compressed", UI_END,
+                UI_DIM UI_UNDERLINE, "active", UI_UNDERLINE_OFF UI_END,
+                UI_DIM UI_UNDERLINE, "inactive", UI_UNDERLINE_OFF UI_END,
+                UI_DIM UI_UNDERLINE, "spec", UI_UNDERLINE_OFF UI_END,
+                UI_DIM, "free", UI_END,
+                UI_DIM, "throt", UI_END)
+            printf("  %s%-8s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s %s%10s%s\n",
+                UI_DIM, "vm_stat", UI_END,
+                UI_DIM, fmt_human_val(hardware_kb), UI_END,
+                UI_DIM, fmt_human_val(wired_kb), UI_END,
+                UI_DIM, fmt_human_val(compress_occupied_kb), UI_END,
+                UI_DIM, fmt_human_val(active_kb), UI_END,
+                UI_DIM, fmt_human_val(inactive_kb), UI_END,
+                UI_DIM, fmt_human_val(speculative_kb), UI_END,
+                UI_GREEN, fmt_human_val(free_kb), UI_END,
+                UI_GREEN, fmt_human_val(throttled_kb), UI_END)
+        }
 
-        # Swap
-        printf(UI_HDR "%-8s %10s %10s %10s" UI_END "\n",
-            "", "total", "used", "free")
-        print_swap_row("Swap:", swap_total_kb, swap_used_kb, swap_free_kb, human)
+        # Compress info (dimmed) - aligned with 7 columns
+        if (NO_COLOR == 1) {
+            printf("  %-8s %10s %10s %10s %10s %10s %10s %10s\n",
+                "", "", "", "compressed", "original", "ratio", "saved", "")
+            compress_str = sprintf("%-8s %10s %10s %10s %10s %10s %10s %10s",
+                "",
+                "",
+                "",
+                fmt_human_val(compress_occupied_kb),
+                fmt_human_val(compress_stored_kb),
+                "0%",
+                fmt_human_val(compress_saved_kb),
+                "")
+            print "  " compress_str
+        } else {
+            ratio_str = "0%"
+            if (compress_stored_kb > 0) {
+                ratio = (compress_occupied_kb / compress_stored_kb) * 100
+                ratio_str = sprintf("%.0f%%", ratio)
+            }
+            printf("  " UI_DIM "%-8s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+                "", "", "", "compressed", "original", "ratio", "saved", "")
+            printf("  " UI_DIM "%-8s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+                "",
+                "",
+                "",
+                fmt_human_val(compress_occupied_kb),
+                fmt_human_val(compress_stored_kb),
+                ratio_str,
+                fmt_human_val(compress_saved_kb),
+                "")
+        }
+        # Add empty line for separation in repeat mode (-c)
+        print ""
     }
 }
 

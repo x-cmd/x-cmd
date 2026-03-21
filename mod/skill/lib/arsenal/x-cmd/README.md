@@ -96,4 +96,4 @@ x env use jq nodejs python3
 
 ---
 
-*Version: 0.0.6 | License: Apache-2.0*
+*Version: 0.0.5 | License: Apache-2.0*
