@@ -243,7 +243,7 @@ function generate_subcmd_help_unit( obj, kp, arr_group, arr_kp,        i, v, l, 
     }
     return _str
 }
-function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _str_footer, _str_unit, _hidden_total, l, i, k, _jl){
+function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _str_footer, _str_unit, l, i, k, _jl){
     if (! arr_group[ ADVISE_HAS_TAG ]) return
     generate___parse_cmd_doc( obj, kp, arr_group )
     l = arr_group[ L ]
@@ -257,17 +257,10 @@ function generate_subcmd_help( obj, kp, arr_group,          _str, _str_title, _s
             if ( k == ADVISE_NULL_TAG ) _str = _str _str_unit
             else _str = _str "    " generate___tag(juq(k)) "\n" _str_unit
         }
-        if (COMP_HELPDOC_SHORT_MODE && _jl > COMP_HELPDOC_SHORT_LIMIT) {
-            _hidden_total += (_jl - COMP_HELPDOC_SHORT_LIMIT)
-        }
     }
 
     _str_title = generate___title("SUBCOMMANDS:") "\n"
     _str_footer = generate_subcmd_help_tip( obj, kp )
-    if (COMP_HELPDOC_SHORT_MODE && _hidden_total > 0) {
-        _str_footer = _str_footer COMP_HELPDOC_UI_TIP_NOTE "TIP:" COMP_HELPDOC_UI_END "\n" COMP_HELPDOC_HELP_INDENT_STR \
-            "Run with '--help' to see all " _hidden_total " hidden commands\n\n"
-    }
     if (_str != "") return _str_title _str "\n" _str_footer
 }
 
@@ -313,7 +306,7 @@ function generate_name_help( obj, kp,       n, d, _str, _kp_name){
     return _str "\n"
 }
 
-function generate_desc_help(obj, kp, tip,        _str, d, tip_str){
+function generate_desc_help(obj, kp, tip, hidden_tip,        _str, d, tip_str){
     kp = kp SUBSEP "\"#desc\""
     tip_str = generate_tip_help(tip)
     if (! aobj_is_null( obj, kp) ) {
@@ -322,6 +315,8 @@ function generate_desc_help(obj, kp, tip,        _str, d, tip_str){
         _str = COMP_HELPDOC_HELP_INDENT_STR str_cut_line(aobj_uq(d), COMP_HELPDOC_HELP_INDENT_LEN) "\n"
     }
     _str = (_str != "") ? _str "\n" tip_str : tip_str
+    # Append hidden tip if provided
+    if (hidden_tip != "") _str = _str hidden_tip
     return (_str != "") ? comp_str_trim_right( generate___title("DESCRIPTION:") "\n" _str ) : ""
 }
 
@@ -416,7 +411,21 @@ function comp_parse_position_order(str, arr,        i, l){
     return arr_cut( arr, str, "," )
 }
 
-function print_helpdoc( obj, kp, width, po_arr,             _res, i, j, l, v, s, TIP, RESTOPT, OPTION_GROUP, SUBCMD_GROUP, FLAG_GROUP ){
+function help_count_hidden_items( arr_group,         l, i, k, _jl, _count ){
+    if (! arr_group[ ADVISE_HAS_TAG ]) return 0
+    l = arr_group[ L ]
+    for (i=0; i<=l; ++i){
+        k = arr_group[ i ]
+        if (ADVISE_DEV_TAG[ SUBSEP k ]) continue
+        _jl = aobj_len( arr_group, k )
+        if (_jl > COMP_HELPDOC_SHORT_LIMIT) {
+            _count += (_jl - COMP_HELPDOC_SHORT_LIMIT)
+        }
+    }
+    return _count
+}
+
+function print_helpdoc( obj, kp, width, po_arr,             _res, i, j, l, v, s, TIP, RESTOPT, OPTION_GROUP, SUBCMD_GROUP, FLAG_GROUP, _hidden_total, _tip_str ){
     if (width < 20) return "The current width is not enough to display the help document!\n"
     COMP_HELPDOC_WIDTH = width
     COMP_HELPDOC_LEFT_W = int(width/5) * 3
@@ -434,12 +443,31 @@ function print_helpdoc( obj, kp, width, po_arr,             _res, i, j, l, v, s,
     }
 
     comp_advise_parse_group(obj, kp, SUBCMD_GROUP, OPTION_GROUP, FLAG_GROUP)
-    l = po_arr[L]
+
+    # First pass: count hidden items (only in short mode)
+    if (COMP_HELPDOC_SHORT_MODE) {
+        l = po_arr[L]
+        for (i=1; i<=l; ++i){
+            v = po_arr[i]
+            if (v == "option")      _hidden_total += help_count_hidden_items( OPTION_GROUP )
+            else if (v == "flag")   _hidden_total += help_count_hidden_items( FLAG_GROUP )
+            else if (v == "subcmd") _hidden_total += help_count_hidden_items( SUBCMD_GROUP )
+        }
+        if (_hidden_total > 0) {
+            if (___X_CMD_LANG == "\"cn\"") {
+                _tip_str = COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_UI_TIP_INFO "TIP:" COMP_HELPDOC_UI_END " 使用 '--help' 查看全部（隐藏 " _hidden_total " 项）\n\n"
+            } else {
+                _tip_str = COMP_HELPDOC_HELP_INDENT_STR COMP_HELPDOC_UI_TIP_INFO "TIP:" COMP_HELPDOC_UI_END " see all with '--help' (" _hidden_total " hidden)\n\n"
+            }
+        }
+    }
+
+    # Second pass: generate output
     for (i=1; i<=l; ++i){
         v = po_arr[i]
         if (v == "name")            _res = _res generate_name_help( obj, kp )
         else if (v == "synopsis")   _res = _res generate_synopsis_help( obj, kp )
-        else if (v == "desc")       _res = _res generate_desc_help( obj, kp, TIP )
+        else if (v == "desc")       _res = _res generate_desc_help( obj, kp, TIP, _tip_str )
         else if (v == "option")     _res = _res generate_option_help( obj, kp, OPTION_GROUP )
         else if (v == "flag")       _res = _res generate_flag_help( obj, kp, FLAG_GROUP )
         else if (v == "arg")        _res = _res generate_rest_argument_help( obj, kp, RESTOPT )

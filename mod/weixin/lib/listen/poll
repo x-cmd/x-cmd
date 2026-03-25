@@ -1,0 +1,64 @@
+# shellcheck shell=dash
+
+___x_cmd_weixin_listen_poll(){
+    local X_help_cmd='___x_cmd_weixin___help listen poll'
+    help:arg:parse
+    local sync_buf_file="${___X_CMD_WEIXIN_TMP}/sync_buf"
+
+    local sync_buf=""
+    if [ -f "$sync_buf_file" ]; then
+        sync_buf="$(___x_cmd_cmds_cat "$sync_buf_file")"
+    fi
+
+    weixin:info "Starting long-poll listener..."
+
+    while true; do
+        local resp; resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
+            weixin:error "Failed to get updates: $resp"
+            ___x_cmd sleep 1s
+            continue
+        }
+
+        printf "%s" "$resp" | {
+            local get_updates_buf=; 
+            ___x_cmd jo env .get_updates_buf  
+            if [ -n "$get_updates_buf" ]; then
+                printf "%s" "$get_updates_buf" > "$sync_buf_file"
+                sync_buf="$get_updates_buf"
+            fi
+        }
+
+        # # Extract messages
+        # local msgs; msgs="$(printf "%s" "$resp" | ___x_cmd jo env .msgs)"
+
+        # if [ -n "$msgs" ] && [ "$msgs" != "null" ]; then
+        #     printf "%s\n" "$msgs" | ___x_cmd jo -l | while read -r msg; do
+        #         ___x_cmd_weixin_u_handle_msg "$msg"
+        #     done
+        # fi
+    done
+}
+
+___x_cmd_weixin_u_handle_msg(){
+    local msg="$1"
+
+    # Extract message info
+    local msg_id; msg_id="$(printf "%s" "$msg" | ___x_cmd jo env .msg_id)"
+    local from_user_id; from_user_id="$(printf "%s" "$msg" | ___x_cmd jo env .from_user_id)"
+    local to_user_id; to_user_id="$(printf "%s" "$msg" | ___x_cmd jo env .to_user_id)"
+    local message_type; message_type="$(printf "%s" "$msg" | ___x_cmd jo env .message_type)"
+    local context_token; context_token="$(printf "%s" "$msg" | ___x_cmd jo env .context_token)"
+
+    # Only process USER messages (type=1)
+    if [ "$message_type" != "1" ]; then
+        return 0
+    fi
+
+    # Extract text content
+    local text; text="$(printf "%s" "$msg" | ___x_cmd jo env .item_list.0.text_item.text)"
+
+    weixin:info "Message from $from_user_id: $text"
+
+    # Emit event (for integration with other tools)
+    printf "%s\t%s\t%s\n" "$msg_id" "$from_user_id" "$text"
+}

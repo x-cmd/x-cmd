@@ -1,0 +1,54 @@
+# shellcheck shell=dash
+
+___x_cmd_weixin_util_upload_media(){
+    local file_path="$1"
+    local to_user_id="$2"
+    local media_type="$3"     # image, file, video, voice
+
+    [ -f "$file_path" ] || { weixin:error "File not found: $file_path"; return 1; }
+
+    local file_size; file_size="$(___x_cmd_cmds_stat_size "$file_path")"
+    local file_md5; file_md5="$(___x_cmd_md5 "$file_path")"
+    local aes_key; aes_key="$(___x_cmd_weixin_u_generate_aes_key)"
+
+    # Map media type to API type: image=1, video=2, file=3, voice=4
+    local api_type
+    case "$media_type" in
+        image) api_type=1 ;;
+        video) api_type=2 ;;
+        file)  api_type=3 ;;
+        voice) api_type=4 ;;
+        *)     api_type=1 ;;
+    esac
+
+    # Get upload URL
+    local upload_req; upload_req="$(___x_cmd jo dict \
+        filekey:"$(___x_cmd_weixin_u_generate_filekey)" \
+        media_type:="$api_type" \
+        to_user_id:"$to_user_id" \
+        rawsize:="$file_size" \
+        rawfilemd5:="$file_md5" \
+        filesize:="$file_size" \
+        aeskey:"$aes_key")"
+
+    local upload_resp; upload_resp="$(___x_cmd_weixin_u_curl POST "/ilink/bot/getuploadurl" -d "$upload_req")" || {
+        weixin:error "Failed to get upload URL"
+        return 1
+    }
+
+    local encrypt_param; encrypt_param="$(printf "%s" "$upload_resp" | ___x_cmd jo env .upload_param)"
+
+    # TODO: Encrypt file and upload to CDN
+    # For now, return the encrypt_param to be used in sending
+    printf "%s\n" "$upload_resp"
+}
+
+___x_cmd_weixin_u_generate_aes_key(){
+    # Generate random 16-byte hex string
+    ___x_cmd jo -e '""' | ___x_cmd awk 'BEGIN{srand()} {for(i=1;i<=32;i++) printf "%x", int(rand()*16)}'
+}
+
+___x_cmd_weixin_u_generate_filekey(){
+    # Generate unique file key
+    date +%s%N
+}
