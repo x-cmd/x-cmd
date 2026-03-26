@@ -97,6 +97,7 @@ function generate___parse_cmd_doc( obj, kp, arr_group,        l, i, _cmd_doc, _l
 }
 
 function generate___ret_optarg_rule_string_inner(obj, kp, tag,          _str, _dafault, _regexl, _candl, i, _cand_id_arr){
+    help_get_ref(obj, kp)
     _default = aobj_get_default(obj, kp)
     if (_default != "" ) _str = _str "\n" COMP_HELPDOC_UI_RULE " [default: " aobj_uq(_default) "]" COMP_HELPDOC_UI_END
 
@@ -445,8 +446,8 @@ function print_helpdoc( obj, kp, width, po_arr,             _res, i, j, l, v, s,
     comp_advise_parse_group(obj, kp, SUBCMD_GROUP, OPTION_GROUP, FLAG_GROUP)
 
     # First pass: count hidden items (only in short mode)
+    l = po_arr[L]
     if (COMP_HELPDOC_SHORT_MODE) {
-        l = po_arr[L]
         for (i=1; i<=l; ++i){
             v = po_arr[i]
             if (v == "option")      _hidden_total += help_count_hidden_items( OPTION_GROUP )

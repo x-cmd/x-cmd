@@ -4,10 +4,14 @@ ___x_cmd_weixin_bot_send(){
     local X_help_cmd='___x_cmd_weixin___help bot send'
     help:arg-null:parse
 
-    local op="$1"
+    local op="$1";shift
+
     case "$op" in
-        text|image|file|video|raw) shift
+        text|raw) 
             "___x_cmd_weixin_bot_send_$op" "$@"
+            ;;
+        image|file|video)
+            ___x_cmd_weixin_bot_send_media "$op" "$@"
             ;;
         *)  ___x_cmd_weixin_u_subcmd_invalid "bot send" "$op"
             ;;
@@ -18,13 +22,10 @@ ___x_cmd_weixin_bot_send_text(){
     local X_help_cmd='___x_cmd_weixin___help bot send text'
     help:arg:parse
 
-    local to_user_id=""
     local json_output=""
-
     while [ $# -gt 0 ]; do
         case "$1" in
             -j|--json) json_output=1; shift ;;
-            --to) to_user_id="$2"; shift 2 ;;
             -h|--help) ___x_cmd_weixin___help bot send text; return 0 ;;
             *) break ;;
         esac
@@ -32,150 +33,41 @@ ___x_cmd_weixin_bot_send_text(){
 
     local text="$1"
     [ -n "$text" ] || { weixin:error "Text content required"; return 1; }
-    [ -n "$to_user_id" ] || { weixin:error "Recipient user ID required (--to)"; return 1; }
-
-    # Get context token
-    local context_token; context_token="$(___x_cmd_weixin_util_get_context_token "$to_user_id")" || {
-        weixin:error "Failed to get context token"
-        return 1
-    }
-
+    local user_id=""
+    ___x_cmd_weixin_cur user_id:= 2>/dev/null
+    [ -n "$user_id" ] || { weixin:error "No login information obtained. Please scan the QR code to log in first. ``x weixin login``"; return 1; }
+    local context_token=;
+    [ -f "$___X_CMD_WEIXIN_CONTEXT_TOKEN" ] || { weixin:error "context_token cannot be empty."; return 1; }
+    context_token="$(___x_cmd_cmds_cat "$___X_CMD_WEIXIN_CONTEXT_TOKEN")"
     # Build and send message
-    local msg_json; msg_json="$(___x_cmd jo dict \
-        msg_type:=1 \
-        content:"$(___x_cmd jo dict text:"$text")" \
-        to_user_id:"$to_user_id" \
-        context_token:"$context_token")"
-
-    local full_json; full_json="$(___x_cmd jo dict \
-        msg:"$msg_json" \
-        base_info:"$(___x_cmd jo dict channel_version:'"x-cmd-weixin-1.0.0"')")"
-
-    local resp; resp="$(___x_cmd_weixin_u_curl POST "/ilink/bot/sendmessage" -d "$full_json")"
-
-    if [ -n "$json_output" ]; then
-        printf "%s\n" "$resp"
-    else
-        local ret; ret="$(printf "%s" "$resp" | ___x_cmd jo env .ret)"
-        if [ "$ret" = "0" ]; then
-            ___x_cmd_ui_tf true "Sent text message successfully"
-        else
-            ___x_cmd_ui_tf false "Failed to send message:" "$resp"
-        fi
-    fi
+    local msg_json
+    msg_json=$(___x_cmd_cmds cat <<EOF
+{
+  "msg": {
+    "to_user_id": "$user_id",
+    "message_type": 2,
+    "client_id":"$(___x_cmd rand uuid)",
+    "message_state": 2,
+    "context_token": "$context_token",
+    "item_list": [
+      {
+        "type": 1,
+        "text_item": { "text": "$text" }
+      }
+    ]
+  },
+  "base_info": { "channel_version": "1.0.2" }
 }
+EOF
+)
+    
 
-___x_cmd_weixin_bot_send_image(){
-    local X_help_cmd='___x_cmd_weixin___help bot send image'
-    help:arg:parse
-
-    local file_path=""
-    local to_user_id=""
-    local json_output=""
-
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -j|--json) json_output=1; shift ;;
-            --file_path) file_path="$2"; shift 2 ;;
-            --to) to_user_id="$2"; shift 2 ;;
-            -h|--help) ___x_cmd_weixin___help bot send image; return 0 ;;
-            *) break ;;
-        esac
-    done
-
-    [ -n "$file_path" ] || { weixin:error "File path required (--file_path)"; return 1; }
-    [ -f "$file_path" ] || { weixin:error "File not found: $file_path"; return 1; }
-    [ -n "$to_user_id" ] || { weixin:error "Recipient user ID required (--to)"; return 1; }
-
-    # Upload to CDN first
-    local upload_result; upload_result="$(___x_cmd_weixin_util_upload_media "$file_path" "$to_user_id" "image")" || {
-        weixin:error "Failed to upload image"
+    local resp; resp="$(printf "%s" "$msg_json" | ___x_cmd_weixin_u_curl POST "/ilink/bot/sendmessage" -d @-)"
+    [ "$resp" = "{}" ] || {
+        ___x_cmd_ui_tf false "Failed to send message:" "$resp"
         return 1
     }
-
-    local encrypt_param; encrypt_param="$(printf "%s" "$upload_result" | ___x_cmd jo env .encrypt_query_param)"
-
-    # Get context token
-    local context_token; context_token="$(___x_cmd_weixin_util_get_context_token "$to_user_id")" || return 1
-
-    # Send uploaded image
-    ___x_cmd_weixin_bot___send_uploaded "$to_user_id" "$context_token" "image" "$encrypt_param" "" "$json_output"
-}
-
-___x_cmd_weixin_bot_send_file(){
-    local X_help_cmd='___x_cmd_weixin___help bot send file'
-    help:arg:parse
-
-    local file_path=""
-    local to_user_id=""
-    local json_output=""
-
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -j|--json) json_output=1; shift ;;
-            --file_path) file_path="$2"; shift 2 ;;
-            --to) to_user_id="$2"; shift 2 ;;
-            -h|--help) ___x_cmd_weixin___help bot send file; return 0 ;;
-            *) break ;;
-        esac
-    done
-
-    [ -n "$file_path" ] || { weixin:error "File path required (--file_path)"; return 1; }
-    [ -f "$file_path" ] || { weixin:error "File not found: $file_path"; return 1; }
-    [ -n "$to_user_id" ] || { weixin:error "Recipient user ID required (--to)"; return 1; }
-
-    local file_name; file_name="$(basename "$file_path")"
-
-    # Upload to CDN first
-    local upload_result; upload_result="$(___x_cmd_weixin_util_upload_media "$file_path" "$to_user_id" "file")" || {
-        weixin:error "Failed to upload file"
-        return 1
-    }
-
-    local encrypt_param; encrypt_param="$(printf "%s" "$upload_result" | ___x_cmd jo env .encrypt_query_param)"
-
-    # Get context token
-    local context_token; context_token="$(___x_cmd_weixin_util_get_context_token "$to_user_id")" || return 1
-
-    # Send uploaded file
-    ___x_cmd_weixin_bot___send_uploaded "$to_user_id" "$context_token" "file" "$encrypt_param" "$file_name" "$json_output"
-}
-
-___x_cmd_weixin_bot_send_video(){
-    local X_help_cmd='___x_cmd_weixin___help bot send video'
-    help:arg:parse
-
-    local file_path=""
-    local to_user_id=""
-    local json_output=""
-
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -j|--json) json_output=1; shift ;;
-            --file_path) file_path="$2"; shift 2 ;;
-            --to) to_user_id="$2"; shift 2 ;;
-            -h|--help) ___x_cmd_weixin___help bot send video; return 0 ;;
-            *) break ;;
-        esac
-    done
-
-    [ -n "$file_path" ] || { weixin:error "File path required (--file_path)"; return 1; }
-    [ -f "$file_path" ] || { weixin:error "File not found: $file_path"; return 1; }
-    [ -n "$to_user_id" ] || { weixin:error "Recipient user ID required (--to)"; return 1; }
-
-    # Upload to CDN first
-    local upload_result; upload_result="$(___x_cmd_weixin_util_upload_media "$file_path" "$to_user_id" "video")" || {
-        weixin:error "Failed to upload video"
-        return 1
-    }
-
-    local encrypt_param; encrypt_param="$(printf "%s" "$upload_result" | ___x_cmd jo env .encrypt_query_param)"
-
-    # Get context token
-    local context_token; context_token="$(___x_cmd_weixin_util_get_context_token "$to_user_id")" || return 1
-
-    # Send uploaded video
-    ___x_cmd_weixin_bot___send_uploaded "$to_user_id" "$context_token" "video" "$encrypt_param" "" "$json_output"
+    ___x_cmd_ui_tf true "Sent text message successfully"
 }
 
 ___x_cmd_weixin_bot_send_raw(){
@@ -210,55 +102,34 @@ ___x_cmd_weixin_bot_send_raw(){
     fi
 }
 
-# Internal helper: send uploaded media
-___x_cmd_weixin_bot___send_uploaded(){
-    local to_user_id="$1"
-    local context_token="$2"
-    local msg_type="$3"
-    local encrypt_param="$4"
-    local file_name="${5:-}"
-    local json_output="${6:-}"
+___x_cmd_weixin_bot_send_media(){
+    local X_help_cmd="___x_cmd_weixin___help bot send media"
+    help:arg:parse
 
-    # Map msg_type to API type: image=2, file=4, video=5
-    local api_type
-    case "$msg_type" in
-        image) api_type=2 ;;
-        file)  api_type=4 ;;
-        video) api_type=5 ;;
-        *)     api_type=1 ;;
-    esac
+    local msg_type="$1"; shift
+    local file_path=""
+    local json_output=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -j|--json) json_output=1; shift ;;
+            -h|--help) ___x_cmd_weixin___help bot send "$msg_type"; return 0 ;;
+            *) file_path="$1" ; break ;;
+        esac
+    done
 
-    # Build media reference
-    local media_json; media_json="$(___x_cmd jo dict encrypt_query_param:"$encrypt_param")"
-
-    # Build content based on type
-    local content_json
-    case "$msg_type" in
-        image) content_json="$(___x_cmd jo dict media:"$media_json")" ;;
-        file)  content_json="$(___x_cmd jo dict media:"$media_json" file_name:"$file_name")" ;;
-        video) content_json="$(___x_cmd jo dict media:"$media_json")" ;;
-    esac
-
-    local msg_json; msg_json="$(___x_cmd jo dict \
-        msg_type:="$api_type" \
-        content:"$content_json" \
-        to_user_id:"$to_user_id" \
-        context_token:"$context_token")"
-
-    local full_json; full_json="$(___x_cmd jo dict \
-        msg:"$msg_json" \
-        base_info:"$(___x_cmd jo dict channel_version:'"x-cmd-weixin-1.0.0"')")"
-
-    local resp; resp="$(___x_cmd_weixin_u_curl POST "/ilink/bot/sendmessage" -d "$full_json")"
-
-    if [ -n "$json_output" ]; then
-        printf "%s\n" "$resp"
-    else
-        local ret; ret="$(printf "%s" "$resp" | ___x_cmd jo env .ret)"
-        if [ "$ret" = "0" ]; then
-            ___x_cmd_ui_tf true "Sent $msg_type successfully"
-        else
-            ___x_cmd_ui_tf false "Failed to send $msg_type:" "$resp"
-        fi
-    fi
+    [ -f "$file_path" ] || { weixin:error "File not found: $file_path"; return 1; }
+    
+    local upload_result; upload_result="$(___x_cmd_weixin_util_upload_media "$file_path" "$msg_type")" || {
+        weixin:error "Failed to upload $msg_type"
+        return 1
+    }
+    local resp; resp="$(printf "%s" "$upload_result" | ___x_cmd_weixin_u_curl POST "/ilink/bot/sendmessage" -d "@-")"
+    [ "$resp" = "{}" ] || {
+        ___x_cmd_ui_tf false "Failed to send message:" "$resp"
+        return 1
+    }
+    ___x_cmd_ui_tf true "Sent text message successfully"
 }
+
+
+

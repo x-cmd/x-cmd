@@ -16,49 +16,62 @@ ___x_cmd_weixin_listen_poll(){
         local resp; resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
             weixin:error "Failed to get updates: $resp"
             ___x_cmd sleep 1s
-            continue
+            return 1
         }
 
-        printf "%s" "$resp" | {
-            local get_updates_buf=; 
-            ___x_cmd jo env .get_updates_buf  
-            if [ -n "$get_updates_buf" ]; then
-                printf "%s" "$get_updates_buf" > "$sync_buf_file"
-                sync_buf="$get_updates_buf"
-            fi
+        local get_updates_buf=; local msgs=; local  context_token=;
+        ___x_cmd jo env . .get_updates_buf .msgs context_token=.msgs.1.context_token  <<A
+$resp
+A
+        if [ "$get_updates_buf" != "$sync_buf_file" ]; then
+            printf "%s" "$get_updates_buf" > "$sync_buf_file"
+            sync_buf="$get_updates_buf"
+        fi
+
+        [ "$msgs" = "[]" ] || {
+            printf "%s" "$context_token" > "$___X_CMD_WEIXIN_CONTEXT_TOKEN"
+            weixin:info "msg : $msgs"
         }
-
-        # # Extract messages
-        # local msgs; msgs="$(printf "%s" "$resp" | ___x_cmd jo env .msgs)"
-
-        # if [ -n "$msgs" ] && [ "$msgs" != "null" ]; then
-        #     printf "%s\n" "$msgs" | ___x_cmd jo -l | while read -r msg; do
-        #         ___x_cmd_weixin_u_handle_msg "$msg"
-        #     done
-        # fi
     done
 }
 
-___x_cmd_weixin_u_handle_msg(){
-    local msg="$1"
 
-    # Extract message info
-    local msg_id; msg_id="$(printf "%s" "$msg" | ___x_cmd jo env .msg_id)"
-    local from_user_id; from_user_id="$(printf "%s" "$msg" | ___x_cmd jo env .from_user_id)"
-    local to_user_id; to_user_id="$(printf "%s" "$msg" | ___x_cmd jo env .to_user_id)"
-    local message_type; message_type="$(printf "%s" "$msg" | ___x_cmd jo env .message_type)"
-    local context_token; context_token="$(printf "%s" "$msg" | ___x_cmd jo env .context_token)"
+___x_cmd_weixin_listen_once___(){
+    local sync_buf_file="${___X_CMD_WEIXIN_TMP}/sync_buf"
 
-    # Only process USER messages (type=1)
-    if [ "$message_type" != "1" ]; then
-        return 0
+    local sync_buf=""
+    if [ -f "$sync_buf_file" ]; then
+        sync_buf="$(___x_cmd_cmds_cat "$sync_buf_file")"
     fi
 
-    # Extract text content
-    local text; text="$(printf "%s" "$msg" | ___x_cmd jo env .item_list.0.text_item.text)"
+    weixin:info "Send a message in WeChat to complete the binding..."
+    while true; do
+        local resp; resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
+            weixin:error "Failed to get updates: $resp"
+            ___x_cmd sleep 1s
+            return 1
+        }
 
-    weixin:info "Message from $from_user_id: $text"
+        local get_updates_buf=; local msgs=; local  context_token=;
+        ___x_cmd jo env . .get_updates_buf .msgs context_token=.msgs.1.context_token  <<A
+$resp
+A
+        if [ "$get_updates_buf" != "$sync_buf_file" ]; then
+            printf "%s" "$get_updates_buf" > "$sync_buf_file"
+            sync_buf="$get_updates_buf"
 
-    # Emit event (for integration with other tools)
-    printf "%s\t%s\t%s\n" "$msg_id" "$from_user_id" "$text"
+        fi
+
+        [ "$msgs" = "[]" ] || {
+            printf "%s" "$context_token" > "$___X_CMD_WEIXIN_CONTEXT_TOKEN"
+            weixin:info "You can run ``x weixin bot send text <context>`` to send a message."
+            return
+        }
+    done
+}
+
+
+___x_cmd_weixin_getupdates(){
+    local sync_buf="${1:-""}"
+    ___x_cmd_weixin_u_curl "POST" "/ilink/bot/getupdates" -d '{"get_updates_buf":"'"$sync_buf"'", "base_info":{ "channel_version": "1.0.2" }}'
 }
