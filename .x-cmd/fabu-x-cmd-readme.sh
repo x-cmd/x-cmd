@@ -21,7 +21,12 @@ f_sync(){
     (
         cd "$repo" || return
         git fetch origin main
-        git merge origin/main
+        if ! git merge origin/main; then
+            # Resolve conflicts by keeping origin/main version
+            git checkout --theirs .
+            git add .
+            git commit -m "Merge origin/main - resolve conflicts keeping origin/main"
+        fi
 
         git push origin "$branch"
         git push git@gitcode.net:x-cmd/x-cmd "$branch"
