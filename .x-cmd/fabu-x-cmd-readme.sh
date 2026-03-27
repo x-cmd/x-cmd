@@ -21,7 +21,7 @@ f_sync(){
     (
         cd "$repo" || return
         git fetch origin main
-        git merge origin main
+        git merge origin/main
 
         git push origin "$branch"
         git push git@gitcode.net:x-cmd/x-cmd "$branch"
