@@ -111,6 +111,7 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k,
 # Handles static candidates, exec commands, and regex matching
 function advise_complete___generic_value( curval, genv, lenv, obj, kp,         _exec_val, _regex_id, _regexl, _regex_key, i ){
     # Get static candidates
+    comp_advise_get_ref(obj, kp)
     advise_get_candidate_code( curval, genv, lenv, obj, kp )
 
     # Handle dynamic execution candidates

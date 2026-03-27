@@ -1,0 +1,143 @@
+# shellcheck shell=dash
+
+___x_cmd_weixin_util_upload_media(){
+    local file_path="$1"
+    local media_type="$2"
+
+    [ -f "$file_path" ] || { weixin:error "File not found: $file_path"; return 1; }
+    
+    local user_id=""
+    ___x_cmd_weixin_cur user_id:= 2>/dev/null
+    [ -n "$user_id" ] || { weixin:error "No login information obtained. Please scan the QR code to log in first. ``x weixin login``"; return 1; }
+
+    local context_token=;
+    [ -f "$___X_CMD_WEIXIN_CONTEXT_TOKEN" ] || { weixin:error "context_token cannot be empty."; return 1; }
+    context_token="$(___x_cmd_cmds_cat "$___X_CMD_WEIXIN_CONTEXT_TOKEN")"
+
+    # Generate metadata
+    local raw_size; raw_size="$(___x_cmd_cmds wc -c < "$file_path" | tr -d ' ')"
+    local raw_md5; raw_md5="$(___x_cmd openssl dgst -md5 -hex "$file_path" | awk '{print $NF}')"
+    local file_key; file_key="$(___x_cmd openssl rand -hex 16)"
+    local aes_key_hex; aes_key_hex="$(___x_cmd openssl rand -hex 16)"
+    local aes_key_b64; aes_key_b64="$(printf "%s" "$aes_key_hex" | ___x_cmd base64)"
+
+    # Cipher size calculation (padding to 16 bytes)
+    local cipher_size; cipher_size=$(( ((raw_size + 16) / 16) * 16 ))
+
+    # Map media type to API type: image=1, video=2, file=3, voice=4
+    local api_type
+    case "$media_type" in
+        image) api_type=1 ;;
+        video) api_type=2 ;;
+        file)  api_type=3 ;;
+        voice) api_type=4 ;;
+        *)     api_type=3 ;;
+    esac
+
+    local upload_req; 
+    upload_req="$(___x_cmd_cmds_cat <<A
+{
+    "filekey": "$file_key",
+    "media_type": $api_type,
+    "to_user_id": "$user_id",
+    "rawsize": $raw_size,
+    "rawfilemd5": "$raw_md5",
+    "filesize": $cipher_size,
+    "aeskey": "$aes_key_hex",
+    "no_need_thumb": true
+  }
+A
+)"
+
+    local upload_resp; 
+    upload_resp="$(printf "%s" "$upload_req" | ___x_cmd_weixin_u_curl POST "/ilink/bot/getuploadurl" -d @-)"
+
+    local upload_param=;
+    ___x_cmd jo env . .upload_param  <<A
+$upload_resp
+A
+
+    if [ -z "$upload_param" ] || [ "$upload_param" = "null" ];then
+        weixin:error "Failed to get upload URL: $upload_resp"
+        return 1
+    fi
+
+    local temp_enc=; temp_enc="/tmp/weixin_enc_$(___x_cmd rand uuid).bin"
+    ___x_cmd openssl enc -aes-128-ecb -K "$aes_key_hex" -nosalt -in "$file_path" -out "$temp_enc"
+    local encoded_upload_param; encoded_upload_param="$(___x_cmd curl gencode --urlencode "$upload_param")"
+    local encoded_file_key; encoded_file_key="$(___x_cmd curl gencode --urlencode "$file_key")"
+    local cdn_base="https://novac2c.cdn.weixin.qq.com/c2c"
+    local cdn_upload_url="${cdn_base}/upload?encrypted_query_param=${encoded_upload_param}&filekey=${encoded_file_key}"
+
+    local download_param=; 
+    download_param="$(___x_cmd curl -s -D - -X POST "$cdn_upload_url" \
+        -H "Content-Type: application/octet-stream" \
+        --data-binary "@$temp_enc" | grep -i "x-encrypted-param" | awk '{print $2}' | ___x_cmd_cmds tr -d '\r')"
+    ___x_cmd rm -f "$temp_enc"
+    [ -n "$download_param" ] || {
+        weixin:error "Failed to upload to CDN: download_param not found in headers"
+        return 1
+    }    
+    
+    local item_list=;
+    case "$media_type" in
+        image) 
+            item_list=$(___x_cmd_cmds_cat <<A
+{
+    "type": 2,
+    "image_item": {
+      "media": {
+        "encrypt_query_param": "$download_param",
+        "aes_key": "$aes_key_b64",
+        "encrypt_type": 1
+      },
+      "mid_size": $cipher_size
+    }
+}
+A
+);;
+        video) 
+            item_list=$(___x_cmd_cmds_cat <<A
+{
+    "type": 5,
+    "video_item": {
+      "media": {
+        "encrypt_query_param": "$download_param",
+        "aes_key": "$aes_key_b64",
+        "encrypt_type": 1
+      },
+      "video_size": $cipher_size
+    }
+}
+A
+);;
+        file|*)  
+            item_list=$(___x_cmd_cmds_cat <<A
+{
+    "type": 4,
+    "file_item": {
+      "media": {
+        "encrypt_query_param": "$download_param",
+        "aes_key": "$aes_key_b64",
+        "encrypt_type": 1
+      },
+      "file_name": "$(___x_cmd_cmds basename "$file_path")",
+      "len": "$raw_size"
+    }
+}
+A
+);;
+    esac
+    ___x_cmd_cmds_cat <<A
+{
+    "msg": {
+      "to_user_id": "$user_id",
+      "client_id": "$(___x_cmd rand uuid)",
+      "message_type": 2,
+      "message_state": 2,
+      "context_token": "$context_token",
+      "item_list": [$item_list]
+    }
+  }
+A
+}

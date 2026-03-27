@@ -1,0 +1,62 @@
+# shellcheck shell=dash disable=2016
+
+xrc cfgy
+___x_cmd_weixin_cfg(){
+    [ "$#" -gt 0 ] || {
+        ___x_cmd_weixin___help --cfg
+        return 64
+    }
+
+    local X_help_cmd=; X_help_cmd='x help -m weixin --cfg' help:arg:parse
+    ___x_cmd_weixin_cfg___invoke "$@"
+}
+
+___x_cmd_weixin_cur(){
+    local X_help_cmd=; X_help_cmd='x help -m weixin --cur' help:arg:parse
+    ___x_cmd_weixin_cfg___invoke --current "$@"
+}
+
+___x_cmd_weixin_login(){
+    weixin:info "Starting WeChat iLink QR code login..."
+    weixin:info "You will need to scan the QR code using WeChat to login."
+    ___x_cmd_weixin_u_curl "GET" "/ilink/bot/get_bot_qrcode?bot_type=3" | {
+        local qrcode_img_content=;
+        local qrcode=;
+        ___x_cmd jo env . .qrcode_img_content .qrcode
+        [ -n "$qrcode_img_content" ] || {
+            return 1
+        }
+        ___x_cmd_weixin_qrcode "$qrcode_img_content"
+        local sum=300
+        while [ "$sum" -gt 0 ]; do
+            ___x_cmd_weixin_u_curl "GET" "/ilink/bot/get_qrcode_status?qrcode=$qrcode" | ___x_cmd_weixin_login___ || break
+            sum=$((sum-1))
+            ___x_cmd sleep 1
+        done
+    }
+}
+
+
+___x_cmd_weixin_login___(){
+    trap 'return 130 || exit 130' INT
+    local bot_token=""; local ilink_bot_id=""; local ilink_user_id=""
+    ___x_cmd jo env . .bot_token .ilink_bot_id .ilink_user_id
+    [ -n "$bot_token" ] || return 0
+    ___x_cmd_weixin_cfg bot_token="$bot_token"  bot_id="$ilink_bot_id" user_id="$ilink_user_id"
+    weixin:info "Login successful"
+    ___x_cmd_weixin_listen_once___
+    return 1
+}
+
+___X_CMD_WEIXIN_CFG_VARLIST="bot_token,bot_id,user_id"
+___x_cmd_weixin_cfg___invoke(){
+    ___x_cmd_cfgy_obj \
+        --prefix            ___X_CMD_weixin_CFG_DATA                  \
+        --default-config    "${___X_CMD_ROOT_CFG}/weixin/X.cfg.yml"   \
+        --current-config    "${___X_CMD_WEIXIN_LOCAL_CONFIG}"         \
+        --current-profile   "${___X_CMD_WEIXIN_LOCAL_PROFILE}"        \
+        --varlist           "$___X_CMD_WEIXIN_CFG_VARLIST"            \
+        "$@"
+}
+
+

@@ -1,0 +1,135 @@
+# shellcheck shell=dash
+
+___x_cmd_weixin_bot_send(){
+    local X_help_cmd='___x_cmd_weixin___help bot send'
+    help:arg-null:parse
+
+    local op="$1";shift
+
+    case "$op" in
+        text|raw) 
+            "___x_cmd_weixin_bot_send_$op" "$@"
+            ;;
+        image|file|video)
+            ___x_cmd_weixin_bot_send_media "$op" "$@"
+            ;;
+        *)  ___x_cmd_weixin_u_subcmd_invalid "bot send" "$op"
+            ;;
+    esac
+}
+
+___x_cmd_weixin_bot_send_text(){
+    local X_help_cmd='___x_cmd_weixin___help bot send text'
+    help:arg:parse
+
+    local json_output=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -j|--json) json_output=1; shift ;;
+            -h|--help) ___x_cmd_weixin___help bot send text; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    local text="$1"
+    [ -n "$text" ] || { weixin:error "Text content required"; return 1; }
+    local user_id=""
+    ___x_cmd_weixin_cur user_id:= 2>/dev/null
+    [ -n "$user_id" ] || { weixin:error "No login information obtained. Please scan the QR code to log in first. ``x weixin login``"; return 1; }
+    local context_token=;
+    [ -f "$___X_CMD_WEIXIN_CONTEXT_TOKEN" ] || { weixin:error "context_token cannot be empty."; return 1; }
+    context_token="$(___x_cmd_cmds_cat "$___X_CMD_WEIXIN_CONTEXT_TOKEN")"
+    # Build and send message
+    local msg_json
+    msg_json=$(___x_cmd_cmds cat <<EOF
+{
+  "msg": {
+    "to_user_id": "$user_id",
+    "message_type": 2,
+    "client_id":"$(___x_cmd rand uuid)",
+    "message_state": 2,
+    "context_token": "$context_token",
+    "item_list": [
+      {
+        "type": 1,
+        "text_item": { "text": "$text" }
+      }
+    ]
+  },
+  "base_info": { "channel_version": "1.0.2" }
+}
+EOF
+)
+    
+
+    local resp; resp="$(printf "%s" "$msg_json" | ___x_cmd_weixin_u_curl POST "/ilink/bot/sendmessage" -d @-)"
+    [ "$resp" = "{}" ] || {
+        ___x_cmd_ui_tf false "Failed to send message:" "$resp"
+        return 1
+    }
+    ___x_cmd_ui_tf true "Sent text message successfully"
+}
+
+___x_cmd_weixin_bot_send_raw(){
+    local X_help_cmd='___x_cmd_weixin___help bot send raw'
+    help:arg:parse
+
+    local json_output=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -j|--json) json_output=1; shift ;;
+            -h|--help) ___x_cmd_weixin___help bot send raw; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    local raw="${1}"
+    [ "$raw" = "-" ] && raw="$(___x_cmd_cmds_cat)"
+    [ -z "$raw" ] && { weixin:error "JSON content required"; return 1; }
+
+    local resp; resp="$(___x_cmd_weixin_u_curl POST "/ilink/bot/sendmessage" -d "$raw")"
+
+    if [ -n "$json_output" ]; then
+        printf "%s\n" "$resp"
+    else
+        local ret; ret="$(printf "%s" "$resp" | ___x_cmd jo env .ret)"
+        if [ "$ret" = "0" ]; then
+            ___x_cmd_ui_tf true "Sent message successfully"
+        else
+            ___x_cmd_ui_tf false "Failed to send message:" "$resp"
+        fi
+    fi
+}
+
+___x_cmd_weixin_bot_send_media(){
+    local X_help_cmd="___x_cmd_weixin___help bot send media"
+    help:arg:parse
+
+    local msg_type="$1"; shift
+    local file_path=""
+    local json_output=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -j|--json) json_output=1; shift ;;
+            -h|--help) ___x_cmd_weixin___help bot send "$msg_type"; return 0 ;;
+            *) file_path="$1" ; break ;;
+        esac
+    done
+
+    [ -f "$file_path" ] || { weixin:error "File not found: $file_path"; return 1; }
+    
+    local upload_result; upload_result="$(___x_cmd_weixin_util_upload_media "$file_path" "$msg_type")" || {
+        weixin:error "Failed to upload $msg_type"
+        return 1
+    }
+    local resp; resp="$(printf "%s" "$upload_result" | ___x_cmd_weixin_u_curl POST "/ilink/bot/sendmessage" -d "@-")"
+    [ "$resp" = "{}" ] || {
+        ___x_cmd_ui_tf false "Failed to send message:" "$resp"
+        return 1
+    }
+    ___x_cmd_ui_tf true "Sent text message successfully"
+}
+
+
+

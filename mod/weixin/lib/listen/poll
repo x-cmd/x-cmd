@@ -1,0 +1,77 @@
+# shellcheck shell=dash
+
+___x_cmd_weixin_listen_poll(){
+    local X_help_cmd='___x_cmd_weixin___help listen poll'
+    help:arg:parse
+    local sync_buf_file="${___X_CMD_WEIXIN_TMP}/sync_buf"
+
+    local sync_buf=""
+    if [ -f "$sync_buf_file" ]; then
+        sync_buf="$(___x_cmd_cmds_cat "$sync_buf_file")"
+    fi
+
+    weixin:info "Starting long-poll listener..."
+
+    while true; do
+        local resp; resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
+            weixin:error "Failed to get updates: $resp"
+            ___x_cmd sleep 1s
+            return 1
+        }
+
+        local get_updates_buf=; local msgs=; local  context_token=;
+        ___x_cmd jo env . .get_updates_buf .msgs context_token=.msgs.1.context_token  <<A
+$resp
+A
+        if [ "$get_updates_buf" != "$sync_buf_file" ]; then
+            printf "%s" "$get_updates_buf" > "$sync_buf_file"
+            sync_buf="$get_updates_buf"
+        fi
+
+        [ "$msgs" = "[]" ] || {
+            printf "%s" "$context_token" > "$___X_CMD_WEIXIN_CONTEXT_TOKEN"
+            weixin:info "msg : $msgs"
+        }
+    done
+}
+
+
+___x_cmd_weixin_listen_once___(){
+    local sync_buf_file="${___X_CMD_WEIXIN_TMP}/sync_buf"
+
+    local sync_buf=""
+    if [ -f "$sync_buf_file" ]; then
+        sync_buf="$(___x_cmd_cmds_cat "$sync_buf_file")"
+    fi
+
+    weixin:info "Send a message in WeChat to complete the binding..."
+    while true; do
+        local resp; resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
+            weixin:error "Failed to get updates: $resp"
+            ___x_cmd sleep 1s
+            return 1
+        }
+
+        local get_updates_buf=; local msgs=; local  context_token=;
+        ___x_cmd jo env . .get_updates_buf .msgs context_token=.msgs.1.context_token  <<A
+$resp
+A
+        if [ "$get_updates_buf" != "$sync_buf_file" ]; then
+            printf "%s" "$get_updates_buf" > "$sync_buf_file"
+            sync_buf="$get_updates_buf"
+
+        fi
+
+        [ "$msgs" = "[]" ] || {
+            printf "%s" "$context_token" > "$___X_CMD_WEIXIN_CONTEXT_TOKEN"
+            weixin:info "You can run ``x weixin bot send text <context>`` to send a message."
+            return
+        }
+    done
+}
+
+
+___x_cmd_weixin_getupdates(){
+    local sync_buf="${1:-""}"
+    ___x_cmd_weixin_u_curl "POST" "/ilink/bot/getupdates" -d '{"get_updates_buf":"'"$sync_buf"'", "base_info":{ "channel_version": "1.0.2" }}'
+}

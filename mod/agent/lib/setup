@@ -1,51 +1,93 @@
-# shellcheck shell=dash disable=SC2120
+# shellcheck shell=dash disable=SC2120,SC2016
+
+___x_cmd_agent_setup_addprompt(){
+    local dir="$1"
+    local fp="$2"
+    local pattern="$3"
+    local prompt="$4"
+    [ -e "${dir}" ]   ||  {
+        agent:info "Skip adding prompt into [file=$fp] because [dir=$dir] is not existed."
+        return 1
+    }
+
+    ___x_cmd_agent_setup_addprompt_removeline_then_append_ "$fp" "$pattern" "$prompt"
+}
+
+___x_cmd_agent_setup_addprompt_removeline_then_append_(){
+    local fp="$1"
+    local pattern="$2"
+    local prompt="$3"
+
+    local data=""
+    if [ -e "$fp" ]; then
+        data="$(___x_cmd_cmds cat "$fp")" 2>/dev/null || N=agent M="Fail to read data from $fp" log:ret:1
+    fi
+
+    data="$data" prompt="$prompt" pattern="$pattern" ___x_cmd_cmds awk '
+        BEGIN{
+            data    = ENVIRON["data"]
+            prompt  = ENVIRON["prompt"]
+            pattern = ENVIRON["pattern"]
+
+            gsub( /[\n]+$/, "", data )
+            l = split(data, arr, "\n")
+
+            for (i=1; i<=l; ++i) {
+                if (index( arr[i], pattern ) <= 0) {
+                    print arr[i]
+                }
+            }
+
+            print prompt
+        }
+    '>"$fp"
+}
 
 ___x_cmd_agent_setup(){
-
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -h|--help)  ___x_cmd help -m agent setup "$@" ; return 0 ;;
-            # --all)      mode="all" ; shift ;;
-            # --claude)   mode="$mode claude" ; shift ;;
-            # --codex)    mode="$mode codex"  ; shift ;;
-            # --gemini)   mode="$mode gemini" ; shift ;;
-            *)          break ;;
-        esac
-    done
+    local X_help_cmd=; X_help_cmd='___x_cmd help -m agent setup' help:arg:parse
 
     # local prompt='Load x-cmd with `. ~/.x-cmd.root/X` (required before using `x`), then `x nihao --llmstxt` to explore usage. Docs: https://www.x-cmd.com/llms.txt'
 
-    local prompt='Load x-cmd first before using `x`: `. ~/.x-cmd.root/X`. Then explore with `x nihao --llmstxt` or discover more skills via `x skill`.'
+    # local prompt='Load x-cmd first before using `x`: `. ~/.x-cmd.root/X`. Then explore with `x nihao --llmstxt` or discover and use more skills via `x skill`.'
 
-    # local prompt1='Load x-cmd with `. ~/.x-cmd.root/X` (required before using `x`)'
-    # local prompt2='Run `x nihao --llmstxt` to learn more about x-cmd.'
-    # local prompt3='Run `x skill` to browse available skills.'
-    # local prompt="${prompt1} ${prompt2} ${prompt3}"
+    local prompt='Use x-cmd skill to access 300+ shell utilities, 1000+ packages—all without sudo, and discover various safe, human-vetted skills. Learn more: https://www.x-cmd.com/llms.txt'
 
-    local homefp="$HOME/AGENTS.md"
+    local pattern='https://www.x-cmd.com/llms.txt'
 
-    if [ ! -f "$homefp" ]; then
-        agent:info --prompt "$prompt" "Created AGENTS.md at $homefp"
-        ___x_cmd fprintf "$homefp" "%s\n" "$prompt"
-        return $?
-    fi
+    ___x_cmd_agent_setup_addprompt "$HOME/.agents"          "$HOME/.agents/AGENTS.md"               "$pattern" "$prompt"
+    ___x_cmd_agent_setup_addprompt "$HOME/.claude"          "$HOME/CLAUDE.md"                       "$pattern" "$prompt"
+    ___x_cmd_agent_setup_addprompt "$HOME/.codex"           "$HOME/.codex/AGENTS.md"                "$pattern" "$prompt"
+    ___x_cmd_agent_setup_addprompt "$HOME/.gemini"          "$HOME/.gemini/GEMINI.md"               "$pattern" "$prompt"
+    ___x_cmd_agent_setup_addprompt "$HOME/.config/opencode" "$HOME/.config/opencode/AGENTS.md"      "$pattern" "$prompt"
 
     # Opencode and kimi will read.
+
+    agent:info "Add x-cmd skills to ~/.agents and other agent directories"
     ___x_cmd_agent_setup___addskill "$___X_CMD_ROOT/.agents"
 
     local dir
     while read -r dir; do
+        [ -d "$dir" ]   ||  {
+            agent:info \
+                --tip-1 "If you want to mkdir if directory unexisted -> x agent setup --all" \
+                --tip-1 "Create folder manually, then run the command againt -> x mkdirp $dir && x agent setup" \
+                "Skip skill link for agent directory doesnot exist -> $dir"
+            continue
+        }
         ___x_cmd_agent_setup___addskill_ln "$dir"
     done<<A
 $HOME/.agents
 $HOME/.claude
 $HOME/.codex
 $HOME/.gemini
+$HOME/.config/opencode
 A
+
+    # Now inject.
 
     agent:info                      \
         --tip   "x agent unify"     \
-        "Consider unifying the ~/CLAUDE.md ~/.codex/AGENTS.md ~/.gemini/GEMINI.md into one file."
+        "Consider unifying the ~/CLAUDE.md ~/.codex/AGENTS.md ~/.gemini/GEMINI.md ~/.config/opencode/AGENTS.md into one file."
 }
 
 ___x_cmd_agent_setup___addskill(){
@@ -64,6 +106,6 @@ ___x_cmd_agent_setup___addskill_ln(){
     if [ -e "$dir/skills/x-cmd" ]; then
         ___x_cmd rmrf "$dir/skills/x-cmd"
     fi
-    ___x_cmd_cmds ln -s "$___X_CMD_ROOT/.agents/skills/x-cmd" "$dir/skills/x-cmd"
+    ___x_cmd_cmds ln -s "$___X_CMD_ROOT_MOD/skill/lib/arsenal/x-cmd" "$dir/skills/x-cmd"
     # Gitbash will use copy in 'ln -s' . It is fine.
 }

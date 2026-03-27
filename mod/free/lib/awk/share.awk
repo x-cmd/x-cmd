@@ -5,12 +5,25 @@
 function init_colors(NO_COLOR) {
     if (NO_COLOR != 1) {
         UI_HDR  = "\033[1;37m"    # Bold white - headers
+        UI_HDR_OFF = "\033[22;37m" # Normal intensity white - non-bold headers
         UI_KEY  = "\033[36m"      # Cyan - labels (Mem:, Swap:)
         UI_LOW  = "\033[32m"      # Green - low usage (<50%)
         UI_MED  = "\033[33m"      # Yellow - medium usage (50-80%)
         UI_HIGH = "\033[31m"      # Red - high usage (>80%)
-        UI_DIM  = "\033[90m"      # Gray - dim/secondary info
+        UI_DIM  = "\033[22;90m"   # Gray normal intensity - dim/secondary info
         UI_END  = "\033[0m"       # Reset
+        # New styles
+        UI_ITALIC = "\033[3m"     # Italic - sum relationship
+        UI_GREEN = "\033[32m"     # Green - reclaimable memory
+        UI_GREEN_DIM = "\033[2;32m"  # Dim green - cache (less reclaimable)
+        UI_UNDERLINE = "\033[4m"   # Underline - related columns
+        UI_UNDERLINE_OFF = "\033[24m"  # Cancel underline
+        UI_RED = "\033[31m"       # Red - used/non-reclaimable memory
+        UI_RED_DIM = "\033[2;31m"   # Dim red - hardware reserved (not OS managed)
+        UI_BOLD_RED = "\033[1;31m"  # Bold red - used (emphasized)
+        UI_BOLD_GREEN = "\033[1;32m" # Bold green - free (emphasized)
+        UI_REVERSE = "\033[7m"      # Reverse video - highlight columns
+        UI_REVERSE_OFF = "\033[27m" # Cancel reverse
     }
 }
 
