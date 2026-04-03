@@ -1,0 +1,140 @@
+# shellcheck shell=dash
+
+# default ttl = 1 hour
+
+# Share the data to save the I/O Time and context.
+# Share the markdown conversion and index to save the LLM Token.
+# It is ok for the AGENT to write a short summary about the pages.
+
+___x_cmd_web_db___main(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local op="$1" ;     shift
+
+    case "$op" in
+        -h|--help)      ___x_cmd help -m web db "$@" ; return 0 ;;
+
+        get|set|info)
+                        ___x_cmd_web_db_"$op" "$@" ;;
+
+        *)              N=web M="Unknown db subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+___X_CMD_WEB_DB="${___X_CMD_ROOT_CACHE}/web/db"
+
+___x_cmd_web_db_get(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    local ___SHOW_EVEN_IF_EXPIRED=""
+    local ___DO_NOT_USE_MEMO=""
+    local ttl=""
+    local format=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)                  ___x_cmd help -m web db get "$@" ; return 0 ;;
+            --ttl)                      ttl="$2" ;                      shift 2 ;;
+            --format)                   format="$2" ;                   shift 2 ;;
+            --show-even-if-expired)     ___SHOW_EVEN_IF_EXPIRED=1 ;     shift ;;
+            --do-not-use-memo)          ___DO_NOT_USE_MEMO=1 ;          shift ;;
+            *)                          break ;;
+        esac
+    done
+
+    local url="$1"
+
+    local x_;   ___x_cmd_web_db_which_ "$url";     local dir="$x_"
+
+    [ -d "$dir" ]   ||  N=web M="The data doesn't exist" log:ret:1
+
+    local line
+    local TTL
+    local CREATEAT
+    while read -r line; do
+        case "$line" in
+            TTL*:*)         TTL="${line#*:}" ;          ___x_cmd str trim_ "$TTL" ;         TTL="$x_" ;;
+            CREATEAT*:*)    CREATEAT="${line#*:}" ;     ___x_cmd str trim_ "$CREATEAT" ;    CREATEAT="$x_" ;;
+            *)              break ;;
+        esac
+    done<"$dir/INFO.txt"
+
+    [ -n "$ttl" ] ||    ttl="$TTL"
+
+    if ___x_cmd date within "$CREATEAT" "$ttl"; then
+        ___x_cmd_web_db_get___detail
+        return 0
+    fi
+
+    if [ -z "$___SHOW_EVEN_IF_EXPIRED" ]; then
+        web:error "The file is expired."
+        return 1
+    fi
+
+    ___x_cmd_web_db_get___detail
+}
+
+___x_cmd_web_db_get___detail(){
+    case "$format" in
+        md)     ___x_cmd_cmds cat "$dir/WEBPAGE.RAWDATA.txt" ;;
+        raw)    ___x_cmd_cmds cat "$dir/WEBPAGE.DATA.md" ;;
+        *)
+                if [ -f "$dir/WEBPAGE.DATA.md" ]; then
+                    ___x_cmd_cmds cat "$dir/WEBPAGE.DATA.md"
+                else
+                    ___x_cmd_cmds cat "$dir/WEBPAGE.RAWDATA.txt"
+                fi
+    esac
+}
+
+___x_cmd_web_db_set(){
+    local url="$1"
+    local content="$2"
+
+    local x_;   ___x_cmd_web_db_which_ "$url";     local dir="$x_"
+
+    ___x_cmd mkdirp "$dir"
+
+    case "$content" in
+        -)      ___x_cmd_web_db_set_stdin "$url" ;;
+        *)      printf '%s\n' "$content" > "$dir/WEBPAGE.RAWDATA.txt" ;;
+    esac
+}
+
+___x_cmd_web_db_set_stdin(){
+    local url="$1"
+    local x_;   ___x_cmd_web_db_which_ "$url";     local dir="$x_"
+    ___x_cmd mkdirp "$dir"
+    ___x_cmd_cmds cat > "$dir/WEBPAGE.RAWDATA.txt"
+}
+
+___x_cmd_web_db_info(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    case "$1" in
+        -h|--help)  ___x_cmd help -m web db info "$@" ; return 0 ;;
+    esac
+
+    local x_
+    ___x_cmd_web_db_url_ "$1"
+
+    [ -d "$x_" ]    ||      return 1
+
+    local line
+    local TTL
+    local CREATEAT
+    while read -r line; do
+        case "$line" in
+            TTL*:*)         TTL="${line#*:}" ;          ___x_cmd str trim_ "$TTL" ;         TTL="$x_" ;;
+            CREATEAT*:*)    CREATEAT="${line#*:}" ;     ___x_cmd str trim_ "$CREATEAT" ;    CREATEAT="$x_" ;;
+            *)              break ;;
+        esac
+    done<"$x_/INFO.txt"
+
+    printf "TTL: %s\n"              "$TTL"
+    printf "CREATEAT: %s\n"         "$CREATEAT"
+    printf "EXPIRED: %s\n"          "YES"
+    printf "DATA_DIR: %s\n"         "$x_"
+    printf "DATA_RAW: %s\n"         "$x_/WEBPAGE.RAWDATA.txt"
+    printf "DATA_MARKDOWN: %s\n"    "$x_/WEBPAGE.DATA.md"
+}
