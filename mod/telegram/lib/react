@@ -1,0 +1,88 @@
+# shellcheck shell=sh disable=SC2016,SC3043
+
+___x_cmd_telegram_reactor_echo(){
+    ___x_cmd_telegram_bot_send --chat "$MSG_CHATID" "$MSG_BODY"
+}
+
+___x_cmd_telegram_reactor_repl(){
+    local resp; resp="$(eval "$MSG_BODY" 2>&1)"
+    if [ -z "$resp" ]; then
+        weixin:warn "Send message skipped: executed command returned empty output"
+        return $?
+    fi
+    ___x_cmd_telegram_bot_send --chat "$MSG_CHATID" "$resp"
+}
+
+___x_cmd_telegram_react(){
+    param:void
+
+    local timeout=$(( 1 * 60 * 60 * 1000 ))
+    local runner=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help|"")       ___x_cmd help -m telegram react ;     return 0 ;;
+            --timeout)          timeout="$2" ; arg:2:shift ;;
+            --runner)           runner="$2" ; arg:2:shift ;;
+            --)                 shift ; break ;;
+            *)                  break ;;
+        esac
+    done
+
+    if [ $# -eq 0 ]; then
+        runner="${runner:-echo}"
+        case "$runner" in
+            echo)       set -- ___x_cmd_telegram_reactor_echo ;;
+            repl)       set -- ___x_cmd_telegram_reactor_repl ;;
+        esac
+    fi
+
+    [ -n "$token" ] || {
+        local token=;
+        ___x_cmd_telegram_cur token:= 2>/dev/null
+        [ -n "$token" ] || N=telegram M="Please setting up your token first ==> 'x telegram --cfg token=<your token>'" log:ret:1
+    }
+
+
+    while true; do
+        {
+            ___x_cmd_telegram_bot_sub
+        } |{
+            local msg_line
+            local MSG_CHATID="" MSG_TEXT_TEXT=""
+            while read -r msg_line; do
+                printf "%s" "$msg_line"
+                ___x_cmd pipevar msg_line   ___x_cmd jo env .result.1.message   \
+                        MSG_FROM=.from.id                     \
+                        MSG_CHATID=.chat.id                     \
+                        MSG_TEXT_TEXT=.text
+
+                MSG_BODY="$MSG_TEXT_TEXT"
+                "$@"
+            done
+        }
+
+        ___x_cmd sleep 5 || return $?
+    done
+}
+
+___x_cmd_telegram_bot_sub(){
+    [ -n "$token" ] || {
+        local token=;
+        ___x_cmd_telegram_cur token:= 2>/dev/null
+        [ -n "$token" ] || N=telegram M="Please setting up your token first ==> 'x telegram --cfg token=<your token>'" log:ret:1
+    }
+    local url="https://api.telegram.org/bot$token/getUpdates"
+    local timeout=100
+
+    local fp="$___X_CMD_ROOT_DATA/telegram/data.json"
+    ___x_cmd ensurefp "$fp"
+
+    local offset;   offset="$(___x_cmd jq ".result[-1].update_id + 1" "$fp" )"
+    offset="${offset:-1}"
+
+    ___x_cmd jo dict "offset=${offset}" "timeout=${timeout}"  | \
+        ___x_cmd curl -s -X POST -H 'Content-Type: application/json'  -d @- "$url" | \
+        ___x_cmd jq -c | \
+        ___x_cmd tee "$fp"
+}
