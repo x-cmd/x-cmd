@@ -1,0 +1,68 @@
+
+# wrap the chat
+
+___x_cmd_agent_chat(){
+    local content=""
+    local harness=""
+    local filelist=""
+    local NL="$___X_CMD_UNSEENCHAR_NEWLINE"
+
+    [ "$#" -gt 0 ] || set -- --help
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent request "$@" ; return 0 ;;
+
+            --harness)      harness="$2"  ;     arg:2:shift ;;
+            --file|-f)      filelist="${filelist}${NL}${2}" ; arg:2:shift ;;
+
+            # --retry)        retry="$2" ; arg:2:shift ;;
+
+            --)             shift; break ;;
+            *)              break ;;
+        esac
+    done
+
+    local x_=""
+    if [ -z "$harness" ]; then
+        x_=""; ___x_cmd_agent_harness_
+        harness="$x_"
+    fi
+
+
+    while read -r f; do
+        [ -f "$f" ]  || continue
+
+        content="${content}
+=== filename -> $f
+$(___x_cmd_cmds cat "$f")
+===
+"
+    done <<A
+$filelist
+A
+
+    local IFS=" " ; content="${content}${NL}${*}${NL}"
+    ___x_cmd_agent_chat___run
+}
+
+___x_cmd_agent_chat___run(){
+    agent:info "Starting chat with harness '$harness'"
+    agent:debug --m:content "$content"
+    case "$harness" in
+        kimi-cli)       ___x_cmd_agent_chat___run_kimi "$content" ;;
+        claude)         ___x_cmd claude -- "$content" ;;
+        codex)          ___x_cmd codex -- "$content"  ;;
+        gemini-cli)     ___x_cmd gemini cli -- -i "$content" ;;
+        opencode)       ___x_cmd opencode run --prompt "$content"  ;;
+        "")             N=agent M="Please specify harness using '--harness <name>'" log:ret:64 ;;
+        *)              N=agent M="Unsupported harness '$harness'" log:ret:1 ;;
+    esac
+}
+
+___x_cmd_agent_chat___run_kimi(){
+    local content="$1"
+    local session_id; session_id="$(___x_cmd rand uuid)"
+    # --quiet
+    ___x_cmd kimi -- -S "$session_id" --prompt "$content" || return $?
+    ___x_cmd kimi -- -S "$session_id"
+}

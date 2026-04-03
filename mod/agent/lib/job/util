@@ -1,0 +1,245 @@
+
+___x_cmd_agent_job___get_lastdir(){
+    local dir="${1:-"$___X_CMD_AGENT_JOB_DIR"}"
+    [ -d "$dir" ] || return 0
+    local dirname; dirname="$( ___x_cmd_cmds ls "$dir" | ___x_cmd_cmds sort -r | ___x_cmd_cmds head -n 1 )"
+    printf "%s\n" "$dir/$dirname"
+}
+
+___x_cmd_agent_job_iter___eval_response(){
+    local dir="$1"
+    local response_file="$2"
+    local iter="$3"
+    local inrow="$4"
+    local donefile="$5"
+    local max_iterations="$6"
+    local vlid="$7"
+    # local no_progress="$8"
+    local harness="$8"
+
+    local x_status=""
+    local x_tasks_completed=0
+    local x_files_modified=0
+    local x_tests_status="NOT_RUN"
+    local x_work_type=""
+    local x_exit_signal="false"
+    local x_recommendation=""
+
+    x_status=""; x_tasks_completed=0; x_files_modified=0; x_tests_status="NOT_RUN"; x_work_type=""; x_exit_signal="false"; x_recommendation=""
+    if [ -f "$response_file" ]; then
+        ___x_cmd_agent_job___parse_status_ "$dir" "$response_file"
+        ___x_cmd_agent_job___log_status
+    else
+        # Give a short grace period for the AI to write the file
+        ___x_cmd sleep 0.5 2>/dev/null || true
+        if [ -f "$response_file" ]; then
+            ___x_cmd_agent_job___parse_status_ "$dir" "$response_file"
+            ___x_cmd_agent_job___log_status
+        elif [ "$iter" -gt 1 ]; then
+            agent:warn "Response file not found for iteration $iter: $response_file"
+            x_status="BLOCKED"
+            x_exit_signal="false"
+            x_tasks_completed=0
+            x_files_modified=0
+        else
+            agent:info "First iteration response file not yet available, continuing"
+            x_status="IN_PROGRESS"
+            x_exit_signal="false"
+            x_tasks_completed=0
+            x_files_modified=0
+        fi
+    fi
+
+    # Write status file
+    ___x_cmd_agent_job_status_write "$dir" "$iter" "$max_iterations" "$vlid" "$response_file" "$inrow" "$no_progress" "$harness" "$donefile"
+
+    if [ "$x_status" = "COMPLETE" ] && [ "$x_exit_signal" = "true" ]; then
+        agent:info "Task completed according to AI status block"
+        if [ ! -f "$donefile" ]; then
+            agent:warn "AI signaled completion but did not create DONE.md. Task may be incomplete. Check $response_file for details"
+        fi
+        return 1
+    fi
+
+    if [ "$x_tasks_completed" -eq 0 ] && [ "$x_files_modified" -eq 0 ]; then
+        no_progress="$((no_progress + 1))"
+        agent:warn "No progress detected in iteration $iter ($no_progress/$inrow consecutive). AI reported 0 tasks completed and 0 files modified"
+    else
+        no_progress=0
+    fi
+
+    if [ "$no_progress" -ge "$inrow" ]; then
+        agent:info "No progress for $inrow consecutive iterations. Stopping iteration loop. Use 'x agent job iter' to resume if needed."
+        return 1
+    fi
+
+    return 0
+}
+
+___x_cmd_agent_job___build_loop_context(){
+    local dir="$1"
+    local todofile="$2"
+    local iter="$3"
+    local max_iterations="$4"
+    local no_progress="$5"
+    local inrow="$6"
+
+    local remaining=0
+    local completed=0
+    if [ -r "$todofile" ]; then
+        remaining=$(___x_cmd_cmds grep -cE "^[[:space:]]*- \[ \]" "$todofile" 2>/dev/null || true)
+        completed=$(___x_cmd_cmds grep -cE "^[[:space:]]*- \[x\]" "$todofile" 2>/dev/null || true)
+    fi
+    [ -z "$remaining" ] && remaining=0
+    [ -z "$completed" ] && completed=0
+
+    local done_count=0
+    done_count="$(
+        for f in "$dir"/*.response.md; do
+            [ -f "$f" ] || continue
+            printf "%s\n" "$f"
+        done 2>/dev/null | ___x_cmd_cmds wc -l
+    )"
+
+    printf "Iteration: %s / %s\n" "$iter" "$max_iterations"
+    printf "Remaining tasks: %s | Completed tasks: %s | Previous iterations: %s\n" "$remaining" "$completed" "$done_count"
+    printf "No-progress streak: %s / %s\n" "$no_progress" "$inrow"
+}
+
+___x_cmd_agent_job___parse_status_(){
+    local dir="$1"
+    local fp="$2"
+    local in_block=0
+    local line=""
+    local _status="" _tasks=0 _files=0 _tests="NOT_RUN" _work="" _exit="false" _rec="" x_=""
+
+    while IFS= read -r line; do
+        case "$line" in
+            "---X_AGENT_STATUS---")     in_block=1; continue ;;
+            "---END_X_AGENT_STATUS---") in_block=0; break ;;
+        esac
+        [ "$in_block" -eq 1 ] || continue
+
+        case "$line" in
+            STATUS:*)
+                _status="${line#STATUS: }"
+                x_=""; ___x_cmd str trim_ "$_status"
+                _status="$x_"
+                ;;
+            TASKS_COMPLETED_THIS_ITER:*)
+                _tasks="${line#TASKS_COMPLETED_THIS_ITER: }"
+                x_=""; ___x_cmd str trim_ "$_tasks"
+                _tasks="$x_"
+                ;;
+            FILES_MODIFIED:*)
+                _files="${line#FILES_MODIFIED: }"
+                x_=""; ___x_cmd str trim_ "$_files"
+                _files="$x_"
+                ;;
+            TESTS_STATUS:*)
+                _tests="${line#TESTS_STATUS: }"
+                x_=""; ___x_cmd str trim_ "$_tests"
+                _tests="$x_"
+                ;;
+            WORK_TYPE:*)
+                _work="${line#WORK_TYPE: }"
+                x_=""; ___x_cmd str trim_ "$_work"
+                _work="$x_"
+                ;;
+            EXIT_SIGNAL:*)
+                _exit="${line#EXIT_SIGNAL: }"
+                x_=""; ___x_cmd str trim_ "$_exit"
+                _exit="$x_"
+                ;;
+            RECOMMENDATION:*)
+                _rec="${line#RECOMMENDATION: }"
+                x_=""; ___x_cmd str trim_ "$_rec"
+                _rec="$x_"
+                ;;
+        esac
+    done < "$fp"
+
+    [ "$in_block" -eq 0 ] && [ -n "$_status" ] && [ -n "$_exit" ] || return 1
+
+    x_status="$_status"
+    x_tasks_completed="$_tasks"
+    x_files_modified="$_files"
+    x_tests_status="$_tests"
+    x_work_type="$_work"
+    x_exit_signal="$_exit"
+    x_recommendation="$_rec"
+
+    # Calculate TODO stats
+    local todofile="$dir/TODO.md"
+    if [ -r "$todofile" ]; then
+        x_todo_done=$(___x_cmd_cmds grep -cE "^[[:space:]]*- \[x\]" "$todofile" 2>/dev/null || true)
+        x_todo_remaining=$(___x_cmd_cmds grep -cE "^[[:space:]]*- \[ \]" "$todofile" 2>/dev/null || true)
+    fi
+    [ -z "$x_todo_done" ] && x_todo_done=0
+    [ -z "$x_todo_remaining" ] && x_todo_remaining=0
+
+    # Count response files
+    x_response_count=$(
+        for f in "$dir"/*.response.md; do
+            [ -f "$f" ] || continue
+            printf "%s\n" "$f"
+        done 2>/dev/null | ___x_cmd_cmds wc -l
+    )
+    [ -z "$x_response_count" ] && x_response_count=0
+}
+
+___x_cmd_agent_job_status_write(){
+    local dir="$1"
+    local iter="$2"
+    local max_iterations="$3"
+    local vlid="$4"
+    local response_file="$5"
+    local inrow="$6"
+    local no_progress="$7"
+    local harness="$8"
+    local donefile="$9"
+
+    local status_file="$dir/status.yml"
+    local done_flag="false"
+    local updated_at
+
+    updated_at="$(___x_cmd date unix)"
+    [ -f "$donefile" ] && done_flag="true"
+
+    printf "%s\n" \
+        "---" \
+        "iter: $iter" \
+        "max_iterations: $max_iterations" \
+        "vlid: $vlid" \
+        "response_file: $response_file" \
+        "" \
+        "# AI Status" \
+        "status: $x_status" \
+        "tasks_completed: $x_tasks_completed" \
+        "files_modified: $x_files_modified" \
+        "tests_status: $x_tests_status" \
+        "work_type: $x_work_type" \
+        "exit_signal: $x_exit_signal" \
+        "recommendation: $x_recommendation" \
+        "" \
+        "# TODO Progress" \
+        "todo_remaining: $x_todo_remaining" \
+        "todo_completed: $x_todo_done" \
+        "" \
+        "# Job State" \
+        "no_progress_streak: $no_progress" \
+        "inrow_threshold: $inrow" \
+        "response_count: $x_response_count" \
+        "done: $done_flag" \
+        "harness: $harness" \
+        "" \
+        "# Metadata" \
+        "updated_at: $updated_at" \
+        > "$status_file"
+}
+
+___x_cmd_agent_job___log_status(){
+    local exit_info=""
+    [ "$x_exit_signal" = "true" ] && exit_info=" [EXIT]"
+    agent:info "[$x_status]$exit_info $x_todo_done done, $x_todo_remaining remaining | $x_recommendation"
+}

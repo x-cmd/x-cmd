@@ -1,0 +1,79 @@
+# shellcheck shell=dash
+
+# That will be deprecated. Don't include in advise.
+___x_cmd_links_dump(){
+    ___x_cmd_links_webfetch --dump "$@"
+}
+
+___x_cmd_links_source(){
+    ___x_cmd_links_webfetch "$@"
+}
+
+___x_cmd_links_webfetch(){
+    local source=1
+    local ccmd_timeout=10m
+    local readablelink=""
+    local LINKSOPT=""
+    local ua="chrome"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m links dump "$@" ; return 0 ;;
+
+            --dump)             source=""       ;;
+
+            # Enable readablelink for GitHub/Codeberg/etc
+            --readablelink)     readablelink=1      ;;
+
+            --ua)               ua="$2"; shift 2 ; continue ;;
+
+            # --cache-timeout will be deprecated. Use --ccmd. Don't put --cache-timeout in the advise.
+            --cache-timeout|--ccmd)
+                                ccmd_timeout="$2"; shift 2 ; continue ;;
+
+            --linksopt)         LINKSOPT="$2" ;  shift 2 ;;
+
+            *)                  break ;;
+        esac
+        shift
+    done
+
+    [ $# -gt 0 ]    ||          N=links M="Please provide url." log:ret:64
+    local url="$1" ;    shift
+
+    local proxy
+    local timeout
+
+    ___x_cmd_links_cur  proxy:=  timeout:= 2>/dev/null
+
+    if [ -n "$proxy" ]; then
+        links:debug "Using proxy -> $proxy"
+        ___x_cmd proxy run "$proxy" -- ___x_cmd_links_webfetch___run
+    else
+        ___x_cmd_links_webfetch___run
+    fi
+}
+
+___x_cmd_links_webfetch___run(){
+    # If --readablelink specified, try to get raw document first
+    if [ -n "$readablelink" ]; then
+        ___x_cmd readablelink webfetch "$url"
+        case $? in
+            0|130)      return $? ;;
+        esac
+    fi
+
+    # Fallback to links with browser User-Agent
+    # Use -width 8192 to prevent wrapping and preserve original HTML structure
+    # User can override with: --linksopt "-width 80"
+
+    eval set -- "$LINKSOPT"
+    set -- -codepage utf-8  "$@" "$url"
+    if [ -z "$source" ]; then
+        set -- -dump    -width 512      "$@"
+    else
+        set -- -source                  "$@"
+    fi
+
+    ___x_cmd ccmd "$ccmd_timeout" -- ___x_cmd_links___exec --ua "$ua" "$@"
+}

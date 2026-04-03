@@ -1,0 +1,121 @@
+
+
+# case 1: echo
+# x weixin react -- eval 'x weixin bot send text "$MSG_BODY"'
+# x weixin react --runner echo
+
+# case 2: command-line-executor
+# x weixin react -- x reactor cmdexe                    # --allow ps --allow top --allow ls --allow-basic-cmd
+
+# case 3: chatbot -- chat-only
+# x weixin react -- x reactor cmdexe                    # --allow ps --allow top --allow ls --allow-basic-cmd
+
+# case 4: agent -- readfile only. thinking.
+
+# case 5: agent -- project-dev
+
+# case 6: agent --
+
+# case 2: x weixin react -- eval 'x agent handler --chatid weixin-claw "$MSG" '
+# case 3: ...
+
+# case 7:
+
+# x claw service start
+# x claw chat
+# x claw connect ...
+
+___x_cmd_weixin_reactor_echo(){
+    ___x_cmd weixin bot send text "$MSG_BODY"
+}
+
+# MSG_BODY="hello" ___x_cmd_weixin_reactor_cmd
+___x_cmd_weixin_reactor_repl(){
+    local resp; resp="$(eval "$MSG_BODY" 2>&1)"
+    if [ -z "$resp" ]; then
+        weixin:warn "Send message skipped: executed command returned empty output"
+        return $?
+    fi
+    ___x_cmd weixin bot send text "$resp"
+}
+
+___x_cmd_weixin_reactor_repl1(){
+    local body="$MSG_BODY"
+    body="$(x str trim "$body")"
+
+    local resp
+
+    x:info "recv -> $body"
+
+    case "$body" in
+        /ls)    resp="$(___x_cmd_cmds ls)" ;;
+        /ip)    resp="$(___x_cmd ip)" ;;
+        *)      resp="Unsupported command -> $body" ;;
+    esac
+
+    echo "CMDRESULT -> $resp"
+
+    ___x_cmd weixin bot send text "$resp"
+}
+
+___x_cmd_weixin_react(){
+    local timeout=$(( 1 * 60 * 60 * 1000 ))
+    local runner=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m weixin react "$@" ; return 0 ;;
+            --timeout)      timeout="$2" ; arg:2:shift ;;
+            --runner)       runner="$2" ; arg:2:shift ;;
+            --)             shift ; break ;;
+            *)              break ;;
+        esac
+    done
+
+    if [ $# -eq 0 ]; then
+        runner="${runner:-echo}"
+        case "$runner" in
+            echo)       set -- ___x_cmd_weixin_reactor_echo ;;
+            repl)       set -- ___x_cmd_weixin_reactor_repl ;;
+        esac
+    fi
+
+    while true; do
+        {
+            ___x_cmd weixin listen poll --json
+        } | {
+            local msg_line
+            local MSG_FORM="" MSG_TO="" MSG_TYPE="" MSG_TEXT_TEXT="" MSG_IMG_URL="" MSG_IMG_AESKEY="" MSG_IMG_MEDIA_FULLURL="" MSG_IMG_MEDIA_PARAM="" MSG_IMG_MEDIA_AESKEY="" MSG_IMG_MEDIA_AESKEY_64="" MSG_VIDEO_MEDIA_FULLURL="" MSG_VIDEO_MEDIA_AESKEY_64="" MSG_VOICE_MEDIA_FULLURL="" MSG_VOICE_MEDIA_AESKEY_64="" MSG_FILE_MEDIA_FULLURL="" MSG_FILE_MEDIA_AESKEY_64="" MSG_FILE_MEDIA_AESKEY_name=""
+            while read -r msg_line; do
+                ___x_cmd pipevar msg_line   ___x_cmd jo env .1 \
+                        MSG_FROM=.from_user_id  \
+                        MSG_TO=.to_user_id      \
+                        MSG_TYPE=.item_list.1.type \
+                        MSG_TEXT_TEXT=.item_list.1.text_item.text   \
+                        MSG_IMG_URL=.item_list.1.image_item.url     \
+                        MSG_IMG_AESKEY=.item_list.1.image_item.aeskey   \
+                        MSG_IMG_MEDIA_FULLURL=.item_list.1.image_item.media.full_url    \
+                        MSG_IMG_MEDIA_PARAM=.item_list.1.image_item.media.encrypt_query_param \
+                        MSG_IMG_MEDIA_AESKEY=.item_list.1.image_item.aes_key  \
+                        MSG_IMG_MEDIA_AESKEY_64=.item_list.1.image_item.media.aes_key   \
+                        MSG_VIDEO_MEDIA_FULLURL=.item_list.1.video_item.media.full_url   \
+                        MSG_VIDEO_MEDIA_AESKEY_64=.item_list.1.video_item.media.aes_key \
+                        MSG_VOICE_MEDIA_FULLURL=.item_list.1.voice_item.media.full_url   \
+                        MSG_VOICE_MEDIA_AESKEY_64=.item_list.1.voice_item.media.aes_key \
+                        MSG_FILE_MEDIA_FULLURL=.item_list.1.file_item.media.full_url   \
+                        MSG_FILE_MEDIA_AESKEY_64=.item_list.1.file_item.media.aes_key  \
+                        MSG_FILE_MEDIA_AESKEY_name=.item_list.1.file_item.file_name
+
+                ___x_cmd_weixin_item_decrypt___
+                MSG_BODY="${MSG_TEXT_TEXT:-"File save success"}"
+                "$@"
+
+            done
+        }
+
+        ___x_cmd sleep 5 || return $?
+    done
+
+}
+
+
