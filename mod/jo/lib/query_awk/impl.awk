@@ -7,5 +7,6 @@ function handle_argument(argstr,       e ){
 }
 
 function handle_output( value, idx, max_idx ){
+    # if ( value != "" )
     print value
 }

@@ -1,0 +1,130 @@
+
+# default ttl = 1 hour
+
+# Share the data to save the I/O Time and context.
+# Share the markdown conversion and index to save the LLM Token.
+# It is ok for the AGENT to write a short summary about the pages.
+
+# So summary is what they can do.
+
+___x_cmd_webfetch_db(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local op="$1" ;     shift
+
+    case "$op" in
+        -h|--help)      ___x_cmd help -m webfetch db "$@" ; return 0 ;;
+
+        get|set|info)
+                        ___x_cmd_webfetch_get "$@" ;;
+
+    esac
+}
+
+___X_CMD_WEBFETCH_DB="$___X_CMD_ROOT_CACHE/webfetch/db"
+
+___x_cmd_webfetch_db_get(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    local ___SHOW_EVEN_IF_EXPIRED=""
+    local ___DO_NOT_USE_MEMO=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)                  ___x_cmd help -m webfetch db get "$@" ; return 0 ;;
+            --ttl)                      ttl="$2" ;                      arg:2:shift ;;
+            --show-even-if-expired)     ___SHOW_EVEN_IF_EXPIRED=1 ;     shift ;;
+            --do-not-use-memo)          ___DO_NOT_USE_MEMO=1 ;          shift ;;
+            *)                          break ;;
+        esac
+    done
+
+    local url="$1"
+
+    local x_;   ___x_cmd_webfetch_db_which_ "$url";     local dir="$x_"
+
+    [ -d "$dir" ]   ||  N=webfetch M="The data doesn't exists" log:ret:1
+
+    local line
+    local TTL
+    local CREATEAT
+    while read -r line; do
+        case "$line" in
+            TTL*:*)         TTL="${line#*:}" ;          ___x_cmd str trim_ "$TTL" ;         TTL="$x_" ;;
+            CREATEAT*:*)    CREATEAT="${line#*:}" ;     ___x_cmd str trim_ "$CREATEAT" ;    CREATEAT="$x_" ;;
+            *)              break ;;
+        esac
+    done<"$dir/INFO.txt"
+
+    [ -n "$ttl" ] ||    ttl="$TTL"
+
+    if ___x_cmd date within "$CREATEAT" "$ttl"; then
+        ___x_cmd_webfetch_db_get___detail
+        return 0
+    fi
+
+    if [ -z "$___SHOW_EVEN_IF_EXPIRED" ]; then
+        webfetch:error "The file is expired. If you want to "
+        return 1
+    fi
+
+    ___x_cmd_webfetch_db_get___detail
+}
+
+___x_cmd_webfetch_db_get___detail(){
+    case "$format" in
+        md)     ___x_cmd_cmds cat "$dir/WEBPAGE.RAWDATA.txt" ;;
+        raw)    ___x_cmd_cmds cat "$dir/WEBPAGE.DATA.md" ;;
+        *)
+                if [ -f "$dir/WEBPAGE.DATA.md" ]; then
+                    ___x_cmd_cmds cat "$dir/WEBPAGE.DATA.md"
+                else
+                    ___x_cmd_cmds cat "$dir/WEBPAGE.RAWDATA.txt"
+                fi
+    esac
+}
+
+___x_cmd_webfetch_db_set(){
+    local url="$1"
+    local content="$4"
+
+    local x_;   ___x_cmd_webfetch_db_which_ "$url";     local dir="$x_"
+
+    ___x_cmd mkdirp "$dir"
+
+    case "$content" in
+        -)      ___x_cmd_webfetch_db_set "$"
+    esac
+}
+
+___x_cmd_webfetch_db_info(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    case "$1" in
+        -h|--help)  ___x_cmd help -m webfetch db which "$@" ; return 0 ;;
+    esac
+
+    local x_
+    ___x_cmd_webfetch_db_url_ "$1"
+
+    [ -d "$x_" ]    ||      return 1
+
+    local line
+    local TTL
+    local CREATEAT
+    while read -r line; do
+        case "$line" in
+            TTL*:*)         TTL="${line#*:}" ;          ___x_cmd str trim_ "$TTL" ;         TTL="$x_" ;;
+            CREATEAT*:*)    CREATEAT="${line#*:}" ;     ___x_cmd str trim_ "$CREATEAT" ;    CREATEAT="$x_" ;;
+            *)              break ;;
+        esac
+    done<"$x_/INFO.txt"
+
+    printf "TTL: %s\n"              "$TTL"
+    printf "CREATEAT: %s\n"         "$CREATEAT"
+    printf "EXPIRED: %s\n"          "YES"
+    printf "DATA_DIR: %s\n"         "$x_"
+    printf "DATA_RAW: %s\n"         "$x_/WEBPAGE.RAWDATA.txt"
+    printf "DATA_MARKDOWN: %s\n"    "$x_/WEBPAGE.DATA.md"
+}
+

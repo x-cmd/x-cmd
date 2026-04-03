@@ -1,8 +1,15 @@
 # shellcheck shell=dash
 
 ___x_cmd_weixin_listen_poll(){
-    local X_help_cmd='___x_cmd_weixin___help listen poll'
-    help:arg:parse
+    local format=;
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m weixin listen poll "$@" ; return 0 ;;
+            --json)         format="json" ; shift ;;
+            *)              break ;;
+        esac
+    done
+
     local sync_buf_file="${___X_CMD_WEIXIN_TMP}/sync_buf"
 
     local sync_buf=""
@@ -12,25 +19,44 @@ ___x_cmd_weixin_listen_poll(){
 
     weixin:info "Starting long-poll listener..."
 
+    local resp=""
+    local get_updates_buf=; local msgs=; local  context_token=;
     while true; do
-        local resp; resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
+        resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
             weixin:error "Failed to get updates: $resp"
-            ___x_cmd sleep 1s
+            ___x_cmd sleep 1s || return $?      # why ?
             return 1
         }
 
-        local get_updates_buf=; local msgs=; local  context_token=;
+        get_updates_buf=""; msgs=""; context_token="";
         ___x_cmd jo env . .get_updates_buf .msgs context_token=.msgs.1.context_token  <<A
 $resp
 A
-        if [ "$get_updates_buf" != "$sync_buf_file" ]; then
+        if [ "$get_updates_buf" != "$sync_buf" ]; then
             printf "%s" "$get_updates_buf" > "$sync_buf_file"
             sync_buf="$get_updates_buf"
         fi
 
         [ "$msgs" = "[]" ] || {
             printf "%s" "$context_token" > "$___X_CMD_WEIXIN_CONTEXT_TOKEN"
-            weixin:info "msg : $msgs"
+            if [ "$format" = "json" ]; then
+                printf "%s\n" "$msgs"
+            else
+                printf "%s" "$msgs" | x jo env 1.\*.item_list.\* \
+                MSG_TEXT_TEXT=.text_item.text \
+                MSG_IMG_MEDIA_FULLURL=.image_item.media.full_url \
+                MSG_IMG_MEDIA_AESKEY=.image_item.aeskey \
+                MSG_IMG_MEDIA_AESKEY_64=.image_item.media.aes_key \
+                MSG_VIDEO_MEDIA_FULLURL=.video_item.media.full_url \
+                MSG_VIDEO_MEDIA_AESKEY_64=.video_item.media.aes_key \
+                MSG_FILE_MEDIA_FULLURL=.file_item.media.full_url \
+                MSG_FILE_MEDIA_AESKEY_64=.file_item.media.aes_key \
+                MSG_FILE_MEDIA_AESKEY_name=.file_item.file_name \
+                MSG_VOICE_MEDIA_FULLURL=.voice_item.media.full_url \
+                MSG_VOICE_MEDIA_AESKEY_64=.voice_item.media.aes_key \
+                MSG_TYPE=.type \
+                -- '___x_cmd_weixin_item_decrypt___'
+            fi
         }
     done
 }
@@ -56,7 +82,7 @@ ___x_cmd_weixin_listen_once___(){
         ___x_cmd jo env . .get_updates_buf .msgs context_token=.msgs.1.context_token  <<A
 $resp
 A
-        if [ "$get_updates_buf" != "$sync_buf_file" ]; then
+        if [ "$get_updates_buf" != "$sync_buf" ]; then
             printf "%s" "$get_updates_buf" > "$sync_buf_file"
             sync_buf="$get_updates_buf"
 
@@ -74,4 +100,68 @@ A
 ___x_cmd_weixin_getupdates(){
     local sync_buf="${1:-""}"
     ___x_cmd_weixin_u_curl "POST" "/ilink/bot/getupdates" -d '{"get_updates_buf":"'"$sync_buf"'", "base_info":{ "channel_version": "1.0.2" }}'
+}
+
+
+
+___x_cmd_weixin_item_decrypt___(){
+    local cdn_url=""; local default_ext=""; local original_filename="";
+    local aes_key_hex="";
+
+    case "$MSG_TYPE" in
+        1) weixin:info "Received a message: $MSG_TEXT_TEXT"; return 0    ;;
+        2)
+            cdn_url="$MSG_IMG_MEDIA_FULLURL"
+            if [ -n "$MSG_IMG_MEDIA_AESKEY" ]; then
+                aes_key_hex="$MSG_IMG_MEDIA_AESKEY"
+            else
+                aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$MSG_IMG_MEDIA_AESKEY_64")
+            fi
+            default_ext=".jpg"
+            ;;
+        5)
+            cdn_url="$MSG_VIDEO_MEDIA_FULLURL"
+            aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$MSG_VIDEO_MEDIA_AESKEY_64")
+            default_ext=".mp4"
+            ;;
+        4)
+            cdn_url="$MSG_FILE_MEDIA_FULLURL"
+            aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$MSG_FILE_MEDIA_AESKEY_64")
+            default_ext=".bin"
+            original_filename="$MSG_FILE_MEDIA_AESKEY_name"
+            ;;
+        3)
+            cdn_url="$MSG_VOICE_MEDIA_FULLURL"
+            aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$MSG_VOICE_MEDIA_AESKEY_64")
+            default_ext=".silk"
+            ;;
+        *) return 0 ;;
+    esac
+
+    if [ -z "$cdn_url" ] || [ -z "$aes_key_hex" ];then
+        weixin:error "Missing CDN URL or AES Key"
+        return 1
+    fi
+
+    weixin:info "Downloading media file..."
+    local uuid; uuid=$(___x_cmd rand uuid)
+    local tmp_bin="${___X_CMD_WEIXIN_TMP}/weixin_dl_${uuid}.bin"
+
+    ___x_cmd curl -s -L "$cdn_url" -o "$tmp_bin"
+
+    local out_file=""
+    if [ -n "$original_filename" ]; then
+        out_file="${original_filename}"
+    else
+        out_file="decrypted_${uuid}${default_ext}"
+    fi
+
+    ___x_cmd openssl enc -d -aes-128-ecb -K "$aes_key_hex" -nosalt -in "$tmp_bin" -out "$out_file" || {
+        weixin:error "File decryption failed"
+        ___x_cmd rm -f "$out_file"
+        ___x_cmd rm -f "$tmp_bin"
+        return 1
+    }
+    weixin:info "Received file: $out_file"
+    ___x_cmd rm -f "$tmp_bin"
 }

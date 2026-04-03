@@ -1,33 +1,15 @@
-
-
-# ___x_cmd_agent_zero(){
-#     [ $# -gt 0 ]    ||      set -- request
-
-#     local op="$1" ;         shift
-#     case "$1" in
-#         -h|--help)          ___x_cmd help -m agent zero         "$@" ; return 0 ;;
-#         isready|request)    ___x_cmd_agent_zero_"$op"           "$@" ;;
-#         *)                  ___x_cmd_agent_zero_request "$op"   "$@" ;;
-#     esac
-# }
-
-# 0 = No prem
-# 1 = read PWD          + WebFetch
-# 2 = read/write PWD    + WebFetch
-# 3 = read/write PWD    + WebFetch + Curl
-# 4 = read/write PWD    + WebFetch + Curl   + read ALL
-# 5 = read/write PWD    + WebFetch + Curl   + read ALL + write ALL
-# 6 =
-# 7 =
-# 8 = ...
-# 9 = all = yolo
-
+# shellcheck shell=dash disable=2120
 ___x_cmd_agent_request(){
     # local retry=1
 
+    local content=""
     local harness=""
     local filelist=""
     local NL="$___X_CMD_UNSEENCHAR_NEWLINE"
+    local output_format="text"
+    local output_file=""
+
+    local pipe=""
 
     [ "$#" -gt 0 ] || set -- --help
     while [ $# -gt 0 ]; do
@@ -35,8 +17,11 @@ ___x_cmd_agent_request(){
             -h|--help)      ___x_cmd help -m agent request "$@" ; return 0 ;;
 
             --harness)      harness="$2"  ;     arg:2:shift ;;
-            --file)         filelist="${filelist}${NL}${2}" ; arg:2:shift ;;
-            --output)       output="$2"   ;     arg:2:shift ;;
+            --file|-f)      filelist="${filelist}${NL}${2}" ; arg:2:shift ;;
+            --pipe)         pipe="$(___x_cmd_cmds cat)" ; shift ;;
+
+            --output|-o)    output_file="$2"   ;     arg:2:shift ;;
+            --json)         output_format=json; shift ;;
 
             # --retry)        retry="$2" ; arg:2:shift ;;
 
@@ -51,7 +36,13 @@ ___x_cmd_agent_request(){
         harness="$x_"
     fi
 
-    local content ;
+    if [ -n "$pipe" ]; then
+        content="${content}
+=== Content From Pipe
+$pipe
+===
+"
+    fi
 
     while read -r f; do
         [ -f "$f" ]  || continue
@@ -67,53 +58,83 @@ A
 
     local IFS=" " ; content="${content}${NL}${*}${NL}"
 
-    if [ -z "$output" ]; then
-        x_=""; ___x_cmd_agent_request___run_
-        case $? in
-            130)    return 130 ;;
-            0)      printf "%s\n" "$x_"; return 0 ;;
-            *)      return $? ;;
-        esac
-    fi
-
-    content="${content}
+    if [ -z "$output_file" ]; then
+        ___x_cmd_agent_request___run
+        return $?
+    else
+        content="${content}
 Please output the content between two === as following:
 ===
 <content>
 ===
 "
 
-    if [ -f "$output" ]; then
-        ___x_cmd bakman backup "$output"
+        if [ -f "$output_file" ]; then
+            ___x_cmd bakman backup "$output_file"
+        fi
+
+        x_="$( ___x_cmd_agent_request___run )" || \
+        case $? in
+            130)    return 130 ;;
+            0)      ;;
+            *)      return $? ;;
+        esac
+
+        x_="${x_#*===}"
+        x_="${x_#"$___X_CMD_UNSEENCHAR_NEWLINE"}"
+        x_="${x_%===*}"
+        ___x_cmd fprintf "$output_file" "%s" "$x_"
     fi
 
-    ___x_cmd_agent_request___run_ || \
-    case $? in
-        130)    return 130 ;;
-        0)      ;;
-        *)      return $? ;;
-    esac
-
-    x_="${x_#*===}"
-    x_="${x_#"$___X_CMD_UNSEENCHAR_NEWLINE"}"
-    x_="${x_%===*}"
-    ___x_cmd fprintf "$output" "%s" "$x_"
 }
 
-___x_cmd_agent_request___run_(){
-    agent:info "Sending request to $harness ..."
+___x_cmd_agent_request___run(){
+    agent:info "Sending request to harness '$harness'"
     case "$harness" in
-        kimi-cli)       x_="$(___x_cmd kimi -- -c "$content")" ;;
-        claude)         x_="$(___x_cmd claude -- -p "$content")" ;;
-        codex)          x_="$(___x_cmd codex -- exec "$content" 2>/dev/null)" ;;
-        gemini-cli)     x_="$(___x_cmd gemini cli -- "$content")" ;;
+        kimi-cli)
+            if [ "$output_format" = "json" ]; then
+                ___x_cmd kimi -- --print --output-format stream-json --prompt "$content"
+            else
+                ___x_cmd kimi -- --quiet --prompt "$content"
+            fi
+            ;;
+        claude)
+            if [ "$output_format" = "json" ]; then
+                ___x_cmd claude -- --dangerously-skip-permissions -p --verbose --output-format stream-json "$content"
+            else
+                # --allowedTools "Write,Read,Edit,Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)"
+                ___x_cmd claude -- --dangerously-skip-permissions -p "$content"
+            fi
+            ;;
+        codex)
+            if [ "$output_format" = "json" ]; then
+                ___x_cmd codex -- exec --json "$content"
+            else
+                ___x_cmd codex -- exec --json "$content" | ___x_cmd_agent_request___handle_output CODEX
+            fi
+            ;;
+        gemini-cli)
+            if [ "$output_format" = "json" ]; then
+                ___x_cmd gemini cli -- --yolo --output-format stream-json --prompt "$content"
+            else
+                ___x_cmd gemini cli -- --yolo --prompt "$content"
+            fi
+            ;;
         opencode)
-                        if ! ___x_cmd_hascmd opencode; then
-                            agent:info "Installing opencode..."
-                            ___x_cmd env use opencode || return $?
-                        fi
-                        x_="$(___x_cmd_cmds opencode run "$content")" ;;
-        "")             N=agent M="Please specify harness" log:ret:64 ;;
-        *)              N=agent M="Unsupported harness -> $harness" log:ret:1 ;;
+            if [ "$output_format" = "json" ]; then
+                ___x_cmd opencode run --format json "$content"
+            else
+                ___x_cmd opencode run "$content"
+            fi
+            ;;
+        "") N=agent M="Please specify harness using '--harness <name>'" log:ret:64 ;;
+        *)  N=agent M="Unsupported harness '$harness'" log:ret:1 ;;
     esac
+}
+
+___x_cmd_agent_request___handle_output(){
+    local harness="$1"
+    harness="$harness" \
+    ___x_cmd awk0 -m j/json -m j/jiter \
+        -f "$___X_CMD_ROOT_MOD/agent/lib/awk/handle_output.awk"
 }

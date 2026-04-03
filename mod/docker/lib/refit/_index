@@ -194,13 +194,18 @@ RUN sed -i 's/^# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && sed -i 's/^# zh_CN
 
             [ -z "$bun" ]           || xenv="$xenv bun"
             [ -z "$uv"  ]           || xenv="$xenv uv"
-            [ -z "$npm"  ]          || xenv="$xenv node"
+
+            [ -z "$npm"  ]          || {
+                # Packages built by Node.js officially depend on glibc and cannot be used in Alpine.
+                ___x_cmd docker cmdinfo hascmd "$baseimage" apk || xenv="$xenv node"
+            }
 
             if ___x_cmd docker cmdinfo hascmd "$baseimage" apk; then
                 [ -z "$go" ]        || apk="$apk go"
                 [ -z "$cargo" ]     || apk="$apk cargo"
 
-                # [ -z "$npm" ]       || apk="$apk npm"
+                [ -z "$npm" ]       || apk="$apk npm"
+
                 [ -z "$deno" ]      || apk="$apk deno"
 
                 [ -z "$pip" ]       || apk="$apk py3-pip"   # TODO: add uv
@@ -379,10 +384,11 @@ ___x_cmd_docker_refit_code_adduser(){
     local user="$3"
     local uid="$4"
     if ___x_cmd docker cmdinfo hascmd "$baseimage" useradd; then
-        ___x_cmd_docker_refit_code_run  "[ -d /home/$user ] || { groupadd $group; useradd -r -u $uid -g $group $user; }"
+        ___x_cmd_docker_refit_code_run  "id -u $user >/dev/null 2>&1 || { groupadd $group; useradd -r -u $uid -g $group -m -d /home/$user $user; }"
     else
-        ___x_cmd_docker_refit_code_run  "[ -d /home/$user ] || adduser -D -u $uid $user"
+        ___x_cmd_docker_refit_code_run  "id -u $user >/dev/null 2>&1 || { adduser -D -u $uid $user; }"
     fi
+    ___x_cmd_docker_refit_code_run "[ -d /home/$user ] || { mkdir -p /home/$user && chown $user:$group /home/$user; }"
 }
 
 ___x_cmd_docker_refit_code_user_workdir(){
