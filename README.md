@@ -9,24 +9,38 @@ English | [中文](README.cn.md) | [Source Code](https://github.com/x-cmd/x-cmd/
 <h1 align="center"><a href="https://x-cmd.com/">X-CMD</a></h1>
 
 <p align="center">
-  <b>Best Buddy for AI Agents</b>
+  <b>Shell Superpowers for AI Agents</b>
   <br>
   <a href="https://x-cmd.com/">https://x-cmd.com</a>
 </p>
 
 ## [Introduction](https://x-cmd.com)
 
-X-CMD (pronounced as "*X Command*") is a compact yet powerful command-line toolkit that offers over <ins>100+</ins> functional modules tailored for various use cases, along with a package manager that supports downloading and installing over <ins>500+</ins> third-party open-source CLI tools.
+X-CMD (pronounced as "*X Command*") is a modern toolkit for POSIX shell (bash, zsh, ash, dash) — designed to make shell as powerful as Python's standard library.
 
+**Our Journey**
 
-- ⚡ **Bootstrap 1000+ CLI tools**: One command, download on-demand, launch CLI like apps.
-- 🧠 **AI-Powered**: AI agent, AI chat, AI tasks, AI generator ... — one command to owner your efficient copilot.
-- 🧩 **Environment Management**: Smoothly set up Node, Python, Java, Go … development environments
-- 🛡️ **Secure Sandbox**: Provide permission-controlled system sandbox and Docker-based isolation — run software safely.
-- 🎨 **Terminal Beautifier**: Built-in switch terminal theme & primary color, fonts installation, quickpath navigation and native completions — stylish and efficient.
-- ∞ **Design & UX**: Unified CLI style, intuitive terminal UI, smooth workflows, effortless terminal experience.
-- 🗃️ **Hub**: Instantly run hosted scripts across different platforms and shells, even in lightweight containers like BusyBox and Alpine.
-- 🪶 **Lightweight**: Core package ~ 1.1 MB, loads in ~ 100 ms.
+What started as "a standard library for shell" evolved into something bigger:
+
+1. **Shell Standard Library** — We built 300+ [modules](https://x-cmd.com/mod) in shell/awk, bringing modern capabilities to any system with just POSIX shell — even BusyBox, Alpine, or legacy machines.
+
+2. **On-Demand Package System** — Some modules need capabilities beyond POSIX. We designed [pkg](https://x-cmd.com/pkg): 600+ curated modern CLI tools (jq, fzf, fd, ripgrep...), reviewed and packaged by our team — maximizing environment compatibility, minimizing dependencies, lightweight download, on-demand loading, no root, no system pollution.
+
+3. **Diverse Modules** — Beyond traditional tools, we built practical modules for various scenarios: [theme](https://x-cmd.com/mod/theme) (cross-shell themes), [advise](https://x-cmd.com/mod/advise) (completions for 6+ shells), [githook](https://x-cmd.com/mod/githook) (husky alternative), [free](https://free.x-cmd.com) (macOS missing command), [ccal](https://ccal.x-cmd.com) (Chinese calendar), [weixin](https://weixin.x-cmd.com) (WeChat integration), and many more — all in shell/awk.
+
+4. **AI-Native Shell** — From ChatGPT era onward, we brought AI to shell. With just shell + curl, access OpenAI, Gemini, DeepSeek, Zhipu, MiniMax. Our pure-shell agent — under 2MB — delivers capabilities comparable to OpenClaw and Claude Code.
+
+5. **Optimized for Agents** — After 5 years, we discovered shell's sweet spot: AI agents. Where network latency and LLM throughput dominate, shell's flexibility, native system integration, and tool-chaining shine. AWK streaming handles LLM output beautifully.
+
+**The Result**
+
+| | [Modules](https://x-cmd.com/mod) | [Packages](https://x-cmd.com/pkg) |
+|---|---|---|
+| **What** | 300+ shell/awk libraries (like JS) | 600+ CLI tools (like WebAssembly) |
+| **Use** | `x <module>` | `x <tool>` or `x env use <tool>` |
+| **Examples** | `theme`, `advise`, `openai`, `gemini` | `jq`, `fzf`, `node`, `python` |
+
+- 🪶 **Lightweight**: Core ~1.1 MB. Non-interactive load <20 ms, interactive <60 ms.
 
 [![x-cmd-banner](https://cdn.jsdelivr.net/gh/Zhengqbbb/Zhengqbbb@v1.2.2/x-cmd/x-cmd-banner.png)](https://x-cmd.com)
 
@@ -254,6 +268,47 @@ For commonly used packages, e.g `jq` :
 - [pkg get-started](https://www.x-cmd.com/pkg/get-started)
 - [about pkg](https://www.x-cmd.com/pkg/diff-install-method)
 - [submit pkg](https://www.x-cmd.com/pkg/submit)
+
+## FAQ
+
+### What's the difference between Modules and Packages?
+
+| | [Modules](https://x-cmd.com/mod) | [Packages](https://x-cmd.com/pkg) |
+|---|---|---|
+| **What** | Functional libraries written by X-CMD team | Curated third-party open-source CLI tools |
+| **Language** | Shell + AWK (POSIX-native) | Pre-compiled binaries (Go, Rust, C, etc.) |
+| **Philosophy** | Core self-contained; advanced features/acceleration via on-demand pkg | On-demand download, no root, no system pollution |
+| **Examples** | `theme`, `advise`, `githook`, `openai`, `gemini` | `jq`, `fzf`, `fd`, `ripgrep`, `node`, `python` |
+
+**A useful analogy**: Modules and Packages relate like **JS and WebAssembly** in browsers.
+
+- **Modules (JS)**: Native, lightweight, runs everywhere, can invoke packages
+- **Packages (Wasm)**: Compiled, more powerful, loaded on-demand
+
+**Key insight**: Modules strive to be self-contained using shell/awk and native POSIX tools. When a module needs advanced capabilities beyond what POSIX provides, it may transparently fetch packages via the pkg system — but this is always a fallback, not the default.
+
+### What's the design philosophy behind X-CMD?
+
+X-CMD evolved from a simple question: **What if shell had a standard library as powerful as Python's?**
+
+1. **Shell deserves better** — We built a modular standard library for POSIX shell (bash, zsh, ash, dash), written in shell/awk for maximum portability.
+
+2. **Shell is a glue language** — To glue tools effectively, we created the pkg system: 600+ curated modern CLI tools, on-demand, no root, no system pollution.
+
+3. **Portability first** — Modules written in shell/awk work even on legacy systems, BusyBox, Alpine — anywhere with just shell and awk.
+
+4. **AI-native shell** — From ChatGPT onward, we bring AI to shell. With just shell + curl, access multiple AI providers. Our pure-shell agent (under 2MB) rivals OpenClaw and Claude Code.
+
+5. **Optimized for agents** — 5 years of shell best practices. AWK streaming + shell's native flexibility + tool-chaining = ideal for AI agents where network/LLM latency dominates, not compute speed.
+
+### Does X-CMD work in minimal environments like BusyBox or Alpine?
+
+Yes. X-CMD is designed for maximum compatibility:
+
+- Works in BusyBox, Alpine, and other minimal containers
+- Core modules use only POSIX shell + AWK
+- Gracefully degrades when advanced tools are unavailable
+- Packages are fetched on-demand only when needed
 
 ## License
 
