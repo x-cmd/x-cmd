@@ -310,6 +310,24 @@ Yes. X-CMD is designed for maximum compatibility:
 - Gracefully degrades when advanced tools are unavailable
 - Packages are fetched on-demand only when needed
 
+## Author
+
+<table>
+<tr>
+<td width="140" valign="top">
+<a href="https://ljh.sh">
+<img src="https://ljh.sh/assets/avatar-el-CY3h4HlP.webp" width="120" style="border-radius: 50%;" alt="Author avatar">
+</a>
+</td>
+<td valign="top">
+<a href="https://ljh.sh"><strong>ljh.sh</strong></a><br>
+Creator of X-CMD<br>
+l@x-cmd.com<br>
+<a href="https://github.com/edwinjhlee">GitHub</a> · Backed by <a href="https://www.miracleplus.com/">MiraclePlus</a>
+</td>
+</tr>
+</table>
+
 ## License
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)

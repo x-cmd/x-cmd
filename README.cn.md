@@ -311,6 +311,24 @@ X-CMD 源于一个简单的问题：**如果 shell 也有像 Python 那样强大
 - 高级工具不可用时会优雅降级
 - 包仅在需要时按需拉取
 
+## 作者
+
+<table>
+<tr>
+<td width="140" valign="top">
+<a href="https://ljh.sh">
+<img src="https://ljh.sh/assets/avatar-el-CY3h4HlP.webp" width="120" style="border-radius: 50%;" alt="作者头像">
+</a>
+</td>
+<td valign="top">
+<a href="https://ljh.sh"><strong>ljh.sh</strong></a><br>
+X-CMD 作者<br>
+l@x-cmd.com<br>
+<a href="https://github.com/edwinjhlee">GitHub</a> · Backed by <a href="https://www.miracleplus.com/">奇绩创坛</a>
+</td>
+</tr>
+</table>
+
 ## License
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
