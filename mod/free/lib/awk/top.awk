@@ -75,7 +75,7 @@ END {
 
     # --precise mode: call footprint CLI for multi-process groups to get
     # accurate cross-process deduped Summary Footprint
-    if (use_fp + 0 == 1 && mem_col == "mem" && group != "none") {
+    if (use_fp + 0 == 1 && use_footprint + 0 == 1 && mem_col == "mem" && group != "none") {
         fp_limit = top_n * 2
         if (fp_limit > n) fp_limit = n
         for (i = 1; i <= fp_limit; i++) {
