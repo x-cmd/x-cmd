@@ -8,20 +8,24 @@ ___x_cmd_agent_request(){
     local NL="$___X_CMD_UNSEENCHAR_NEWLINE"
     local output_format="text"
     local output_file=""
+    local overwrite=""
 
     local pipe=""
+    local user_session_id=""
 
     [ "$#" -gt 0 ] || set -- --help
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)      ___x_cmd help -m agent request "$@" ; return 0 ;;
 
-            --harness)      harness="$2"  ;     arg:2:shift ;;
-            --file|-f)      filelist="${filelist}${NL}${2}" ; arg:2:shift ;;
-            --pipe)         pipe="$(___x_cmd_cmds cat)" ; shift ;;
+            --harness)      harness="$2"  ;                     arg:2:shift ;;
+            --file|-f)      filelist="${filelist}${NL}${2}" ;   arg:2:shift ;;
+            --pipe)         pipe="$(___x_cmd_cmds cat)" ;       shift ;;
 
-            --output|-o)    output_file="$2"   ;     arg:2:shift ;;
-            --json)         output_format=json; shift ;;
+            --output|-o)    output_file="$2"   ;                arg:2:shift ;;
+            --overwrite)    overwrite=1;                        shift ;;
+            --json)         output_format=json;                 shift ;;
+            --session)      user_session_id="$2";               arg:2:shift ;;
 
             # --retry)        retry="$2" ; arg:2:shift ;;
 
@@ -38,19 +42,18 @@ ___x_cmd_agent_request(){
 
     if [ -n "$pipe" ]; then
         content="${content}
-=== Content From Pipe
-$pipe
-===
+<STDIN>
+${pipe}
+</STDIN>
 "
     fi
 
     while read -r f; do
         [ -f "$f" ]  || continue
-
         content="${content}
-=== filename -> $f
+<FILE path=\"${f}\">
 $(___x_cmd_cmds cat "$f")
-===
+</FILE>
 "
     done <<A
 $filelist
@@ -63,13 +66,13 @@ A
         return $?
     else
         content="${content}
-Please output the content between two === as following:
-===
-<content>
-===
+Output your response wrapped with:
+<OUTPUT-CONTENT>
+...
+</OUTPUT-CONTENT>
 "
 
-        if [ -f "$output_file" ]; then
+        if [ -f "$output_file" ] && [ "${overwrite:-}" != "1" ]; then
             ___x_cmd bakman backup "$output_file"
         fi
 
@@ -80,52 +83,95 @@ Please output the content between two === as following:
             *)      return $? ;;
         esac
 
-        x_="${x_#*===}"
-        x_="${x_#"$___X_CMD_UNSEENCHAR_NEWLINE"}"
-        x_="${x_%===*}"
-        ___x_cmd fprintf "$output_file" "%s" "$x_"
+        x_="${x_#*<OUTPUT-CONTENT>}"
+        x_="${x_%</OUTPUT-CONTENT>*}"
+        x_="${x_#"$NL"}"
+        x_="${x_%"$NL"}"
+        printf "%s" "$x_" > "$output_file"
     fi
 
 }
 
 ___x_cmd_agent_request___run(){
     agent:info "Sending request to harness '$harness'"
+    shift $#
+
+    local session_map_file=""
+    local real_session_id=""
     case "$harness" in
         kimi-cli)
-            if [ "$output_format" = "json" ]; then
-                ___x_cmd kimi -- --print --output-format stream-json --prompt "$content"
-            else
-                ___x_cmd kimi -- --quiet --prompt "$content"
+            if [ -n "$user_session_id" ]; then
+                set -- --session "$user_session_id"
             fi
+
+            if [ "$output_format" = "json" ]; then
+                set -- "$@" --print --output-format stream-json
+            else
+                set -- "$@" --print --output-format text --final-message-only
+            fi
+
+            ___x_cmd kimi -- "$@" --prompt "$content"
             ;;
         claude)
-            if [ "$output_format" = "json" ]; then
-                ___x_cmd claude -- --dangerously-skip-permissions -p --verbose --output-format stream-json "$content"
-            else
-                # --allowedTools "Write,Read,Edit,Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)"
-                ___x_cmd claude -- --dangerously-skip-permissions -p "$content"
+            if [ -n "$user_session_id" ]; then
+                session_map_file="$___X_CMD_ROOT_TMP/agent/request/session/$harness/$user_session_id"
+                if [ -f "$session_map_file" ]; then
+                    set -- --resume "$user_session_id"
+                else
+                    set -- --session-id "$user_session_id"
+                    ___x_cmd ensurefp "$session_map_file"
+                    printf "%s\n" "$user_session_id" > "$session_map_file"
+                fi
             fi
+
+            if [ "$output_format" = "json" ]; then
+                set -- "$@" --verbose --output-format stream-json
+            fi
+
+            # --allowedTools "Write,Read,Edit,Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)"
+            ___x_cmd claude -- "$@" --dangerously-skip-permissions --print "$content"
             ;;
         codex)
-            if [ "$output_format" = "json" ]; then
-                ___x_cmd codex -- exec --json "$content"
-            else
-                ___x_cmd codex -- exec --json "$content" | ___x_cmd_agent_request___handle_output CODEX
+            set -- exec
+            if [ -n "$user_session_id" ]; then
+                session_map_file="$___X_CMD_ROOT_TMP/agent/request/session/$harness/$user_session_id"
+                if [ -f "$session_map_file" ]; then
+                    read -r real_session_id < "$session_map_file"
+                    set -- "$@" resume "$real_session_id"
+                    session_map_file=""
+                else
+                    ___x_cmd ensurefp "$session_map_file"
+                fi
             fi
+            ___x_cmd codex -- "$@" --json --full-auto --skip-git-repo-check "$content" | ___x_cmd_agent_request___handle_output codex "$output_format" "$session_map_file"
             ;;
         gemini-cli)
-            if [ "$output_format" = "json" ]; then
-                ___x_cmd gemini cli -- --yolo --output-format stream-json --prompt "$content"
-            else
-                ___x_cmd gemini cli -- --yolo --prompt "$content"
+            if [ -n "$user_session_id" ]; then
+                session_map_file="$___X_CMD_ROOT_TMP/agent/request/session/$harness/$user_session_id"
+                if [ -f "$session_map_file" ]; then
+                    read -r real_session_id < "$session_map_file"
+                    set -- --resume "$real_session_id"
+                    session_map_file=""
+                else
+                    ___x_cmd ensurefp "$session_map_file"
+                fi
             fi
+
+            ___x_cmd gemini cli -- --yolo "$@" --output-format stream-json --prompt "$content" | ___x_cmd_agent_request___handle_output gemini-cli "$output_format" "$session_map_file"
             ;;
         opencode)
-            if [ "$output_format" = "json" ]; then
-                ___x_cmd opencode run --format json "$content"
-            else
-                ___x_cmd opencode run "$content"
+            if [ -n "$user_session_id" ]; then
+                session_map_file="$___X_CMD_ROOT_TMP/agent/request/session/$harness/$user_session_id"
+                if [ -f "$session_map_file" ]; then
+                    read -r real_session_id < "$session_map_file"
+                    set -- --session "$real_session_id"
+                    session_map_file=""
+                else
+                    ___x_cmd ensurefp "$session_map_file"
+                fi
             fi
+
+            ___x_cmd opencode run "$@" --format json "$content" | ___x_cmd_agent_request___handle_output opencode "$output_format" "$session_map_file"
             ;;
         "") N=agent M="Please specify harness using '--harness <name>'" log:ret:64 ;;
         *)  N=agent M="Unsupported harness '$harness'" log:ret:1 ;;
@@ -134,6 +180,11 @@ ___x_cmd_agent_request___run(){
 
 ___x_cmd_agent_request___handle_output(){
     local harness="$1"
+    local output_format="$2"
+    local save_session_id_file="$3"
+
+    output_format="$output_format" \
+    save_session_id_file="$save_session_id_file" \
     harness="$harness" \
     ___x_cmd awk0 -m j/json -m j/jiter \
         -f "$___X_CMD_ROOT_MOD/agent/lib/awk/handle_output.awk"

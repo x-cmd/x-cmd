@@ -2,12 +2,16 @@
 
 # chatid,
 ___x_cmd_feishu_reactor_echo(){
-    ___x_cmd_feishu_bot_send_msg "$MSG_CHATID" "$MSG_BODY"
+    ___x_cmd_feishu_bot_send_msg --chatid "$MSG_CHATID" "$MSG_BODY"
 }
 
 ___x_cmd_feishu_reactor_repl(){
-    local resp; resp="$(eval "$MSG_BODY")"
-    ___x_cmd_feishu_bot_send_msg "$MSG_CHATID" "$resp"
+    local resp; resp="$(eval "$MSG_BODY" 2>&1)"
+    if [ -z "$resp" ]; then
+        feishu:warn "Send message skipped: executed command returned empty output"
+        return $?
+    fi
+    ___x_cmd_feishu_bot_send_msg --chatid "$MSG_CHATID" "$resp"
 }
 
 ___x_cmd_feishu_react(){
@@ -39,28 +43,62 @@ ___x_cmd_feishu_react(){
     ____x_cmd_tenant_token || return
     cur_token="$x_"
 
-    local MSG_CHATID
-    local msg_line
-
     while true; do
         {
             ___x_cmd_feishu_chat_history
         } | {
+            local MSG_CHATID
+            local msg_line
             while read -r msg_line; do
                 ___x_cmd pipevar msg_line   ___x_cmd jo env .   \
+                        MSG_ID=.message_id                     \
                         MSG_FROM=.sender.id                     \
                         MSG_FROM_TYPE=.sender.sender_type       \
                         MSG_CHATID=.chat_id                     \
                         MSG_TYPE=.msg_type                      \
                         MSG_CONTENT=.body.content
 
-                MSG_BODY="$(printf "%s" "$MSG_CONTENT" | ___x_cmd jq -r .text)"
+                ___x_cmd_feishu_item_decrypt___
                 "$@"
             done
         }
 
         ___x_cmd sleep 5 || return $?
     done
+}
+
+___x_cmd_feishu_item_decrypt___(){
+    local FILE_KEY
+    case "$MSG_TYPE" in
+        text)
+            MSG_BODY="$(printf "%s" "$MSG_CONTENT" | ___x_cmd jq -r .text)"
+            feishu:info "Received a message: $MSG_BODY"
+            return
+            ;;
+        image)
+            FILE_KEY="$(printf "%s" "$MSG_CONTENT" | ___x_cmd jq -r .image_key)"
+            MSG_FILE_NAME="${FILE_KEY}.jpg"
+            ;;
+        file)
+            FILE_KEY="$(printf "%s" "$MSG_CONTENT" | ___x_cmd jq -r .file_key)"
+            MSG_FILE_NAME="$(printf "%s" "$MSG_CONTENT" | ___x_cmd jq -r .file_name)"
+            ;;
+    esac
+
+    feishu:info "Downloading media file..."
+    ___x_cmd_feishu_download_resource "$MSG_ID" "$FILE_KEY" "$MSG_TYPE" "$MSG_FILE_NAME"
+    MSG_BODY="File save success"
+}
+
+___x_cmd_feishu_download_resource(){
+    local message_id="$1"
+    local file_key="$2"
+    local type="$3"
+    local output_file="$4"
+
+    curl -s -L -X GET "https://open.feishu.cn/open-apis/im/v1/messages/${message_id}/resources/${file_key}?type=${type}" \
+        -H "Authorization: Bearer $cur_token" \
+        -o "$output_file"
 }
 
 ___x_cmd_feishu_chat_history(){
@@ -107,8 +145,18 @@ END{
 }
 
 ___x_cmd_feishu_bot_send_msg() {
-    local chat_id="$1"
-    local msg="{\"text\":\"$2\"}"
+    local chat_id
+    local json_output=;
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --chatid)   chat_id="$2" ; arg:2:shift ;;
+            -j|--json)  json_output=1; shift ;;
+            -h|--help)  ___x_cmd help -m feishu bot send text; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    local msg="{\"text\":\"$1\"}"
     msg="$( ___x_cmd_feishu___jqu "$msg")"
 
     local uuid
@@ -126,8 +174,20 @@ ___x_cmd_feishu_bot_send_msg() {
               receive_id: $chat_id
             }')"
 
-    printf '%s' "${data}"| curl -s -X POST 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id' \
+    local resp; resp="$(printf '%s' "${data}" | curl -s -X POST 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id' \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $cur_token" \
-    -d @-
+    -d @-)"
+
+    [ -z "$json_output" ] || {
+        printf "%s" "$resp"
+        return
+    }
+
+    local statu ; statu="$(printf "%s" "$resp" | {  ___x_cmd jo env .msg ; echo "$msg" ; })"
+    if [ "$statu" = "success" ]; then
+        ___x_cmd_ui_tf true "Sent text message successfully"
+    else
+        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$resp"
+    fi
 }

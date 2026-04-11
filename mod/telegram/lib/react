@@ -1,16 +1,16 @@
 # shellcheck shell=sh disable=SC2016,SC3043
 
 ___x_cmd_telegram_reactor_echo(){
-    ___x_cmd_telegram_bot_send --chat "$MSG_CHATID" "$MSG_BODY"
+    ___x_cmd_telegram_bot_send --chatid "$MSG_CHATID" "$MSG_BODY"
 }
 
 ___x_cmd_telegram_reactor_repl(){
     local resp; resp="$(eval "$MSG_BODY" 2>&1)"
     if [ -z "$resp" ]; then
-        weixin:warn "Send message skipped: executed command returned empty output"
+        telegram:warn "Send message skipped: executed command returned empty output"
         return $?
     fi
-    ___x_cmd_telegram_bot_send --chat "$MSG_CHATID" "$resp"
+    ___x_cmd_telegram_bot_send --chatid "$MSG_CHATID" "$resp"
 }
 
 ___x_cmd_telegram_react(){
@@ -43,21 +43,24 @@ ___x_cmd_telegram_react(){
         [ -n "$token" ] || N=telegram M="Please setting up your token first ==> 'x telegram --cfg token=<your token>'" log:ret:1
     }
 
-
     while true; do
         {
             ___x_cmd_telegram_bot_sub
-        } |{
+        }|{
             local msg_line
-            local MSG_CHATID="" MSG_TEXT_TEXT=""
+            local MSG_ID="" MSG_FROM="" MSG_CHATID="" MSG_TEXT_TEXT="" MSG_IMG_ID="" MSG_DOCUMENT_ID="" MSG_VIDEO_ID=""
             while read -r msg_line; do
-                printf "%s" "$msg_line"
                 ___x_cmd pipevar msg_line   ___x_cmd jo env .result.1.message   \
-                        MSG_FROM=.from.id                     \
-                        MSG_CHATID=.chat.id                     \
-                        MSG_TEXT_TEXT=.text
+                        MSG_ID=.message_id                      \
+                        MSG_FROM=.from.id                       \
+                        MSG_CHATID=.chat.id                    \
+                        MSG_TEXT_TEXT=.text                    \
+                        MSG_IMG_ID=.photo.1.file_id            \
+                        MSG_DOCUMENT_ID=.document.file_id       \
+                        MSG_VIDEO_ID=.video.1.file_id
 
-                MSG_BODY="$MSG_TEXT_TEXT"
+                ___x_cmd_telegram_item_decrypt___
+                [ -z "$MSG_BODY" ] && continue
                 "$@"
             done
         }
@@ -66,23 +69,114 @@ ___x_cmd_telegram_react(){
     done
 }
 
+___x_cmd_telegram_item_decrypt___(){
+    local file_id=""
+    if [ -n "$MSG_TEXT_TEXT" ]; then
+        MSG_BODY="$MSG_TEXT_TEXT"
+        telegram:info "Received a message: $MSG_BODY"
+        return
+    elif [ -n "$MSG_IMG_ID" ]; then
+        file_id="$MSG_IMG_ID"
+    elif [ -n "$MSG_DOCUMENT_ID" ]; then
+        file_id="$MSG_DOCUMENT_ID"
+    fi
+
+    if [ -n "$file_id" ]; then
+        telegram:info "Downloading media file..."
+        ___x_cmd_telegram_download_file "$file_id"
+        MSG_BODY="File save success"
+    fi
+}
+
 ___x_cmd_telegram_bot_sub(){
     [ -n "$token" ] || {
         local token=;
         ___x_cmd_telegram_cur token:= 2>/dev/null
         [ -n "$token" ] || N=telegram M="Please setting up your token first ==> 'x telegram --cfg token=<your token>'" log:ret:1
     }
+    local proxy=
+    ___x_cmd_telegram_cur proxy:= 2>/dev/null
+
     local url="https://api.telegram.org/bot$token/getUpdates"
-    local timeout=100
+    local timeout="100"
 
     local fp="$___X_CMD_ROOT_DATA/telegram/data.json"
     ___x_cmd ensurefp "$fp"
 
-    local offset;   offset="$(___x_cmd jq ".result[-1].update_id + 1" "$fp" )"
-    offset="${offset:-1}"
+    local offset="1"
+    [ ! -f "$fp" ] || offset="$(___x_cmd jq ".result[-1].update_id + 1" "$fp" )"
 
     ___x_cmd jo dict "offset=${offset}" "timeout=${timeout}"  | \
-        ___x_cmd curl -s -X POST -H 'Content-Type: application/json'  -d @- "$url" | \
+        ___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} -X POST -H 'Content-Type: application/json'  -d @- "$url" | \
         ___x_cmd jq -c | \
         ___x_cmd tee "$fp"
 }
+
+
+___x_cmd_telegram_download_file(){
+    local file_id="$1"
+    local dest_dir="${2:-.}"
+
+    [ -n "$token" ] || {
+        local token=;
+        ___x_cmd_telegram_cur token:= 2>/dev/null
+        [ -n "$token" ] || N=telegram M="Please setting up your token first ==> 'x telegram --cfg token=<your token>'" log:ret:1
+    }
+
+    local proxy=
+    ___x_cmd_telegram_cur proxy:= 2>/dev/null
+
+    [ -d "$dest_dir" ] || ___x_cmd mkdirp "$dest_dir"
+
+    local file_path
+    file_path="$(___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} "https://api.telegram.org/bot${token}/getFile?file_id=${file_id}" | \
+        ___x_cmd jq -r .result.file_path)"
+
+    [ -n "$file_path" ] || return 1
+
+    local filename="${dest_dir}/$file_path"
+    ___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} "https://api.telegram.org/file/bot${token}/${file_path}" -o "$filename"
+}
+
+___x_cmd_telegram_bot_send(){
+    local chat_id
+    local json_output=;
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --chatid)   chat_id="$2" ; arg:2:shift ;;
+            -j|--json)  json_output=1; shift ;;
+            -h|--help)  ___x_cmd help -m telegram bot send text; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    [ -n "$token" ] || {
+        local token=;
+        ___x_cmd_telegram_cur token:= 2>/dev/null
+        [ -n "$token" ] || N=telegram M="Please setting up your token first ==> 'x telegram --cfg token=<your token>'" log:ret:1
+    }
+
+    local proxy=
+    ___x_cmd_telegram_cur proxy:= 2>/dev/null
+
+    local msg="$1"
+    local data
+    data="$(___x_cmd jo dict "chat_id=${chat_id}" "text=${msg}")"
+
+    local resp; resp="$(printf '%s' "${data}" | ___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} -X POST -H 'Content-Type: application/json' \
+        "https://api.telegram.org/bot${token}/sendMessage" \
+        -d @-)"
+
+    [ -z "$json_output" ] || {
+        printf "%s" "$resp"
+        return
+    }
+
+    local statu ; statu="$(printf "%s" "$resp" | {  ___x_cmd jo env .ok ; echo "$ok" ; })"
+    if [ "$statu" = "true" ]; then
+        ___x_cmd_ui_tf true "Sent text message successfully"
+    else
+        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$resp"
+    fi
+}
+

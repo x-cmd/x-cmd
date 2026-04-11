@@ -1,0 +1,121 @@
+
+
+___x_cmd_tailer_defaulthandler(){
+    local msg="$1"
+    printf "RECV: %s\n" "$msg"
+}
+
+
+___x_cmd_tailer_run(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local gc_count=10000
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m tailer run "$@" ; return 0 ;;
+            --gc)           gc_count="$2" ;     arg:2:shift ;;
+            *)              break ;;
+        esac
+    done
+
+    local mq_folder="$1"
+
+    [ -n "$mq_folder" ]             ||  N=tailer M="Please provide folder for mq."          log:ret:64
+
+    ___x_cmd mkdirp "$mq_folder"    ||  N=tailer M="Fail to prepare folder -> $mq_folder"   log:ret:1
+
+    local mq_fp_current="$mq_folder/MQ.CURRENT"
+    local mq_fp_current_data="$mq_fp_current/data.tsv"
+    local mq_fp_current_index="$mq_fp_current/index.txt"
+
+    local mq_fp_previous="$mq_folder/MQ.PREVIOUS"
+    local mq_fp_previous_data="$mq_fp_previous/data.tsv"
+    local mq_fp_previous_index="$mq_fp_previous/index.txt"
+
+    [ -n "$___X_CMD_TAILER_HANDLE" ] || ___X_CMD_TAILER_HANDLE="___x_cmd_tailer_defaulthandler"
+
+    local mq_previous_last_index=0
+    local mq_current_last_index=0
+
+    while true; do
+        mq_previous_last_index=0
+        mq_current_last_index=0
+
+        if [ -e "$mq_fp_previous_index" ]; then
+            read -r mq_previous_last_index <"$mq_fp_previous_index" || {
+                tailer:error "Exit because unexpected file failure => $mq_fp_previous_index"
+                return 1
+            }
+        fi
+
+        if [ -e "$mq_fp_current_index" ]; then
+            read -r mq_current_last_index <"$mq_fp_current_index" || {
+                tailer:error "Exit because unexpected file failure => $mq_fp_current_index"
+                return 1
+            }
+        fi
+
+        {(
+            ___x_cmd pidofsubshell
+
+            [ ! -e "$mq_fp_previous_data" ] ||  ___x_cmd_cmds tail -n +$((mq_previous_last_index+1))  "$mq_fp_previous_data" ;
+            case $? in
+                130)     return 130 ;;
+            esac
+
+            printf "%s\n" "---"
+
+            [ -f "$mq_fp_current_data" ]   ||  {
+                ___x_cmd mkdirp "$mq_fp_current"
+                ___x_cmd_cmds touch "$mq_fp_current_data"
+            }
+            exec tail -n +$((mq_current_last_index+1)) -f "$mq_fp_current_data"
+        )} | {(
+            # Notice, we don't need to handle 130 in the following code.
+            # Because if it exits here, the "--" output will fail to pipe. The upstream will exit immediately.
+            local PID_OF_UPSTREAM;  read -r PID_OF_UPSTREAM || return 130  # Forcibly return 130.
+
+            local MQ_TYPE=PREVIOUS
+            local MQ_MSG_IDX="$mq_previous_last_index"
+
+            while true; do
+                read -r line || return 130
+
+                if [ "$line" = "---" ]; then
+                    ___x_cmd rmrf "$mq_fp_previous"
+                    MQ_TYPE=CURRENT
+                    MQ_MSG_IDX="$mq_current_last_index"
+                    continue
+                fi
+
+                MQ_MSG_IDX=$((MQ_MSG_IDX+1))
+
+                "$___X_CMD_TAILER_HANDLE" "$line"
+
+                case $? in
+                    130)    ___x_cmd_cmds kill -s INT "$PID_OF_UPSTREAM"
+                            return 130 ;;
+                    *)      printf "%s\n" "$MQ_MSG_IDX">"$mq_folder/MQ.$MQ_TYPE/index.txt" ;;
+                esac
+
+                if [ "$MQ_TYPE" = CURRENT ] && [ "$MQ_MSG_IDX" -gt "$gc_count" ]; then
+                    ___x_cmd_cmds kill -s INT "$PID_OF_UPSTREAM"
+                    ___x_cmd_cmds mv "$mq_fp_current" "$mq_fp_previous"
+                    return 0
+                fi
+            done
+        )}
+
+        case $? in
+            130)        tailer:info "Got SIGINT, exit"
+                        return 130 ;;
+            *)
+                        local err=$?
+                        tailer:warn "Subprocess exit $err, retry"
+                        ;;
+        esac
+
+        tailer:info "Loop restart"
+    done
+}
+

@@ -1,0 +1,119 @@
+# shellcheck shell=sh disable=SC2016,SC3043
+
+___x_cmd_qywx_reactor_echo(){
+    ___x_cmd_qywx_bot_send_msg "$MSG_RESP_URL" "$MSG_BODY"
+}
+
+___x_cmd_qywx_reactor_repl(){
+    local resp; resp="$(eval "$MSG_BODY" 2>&1)"
+    if [ -z "$resp" ]; then
+        qywx:warn "Send message skipped: executed command returned empty output"
+        return $?
+    fi
+    ___x_cmd_qywx_bot_send_msg "$MSG_RESP_URL" "$resp"
+}
+
+___x_cmd_qywx_react(){
+    param:void
+
+    local timeout=$(( 1 * 60 * 60 * 1000 ))
+    local runner=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help|"")       ___x_cmd help -m qywx react ;     return 0 ;;
+            --timeout)          timeout="$2" ; arg:2:shift ;;
+            --runner)           runner="$2" ; arg:2:shift ;;
+            --)                 shift ; break ;;
+            *)                  break ;;
+        esac
+    done
+
+    if [ $# -eq 0 ]; then
+        runner="${runner:-echo}"
+        case "$runner" in
+            echo)       set -- ___x_cmd_qywx_reactor_echo ;;
+            repl)       set -- ___x_cmd_qywx_reactor_repl ;;
+        esac
+    fi
+
+    while true; do
+        {
+            ___x_cmd_qywx_bot_sub
+        }|{
+            local msg_line
+            local MSG_CHATID
+            while read -r msg_line; do
+                ___x_cmd pipevar msg_line   ___x_cmd jo env .   \
+                        MSG_ID=.body.msgid                      \
+                        MSG_FROM=.body.from.userid              \
+                        MSG_CHATID=.body.chatid                 \
+                        MSG_TYPE=.body.msgtype                  \
+                        MSG_TEXT_TEXT=.body.text.content         \
+                        MSG_RESP_URL=.body.response_url         \
+                        MSG_IMG_ID=.body.image.url              \
+                        MSG_IMG_AESKEY=.body.image.aeskey        \
+                        MSG_DOCUMENT_ID=.document.file_id       \
+                        MSG_VIDEO_ID=.video.1.file_id
+
+                MSG_BODY="$MSG_TEXT_TEXT"
+                [ -z "$MSG_BODY" ] && continue
+                "$@"
+            done
+        }
+
+        ___x_cmd sleep 5 || return $?
+    done
+}
+
+___x_cmd_qywx_bot_sub(){
+    local bot_id
+    local bot_secret
+    ___x_cmd_qywx_cur bot_id:= bot_secret:= 2>/dev/null
+    [ -n "$bot_id" ] || N=qywx M="Please use x qywx init to configure the qywx bot's bot_id and bot_secret." log:ret:1
+
+    local req_id="aibot_subscribe_$$_$(date +%s%3N)"
+    printf '{"cmd":"aibot_subscribe","headers":{"req_id":"%s"},"body":{"bot_id":"%s","secret":"%s"}}\n' \
+        "$req_id" "$bot_id" "$bot_secret" | \
+        websocat -n wss://openws.work.weixin.qq.com
+}
+
+___x_cmd_qywx_bot_send_msg() {
+    local resp_url="$1"
+    local msg="$2"
+    local json_output=;
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -j|--json)  json_output=1; shift ;;
+            -h|--help)  ___x_cmd help -m qywx bot send text; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+
+    local data
+    data="$(___x_cmd jq -n              \
+            --arg msg "$msg"            \
+            '{
+              msgtype: "markdown",
+              markdown: {
+                "content": $msg
+              }
+            }')"
+
+    local resp; resp="$(printf '%s' "${data}" | curl -s -X POST "$resp_url" \
+    -H "Content-Type: application/json" \
+    -d @-)"
+
+    [ -z "$json_output" ] || {
+        printf "%s" "$resp"
+        return
+    }
+
+    local statu ; statu="$(printf "%s" "$resp" | {  ___x_cmd jo env .errmsg ; echo "$errmsg" ; })"
+    if [ "$statu" = "ok" ]; then
+        ___x_cmd_ui_tf true "Sent text message successfully"
+    else
+        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$resp"
+    fi
+}

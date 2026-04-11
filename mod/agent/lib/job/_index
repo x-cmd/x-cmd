@@ -10,7 +10,7 @@ ___x_cmd_agent_job(){
     local op="$1"
     case "$op" in
         init|iter|ls|adjust|preview)
-                    shift; ___x_cmd_agent_job_${op} "$@"      ;;
+                    shift; ___x_cmd_agent_job_"${op}" "$@"      ;;
         -h|--help)  ___x_cmd help -m agent job; return 0        ;;
         *)          N=agent M="Unknown operation" log:ret:64    ;;
     esac
@@ -48,6 +48,7 @@ ___x_cmd_agent_job_iter(){
     local inrow=2
     local max_iterations=100
     local harness=""
+    local continuous=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -56,6 +57,7 @@ ___x_cmd_agent_job_iter(){
             --max-iterations)       max_iterations="$2" ;       arg:2:int; arg:2:shift ;;
             --inrow)                inrow="$2" ;                arg:2:int; arg:2:shift ;;
             --harness)              harness="$2" ;              arg:2:shift ;;
+            --continuous)           continuous=1;               shift ;;
             *)                      break ;;
         esac
     done
@@ -89,6 +91,13 @@ ___x_cmd_agent_job_iter(){
     local vlid=""
     local response_file=""
     local loop_context=""
+    local session_id=""
+
+    # Generate a session ID for continuous mode
+    if [ -n "$continuous" ]; then
+        session_id="$(___x_cmd rand uuid)"
+        agent:info "Continuous mode enabled, using session: $session_id"
+    fi
 
     while [ "$iter" -lt "$max_iterations" ] && [ -f "$todofile" ] && [ ! -f "$donefile" ]; do
         iter="$((iter + 1))"
@@ -102,7 +111,11 @@ ___x_cmd_agent_job_iter(){
         todofile="$todofile" donefile="$donefile" jobdir="$dir" iter="$iter" vlid="$vlid" inrow="$inrow" max_iterations="$max_iterations" loop_context="$loop_context" response_file="$response_file" \
         content="$( ___x_cmd_agent_job___get_prompt job-iter )"
 
-        ___x_cmd agent request --harness "$harness" --file "$agentfile" --file "$todofile" "$content" || break
+        if [ -n "$session_id" ]; then
+            ___x_cmd agent request --harness "$harness" --session "$session_id" --file "$agentfile" --file "$todofile" "$content" || break
+        else
+            ___x_cmd agent request --harness "$harness" --file "$agentfile" --file "$todofile" "$content" || break
+        fi
 
         ___x_cmd_agent_job_iter___eval_response "$dir" "$response_file" "$iter" "$inrow" "$donefile" "$max_iterations" "$vlid" "$harness" || break
     done

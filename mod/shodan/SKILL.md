@@ -3,7 +3,7 @@ name: x-shodan
 description: |
   Shodan CLI for searching Internet-connected devices.
   Host intel, DNS tools, network scanning, alerts.
-  
+
   **Dependency**: This is an x-cmd module. Install x-cmd first (see x-cmd skill for installation options).
   see x-cmd skill for installation.
 

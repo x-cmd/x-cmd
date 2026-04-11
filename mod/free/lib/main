@@ -2,7 +2,7 @@
 
 # x free - Display memory usage in Linux free command format
 
-xrc:mod:lib     free
+xrc:mod:lib     free    top
 
 ___x_cmd log init free
 
@@ -12,8 +12,18 @@ ___x_cmd_free___main(){
     [ "$#" -gt 0 ] || set -- run
     
     local op="$1"; shift
+    local top_n_arg=
     case "$op" in
-        -h|--help)      ___x_cmd help -m free "$@"; return 0 ;;
+        top)
+            if [ $# -gt 0 ]; then
+                if [ "$1" = "all" ]; then
+                    top_n_arg=999999; shift
+                elif [ "$1" -gt 0 ] 2>/dev/null; then
+                    top_n_arg="$1"; shift
+                fi
+            fi
+            op="run"
+            ;;
     esac
     
     # Parse all options
@@ -22,10 +32,15 @@ ___x_cmd_free___main(){
     local human=0
     local seconds=0
     local count=0
-    
+    local top_n="${top_n_arg:-10}"
+    local group="auto"
+    local filter=""
+    local use_rss=0
+    local use_fp=0
+
     # Put $op back for parsing
     set -- "$op" "$@"
-    
+
     while [ $# -gt 0 ]; do
         case "$1" in
             --csv)          format="csv";       shift ;;
@@ -33,6 +48,16 @@ ___x_cmd_free___main(){
             --no-header)    header=0;           shift ;;
             -s|--seconds)   seconds="$2"; arg:2:shift ;;
             -c|--count)     count="$2";   arg:2:shift ;;
+            -n|--top)
+                top_n="$2"
+                [ "$top_n" = "all" ] && top_n=999999
+                arg:2:shift
+                ;;
+            -g|--group)     group="$2";   arg:2:shift ;;
+            -f|--filter)    filter="$2";  arg:2:shift ;;
+            --rss)          use_rss=1;          shift ;;
+            -p|--precise)   use_fp=1;           shift ;;
+            -h|--help)      ___x_cmd help -m free "$@"; return 0 ;;
             run)            shift ;;
             *)              shift ;;
         esac
@@ -46,15 +71,19 @@ ___x_cmd_free___main(){
     # Use native free command when possible
     if [ "$format" = "table" ] && [ "$seconds" -eq 0 ] && [ "$count" -eq 0 ] && ___x_cmd_hascmd free && ! ___x_cmd os is darwin; then
         if [ "$human" -eq 1 ]; then ___x_cmd_cmds free -h; else ___x_cmd_cmds free; fi
+        ___x_cmd_free___top "$top_n" "$group" "$format" "$header" "$filter" "$use_rss" "$use_fp"
         return
     fi
-    
+
     # Platform dispatch
     if ___x_cmd os is darwin; then
         ___x_cmd_free___run_darwin
     else
         ___x_cmd_free___run_linux
     fi
+
+    # Top processes: only in table format (csv/tsv have different schema)
+    [ "$format" = "table" ] && ___x_cmd_free___top "$top_n" "$group" "$format" "$header" "$filter" "$use_rss" "$use_fp"
 }
 
 ___x_cmd_free___run_linux(){
