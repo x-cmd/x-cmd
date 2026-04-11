@@ -1,0 +1,63 @@
+# shellcheck shell=dash
+
+___x_cmd log init tailer
+
+xrc:mod:lib     tailer  run  pending    service test
+
+# tailer is msg framework for agents.
+
+# reader: writer = 1 : n = REPL 场景，所有人都能往这边发，但处理流程只有一个 = 这是 A2A 的场景。 ==  这是 tailer 的场景。 可能要处理 多个 writer 的竞争并发。
+
+# reader: writer = n : 1 = WEIXIN 场景，写的人只有一个，但所有人都可以 subscribe = 这是 WEIXIN 的场景。 ==  这是 channel 的场景。
+
+___x_cmd_tailer___main(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m tailer "$@" ;      return 0 ;;
+
+        run|send|pending|service|test)
+                        ___x_cmd_tailer_"$op"   "$@" ;;
+
+        start|stop|restart|status)
+                        ___x_cmd_tailer_service "$op" "$@" ;;
+
+        *)              N=tailer M="Unknown subcmd -> $op"  log:ret:64 ;;
+    esac
+}
+
+___x_cmd_tailer_send(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m tailer send "$@" ; return 0 ;;
+            *)              break ;;
+        esac
+    done
+
+    local mq_folder="$1"
+    [ -n "$mq_folder" ] ||  N=tailer M="Please provide folder for mq." log:ret:64
+
+    local msg="$2"
+    case "$msg" in
+        *"$___X_CMD_UNSEENCHAR_NEWLINE"*)       N=tailer M="The message should not contain newline" log:ret:64 ;;
+    esac
+
+    local mq_fp_current="$mq_folder/MQ.CURRENT"
+    local mq_fp_current_data="$mq_fp_current/data.tsv"
+
+    local i=0
+    while [ $((i=i+1)) -le 3 ]; do
+        [ -e "$mq_fp_current_data" ] || {
+            ___x_cmd mkdirp "$mq_fp_current"
+            ___x_cmd_cmds touch "$mq_fp_current_data"
+        }
+        # Use flock for linux and fslock for win/mac if necessary.
+        printf "%s\n" "$msg" >>"$mq_fp_current_data" && return 0
+    done
+
+    tailer:error "Send failed $mq_fp_current_data"
+    return 1
+}

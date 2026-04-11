@@ -1,0 +1,151 @@
+# shellcheck shell=dash
+# Transcription module for meeting recordings
+
+___x_cmd_ff_tr(){
+    local input_file=""
+    local output_file=""
+    local model="base"
+    local language="auto"
+    local format="txt"
+    local prompt=""
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                x help -m ff tr
+                return
+                ;;
+            -i|--input)
+                input_file="$2"
+                shift 2
+                ;;
+            -o|--output)
+                output_file="$2"
+                shift 2
+                ;;
+            -m|--model)
+                model="$2"
+                shift 2
+                ;;
+            -l|--language)
+                language="$2"
+                shift 2
+                ;;
+            -f|--format)
+                format="$2"
+                shift 2
+                ;;
+            -p|--prompt)
+                prompt="$2"
+                shift 2
+                ;;
+            *)
+                [ -z "$input_file" ] || N=ff M="Unknown option: $1" log:ret:1
+                input_file="$1"
+                shift
+                ;;
+        esac
+    done
+
+    [ -f "$input_file" ] || N=ff M="Input file required. Usage: x ff tr <audio-file>" log:ret:1
+
+    [ -n "$output_file" ] || {
+        output_file="${input_file%.*}.tr.${format}"
+    }
+
+    ___x_cmd_ff_tr___info "Starting transcription..."
+    ___x_cmd_ff_tr___info "Input: $input_file"
+    ___x_cmd_ff_tr___info "Model: $model, Language: $language, Format: $format"
+
+    local temp_output
+    temp_output="$(___x_cmd_fsdir_tmpfile)"
+    
+    ___x_cmd_ff_tr___run_whisper "$input_file" "$temp_output" "$model" "$language" "$format" "$prompt"
+
+    if [ -f "${temp_output}.${format}" ]; then
+        mv "${temp_output}.${format}" "$output_file"
+    elif [ -f "${temp_output}.txt" ]; then
+        mv "${temp_output}.txt" "$output_file"
+    fi
+
+    ___x_cmd_ff_tr___info "Transcription saved to: $output_file"
+    
+    ___x_cmd_ff_tr___report "$output_file"
+}
+
+___x_cmd_ff_tr___run_whisper(){
+    local input_file="$1"
+    local temp_output="$2"
+    local model="$3"
+    local language="$4"
+    local format="$5"
+    local prompt="$6"
+
+    set -- ___x_cmd_whisper___runmain --model "$model" --file "$input_file"
+    
+    [ "$language" != "auto" ] && set -- "$@" --language "$language"
+    [ -n "$prompt" ] && set -- "$@" --prompt "$prompt"
+    
+    case "$format" in
+        srt) set -- "$@" --output-srt ;;
+        vtt) set -- "$@" --output-vtt ;;
+        json) set -- "$@" --output-json ;;
+    esac
+    
+    set -- "$@" --output-file "$temp_output"
+    
+    "$@" 2>&1 | ___x_cmd_ff_tr___progress
+}
+
+___x_cmd_ff_tr___progress(){
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            *"%"*)
+                printf "\r[ff:tr] %s" "$line" >&2
+                ;;
+            *)
+                printf "\n[ff:tr] %s\n" "$line" >&2
+                ;;
+        esac
+    done
+    printf "\n" >&2
+}
+
+___x_cmd_ff_tr___report(){
+    local tr_file="$1"
+    
+    ___x_cmd_ff_tr___info "========== Transcription Report =========="
+    
+    local word_count
+    word_count=$(wc -w < "$tr_file" 2>/dev/null || echo "0")
+    ___x_cmd_ff_tr___info "Total words: $word_count"
+    
+    local line_count
+    line_count=$(wc -l < "$tr_file" 2>/dev/null || echo "0")
+    ___x_cmd_ff_tr___info "Total lines: $line_count"
+    
+    ___x_cmd_ff_tr___info "=========================================="
+    ___x_cmd_ff_tr___info "Preview (first 500 chars):"
+    head -c 500 "$tr_file" 2>/dev/null | head -5
+    ___x_cmd_ff_tr___info "=========================================="
+    ___x_cmd_ff_tr___info "Full report saved to: $tr_file"
+}
+
+___x_cmd_ff_tr___info(){
+    printf "[ff:tr] %s\n" "$1" >&2
+}
+
+___x_cmd_ff_tr___nv(){
+    local id cmd
+    ___x_cmd ui select id,cmd "What's next for ff tr" \
+        "x ff tr --help" \
+        "x ff tr meeting.wav -m medium" \
+        "x ff tr meeting.wav -o report.md -f txt" \
+        "ABORT"
+
+    case "$id" in
+        4) return 0 ;;
+        *) eval "$cmd" ;;
+    esac
+}

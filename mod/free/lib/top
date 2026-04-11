@@ -1,0 +1,65 @@
+# shellcheck shell=sh
+
+___x_cmd_free___top(){
+    local top_n="${1:-10}"
+    local group="${2:-auto}"
+    local format="${3:-table}"
+    local header="${4:-1}"
+    local filter="${5:-}"
+    local use_rss="${6:-0}"
+    local use_fp="${7:-0}"
+
+    [ "$top_n" -eq 0 ] && return 0
+
+    # Windows does not support comm
+    ___x_cmd os is win && return 0
+
+    local NO_COLOR=0
+    ___x_cmd_is_stdout2tty || NO_COLOR=1
+
+    local mem_col="rss"
+    local physfp_cmd=""
+    local ps_data=""
+    local data_source=""
+
+    # --- Linux: read /proc directly (PSS + etime + cmdline) ---
+    if [ "$use_rss" -eq 0 ] && ___x_cmd os is linux && [ -d /proc/self ]; then
+        data_source="linux"
+        ps_data=$(___x_cmd_cmds ls -d /proc/[0-9]* 2>/dev/null | \
+            ___x_cmd_cmds_awk -f "$___X_CMD_FREE_AWKDIR/top_linux.awk" 2>/dev/null)
+        mem_col="mem"
+    fi
+
+    # --- macOS: use phys_footprint via proc_pid_rusage ---
+    if [ -z "$data_source" ] && [ "$use_rss" -eq 0 ] && ___x_cmd os is darwin; then
+        mem_col="mem"
+        physfp_cmd="python3 '$___X_CMD_FREE_AWKDIR/top_physfp.py'"
+    fi
+
+    # --- Fallback: x ps --tsv (any OS) ---
+    if [ -z "$ps_data" ]; then
+        ps_data=$(___x_cmd ps --tsv ax -o rss,etime,pid,command 2>/dev/null)
+    fi
+
+    [ -z "$ps_data" ] && return 0
+
+    local use_footprint=0
+    if [ "$use_fp" -eq 1 ] && [ "$mem_col" = "mem" ] && ___x_cmd_hascmd footprint; then
+        use_footprint=1
+    fi
+
+    printf '%s\n' "$ps_data" | ___x_cmd_cmds_awk \
+        -v top_n="$top_n" \
+        -v group="$group" \
+        -v format="$format" \
+        -v header="$header" \
+        -v NO_COLOR="$NO_COLOR" \
+        -v filter="$filter" \
+        -v mem_col="$mem_col" \
+        -v physfp_cmd="$physfp_cmd" \
+        -v use_fp="$use_fp" \
+        -v use_footprint="$use_footprint" \
+        -f "$___X_CMD_FREE_AWKDIR/share.awk" \
+        -f "$___X_CMD_FREE_AWKDIR/top.awk" \
+        -f "$___X_CMD_FREE_AWKDIR/top_footprint.awk"
+}

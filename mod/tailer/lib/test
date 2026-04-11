@@ -1,0 +1,245 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_tailer_test(){
+    local op="$1"
+    case "$op" in
+        write|read)
+            shift;  ___x_cmd_tailer_test_"$op" "$@" ;;
+        *)          ___x_cmd_tailer_test_main "$@" ;;
+    esac
+}
+
+___x_cmd_tailer_test_main()(
+    local count="10000"
+    local testdir="$PWD/.tmp"
+    local test_docker=""
+    local docker_image="ubuntu"
+    local docker_shell="bash"
+    local batch_size="1000"
+    local gc_count="10000"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m tailer test "$@" ; return 0 ;;
+            --dir)              testdir="$2" ;      arg:2:shift ;;
+            --count)            count="$2" ;        arg:2:shift ;;
+            --batch-size)       batch_size="$2" ;   arg:2:shift ;;
+            --gc)               gc_count="$2" ;     arg:2:shift ;;
+            --docker)           test_docker=1 ;     shift ;;
+            --docker-image)     docker_image="$2" ; arg:2:shift ;;
+            --docker-shell)     docker_shell="$2" ; arg:2:shift ;;
+            *)                  break ;;
+        esac
+    done
+    ___x_cmd rmrf "$testdir"
+
+    if [ -n "$test_docker" ]; then
+        (
+            [ -z "$BASH_VERSION" ] || shopt -s expand_aliases
+            ___x_cmd docker run -x -v "$testdir:/tmp/test_tailer" "$docker_image" "$docker_shell" -c "
+                ___X_CMD_ROOTBIN_SLEEP=0 x-cmd >/dev/null
+                . ~/.x-cmd.root/X
+                x tailer test write /tmp/test_tailer $count
+            "
+        ) &
+
+    else
+        (
+            ___x_cmd_cmds sleep 1s
+            ___x_cmd_tailer_test_write "$testdir" "$count"
+        ) &
+    fi
+
+    ___x_cmd_tailer_test_read "$testdir" "$batch_size" "$gc_count" || true
+
+    x:info "Messages: $count"
+    ___x_cmd_tailer_test_stats "$testdir" "$count"
+)
+
+
+___x_cmd_tailer_test_timestamp_(){
+    x_="$EPOCHREALTIME"
+    [ -n "$x_" ] || ___x_cmd date timestamp_
+}
+
+# docker, wsl
+
+___x_cmd_tailer_test_write(){
+    local testdir="$1"
+    local count="$2"
+    [ -n "$testdir" ] || N=tailer M="Please provide test message directory" log:ret:64
+    [ -n "$count" ] || N=tailer M="Please provide test message count" log:ret:64
+
+    [ -z "$BASH_VERSION" ] || shopt -s expand_aliases
+    {
+        local i=0
+        while [ $((i=i+1)) -le "$count" ]; do
+            printf "%s\n" "$i"
+        done
+        printf "%s\n" "END"
+    } | {
+        ___x_cmd_tailer_test_write___util "$testdir"
+    }
+}
+___x_cmd_tailer_test_write___util(){
+    local testdir="$1"
+    local msg
+    local x_=""
+    while read -r msg; do
+        x_=""
+        ___x_cmd_tailer_test_timestamp_
+        ___x_cmd tailer send "$testdir" "$msg:$x_"
+    done
+}
+
+___x_cmd_tailer_test_read___run_handler(){
+    local msg="$1"
+
+    case "$msg" in
+        END:*)      printf "%s\n" "END"; return 130 ;;
+        *)
+            local x_=""
+            ___x_cmd_tailer_test_timestamp_
+            printf "%s %s\n" "$msg" "$x_"
+            ;;
+    esac
+}
+
+___x_cmd_tailer_test_read(){
+    local testdir="$1"
+    local batch_size="${2:-100}"
+    local gc_count="$3"
+
+    local lat_file="$testdir/.latency"
+
+    ___x_cmd touch "$lat_file"
+    ___X_CMD_TAILER_HANDLE="___x_cmd_tailer_test_read___run_handler" \
+    ___x_cmd tailer run --gc "$gc_count" "$testdir" | ___x_cmd_tailer_test_read___batch_writer "$lat_file" "$batch_size"
+}
+
+___x_cmd_tailer_test_read___batch_writer(){
+    local lat_file="$1"
+    local max_batch="${2:-100}"
+    local batch_buf=""
+    local line
+    local n=0
+
+    while read -r line; do
+        case "$line" in
+            END)    break ;;
+            *)
+                batch_buf="$batch_buf$line
+"
+                n=$((n + 1))
+                if [ "$n" -ge "$max_batch" ]; then
+                    printf "%s" "$batch_buf" >> "$lat_file"
+                    batch_buf=""
+                    n=0
+                fi
+                ;;
+        esac
+    done
+
+    [ -z "$batch_buf" ] || printf "%s" "$batch_buf" >> "$lat_file"
+}
+
+# 统计计算: 基于消息时间戳的吞吐量、延迟分布(min/avg/median/max)
+___x_cmd_tailer_test_stats(){
+    local testdir="$1"
+    local count="$2"
+
+    local lat_file="$testdir/.latency"
+    [ -f "$lat_file" ] || return 1
+
+    ___x_cmd_cmds awk -v count="$count" '
+    # 解析时间戳为纳秒整数 (支持: 1775825621.2080090046 或 1775825621)
+    function parse_ts(ts,    parts, sec, nano) {
+        if (index(ts, ".") > 0) {
+            split(ts, parts, ".")
+            sec = parts[1]
+            # 补齐到6位微秒 (不足补0, 超出截断)
+            nano = substr(parts[2] "000000", 1, 6) "000"
+        } else {
+            sec = ts
+            nano = 0
+        }
+        return sec * 1000000000 + nano
+    }
+
+    NR==1 {
+        split($1, parts, ":")
+        first_idx = parts[1]
+        first_send_ns = parse_ts(parts[2])
+        first_recv_ns = parse_ts($2)
+        expected_idx = first_idx
+    }
+    {
+        # 解析: msg=idx:send_ts, recv_ts
+        split($1, parts, ":")
+        idx = parts[1]
+        send_ns = parse_ts(parts[2])
+        recv_ns = parse_ts($2)
+        last_idx = idx
+        last_send_ns = send_ns
+        last_recv_ns = recv_ns
+
+        # 顺序检查
+        if (idx < expected_idx) {
+            out_of_order++
+            if (verbose) printf "Out of order: got %d, expected >= %d\n", idx, expected_idx
+        } else if (idx > expected_idx) {
+            # 丢包/跳跃
+            lost += idx - expected_idx
+            if (verbose) printf "Lost %d messages: jumped from %d to %d\n", idx - expected_idx, expected_idx - 1, idx
+        }
+        expected_idx = idx + 1
+
+        # 延迟(纳秒)
+        diff_ns = recv_ns - send_ns
+
+        n++
+        sum_ns += diff_ns
+        diffs[n] = diff_ns
+        if (diff_ns < min_ns || min_ns == 0) min_ns = diff_ns
+        if (diff_ns > max_ns) max_ns = diff_ns
+    }
+    END {
+        if (n == 0) {
+            print "No data collected"
+            exit
+        }
+
+        printf "=== Message Integrity ===\n"
+        printf "Expected: %d messages (%d to %d)\n", count, first_idx, count
+        printf "Received: %d messages (idx %d to %d)\n", n, first_idx, last_idx
+        if (lost > 0) printf "Lost: %d messages\n", lost
+        if (out_of_order > 0) printf "Out of order: %d messages\n", out_of_order
+        if (lost == 0 && out_of_order == 0) printf "Status: OK (all messages in order)\n"
+        printf "\n"
+
+        # 排序计算中位数
+        for (i = 1; i <= n; i++) {
+            for (j = i + 1; j <= n; j++) {
+                if (diffs[i] > diffs[j]) {
+                    t = diffs[i]; diffs[i] = diffs[j]; diffs[j] = t
+                }
+            }
+        }
+        median_ns = (n % 2) ? diffs[int(n/2)+1] : (diffs[n/2] + diffs[n/2+1]) / 2
+
+        # 双指标吞吐量
+        send_duration_ns = last_send_ns - first_send_ns
+        send_duration_s = send_duration_ns / 1000000000
+        send_throughput = count / send_duration_s
+
+        recv_duration_ns = last_recv_ns - first_recv_ns
+        recv_duration_s = recv_duration_ns / 1000000000
+        recv_throughput = n / recv_duration_s
+
+        printf "=== Performance ===\n"
+        printf "Send throughput: %.0f msg/s (duration: %.3fs)\n", send_throughput, send_duration_s
+        printf "Recv throughput: %.0f msg/s (duration: %.3fs) [actual processing]\n", recv_throughput, recv_duration_s
+        printf "Latency(s): min=%.6f avg=%.6f median=%.6f max=%.6f (n=%d)\n",
+               min_ns/1000000000, (sum_ns/n)/1000000000, median_ns/1000000000, max_ns/1000000000, n
+    }
+    ' "$lat_file"
+}

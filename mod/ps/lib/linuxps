@@ -1,13 +1,66 @@
+# shellcheck shell=sh
 
 ___x_cmd_ps_linuxps(){
-    ___x_cmd_ps_linuxps___csv
+    ___x_cmd_ps_linuxps___csv "$@"
 }
 
-
 ___x_cmd_ps_linuxps___csv(){
-    ___x_cmd_cmds ls -d /proc/[0-9]* | ___x_cmd_ps_linuxps___awk
+    # Parse ps arguments to extract -o field list
+    local o_fields=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -o)
+                shift
+                [ $# -gt 0 ] && o_fields="$1"
+                ;;
+            -o*)
+                o_fields="${1#-o}"
+                ;;
+        esac
+        shift
+    done
+
+    # Map ps field names to linuxps field names
+    # ps names: user,pid,%cpu,%mem,vsz,rss,tty,stat,start,time,etime,comm,command,args,pid,ppid
+    # linuxps names: user,pid,pcpu,pmem,vsz,rss,pss,tty,stat,started,time,etime,command,ppid
+    local fields=""
+    if [ -n "$o_fields" ]; then
+        # Convert comma-separated ps field names
+        local old_ifs="$IFS"
+        IFS=','
+        for f in $o_fields; do
+            case "$f" in
+                user)     fields="${fields}user," ;;
+                pid)      fields="${fields}pid," ;;
+                ppid)     fields="${fields}ppid," ;;
+                %cpu)     fields="${fields}pcpu," ;;
+                %mem)     fields="${fields}pmem," ;;
+                vsz)      fields="${fields}vsz," ;;
+                rss)      fields="${fields}rss," ;;
+                pss)      fields="${fields}pss," ;;
+                tty|tt)   fields="${fields}tty," ;;
+                stat)     fields="${fields}stat," ;;
+                start|started|lstart) fields="${fields}started," ;;
+                time|cputime) fields="${fields}time," ;;
+                etime|elapsed) fields="${fields}etime," ;;
+                comm|command|args|cmd) fields="${fields}command," ;;
+                *)        fields="${fields}${f}," ;;
+            esac
+        done
+        IFS="$old_ifs"
+        # Remove trailing comma
+        fields="${fields%,}"
+    fi
+
+    ___x_cmd_cmds ls -d /proc/[0-9]* 2>/dev/null | ___x_cmd_ps_linuxps___awk "$fields"
 }
 
 ___x_cmd_ps_linuxps___awk(){
-    :
+    local fields="${1:-}"
+    shift 2>/dev/null || true
+    if [ -n "$fields" ]; then
+        ___x_cmd_cmds_awk -v fields="$fields" -f "${___X_CMD_ROOT_MOD}/ps/lib/awk/linuxps.awk"
+    else
+        ___x_cmd_cmds_awk -f "${___X_CMD_ROOT_MOD}/ps/lib/awk/linuxps.awk"
+    fi
 }

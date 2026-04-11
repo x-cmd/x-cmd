@@ -1,0 +1,113 @@
+
+# actor model
+
+___x_cmd_tailer(){
+    :
+}
+
+___x_cmd_tailer_handle(){
+    local msg
+    while read -r msg; do
+        printf "RECV: %s\n" "$msg"
+    done
+}
+
+___x_cmd_tailer_run(){
+    local mq_folder="$1"
+
+    ___x_cmd mkdirp "$mq_folder"
+
+    local mq_file="$mq_folder/MSG_QUEUE"
+    local mq_lastidx="$mq_folder/LAST_IDX"
+
+    # If the file is too big -- more than 500 lines. Then we will split
+    # If the file is too small -- like less than 10 lines. Then we will
+
+    ___X_CMD_TAILER_HANDLE="___x_cmd_tailer_handle"
+
+    {
+        ___x_cmd_cmds tail -n 10 -f "$mq_file"
+    } | {
+        local TAILER_MSG_ID
+
+        while read -r line; do
+            TAILER_MSG_ID="${line%%"${___X_CMD_UNSEENCHAR_HT}"*}"
+
+            "$___X_CMD_TAILER_HANDLE"
+
+            case $? in
+                0)      printf "%s\n" "$TAILER_MSG_ID" >"$mq_lastidx" ;;
+                130)    N=reactor M="" log:ret:64   ;;
+                *)
+                        # consider retry.
+                        printf "%s\n" "$TAILER_MSG_ID" >"$mq_lastidx"
+            esac
+        done
+    }
+}
+
+
+___x_cmd_agent_worker(){
+    ___X_CMD_TAILER_HANDLE
+}
+
+# The worker has heartbeat.
+
+___x_cmd_agent_worker_run(){
+    local mq_file="${1}"
+
+    # how to response
+    # x weixin bot send --chatid "<chatid>" --msg "<msg>"
+
+    ___X_CMD_TAILER_HANDLE=___x_cmd_agent_worker_handle \
+        ___x_cmd tailer run "$mq_file" "$@"
+
+}
+
+___x_cmd_agent_worker_handle(){(
+    local msg
+    local timestamp
+
+    ___x_cmd hascmd ___x_cmd_agent_worker_onheartbeat   || ___x_cmd_agent_worker_onheartbeat(){
+        :
+    }
+
+    ___x_cmd hascmd ___x_cmd_agent_worker_onim          || ___x_cmd_agent_worker_onim(){
+        :
+    }
+
+
+    while read -r msg; do
+        case "$msg" in
+            HEARTBEAT)
+                read -r timestamp
+                ___x_cmd_agent_worker_onheartbeat "$timestamp"
+                case $? in
+                    130)    N=agent M="Exit because interrupted." log:ret:130 ;;
+                esac
+                ;;
+
+            IM)
+                read -r timestamp && read -r msg
+                case $? in
+                    130)    N=agent M="Exit because interrupted." log:ret:130 ;;
+                esac
+                ___x_cmd_agent_worker_onim "$timestamp" "$msg"
+                ;;
+
+            ROOT)
+                read -r timestamp && read -r msg
+                case $? in
+                    130)    N=agent M="Exit because interrupted." log:ret:130 ;;
+                esac
+                ___x_cmd_agent_worker_onlocalctrl "$timestamp" "$msg"
+                ;;
+
+            "") ;;
+
+            *)  agent:error "Unknown msg -> $msg" ;;
+        esac
+    done
+)}
+
+

@@ -1,0 +1,272 @@
+# shellcheck shell=dash
+# Live transcription with real-time agent interaction
+
+___x_cmd_ff_livetr(){
+    local output_file=""
+    local work_dir=""
+    local chunk_duration=10
+    local chunk_step=7
+    local model="base"
+    local language="auto"
+    local reasoning_file=""
+    local wake_word="hey-emma"
+    local notify_sound="on"
+    
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                x help -m ff livetr
+                return
+                ;;
+            -f|--file)
+                output_file="$2"
+                shift 2
+                ;;
+            -w|--work-dir)
+                work_dir="$2"
+                shift 2
+                ;;
+            --chunk-duration)
+                chunk_duration="$2"
+                shift 2
+                ;;
+            --chunk-step)
+                chunk_step="$2"
+                shift 2
+                ;;
+            -m|--model)
+                model="$2"
+                shift 2
+                ;;
+            -l|--language)
+                language="$2"
+                shift 2
+                ;;
+            --reasoning-file)
+                reasoning_file="$2"
+                shift 2
+                ;;
+            --wake-word)
+                wake_word="$2"
+                shift 2
+                ;;
+            --notify-sound)
+                notify_sound="$2"
+                shift 2
+                ;;
+            *)
+                [ -z "$output_file" ] || N=ff M="Unknown option: $1" log:ret:1
+                output_file="$1"
+                shift
+                ;;
+        esac
+    done
+
+    [ -n "$output_file" ] || {
+        local timestamp
+        timestamp="$(date +%Y%m%d-%H%M%S)"
+        output_file="meeting-${timestamp}.wav"
+    }
+
+    [ -n "$work_dir" ] || {
+        work_dir="$(mktemp -d -t ff-livetr-XXXXXX)"
+    }
+
+    mkdir -p "$work_dir" || N=ff M="Failed to create work dir: $work_dir" log:ret:1
+
+    ___x_cmd_ff_livetr___info "Starting live transcription..."
+    ___x_cmd_ff_livetr___info "Full recording: $output_file"
+    ___x_cmd_ff_livetr___info "Work directory: $work_dir"
+    ___x_cmd_ff_livetr___info "Chunk: ${chunk_duration}s every ${chunk_step}s"
+    ___x_cmd_ff_livetr___info "Model: $model"
+    [ -n "$reasoning_file" ] && ___x_cmd_ff_livetr___info "Agent reasoning: $reasoning_file"
+    [ -n "$wake_word" ] && ___x_cmd_ff_livetr___info "Wake word: $wake_word"
+    ___x_cmd_ff_livetr___info "Press Ctrl+C to stop"
+
+    ___x_cmd_ff_livetr___run \
+        "$output_file" \
+        "$work_dir" \
+        "$chunk_duration" \
+        "$chunk_step" \
+        "$model" \
+        "$language" \
+        "$reasoning_file" \
+        "$wake_word" \
+        "$notify_sound"
+}
+
+___x_cmd_ff_livetr___run(){
+    local output_file="$1"
+    local work_dir="$2"
+    local chunk_duration="$3"
+    local chunk_step="$4"
+    local model="$5"
+    local language="$6"
+    local reasoning_file="$7"
+    local wake_word="$8"
+    local notify_sound="$9"
+
+    local full_recording="$work_dir/full.wav"
+    local chunk_counter=0
+    local current_pos=0
+    local transcript_file="$work_dir/live-transcript.txt"
+    local chunk_file
+    
+    touch "$transcript_file"
+
+    ___x_cmd_ff_livetr___info "[1/3] Starting full recording..."
+    
+    ___x_cmd_ff_mpeg___cmd \
+        -f avfoundation \
+        -i ":0" \
+        -ar 16000 \
+        -ac 1 \
+        -c:a pcm_s16le \
+        "$full_recording" 2>/dev/null &
+    
+    local rec_pid=$!
+    
+    sleep 2
+    
+    ___x_cmd_ff_livetr___info "[2/3] Starting chunk processing (PID: $rec_pid)..."
+    
+    local running=1
+    trap 'running=0' INT TERM
+    
+    while [ "$running" -eq 1 ] && kill -0 "$rec_pid" 2>/dev/null; do
+        sleep "$chunk_step"
+        
+        chunk_file="$work_dir/chunk-$(printf "%04d" "$chunk_counter").wav"
+        
+        ___x_cmd_ff_mpeg___cmd \
+            -ss "$current_pos" \
+            -t "$chunk_duration" \
+            -i "$full_recording" \
+            -c copy \
+            "$chunk_file" 2>/dev/null || continue
+        
+        ___x_cmd_ff_livetr___process_chunk \
+            "$chunk_file" \
+            "$transcript_file" \
+            "$model" \
+            "$language" \
+            "$reasoning_file" \
+            "$wake_word" \
+            "$notify_sound" &
+        
+        chunk_counter=$((chunk_counter + 1))
+        current_pos=$((current_pos + chunk_step))
+        
+        ___x_cmd_ff_livetr___info "[live] Chunk #$chunk_counter at ${current_pos}s"
+    done
+    
+    ___x_cmd_ff_livetr___info "[3/3] Stopping recording..."
+    kill "$rec_pid" 2>/dev/null
+    wait "$rec_pid" 2>/dev/null
+    
+    cp "$full_recording" "$output_file"
+    
+    ___x_cmd_ff_livetr___info "Full recording saved: $output_file"
+    ___x_cmd_ff_livetr___info "Live transcript: $transcript_file"
+    ___x_cmd_ff_livetr___info "Work files: $work_dir"
+}
+
+___x_cmd_ff_livetr___process_chunk(){
+    local chunk_file="$1"
+    local transcript_file="$2"
+    local model="$3"
+    local language="$4"
+    local reasoning_file="$5"
+    local wake_word="$6"
+    local notify_sound="$7"
+
+    local temp_txt
+    temp_txt="$(mktemp -t whisper-chunk-XXXXXX.txt)"
+    
+    set -- ___x_cmd_whisper___runmain --model "$model" --file "$chunk_file"
+    [ "$language" != "auto" ] && set -- "$@" --language "$language"
+    set -- "$@" --output-txt --output-file "$temp_txt"
+    
+    "$@" 2>/dev/null
+    
+    local txt_file="${temp_txt}.txt"
+    if [ -f "$txt_file" ]; then
+        local content
+        content=$(cat "$txt_file")
+        
+        printf "%s\n" "$content" >> "$transcript_file"
+        
+        printf "[live] %s\n" "$content"
+        
+        if [ -n "$reasoning_file" ] && [ -n "$wake_word" ]; then
+            ___x_cmd_ff_livetr___check_wake_word \
+                "$content" \
+                "$reasoning_file" \
+                "$wake_word" \
+                "$notify_sound"
+        fi
+        
+        rm -f "$txt_file"
+    fi
+    
+    rm -f "$temp_txt" "$chunk_file"
+}
+
+___x_cmd_ff_livetr___check_wake_word(){
+    local content="$1"
+    local reasoning_file="$2"
+    local wake_word="$3"
+    local notify_sound="$4"
+
+    case "$content" in
+        *"$wake_word"*)
+            ___x_cmd_ff_livetr___info "[WAKE] Detected: $wake_word"
+            
+            if [ "$notify_sound" = "on" ]; then
+                ___x_cmd_ff_livetr___play_sound "info"
+            fi
+            
+            printf "[AGENT] Wake word detected - ready for interaction\n"
+            ;;
+    esac
+}
+
+___x_cmd_ff_livetr___play_sound(){
+    local level="$1"
+    
+    case "$level" in
+        info)
+            printf '\a' 2>/dev/null
+            ;;
+        warning)
+            printf '\a\a' 2>/dev/null
+            ;;
+        urgent)
+            printf '\a\a\a' 2>/dev/null
+            ;;
+    esac
+    
+    if ___x_cmd_hascmd afplay; then
+        afplay /System/Library/Sounds/Glass.aiff 2>/dev/null &
+    elif ___x_cmd_hascmd paplay; then
+        paplay /usr/share/sounds/freedesktop/stereo/message.oga 2>/dev/null &
+    fi
+}
+
+___x_cmd_ff_livetr___info(){
+    printf "[ff:livetr] %s\n" "$1" >&2
+}
+
+___x_cmd_ff_livetr___nv(){
+    local id cmd
+    ___x_cmd ui select id,cmd "What's next for ff livetr" \
+        "x ff livetr --help" \
+        "x ff livetr meeting.wav" \
+        "x ff livetr meeting.wav --reasoning-file agent.md" \
+        "ABORT"
+
+    case "$id" in
+        4) return 0 ;;
+        *) eval "$cmd" ;;
+    esac
+}

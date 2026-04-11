@@ -1,0 +1,199 @@
+# shellcheck shell=sh disable=SC2016,SC3043
+# Reference: https://discord.com/developers/docs/resources/channel#message-object
+
+___x_cmd_discord_reactor_echo(){
+    ___x_cmd_discord_bot_send_msg "$MSG_CHANNEL" "$MSG_BODY"
+}
+
+___x_cmd_discord_reactor_repl(){
+    local resp; resp="$(eval "$MSG_BODY")"
+    ___x_cmd_discord_bot_send_msg "$MSG_CHANNEL" "$resp"
+}
+
+___x_cmd_discord_react(){
+    param:void
+
+    local timeout=$(( 1 * 60 * 60 * 1000 ))
+    local runner=""
+    local guild_id=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help|"")       ___x_cmd help -m discord react ;     return 0 ;;
+            --timeout)          timeout="$2" ; arg:2:shift ;;
+            --runner)           runner="$2" ; arg:2:shift ;;
+            --guild)            guild_id="$2" ; arg:2:shift ;;
+            --)                 shift ; break ;;
+            *)                  break ;;
+        esac
+    done
+
+    # Get bot_token and proxy once at the start
+    local bot_token=
+    local proxy=
+    ___x_cmd_discord_cur bot_token:= proxy:= 2>/dev/null
+    [ -n "$bot_token" ] || N=discord M="Please configure bot_token first using 'x discord --cfg bot_token=<your_bot_token>'" log:ret:1
+
+    if [ $# -eq 0 ]; then
+        runner="${runner:-echo}"
+        case "$runner" in
+            echo)       set -- ___x_cmd_discord_reactor_echo ;;
+            repl)       set -- ___x_cmd_discord_reactor_repl ;;
+        esac
+    fi
+
+#     local all_channels
+#     all_channels="$(___x_cmd_discord_get_all_channels)"
+#     discord:info "Monitoring $(printf "%s" "$all_channels" | wc -l) channel(s)"
+
+#     # Track newest message ID per channel
+#     local newest_ids=""
+#     local channel
+#     while IFS= read -r channel; do
+#         [ -z "$channel" ] && continue
+#         newest_ids="${newest_ids}${channel}:0 "
+#     done <<EOF
+# $all_channels
+# EOF
+
+    while true; do
+        {
+            ___x_cmd_discord_chat_history
+        } | {
+            local msg_line
+            while read -r msg_line; do
+                printf "%s" "$msg_line"
+                ___x_cmd pipevar msg_line   ___x_cmd jo env .1   \
+                        MSG_ID=.id                                   \
+                        MSG_FROM=.author.id                         \
+                        MSG_FROM_NAME=.author.username              \
+                        MSG_FROM_BOT=.author.bot                    \
+                        MSG_CHANNEL=.channel_id                      \
+                        MSG_GUILD=.guild_id                          \
+                        MSG_TYPE=.type                              \
+                        MSG_CONTENT=.content
+
+                MSG_BODY="$MSG_CONTENT"
+                "$@"
+                done
+        }
+
+        ___x_cmd sleep 5 || return $?
+    done
+}
+
+___x_cmd_discord_get_all_guilds(){
+    local bot_token="$1"
+    local proxy="${2:-}"
+
+    local bot_token=
+    ___x_cmd_discord_cur bot_token:= 2>/dev/null
+    [ -n "$bot_token" ] || N=discord M="Please configure bot_token first using 'x discord --cfg bot_token=<your_bot_token>'" log:ret:1
+
+    # Get all guilds the bot is in using the user endpoint
+    local data
+    data="$(___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} \
+        "https://discord.com/api/v10/users/@me/guilds" \
+        -H "Authorization: Bot ${bot_token}" \
+        -H "Content-Type: application/json")"
+
+    printf "%s" "$data" | ___x_cmd jq -r '.[0].id'
+}
+
+___x_cmd_discord_get_all_channels(){
+    local proxy=
+    local bot_token=
+    ___x_cmd_discord_cur proxy:=  bot_token:= 2>/dev/null
+
+    if [ -z "$guilds" ]; then
+        guilds="$(___x_cmd_discord_get_all_guilds "$bot_token" "$proxy")" || return 1
+    fi
+
+    local all_channels=""
+    local g
+    while IFS= read -r g; do
+        [ -z "$g" ] && continue
+        local channels
+        channels="$(___x_cmd_discord_get_guild_channels "$g" "$bot_token" "$proxy")" || continue
+        all_channels="${all_channels}${channels}
+"
+    done <<EOF
+$guilds
+EOF
+
+    printf "%s" "$all_channels" | ___x_cmd_cmds_awk '{gsub(/^ +/,""); print}'
+}
+
+___x_cmd_discord_get_guild_channels(){
+    local guild_id="$1"
+    local bot_token="$2"
+    local proxy="${3:-}"
+
+    local proxy=
+    local bot_token=
+    ___x_cmd_discord_cur proxy:=  bot_token:= 2>/dev/null
+
+    # Get all channels in the guild
+    local data
+    data="$(___x_cmd_discord___curl ${proxy:+-x} ${proxy:+"$proxy"} \
+        "https://discord.com/api/v10/guilds/${guild_id}/channels" \
+        -H "Authorization: Bot ${bot_token}" \
+        -H "Content-Type: application/json")"
+
+    printf "%s" "$data" |  ___x_cmd jq -r '.[].id'
+}
+
+___x_cmd_discord_chat_history(){
+    local channel_id="$1"
+    local proxy=
+    local bot_token=
+    ___x_cmd_discord_cur proxy:=  bot_token:= 2>/dev/null
+
+
+    local url="https://discord.com/api/v10/channels/${channel_id}/messages?limit=1"
+
+    ___x_cmd_discord___curl ${proxy:+-x} ${proxy:+"$proxy"} "$url" \
+        -H "Authorization: Bot ${bot_token}" \
+        -H "Content-Type: application/json"
+}
+
+___x_cmd_discord___jqu(){
+    local IFS=" "
+    printf "%s" "$*" | ___x_cmd_cmds_awk '
+{
+    text = (text == "") ? $0 : (text "\n" $0)
+}
+END{
+    gsub("\\", "\\\\", text)
+    gsub("\"", "\\\"", text)
+    gsub("\n", "\\n", text)
+    gsub("\t", "\\t", text)
+    printf("%s", text)
+}
+'
+}
+
+___x_cmd_discord_bot_send_msg() {
+    local channel_id="$1"
+    local msg="$2"
+    local proxy=
+    local bot_token=
+    ___x_cmd_discord_cur proxy:=  bot_token:= 2>/dev/null
+
+
+    local content
+    content="$(___x_cmd_discord___jqu "$msg")"
+
+    local data
+    data="$(___x_cmd jq -n \
+            --arg content "$content" \
+            '{
+              content: $content
+            }')"
+
+    ___x_cmd_discord___curl ${proxy:+-x} ${proxy:+"$proxy"} -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Authorization: Bot ${bot_token}" \
+         -d "$data" \
+         "https://discord.com/api/v10/channels/${channel_id}/messages"
+}
