@@ -1,0 +1,74 @@
+
+# claw = memory + soul + note + tailer-mq + cron
+
+xrc:mod:lib     claw   run/heartbeat   run/msg  run/agentrequest   run/util
+
+___X_CMD_CLAW_DIR="$___X_CMD_ROOT_DATA/claw"
+___X_CMD_CLAW_BOT_WS="$___X_CMD_CLAW_DIR/workspace/default"
+___X_CMD_CLAW_BOT_MQ="$___X_CMD_CLAW_BOT_WS/.x-cmd/tailer-mq"
+___X_CMD_CLAW_BOT_HEARTBEAT="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/heartbeat"
+
+___x_cmd_claw_run(){
+    [ "$#" -gt 0 ] || set -- --help
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m claw run ; return 0 ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
+
+    ___x_cmd agent isready || {
+        claw:error "Agent is not ready. Please run 'x agent init' to setup the agent first."
+        return 1
+    }
+
+    local im="${1:-"weixin"}"
+    case "$im" in
+        weixin)
+            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/weixin/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
+            ___x_cmd weixin bot service ensure || return $?
+            ;;
+        telegram)
+            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/telegram/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
+            ___x_cmd telegram bot service ensure || return $?
+            ;;
+        feishu)
+            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/feishu/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
+            ___x_cmd feishu abot service ensure || return $?
+            ;;
+        *)  claw:error "Unsupported IM platform: $im"
+            return 1
+            ;;
+    esac
+
+    claw:info "X-Claw agent runtime active on $im — awaiting instructions and ready to act"
+
+    exec 3>&1
+    local process_id; process_id="$( trap ":;" HUP ; ___x_cmd_claw_run_hearbeatgenerator "$___X_CMD_CLAW_BOT_MQ" "$im" >&3 & printf "%s\n" "$!")"
+    exec 3>&-
+    claw:debug "process_id=$process_id"
+
+    ___X_CMD_TAILER_HANDLE="___x_cmd_claw_run___agentwork" \
+    ___x_cmd tailer run "$___X_CMD_CLAW_BOT_MQ" || {
+        ___x_cmd kill -r "$process_id"
+    }
+
+}
+
+___x_cmd_claw_run___agentwork(){
+    local msg="$1"
+    case "$msg" in
+        HEARTBEAT:*)
+            ___x_cmd_claw_run___agentwork___heartbeat "${msg#*:}"       ;;
+        weixin:*|qywx:*|feishu:*|telegram:*)
+            ___x_cmd_claw_run___agentwork___handlemsg "$msg"            ;;
+
+        # other agents.
+    esac
+}
+
+___x_cmd_claw_workat(){
+    :
+}
+

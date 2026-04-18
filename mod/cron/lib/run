@@ -1,0 +1,171 @@
+
+
+___x_cmd_cron_run(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local ns="DEFAULT"
+    local joblist_dir=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m cron run; return 0 ;;
+            --ns)       ns="$2" ;       arg:2:shift ;;
+            --fp)       joblist_dir="$2"; arg:2:shift ;;
+            *)          break ;;
+        esac
+    done
+
+    # --fp allows external modules (e.g., claw) to specify custom data path
+    if [ -n "$joblist_dir" ]; then
+        ___x_cmd_cron_run___loop "$ns" "$joblist_dir"
+    else
+        ___x_cmd mkdirp "$___X_CMD_CRON/$ns/job"
+        ___x_cmd_cron_run___loop "$ns" "$___X_CMD_CRON/$ns/job"
+    fi
+}
+
+___x_cmd_cron_run___loop(){
+    local ns="$1"
+    local joblist_dir="$2"
+
+    local datestr
+    local sleepsec
+    local tz
+
+    # Read TZ for this ns (do not export, only pass to date)
+    if [ -f "$___X_CMD_CRON/$ns/tz" ]; then
+        read -r tz < "$___X_CMD_CRON/$ns/tz"
+    fi
+
+    local x_
+    while true; do
+        ___x_cmd epoch get_     # the epoch seconds stored in x_
+
+        # Calculate seconds until next minute, wake up 5s early for accuracy
+        sleepsec=$(( 60 - $(( x_ % 60 )) ))
+
+        ___x_cmd_cmds sleep "$sleepsec"
+
+        # Get current time as cron fields: min hour day month dow
+        datestr="$( TZ="${tz:-$TZ}" ___x_cmd_cmds date '+%M %H %d %m %w' )"
+
+        # Find and execute matching cron jobs
+        ___x_cmd_cron_run___find_and_exec "$ns" "$datestr" "$joblist_dir"
+    done
+}
+
+___x_cmd_cron_runonce(){
+    local ns="DEFAULT"
+    local joblist_dir=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m cron runonce; return 0 ;;
+            --ns)       ns="$2" ;       arg:2:shift ;;
+            --fp)       joblist_dir="$2"; arg:2:shift ;;
+            *)          break ;;
+        esac
+    done
+
+    if [ -z "$joblist_dir" ]; then
+        joblist_dir="$___X_CMD_CRON/$ns/job"
+    fi
+
+    local tz
+    if [ -f "$___X_CMD_CRON/$ns/tz" ]; then
+        read -r tz < "$___X_CMD_CRON/$ns/tz"
+    fi
+
+    local datestr
+    datestr="$( TZ="${tz:-$TZ}" ___x_cmd_cmds date '+%M %H %d %m %w' )"
+
+    ___x_cmd_cron_run___find_and_exec "$ns" "$datestr" "$joblist_dir"
+}
+
+___x_cmd_cron_run___find_and_exec(){
+    local ns="$1"
+    local datestr="$2"
+    local joblist_dir="$3"
+    local name
+    local cron_pat
+    local IFS
+    local x_
+
+    [ -d "$joblist_dir" ] || return 0
+    ___x_cmd fsiter --dir_ "$joblist_dir"
+
+    IFS="$___X_CMD_UNSEENCHAR_NEWLINE"
+    while read -r name ; do
+        [ -n "$name" ] || continue
+        read -r cron_pat < "$joblist_dir/$name/cron"
+
+        if ___x_cmd_cron_match "$cron_pat" "$datestr"; then
+            ___x_cmd_cron_run___execute_async "$ns" "$joblist_dir/$name"
+        fi
+    done <<A
+$x_
+A
+}
+
+___x_cmd_cron_run___execute_async(){
+    local ns="$1"
+    local jobdir="$2"
+    local name
+    local instance_dir
+    local instance_file
+    local prev_pid
+    local fingerprint
+    local pid
+
+    name="${jobdir##*/}"
+    instance_dir="$___X_CMD_CRON/$ns/run"
+    instance_file="$instance_dir/$name"
+
+    # Check if previous execution is still running
+    if [ -f "$instance_file" ]; then
+        {
+            read -r prev_pid
+            read -r fingerprint
+        } <"$instance_file"
+
+        if ___x_cmd ps fingerprint check "$prev_pid" "$fingerprint"; then
+            return 0
+        fi
+    fi
+
+    [ -f "$jobdir/cmd" ] || return 0
+    ___x_cmd mkdirp "$instance_dir"
+
+    exec 3>&1
+    pid="$( trap ":;" HUP ; . "$jobdir/cmd" >&3 & printf "%s\n" "$!")"
+    exec 3>&-
+
+    local cron_desc=""
+    if [ -f "$jobdir/desc" ]; then
+        read -r cron_desc < "$jobdir/desc"
+    fi
+    cron:info ${cron_desc:+"--description"} ${cron_desc:+"$cron_desc"} "Cron job $name triggered (pid=$pid)"
+
+    if ___x_cmd os is darwin; then
+        # The darwin will use ps to get fingerprint, while the linux just readfile, so in darwin, use &
+        (
+            {
+                printf '%s\n' "$pid"
+                ___x_cmd ps fingerprint get "$pid"
+            } > "$instance_file" &
+        )
+    else
+        {
+            printf '%s\n' "$pid"
+            ___x_cmd ps fingerprint get "$pid"
+        } > "$instance_file"
+    fi
+
+    if [ -f "$jobdir/once" ]; then
+        # Wait for job to finish, then auto-delete
+        (
+            while kill -0 "$pid" 2>/dev/null; do
+                ___x_cmd_cmds sleep 1
+            done
+            ___x_cmd rmrf "$jobdir"
+        ) &
+    fi
+}

@@ -1,0 +1,148 @@
+# shellcheck shell=dash
+
+___x_cmd log init usb
+
+___x_cmd_usb___main(){
+    [ $# -gt 0 ]    ||              set -- sum
+
+    local subcmd="$1";              shift
+    case "$subcmd" in
+        -h|--help)                  ___x_cmd help -m usb "$@" ; return 0 ;;
+        sum)                        ___x_cmd_usb_sum "$@" ;;
+        info)                       ___x_cmd_usb_info "$@" ;;
+        ls)                         ___x_cmd_usb_ls "$@" ;;
+        *)                          N=usb M="Unknown subcmd -> $subcmd" log:ret:64 ;;
+    esac
+}
+
+# ── sum: info + ls ───────────────────────────────────────────────
+___x_cmd_usb_sum(){
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+    if [ "$tty" ]; then printf "\033[1;37m── USB Devices ──\033[0m\n"
+    else printf "-- USB Devices --\n"; fi
+    ___x_cmd_usb_info "$@"
+    printf "\n"
+    if [ "$tty" ]; then printf "\033[1;37m── Device Tree ──\033[0m\n"
+    else printf "-- Device Tree --\n"; fi
+    ___x_cmd_usb_ls "$@"
+}
+
+# ── info: detailed USB device info ───────────────────────────────
+___x_cmd_usb_info(){
+    if ___x_cmd os is darwin; then
+        ___x_cmd_usb_info_macos
+    elif ___x_cmd os is win; then
+        ___x_cmd_usb_info_win
+    else
+        ___x_cmd_usb_info_linux
+    fi
+}
+
+___x_cmd_usb_info_macos(){
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+
+    # ioreg -p IOUSB lists USB devices on the IOUSB plane
+    # -l includes all properties, -w0 unlimited line width
+    # LC_ALL=C required: ioreg output contains binary data that crashes BSD awk
+    local out
+    out="$(LC_ALL=C ___x_cmd_cmds ioreg -p IOUSB -w0 -l 2>/dev/null | LC_ALL=C ___x_cmd_cmds_awk -v tty="$tty" -f "$___X_CMD_ROOT_MOD/usb/lib/awk/info_macos.awk")"
+    if [ -n "$out" ]; then
+        printf "%s\n" "$out"
+    else
+        if [ "$tty" ]; then printf "\033[0;90mNo USB devices found\033[0m\n"
+        else printf "No USB devices found\n"; fi
+    fi
+}
+
+___x_cmd_usb_info_linux(){
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+
+    if ___x_cmd_cmds lsusb -v 2>/dev/null; then
+        ___x_cmd_cmds lsusb 2>/dev/null | ___x_cmd_cmds_awk -v tty="$tty" -f "$___X_CMD_ROOT_MOD/usb/lib/awk/info_linux.awk"
+    elif [ -d /sys/bus/usb/devices/ ]; then
+        local found=0
+        local d
+        for d in /sys/bus/usb/devices/*/; do
+            [ -f "$d/product" ] || continue
+            local product="" vendor="" serial="" speed="" idvendor="" idproduct=""
+            read -r product < "$d/product" 2>/dev/null
+            [ -f "$d/manufacturer" ] && read -r vendor < "$d/manufacturer" 2>/dev/null
+            [ -f "$d/serial" ] && read -r serial < "$d/serial" 2>/dev/null
+            [ -f "$d/speed" ] && read -r speed < "$d/speed" 2>/dev/null
+            [ -f "$d/idVendor" ] && read -r idvendor < "$d/idVendor" 2>/dev/null
+            [ -f "$d/idProduct" ] && read -r idproduct < "$d/idProduct" 2>/dev/null
+
+            if [ "$tty" ]; then
+                printf "\033[1;36m%-25s\033[0m: %s\n" "device" "${d##*/}"
+                [ "$product" ] && printf "\033[1;36m%-25s\033[0m: %s\n" "product" "$product"
+                [ "$vendor" ] && printf "\033[1;35m%-25s\033[0m: %s\n" "vendor" "$vendor"
+                [ "$idvendor$idproduct" ] && printf "\033[1;35m%-25s\033[0m: %s\n" "ID" "$idvendor:$idproduct"
+                [ "$serial" ] && printf "\033[1;34m%-25s\033[0m: %s\n" "serial" "$serial"
+                [ "$speed" ] && printf "\033[1;32m%-25s\033[0m: %s\n" "speed" "$speed Mbps"
+            else
+                printf "%-25s: %s\n" "device" "${d##*/}"
+                [ "$product" ] && printf "%-25s: %s\n" "product" "$product"
+                [ "$vendor" ] && printf "%-25s: %s\n" "vendor" "$vendor"
+                [ "$idvendor$idproduct" ] && printf "%-25s: %s\n" "ID" "$idvendor:$idproduct"
+                [ "$serial" ] && printf "%-25s: %s\n" "serial" "$serial"
+                [ "$speed" ] && printf "%-25s: %s\n" "speed" "$speed Mbps"
+            fi
+            printf "\n"
+            found=1
+        done
+        [ "$found" -eq 1 ] && return 0
+    fi
+}
+
+___x_cmd_usb_info_win(){
+    ___x_cmd_cmds wmic path Win32_USBControllerDevice get Dependent /format:list 2>/dev/null | ___x_cmd_cmds_awk -f "$___X_CMD_ROOT_MOD/usb/lib/awk/info_win.awk"
+}
+
+# ── ls: compact USB device listing ───────────────────────────────
+___x_cmd_usb_ls(){
+    if ___x_cmd os is darwin; then
+        ___x_cmd_usb_ls_macos
+    elif ___x_cmd os is win; then
+        ___x_cmd_usb_ls_win
+    else
+        ___x_cmd_usb_ls_linux
+    fi
+}
+
+___x_cmd_usb_ls_macos(){
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+
+    local out
+    out="$(LC_ALL=C ___x_cmd_cmds ioreg -p IOUSB -w0 -l 2>/dev/null | LC_ALL=C ___x_cmd_cmds_awk -v tty="$tty" -f "$___X_CMD_ROOT_MOD/usb/lib/awk/ls_macos.awk")"
+    if [ -n "$out" ]; then
+        printf "%s\n" "$out"
+    else
+        if [ "$tty" ]; then printf "\033[0;90mNo USB devices found\033[0m\n"
+        else printf "No USB devices found\n"; fi
+    fi
+}
+
+___x_cmd_usb_ls_linux(){
+    if ___x_cmd_cmds lsusb 2>/dev/null; then
+        ___x_cmd_cmds lsusb 2>/dev/null
+    elif [ -d /sys/bus/usb/devices/ ]; then
+        local tty=""
+        ___x_cmd_is_stdout2tty && tty=1
+        local d
+        for d in /sys/bus/usb/devices/*/; do
+            [ -f "$d/product" ] || continue
+            local product="" vendor=""
+            read -r product < "$d/product" 2>/dev/null
+            [ -f "$d/manufacturer" ] && read -r vendor < "$d/manufacturer" 2>/dev/null
+            printf "%-15s %-20s %s\n" "${d##*/}" "$vendor" "$product"
+        done
+    fi
+}
+
+___x_cmd_usb_ls_win(){
+    ___x_cmd_cmds wmic path Win32_USBControllerDevice get Dependent /format:list 2>/dev/null
+}

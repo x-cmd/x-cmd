@@ -1,0 +1,97 @@
+
+
+___x_cmd_cron_match(){
+    case "$1" in
+        --help|-h)  ___x_cmd help -m cron match; return 0 ;;
+    esac
+
+    local cronpat="$1"
+    local datestr="$2"  # m h d M w
+
+    [ -n "$datestr" ] || {
+        # Default to current time: min hour day month dow
+        datestr="$( ___x_cmd_cmds date '+%M %H %d %m %w' )"
+    }
+
+    local IFS=" "
+
+    local cron_min;  local cron_hour; local cron_day; local cron_month; local cron_week
+    local cur_min;   local cur_hour;  local cur_day;  local cur_month;  local cur_week
+
+    {
+        read -r cron_min cron_hour cron_day cron_month cron_week
+        read -r cur_min  cur_hour  cur_day  cur_month  cur_week
+    } <<A
+$cronpat
+$datestr
+A
+
+    ___x_cmd_cron___matchpat "$cron_min"   "$cur_min"   || return 1
+    ___x_cmd_cron___matchpat "$cron_hour"  "$cur_hour"  || return 1
+    ___x_cmd_cron___matchpat "$cron_day"   "$cur_day"   || return 1
+    ___x_cmd_cron___matchpat "$cron_month" "$cur_month" || return 1
+    ___x_cmd_cron___matchpat "$cron_week"  "$cur_week"  || return 1
+    return 0
+}
+
+___x_cmd_cron___matchpat(){
+    local pat="$1"
+    local cur="$2"
+    local remaining="$pat"
+    local sub
+    local start
+    local step
+    local range
+    local rstep
+    local lo
+    local hi
+
+    # wildcard always matches
+    [ "$pat" = "*" ] && return 0
+
+    while [ -n "$remaining" ]; do
+        sub="${remaining%%,*}"
+        if [ "$sub" = "$remaining" ]; then
+            remaining=""
+        else
+            remaining="${remaining#*,}"
+        fi
+
+        case "$sub" in
+            *-*/*)
+                # range with step: start-end/step
+                range="${sub%%/*}"
+                rstep="${sub#*/}"
+                lo="${range%-*}"
+                hi="${range#*-}"
+                if [ "$cur" -ge "$lo" ] && [ "$cur" -le "$hi" ] && [ "$(( (cur - lo) % rstep ))" -eq 0 ]; then
+                    return 0
+                fi
+                ;;
+            *-*)
+                # range pattern: start-end
+                lo="${sub%-*}"
+                hi="${sub#*-}"
+                if [ "$cur" -ge "$lo" ] && [ "$cur" -le "$hi" ]; then
+                    return 0
+                fi
+                ;;
+            */*)
+                # step pattern: start/step  or  */step
+                start="${sub%%/*}"
+                step="${sub##*/}"
+                [ "$start" != "*" ] || start=0
+                if [ "$cur" -ge "$start" ] && [ "$(( (cur - start) % step ))" -eq 0 ]; then
+                    return 0
+                fi
+                ;;
+            *)
+                # exact match
+                if [ "$cur" = "$sub" ]; then
+                    return 0
+                fi
+                ;;
+        esac
+    done
+    return 1
+}

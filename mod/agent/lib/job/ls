@@ -1,9 +1,9 @@
 # shellcheck shell=dash
 # List all jobs.
 
-# Main entry function
 ___x_cmd_agent_job_ls(){
     local filter="all"
+    local parent_dir=""
     local format=""
     if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
         format="app"
@@ -14,6 +14,7 @@ ___x_cmd_agent_job_ls(){
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)      ___x_cmd help -m agent job ls; return 0 ;;
+            --dir)          parent_dir="$2" ;        arg:2:shift ;;
             --active)       filter="active";        shift ;;
             --completed)    filter="completed";     shift ;;
             --csv)          format="csv";           shift ;;
@@ -23,19 +24,22 @@ ___x_cmd_agent_job_ls(){
         esac
     done
 
+    # Default parent directory
+    [ -n "$parent_dir" ] || parent_dir="$___X_CMD_AGENT_JOB_DIR"
+
     case "$format" in
-        csv)    ___x_cmd_agent_job_ls___csv "$filter" ;;
-        tsv)    ___x_cmd_agent_job_ls___tsv "$filter" ;;
-        app)    ___x_cmd_agent_job_ls___app "$filter" ;;
+        csv)    ___x_cmd_agent_job_ls___csv "$filter" "$parent_dir" ;;
+        tsv)    ___x_cmd_agent_job_ls___tsv "$filter" "$parent_dir" ;;
+        app)    ___x_cmd_agent_job_ls___app "$filter" "$parent_dir" ;;
     esac
 }
 
 # Generate CSV output (base format for other converters)
 ___x_cmd_agent_job_ls___csv(){
     local filter="${1:-all}"
-    local job_dir="${___X_CMD_AGENT_JOB_DIR:-$___X_CMD_ROOT_DATA/agent/job}"
+    local parent_dir="${2:-$___X_CMD_AGENT_JOB_DIR}"
 
-    if [ ! -d "$job_dir" ]; then
+    if [ ! -d "$parent_dir" ]; then
         return 0
     fi
 
@@ -44,7 +48,7 @@ ___x_cmd_agent_job_ls___csv(){
     # Header
     printf "job_id,status,progress,iter,harness,time,description\n"
 
-    for job_path in "$job_dir"/*; do
+    for job_path in "$parent_dir"/*; do
         [ -d "$job_path" ] || continue
 
         job_id="${job_path##*/}"
@@ -82,7 +86,7 @@ ___x_cmd_agent_job_ls___csv(){
         # Format description for CSV (quote only if contains comma, quote, or newline)
         local csv_desc="$x_job_desc"
         case "$csv_desc" in
-            *[,\"]*)
+            *[\"]*)
                 csv_desc="\"$(printf "%s" "$csv_desc" | ___x_cmd_cmds sed 's/"/""/g')\""
                 ;;
         esac
@@ -94,18 +98,19 @@ ___x_cmd_agent_job_ls___csv(){
 
 # Convert CSV to TSV
 ___x_cmd_agent_job_ls___tsv(){
-    ___x_cmd_agent_job_ls___csv "$1" | ___x_cmd csv totsv
+    ___x_cmd_agent_job_ls___csv "$1" "$2" | ___x_cmd csv totsv
 }
 
 ___x_cmd_agent_job_ls___app()(
+    local parent_dir="${2:-$___X_CMD_AGENT_JOB_DIR}"
     local ___X_CMD_CSV_APP_DATA_job_id=
     local ___X_CMD_CSV_APP_SHBIN_CODE=
     ___X_CMD_CSV_APP_SHBIN_CODE="xrc agent" \
-        ___x_cmd csv app --return var --clear ___x_cmd_agent_job_ls___csv "$1" || return $?
+        ___x_cmd csv app --return var --clear ___x_cmd_agent_job_ls___csv "$1" "$parent_dir" || return $?
 
     [ -n "$___X_CMD_CSV_APP_DATA_job_id" ] || return 1
 
-    local job_dir="$___X_CMD_AGENT_JOB_DIR/$___X_CMD_CSV_APP_DATA_job_id"
+    local job_dir="$parent_dir/$___X_CMD_CSV_APP_DATA_job_id"
     agent:info "Selected job dir -> $job_dir"
 
     local action=""
@@ -117,8 +122,8 @@ ___x_cmd_agent_job_ls___app()(
         "return       - Go back to job list" || return $?
 
     case "${action%% *}" in
-        preview)    ___x_cmd_agent_job_preview "$___X_CMD_CSV_APP_DATA_job_id" ;;
-        iter)       ___x_cmd_agent_job_iter --dir "$job_dir" ;;
+        preview)    ___x_cmd_agent_job_preview --dir "$parent_dir" "$___X_CMD_CSV_APP_DATA_job_id" ;;
+        iter)       ___x_cmd_agent_job_iter --dir "$parent_dir" --id "$___X_CMD_CSV_APP_DATA_job_id" ;;
         adjust)
             local adjust_desc=""
             printf "Enter adjustment description: "
@@ -127,10 +132,10 @@ ___x_cmd_agent_job_ls___app()(
                 agent:warn "Adjustment cancelled: no description provided"
                 return 0
             }
-            ___x_cmd_agent_job_adjust --dir "$job_dir" "$adjust_desc"
+            ___x_cmd_agent_job_adjust --dir "$parent_dir" --id "$___X_CMD_CSV_APP_DATA_job_id" "$adjust_desc"
             ;;
         delete)
-            ___x_cmd ui yesno -r "Delete job dir '$job_dir'?" || return 0
+            ___x_cmd ui yesno -r "Delete job '$___X_CMD_CSV_APP_DATA_job_id'?" || return 0
             ___x_cmd rmrf "$job_dir" && \
                 agent:info "Job '$___X_CMD_CSV_APP_DATA_job_id' deleted"
             ;;

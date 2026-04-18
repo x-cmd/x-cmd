@@ -2,32 +2,42 @@
 # Preview single job details in YAML format with colors.
 
 # Main preview function
-# Usage: x agent job preview [job_id|job_dir]
-#   job_id:    YYMMDD_HHMMSS format (e.g., 260402_034114)
-#   job_dir:   Full path to job directory
-#   (none):    Use most recent job
+# Usage: x agent job preview [options] [job_id]
+# Options:
+#   --dir <path>    Parent directory for jobs (default: $___X_CMD_AGENT_JOB_DIR)
+#   job_id:         Job ID/subdirectory name (e.g., 260402_034114)
+#   (none):         Use most recent job
 ___x_cmd_agent_job_preview(){
-    local job_arg=""
+    local parent_dir=""
+    local job_id=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)      ___x_cmd help -m agent job preview; return 0 ;;
+            --dir)          parent_dir="$2" ; shift 2 ;;
             --)             shift; break ;;
             -*)             N=agent M="Unknown option: $1" log:ret:64 ;;
-            *)              [ -z "$job_arg" ] && job_arg="$1"; shift ;;
+            *)              [ -z "$job_id" ] && job_id="$1"; shift ;;
         esac
     done
 
+    # Default parent directory
+    [ -n "$parent_dir" ] || parent_dir="$___X_CMD_AGENT_JOB_DIR"
+
     local job_path=""
 
-    if [ -n "$job_arg" ]; then
-        # Try to resolve job_arg to a directory
-        job_path="$(___x_cmd_agent_job_preview___resolve_job "$job_arg")" || return $?
+    if [ -n "$job_id" ]; then
+        # Try to resolve job_id to a directory
+        job_path="$(___x_cmd_agent_job_preview___resolve_job "$parent_dir" "$job_id")" || return $?
     else
         # Try to use most recent job
         job_path="$___X_CMD_AGENT_JOB_RECENT"
         if [ -z "$job_path" ] || [ ! -d "$job_path" ]; then
-            N=agent M="No recent job found. Please specify a job_id or job_dir" log:ret:64
+            # Find latest in parent_dir
+            job_path="$(___x_cmd_agent_job___get_lastdir "$parent_dir")"
+        fi
+        if [ -z "$job_path" ]; then
+            N=agent M="No recent job found. Please specify a job_id or run 'x agent job init' to create one" log:ret:64
         fi
     fi
 
@@ -39,10 +49,11 @@ ___x_cmd_agent_job_preview(){
 }
 
 # Resolve job argument to full path
-# Supports: job_id (260402_034114), full path, or partial match
+# Usage: ___x_cmd_agent_job_preview___resolve_job <parent_dir> <job_arg>
+# Supports: job_id (260402_034114 format), full path, or partial match
 ___x_cmd_agent_job_preview___resolve_job(){
-    local job_arg="$1"
-    local job_dir="${___X_CMD_AGENT_JOB_DIR:-$___X_CMD_ROOT_DATA/agent/job}"
+    local parent_dir="$1"
+    local job_arg="$2"
 
     # Case 1: It's already a valid directory
     if [ -d "$job_arg" ]; then
@@ -51,7 +62,7 @@ ___x_cmd_agent_job_preview___resolve_job(){
     fi
 
     # Case 2: It's a full job_id (260402_034114 format)
-    local full_path="$job_dir/$job_arg"
+    local full_path="$parent_dir/$job_arg"
     if [ -d "$full_path" ]; then
         printf "%s\n" "$full_path"
         return 0
@@ -60,7 +71,7 @@ ___x_cmd_agent_job_preview___resolve_job(){
     # Case 3: Try partial match (e.g., "034114" matches "260402_034114")
     local matched=""
     local count=0
-    for d in "$job_dir"/*"$job_arg"*; do
+    for d in "$parent_dir"/*"$job_arg"*; do
         [ -d "$d" ] || continue
         matched="$d"
         count=$((count + 1))
@@ -70,10 +81,10 @@ ___x_cmd_agent_job_preview___resolve_job(){
     done
 
     if [ $count -eq 0 ]; then
-        N=agent M="No job found matching: $job_arg" log:ret:1
+        N=agent M="No job found matching: $job_arg in $parent_dir" log:ret:1
         return 1
     elif [ $count -gt 1 ]; then
-        N=agent M="Multiple jobs match '$job_arg'. Please use full job_id" log:ret:1
+        N=agent M="Multiple jobs match '$job_arg' in $parent_dir. Please use full job_id" log:ret:1
         return 1
     else
         printf "%s\n" "$matched"
@@ -186,8 +197,8 @@ ___x_cmd_agent_job_preview___build_progress_bar(){
 # Calculate relative time from unix timestamp
 ___x_cmd_agent_job_preview___relative_time(){
     local ts="$1"
-    local now
-    now="$(___x_cmd date unix 2>/dev/null)" || now=""
+    local x_=; ___x_cmd epoch get_
+    local now="$x_"
 
     # Validate timestamps are numeric
     case "$ts" in

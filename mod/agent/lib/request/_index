@@ -1,0 +1,226 @@
+# shellcheck shell=dash disable=2120
+
+xrc:mod:lib     agent       request/requestasync request/workspace
+
+___x_cmd_agent_request(){
+    # local retry=1
+
+    local content=""
+    local harness=""
+    local filelist=""
+    local NL="$___X_CMD_UNSEENCHAR_NEWLINE"
+    local output_format="text"
+    local output_file=""
+    local overwrite=""
+
+    local pipe=""
+    local user_session_id=""
+    local workspace=""
+
+    [ "$#" -gt 0 ] || set -- --help
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent request "$@" ; return 0 ;;
+
+            --harness)      harness="$2"  ;                     arg:2:shift ;;
+            --file|-f)      filelist="${filelist}${NL}${2}" ;   arg:2:shift ;;
+            --pipe)         pipe="$(___x_cmd_cmds cat)" ;       shift ;;
+
+            --output|-o)    output_file="$2"   ;                arg:2:shift ;;
+            --overwrite)    overwrite=1;                        shift ;;
+            --json)         output_format=json;                 shift ;;
+            --session)      user_session_id="$2";               arg:2:shift ;;
+            --workspace)    workspace="$2";                     arg:2:shift ;;
+
+            # --retry)        retry="$2" ; arg:2:shift ;;
+
+            --)             shift; break ;;
+            *)              break ;;
+        esac
+    done
+
+    local x_=""
+    if [ -z "$harness" ]; then
+        x_=""; ___x_cmd_agent_harness_
+        harness="$x_"
+    fi
+
+    ___x_cmd_agent_harness_validate "$harness" || return $?
+
+    if [ -n "$pipe" ]; then
+        content="${content}
+<STDIN>
+${pipe}
+</STDIN>
+"
+    fi
+
+    while read -r f; do
+        [ -f "$f" ]  || continue
+        content="${content}
+<FILE path=\"${f}\">
+$(___x_cmd_cmds cat "$f")
+</FILE>
+"
+    done <<A
+$filelist
+A
+
+    if [ -n "$workspace" ]; then
+        x_=""; ___x_cmd_agent_request___workspace_prompt_ "$workspace" || return $?
+        content="${content}${x_}"
+
+        local workspace_session_file="$workspace/.x-cmd/state/agent_session/$harness"
+        if [ ! -f "$workspace_session_file" ]; then
+            ___x_cmd ensurefp "$workspace_session_file"
+            ___x_cmd uuid > "$workspace_session_file"
+        fi
+        read -r user_session_id < "$workspace_session_file"
+    fi
+
+    local IFS=" " ; content="${content}${NL}${*}${NL}"
+
+    if [ -z "$output_file" ]; then
+        < "$___X_CMD_DEVTTY_FP" ___x_cmd_agent_request___run
+        return $?
+    else
+        content="${content}
+Output your response wrapped with:
+<OUTPUT-CONTENT>
+...
+</OUTPUT-CONTENT>
+"
+
+        if [ -f "$output_file" ] && [ "${overwrite:-}" != "1" ]; then
+            ___x_cmd bakman backup "$output_file"
+        fi
+
+        x_="$( < "$___X_CMD_DEVTTY_FP" ___x_cmd_agent_request___run )" || \
+        case $? in
+            130)    return 130 ;;
+            0)      ;;
+            *)      return $? ;;
+        esac
+
+        x_="${x_#*<OUTPUT-CONTENT>}"
+        x_="${x_%</OUTPUT-CONTENT>*}"
+        x_="${x_#"$NL"}"
+        x_="${x_%"$NL"}"
+        printf "%s" "$x_" > "$output_file"
+    fi
+
+}
+
+___x_cmd_agent_request___run(){(
+    local session_map_file=""
+    local real_session_id=""
+    local user_session_cwd=""
+    local is_session_first=""
+
+    if [ -n "$user_session_id" ]; then
+        session_map_file="$___X_CMD_ROOT_TMP/agent/request/session/$harness/$user_session_id"
+        [ ! -f "$session_map_file" ] || {
+            { read -r real_session_id && read -r user_session_cwd; } < "$session_map_file"
+        }
+
+        if [ -z "$real_session_id" ] || [ -z "$user_session_cwd" ] || [ ! -d "$user_session_cwd" ]; then
+            is_session_first=1
+            agent:debug "Session is first time, creating a new session"
+            if [ -n "$workspace" ]; then
+                [ -d "$workspace" ] || ___x_cmd mkdirp "$workspace"
+                user_session_cwd="$workspace"
+            else
+                user_session_cwd="$PWD"
+            fi
+            [ ! -f "$session_map_file" ] || ___x_cmd rmrf "$session_map_file"
+            ___x_cmd ensurefp "$session_map_file"
+        fi
+
+        ___x_cmd_cmds cd "$user_session_cwd" || return $?
+        user_session_cwd="$PWD"
+    fi
+
+    agent:info "Sending request to harness '$harness'"
+    shift $#
+
+    case "$harness" in
+        kimi-cli)
+            if [ -n "$user_session_id" ]; then
+                if [ "$is_session_first" = "1" ]; then
+                    real_session_id="$( ___x_cmd uuid )"
+                    printf "%s\n" "$real_session_id" "$user_session_cwd" > "$session_map_file"
+                fi
+                set -- --session "$real_session_id"
+            fi
+
+            if [ "$output_format" = "json" ]; then
+                set -- "$@" --print --output-format stream-json
+            else
+                set -- "$@" --print --output-format text --final-message-only
+            fi
+
+            ___x_cmd kimi -- "$@" --prompt "$content" < /dev/null
+            ;;
+        claude)
+            if [ -n "$user_session_id" ]; then
+                if [ "$is_session_first" = "1" ]; then
+                    real_session_id="$( ___x_cmd uuid )"
+                    set -- --session-id "$real_session_id"
+                    printf "%s\n" "$real_session_id" "$user_session_cwd" > "$session_map_file"
+                else
+                    set -- --resume "$real_session_id"
+                fi
+            fi
+
+            if [ "$output_format" = "json" ]; then
+                set -- "$@" --verbose --output-format stream-json
+            fi
+
+            # --allowedTools "Write,Read,Edit,Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)"
+            ___x_cmd claude -- "$@" --dangerously-skip-permissions --allowedTools "Write,Read,Edit,Bash(x *),Bash(x-cmd *),Bash(source ~/.x-cmd.root/X *),Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)" --print "$content" < /dev/null
+            ;;
+        codex)
+            set -- exec
+            if [ -n "$user_session_id" ]; then
+                if [ "$is_session_first" != "1" ]; then
+                    set -- "$@" resume "$real_session_id"
+                fi
+            fi
+            ___x_cmd codex -- "$@" --json --full-auto --skip-git-repo-check "$content" < /dev/null | ___x_cmd_agent_request___handle_output codex "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+            ;;
+        gemini-cli)
+            if [ -n "$user_session_id" ]; then
+                if [ "$is_session_first" != "1" ]; then
+                    set -- --resume "$real_session_id"
+                fi
+            fi
+
+            ___x_cmd gemini cli -- --yolo "$@" --output-format stream-json --prompt "$content" < /dev/null | ___x_cmd_agent_request___handle_output gemini-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+            ;;
+        opencode)
+            if [ -n "$user_session_id" ]; then
+                if [ "$is_session_first" != "1" ]; then
+                    set -- --session "$real_session_id"
+                fi
+            fi
+
+            ___x_cmd opencode run "$@" --format json "$content" < /dev/null | ___x_cmd_agent_request___handle_output opencode "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+            ;;
+    esac
+)}
+
+___x_cmd_agent_request___handle_output(){
+    local harness="$1"
+    local output_format="$2"
+    local is_session_first="$3"
+    local user_session_cwd="$4"
+    local save_session_id_file="$5"
+
+    output_format="$output_format" \
+    is_session_first="$is_session_first" \
+    user_session_cwd="$user_session_cwd" \
+    save_session_id_file="$save_session_id_file" \
+    harness="$harness" \
+    ___x_cmd awk0 -m j/json -m j/jiter \
+        -f "$___X_CMD_ROOT_MOD/agent/lib/awk/handle_output.awk"
+}

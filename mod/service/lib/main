@@ -12,7 +12,7 @@ ___x_cmd_service___main(){
     local op="$1";      shift
     case "$op" in
         -h|--help)      ___x_cmd help -m service "$@" ;;
-        start|stop|restart|log|status|isalive|rm|pause|resume)
+        start|ensure|stop|restart|log|status|isalive|rm|pause|resume)
                         ___x_cmd_service_"$op" "$@" ;;
         *)              ;;
     esac
@@ -41,6 +41,38 @@ ___x_cmd_service_restart(){
 
     ___x_cmd_service_start "$name" -- "$@"
 }
+
+___x_cmd_service_ensure(){
+    case "$1" in
+        -h|--help)      ___x_cmd help -m service restart "$@" ; return 0  ;;
+    esac
+
+    local name="$1"
+    [ -n "$name" ] ||   N=service M="Please provide service name." arg:ret:64
+
+    shift
+    case "$1" in
+        --)             shift ;;
+        *)              ;;
+    esac
+
+    ! ___x_cmd_service isalive "$name" || return 0
+
+    local i=0
+    while [ $((i=i+1)) -le 3 ]; do
+        if [ "$i" -gt 1 ]; then
+            service:warn "Failed to start service, retrying"
+        fi
+        ___x_cmd_service_start "$name" -- "$@"
+        ___x_cmd sleep 2
+        ! ___x_cmd_service isalive "$name"   || return 0
+    done
+
+    service:error "Service cannot started -> $name"
+    ___x_cmd service log tail "$name"
+    return 1
+}
+
 
 ___x_cmd_service_start(){
     case "$1" in
@@ -133,10 +165,8 @@ ___x_cmd_service_stop(){
     local x_
     ___x_cmd_service_status_ "$name" || return $?
 
-    [ "$x_" != "notfound" ] || {
-        service:error "Service [name=$name] Not Found."
-        return 1
-    }
+    [ "$x_" != "notfound" ] || N=service M="Service [name=$name] Not Found."   arg:ret:64
+    [ "$x_" != "stop" ]     || N=service M="Service [name=$name] has stopped"  arg:ret:64
 
     local pidpath="$___X_CMD_SERVICE_FP_DATA/$name/PID"
 
@@ -237,7 +267,7 @@ ___x_cmd_service_stop___kill_then_wait(){
 
         [ "$interval" != 0 ] || continue
 
-        ___x_cmd sleep "$interval"
+        ___x_cmd_cmds sleep "$interval"
     done <<A
 0.1
 0.5
@@ -276,4 +306,3 @@ ___x_cmd_service_resume(){
     ___x_cmd_service_pid_ "$name" || N=service M="Service [name=$name] not found." log:ret:1
     kill -s CONT "$x_"
 }
-

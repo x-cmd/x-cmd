@@ -1,0 +1,114 @@
+# shellcheck shell=dash
+
+xrc:mod:lib     worker   ls
+
+___x_cmd_worker___main(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    local op="$1" ;         shift
+    case "$op" in
+        -h|--help)          ___x_cmd help -m worker "$@" ; return 0 ;;
+        isalive|info|run)   ___x_cmd_worker_"$op"  "$@" ;;
+        *)                  N=claw M="Unknown subcmd -> $op" log:ret:64
+    esac
+}
+
+___x_cmd_worker_isalive(){
+    local ns="x-worker-default"
+    local name=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m worker isalive ; return 0 ;;
+            --ns)       ns="$2" ;   arg:2:shift ;;
+            --name)     name="$2" ; arg:2:shift ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
+    local dir="$___X_CMD_ROOT_DATA/runner/$ns"
+    local runnerfile="$dir/runner.$name"
+    [ -f "$runnerfile" ] || return 1
+
+
+    local process_id=""
+    local fingerprint=""
+    {
+        read -r process_id
+        read -r fingerprint
+    } < "$runnerfile"
+
+    ___x_cmd ps fingerprint check "$process_id" "$fingerprint"
+}
+
+___x_cmd_worker_info(){
+    local ns="x-worker-default"
+    local name=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m worker info ; return 0 ;;
+            --ns)       ns="$2" ;   arg:2:shift ;;
+            --name)     name="$2" ; arg:2:shift ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
+    local dir="$___X_CMD_ROOT_DATA/runner/$ns"
+    local runnerfile="$dir/runner.$name"
+    [ -f "$runnerfile" ] || return 1
+
+    local process_id=""
+    local fingerprint=""
+    local stime=""
+    {
+        read -r process_id
+        read -r fingerprint
+        read -r stime
+    } < "$runnerfile"
+
+    local state="ongoing"
+    ___x_cmd ps fingerprint check "$process_id" "$fingerprint" || state="done"
+
+    printf "%s\t" "$process_id" "$fingerprint" "$stime"
+    printf "%s\n" "$state"
+}
+
+___x_cmd_worker_run(){
+    local ns="x-worker-default"
+    local name=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m worker run ; return 0 ;;
+            --ns)       ns="$2" ;   arg:2:shift   ;;
+            --name)     name="$2" ; arg:2:shift ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
+    local dir="$___X_CMD_ROOT_DATA/runner/$ns"
+    ___x_cmd mkdirp "$dir"
+    local runnerfile="$dir/runner.$name"
+
+    local process_id
+    exec 3>&1
+    process_id="$( trap ":;" HUP ; "$@" >&3 & printf "%s\n" "$!")"
+    exec 3>&-
+
+    local x_
+    ___x_cmd ps fingerprint get_ "$process_id"
+    local fingerprint="$x_"
+
+    ___x_cmd ps fingerprint toepoch_ "$fingerprint"
+    local stime="$x_"
+
+    printf "%s\n" "$process_id" "$fingerprint" "$stime">"$runnerfile"
+    ___x_cmd_cmds sleep 0.1     # TODO: in the future. we will have a creator lock.
+}

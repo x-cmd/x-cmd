@@ -1,8 +1,7 @@
 # shellcheck shell=sh disable=SC2016,SC3043
 
-# chatid,
 ___x_cmd_feishu_reactor_echo(){
-    ___x_cmd_feishu_bot_send_msg --chatid "$MSG_CHATID" "$MSG_BODY"
+    ___x_cmd_feishu_abot_send_text --chatid "$MSG_CHATID" "$MSG_BODY"
 }
 
 ___x_cmd_feishu_reactor_repl(){
@@ -11,7 +10,7 @@ ___x_cmd_feishu_reactor_repl(){
         feishu:warn "Send message skipped: executed command returned empty output"
         return $?
     fi
-    ___x_cmd_feishu_bot_send_msg --chatid "$MSG_CHATID" "$resp"
+    ___x_cmd_feishu_abot_send_text --chatid "$MSG_CHATID" "$resp"
 }
 
 ___x_cmd_feishu_react(){
@@ -45,7 +44,7 @@ ___x_cmd_feishu_react(){
 
     while true; do
         {
-            ___x_cmd_feishu_chat_history
+            ___x_cmd_feishu_listen --json
         } | {
             local MSG_CHATID
             local msg_line
@@ -101,93 +100,3 @@ ___x_cmd_feishu_download_resource(){
         -o "$output_file"
 }
 
-___x_cmd_feishu_chat_history(){
-    local date
-    date="$(___x_cmd date timestamp)"
-    local chats=
-    chats="$(___x_cmd_chat_id 20)"
-
-    local chat_id
-    local data
-    while [ -z "$data" ]; do
-        for chat_id in $chats; do
-            data="$(curl -s -X GET "https://open.feishu.cn/open-apis/im/v1/messages?container_id=$chat_id&container_id_type=chat&page_size=20&sort_type=ByCreateTimeDesc&start_time=$date" \
-                -H "Authorization: Bearer $cur_token" | ___x_cmd awk0 -m j/json -m j/jiter '
-{ jiparse_after_tokenize(o, $0); }
-END{
-    kp = SUBSEP "\"1\"" SUBSEP "\"data\"" SUBSEP "\"items\""
-    l = o[ kp L ]
-    for (i=1; i<=l; ++i){
-        kp_i = kp SUBSEP "\""i"\""
-        kp_sender_type = kp_i SUBSEP "\"sender\"" SUBSEP "\"sender_type\""
-        if (o[ kp_sender_type ] == "\"user\""){
-            print jstr0(o, kp_i, " ")
-        }
-    }
-}')"
-        done
-    done
-    printf "%s\n%s" "$data" ""
-}
-
-___x_cmd_feishu___jqu(){
-    local IFS=" "
-    printf "%s" "$*" | ___x_cmd_cmds_awk '
-{
-    text = (text == "") ? $0 : (text "\n" $0)
-}
-END{
-    gsub("\n", "\\n", text)
-    gsub("\t", "\\t", text)
-    printf("%s", text)
-}
-'
-}
-
-___x_cmd_feishu_bot_send_msg() {
-    local chat_id
-    local json_output=;
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --chatid)   chat_id="$2" ; arg:2:shift ;;
-            -j|--json)  json_output=1; shift ;;
-            -h|--help)  ___x_cmd help -m feishu bot send text; return 0 ;;
-            *) break ;;
-        esac
-    done
-
-    local msg="{\"text\":\"$1\"}"
-    msg="$( ___x_cmd_feishu___jqu "$msg")"
-
-    local uuid
-    uuid="$(___x_cmd rand uuid)"
-
-    local data
-    data="$(___x_cmd jq -n              \
-            --arg msg "$msg"            \
-            --arg uuid "$uuid"          \
-            --arg chat_id "$chat_id"    \
-            '{
-              content: $msg,
-              msg_type: "text",
-              uuid: $uuid,
-              receive_id: $chat_id
-            }')"
-
-    local resp; resp="$(printf '%s' "${data}" | curl -s -X POST 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id' \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $cur_token" \
-    -d @-)"
-
-    [ -z "$json_output" ] || {
-        printf "%s" "$resp"
-        return
-    }
-
-    local statu ; statu="$(printf "%s" "$resp" | {  ___x_cmd jo env .msg ; echo "$msg" ; })"
-    if [ "$statu" = "success" ]; then
-        ___x_cmd_ui_tf true "Sent text message successfully"
-    else
-        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$resp"
-    fi
-}

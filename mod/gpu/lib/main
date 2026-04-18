@@ -1,0 +1,147 @@
+# shellcheck shell=dash
+
+___x_cmd_gpu___main(){
+    [ "$#" -gt 0 ] ||   set -- sum
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m gpu "$@";    return 0 ;;
+        sum)            ___x_cmd_gpu_sum "$@" ;;
+        info)           ___x_cmd_gpu_info "$@" ;;
+        stat)           ___x_cmd_gpu_stat "$@" ;;
+        *)              N=gpu M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_gpu_sum(){
+    ___x_cmd_gpu_info "$@"
+    ___x_cmd_gpu_stat "$@"
+}
+
+___x_cmd_gpu_info(){
+    local simple="" fresh=""
+    while [ $# -gt 0 ]; do
+        case "$1" in --simple|-s) simple=1; shift ;; --fresh) fresh=1; shift ;; *) break ;; esac
+    done
+    if ___x_cmd os is darwin; then
+        ___x_cmd_gpu_info_macos "$simple" "$fresh"
+    elif ___x_cmd os is win; then
+        ___x_cmd_gpu_info_win "$simple"
+    else
+        ___x_cmd_gpu_info_linux "$simple"
+    fi
+}
+
+___x_cmd_gpu_info_macos(){
+    local simple="${1:-}"
+    local fresh="${2:-}"
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+    local dur="1d"
+    [ "$fresh" ] && dur="0s"
+    x ccmd "$dur" -- system_profiler SPDisplaysDataType 2>/dev/null | ___x_cmd_cmds_awk -v simple="$simple" -v tty="$tty" -f "$___X_CMD_ROOT_MOD/gpu/lib/awk/info_macos_text.awk"
+    # Extra fields from JSON and ioreg (not available in text output)
+    [ "$simple" ] || {
+        x ccmd "$dur" -- system_profiler SPDisplaysDataType -json 2>/dev/null | ___x_cmd_cmds_awk -v tty="$tty" -f "$___X_CMD_ROOT_MOD/gpu/lib/awk/info_macos_json.awk"
+        LC_ALL=C x ccmd "$dur" -- ioreg -l -w0 2>/dev/null | LC_ALL=C ___x_cmd_cmds_awk -v tty="$tty" -f "$___X_CMD_ROOT_MOD/gpu/lib/awk/info_macos_ioreg.awk"
+    }
+    # Extra fields from Python ctypes (Metal API + IOKit)
+    [ "$simple" ] || ___x_cmd_gpu_info_macos_python
+}
+
+___x_cmd_gpu_info_macos_python(){
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+    ___x_cmd_cmds python3 "$___X_CMD_ROOT_MOD/gpu/lib/py/metal_info.py" "$tty" 2>/dev/null
+}
+
+___x_cmd_gpu_info_linux(){
+    local simple="${1:-}"
+    # Try /sys/bus/pci first (always available, no external deps)
+    local found=0
+    local dir
+    # zsh: disable "no matches found" error when glob expands to nothing
+    { set +o nomatch; } 2>/dev/null
+    for dir in /sys/bus/pci/devices/*/class; do
+        [ -f "$dir" ] || continue
+        local class p vendor="" device="" driver=""
+        read -r class < "$dir" 2>/dev/null || continue
+        # 0x030000 = VGA, 0x030200 = 3D controller, 0x030xxx = display
+        case "$class" in
+            0x030*)
+                p="${dir%/class}"
+                read -r vendor < "$p/vendor" 2>/dev/null
+                read -r device < "$p/device" 2>/dev/null
+                if [ -L "$p/driver" ]; then
+                    driver="$(readlink "$p/driver" 2>/dev/null)"
+                    driver="${driver##*/}"
+                fi
+                printf "%-25s: %s\n" "gpu" "$vendor:$device"
+                [ -n "$vendor" ] && printf "%-25s: %s\n" "vendor" "$vendor"
+                [ -n "$device" ] && printf "%-25s: %s\n" "device" "$device"
+                [ -n "$driver" ] && printf "%-25s: %s\n" "driver" "$driver"
+                found=1
+                ;;
+        esac
+    done
+    [ "$found" -eq 1 ] && return 0
+
+    # Fallback to lspci if /sys had nothing
+    ___x_cmd_cmds lspci -vmm 2>/dev/null | ___x_cmd_cmds_awk -f "$___X_CMD_ROOT_MOD/gpu/lib/awk/info_linux.awk"
+}
+
+___x_cmd_gpu_info_win(){
+    local simple="${1:-}"
+    ___x_cmd_cmds wmic path win32_videocontroller get \
+        Caption,AdapterRAM,DriverVersion,VideoModeDescription \
+        /format:list 2>/dev/null | ___x_cmd_cmds_awk -f "$___X_CMD_ROOT_MOD/gpu/lib/awk/info_win.awk"
+}
+
+___x_cmd_gpu_stat(){
+    if ___x_cmd os is darwin; then
+        ___x_cmd_gpu_stat_macos
+    elif ___x_cmd os is win; then
+        N=gpu M="stat not supported on Windows" log:ret:1
+    else
+        ___x_cmd_gpu_stat_linux
+    fi
+}
+
+___x_cmd_gpu_stat_macos(){
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+    ___x_cmd_cmds ioreg -r -c AGXAccelerator -l -w0 2>/dev/null | ___x_cmd_cmds_awk -v tty="$tty" -f "$___X_CMD_ROOT_MOD/gpu/lib/awk/stat_macos.awk"
+}
+
+___x_cmd_gpu_stat_linux(){
+    # Try DRM utilization from sysfs
+    local found=0
+    local card
+    # zsh: disable "no matches found" error when glob expands to nothing
+    { set +o nomatch; } 2>/dev/null
+    for card in /sys/class/drm/card*/device; do
+        [ -d "$card" ] || continue
+        [ -f "$card/gpu_busy_percent" ] && {
+            local busy
+            read -r busy < "$card/gpu_busy_percent" 2>/dev/null
+            printf "%-25s: %s%%\n" "gpu utilization" "$busy"
+            found=1
+        }
+        [ -f "$card/mem_busy_percent" ] && {
+            local membusy
+            read -r membusy < "$card/mem_busy_percent" 2>/dev/null
+            printf "%-25s: %s%%\n" "memory utilization" "$membusy"
+            found=1
+        }
+        [ -f "$card/vram_usage" ] && {
+            local vram
+            read -r vram < "$card/vram_usage" 2>/dev/null
+            printf "%-25s: %s\n" "vram usage" "$vram"
+            found=1
+        }
+    done
+    [ "$found" -eq 1 ] && return 0
+
+    # Fallback: no GPU stat available
+    N=gpu M="No GPU utilization data found" log:ret:1
+}

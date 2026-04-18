@@ -1,0 +1,77 @@
+# shellcheck shell=dash
+
+___x_cmd_telegram_listen(){
+    param:void
+
+    local format=;
+    local fp=;
+    local offset=;
+    local timeout=;
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m telegram listen "$@" ; return 0 ;;
+            --fp)           fp=1 ;          shift ;;
+            --json)         format="json";  shift ;;
+            --timeout)      timeout="$2" ;  arg:2:shift ;;
+            --offset)       offset="$2"  ;  arg:2:shift ;;
+            *)              break ;;
+        esac
+    done
+
+    timeout="${timeout:-100}"
+    local token=;
+    ___x_cmd_telegram_cur token:= 2>/dev/null
+    [ -n "$token" ] || N=telegram M="Please setting up your token first ==> 'x telegram --cfg token=<your token>'" log:ret:1
+
+    local proxy=
+    ___x_cmd_telegram_cur proxy:= 2>/dev/null
+
+
+    local offsetfp="$___X_CMD_TELEGRAM_TMP/offset"
+    [ ! -f "$offsetfp" ] || offset="$(___x_cmd_cmds cat "$offsetfp" )"
+
+    while true; do
+        local chatid
+        local resp
+        resp="$(___x_cmd_telegram_getupdates | ___x_cmd jq -c )" || {
+            telegram:error "Failed to get updates: $resp"
+            ___x_cmd sleep 1s
+            return 1
+        }
+
+        local msg
+        ___x_cmd jo env . msg=.result <<A
+$resp
+A
+        [ "$msg" != "[]" ] || continue
+
+        offset="$(printf "%s\n" "$resp" | ___x_cmd jq ".result[-1].update_id + 1")"
+        printf "%s\n" "$offset" > "$offsetfp"
+
+
+        if [ -n "$fp" ]; then
+            case "$resp" in
+                *"chat"*)
+                        chatid="${resp#*'"chat":{"id":'}"
+                        chatid="${chatid%%,*}"
+                        printf "%s\n" "$chatid"
+                        printf "%s\n" "$resp"
+                        ___X_CMD_TELEGRAM_BOT_DATA="${___X_CMD_TELEGRAM_BOT_PATH}/data_${chatid}.tsv"
+                        ___x_cmd ensurefp "$___X_CMD_TELEGRAM_BOT_DATA"
+                        printf "%s\n" "$resp"  >> "$___X_CMD_TELEGRAM_BOT_DATA"
+                        ___x_cmd tailer pub "$___X_CMD_ROOT_DATA/telegram/sub" "telegram:${chatid}"
+                        ;;
+            esac
+        elif [ "$format" = "json" ]; then
+            printf "%s\n" "$resp"
+        else
+            printf "%s\n" "$resp"
+        fi
+    done
+}
+
+___x_cmd_telegram_getupdates(){
+    ___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} \
+            "https://api.telegram.org/bot${token}/getUpdates?timeout=${timeout}&offset=${offset}"
+}

@@ -2,6 +2,8 @@
 BEGIN{
     HARNESS = ENVIRON[ "harness" ]
     OUTPUT_FORMAT = ENVIRON[ "output_format" ]
+    IS_SESSION_FIRST = ENVIRON[ "is_session_first" ]
+    USER_SESSION_CWD = ENVIRON[ "user_session_cwd" ]
     SAVE_SESSION_ID_FILE = ENVIRON[ "save_session_id_file" ]
     if ( HARNESS == "" ) HARNESS = "UNKNOWN"
     Q2_1 = SUBSEP "\"1\""
@@ -15,7 +17,7 @@ function handle_response_stream_json( s,           o ){
     if ( OUTPUT_FORMAT == "json" ) {
         print s
         fflush()
-        if (( SAVE_SESSION_ID_FILE != "" ) && ( SAVE_SESSION_ID_VAL == "" )) {
+        if (( IS_SESSION_FIRST == 1 ) && ( SAVE_SESSION_ID_VAL == "" )) {
             jiparse_after_tokenize(o, s)
             save_session_id(o)
         }
@@ -33,7 +35,7 @@ function handle_response_stream_json( s,           o ){
         JITER_LEVEL = JITER_CURLEN = 0
         stdout_content(o)
 
-        if (( SAVE_SESSION_ID_FILE != "" ) && ( SAVE_SESSION_ID_VAL == "" )) {
+        if (( IS_SESSION_FIRST == 1 ) && ( SAVE_SESSION_ID_VAL == "" )) {
             save_session_id(o)
         }
     }
@@ -55,7 +57,7 @@ function save_session_id(o,           type, session_id){
         if ( type != "\"thread.started\"" ) return
         session_id = juq(o[ Q2_1, "\"thread_id\"" ])
         if ( session_id != "" ) {
-            print session_id > SAVE_SESSION_ID_FILE
+            printf("%s\n%s\n", session_id, USER_SESSION_CWD) > SAVE_SESSION_ID_FILE
             SAVE_SESSION_ID_VAL = session_id
         }
 
@@ -64,7 +66,7 @@ function save_session_id(o,           type, session_id){
         if ( type != "\"init\"" ) return
         session_id = juq(o[ Q2_1, "\"session_id\"" ])
         if ( session_id != "" ) {
-            print session_id > SAVE_SESSION_ID_FILE
+            printf("%s\n%s\n", session_id, USER_SESSION_CWD) > SAVE_SESSION_ID_FILE
             SAVE_SESSION_ID_VAL = session_id
         }
 
@@ -74,7 +76,7 @@ function save_session_id(o,           type, session_id){
 
         session_id = juq(o[ Q2_1, "\"sessionID\"" ])
         if ( session_id != "" ) {
-            print session_id > SAVE_SESSION_ID_FILE
+            printf("%s\n%s\n", session_id, USER_SESSION_CWD) > SAVE_SESSION_ID_FILE
             SAVE_SESSION_ID_VAL = session_id
         }
     }

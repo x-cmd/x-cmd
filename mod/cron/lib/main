@@ -1,6 +1,8 @@
 # shellcheck shell=dash
 
-xrc:mod:lib     cron   __runcmd
+___X_CMD_CRON="${___X_CMD_ROOT_DATA}/cron"
+
+xrc:mod:lib     cron   match ls service run
 
 ___x_cmd_cron___main(){
     [ "$#" -gt 0 ] ||   set -- --help
@@ -9,6 +11,143 @@ ___x_cmd_cron___main(){
     case "$op" in
         -h|--help)      ___x_cmd help -m cron "$@";    return 0 ;;
 
+        ls|list)        ___x_cmd_cron_ls "$@" ;;
+
+        add|rm|exec|service|match|tz|runonce|run)
+                        ___x_cmd_cron_"$op" "$@" ;;
+
         *)              N=cron M="Unknown subcmd -> $op" log:ret:64 ;;
     esac
+}
+
+___x_cmd_cron_add(){
+    local ns="DEFAULT"
+    local name=""
+    local desc=""
+    local once=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)   ___x_cmd help -m cron add; return 0 ;;
+            --ns)   ns="$2" ;       arg:2:shift ;;
+            --name) name="$2" ;     arg:2:shift ;;
+            --desc) desc="$2" ;     arg:2:shift ;;
+            --once) once=1 ;        shift ;;
+            *)      break ;;
+        esac
+    done
+
+    local cron_pat="$1"
+    local cron_cmd="$2"
+
+    if [ -z "$name" ] || [ -z "$cron_pat" ] || [ -z "$cron_cmd" ]; then
+        N=cron M="Usage: x cron add [--ns NS] --name <name> [--desc <desc>] [--once] <pattern> <command>" log:ret:1
+        return 1
+    fi
+
+    local jobdir="$___X_CMD_CRON/$ns/job/$name"
+    ___x_cmd mkdirp "$jobdir"
+
+    if [ -f "$jobdir/cron" ]; then
+        N=cron M="Job already exists: $name" log:ret:1
+        return 1
+    fi
+
+    printf '%s\n' "$cron_pat" > "$jobdir/cron"
+    printf '%s\n' "$cron_cmd" > "$jobdir/cmd"
+    [ -n "$desc" ] && printf '%s\n' "$desc" > "$jobdir/desc"
+    [ -n "$once" ] && printf '' > "$jobdir/once"
+
+    printf '%s\n' "$name"
+}
+
+___x_cmd_cron_tz(){
+    local ns="DEFAULT"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m cron tz; return 0 ;;
+            --ns)       ns="$2" ; arg:2:shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local tzval="$1"
+
+    ___x_cmd mkdirp "$___X_CMD_CRON/$ns"
+
+    if [ -z "$tzval" ]; then
+        if [ -f "$___X_CMD_CRON/$ns/tz" ]; then
+            read -r tzval < "$___X_CMD_CRON/$ns/tz"
+            printf '%s\n' "$tzval"
+        fi
+    else
+        printf '%s\n' "$tzval" > "$___X_CMD_CRON/$ns/tz"
+    fi
+}
+
+
+___x_cmd_cron_rm(){
+    local ns="DEFAULT"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m cron rm; return 0 ;;
+            --ns)       ns="$2" ; arg:2:shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local fname="$1"
+
+    if [ -z "$fname" ]; then
+        N=cron M="Usage: x cron rm [--ns NS] <name>" log:ret:1
+        return 1
+    fi
+
+    local jobdir="$___X_CMD_CRON/$ns/job/$fname"
+
+    if [ ! -d "$jobdir" ]; then
+        N=cron M="Job not found: $fname" log:ret:1
+        return 1
+    fi
+
+    ___x_cmd rmrf "$jobdir"
+}
+
+___x_cmd_cron_exec(){
+    local ns="DEFAULT"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m cron exec; return 0 ;;
+            --ns)       ns="$2" ; arg:2:shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local name="$1"
+
+    if [ -z "$name" ]; then
+        N=cron M="Usage: x cron exec [--ns NS] <name>" log:ret:1
+        return 1
+    fi
+
+    local jobdir="$___X_CMD_CRON/$ns/job/$name"
+
+    if [ ! -d "$jobdir" ]; then
+        N=cron M="Job not found: $name" log:ret:1
+        return 1
+    fi
+
+    if [ ! -f "$jobdir/cmd" ]; then
+        N=cron M="Job has no cmd: $name" log:ret:1
+        return 1
+    fi
+
+    cron:info "Execute job $name"
+    . "$jobdir/cmd"
+    local exit_code=$?
+    if [ "$exit_code" -eq 0 ]; then
+        cron:info "Job $name completed successfully"
+    else
+        cron:warn "Job $name failed with exit_code=$exit_code"
+    fi
+    return $exit_code
 }
