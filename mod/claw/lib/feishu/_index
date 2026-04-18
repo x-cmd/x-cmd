@@ -1,0 +1,163 @@
+# ___x_cmd_claw_feishu -h
+
+___x_cmd_claw_feishu(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local op="$1" ;     shift
+    case "$op" in
+        --help|-h)
+            ___x_cmd help -m claw feishu ; return 0 ;;
+        get-msg)
+            ___x_cmd_claw_feishu_get_msg "$@" ;;
+        get-unread)
+            ___x_cmd_claw_feishu_get_unread "$@" ;;
+        has-unread)
+            ___x_cmd_claw_feishu_has_unread "$@" ;;
+        unread-count)
+            ___x_cmd_claw_feishu_unread_count "$@" ;;
+        recent-msg)
+            ___x_cmd_claw_feishu_recent_msg "$@" ;;
+        *)  N=claw M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_claw_feishu_get_unread(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide feishu chatid" log:ret:64
+    local datadir_offset="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/DATA_OFFSET/feishu-${chatid}"
+
+    local offset=0
+    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+
+    local x_=""
+    ___x_cmd feishu abot data which_ "$chatid"
+    local botdata="$x_"
+
+    local total_line=0
+    if [ -f "$botdata" ]; then
+        x_=""; ___x_cmd line count_ "$botdata"
+        total_line="${x_:-1}"
+    fi
+
+    local msg_unread_count="$((total_line - offset))"
+
+    if [ "$msg_unread_count" -gt 0 ]; then
+        local start_line=""
+        local end_line=""
+        local msgprompt=""
+        if [ "$msg_unread_count" -gt 10 ]; then
+            start_line="$((total_line - 9))"
+            end_line="$total_line"
+            msgprompt="You have $msg_unread_count unread messages. Here are the latest 10 (from line $start_line to line $end_line):"
+        else
+            start_line="$((offset + 1))"
+            end_line="$total_line"
+            msgprompt="You have $msg_unread_count unread messages (from line $start_line to line $end_line):"
+        fi
+        printf "%s\n" "$msgprompt"
+        ___x_cmd_claw_feishu_get_msg "$chatid" "$start_line" "$end_line"
+        printf "%s\n" "---"
+    else
+        printf "%s\n" "You have no unread messages."
+    fi
+
+    printf "%s\n" \
+        "Notice: As an AI agent, you can use the following commands to retrieve Feishu messages:" \
+        "  x claw feishu -h                                   # Show help" \
+        "  x claw feishu get-msg \"${chatid}\" <start>:<end>  # Get messages by line range (e.g. 100:200)" \
+        "  x claw feishu recent-msg \"${chatid}\"             # Get recent messages" \
+        "  x claw feishu unread-count \"${chatid}\"           # Get unread message count" \
+        "" \
+        ">>> MANDATORY: At the end of EVERY task, run 'x claw feishu unread-count \"${chatid}\"' to verify if new messages have arrived. If unread messages exist, process them immediately before exiting. <<<"
+}
+
+___x_cmd_claw_feishu_get_msg(){
+    local chatid="$1"
+    local range="$2"
+    local start_line=""
+    local end_line=""
+    local count=""
+
+    [ -n "$chatid" ] || N=claw M="Please provide feishu chatid" log:ret:64
+    case "$range" in
+        *:*)
+            start_line="${range%%:*}"
+            end_line="${range##*:}"
+            ;;
+        *)
+            start_line="$2"
+            end_line="$3"
+            ;;
+    esac
+
+    local datadir_offset="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/DATA_OFFSET/feishu-${chatid}"
+
+    local x_=""
+    ___x_cmd feishu abot data which_ "$chatid" || return $?
+    local botdata="$x_"
+    [ -f "$botdata" ] || {
+        ___x_cmd ensurefp "$datadir_offset"
+        printf "%s\n" "0" > "$datadir_offset"
+        return 0
+    }
+
+    { [ -n "$start_line" ] && [ "$start_line" -gt 0 ]; } || N=claw M="Invalid start line for get-msg" log:ret:64
+    if [ -n "$end_line" ]; then
+        count="$((end_line - start_line + 1))"
+        [ "$count" -gt 0 ] || N=claw M="Invalid range for get-msg: end must be >= start" log:ret:64
+        ___x_cmd_cmds tail -n +"$start_line" "$botdata" | head -n "$count"
+    else
+        ___x_cmd_cmds tail -n +"$start_line" "$botdata"
+        x_=""; ___x_cmd line count_ "$botdata"
+        end_line="${x_:-$start_line}"
+    fi
+
+    local offset=0
+    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+
+    ___x_cmd ensurefp "$datadir_offset"
+    [ "$end_line" -le "$offset" ] || printf "%s\n" "$end_line" > "$datadir_offset"
+}
+
+___x_cmd_claw_feishu_recent_msg(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide feishu chatid" log:ret:64
+    local datadir_offset="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/DATA_OFFSET/feishu-${chatid}"
+
+    local offset=0
+    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+    ___x_cmd_claw_feishu_get_msg "$chatid" "$((offset+1))"
+}
+
+___x_cmd_claw_feishu_has_unread(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide feishu chatid" log:ret:64
+    local x_=""; ___x_cmd_claw_feishu_unread_count_ "$@" || return $?
+    [ "$x_" -gt 0 ]
+}
+
+___x_cmd_claw_feishu_unread_count_(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide feishu chatid" log:ret:64
+    local datadir_offset="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/DATA_OFFSET/feishu-${chatid}"
+
+    local offset=0
+    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+    offset="${offset:-0}"
+
+    x_=""; ___x_cmd feishu abot data which_ "$chatid"
+    local botdata="$x_"
+
+    local total_line=0
+    if [ -f "$botdata" ]; then
+        x_=""; ___x_cmd line count_ "$botdata"
+        total_line="${x_:-1}"
+    fi
+
+    x_="$((total_line - offset))"
+}
+
+___x_cmd_claw_feishu_unread_count(){
+    local x_=""; ___x_cmd_claw_feishu_unread_count_ "$@" || return $?
+    printf "%s\n" "$x_"
+}

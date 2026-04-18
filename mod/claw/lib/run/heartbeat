@@ -1,0 +1,74 @@
+# shellcheck shell=dash
+
+# claw should have a name and timezone.
+
+# x cron add --ns "x-claw/default" ""
+
+___x_cmd_claw_run___agentwork___heartbeat(){
+    local current_ts="$1"
+    local heartbeat_tsfile="$___X_CMD_CLAW_BOT_HEARTBEAT/lastheartbeat_ts"
+    local lastheartbeat_ts=0;
+    [ ! -f "$heartbeat_tsfile" ] || read -r lastheartbeat_ts < "$heartbeat_tsfile"
+    [ "$(( current_ts - lastheartbeat_ts ))" -ge 0 ] || return 0
+    ___x_cmd ensurefp "$heartbeat_tsfile"
+    printf "%s\n" "$current_ts" > "$heartbeat_tsfile"
+
+    ___x_cmd cron runonce --ns "x-claw-default"
+
+    # check agent has unread message, and it is not working, if exists, run the agent.
+    local imfile="$___X_CMD_CLAW_BOT_HEARTBEAT/current_im_chatid"
+    local current_im=""; local current_chatid="";
+    [ -f "$imfile" ] || return 0
+    read -r current_im current_chatid < "$imfile"
+
+    local idle_count=0
+    local idle_file="$___X_CMD_CLAW_BOT_HEARTBEAT/idle_count"
+    [ ! -f "$idle_file" ] || read -r idle_count < "$idle_file"
+
+    # Activity: unread message pending to be processed
+    if ___x_cmd claw "$current_im" has-unread "$current_chatid" && ! ___x_cmd worker isalive --ns x-claw-worker --name "${current_im}-${current_chatid}"; then
+        printf "%s\n" "0" > "$idle_file"
+        case "$current_im" in
+            feishu) ___x_cmd feishu abot service ensure || return $? ;;
+            *)      ___x_cmd "$current_im" bot service ensure || return $? ;;
+        esac
+        ___x_cmd_claw_run___agentwork___handlemsg "${current_im}:${current_chatid}"
+        return 0
+    fi
+
+    # Activity: message worker still running
+    if ___x_cmd worker isalive --ns x-claw-worker --name "${current_im}-${current_chatid}"; then
+        printf "%s\n" "0" > "$idle_file"
+        return 0
+    fi
+
+    # Activity: heartbeat worker still running
+    if ___x_cmd worker isalive --ns x-claw-worker --name x-claw-heartbeat; then
+        printf "%s\n" "0" > "$idle_file"
+        return 0
+    fi
+
+    # No activity: increment idle counter
+    idle_count=$(( idle_count + 1 ))
+    printf "%s\n" "$idle_count" > "$idle_file"
+
+    # Skip heartbeat agent after 30 consecutive idle cycles (~30 minutes)
+    [ "$idle_count" -lt 30 ] || return 0
+
+    ___x_cmd worker run --ns x-claw-worker --name x-claw-heartbeat -- ___x_cmd_claw_run___agentrequest___handleheartbeat "$current_im" "$current_chatid"
+}
+
+___x_cmd_claw_run_hearbeatgenerator(){
+    local mqdir="$1"
+    local x_
+
+    ___x_cmd date timestamp_
+    ___x_cmd_cmds sleep $(( 60 - (x_ % 60) )) || return 130
+
+    while true; do
+        # TODO: Check if the father process is alive. If not. exit.
+        x_=; ___x_cmd date timestamp_
+        ___x_cmd tailer send "$mqdir" "HEARTBEAT:$x_"
+        ___x_cmd_cmds sleep $(( 60 - (x_ % 60) )) || return 130
+    done
+}

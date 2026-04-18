@@ -1,0 +1,211 @@
+# shellcheck shell=dash
+
+___x_cmd_feishu_abot_send(){
+    param:void
+
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local op="$1" ;     shift
+    case "$op" in
+        -h|--help)
+                ___x_cmd help -m feishu abot send ; return 0 ;;
+        --text|--image|--file)
+                ___x_cmd_feishu_abot_send_"${op#--}" "$@"
+                ;;
+        *)      N=feishu M="Unknown op -> $op" log:ret:64   ;;
+    esac
+}
+
+___x_cmd_feishu_abot_send_text(){
+    local chat_id
+    local json_output=;
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --chatid)   chat_id="$2" ; arg:2:shift ;;
+            -j|--json)  json_output=1; shift ;;
+            -h|--help)  ___x_cmd help -m feishu abot send --text; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    local msg="$1"
+    msg="$( ___x_cmd_feishu___jqu "$msg")"
+
+    local msg_json
+    msg_json="$(___x_cmd_cmds cat <<A
+{
+    "content": "{\"text\":\"$msg\"}",
+    "msg_type": "text",
+    "receive_id": "$chat_id"
+}
+A
+)"
+
+    feishu:debug "$(printf "%s" "$msg_json" )"
+    local resp; resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ )"
+
+    [ -z "$json_output" ] || {
+        printf "%s" "$resp"
+        return
+    }
+
+    local statu ; statu="$(printf "%s" "$resp" | {  ___x_cmd jo env .msg ; echo "$msg" ; })"
+    if [ "$statu" = "success" ]; then
+        ___x_cmd_ui_tf true "Sent text message successfully"
+    else
+        ___x_cmd_ui_tf false "Failed to send message:" "ErrorMsg:$resp"
+    fi
+}
+
+___x_cmd_feishu_abot_send_image(){
+    local chat_id
+    local image_path
+    local json_output=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --chatid)   chat_id="$2" ; arg:2:shift ;;
+            -j|--json)  json_output=1; shift ;;
+            -h|--help)  ___x_cmd help -m feishu abot send --image; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    image_path="$1"
+    [ -f "$image_path" ] || N=feishu M="File not found: $file_path" log:ret:1
+    local resp; resp="$(___x_cmd_feishu_appupload_image_ "$image_path")"
+
+
+    local image_key; image_key="$(printf "%s" "$resp" | { ___x_cmd jq -r .data.image_key ; })"
+    if [ -n "$image_key" ]; then
+        local msg_json; msg_json="$(___x_cmd_cmds cat <<A
+{
+    "content": "{\"image_key\":\"$image_key\"}",
+    "msg_type": "image",
+    "receive_id": "$chat_id"
+}
+A
+)"
+        feishu:debug "$(printf "%s" "$msg_json")"
+        local send_resp; send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___)"
+
+        [ -z "$json_output" ] || {
+            printf "%s" "$resp"
+            return
+        }
+
+        local statu ; statu="$(printf "%s" "$send_resp" | {  ___x_cmd jo env .msg ; echo "$msg" ; })"
+        if [ "$statu" = "success" ]; then
+            ___x_cmd_ui_tf true "Sent image successfully"
+        else
+            ___x_cmd_ui_tf false "Failed to send image:" "ErrorMsg:$send_resp"
+        fi
+    else
+        ___x_cmd_ui_tf false "Failed to upload image:" "ErrorMsg:$resp"
+    fi
+}
+
+___x_cmd_feishu_abot_send_file(){
+    local chat_id
+    local name
+    local file_path
+    local json_output=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m feishu abot send --file; return 0 ;;
+            --chatid)   chat_id="$2" ;  arg:2:shift ;;
+            --name)     name="$2" ;     arg:2:shift ;;
+            -j|--json)  json_output=1;  shift ;;
+            *) break ;;
+        esac
+    done
+
+    file_path="$1"
+    [ -f "$file_path" ] || N=feishu M="File not found: $file_path" log:ret:1
+    local resp; resp="$(___x_cmd_feishu_appupload_file_ "$file_path")"
+
+    local file_key;
+    file_key="$(printf "%s" "$resp" | ___x_cmd jq -r .data.file_key)"
+    if [ -n "$file_key" ]; then
+        local msg_json; msg_json="$(___x_cmd_cmds cat <<A
+{
+    "content": "{\"file_key\":\"$file_key\"}",
+    "msg_type": "file",
+    "receive_id": "$chat_id"
+}
+A
+)"
+        feishu:debug "$(printf "%s" "$msg_json")"
+        local send_resp;
+        send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___)"
+
+        [ -z "$json_output" ] || {
+            printf "%s" "$resp"
+            return
+        }
+
+        local statu; statu="$(printf "%s" "$send_resp" | {  ___x_cmd jo env .msg ; echo "$msg" ; })"
+        if [ "$statu" = "success" ]; then
+            ___x_cmd_ui_tf true "Sent file successfully"
+        else
+            ___x_cmd_ui_tf false "Failed to send file:" "ErrorMsg:$send_resp"
+        fi
+    else
+        ___x_cmd_ui_tf false "Failed to upload file:" "ErrorMsg:$resp"
+    fi
+}
+
+___x_cmd_feishu_appsend___(){
+    local x_=; local cur_token
+    ____x_cmd_tenant_token ; cur_token="$x_"
+
+    ___x_cmd curl -s -X POST 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id' \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $cur_token" \
+    -d @-
+}
+
+___x_cmd_feishu_appupload_image_(){
+    local x_=; local cur_token
+    ____x_cmd_tenant_token ; cur_token="$x_"
+
+    image_path="$1"
+    [ -f "$image_path" ] || N=feishu M="File not found: $file_path" log:ret:1
+
+    ___x_cmd curl -s -X POST 'https://open.feishu.cn/open-apis/im/v1/images?image_type=message' \
+        -H "Authorization: Bearer $cur_token" \
+        -F "image_type=message" \
+        -F "image=@${image_path}"
+}
+
+___x_cmd_feishu_appupload_file_(){
+    local x_=; local cur_token
+    ____x_cmd_tenant_token ; cur_token="$x_"
+
+    file_path="$1"
+    [ -f "$file_path" ] || N=feishu M="File not found: $file_path" log:ret:1
+
+    local file_name="${file_path##*/}"
+    local file_type="stream"
+
+    feishu:debug "[filename=$file_name],[filetype=$file_type],[file=$file_path]"
+    ___x_cmd curl -s -X POST 'https://open.feishu.cn/open-apis/im/v1/files' \
+        -H "Authorization: Bearer $cur_token" \
+        -H "Content-Type: multipart/form-data" \
+        -F "file_type=${file_type}" \
+        -F "file_name=${file_name}" \
+        -F "file=@${file_path}"
+}
+
+___x_cmd_feishu___jqu(){
+    local IFS=" "
+    printf "%s" "$*" | ___x_cmd_cmds_awk '
+{
+    text = (text == "") ? $0 : (text "\n" $0)
+}
+END{
+    gsub("\n", "\\n", text)
+    gsub("\t", "\\t", text)
+    printf("%s", text)
+}
+'
+}

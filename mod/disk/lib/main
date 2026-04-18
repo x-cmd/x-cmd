@@ -1,0 +1,491 @@
+# shellcheck shell=dash
+
+___x_cmd log init disk
+
+___x_cmd_disk___main(){
+    [ $# -gt 0 ]    ||              set -- sum
+
+    local subcmd="$1";              shift
+    case "$subcmd" in
+        -h|--help)                  ___x_cmd help -m disk "$@" ; return 0 ;;
+        sum)                        ___x_cmd_disk_sum "$@" ;;
+        info)                       ___x_cmd_disk_info "$@" ;;
+        stat)                       ___x_cmd_disk_stat "$@" ;;
+        ls)                         ___x_cmd_disk_ls "$@" ;;
+        eject)                      ___x_cmd_disk_eject "$@" ;;
+        mount)                      ___x_cmd_disk_mount "$@" ;;
+        umount)                     ___x_cmd_disk_umount "$@" ;;
+        remount)                    ___x_cmd_disk_remount "$@" ;;
+        device)                     ___x_cmd_disk_device "$@" ;;
+        *)                          N=disk M="Unknown subcmd -> $subcmd" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_disk_sum(){
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+    if [ "$tty" ]; then printf "\033[1;37m── Physical Disks ──\033[0m\n"
+    else printf "-- Physical Disks --\n"; fi
+    ___x_cmd_disk_info "$@"
+    printf "\n"
+    if [ "$tty" ]; then printf "\033[1;37m── Filesystem Usage ──\033[0m\n"
+    else printf "-- Filesystem Usage --\n"; fi
+    ___x_cmd_disk_stat "$@"
+}
+
+# ── info: physical disk hardware info ────────────────────────────
+___x_cmd_disk_info(){
+    local simple="" fresh=""
+    while [ $# -gt 0 ]; do
+        case "$1" in --simple|-s) simple=1; shift ;; --fresh) fresh=1; shift ;; *) break ;; esac
+    done
+    if ___x_cmd os is darwin; then
+        ___x_cmd_disk_info_macos "$simple" "$fresh"
+    elif ___x_cmd os is win; then
+        ___x_cmd_disk_info_win "$simple"
+    else
+        ___x_cmd_disk_info_linux "$simple"
+    fi
+}
+
+___x_cmd_disk_info_macos(){
+    local simple="${1:-}"
+    local fresh="${2:-}"
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+
+    local dur="1d"
+    [ "$fresh" ] && dur="0s"
+
+    # Step 1: Collect rich fields from system_profiler to a temp file
+    local tmpfile
+    tmpfile="$(mktemp)"
+    x ccmd "$dur" -- system_profiler SPNVMeDataType SPSerialATADataType 2>/dev/null > "$tmpfile"
+
+    # Step 2: Collect all physical disks from diskutil, overlay with rich fields
+    x ccmd "$dur" -- diskutil info -all 2>/dev/null | ___x_cmd_cmds_awk -v simple="$simple" -v tty="$tty" -v richfile="$tmpfile" -f "$___X_CMD_ROOT_MOD/disk/lib/awk/info_macos.awk"
+}
+
+___x_cmd_disk_info_linux(){
+    local simple="${1:-}"
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+
+    local found=0
+    local blk
+
+    { set +o nomatch; } 2>/dev/null
+    for blk in /sys/block/sd* /sys/block/nvme* /sys/block/vd* /sys/block/mmcblk*; do
+        [ -d "$blk" ] || continue
+        local name="${blk##*/}"
+        local model="" size="" rotational="" vendor="" serial="" ro=""
+
+        [ -f "$blk/device/model" ] && read -r model < "$blk/device/model" 2>/dev/null
+        [ -f "$blk/size" ] && read -r size < "$blk/size" 2>/dev/null
+        [ -f "$blk/queue/rotational" ] && read -r rotational < "$blk/queue/rotational" 2>/dev/null
+        [ -f "$blk/device/vendor" ] && read -r vendor < "$blk/device/vendor" 2>/dev/null
+        ! [ "$simple" ] && [ -f "$blk/device/serial" ] && read -r serial < "$blk/device/serial" 2>/dev/null
+        [ -f "$blk/ro" ] && read -r ro < "$blk/ro" 2>/dev/null
+
+        local size_bytes=$(( (${size:-0} * 512) ))
+        local media_type=""
+        [ "${rotational:-0}" = "0" ] && media_type="SSD" || media_type="HDD"
+
+        if [ "$tty" ]; then
+            printf "\033[1;36m%-25s\033[0m: %s\n" "device" "/dev/$name"
+            [ "$model" ] && printf "\033[1;36m%-25s\033[0m: %s\n" "model" "$model"
+            printf "\033[1;32m%-25s\033[0m: %s\n" "capacity" "$( ___x_cmd_disk_fmtbytes "$size_bytes" )"
+            printf "\033[1;32m%-25s\033[0m: %s\n" "media type" "$media_type"
+            if ! [ "$simple" ]; then
+                [ "$vendor" ] && printf "\033[1;35m%-25s\033[0m: %s\n" "vendor" "$vendor"
+                [ "$serial" ] && printf "\033[1;34m%-25s\033[0m: %s\n" "serial" "$serial"
+                [ "$ro" = "1" ] && printf "\033[1;34m%-25s\033[0m: %s\n" "read only" "yes"
+            fi
+        else
+            printf "%-25s: %s\n" "device" "/dev/$name"
+            [ "$model" ] && printf "%-25s: %s\n" "model" "$model"
+            printf "%-25s: %s\n" "capacity" "$( ___x_cmd_disk_fmtbytes "$size_bytes" )"
+            printf "%-25s: %s\n" "media type" "$media_type"
+            if ! [ "$simple" ]; then
+                [ "$vendor" ] && printf "%-25s: %s\n" "vendor" "$vendor"
+                [ "$serial" ] && printf "%-25s: %s\n" "serial" "$serial"
+                [ "$ro" = "1" ] && printf "%-25s: %s\n" "read only" "yes"
+            fi
+        fi
+        printf "\n"
+        found=1
+    done
+    [ "$found" -eq 1 ] && return 0
+
+    # Fallback: lsblk
+    ___x_cmd_cmds lsblk -d -o NAME,SIZE,MODEL,ROTA,TYPE 2>/dev/null | ___x_cmd_cmds_awk -v tty="$tty" -f "$___X_CMD_ROOT_MOD/disk/lib/awk/info_linux.awk"
+}
+
+___x_cmd_disk_info_win(){
+    local simple="${1:-}"
+    ___x_cmd_cmds wmic diskdrive get Model,Size,MediaType,InterfaceType,SerialNumber,Status /format:list 2>/dev/null | ___x_cmd_cmds_awk -f "$___X_CMD_ROOT_MOD/disk/lib/awk/info_win.awk"
+}
+
+# ── stat: per-container filesystem usage ──────────────────────────
+#
+# macOS: uses diskutil info -all to get APFS container-level data,
+#   groups containers by physical disk (disk1/disk2/disk3 under disk0).
+#   Deduplicates: same container = one row.
+# Linux: uses df -Th, merges same-device mounts.
+#
+___x_cmd_disk_stat(){
+    local format=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --tsv|-t) format=tsv; shift ;;
+            --csv|-c) format=csv; shift ;;
+            *) break ;;
+        esac
+    done
+    if ___x_cmd os is darwin; then
+        ___x_cmd_disk_stat_macos "$format"
+    elif ___x_cmd os is win; then
+        ___x_cmd_disk_stat_win "$format"
+    else
+        ___x_cmd_disk_stat_linux "$format"
+    fi
+}
+
+___x_cmd_disk_stat_macos(){
+    local format="${1:-}"
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+
+    diskutil info -all 2>/dev/null | ___x_cmd_cmds_awk -v tty="$tty" -v format="$format" -f "$___X_CMD_ROOT_MOD/disk/lib/awk/stat_macos.awk"
+}
+
+___x_cmd_disk_stat_linux(){
+    local format="${1:-}"
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+
+    ___x_cmd_cmds df -Th 2>/dev/null | ___x_cmd_cmds_awk -v tty="$tty" -v format="$format" -f "$___X_CMD_ROOT_MOD/disk/lib/awk/stat_linux.awk"
+}
+
+___x_cmd_disk_stat_win(){
+    local format="${1:-}"
+    ___x_cmd_cmds wmic logicaldisk get DeviceID,Size,FreeSpace,FileSystem,VolumeName /format:list 2>/dev/null | ___x_cmd_cmds_awk -v format="$format" -f "$___X_CMD_ROOT_MOD/disk/lib/awk/stat_win.awk"
+}
+
+# ── ls: compact tabular listing of disks and partitions ───────────
+___x_cmd_disk_ls(){
+    if ___x_cmd os is darwin; then
+        ___x_cmd_disk_ls_macos
+    elif ___x_cmd os is win; then
+        ___x_cmd_disk_ls_win
+    else
+        ___x_cmd_disk_ls_linux
+    fi
+}
+
+___x_cmd_disk_ls_macos(){
+    diskutil list 2>/dev/null
+}
+
+___x_cmd_disk_ls_linux(){
+    if ___x_cmd_cmds lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL 2>/dev/null; then
+        return 0
+    fi
+    ___x_cmd_cmds fdisk -l 2>/dev/null
+}
+
+___x_cmd_disk_ls_win(){
+    ___x_cmd_cmds wmic diskdrive get Model,Size,MediaType /format:table 2>/dev/null
+    printf "\n"
+    ___x_cmd_cmds wmic logicaldisk get DeviceID,VolumeName,Size,FreeSpace,FileSystem /format:table 2>/dev/null
+}
+
+# ── eject: unmount removable media ────────────────────────────────
+___x_cmd_disk_eject(){
+    local target="${1:-}"
+    if ___x_cmd os is darwin; then
+        ___x_cmd_disk_eject_macos "$target"
+    elif ___x_cmd os is win; then
+        ___x_cmd_disk_eject_win "$target"
+    else
+        ___x_cmd_disk_eject_linux "$target"
+    fi
+}
+
+___x_cmd_disk_eject_macos(){
+    local target="${1:-}"
+    if [ "$target" ]; then
+        # Eject specific disk: accept /dev/diskN, diskN, or mount point
+        case "$target" in
+            /dev/*)  ;;
+            disk*)   target="/dev/$target" ;;
+            /*)      # mount point — find the device
+                     target="$(___x_cmd_cmds df "$target" 2>/dev/null | ___x_cmd_cmds_awk 'NR==2{print $1}')" ;;
+        esac
+        if [ -n "$target" ]; then
+            ___x_cmd_cmds diskutil eject "$target" 2>&1
+        else
+            N=disk M="Cannot find device for mount point" log:ret:64
+        fi
+    else
+        # No argument: eject all ejectable disks via Finder
+        ___x_cmd_cmds osascript -e 'tell application "Finder" to eject (every disk whose ejectable is true)' 2>&1
+    fi
+}
+
+___x_cmd_disk_eject_linux(){
+    local target="${1:-}"
+    if [ "$target" ]; then
+        case "$target" in
+            /dev/*)  ;;
+            /*)      target="$(___x_cmd_cmds df "$target" 2>/dev/null | ___x_cmd_cmds_awk 'NR==2{print $1}')" ;;
+        esac
+        if [ -n "$target" ]; then
+            # Try udisksctl first (user-friendly, no sudo)
+            if ___x_cmd_cmds udisksctl unblock 2>/dev/null; then
+                ___x_cmd_cmds udisksctl unmount -b "$target" 2>&1 && \
+                    ___x_cmd_cmds udisksctl power-off -b "$target" 2>&1
+            else
+                ___x_cmd_cmds eject "$target" 2>&1
+            fi
+        else
+            N=disk M="Cannot find device for mount point" log:ret:64
+        fi
+    else
+        # Eject all removable devices
+        { set +o nomatch; } 2>/dev/null
+        local d
+        for d in /sys/block/sd* /sys/block/sr*; do
+            [ -d "$d" ] || continue
+            local removable=""
+            [ -f "$d/removable" ] && read -r removable < "$d/removable" 2>/dev/null
+            [ "$removable" = "1" ] || continue
+            local name="${d##*/}"
+            if ___x_cmd_cmds udisksctl 2>/dev/null; then
+                ___x_cmd_cmds udisksctl unmount -b "/dev/$name" 2>/dev/null
+                ___x_cmd_cmds udisksctl power-off -b "/dev/$name" 2>/dev/null
+            else
+                ___x_cmd_cmds eject "/dev/$name" 2>/dev/null
+            fi
+        done
+    fi
+}
+
+___x_cmd_disk_eject_win(){
+    local target="${1:-}"
+    if [ "$target" ]; then
+        ___x_cmd_cmds powershell -Command "\$drive = Get-WmiObject -Class Win32_Volume -Filter \"DriveLetter='$target'\"; if (\$drive) { \$drive.Dismount(\$false, \$false) }" 2>&1
+    else
+        ___x_cmd_cmds powershell -Command "Get-WmiObject -Class Win32_Volume | Where-Object { \$_.DriveType -eq 2 } | ForEach-Object { \$_.Dismount(\$false, \$false) }" 2>&1
+    fi
+}
+
+# ── mount: mount a device ────────────────────────────────────────
+___x_cmd_disk_mount(){
+    local device="${1:-}"
+    local mountpoint="${2:-}"
+    local opts=""
+
+    [ "$device" ] || { N=disk M="usage: x disk mount <device> <mountpoint> [--options opts]" log:ret:64; return 1; }
+    [ "$mountpoint" ] || { N=disk M="usage: x disk mount <device> <mountpoint> [--options opts]" log:ret:64; return 1; }
+
+    # Parse --options flag
+    while [ $# -gt 2 ]; do
+        case "$3" in
+            --options|-o) opts="${4:-rw}"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    [ "$opts" ] || opts="rw"
+
+    if ___x_cmd os is darwin; then
+        ___x_cmd_disk_mount_macos "$device" "$mountpoint" "$opts"
+    elif ___x_cmd os is win; then
+        ___x_cmd_disk_mount_win "$device"
+    else
+        ___x_cmd_disk_mount_linux "$device" "$mountpoint" "$opts"
+    fi
+}
+
+___x_cmd_disk_mount_linux(){
+    local device="${1:-}"
+    local mountpoint="${2:-}"
+    local opts="${3:-rw}"
+
+    case "$device" in
+        UUID=*) device="UUID=${device#UUID=}" ;;
+        LABEL=*) device="LABEL=${device#LABEL=}" ;;
+        /dev/*) ;;
+        *) device="/dev/$device" ;;
+    esac
+
+    [ -e "$device" ] || { N=disk M="Device not found: $device" log:ret:64; return 1; }
+
+    mkdir -p "$mountpoint"
+
+    if [ "$opts" = "rw" ] || [ "$opts" = "ro" ]; then
+        ___x_cmd_cmds mount -o "$opts" "$device" "$mountpoint" 2>&1
+    else
+        ___x_cmd_cmds mount -o "$opts" "$device" "$mountpoint" 2>&1
+    fi
+}
+
+___x_cmd_disk_mount_macos(){
+    local device="${1:-}"
+    local mountpoint="${2:-}"
+    local opts="${3:-rw}"
+
+    case "$device" in
+        /dev/disk*) ;;
+        /dev/*) device="${device#/dev/}" ;;
+        disk*) ;;
+        *) device="disk${device}" ;;
+    esac
+
+    mkdir -p "$mountpoint"
+
+    if [ "$opts" = "rw" ] || [ "$opts" = "ro" ]; then
+        ___x_cmd_cmds diskutil mount -mountPoint "$mountpoint" "$device" 2>&1
+    else
+        ___x_cmd_cmds diskutil mount -mountPoint "$mountpoint" "$device" 2>&1
+    fi
+}
+
+___x_cmd_disk_mount_win(){
+    N=disk M="Mount operation not applicable on Windows. Drives are letters." log:ret:64
+}
+
+# ── umount: unmount a filesystem ────────────────────────────────
+___x_cmd_disk_umount(){
+    local target="${1:-}"
+    local lazy=""
+    local force=""
+
+    [ "$target" ] || { N=disk M="usage: x disk umount <mountpoint|--lazy|--force>" log:ret:64; return 1; }
+
+    case "$target" in
+        --lazy) lazy=1; target="${2:-}" ;;
+        --force) force=1; target="${2:-}" ;;
+    esac
+
+    [ "$target" ] || { N=disk M="usage: x disk umount <mountpoint>--lazy|--force>" log:ret:64; return 1; }
+
+    if ___x_cmd os is darwin; then
+        ___x_cmd_disk_umount_macos "$target" "$lazy" "$force"
+    elif ___x_cmd os is win; then
+        ___x_cmd_disk_umount_win "$target"
+    else
+        ___x_cmd_disk_umount_linux "$target" "$lazy" "$force"
+    fi
+}
+
+___x_cmd_disk_umount_linux(){
+    local target="${1:-}"
+    local lazy="${2:-}"
+    local force="${3:-}"
+
+    case "$target" in
+        /dev/*) ;;
+        /*) ;;
+        *) target="/dev/$target" ;;
+    esac
+
+    if [ "$force" ]; then
+        ___x_cmd_cmds umount -f "$target" 2>&1
+    elif [ "$lazy" ]; then
+        ___x_cmd_cmds umount -l "$target" 2>&1
+    else
+        ___x_cmd_cmds umount "$target" 2>&1
+    fi
+}
+
+___x_cmd_disk_umount_macos(){
+    local target="${1:-}"
+    local lazy="${2:-}"
+    local force="${3:-}"
+
+    if [ "$force" ]; then
+        ___x_cmd_cmds diskutil unmount force "$target" 2>&1
+    else
+        ___x_cmd_cmds diskutil unmount "$target" 2>&1
+    fi
+}
+
+___x_cmd_disk_umount_win(){
+    local target="${1:-}"
+    ___x_cmd_cmds powershell -Command "\$drive = Get-WmiObject -Class Win32_Volume -Filter \"DriveLetter='$target'\"; if (\$drive) { \$drive.Dismount(\$false, \$true) }" 2>&1
+}
+
+# ── remount: remount with different options ───────────────────────
+___x_cmd_disk_remount(){
+    local mountpoint="${1:-}"
+    local opts="${2:-}"
+
+    [ "$mountpoint" ] || { N=disk M="usage: x disk remount <mountpoint> <options>" log:ret:64; return 1; }
+    [ "$opts" ] || { N=disk M="usage: x disk remount <mountpoint> <options>" log:ret:64; return 1; }
+
+    if ___x_cmd os is win; then
+        N=disk M="Remount not applicable on Windows." log:ret:64
+    elif ___x_cmd os is darwin; then
+        ___x_cmd_disk_umount_macos "$mountpoint"
+        ___x_cmd_disk_mount_macos "$mountpoint" "$mountpoint" "$opts"
+    else
+        ___x_cmd_cmds mount -o remount,"$opts" "$mountpoint" 2>&1
+    fi
+}
+
+# ── device: list or inspect devices ───────────────────────────────
+___x_cmd_disk_device(){
+    local action="${1:-}"
+    shift
+
+    case "$action" in
+        ls|list)    ___x_cmd_disk_device_ls "$@" ;;
+        info)       ___x_cmd_disk_device_info "$@" ;;
+        *)          N=disk M="usage: x disk device [ls|list|info <device>]" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_disk_device_ls(){
+    if ___x_cmd os is darwin; then
+        ___x_cmd_cmds diskutil list 2>&1
+    elif ___x_cmd os is win; then
+        ___x_cmd_cmds wmic diskdrive list brief 2>&1
+    else
+        ___x_cmd_cmds lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE,LABEL,UUID 2>&1
+    fi
+}
+
+___x_cmd_disk_device_info(){
+    local device="${1:-}"
+    [ "$device" ] || { N=disk M="usage: x disk device info <device>" log:ret:64; return 1; }
+
+    case "$device" in
+        /dev/*) ;;
+        *) device="/dev/$device" ;;
+    esac
+
+    if ___x_cmd os is darwin; then
+        ___x_cmd_cmds diskutil info "$device" 2>&1
+    elif ___x_cmd os is win; then
+        ___x_cmd_cmds wmic partition where "DeviceID='${device#\\.\}'" list 2>&1
+    else
+        ___x_cmd_cmds lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE,LABEL,UUID,PARTUUID,MODEL "$device" 2>&1
+        echo "---"
+        ___x_cmd_cmds blkid "$device" 2>&1 || true
+    fi
+}
+
+# ── helpers ───────────────────────────────────────────────────────
+___x_cmd_disk_fmtbytes(){
+    local b="${1:-0}"
+    if [ "$b" -ge 1099511627776 ] 2>/dev/null; then
+        ___x_cmd_cmds_awk 'BEGIN { printf "%.2f TB\n", '$b' / 1099511627776 }'
+    elif [ "$b" -ge 1073741824 ] 2>/dev/null; then
+        ___x_cmd_cmds_awk 'BEGIN { printf "%.0f GB\n", '$b' / 1073741824 }'
+    elif [ "$b" -ge 1048576 ] 2>/dev/null; then
+        ___x_cmd_cmds_awk 'BEGIN { printf "%.0f MB\n", '$b' / 1048576 }'
+    else
+        ___x_cmd_cmds_awk 'BEGIN { printf "%.0f KB\n", '$b' / 1024 }'
+    fi
+}

@@ -1,9 +1,44 @@
 
+# Get the latest job subdirectory from a parent directory
 ___x_cmd_agent_job___get_lastdir(){
-    local dir="${1:-"$___X_CMD_AGENT_JOB_DIR"}"
-    [ -d "$dir" ] || return 0
-    local dirname; dirname="$( ___x_cmd_cmds ls "$dir" | ___x_cmd_cmds sort -r | ___x_cmd_cmds head -n 1 )"
-    printf "%s\n" "$dir/$dirname"
+    local parent_dir="${1:-$___X_CMD_AGENT_JOB_DIR}"
+    [ -d "$parent_dir" ] || return 0
+    local job_id; job_id="$( ___x_cmd_cmds ls "$parent_dir" | ___x_cmd_cmds sort -r | ___x_cmd_cmds head -n 1 )"
+    [ -n "$job_id" ] || return 0
+    printf "%s\n" "$parent_dir/$job_id"
+}
+
+# Resolve job directory from --dir and --id parameters
+___x_cmd_agent_job___resolve_jobdir(){
+    local dir="$1"
+    local id="$2"
+
+    if [ -n "$dir" ] && [ -n "$id" ]; then
+        # Both specified: construct full path
+        x_jobdir="$dir/$id"
+    elif [ -n "$dir" ]; then
+        # Only dir specified: find latest in that dir
+        x_jobdir="$(___x_cmd_agent_job___get_lastdir "$dir")"
+    elif [ -n "$id" ]; then
+        # Only id specified: find in default parent dir
+        x_jobdir="$___X_CMD_AGENT_JOB_DIR/$id"
+    elif [ -n "$___X_CMD_AGENT_JOB_RECENT" ]; then
+        # Use recent from environment
+        x_jobdir="$___X_CMD_AGENT_JOB_RECENT"
+    else
+        # Try default location
+        x_jobdir="$(___x_cmd_agent_job___get_lastdir "$___X_CMD_AGENT_JOB_DIR")"
+    fi
+
+    if [ -z "$x_jobdir" ]; then
+        N=agent M="No job found. Please specify --dir and/or --id, or run 'x agent job init <description>' to create a new job" log:ret:64
+    fi
+
+    if [ ! -d "$x_jobdir" ]; then
+        N=agent M="Job directory not found: $x_jobdir" log:ret:1
+    fi
+
+    printf "%s\n" "$x_jobdir"
 }
 
 ___x_cmd_agent_job_iter___eval_response(){
@@ -203,7 +238,8 @@ ___x_cmd_agent_job_status_write(){
     local done_flag="false"
     local updated_at
 
-    updated_at="$(___x_cmd date unix)"
+    local x_=; ___x_cmd epoch get_
+    updated_at="$x_"
     [ -f "$donefile" ] && done_flag="true"
 
     printf "%s\n" \

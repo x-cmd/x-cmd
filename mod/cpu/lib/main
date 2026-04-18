@@ -3,33 +3,102 @@
 ___x_cmd log init cpu
 
 ___x_cmd_cpu___main(){
-    [ $# -gt 0 ]    ||              set -- info
+    [ $# -gt 0 ]    ||              set -- sum
 
     local subcmd="$1";              shift
     case "$subcmd" in
         -h|--help)                  ___x_cmd help -m cpu "$@" ; return 0 ;;
+        sum)                        ___x_cmd_cpu_sum "$@" ;;
         info)                       ___x_cmd_cpu_info "$@" ;;
+        stat)                       ___x_cmd_cpu_stat "$@" ;;
         endianness|endian|endi)     ___x_cmd_cpu_endianness "$@" ;;
         *)                          N=cpu M="Unknown subcmd -> $subcmd" log:ret:64 ;;
     esac
 }
 
+___x_cmd_cpu_sum(){
+    ___x_cmd_cpu_info "$@"
+    ___x_cmd_cpu_stat "$@"
+}
+
 ___x_cmd_cpu_info(){
+    local simple=""
+    case "$1" in --simple|-s) simple=1; shift ;; esac
     if ___x_cmd os is darwin; then
         cpu:debug "Using sysctl command"
-        ___x_cmd_cmds sysctl -a | ___x_cmd_cmds grep machdep\.cpu | ___x_cmd_cmds_awk -v FS=. '{ split($3, arr, ": "); printf("%-25s: %s\n", arr[1], arr[2]); }'
+        ___x_cmd_cpu_info_macos "$simple"
     else
         cpu:debug "Using /proc/cpuinfo"
-        ___x_cmd_cmds_awk '
-            /^processor|^model name|^cpu cores|^cpu MHz|^vendor_id|^cache size/ {
-                gsub(/\t/, " ");
-                printf("%-25s: %s\n", $1, substr($0, index($0, ":") + 2))
-            }
-        '</proc/cpuinfo 2>/dev/null || {
-            cpu:error "Failed to read /proc/cpuinfo"
-            return 1
-        }
+        ___x_cmd_cpu_info_linux "$simple"
     fi
+}
+
+___x_cmd_cpu_info_macos(){
+    local simple="${1:-}"
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+    {
+        ___x_cmd_cmds sysctl \
+            hw.logicalcpu hw.ncpu hw.physicalcpu hw.memsize \
+            hw.cpufrequency_max hw.cpufrequency_min \
+            hw.packages hw.busfrequency hw.pagesize \
+            hw.cachelinesize hw.l1icachesize hw.l1dcachesize \
+            hw.l2cachesize hw.l3cachesize \
+            hw.optional.arm.AdvSIMD \
+            hw.optional.arm.FEAT_AES hw.optional.arm.FEAT_BF16 \
+            hw.optional.arm.FEAT_BTI hw.optional.arm.FEAT_CRC32 \
+            hw.optional.arm.FEAT_CSV2 hw.optional.arm.FEAT_CSV3 \
+            hw.optional.arm.FEAT_DIT hw.optional.arm.FEAT_DPB \
+            hw.optional.arm.FEAT_DPB2 hw.optional.arm.FEAT_DotProd \
+            hw.optional.arm.FEAT_FCMA hw.optional.arm.FEAT_FHM \
+            hw.optional.arm.FEAT_FlagM hw.optional.arm.FEAT_FlagM2 \
+            hw.optional.arm.FEAT_FP16 hw.optional.arm.FEAT_I8MM \
+            hw.optional.arm.FEAT_JSCVT hw.optional.arm.FEAT_LSE \
+            hw.optional.arm.FEAT_LSE2 hw.optional.arm.FEAT_MTE \
+            hw.optional.arm.FEAT_MTE2 hw.optional.arm.FEAT_PMULL \
+            hw.optional.arm.FEAT_RDM hw.optional.arm.FEAT_RNG \
+            hw.optional.arm.FEAT_SHA1 hw.optional.arm.FEAT_SHA256 \
+            hw.optional.arm.FEAT_SHA3 hw.optional.arm.FEAT_SHA512 \
+            hw.optional.arm.FEAT_SME hw.optional.arm.FEAT_SVE \
+            hw.optional.arm.FEAT_SVE2 \
+            hw.perflevel0.name hw.perflevel0.physicalcpu hw.perflevel0.l2cachesize \
+            hw.perflevel1.name hw.perflevel1.physicalcpu hw.perflevel1.l2cachesize \
+            machdep.cpu.brand_string machdep.cpu.vendor machdep.cpu.family \
+            machdep.cpu.model machdep.cpu.stepping machdep.cpu.core_count \
+            machdep.cpu.cache.size machdep.cpu.features machdep.cpu.extfeatures \
+            2>/dev/null
+    } | ___x_cmd_cmds_awk -v simple="$simple" -v tty="$tty" -f "$___X_CMD_ROOT_MOD/cpu/lib/awk/info_macos.awk"
+}
+
+___x_cmd_cpu_info_linux(){
+    local simple="${1:-}"
+    ___x_cmd_cmds_awk -f "$___X_CMD_ROOT_MOD/cpu/lib/awk/cpuinfo.awk" /proc/cpuinfo 2>/dev/null || {
+        cpu:error "Failed to read /proc/cpuinfo"
+        return 1
+    }
+    ___x_cmd_cmds_awk '/^MemTotal:/{printf "%-25s: %.0f GB\n", "memory", $2/1024/1024}' /proc/meminfo 2>/dev/null
+}
+
+___x_cmd_cpu_stat(){
+    if ___x_cmd os is darwin; then
+        ___x_cmd_cpu_stat_macos "$@"
+    elif ___x_cmd os is win; then
+        N=cpu M="stat not supported on Windows" log:ret:1
+    else
+        ___x_cmd_cpu_stat_linux "$@"
+    fi
+}
+
+___x_cmd_cpu_stat_macos(){
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+    ___x_cmd_cmds python3 "$___X_CMD_ROOT_MOD/cpu/lib/py/cpu_stat.py" "$tty" 2>/dev/null
+}
+
+___x_cmd_cpu_stat_linux(){
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+    ___x_cmd_cmds_awk -v tty="$tty" -f "$___X_CMD_ROOT_MOD/cpu/lib/awk/stat_linux.awk" /proc/stat 2>/dev/null
 }
 
 ___x_cmd_cpu_endianness(){

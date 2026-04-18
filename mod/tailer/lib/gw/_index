@@ -1,0 +1,97 @@
+
+___x_cmd_tailer_gw(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m tailer gw          "$@" ;;
+        run|service|register|unregister|getfp|getfp_)
+                        ___x_cmd_tailer_gw_"$op"            "$@" ;;
+        start|stop|status|restart)
+                        ___x_cmd_tailer_gw_service "$op"    "$@" ;;
+    esac
+}
+
+
+# x tailer send --name
+___x_cmd_tailer_router_send(){
+    local host="$1" # In the future, the user. <user>:<host>
+    local mq_name="$2"
+    local msg="$3"
+
+    local user=""
+
+    case "$host" in
+        *@*)        user="${host%%@*}" ; host="${host#"$user"@}" ;;
+    esac
+
+    [ -n "$user" ] || {
+        ___x_cmd hub getuser_       # TODO
+        user="$x_"
+    }
+
+    local url="https://hub.x-cmd.com/v0/tailer-gateway/<user>/$host/$tailer_name"
+
+    ___x_cmd curl -X POST "$url" --body "<msg>"
+}
+
+___X_CMD_TAILER_GW_DATA="$___X_CMD_ROOT_DATA/tailer/gw/data"
+
+___x_cmd_tailer_gw_run(){
+    local tailer_name
+    local url="https://hub.x-cmd.com/v0/tailer-gateway/<user>/$tailer_name"
+
+    {
+        ___x_cmd curl -N -sS "$url"
+    } | {
+        local name="$1"
+        local msg="$2"
+        while read -r msg; do
+            case "$1" in
+                *:*)
+                    name="${msg%%:*}"
+                    msg="${msg#"${name}:"}"
+
+                    ___x_cmd tailer send "$name" "$msg"
+                    ;;
+                *)
+                    tailer:warn "Invalid message -> $msg"
+            esac
+        done
+    }
+}
+
+___x_cmd_tailer_gw_getfp_(){
+    local mq_name="$1"
+
+    local p="$___X_CMD_TAILER_GW_DATA/register/$mq_name"
+    [ ! -r "$p" ] || read -r x_ <"$p"
+}
+
+___x_cmd_tailer_gw_getfp(){
+    local x_
+    ___x_cmd_tailer_gw_getfp_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_tailer_gw_register(){
+    local mq_name="$1"
+    local mq_fp="$2"
+
+    local p="$___X_CMD_TAILER_GW_DATA/register/$mq_name"
+
+    [ ! -f "$p" ] || N=tailer M="mq name already registered -> $mq_name" log:ret:1
+
+    printf "%s\n" "$mq_fp" >"$p"
+}
+
+___x_cmd_tailer_gw_unregister(){
+    local mq_name="$1"
+
+    local p="$___X_CMD_TAILER_GW_DATA/register/$mq_name"
+
+    [ -f "$p" ] || N=tailer M="mq name is not registered -> $mq_name" log:ret:1
+
+    ___x_cmd rmrf "$p"
+}
+

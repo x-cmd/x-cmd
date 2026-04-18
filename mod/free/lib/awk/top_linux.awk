@@ -40,16 +40,21 @@ BEGIN {
     # Parse: pid (comm) state ppid pgrp session tty_nr tpgid ...
     rest = stat_line
     sub(/^[0-9]+[ \t]+/, "", rest)
-    # Skip comm (in parentheses, may contain spaces)
-    if (match(rest, /\([^)]+\)/)) {
-        rest = substr(rest, RSTART + RLENGTH + 1)
+    # Skip comm (in parentheses, may contain spaces or nested parens)
+    # Match: ) followed by space and state char (R,S,D,T,t,W,P,N)
+    if (match(rest, /\)[ \t]+[RSDTtWPN][ \t]/)) {
+        # Find the opening ( that starts the comm field
+        # rest starts with "(<comm>) <state> ..."
+        # RSTART points to the ) before state, so skip past it and the space
+        rest = substr(rest, RSTART + RLENGTH)
     }
 
     n = split(rest, f, /[ \t]+/)
 
-    # f[12]=utime f[13]=stime f[20]=starttime f[21]=vsize f[22]=rss(pages)
-    rss_pages = (n >= 22) ? f[22] + 0 : 0
-    starttime = (n >= 20) ? f[20] + 0 : 0
+    # After comm removal, fields are: state(1), ppid(2)...num_threads(17), itrealvalue(18),
+    # starttime(19), vsize(20), rss(21)
+    starttime = (n >= 19) ? f[19] + 0 : 0
+    rss_pages = (n >= 21) ? f[21] + 0 : 0
 
     rss_kb = int(rss_pages * page_size / 1024)
 
