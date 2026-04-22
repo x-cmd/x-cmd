@@ -37,6 +37,7 @@ ___x_cmd_free___main(){
     local filter=""
     local use_rss=0
     local use_fp=0
+    local expert=0
 
     # Put $op back for parsing
     set -- "$op" "$@"
@@ -55,6 +56,7 @@ ___x_cmd_free___main(){
                 ;;
             -g|--group)     group="$2";   arg:2:shift ;;
             -f|--filter)    filter="$2";  arg:2:shift ;;
+            -e|--expert)    expert=1;           shift ;;
             --rss)          use_rss=1;          shift ;;
             -p|--precise)   use_fp=1;           shift ;;
             -h|--help)      ___x_cmd help -m free "$@"; return 0 ;;
@@ -66,19 +68,6 @@ ___x_cmd_free___main(){
     # Auto human mode for interactive tty
     if [ "$format" = "table" ] && [ "$human" -eq 0 ] && ___x_cmd_is_stdout2tty; then
         human=1
-    fi
-
-    # Use native free command when possible
-    if [ "$format" = "table" ] && [ "$seconds" -eq 0 ] && [ "$count" -eq 0 ] && ___x_cmd_hascmd free && ! ___x_cmd os is darwin; then
-        {
-            if [ "$human" -eq 1 ]; then
-                ___x_cmd_cmds free -h
-            else
-                ___x_cmd_cmds free
-            fi
-        }
-        ___x_cmd_free___top "$top_n" "$group" "$format" "$header" "$filter" "$use_rss" "$use_fp"
-        return
     fi
 
     # Platform dispatch
@@ -145,6 +134,7 @@ ___x_cmd_free___run_linux_once(){
     local NO_COLOR=0
     ___x_cmd_is_stdout2tty || NO_COLOR=1
     ___x_cmd_cmds_awk -v format="$format" -v header="$current_header" -v human="$human" -v NO_COLOR="$NO_COLOR" \
+        -v expert="$expert" \
         -f "$___X_CMD_FREE_AWKDIR/share.awk" \
         -f "$___X_CMD_FREE_AWKDIR/linux.awk" \
         /proc/meminfo
@@ -154,15 +144,22 @@ ___x_cmd_free___run_darwin_once(){
     local current_header="${1:-$header}"
     local NO_COLOR=0
     ___x_cmd_is_stdout2tty || NO_COLOR=1
-    local ___X_CMD_FREE_SYSCTL_DATA
-    ___X_CMD_FREE_SYSCTL_DATA=$(sysctl hw.pagesize hw.memsize hw.memsize_usable vm.swapusage 2>/dev/null)
-    export ___X_CMD_FREE_SYSCTL_DATA
 
-    vm_stat 2>/dev/null | ___x_cmd_cmds_awk \
+    (sysctl \
+        hw.pagesize hw.memsize hw.memsize_usable \
+        vm.swapusage \
+        vm.compressor_pool_size vm.compressor_input_bytes vm.compressor_compressed_bytes \
+        vm.vm_page_free_target vm.vm_page_filecache_min \
+        vm.page_pageable_internal_count vm.page_reusable_count \
+        vm.page_realtime_count vm.page_shared_region_count \
+        vm.page_cleaned_count vm.page_free_wanted \
+        2>/dev/null; \
+     vm_stat 2>/dev/null) | ___x_cmd_cmds_awk \
         -v format="$format" \
         -v header="$current_header" \
         -v human="$human" \
         -v NO_COLOR="$NO_COLOR" \
+        -v expert="$expert" \
         -f "$___X_CMD_FREE_AWKDIR/share.awk" \
         -f "$___X_CMD_FREE_AWKDIR/darwin.awk"
 }

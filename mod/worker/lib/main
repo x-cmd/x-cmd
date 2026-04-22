@@ -8,7 +8,7 @@ ___x_cmd_worker___main(){
     local op="$1" ;         shift
     case "$op" in
         -h|--help)          ___x_cmd help -m worker "$@" ; return 0 ;;
-        isalive|info|run)   ___x_cmd_worker_"$op"  "$@" ;;
+        isalive|info|run|stop)   ___x_cmd_worker_"$op"  "$@" ;;
         *)                  N=claw M="Unknown subcmd -> $op" log:ret:64
     esac
 }
@@ -97,18 +97,72 @@ ___x_cmd_worker_run(){
     ___x_cmd mkdirp "$dir"
     local runnerfile="$dir/runner.$name"
 
-    local process_id
     exec 3>&1
-    process_id="$( trap ":;" HUP ; "$@" >&3 & printf "%s\n" "$!")"
+    (
+        trap ":;" HUP ; "$@" >&3 & printf "%s\n" "$!"
+    ) | {
+        local process_id=""
+        read -r process_id
+
+        local x_
+        ___x_cmd ps fingerprint get_ "$process_id"
+        local fingerprint="$x_"
+
+        ___x_cmd ps fingerprint toepoch_ "$fingerprint"
+        local stime="$x_"
+
+        printf "%s\n" "$process_id" "$fingerprint" "$stime">"$runnerfile"
+        ___x_cmd_cmds sleep 0.1     # TODO: in the future. we will have a creator lock.
+    }
+
     exec 3>&-
+}
 
-    local x_
-    ___x_cmd ps fingerprint get_ "$process_id"
-    local fingerprint="$x_"
+___x_cmd_worker_stop(){
+    local ns="x-worker-default"
+    local name=""
+    local timeout=3
 
-    ___x_cmd ps fingerprint toepoch_ "$fingerprint"
-    local stime="$x_"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m worker stop ; return 0 ;;
+            --ns)       ns="$2" ;   arg:2:shift ;;
+            --name)     name="$2" ; arg:2:shift ;;
+            --timeout)  timeout="$2" ; arg:2:shift ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
 
-    printf "%s\n" "$process_id" "$fingerprint" "$stime">"$runnerfile"
-    ___x_cmd_cmds sleep 0.1     # TODO: in the future. we will have a creator lock.
+    [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
+    local dir="$___X_CMD_ROOT_DATA/runner/$ns"
+    local runnerfile="$dir/runner.$name"
+    [ -f "$runnerfile" ] || return 0
+
+    local process_id=""
+    local fingerprint=""
+    {
+        read -r process_id
+        read -r fingerprint
+    } < "$runnerfile"
+
+    if ___x_cmd ps fingerprint check "$process_id" "$fingerprint"; then
+        if ! ___x_cmd kill -r "$process_id" 2>/dev/null; then
+            ___x_cmd ps fingerprint check "$process_id" "$fingerprint" || { ___x_cmd rmrf "$runnerfile"; return 0; }
+            return 1
+        fi
+
+        local elapsed=0
+        while [ "$elapsed" -lt "$timeout" ]; do
+            ___x_cmd_cmds sleep 1
+            elapsed=$((elapsed + 1))
+            ___x_cmd ps fingerprint check "$process_id" "$fingerprint" || break
+        done
+
+        if ___x_cmd ps fingerprint check "$process_id" "$fingerprint"; then
+            ___x_cmd kill -r -s -9 "$process_id" 2>/dev/null || return 1
+        fi
+    fi
+
+    ___x_cmd rmrf "$runnerfile"
 }

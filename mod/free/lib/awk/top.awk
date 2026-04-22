@@ -181,6 +181,7 @@ function print_tsv(    i) {
 }
 
 function print_table(    i, mem_str, color, mem_padded, etime_padded, pid_str, col_label) {
+    print ""
     col_label = (mem_col == "mem") ? "MEM" : "RSS"
     if (group == "none")
         printf("  " UI_UNDERLINE "Top %d processes by %s (ungrouped)" UI_END "\n", n, col_label)

@@ -16,6 +16,7 @@ ___x_cmd_agent_request(){
     local pipe=""
     local user_session_id=""
     local workspace=""
+    local is_no_thinking=""
 
     [ "$#" -gt 0 ] || set -- --help
     while [ $# -gt 0 ]; do
@@ -81,7 +82,7 @@ A
     local IFS=" " ; content="${content}${NL}${*}${NL}"
 
     if [ -z "$output_file" ]; then
-        < "$___X_CMD_DEVTTY_FP" ___x_cmd_agent_request___run
+        ___x_cmd_agent_request___run
         return $?
     else
         content="${content}
@@ -95,7 +96,7 @@ Output your response wrapped with:
             ___x_cmd bakman backup "$output_file"
         fi
 
-        x_="$( < "$___X_CMD_DEVTTY_FP" ___x_cmd_agent_request___run )" || \
+        x_="$( ___x_cmd_agent_request___run )" || \
         case $? in
             130)    return 130 ;;
             0)      ;;
@@ -111,7 +112,90 @@ Output your response wrapped with:
 
 }
 
-___x_cmd_agent_request___run(){(
+____X_CMD_AGENT_ERR_AUTHFAILURE=77
+____X_CMD_AGENT_ERR_NETWORK_TIMEOUT=124
+
+___x_cmd_agent_request___run(){
+    agent:info "Sending request to harness '$harness'"
+    ___x_cmd retry -i 3 -m 3 ___x_cmd_agent_request___run_attempt
+}
+
+___x_cmd_agent_request___run_attempt(){
+    case "$harness" in
+        claude)
+                local loggedIn=; loggedIn="$( ___x_cmd claude -- auth status | ___x_cmd jo .loggedIn )"
+                if [ "$loggedIn" != "true" ]; then
+                    agent:warn \
+                        --tip1 "x claude auth login" \
+                        --tip2 "x claude use -h" \
+                        "Claude auth status is not logged in"
+                    ___X_CMD_RETRY_ABORT=1
+                    return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
+                fi
+                ;;
+        codex)
+                if [ "$( ___x_cmd codex -- login status )" = "Not logged in" ]; then
+                    agent:warn \
+                        --tip "x codex login" \
+                        "Codex auth status is not logged in"
+                    ___X_CMD_RETRY_ABORT=1
+                    return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
+                fi
+                ;;
+        cursor)
+                ___x_cmd hascmd cursor || ___x_cmd hascmd agent || {
+                    agent:error "Not found cursor command"
+                    ___X_CMD_RETRY_ABORT=1
+                    return 1
+                }
+
+                if [ "$( ___x_cmd_agent_request___cursor_runcmd status --format json | ___x_cmd jo .isAuthenticated )" != "true" ]; then
+                    agent:warn "Cursor auth status is not logged in"
+                    ___X_CMD_RETRY_ABORT=1
+                    return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
+                fi
+                ;;
+    esac
+    ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking"
+    local ret=$?
+
+    if [ $ret -eq $____X_CMD_AGENT_ERR_AUTHFAILURE ]; then
+        case "$harness" in
+            kimi-cli)
+                agent:info "Authentication failed, trying auto-login..."
+                ___x_cmd timeout 10 x-cmd kimi login || {
+                    ___X_CMD_RETRY_ABORT=1
+                    return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
+                }
+
+                ___x_cmd_agent_request___run_exec "$harness" "Say OK" "text" "" "" "1" >/dev/null 2>&1 || {
+                    ret=$?
+                    ___X_CMD_RETRY_ABORT=1
+                    return $ret
+                }
+
+                agent:info "Auto-login succeeded, retrying original request"
+                ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking"
+                ret=$?
+                ;;
+        esac
+    elif [ $ret -eq 130 ]; then
+        ___X_CMD_RETRY_ABORT=1
+        return $ret
+    fi
+
+    return $ret
+}
+
+___x_cmd_agent_request___run_exec(){(
+    local harness="$1"
+    local content="$2"
+    local output_format="$3"
+    local user_session_id="$4"
+    local workspace="$5"
+    local is_no_thinking="$6"
+    shift $#
+
     local session_map_file=""
     local real_session_id=""
     local user_session_cwd=""
@@ -140,9 +224,6 @@ ___x_cmd_agent_request___run(){(
         user_session_cwd="$PWD"
     fi
 
-    agent:info "Sending request to harness '$harness'"
-    shift $#
-
     case "$harness" in
         kimi-cli)
             if [ -n "$user_session_id" ]; then
@@ -153,13 +234,11 @@ ___x_cmd_agent_request___run(){(
                 set -- --session "$real_session_id"
             fi
 
-            if [ "$output_format" = "json" ]; then
-                set -- "$@" --print --output-format stream-json
-            else
-                set -- "$@" --print --output-format text --final-message-only
+            if [ -n "$is_no_thinking" ]; then
+                set -- --no-thinking
             fi
 
-            ___x_cmd kimi -- "$@" --prompt "$content" < /dev/null
+            ___x_cmd kimi -- "$@" --print --output-format stream-json --final-message-only --prompt "$content" < /dev/null | ___x_cmd_agent_request___handle_output kimi-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
         claude)
             if [ -n "$user_session_id" ]; then
@@ -172,12 +251,11 @@ ___x_cmd_agent_request___run(){(
                 fi
             fi
 
-            if [ "$output_format" = "json" ]; then
-                set -- "$@" --verbose --output-format stream-json
-            fi
-
-            # --allowedTools "Write,Read,Edit,Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)"
-            ___x_cmd claude -- "$@" --dangerously-skip-permissions --allowedTools "Write,Read,Edit,Bash(x *),Bash(x-cmd *),Bash(source ~/.x-cmd.root/X *),Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)" --print "$content" < /dev/null
+            IS_SANDBOX=1 ___x_cmd claude -- "$@" \
+                --verbose --output-format stream-json \
+                --dangerously-skip-permissions \
+                --allowedTools "Write,Read,Edit,Bash(x *),Bash(x-cmd *),Bash(source ~/.x-cmd.root/X *),Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)" \
+                --print "$content" < /dev/null | ___x_cmd_agent_request___handle_output claude "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
         codex)
             set -- exec
@@ -206,6 +284,21 @@ ___x_cmd_agent_request___run(){(
 
             ___x_cmd opencode run "$@" --format json "$content" < /dev/null | ___x_cmd_agent_request___handle_output opencode "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
+        cursor)
+            if [ -n "$user_session_id" ]; then
+                if [ "$is_session_first" = "1" ]; then
+                    real_session_id="$( ___x_cmd_agent_request___cursor_runcmd create-chat )"
+                    printf "%s\n" "$real_session_id" "$user_session_cwd" > "$session_map_file"
+                fi
+                set -- --resume "$real_session_id"
+            fi
+
+            if [ "$output_format" = "json" ]; then
+                set -- --output-format stream-json
+            fi
+
+            ___x_cmd_agent_request___cursor_runcmd "$@" --trust --yolo --print "$content"
+            ;;
     esac
 )}
 
@@ -220,7 +313,27 @@ ___x_cmd_agent_request___handle_output(){
     is_session_first="$is_session_first" \
     user_session_cwd="$user_session_cwd" \
     save_session_id_file="$save_session_id_file" \
+    ____X_CMD_AGENT_ERR_AUTHFAILURE="$____X_CMD_AGENT_ERR_AUTHFAILURE" \
+    ____X_CMD_AGENT_ERR_NETWORK_TIMEOUT="$____X_CMD_AGENT_ERR_NETWORK_TIMEOUT" \
     harness="$harness" \
     ___x_cmd awk0 -m j/json -m j/jiter \
         -f "$___X_CMD_ROOT_MOD/agent/lib/awk/handle_output.awk"
 }
+
+___x_cmd_agent_request___cursor_runcmd(){
+    if ___x_cmd hascmd cursor; then
+        ___x_cmd_agent_request___cursor_runcmd(){
+            ___x_cmd_cmds cursor agent "$@"
+        }
+    elif ___x_cmd hascmd agent; then
+        ___x_cmd_agent_request___cursor_runcmd(){
+            ___x_cmd_cmds agent "$@"
+        }
+    else
+        claw:error "Not found cursor or agent command"
+        return 1
+    fi
+
+    ___x_cmd_agent_request___cursor_runcmd "$@"
+}
+

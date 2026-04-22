@@ -2,46 +2,79 @@
 
 
 ___x_cmd_skill_use(){
-    ___x_cmd_skill_add --scope user "$@" 
+    ___x_cmd_skill_add --global "$@"
 }
 
 ___x_cmd_skill_add(){
     local dir=""
+    local skills=""
+    local agent=""
     local scope="project"
+    local installed="symlink"
+    local nocache=0
+
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            -h|--help)      ___x_cmd help -m skill add;             return ;;
-            --skill-dir)    [ -n "$2" ] || N=skill M="Please provide the skills dir" log:ret:64
-                            dir="$2";   shift 2 ;;
-            --scope)        [ -n "$2" ] || N=skill M="Please provide the scope" log:ret:64
-                            scope="$2"; shift 2 ;;
-            *)              break ;;
+            -h|--help)      ___x_cmd help -m skill add;             return 0 ;;
+            --skill-dir)    dir="$2";           arg:2:shift ;;
+            -a|--agent)     agent="$2";         arg:2:shift ;;
+            -s|--skill)     skills="${skills}${2}${___X_CMD_UNSEENCHAR_NEWLINE}";
+                                                arg:2:shift ;;
+            -g|--global)    scope=global;       shift ;;
+            -p|--project)   scope=project;      shift ;;
+            --no-cache)     nocache=1;          shift ;;
+            # --copy)         installed="copy";   shift ;;
+            --)             shift; break ;;
+            -*)             N=skill M="Unknown option: $1" log:ret:1 ;;
+            *)
+                            set -- "$@" "--"
+                            while [ $# -gt 0 ]; do
+                                case "$1" in
+                                    -*) break ;;
+                                esac
+                                set -- "$@" "$1"
+                                shift
+                            done
+                            ;;
         esac
     done
+    skills="${skills%"${___X_CMD_UNSEENCHAR_NEWLINE}"}"
 
-    case "$scope" in
-        local|user|project) ;;
-        *) N=skill M="Invalid scope -> $scope, supports: [local|user|project]" log:ret:64 ;;
-    esac
+    [ -n "$dir" ] || {
+        case "$agent" in
+            claude)         dir=".claude/skills" ;;
+            *)              dir=".agents/skills" ;;
+        esac
+        [ "$scope" = "project" ] || dir="$HOME/$dir"
+    }
 
     ___x_cmd_skill___data_check             || return $?
 
-    local i=
-    for i in "$@"; do
-        case "$i" in
-            mcp/*)  ___x_cmd_skill_add___mcp "$i" "$scope" || return $?  ;;
-            *)      ___x_cmd_skill_add___unit "$i" "$dir" || return $? ;;
-        esac
-    done
+    case "$1" in
+        https://github.com/*)
+            ___x_cmd_skill_add___fromgithub "$dir" "$1" "$skills" "$nocache" || return $?
+            ;;
+        *)
+            local i=
+            for i in "$@"; do
+                case "$i" in
+                    mcp/*)      ___x_cmd_skill_add___mcp "$scope" "$i"                  || return $?  ;;
+                    clawhub:*)  ___x_cmd_skill_add___fromclawhub "$dir" "$i" "$nocache" || return $?  ;;
+                    *)          ___x_cmd_skill_add___fromxcmd "$dir" "$i"               || return $?  ;;
+                esac
+            done
+            ;;
+    esac
 }
 
 ___x_cmd_skill_add___mcp(){
-    local mcpid="$1"
-    local scope="${2:-project}"
+    local scope="$1"
+    local mcpid="$2"
 
+    [ "$scope" != "project" ] || scope="user"
     local name="${mcpid#mcp/*}"
 
-    local config="$(___x_cmd jq -c --arg name "$name" '.[$name]? | (.stdio // .http)' "$___X_CMD_SKILL_FULL_MCP_FILE" )"
+    local config; config="$(___x_cmd jq -c --arg name "$name" '.[$name]? | (.stdio // .http)' "$___X_CMD_SKILL_FULL_MCP_FILE" )"
     [ "$config" != 'null' ] || {
             skill:error "Not found MCP[$mcpid]"
             return 1
@@ -67,9 +100,9 @@ ___x_cmd_skill_add___mcp(){
     esac
 }
 
-___x_cmd_skill_add___unit(){
-    local skillid="$1"; [ -n "$skillid" ] || N=skill M="Please provide the skill id" log:ret:64
-    local dir="$2";     [ -n "$dir" ]     || N=skill M="Please provide the dir" log:ret:64
+___x_cmd_skill_add___fromxcmd(){
+    local dir="$1";     [ -n "$dir" ]     || N=skill M="Please provide the dir" log:ret:64
+    local skillid="$2"; [ -n "$skillid" ] || N=skill M="Please provide the skill id" log:ret:64
 
     local datadir="$___X_CMD_SKILL_FULL_DATA_DIR/$skillid"
 
@@ -89,6 +122,101 @@ ___x_cmd_skill_add___unit(){
     ___x_cmd ensurefp "$target"
     ___x_cmd_cmds cp -rf "$datadir" "$target"
 
-    skill:info "Successfully activated skill[$skillid]"
+    skill:info "Successfully activated skill[$skillid] -> $target"
+}
+
+
+___x_cmd_skill_add___fromgithub(){
+    local target_dir="$1"
+    local url="$2"
+    local skills="$3"
+    local nocache="$4"
+
+    local owner; local repo
+    owner="${url#https://github.com/}"
+    owner="${owner%.git}"
+    repo="${owner#*/}"
+    owner="${owner%/*}"
+    [ -n "$owner" ] && [ -n "$repo" ] || {
+        N=skill M="Invalid GitHub URL: $url" log:ret:64
+    }
+
+    local cache_dir="$___X_CMD_SKILL_DATA_DIR/github/${owner}/${repo}"
+    if [ ! -d "$cache_dir" ] || [ "$nocache" = 1 ] ; then
+        ___x_cmd_skill___data_fromgithub "$owner" "$repo" "$cache_dir" || return $?
+    fi
+
+    local all_skills_data; all_skills_data="$(___x_cmd_cmds find "$cache_dir" -mindepth 1 -type f -name 'SKILL.md' 2>/dev/null)"
+    [ -n "$all_skills_data" ] || N=skill M="No SKILL.md found in ${owner}/${repo}" log:ret:1
+
+    local skill_name; local skill_data;
+    if [ -n "$skills" ];then
+        while read -r skill_name; do
+            skill_data="$( printf "%s" "$all_skills_data" | ___x_cmd_cmds grep "/$skill_name/" 2>/dev/null)"
+            [ -n "$skill_data" ] || {
+                skill:error --run "x skill ll --github $url" "No $skill_name found in ${owner}/${repo}"
+                return 1
+            }
+            ___x_cmd_skill_add___fromgithub_copy "$skill_data" "$target_dir"
+        done <<A
+$skills
+A
+    else
+        while read -r skill_data; do
+            ___x_cmd_skill_add___fromgithub_copy "$skill_data" "$target_dir"
+        done <<A
+$all_skills_data
+A
+    fi
+    skill:info "Successfully added skill from GitHub[${owner}/${repo}] -> $target_dir"
+}
+
+___x_cmd_skill_add___fromgithub_copy(){
+    local src="$1"; src="${src%/SKILL.md}"
+    local dst="$2"
+    local name="${src##*/}"
+    ___x_cmd ensurefp "$dst/$name"
+    ___x_cmd rmrf "$dst/$name"
+    ___x_cmd_cmds cp -rf "$src" "$dst/$name" || {
+        skill:error "Failed to copy skill[$name] to $dst"
+        return 1
+    }
+    skill:info "Successfully activated skill[$name] -> $dst/$name"
+}
+
+___x_cmd_skill_add___fromclawhub(){
+    local target_dir="$1"
+    local name="$2"
+    local nocache="$3"
+
+    name="${name#*clawhub:}"
+    target_dir="$target_dir/$name"
+    local cache_dir="$___X_CMD_SKILL_DATA_DIR/clawhub/${name}"
+    if [ ! -d "$cache_dir" ] || [ "$nocache" = 1 ] ; then
+        local url="https://wry-manatee-359.convex.site/api/v1/download?slug=${name}"
+        local tmptar="$___X_CMD_ROOT_TMP/skill/clawhub/${name}.zip"
+
+        skill:info --reference "$url" "Downloading skill data from web URL"
+        ___x_cmd ensurefp "$tmptar"                || return $?
+        ___x_cmd curl -L -sS --speed-time 5 --speed-limit 100 "$url" > "$tmptar" || {
+            skill:error --url "$url" "Download ${url} failed"
+            ___x_cmd rmrf "$tmptar"
+            return 1
+        }
+
+        ___x_cmd rmrf "$cache_dir"                    || return $?
+        ___x_cmd mkdirp "$cache_dir"                  || return $?
+        ___X_CMD_ZUZ_QUIET=1 ___x_cmd uz "$tmptar" "$cache_dir"
+    fi
+
+    [ -f "$cache_dir/SKILL.md" ] || N=skill M="No SKILL.md found in [$cache_dir]" log:ret:1
+
+    ___x_cmd ensurefp "$target_dir"
+    ___x_cmd rmrf "$target_dir"
+    ___x_cmd_cmds cp -rf "$cache_dir" "$target_dir" || {
+        skill:error "Failed to copy skill[$name] to $target_dir"
+        return 1
+    }
+    skill:info "Successfully activated skill[$name] -> $target_dir"
 }
 

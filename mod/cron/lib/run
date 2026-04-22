@@ -46,7 +46,11 @@ ___x_cmd_cron_run___loop(){
         ___x_cmd_cmds sleep "$sleepsec"
 
         # Get current time as cron fields: min hour day month dow
-        datestr="$( TZ="${tz:-$TZ}" ___x_cmd_cmds date '+%M %H %d %m %w' )"
+        if [ -n "$tz" ]; then
+            datestr="$( TZ="$tz" ___x_cmd_cmds date '+%M %H %d %m %w' )"
+        else
+            datestr="$( ___x_cmd_cmds date '+%M %H %d %m %w' )"
+        fi
 
         # Find and execute matching cron jobs
         ___x_cmd_cron_run___find_and_exec "$ns" "$datestr" "$joblist_dir"
@@ -75,7 +79,11 @@ ___x_cmd_cron_runonce(){
     fi
 
     local datestr
-    datestr="$( TZ="${tz:-$TZ}" ___x_cmd_cmds date '+%M %H %d %m %w' )"
+    if [ -n "$tz" ]; then
+        datestr="$( TZ="$tz" ___x_cmd_cmds date '+%M %H %d %m %w' )"
+    else
+        datestr="$( ___x_cmd_cmds date '+%M %H %d %m %w' )"
+    fi
 
     ___x_cmd_cron_run___find_and_exec "$ns" "$datestr" "$joblist_dir"
 }
@@ -96,7 +104,6 @@ ___x_cmd_cron_run___find_and_exec(){
     while read -r name ; do
         [ -n "$name" ] || continue
         read -r cron_pat < "$joblist_dir/$name/cron"
-
         if ___x_cmd_cron_match "$cron_pat" "$datestr"; then
             ___x_cmd_cron_run___execute_async "$ns" "$joblist_dir/$name"
         fi
@@ -135,37 +142,42 @@ ___x_cmd_cron_run___execute_async(){
     ___x_cmd mkdirp "$instance_dir"
 
     exec 3>&1
-    pid="$( trap ":;" HUP ; . "$jobdir/cmd" >&3 & printf "%s\n" "$!")"
-    exec 3>&-
+    ( trap ":;" HUP ; . "$jobdir/cmd" >&3 & printf "%s\n" "$!" ; ) | {
+        read -r pid
 
-    local cron_desc=""
-    if [ -f "$jobdir/desc" ]; then
-        read -r cron_desc < "$jobdir/desc"
-    fi
-    cron:info ${cron_desc:+"--description"} ${cron_desc:+"$cron_desc"} "Cron job $name triggered (pid=$pid)"
+        local cron_desc=""
+        if [ -f "$jobdir/desc" ]; then
+            read -r cron_desc < "$jobdir/desc"
+        fi
+        cron:info ${cron_desc:+"--description"} ${cron_desc:+"$cron_desc"} "Cron job $name triggered (pid=$pid)"
 
-    if ___x_cmd os is darwin; then
-        # The darwin will use ps to get fingerprint, while the linux just readfile, so in darwin, use &
-        (
+        if ___x_cmd os is darwin; then
+            # The darwin will use ps to get fingerprint, while the linux just readfile, so in darwin, use &
+            (
+                {
+                    printf '%s\n' "$pid"
+                    ___x_cmd ps fingerprint get "$pid"
+                } > "$instance_file" &
+            )
+        else
             {
                 printf '%s\n' "$pid"
                 ___x_cmd ps fingerprint get "$pid"
-            } > "$instance_file" &
-        )
-    else
-        {
-            printf '%s\n' "$pid"
-            ___x_cmd ps fingerprint get "$pid"
-        } > "$instance_file"
-    fi
+            } > "$instance_file"
+        fi
 
-    if [ -f "$jobdir/once" ]; then
-        # Wait for job to finish, then auto-delete
-        (
-            while kill -0 "$pid" 2>/dev/null; do
-                ___x_cmd_cmds sleep 1
-            done
-            ___x_cmd rmrf "$jobdir"
-        ) &
-    fi
+        if [ -f "$jobdir/once" ]; then
+            # Wait for job to finish, then auto-delete
+            (
+                {
+                    while kill -0 "$pid" 2>/dev/null; do
+                        ___x_cmd_cmds sleep 1
+                    done
+                    ___x_cmd rmrf "$jobdir"
+                } &
+            )
+        fi
+    }
+    exec 3>&-
+
 }
