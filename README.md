@@ -18,6 +18,12 @@ English | [中文](README.cn.md) | [Source Code](https://github.com/x-cmd/x-cmd/
 
 X-CMD (pronounced as "*X Command*") is a modern toolkit for POSIX shell (bash, zsh, ash, dash) — designed to make shell as powerful as Python's standard library.
 
+<table>
+<tbody>
+<tr>
+<td width="1000px">
+<p>
+
 **Our Journey**
 
 What started as "a standard library for shell" evolved into something bigger:
@@ -32,15 +38,47 @@ What started as "a standard library for shell" evolved into something bigger:
 
 5. **Optimized for Agents** — After 5 years, we discovered shell's sweet spot: AI agents. Where network latency and LLM throughput dominate, shell's flexibility, native system integration, and tool-chaining shine. AWK streaming handles LLM output beautifully.
 
+</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 **The Result**
 
-| | [Modules](https://x-cmd.com/mod) | [Packages](https://x-cmd.com/pkg) |
-|---|---|---|
-| **What** | 300+ shell/awk libraries (like JS) | 600+ CLI tools (like WebAssembly) |
-| **Use** | `x <module>` | `x <tool>` or `x env use <tool>` |
-| **Examples** | `theme`, `advise`, `openai`, `gemini` | `jq`, `fzf`, `node`, `python` |
+<table>
+<thead>
+<tr>
+<th width="200px"> </th>
+<th width="500px"><a href="https://x-cmd.com/mod">Modules</a></th>
+<th width="500px"><a href="https://x-cmd.com/pkg">Packages</a></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>What</strong></td>
+<td>300+ shell/awk libraries (like JS)</td>
+<td>600+ CLI tools (like WebAssembly)</td>
+</tr>
+<tr>
+<td><strong>Use</strong></td>
+<td><code>x &lt;module&gt;</code></td>
+<td><code>x &lt;tool&gt;</code> or <code>x env use &lt;tool&gt;</code></td>
+</tr>
+<tr>
+<td><strong>Examples</strong></td>
+<td><code>theme</code>, <code>advise</code>, <code>openai</code>, <code>gemini</code></td>
+<td><code>jq</code>, <code>fzf</code>, <code>node</code>, <code>python</code></td>
+</tr>
+<tr>
+<td colspan="3">
 
-- 🪶 **Lightweight**: Core ~1.1 MB. Non-interactive load <20 ms, interactive <60 ms.
+🪶 **Lightweight**: Core ~1.1 MB. Non-interactive load <20 ms, interactive <60 ms.
+
+</td>
+</tr>
+</tbody>
+</table>
 
 [![x-cmd-banner](https://cdn.jsdelivr.net/gh/Zhengqbbb/Zhengqbbb@v1.2.2/x-cmd/x-cmd-banner.png)](https://x-cmd.com)
 
@@ -287,6 +325,8 @@ For commonly used packages, e.g `jq` :
 
 **Key insight**: Modules strive to be self-contained using shell/awk and native POSIX tools. When a module needs advanced capabilities beyond what POSIX provides, it may transparently fetch packages via the pkg system — but this is always a fallback, not the default.
 
+---
+
 ### What's the design philosophy behind X-CMD?
 
 X-CMD evolved from a simple question: **What if shell had a standard library as powerful as Python's?**
@@ -300,6 +340,8 @@ X-CMD evolved from a simple question: **What if shell had a standard library as 
 4. **AI-native shell** — From ChatGPT onward, we bring AI to shell. With just shell + curl, access multiple AI providers. Our pure-shell agent (under 2MB) rivals OpenClaw and Claude Code.
 
 5. **Optimized for agents** — 5 years of shell best practices. AWK streaming + shell's native flexibility + tool-chaining = ideal for AI agents where network/LLM latency dominates, not compute speed.
+
+---
 
 ### Does X-CMD work in minimal environments like BusyBox or Alpine?
 
