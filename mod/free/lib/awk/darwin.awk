@@ -1,5 +1,10 @@
 # shellcheck shell=awk
-# macOS memory info parser - reads from vm_stat output and sysctl data via env
+# macOS memory info parser - reads from combined sysctl + vm_stat pipe
+#
+# Data source rule:
+#   - vm_stat values: dynamic, same snapshot (primary)
+#   - sysctl values: only for data NOT available in vm_stat (exclusive)
+#   - static sysctl values (pagesize, memsize, pool_size, free_target): no time-gap issue
 #
 # Memory Conservation Law:
 # wired + active + inactive + speculative + throttled + free + occupied = total
@@ -8,25 +13,71 @@ BEGIN {
     page_kb = 4096 / 1024
     total_kb = 0
     swap_line = ""
-
-    sysctl_data = ENVIRON["___X_CMD_FREE_SYSCTL_DATA"]
-    n = split(sysctl_data, lines, "\n")
-    for (i = 1; i <= n; i++) {
-        if (match(lines[i], /^hw\.pagesize: /)) {
-            val = substr(lines[i], RLENGTH + 1)
-            if (val > 0) page_kb = val / 1024
-        } else if (match(lines[i], /^hw\.memsize: /)) {
-            val = substr(lines[i], RLENGTH + 1)
-            if (val > 0) total_kb = val / 1024
-        } else if (match(lines[i], /^hw\.memsize_usable: /)) {
-            # Hardware reserved memory (firmware/GPU/EFI)
-            val = substr(lines[i], RLENGTH + 1)
-            if (val > 0) usable_kb = val / 1024
-        } else if (match(lines[i], /^vm\.swapusage: /)) {
-            swap_line = substr(lines[i], RLENGTH + 1)
-        }
-    }
 }
+
+# ===== sysctl parsing (from pipe, NOT environment variable) =====
+/^hw\.pagesize: / {
+    sub(/^hw\.pagesize: /, ""); val = $0 + 0
+    if (val > 0) page_kb = val / 1024
+}
+/^hw\.memsize: / {
+    sub(/^hw\.memsize: /, ""); val = $0 + 0
+    if (val > 0) total_kb = val / 1024
+}
+/^hw\.memsize_usable: / {
+    sub(/^hw\.memsize_usable: /, ""); val = $0 + 0
+    if (val > 0) usable_kb = val / 1024
+}
+/^vm\.swapusage: / {
+    sub(/^vm\.swapusage: /, "")
+    swap_line = $0
+}
+/^vm\.compressor_pool_size: / {
+    sub(/^vm\.compressor_pool_size: /, ""); val = $0 + 0
+    if (val > 0) comp_pool_size = val + 0
+}
+/^vm\.compressor_input_bytes: / {
+    sub(/^vm\.compressor_input_bytes: /, ""); val = $0 + 0
+    if (val > 0) comp_input_bytes = val + 0
+}
+/^vm\.compressor_compressed_bytes: / {
+    sub(/^vm\.compressor_compressed_bytes: /, ""); val = $0 + 0
+    if (val > 0) comp_compressed_bytes = val + 0
+}
+/^vm\.vm_page_free_target: / {
+    sub(/^vm\.vm_page_free_target: /, ""); val = $0 + 0
+    if (val > 0) sysctl_free_target = val + 0
+}
+/^vm\.vm_page_filecache_min: / {
+    sub(/^vm\.vm_page_filecache_min: /, ""); val = $0 + 0
+    if (val > 0) sysctl_filecache_min = val + 0
+}
+/^vm\.page_pageable_internal_count: / {
+    sub(/^vm\.page_pageable_internal_count: /, ""); val = $0 + 0
+    if (val > 0) sysctl_pageable_int = val + 0
+}
+/^vm\.page_reusable_count: / {
+    sub(/^vm\.page_reusable_count: /, ""); val = $0 + 0
+    if (val > 0) sysctl_reusable_count = val + 0
+}
+/^vm\.page_realtime_count: / {
+    sub(/^vm\.page_realtime_count: /, ""); val = $0 + 0
+    if (val > 0) sysctl_realtime_count = val + 0
+}
+/^vm\.page_shared_region_count: / {
+    sub(/^vm\.page_shared_region_count: /, ""); val = $0 + 0
+    if (val > 0) sysctl_shared_region_count = val + 0
+}
+/^vm\.page_cleaned_count: / {
+    sub(/^vm\.page_cleaned_count: /, ""); val = $0 + 0
+    if (val > 0) sysctl_cleaned_count = val + 0
+}
+/^vm\.page_free_wanted: / {
+    sub(/^vm\.page_free_wanted: /, ""); val = $0 + 0
+    sysctl_free_wanted = val + 0
+}
+
+# ===== vm_stat parsing (same pipe, immediately after sysctl) =====
 
 /^Mach Virtual Memory Statistics/ {
     if (match($0, /page size of [0-9]+/)) {
@@ -46,6 +97,16 @@ BEGIN {
 /Anonymous pages/               { pages_anonymous = $3 }
 /Pages stored in compressor/    { compress_stored = $5 }
 /Pages occupied by compressor/  { compress_occupied = $5 }
+/Pages reactivated/             { pages_reactivated = $3 }
+/Pages purged/                  { pages_purged = $3 }
+/^Decompressions:/              { decompress_count = $2 }
+/^Pageins:/                     { pageins = $2 }
+/^Pageouts:/                    { pageouts = $2 }
+/^Swapins:/                     { swapins_val = $2 }
+/^Swapouts:/                    { swapouts_val = $2 }
+/^"Translation faults":/        { tfaults = $0; sub(/.*: */, "", tfaults); sub(/\.$/, "", tfaults) }
+/^Pages copy-on-write:/         { cow_pages = $0; sub(/.*: */, "", cow_pages); sub(/\.$/, "", cow_pages) }
+/^Pages zero filled:/           { zero_filled = $0; sub(/.*: */, "", zero_filled); sub(/\.$/, "", zero_filled) }
 
 END {
     # Convert to KB
@@ -67,7 +128,7 @@ END {
     app_kb = anonymous_kb - purgeable_kb
     cache_kb = filebacked_kb
     available_kb = free_kb + throttled_kb  # true available, excluding speculative
-    
+
     # Hardware reserved memory (if hw.memsize_usable is available)
     hardware_kb = 0
     if (usable_kb > 0 && total_kb > usable_kb) {
@@ -92,7 +153,7 @@ END {
     # Calculate derived metrics for CSV/TSV
     reusable_kb = purgeable_kb + cache_kb + available_kb
     mem_used_kb = total_kb - reusable_kb
-    
+
     # Output
     if (format == "csv") {
         if (header == 1) print "used,reusable,wired,compressed,app,purgeable,cache,available,vm-wired,vm-compressed,vm-active,vm-inactive,vm-spec,vm-free,vm-throt,swap-total,swap-used,swap-free,compress-stored,compress-occupied,compress-saved"
@@ -113,18 +174,18 @@ END {
     } else {
         # Table format - Linux free style: Mem and Swap at top
         # Aligned with Detail (6 columns)
-        
+
         # Calculate reusable = purgeable + cache + available (for Mem free column)
         reusable_kb = purgeable_kb + cache_kb + available_kb
         mem_used_kb = total_kb - reusable_kb
-        
+
         # Leading empty line
         print ""
-        
+
         # Header row (aligned with Detail: 6 columns) - no bold
         printf("  " UI_HDR_OFF "%-8s %10s %10s %10s %10s %10s %10s" UI_END "\n",
             "", "total", "used", "reusable", "", "", "")
-        
+
         # Mem row
         if (NO_COLOR == 1) {
             printf("  %-8s %10s %10s %10s (=purgeable + cache + available)\n",
@@ -140,7 +201,7 @@ END {
                 UI_BOLD_RED, fmt_human_val(mem_used_kb), UI_END,
                 UI_BOLD_GREEN, fmt_human_val(reusable_kb), UI_END)
         }
-        
+
         # Swap row (same alignment)
         swap_str = sprintf("%-8s %10s %10s %10s %10s %10s %10s",
             "Swap:",
@@ -150,10 +211,10 @@ END {
             "", "", "")
         gsub(/Swap:/, UI_KEY "Swap:" UI_END, swap_str)
         print "  " swap_str
-        
+
         # Separator line
         print ""
-        
+
         # Identity: app + purgeable + cache = active + inactive + spec
         # Logic Layer (primary view) - 7 columns (including hardware)
         print ""
@@ -189,7 +250,7 @@ END {
                 UI_GREEN, fmt_human_val(cache_kb), UI_END,
                 UI_GREEN, fmt_human_val(available_kb), UI_END)
         }
-        
+
         # Physical Layer (reference - vm_stat raw counters) - 8 columns
         # spec aligns with cache (column 6), free with available (column 7)
         print ""
@@ -230,6 +291,7 @@ END {
         }
 
         # Compress info (dimmed) - aligned with 7 columns
+        print ""
         if (NO_COLOR == 1) {
             printf("  %-8s %10s %10s %10s %10s %10s %10s %10s\n",
                 "", "", "", "compressed", "original", "ratio", "saved", "")
@@ -261,8 +323,48 @@ END {
                 fmt_human_val(compress_saved_kb),
                 "")
         }
-        # Add empty line for separation in repeat mode (-c)
-        print ""
+
+        # === Expert (-e only) ===
+        # Data source rule:
+        #   compress row: sysctl (byte-level) + vm_stat decompress
+        #   harddisk row: vm_stat only (disk I/O)
+        #   pageq row: sysctl only (reclaim pipeline + watermarks)
+        #   misc row: mixed (uncategorized)
+        #   faults row: vm_stat only (page counts)
+        if (expert == 1) {
+            # compress detail row (sysctl byte-level + vm_stat decompress)
+            comp_in_kb = (comp_input_bytes + 0) / 1024
+            comp_out_kb = (comp_compressed_bytes + 0) / 1024
+            comp_pool_kb = (comp_pool_size + 0) / 1024
+            comp_decompress_kb = (decompress_count + 0) * page_kb
+            print_darwin_compress_detail_row(comp_in_kb, comp_out_kb, comp_pool_kb, comp_decompress_kb, human)
+
+            # harddisk row (vm_stat only: disk I/O)
+            io_pageins = (pageins + 0) * page_kb
+            io_pageouts = (pageouts + 0) * page_kb
+            io_swapins = (swapins_val + 0) * page_kb
+            io_swapouts = (swapouts_val + 0) * page_kb
+            print_darwin_io_row(io_pageins, io_pageouts, io_swapins, io_swapouts, human)
+
+            # pageq row (sysctl only: reclaim pipeline + watermarks)
+            pq_pageable_int = (sysctl_pageable_int + 0) * page_kb
+            pq_reusable = (sysctl_reusable_count + 0) * page_kb
+            pq_cleaned = (sysctl_cleaned_count + 0) * page_kb
+            pq_cache_min = (sysctl_filecache_min + 0) * page_kb
+            pq_free_target = (sysctl_free_target + 0) * page_kb
+            pq_free_wanted = sysctl_free_wanted + 0
+            print_darwin_pageq_row(pq_pageable_int, pq_reusable, pq_cleaned, pq_cache_min, pq_free_target, pq_free_wanted, human)
+
+            # misc row (mixed: uncategorized)
+            misc_shared = (sysctl_shared_region_count + 0) * page_kb
+            misc_realtime = (sysctl_realtime_count + 0) * page_kb
+            misc_reactivated = (pages_reactivated + 0) * page_kb
+            misc_purged = (pages_purged + 0) * page_kb
+            print_darwin_misc_row(misc_shared, misc_realtime, misc_reactivated, misc_purged, human)
+
+            # faults row (vm_stat only: page counts, not memory amounts)
+            print_darwin_faults_row(tfaults + 0, cow_pages + 0, zero_filled + 0, human)
+        }
     }
 }
 

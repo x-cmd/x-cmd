@@ -5,19 +5,12 @@ ___x_cmd log init disk
 ___x_cmd_disk___main(){
     [ $# -gt 0 ]    ||              set -- sum
 
-    local subcmd="$1";              shift
-    case "$subcmd" in
+    local op="$1";              shift
+    case "$op" in
         -h|--help)                  ___x_cmd help -m disk "$@" ; return 0 ;;
-        sum)                        ___x_cmd_disk_sum "$@" ;;
-        info)                       ___x_cmd_disk_info "$@" ;;
-        stat)                       ___x_cmd_disk_stat "$@" ;;
-        ls)                         ___x_cmd_disk_ls "$@" ;;
-        eject)                      ___x_cmd_disk_eject "$@" ;;
-        mount)                      ___x_cmd_disk_mount "$@" ;;
-        umount)                     ___x_cmd_disk_umount "$@" ;;
-        remount)                    ___x_cmd_disk_remount "$@" ;;
-        device)                     ___x_cmd_disk_device "$@" ;;
-        *)                          N=disk M="Unknown subcmd -> $subcmd" log:ret:64 ;;
+        sum|info|stat|ls|eject|mount|umount|remount|device)
+                                    ___x_cmd_disk_"$op" "$@" ;;
+        *)                          N=disk M="Unknown op -> $op" log:ret:64 ;;
     esac
 }
 
@@ -25,11 +18,11 @@ ___x_cmd_disk_sum(){
     local tty=""
     ___x_cmd_is_stdout2tty && tty=1
     if [ "$tty" ]; then printf "\033[1;37m── Physical Disks ──\033[0m\n"
-    else printf "-- Physical Disks --\n"; fi
+    else printf "%s\n" "-- Physical Disks --"; fi
     ___x_cmd_disk_info "$@"
     printf "\n"
     if [ "$tty" ]; then printf "\033[1;37m── Filesystem Usage ──\033[0m\n"
-    else printf "-- Filesystem Usage --\n"; fi
+    else printf "%s\n" "-- Filesystem Usage --"; fi
     ___x_cmd_disk_stat "$@"
 }
 
@@ -37,7 +30,11 @@ ___x_cmd_disk_sum(){
 ___x_cmd_disk_info(){
     local simple="" fresh=""
     while [ $# -gt 0 ]; do
-        case "$1" in --simple|-s) simple=1; shift ;; --fresh) fresh=1; shift ;; *) break ;; esac
+        case "$1" in
+            --simple|-s)    simple=1; shift ;;
+            --fresh)        fresh=1; shift ;;
+            *)              break ;;
+        esac
     done
     if ___x_cmd os is darwin; then
         ___x_cmd_disk_info_macos "$simple" "$fresh"
@@ -60,10 +57,10 @@ ___x_cmd_disk_info_macos(){
     # Step 1: Collect rich fields from system_profiler to a temp file
     local tmpfile
     tmpfile="$(mktemp)"
-    x ccmd "$dur" -- system_profiler SPNVMeDataType SPSerialATADataType 2>/dev/null > "$tmpfile"
+    ___x_cmd ccmd "$dur" -- system_profiler SPNVMeDataType SPSerialATADataType 2>/dev/null > "$tmpfile"
 
     # Step 2: Collect all physical disks from diskutil, overlay with rich fields
-    x ccmd "$dur" -- diskutil info -all 2>/dev/null | ___x_cmd_cmds_awk -v simple="$simple" -v tty="$tty" -v richfile="$tmpfile" -f "$___X_CMD_ROOT_MOD/disk/lib/awk/info_macos.awk"
+    ___x_cmd ccmd "$dur" -- diskutil info -all 2>/dev/null | ___x_cmd_cmds_awk -v simple="$simple" -v tty="$tty" -v richfile="$tmpfile" -f "$___X_CMD_ROOT_MOD/disk/lib/awk/info_macos.awk"
 }
 
 ___x_cmd_disk_info_linux(){
@@ -286,8 +283,8 @@ ___x_cmd_disk_mount(){
     local mountpoint="${2:-}"
     local opts=""
 
-    [ "$device" ] || { N=disk M="usage: x disk mount <device> <mountpoint> [--options opts]" log:ret:64; return 1; }
-    [ "$mountpoint" ] || { N=disk M="usage: x disk mount <device> <mountpoint> [--options opts]" log:ret:64; return 1; }
+    [ "$device" ] || N=disk M="usage: x disk mount <device> <mountpoint> [--options opts]" log:ret:64
+    [ "$mountpoint" ] || N=disk M="usage: x disk mount <device> <mountpoint> [--options opts]" log:ret:64
 
     # Parse --options flag
     while [ $# -gt 2 ]; do
@@ -336,10 +333,10 @@ ___x_cmd_disk_mount_macos(){
     local opts="${3:-rw}"
 
     case "$device" in
-        /dev/disk*) ;;
-        /dev/*) device="${device#/dev/}" ;;
-        disk*) ;;
-        *) device="disk${device}" ;;
+        /dev/disk*)     ;;
+        /dev/*)         device="${device#/dev/}" ;;
+        disk*)          ;;
+        *)              device="disk${device}" ;;
     esac
 
     mkdir -p "$mountpoint"
@@ -361,14 +358,14 @@ ___x_cmd_disk_umount(){
     local lazy=""
     local force=""
 
-    [ "$target" ] || { N=disk M="usage: x disk umount <mountpoint|--lazy|--force>" log:ret:64; return 1; }
+    [ "$target" ] || N=disk M="usage: x disk umount <mountpoint|--lazy|--force>" log:ret:64
 
     case "$target" in
         --lazy) lazy=1; target="${2:-}" ;;
         --force) force=1; target="${2:-}" ;;
     esac
 
-    [ "$target" ] || { N=disk M="usage: x disk umount <mountpoint>--lazy|--force>" log:ret:64; return 1; }
+    [ "$target" ] || N=disk M="usage: x disk umount <mountpoint>--lazy|--force>" log:ret:64
 
     if ___x_cmd os is darwin; then
         ___x_cmd_disk_umount_macos "$target" "$lazy" "$force"
@@ -385,9 +382,9 @@ ___x_cmd_disk_umount_linux(){
     local force="${3:-}"
 
     case "$target" in
-        /dev/*) ;;
-        /*) ;;
-        *) target="/dev/$target" ;;
+        /dev/*)     ;;
+        /*)         ;;
+        *)          target="/dev/$target" ;;
     esac
 
     if [ "$force" ]; then
@@ -421,8 +418,8 @@ ___x_cmd_disk_remount(){
     local mountpoint="${1:-}"
     local opts="${2:-}"
 
-    [ "$mountpoint" ] || { N=disk M="usage: x disk remount <mountpoint> <options>" log:ret:64; return 1; }
-    [ "$opts" ] || { N=disk M="usage: x disk remount <mountpoint> <options>" log:ret:64; return 1; }
+    [ "$mountpoint" ] || N=disk M="usage: x disk remount <mountpoint> <options>" log:ret:64
+    [ "$opts" ] || N=disk M="usage: x disk remount <mountpoint> <options>" log:ret:64
 
     if ___x_cmd os is win; then
         N=disk M="Remount not applicable on Windows." log:ret:64
@@ -458,7 +455,7 @@ ___x_cmd_disk_device_ls(){
 
 ___x_cmd_disk_device_info(){
     local device="${1:-}"
-    [ "$device" ] || { N=disk M="usage: x disk device info <device>" log:ret:64; return 1; }
+    [ "$device" ] || N=disk M="usage: x disk device info <device>" log:ret:64
 
     case "$device" in
         /dev/*) ;;
@@ -468,7 +465,7 @@ ___x_cmd_disk_device_info(){
     if ___x_cmd os is darwin; then
         ___x_cmd_cmds diskutil info "$device" 2>&1
     elif ___x_cmd os is win; then
-        ___x_cmd_cmds wmic partition where "DeviceID='${device#\\.\}'" list 2>&1
+        ___x_cmd_cmds wmic partition where "DeviceID='${device#\\\\.\\}'" list 2>&1
     else
         ___x_cmd_cmds lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE,LABEL,UUID,PARTUUID,MODEL "$device" 2>&1
         echo "---"

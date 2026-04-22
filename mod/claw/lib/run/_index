@@ -18,6 +18,44 @@ ___x_cmd_claw_run(){
         esac
     done
 
+    local im="${1:-"weixin"}"
+    ___x_cmd_claw_run___ensure "$im" || return $?
+
+    claw:info "X-Claw agent runtime active on $im — awaiting instructions and ready to act"
+
+    if ! ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-runner; then
+        ___x_cmd worker run --ns x-claw-default-worker --name heartbeat-runner -- ___x_cmd_claw_run_hearbeatgenerator "$___X_CMD_CLAW_BOT_MQ" "$im"
+    fi
+
+    ___X_CMD_TAILER_HANDLE="___x_cmd_claw_run___agentwork" \
+    ___x_cmd tailer run "$___X_CMD_CLAW_BOT_MQ" || {
+        local exitcode="$?"
+        cron:debug "Interrupted by signal, stopping heartbeat worker"
+        ___x_cmd worker stop --ns x-claw-default-worker --name heartbeat-runner
+        return "$exitcode"
+    }
+
+    cron:debug "Stopping heartbeat worker"
+    ___x_cmd worker stop --ns x-claw-default-worker --name heartbeat-runner
+}
+
+___x_cmd_claw_run___agentwork(){
+    local msg="$1"
+    case "$msg" in
+        HEARTBEAT:*)
+            ___x_cmd_claw_run___agentwork___heartbeat "${msg#*:}"       ;;
+        weixin:*|qywx:*|feishu:*|telegram:*)
+            ___x_cmd_claw_run___agentwork___handlemsg "$msg"            ;;
+
+        # other agents.
+    esac
+}
+
+___x_cmd_claw_workat(){
+    :
+}
+
+___x_cmd_claw_run___ensure(){
     ___x_cmd agent isready || {
         claw:error "Agent is not ready. Please run 'x agent init' to setup the agent first."
         return 1
@@ -41,34 +79,4 @@ ___x_cmd_claw_run(){
             return 1
             ;;
     esac
-
-    claw:info "X-Claw agent runtime active on $im — awaiting instructions and ready to act"
-
-    exec 3>&1
-    local process_id; process_id="$( trap ":;" HUP ; ___x_cmd_claw_run_hearbeatgenerator "$___X_CMD_CLAW_BOT_MQ" "$im" >&3 & printf "%s\n" "$!")"
-    exec 3>&-
-    claw:debug "process_id=$process_id"
-
-    ___X_CMD_TAILER_HANDLE="___x_cmd_claw_run___agentwork" \
-    ___x_cmd tailer run "$___X_CMD_CLAW_BOT_MQ" || {
-        ___x_cmd kill -r "$process_id"
-    }
-
 }
-
-___x_cmd_claw_run___agentwork(){
-    local msg="$1"
-    case "$msg" in
-        HEARTBEAT:*)
-            ___x_cmd_claw_run___agentwork___heartbeat "${msg#*:}"       ;;
-        weixin:*|qywx:*|feishu:*|telegram:*)
-            ___x_cmd_claw_run___agentwork___handlemsg "$msg"            ;;
-
-        # other agents.
-    esac
-}
-
-___x_cmd_claw_workat(){
-    :
-}
-

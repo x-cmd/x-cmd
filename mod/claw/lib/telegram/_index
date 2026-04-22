@@ -17,6 +17,8 @@ ___x_cmd_claw_telegram(){
             ___x_cmd_claw_telegram_unread_count "$@" ;;
         recent-msg)
             ___x_cmd_claw_telegram_recent_msg "$@" ;;
+        update-offset)
+            ___x_cmd_claw_telegram_update_offset "$@" ;;
         *)  N=claw M="Unknown subcmd -> $op" log:ret:64 ;;
     esac
 }
@@ -40,10 +42,10 @@ ___x_cmd_claw_telegram_get_unread(){
     fi
 
     local msg_unread_count="$((total_line - offset))"
+    local end_line="$offset"
 
     if [ "$msg_unread_count" -gt 0 ]; then
         local start_line=""
-        local end_line=""
         local msgprompt=""
         if [ "$msg_unread_count" -gt 10 ]; then
             start_line="$((total_line - 9))"
@@ -62,13 +64,16 @@ ___x_cmd_claw_telegram_get_unread(){
     fi
 
     printf "%s\n" \
+        "ACTION REQUIRED: After processing the above messages, you MUST run these commands in order:" \
+        "  1. x claw telegram update-offset \"${chatid}\" $end_line" \
+        "  2. x claw telegram unread-count \"${chatid}\"" \
+        "" \
         "Notice: As an AI agent, you can use the following commands to retrieve Telegram messages:" \
         "  x claw telegram -h                                   # Show help" \
         "  x claw telegram get-msg \"${chatid}\" <start>:<end>  # Get messages by line range (e.g. 100:200)" \
         "  x claw telegram recent-msg \"${chatid}\"             # Get recent messages" \
         "  x claw telegram unread-count \"${chatid}\"           # Get unread message count" \
-        "" \
-        ">>> MANDATORY: At the end of EVERY task, run 'x claw telegram unread-count \"${chatid}\"' to verify if new messages have arrived. If unread messages exist, process them immediately before exiting. <<<"
+        "  x claw telegram update-offset \"${chatid}\" <line>   # Mark messages as read up to specified line"
 }
 
 ___x_cmd_claw_telegram_get_msg(){
@@ -111,12 +116,6 @@ ___x_cmd_claw_telegram_get_msg(){
         x_=""; ___x_cmd line count_ "$botdata"
         end_line="${x_:-$start_line}"
     fi
-
-    local offset=0
-    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
-
-    ___x_cmd ensurefp "$datadir_offset"
-    [ "$end_line" -le "$offset" ] || printf "%s\n" "$end_line" > "$datadir_offset"
 }
 
 ___x_cmd_claw_telegram_recent_msg(){
@@ -127,6 +126,43 @@ ___x_cmd_claw_telegram_recent_msg(){
     local offset=0
     [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
     ___x_cmd_claw_telegram_get_msg "$chatid" "$((offset+1))"
+}
+
+___x_cmd_claw_telegram_update_offset(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide telegram chatid" log:ret:64
+    local end_line="$2"
+    local datadir_offset="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/DATA_OFFSET/telegram-${chatid}"
+
+    local x_=""
+    ___x_cmd telegram bot data which_ "$chatid"
+    local botdata="$x_"
+
+    local total_line=0
+    if [ -f "$botdata" ]; then
+        x_=""; ___x_cmd line count_ "$botdata"
+        total_line="${x_:-0}"
+    fi
+
+    [ -n "$end_line" ] || N=claw M="No line number provided for update-offset" log:ret:64
+
+    case "$end_line" in
+        *[!0-9]*)
+            claw:warn "Invalid line number '$end_line', defaulting to 0"
+            end_line=0
+            ;;
+    esac
+
+    if [ "$end_line" -gt "$total_line" ]; then
+        claw:warn "Line number $end_line exceeds total lines $total_line, setting to $total_line"
+        end_line="$total_line"
+    fi
+
+    local offset=0
+    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+
+    ___x_cmd ensurefp "$datadir_offset"
+    [ "$end_line" -le "$offset" ] || printf "%s\n" "$end_line" > "$datadir_offset"
 }
 
 ___x_cmd_claw_telegram_has_unread(){
