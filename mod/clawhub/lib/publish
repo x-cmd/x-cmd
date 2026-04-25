@@ -1,0 +1,148 @@
+# shellcheck shell=dash
+
+___x_cmd_clawhub_check(){
+    local X_help_cmd='___x_cmd_clawhub___help check'
+    help:arg:parse
+
+    local dirpath="${1:-}"
+
+    if [ -z "$dirpath" ] || [ ! -d "$dirpath" ]; then
+        printf "Usage: x clawhub check <skill-path>\n" >&2; return 1
+    fi
+
+    local skill_file="$dirpath/SKILL.md"
+    if [ ! -f "$skill_file" ]; then
+        printf "Error: SKILL.md not found in %s\n" "$dirpath" >&2; return 1
+    fi
+
+    printf "=== Pre-Publish Check ===\nPath: %s\n\n" "$dirpath"
+
+    local issues=0
+
+    printf "[1/5] YAML frontmatter...\n"
+    if head -1 "$skill_file" | grep -q '^---$'; then
+        printf "  ✓ Present\n"
+    else
+        printf "  ✗ Missing\n"; issues=$((issues + 1))
+    fi
+
+    printf "[2/5] Required fields...\n"
+    local missing=""
+    for field in name: description: license:; do
+        grep -q "^$field" "$skill_file" || missing="$missing $field"
+    done
+    [ -z "$missing" ] && printf "  ✓ All present\n" || {
+        printf "  ✗ Missing:%s\n" "$missing"; issues=$((issues + 1)); }
+
+    printf "[3/5] Semantic Version...\n"
+    local version
+    version=$(grep "version:" "$skill_file" | head -1 | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+[^"]*"' | tr -d '"')
+    [ -n "$version" ] && printf "  ✓ Version: %s\n" "$version" || {
+        printf "  ⚠ No valid SemVer found (expected: \"1.0.0\")\n"; issues=$((issues + 1)); }
+
+    printf "[4/5] Privacy scan...\n"
+    local found=""
+    grep -E '/(Users|home)/[a-zA-Z]' "$skill_file" >/dev/null 2>&1 && found="$found local-paths"
+    grep -E '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$skill_file" >/dev/null 2>&1 && found="$found emails"
+    grep -E '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b' "$skill_file" >/dev/null 2>&1 && found="$found ips"
+    [ -z "$found" ] && printf "  ✓ No obvious personal data\n" || {
+        printf "  ⚠ Found:%s\n" "$found"; issues=$((issues + 1)); }
+
+    printf "[5/5] Credentials scan...\n"
+    local creds=""
+    for pattern in apikey api_key password token secret; do
+        grep -i "$pattern" "$skill_file" >/dev/null 2>&1 && creds="$creds $pattern"
+    done
+    [ -z "$creds" ] && printf "  ✓ No credential keywords\n" || {
+        printf "  ⚠ Keywords:%s (verify not real values)\n" "$creds"; issues=$((issues + 1)); }
+
+    printf "\n"
+    [ $issues -eq 0 ] && { printf "✓ Ready for preview\n"; return 0; } || {
+        printf "! %d issue(s) found\n" "$issues"; return 1; }
+}
+
+___x_cmd_clawhub_preview(){
+    local X_help_cmd='___x_cmd_clawhub___help preview'
+    help:arg:parse
+
+    local dirpath="${1:-}"
+
+    if ! ___x_cmd_clawhub_check "$dirpath"; then
+        printf "Fix issues before preview.\n" >&2; return 1
+    fi
+
+    local name; name="$(basename "$dirpath")"
+    local dir="/tmp/publish-${name}"
+
+    rm -rf "$dir"; mkdir -p "$dir"
+
+    printf "\n=== Creating Preview ===\n"
+
+    local ignore_file="$dirpath/.x-cmd/clawhub.publish.ignore"
+    local ignore_patterns=""
+    if [ -f "$ignore_file" ]; then
+        printf "Loading ignore patterns from .x-cmd/clawhub.publish.ignore\n"
+        while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in ""|\#*) continue ;; esac
+            ignore_patterns="$ignore_patterns|$line"
+        done < "$ignore_file"
+        [ -n "$ignore_patterns" ] && ignore_patterns="${ignore_patterns#|}"
+    fi
+
+    cp "$dirpath/SKILL.md" "$dir/"; printf "✓ SKILL.md\n"
+
+    for aux in lib data adv; do
+        if [ -d "$dirpath/$aux" ]; then
+            cp -r "$dirpath/$aux" "$dir/"; printf "✓ %s/\n" "$aux"
+        fi
+    done
+
+    if [ -n "$ignore_patterns" ]; then
+        find "$dir" -type f | while read -r file; do
+            rel="${file#$dir/}"
+            case "$rel" in
+                $ignore_patterns) rm -f "$file"; printf "  - %s (ignored)\n" "$rel" ;;
+            esac
+        done
+    fi
+
+    find "$dir" -type d -empty -delete 2>/dev/null || true
+    find "$dir" -type f | sed "s|$dir/||" > "$dir/FILES.txt"
+    printf "✓ FILES.txt\n\nPreview: %s\n\nNext:\n  1. Review content\n  2. x clawhub preflight  (checklist)\n  3. x clawhub publish %s\n" "$dir" "$dirpath"
+}
+
+___x_cmd_clawhub_publish(){
+    local X_help_cmd='___x_cmd_clawhub___help publish'
+    help:arg:parse
+
+    local dirpath="${1:-}"
+    local name; name="$(basename "$dirpath")"
+    local dir="/tmp/publish-${name}"
+
+    if [ ! -d "$dir" ]; then
+        printf "Preview not found. Run: x clawhub preview %s\n" "$dirpath" >&2; return 1
+    fi
+
+    local skill_file="$dir/SKILL.md"
+    local slug;    slug="$(grep "^name:" "$skill_file" | head -1 | sed 's/^name: *//' | tr -d '\r')"
+    local version; version="$(grep "version:" "$skill_file" | head -1 | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+[^"]*"' | tr -d '"')"
+
+    printf "=== Publish Summary ===\n\nSlug:    %s\nVersion: %s\n\nFiles:\n" "$slug" "$version"
+    cat "$dir/FILES.txt"
+    printf "\nThis will be PUBLIC and PERMANENT.\nType 'yes' to publish: "
+    read -r confirm
+
+    if [ "$confirm" != "yes" ]; then printf "Cancelled.\n"; return 1; fi
+
+    printf "\nPublishing...\n"
+
+    local archive="/tmp/clawhub-publish-${slug}-${version}.tar.gz"
+    ___x_cmd tar czf "$archive" -C "$dir" . || {
+        printf "Failed to create archive\n" >&2; return 1; }
+
+    ___x_cmd_clawhub_skill_publish --slug "$slug" --version "$version" --archive "$archive"
+    local rc=$?
+
+    rm -f "$archive"
+    return $rc
+}

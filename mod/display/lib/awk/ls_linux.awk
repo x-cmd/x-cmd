@@ -59,12 +59,10 @@ BEGIN {
 /^[ \t]/ && /\*/ {
     n = split($0, fields)
     for (i = 1; i <= n; i++) {
-        if (fields[i] == "*") {
-            if (i > 1) {
-                cur_rate = fields[i-1]
-                gsub(/\+/, "", cur_rate)
-                cur_rate = cur_rate " Hz"
-            }
+        if (index(fields[i], "*") > 0) {
+            cur_rate = fields[i]
+            gsub(/\*|\+/, "", cur_rate)
+            if (cur_rate + 0 > 0) cur_rate = cur_rate " Hz"
             break
         }
     }

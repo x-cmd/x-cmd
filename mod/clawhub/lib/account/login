@@ -1,0 +1,67 @@
+# shellcheck shell=dash
+
+___x_cmd_clawhub_account_login(){
+    local X_help_cmd='___x_cmd_clawhub___help account login'
+    help:arg:parse
+
+    local input_token=
+    if [ $# -gt 0 ]; then
+        input_token="$1"
+    else
+        local token; ___x_cmd_clawhub_cur token:=token 2>/dev/null
+        if [ -n "$token" ]; then
+            if ! ___x_cmd ui yesno "You already have a token configured. Overwrite?" ; then
+                clawhub:info "Cancelled"
+                return 0
+            fi
+        fi
+        if ! ___x_cmd_runmode_allow_manual ; then
+            clawhub:error "Token required, but not in interactive tty"
+            return 1
+        fi
+
+        ___X_CMD_TUI_FORM_FINAL_COMMAND=""
+        ___x_cmd tui form --return var token  "ClawHub Token (clh_...)"  ""  '=~*' "^clh_" || return 1
+        [ -n "$___X_CMD_TUI_FORM_FINAL_COMMAND" ] || {
+            clawhub:info "Canceled"
+            return 1
+        }
+        input_token="$token"
+    fi
+
+    case "$input_token" in
+        clh_*) ;;
+        *)  ___x_cmd_ui_tf false "Token must start with 'clh_'" >&2; return 1 ;;
+    esac
+
+    ___x_cmd_clawhub_cfg --set token="${input_token}"
+
+    # Verify token with whoami
+    clawhub:info "Verifying token..."
+    if ! ___x_cmd_clawhub_account_whoami; then
+        clawhub:error "Token verification failed"
+        ___x_cmd_clawhub_cfg --unset token
+        return 1
+    fi
+}
+
+___x_cmd_clawhub_account_whoami(){
+    local X_help_cmd='___x_cmd_clawhub___help account whoami'
+    help:arg:parse
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl get /api/v1/whoami)" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to get account info:"
+        return 1
+    }
+
+    local handle; local displayName; local image
+    printf "%s" "$resp" | {
+        ___x_cmd jo env . handle=.user.handle displayName=.user.displayName image=.user.image
+
+        ___x_cmd_clawhub_u_handle_resp true "Account info:" \
+            "handle: ${handle:-}" \
+            ${displayName:+"displayName: $displayName"} \
+            ${image:+"image: $image"}
+    }
+}

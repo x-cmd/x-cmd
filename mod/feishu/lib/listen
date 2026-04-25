@@ -11,7 +11,7 @@ ___x_cmd_feishu_listen(){
             -h|--help)      ___x_cmd help -m feishu listen "$@" ; return 0 ;;
             --fp)           fp=1 ;          shift ;;
             --json)         format="json";  shift ;;
-            *)              break ;;
+            *)              N=feishu M="Unknown op -> $1" log:ret:64   ;;
         esac
     done
 
@@ -19,46 +19,57 @@ ___x_cmd_feishu_listen(){
     local cur_token
     ____x_cmd_tenant_token ; cur_token="$x_"
 
-        # TODO:
+
+    local sync_buf_file="${___X_CMD_FEISHU_TMP}/sync_buf"
+
+    # TODO:
     local chats=
     chats="$(___x_cmd feishu group ls --json | ___x_cmd jq -r '.data.items[].chat_id')"
+    [ -n "$chats" ] || N=feishu M="Failed to get group list" log:ret:64
+
+    local date=;
+    ___x_cmd date timestamp_ ; date="$x_"
+    printf "%s" "$date" > "$sync_buf_file"
+    sleep 1
 
     local chatid
     while true; do
-        local date=;
         local resp=;
-        ___x_cmd date timestamp_ ; date="$x_"
+        [ ! -f "$sync_buf_file" ] || read -r date <"$sync_buf_file"
+        while IFS= read -r chatid; do
+            resp="$(___x_cmd_feishu_getmessages "$chatid" "$date")" || {
+                feishu:error "Failed to get updates: $resp"
+                ___x_cmd sleep 1s
+                return 1
+            }
 
+            local msg="" sender="" chatid="" last_msg_time=""
+            ___x_cmd jo env .data.items msg=.1 sender=.1.sender.sender_type chatid=.1.chat_id last_msg_time=.1.create_time<<A
+$resp
+A
+            [ "$msg" != "[]" ]     || continue
+            [ "$sender" = "user" ] || continue
+            date="$(( (last_msg_time / 1000) + 1 ))"
+            printf "%s" "$date" > "$sync_buf_file"
 
-        while [ -z "$resp" ]; do
-            while IFS= read -r chatid; do
-                resp="$(___x_cmd_feishu_getmessages "$chatid" "$date" | ___x_cmd_feishu_parsemsg)" || {
-                    feishu:error "Failed to get updates: $resp"
-                    ___x_cmd sleep 1s
-                    return 1
+            if [ -n "$fp" ]; then
+                [ -n "$chatid" ] || {
+                    feishu:error "Failed to get chat id, cannot save data to file"
+                    continue
                 }
-            done <<A
+                ___X_CMD_FEISHU_BOT_DATA="${___X_CMD_FEISHU_BOT_PATH}/data_${chatid}.tsv"
+                ___x_cmd ensurefp "$___X_CMD_FEISHU_BOT_DATA"
+                printf "%s\n" "$msg"  >> "$___X_CMD_FEISHU_BOT_DATA"
+                ___x_cmd tailer pub "$___X_CMD_ROOT_DATA/feishu/sub" "feishu:${chatid}"
+            elif [ "$format" = "json" ]; then
+                printf "%s\n" "$msg"
+            else
+                printf "%s\n" "$msg"
+            fi
+        done <<A
 $chats
 A
-        done
 
-        if [ -n "$fp" ]; then
-            case "$resp" in
-                *"chat"*)
-                        # Extract chat_id using pure shell string manipulation
-                        chatid="${resp##*\"chat_id\" : \"}"
-                        chatid="${chatid%%\"*}"
-                        ___X_CMD_FEISHU_BOT_DATA="${___X_CMD_FEISHU_BOT_PATH}/data_${chatid}.tsv"
-                        ___x_cmd ensurefp "$___X_CMD_FEISHU_BOT_DATA"
-                        printf "%s\n" "$resp"  >> "$___X_CMD_FEISHU_BOT_DATA"
-                        ___x_cmd tailer pub "$___X_CMD_ROOT_DATA/feishu/sub" "feishu:${chatid}"
-                        ;;
-            esac
-        elif [ "$format" = "json" ]; then
-            printf "%s\n%s" "$resp" ""
-        else
-            printf "%s\n%s" "$resp" ""
-        fi
     done
 }
 
@@ -69,18 +80,18 @@ ___x_cmd_feishu_getmessages(){
                   -H "Authorization: Bearer $cur_token"
 }
 
-___x_cmd_feishu_parsemsg(){
-    ___x_cmd awk0 -m j/json -m j/jiter '
-{ jiparse_after_tokenize(o, $0); }
-END{
-    kp = SUBSEP "\"1\"" SUBSEP "\"data\"" SUBSEP "\"items\""
-    l = o[ kp L ]
-    for (i=1; i<=l; ++i){
-        kp_i = kp SUBSEP "\""i"\""
-        kp_sender_type = kp_i SUBSEP "\"sender\"" SUBSEP "\"sender_type\""
-        if (o[ kp_sender_type ] == "\"user\""){
-            print jstr0(o, kp_i, " ")
-        }
-    }
-}'
-}
+# ___x_cmd_feishu_parsemsg(){
+#     ___x_cmd awk0 -m j/json -m j/jiter '
+# { jiparse_after_tokenize(o, $0); }
+# END{
+#     kp = SUBSEP "\"1\"" SUBSEP "\"data\"" SUBSEP "\"items\""
+#     l = o[ kp L ]
+#     for (i=1; i<=l; ++i){
+#         kp_i = kp SUBSEP "\""i"\""
+#         kp_sender_type = kp_i SUBSEP "\"sender\"" SUBSEP "\"sender_type\""
+#         if (o[ kp_sender_type ] == "\"user\""){
+#             print jstr0(o, kp_i, " ")
+#         }
+#     }
+# }'
+# }

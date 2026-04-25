@@ -1,0 +1,140 @@
+# shellcheck shell=dash
+
+# GET /api/v1/skills/{slug}
+___x_cmd_clawhub_skill_get(){
+    local X_help_cmd='___x_cmd_clawhub___help skill get'
+    help:arg:parse
+
+    local fmt=auto
+    local slug=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m clawhub skill get "$@" ; return 0 ;;
+            --json|--yml)   fmt="${1#--}"; shift ;;
+            -*)             clawhub:error "Unknown option: $1"; return 1 ;;
+            *)              slug="$1"; shift ;;
+        esac
+    done
+    [ -n "$slug" ] || M='Provide skill slug' N=clawhub log:ret:64
+
+    local ___X_CMD_CLAWHUB_SKILL_GET_RESP=
+    ___X_CMD_CLAWHUB_SKILL_GET_RESP="$(___x_cmd_clawhub_u_curl get "/api/v1/skills/$(___x_cmd url encode "$slug")" --no-auth)" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to get skill '$slug':"
+        return 1
+    }
+    "___x_cmd_clawhub_skill_get___$fmt" "$slug"
+}
+
+___x_cmd_clawhub_skill_get___auto(){
+    local slug="$1"
+    if ___x_cmd is stdout2tty; then
+        ___x_cmd_clawhub_skill_get___human "$slug"
+    else
+        ___x_cmd_clawhub_skill_get___json "$slug"
+    fi
+}
+
+___x_cmd_clawhub_skill_get___json(){
+    local slug="$1"
+    printf "%s\n" "$___X_CMD_CLAWHUB_SKILL_GET_RESP" | ___x_cmd jo fmt
+}
+
+___x_cmd_clawhub_skill_get___yml(){
+    local slug="$1"
+    printf "%s\n" "$___X_CMD_CLAWHUB_SKILL_GET_RESP" | ___x_cmd j2y
+}
+
+___x_cmd_clawhub_skill_get___human(){
+    local slug="$1"
+    printf "%s\n" "$___X_CMD_CLAWHUB_SKILL_GET_RESP" | ___x_cmd jq -r '
+        [.skill.slug, .skill.displayName, (.skill.summary // "" | .[0:80]),
+         .latestVersion.version, .latestVersion.license,
+         .owner.handle, .owner.displayName,
+         .skill.stats.stars, .skill.stats.downloads] | @tsv' \
+        | ___x_cmd_cmds awk -F'\t' '{
+            printf "\033[36m%-12s\033[0m %s\n", "slug:", $1
+            printf "\033[36m%-12s\033[0m %s\n", "name:", $2
+            printf "\033[36m%-12s\033[0m %s\n", "summary:", $3
+            printf "\033[36m%-12s\033[0m %s\n", "version:", $4
+            printf "\033[36m%-12s\033[0m %s\n", "license:", $5
+            printf "\033[36m%-12s\033[0m %s\n", "owner:", $6
+            printf "\033[36m%-12s\033[0m %s\n", "author:", $7
+            printf "\033[36m%-12s\033[0m %s\n", "stars:", $8
+            printf "\033[36m%-12s\033[0m %s\n", "downloads:", $9
+        }'
+
+    printf "%s\n" "$___X_CMD_CLAWHUB_SKILL_GET_RESP" | ___x_cmd jq -r '
+        if .moderation then
+            "\(.moderation.isSuspicious)\t\(.moderation.verdict)"
+        else empty end' | while IFS=$'\t' read -r suspicious verdict; do
+            [ -z "$verdict" ] && continue
+            printf "\033[36m%-12s\033[0m %s\n" "suspicious:" "$suspicious"
+            printf "\033[36m%-12s\033[0m %s\n" "verdict:" "$verdict"
+        done
+}
+
+# DELETE /api/v1/skills/{slug}
+___x_cmd_clawhub_skill_delete(){
+    local X_help_cmd='___x_cmd_clawhub___help skill delete'
+    help:arg:parse
+
+    local slug="$1"; [ -n "$slug" ] || M='Provide skill slug' N=clawhub log:ret:64
+    shift
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl delete "/api/v1/skills/$(___x_cmd url encode "$slug")")" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to delete skill '$slug':"
+        return 1
+    }
+    ___x_cmd_clawhub_u_handle_resp true "Skill '$slug' deleted"
+}
+
+# POST /api/v1/skills/{slug}/undelete
+___x_cmd_clawhub_skill_undelete(){
+    local X_help_cmd='___x_cmd_clawhub___help skill undelete'
+    help:arg:parse
+
+    local slug="$1"; [ -n "$slug" ] || M='Provide skill slug' N=clawhub log:ret:64
+    shift
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl post "/api/v1/skills/$(___x_cmd url encode "$slug")/undelete")" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to undelete skill '$slug':"
+        return 1
+    }
+    ___x_cmd_clawhub_u_handle_resp true "Skill '$slug' restored"
+}
+
+# POST /api/v1/skills/{slug}/rename
+___x_cmd_clawhub_skill_rename(){
+    local X_help_cmd='___x_cmd_clawhub___help skill rename'
+    help:arg:parse
+
+    local slug="$1";  [ -n "$slug" ]  || M='Provide skill slug'      N=clawhub log:ret:64
+    local new_slug="$2"; [ -n "$new_slug" ] || M='Provide new slug'  N=clawhub log:ret:64
+    shift 2
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl post "/api/v1/skills/$(___x_cmd url encode "$slug")/rename" -- "newSlug=$new_slug")" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to rename skill '$slug':"
+        return 1
+    }
+    ___x_cmd_clawhub_u_handle_resp true "Skill renamed: $slug -> $new_slug"
+}
+
+# POST /api/v1/skills/{slug}/merge
+___x_cmd_clawhub_skill_merge(){
+    local X_help_cmd='___x_cmd_clawhub___help skill merge'
+    help:arg:parse
+
+    local slug="$1";        [ -n "$slug" ]        || M='Provide target skill slug' N=clawhub log:ret:64
+    local source_slug="$2"; [ -n "$source_slug" ] || M='Provide source skill slug' N=clawhub log:ret:64
+    shift 2
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl post "/api/v1/skills/$(___x_cmd url encode "$slug")/merge" -- "source=$source_slug")" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to merge '$source_slug' into '$slug':"
+        return 1
+    }
+    ___x_cmd_clawhub_u_handle_resp true "Merged '$source_slug' into '$slug'"
+}

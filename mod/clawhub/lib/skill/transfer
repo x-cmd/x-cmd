@@ -1,0 +1,51 @@
+# shellcheck shell=dash
+
+# Transfer endpoints (not in public OpenAPI spec but available via API)
+# POST /api/v1/skills/{slug}/transfer[/:action]
+# GET  /api/v1/transfers/incoming|outgoing
+___x_cmd_clawhub_skill_transfer(){
+    local X_help_cmd='___x_cmd_clawhub___help skill transfer'
+    help:arg:parse
+
+    local subcmd="${1:-}"; shift 2>/dev/null || true
+
+    # List endpoints — no slug needed
+    case "$subcmd" in
+        incoming) local resp=
+            resp="$(___x_cmd_clawhub_u_curl get /api/v1/transfers/incoming)" || {
+                ___x_cmd_clawhub_u_handle_resp false "Failed to list incoming transfers:"; return 1; }
+            printf "%s\n" "$resp"; return ;;
+        outgoing) local resp=
+            resp="$(___x_cmd_clawhub_u_curl get /api/v1/transfers/outgoing)" || {
+                ___x_cmd_clawhub_u_handle_resp false "Failed to list outgoing transfers:"; return 1; }
+            printf "%s\n" "$resp"; return ;;
+    esac
+
+    # Slug-action endpoints — validate subcmd first
+    case "$subcmd" in
+        init|start|accept|reject|cancel) ;;
+        *)  ___x_cmd_clawhub_u_subcmd_invalid transfer "$subcmd"; return ;;
+    esac
+
+    local slug="$1"
+    case "$slug" in -h|--help) ___x_cmd_clawhub___help skill transfer; return ;; esac
+    [ -n "$slug" ] || M='Provide skill slug' N=clawhub log:ret:64
+    shift 2>/dev/null || true
+
+    local suffix=""; local data=""
+    local label="$subcmd"
+    case "$subcmd" in
+        init|start)
+            local to="$1"; [ -n "$to" ] || M='Provide target username' N=clawhub log:ret:64
+            shift 2>/dev/null || true
+            suffix="/transfer"; data="to=$to"; label="initiated: $slug -> $to" ;;
+        accept) suffix="/transfer/accept"; label="accepted: $slug" ;;
+        reject) suffix="/transfer/reject"; label="rejected: $slug" ;;
+        cancel) suffix="/transfer/cancel"; label="cancelled: $slug" ;;
+    esac
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl post "/api/v1/skills/$(___x_cmd url encode "$slug")$suffix" ${data:+-- $data})" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to $subcmd transfer of '$slug':"; return 1; }
+    ___x_cmd_clawhub_u_handle_resp true "Transfer $label"
+}

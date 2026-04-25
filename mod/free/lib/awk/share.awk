@@ -144,10 +144,10 @@ function print_swapcached(val, human_mode) {
 function print_used_row(used_anon, used_slab_un, used_mlocked, used_other, human_mode) {
     printf "\n"
     # header row
-    printf(UI_DIM "  %-6s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_DIM "  %-7s %10s %10s %10s %10s" UI_END "\n",
         "", "anon", "slab_un", "mlocked", "other")
     # data row
-    printf(UI_KEY "  %-6s" UI_END " " \
+    printf(UI_KEY "  %-7s" UI_END " " \
         UI_BOLD_RED "%10s" UI_END " " \
         UI_RED "%10s" UI_END " " \
         UI_RED_DIM "%10s" UI_END " " \
@@ -162,10 +162,10 @@ function print_used_row(used_anon, used_slab_un, used_mlocked, used_other, human
 function print_cache_row(buffers, slab_recl, mapped, unmapped, human_mode) {
     printf "\n"
     # header row
-    printf(UI_DIM "  %-6s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_DIM "  %-7s %10s %10s %10s %10s" UI_END "\n",
         "", "buffers", "slab_recl", "mapped", "unmapped")
     # data row: buffers=GREEN+U, slab_recl=GREEN_DIM, mapped=YEL+U, unmapped=GREEN+U
-    printf(UI_KEY "  %-6s" UI_END " " \
+    printf(UI_KEY "  %-7s" UI_END " " \
         UI_GREEN UI_UNDERLINE "%10s" UI_UNDERLINE_OFF UI_END " " \
         UI_GREEN_DIM "%10s" UI_END " " \
         UI_MED UI_UNDERLINE "%10s" UI_UNDERLINE_OFF UI_END " " \
@@ -179,13 +179,12 @@ function print_cache_row(buffers, slab_recl, mapped, unmapped, human_mode) {
 
 function print_kernel_row(slab_total, pagetable, kstack, vmalloc, percpu, kern_other, human_mode) {
     printf "\n"
-    # header row
-    printf(UI_DIM "  %-6s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
-        "", "", "slab_total", "pagetable", "kstack", "vmalloc", "percpu", "kern_other")
-    # data row - all DIM
-    printf(UI_KEY "  %-6s" UI_END " " UI_DIM "%10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+    # header row: 1 label col + 6 value cols = "  %-7s %10s %10s %10s %10s %10s %10s"
+    printf(UI_DIM "  %-7s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+        "", "slab_total", "pagetable", "kstack", "vmalloc", "percpu", "kern_other")
+    # data row: same structure
+    printf(UI_KEY "  %-7s" UI_END " " UI_DIM "%10s %10s %10s %10s %10s %10s" UI_END "\n",
         "kernel:",
-        "",
         fv(slab_total, human_mode),
         fv(pagetable, human_mode),
         fv(kstack, human_mode),
@@ -197,10 +196,10 @@ function print_kernel_row(slab_total, pagetable, kstack, vmalloc, percpu, kern_o
 function print_lru_row(act_anon, inact_anon, act_file, inact_file, lru_total, human_mode) {
     printf "\n"
     # header row
-    printf(UI_DIM "  %-8s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_DIM "  %-7s %10s %10s %10s %10s" UI_END "\n",
         "", "act_anon", "inact_anon", "act_file", "inact_file")
     # data row: act_anon=BOLD_RED, inact_anon=RED, act_file=YEL+U, inact_file=BOLD_GREEN+U
-    printf(UI_KEY "  %-8s" UI_END " " \
+    printf(UI_KEY "  %-7s" UI_END " " \
         UI_BOLD_RED "%10s" UI_END " " \
         UI_RED "%10s" UI_END " " \
         UI_MED UI_UNDERLINE "%10s" UI_UNDERLINE_OFF UI_END " " \
@@ -216,11 +215,11 @@ function print_thp_row(thp_anon, shmem_huge, shmem_pmd, file_huge, file_pmd,
                        hp_total, hp_free, hp_rsvd, hp_surp, hugetlb, hp_size, human_mode) {
     printf "\n"
     # header row
-    printf(UI_DIM "  %-6s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_DIM "  %-7s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
         "", "thp_anon", "shmem_huge", "shmem_pmd", "file_huge", "file_pmd",
         "hp_total", "hp_free", "hp_rsvd", "hp_surp", "hugetlb", "hp_size")
     # data row - all DIM
-    printf(UI_KEY "  %-6s" UI_END " " UI_DIM "%10s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_KEY "  %-7s" UI_END " " UI_DIM "%10s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
         "thp:",
         fv(thp_anon, human_mode),
         fv(shmem_huge, human_mode),
@@ -238,10 +237,10 @@ function print_thp_row(thp_anon, shmem_huge, shmem_pmd, file_huge, file_pmd,
 function print_io_row(dirty, writeback, wb_tmp, nfs_unstable, human_mode) {
     printf "\n"
     # header row
-    printf(UI_DIM "  %-6s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_DIM "  %-7s %10s %10s %10s %10s" UI_END "\n",
         "", "dirty", "writeback", "wb_tmp", "nfs_unstable")
     # data row - all DIM
-    printf(UI_KEY "  %-6s" UI_END " " UI_DIM "%10s %10s %10s %10s" UI_END "\n",
+    printf(UI_KEY "  %-7s" UI_END " " UI_DIM "%10s %10s %10s %10s" UI_END "\n",
         "io:",
         fv(dirty, human_mode),
         fv(writeback, human_mode),
@@ -253,10 +252,10 @@ function print_vm_row(committed, commit_lim, kreclaim, zswap, zswapped,
                      vmalloc_total, vmalloc_chunk, human_mode) {
     printf "\n"
     # header row
-    printf(UI_DIM "  %-6s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_DIM "  %-7s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
         "", "committed", "commit_lim", "kreclaim", "zswap", "zswapped", "vmalloc_T", "vmalloc_C")
     # data row - all DIM
-    printf(UI_KEY "  %-6s" UI_END " " UI_DIM "%10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_KEY "  %-7s" UI_END " " UI_DIM "%10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
         "vm:",
         fv(committed, human_mode),
         fv(commit_lim, human_mode),
@@ -271,10 +270,10 @@ function print_hw_row(bounce, sec_pagetbl, hw_corrupted, cma_total, cma_free,
                       dmap_4k, dmap_2m, dmap_1g, human_mode) {
     printf "\n"
     # header row
-    printf(UI_DIM "  %-6s %10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_DIM "  %-7s %10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
         "", "bounce", "sec_pagtbl", "hw_corrupt", "cma_total", "cma_free", "dmap_4k", "dmap_2M", "dmap_1G")
     # data row - all DIM
-    printf(UI_KEY "  %-6s" UI_END " " UI_DIM "%10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
+    printf(UI_KEY "  %-7s" UI_END " " UI_DIM "%10s %10s %10s %10s %10s %10s %10s %10s" UI_END "\n",
         "hw:",
         fv(bounce, human_mode),
         fv(sec_pagetbl, human_mode),

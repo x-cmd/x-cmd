@@ -50,6 +50,9 @@ END{
         printf("%s%s\n", "[👉 View X-CMD blog for more information about this version]", "(https://x-cmd.com" juq(change[ "blog" ]) ")" )
     }
 
+    printf("%s%s\n", "[👉 View Full Changelog on X-CMD Website]", "(https://x-cmd.com/v/" substr(version,2) ")" )
+
+
     if( previous_version != "" ) {
         compare = previous_version "..." version
         printf("%s%s\n\n", "[👉 Version compare: " compare "]", "(https://github.com/x-cmd/x-cmd/compare/" compare ")" )

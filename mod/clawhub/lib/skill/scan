@@ -1,0 +1,45 @@
+# shellcheck shell=dash
+
+# GET /api/v1/skills/{slug}/scan?version=&tag=
+___x_cmd_clawhub_skill_scan(){
+    local X_help_cmd='___x_cmd_clawhub___help skill scan'
+    help:arg:parse
+
+    local fmt=auto
+    local slug="$1"; [ -n "$slug" ] || M='Provide skill slug' N=clawhub log:ret:64
+    shift
+
+    local version=; local tag=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|--yml) fmt="${1#--}"; shift ;;
+            --version)    version="$2";  shift 2 ;;
+            --tag)        tag="$2";      shift 2 ;;
+            *) break ;;
+        esac
+    done
+
+    local qs=""
+    [ -z "$version" ] || qs="version=$version"
+    [ -z "$tag" ]     || qs="${qs:+$qs&}tag=$tag"
+
+    local url="/api/v1/skills/$(___x_cmd url encode "$slug")/scan"
+    [ -z "$qs" ] || url="$url?$qs"
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl get "$url" --no-auth)" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to scan '$slug':"
+        return 1
+    }
+    ___x_cmd_clawhub_u_fmt "$fmt" ___x_cmd_clawhub_skill_scan___human
+}
+
+___x_cmd_clawhub_skill_scan___human(){
+    printf "%s\n" "$resp" | ___x_cmd jq -r '
+        [.skill.slug, .security.status, .security.scanners.vt.verdict, .security.hasWarnings] | @tsv' \
+        | ___x_cmd_cmds awk -F'\t' 'BEGIN {
+            printf "\033[1;36m%-14s %-10s %-10s %s\033[0m\n", "SLUG", "STATUS", "VERDICT", "WARNINGS"
+        } {
+            printf "\033[36m%-14s\033[0m \033[32m%-10s\033[0m \033[22;90m%-10s %s\033[0m\n", $1, $2, $3, $4
+        }'
+}

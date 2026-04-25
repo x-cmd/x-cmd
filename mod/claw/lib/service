@@ -19,9 +19,6 @@
 # x claw service start --name 0
 # x qywx bot connect
 
-___X_CMD_CLAW_TMP="$___X_CMD_ROOT_TMP/claw"
-___x_cmd mkdirp "${___X_CMD_CLAW_TMP}"
-
 ___x_cmd_claw_service(){
     [ $# -gt 0 ]    ||      set -- --help
 
@@ -35,48 +32,89 @@ ___x_cmd_claw_service(){
 }
 
 ___x_cmd_claw_service_start(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local im=;
     local op="$1";          shift
     case "$op" in
-        -h|--help)          ___x_cmd help -m claw service start "$@" ; return 0 ;;
+        -h|--help)
+                    ___x_cmd help -m claw service start "$@" ; return 0 ;;
+        feishu|weixin|telegram)
+                    im="$op" ;;
+        *)          claw:error "Unsupported IM platform: $op"
+                    return 1
+                    ;;
     esac
 
-    local im="${1:-"weixin"}"
+    claw:info "Ensuring $im listener is ready"
+    ___x_cmd_claw_run___ensure "$im" || {
+        claw:error "Failed to start $im listener, claw service startup interrupted"
+        return 1
+    }
+
     claw:info "Starting claw service"
     ___x_cmd service start      x-claw-service  --  x-cmd claw service run "$@"
 
-    ___x_cmd_cmds sleep 3
-    ___x_cmd service isalive "x-$im-listener" || {
-        claw:warn "Failed to start $im message listener, retrying"
-        ___x_cmd_cmds sleep 8
-
-        ___x_cmd service isalive "x-$im-listener" || {
-            claw:error "Failed to start service: $im listener failed"
-            ___x_cmd service log tail "x-$im-listener"
-            return 1
-        }
-    }
-
+    ___x_cmd sleep 2
     ___x_cmd service isalive x-claw-service || {
-        claw:error "Fial to start claw service"
+        claw:error "Failed to start claw service"
         ___x_cmd service log tail x-claw-service
         return 1
     }
 
     printf "%s " "status: "; ___x_cmd_claw_service_status
-    printf "%s\n" "$im" > "${___X_CMD_CLAW_TMP}/listener"
 }
 
 ___x_cmd_claw_service_stop(){
-    local im
-    read -r im < "${___X_CMD_CLAW_TMP}/listener"
+    [ "$#" -gt 0 ] ||   set -- --help
 
-    ___x_cmd service stop       "x-$im-listener"
-    ___x_cmd service stop       x-claw-service
-    ___x_cmd_cmds pkill -f "claw service run"
+    local im="$1"; shift
+    case "$im" in
+        -h|--help)
+            ___x_cmd help -m claw service stop "$@" ; return 0 ;;
+        feishu|weixin|telegram)
+            ;;
+        *)      claw:error "Unsupported IM platform: $im"
+            return 1
+            ;;
+    esac
+
+    if ___x_cmd service isalive x-claw-service; then
+        if ___x_cmd service isalive "x-$im-listener"; then
+            claw:info "Stopping $im listener"
+            ___x_cmd service stop       "x-$im-listener"
+        fi
+
+        claw:info "Stopping claw service"
+        ___x_cmd service stop       x-claw-service
+        ___x_cmd_cmds pkill -f "claw service run"
+    else
+        claw:warn "claw service is not running"
+    fi
 }
 
 ___x_cmd_claw_service_restart(){
-    ___x_cmd service restart    x-claw-service
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local im="$1"; shift
+    case "$im" in
+        -h|--help)
+                    ___x_cmd help -m claw service restart "$@" ; return 0 ;;
+        feishu|weixin|telegram)
+                    ;;
+        *)          claw:error "Unsupported IM platform: $im"
+                    return 1
+                    ;;
+    esac
+
+    if ___x_cmd service isalive x-claw-service; then
+        ___x_cmd_claw_service_stop "$im" || {
+            claw:warn "Claw service is not stopped. Please try 'x service stop --force x-claw-service'"
+            return 1
+        }
+    fi
+
+    ___x_cmd_claw_service_start "$im"
 }
 
 ___x_cmd_claw_service_status(){

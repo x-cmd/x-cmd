@@ -1,0 +1,120 @@
+# shellcheck shell=dash
+
+___x_cmd_weixin_bot_download(){
+    [ $# -gt 0 ]    ||  set -- help
+
+    local msgs
+    local filename
+    local overwrite
+    local output_dir
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m weixin bot download "$@" ; return 0 ;;
+            -d|--dir)               output_dir="$2" ;   arg:2:shift ;;
+            --name)                 filename="$2" ;     arg:2:shift ;;
+            -y|--yes)               overwrite=1 ;       shift ;;
+            # --dry-run)              dry_run=1 ;         shift ;;
+            *)                      msgs="$*"; break ;;
+        esac
+    done
+
+    local MSG_IMG_MEDIA_AESKEY="" MSG_IMG_MEDIA_AESKEY_64="" MSG_VIDEO_MEDIA_FULLURL="" MSG_VIDEO_MEDIA_AESKEY_64=""  MSG_TYPE=""
+    local MSG_IMG_MEDIA_FULLURL="" MSG_FILE_MEDIA_FULLURL="" MSG_FILE_MEDIA_AESKEY_64="" MSG_FILE_MEDIA_AESKEY_name="" MSG_VOICE_MEDIA_FULLURL="" MSG_VOICE_MEDIA_AESKEY_64=""
+    ___x_cmd jo env 1.\*.item_list.\* \
+            MSG_IMG_MEDIA_FULLURL=.image_item.media.full_url \
+            MSG_IMG_MEDIA_AESKEY=.image_item.aeskey \
+            MSG_IMG_MEDIA_AESKEY_64=.image_item.media.aes_key \
+            MSG_VIDEO_MEDIA_FULLURL=.video_item.media.full_url \
+            MSG_VIDEO_MEDIA_AESKEY_64=.video_item.media.aes_key \
+            MSG_FILE_MEDIA_FULLURL=.file_item.media.full_url \
+            MSG_FILE_MEDIA_AESKEY_64=.file_item.media.aes_key \
+            MSG_FILE_MEDIA_AESKEY_name=.file_item.file_name \
+            MSG_VOICE_MEDIA_FULLURL=.voice_item.media.full_url \
+            MSG_VOICE_MEDIA_AESKEY_64=.voice_item.media.aes_key \
+            MSG_TYPE=.type \
+            -- '___x_cmd_weixin_bot_message_decrypt___' <<A
+$msgs
+A
+}
+
+
+___x_cmd_weixin_bot_message_decrypt___(){
+    local cdn_url=""; local default_ext=""; local original_filename="";
+    local aes_key_hex="";
+
+    case "$MSG_TYPE" in
+        2)
+            cdn_url="$MSG_IMG_MEDIA_FULLURL"
+            if [ -n "$MSG_IMG_MEDIA_AESKEY" ]; then
+                aes_key_hex="$MSG_IMG_MEDIA_AESKEY"
+            else
+                aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$MSG_IMG_MEDIA_AESKEY_64")
+            fi
+            default_ext=".jpg"
+            ;;
+        5)
+            cdn_url="$MSG_VIDEO_MEDIA_FULLURL"
+            aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$MSG_VIDEO_MEDIA_AESKEY_64")
+            default_ext=".mp4"
+            ;;
+        4)
+            cdn_url="$MSG_FILE_MEDIA_FULLURL"
+            aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$MSG_FILE_MEDIA_AESKEY_64")
+            default_ext=".bin"
+            original_filename="$MSG_FILE_MEDIA_AESKEY_name"
+            ;;
+        3)
+            cdn_url="$MSG_VOICE_MEDIA_FULLURL"
+            aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$MSG_VOICE_MEDIA_AESKEY_64")
+            default_ext=".silk"
+            ;;
+        *) return 0 ;;
+    esac
+
+    if [ -z "$cdn_url" ] || [ -z "$aes_key_hex" ];then
+        weixin:error "Missing CDN URL or AES Key"
+        return 1
+    fi
+
+    local uuid; uuid=$(___x_cmd rand uuid)
+    local tmp_bin="${___X_CMD_WEIXIN_TMP}/weixin_dl_${uuid}.bin"
+
+    weixin:info "Downloading media file..."
+    ___x_cmd curl -s -L "$cdn_url" -o "$tmp_bin" || return $?
+
+    local out_file=""
+    if [ -n "$filename" ]; then
+        out_file="$filename"
+        case "$filename" in
+            *.*)        ;; # has extension, keep as-is
+            *)          out_file="${filename}${default_ext}" ;;
+        esac
+    elif [ -n "$original_filename" ]; then
+        out_file="${original_filename}"
+    else
+        out_file="decrypted_${uuid}${default_ext}"
+    fi
+
+    if [ -n "$output_dir" ]; then
+        ___x_cmd mkdirp "$output_dir"
+        out_file="${output_dir}/${out_file}"
+    fi
+
+    if [ -f "$out_file" ] && [ "$overwrite" != "1" ]; then
+        weixin:error "File already exists: $out_file (use -y to overwrite)"
+        ___x_cmd rm -f "$tmp_bin"
+        return 1
+    fi
+
+    ___x_cmd openssl enc -d -aes-128-ecb -K "$aes_key_hex" -nosalt -in "$tmp_bin" -out "$out_file" || {
+        weixin:error "File decryption failed"
+        ___x_cmd rm -f "$out_file"
+        ___x_cmd rm -f "$tmp_bin"
+        return 1
+    }
+
+    local dir_part="${out_file%/*}"
+    [ "$dir_part" = "$out_file" ] && dir_part="."
+    weixin:info "Download success: ${out_file##*/} -> $dir_part"
+    ___x_cmd rm -f "$tmp_bin"
+}

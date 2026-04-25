@@ -1,0 +1,41 @@
+# shellcheck shell=dash
+
+# GET /api/v1/skills/{slug}/moderation
+___x_cmd_clawhub_skill_moderate(){
+    local X_help_cmd='___x_cmd_clawhub___help skill moderate'
+    help:arg:parse
+
+    local fmt=auto
+    local slug="$1"; [ -n "$slug" ] || M='Provide skill slug' N=clawhub log:ret:64
+    shift
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|--yml) fmt="${1#--}"; shift ;;
+            *) break ;;
+        esac
+    done
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl get "/api/v1/skills/$(___x_cmd url encode "$slug")/moderation")" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to get moderation info for '$slug':"
+        return 1
+    }
+    ___x_cmd_clawhub_u_fmt "$fmt" ___x_cmd_clawhub_skill_moderate___human
+}
+
+___x_cmd_clawhub_skill_moderate___human(){
+    printf "%s\n" "$resp" | ___x_cmd jq -r '
+        [.moderation.isSuspicious, .moderation.isMalwareBlocked, .moderation.verdict,
+         (.moderation.reasonCodes | join(",")),
+         (.moderation.summary // ""),
+         (.moderation.updatedAt / 1000 | strftime("%Y-%m-%d %H:%M"))] | @tsv' \
+        | ___x_cmd_cmds awk -F'\t' '{
+            printf "\033[36m%-16s\033[0m %s\n", "suspicious:", $1
+            printf "\033[36m%-16s\033[0m %s\n", "malware_blocked:", $2
+            printf "\033[36m%-16s\033[0m %s\n", "verdict:", $3
+            printf "\033[36m%-16s\033[0m %s\n", "reason_codes:", $4
+            printf "\033[36m%-16s\033[0m %s\n", "summary:", $5
+            printf "\033[36m%-16s\033[0m %s\n", "updated:", $6
+        }'
+}

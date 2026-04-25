@@ -1,0 +1,68 @@
+# shellcheck shell=dash
+
+xrc:mod:lib clawhub util/curl util/token
+
+___x_cmd_clawhub_u_printf_error_msg(){
+    if ! ___x_cmd_runmode_allow_manual || [ ! -t 2 ] || [ -n "$NO_COLOR" ]; then
+        printf "  - ErrorMsg: %s\n" "$M" >&2
+    else
+        printf "  \033[31m-\033[0m \033[1mErrorMsg: \033[31m%s\033[0m\n" "$M" >&2
+    fi
+}
+
+___x_cmd_clawhub_u_printf_success_msg(){
+    if ! ___x_cmd_runmode_allow_manual || [ ! -t 1 ] || [ -n "$NO_COLOR" ]; then
+        printf "  - Msg: %s\n" "$M"
+    else
+        printf "  \033[32m-\033[0m \033[1mMsg: \033[32m%s\033[0m\n" "$M"
+    fi
+}
+
+___x_cmd_clawhub_u_handle_resp(){
+    local is_success="$1" ; shift
+    local M=""
+
+    if [ -n "$msg" ]; then
+        M="$msg"
+    elif [ -n "$resp" ]; then
+        M="$(printf "%s" "$resp" | ___x_cmd jo env . .msg -- 'printf "%s" "${msg}"')"
+    fi
+
+    case "$is_success" in
+        true)   ___x_cmd_ui_tf "$is_success" "$@"
+                [ -z "$M" ] || ___x_cmd_clawhub_u_printf_success_msg  ;;
+        false)  ___x_cmd_ui_tf "$is_success" "$@" >&2
+                [ -z "$M" ] || ___x_cmd_clawhub_u_printf_error_msg >&2  ;;
+        *)  clawhub:err "Invalid is_success=$is_success" ;;
+    esac
+}
+
+___x_cmd_clawhub_u_subcmd_invalid(){
+    local subcmd="${1+"$1 "}"
+    local arg="$2"
+    if [ -z "$arg" ]; then ___x_cmd_ui_tf false "Subcommand required. See 'x clawhub ${subcmd}--help|-h':" >&2
+    else                   ___x_cmd_ui_tf false "'$arg' is not a subcommand. See 'x clawhub ${subcmd}--help|-h':" >&2 ; fi
+    return 1
+}
+
+___x_cmd_clawhub___help(){
+    ___x_cmd help -m clawhub "$@"
+}
+
+# Format dispatcher: prints $resp in requested format
+# Usage: ___x_cmd_clawhub_u_fmt <json|yml|auto> <human_func_name>
+# Reads $resp from caller's scope.
+___x_cmd_clawhub_u_fmt(){
+    local fmt="$1"
+    local human_fn="$2"
+    case "$fmt" in
+        json) printf "%s\n" "$resp" | ___x_cmd jo fmt ;;
+        yml)  printf "%s\n" "$resp" | ___x_cmd j2y ;;
+        auto)
+            if ___x_cmd is stdout2tty; then
+                "$human_fn"
+            else
+                printf "%s\n" "$resp" | ___x_cmd jo fmt
+            fi ;;
+    esac
+}

@@ -1,0 +1,100 @@
+# shellcheck shell=dash
+
+# GET /api/v1/search?q=...
+# Optional: highlightedOnly=true, nonSuspiciousOnly=true
+# Legacy alias: nonSuspicious=true
+___x_cmd_clawhub_skill_search(){
+    local X_help_cmd='___x_cmd_clawhub___help skill search'
+    help:arg:parse
+
+    local fmt=auto
+    local q=; local limit=; local highlighted_only=; local non_suspicious_only=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|--yml)          fmt="${1#--}";                      shift   ;;
+            -q|--query)            q="$2";                             shift 2 ;;
+            --limit|-n)            limit="$2";                         shift 2 ;;
+            --highlighted-only)    highlighted_only="true";            shift   ;;
+            --non-suspicious-only|--non-suspicious) non_suspicious_only="true"; shift ;;
+            -*)  clawhub:error "Unknown option: $1"; return 1 ;;
+            *)   [ -z "$q" ] && q="$1" || { clawhub:error "Unexpected arg: $1"; return 1; }; shift ;;
+        esac
+    done
+
+    [ -n "$q" ] || M='Provide search query (-q or positional)' N=clawhub log:ret:64
+
+    local qs="q=$(___x_cmd url encode "$q")"
+    [ -z "$limit" ]              || qs="$qs&limit=$limit"
+    [ -z "$highlighted_only" ]    || qs="$qs&highlightedOnly=$highlighted_only"
+    [ -z "$non_suspicious_only" ] || qs="$qs&nonSuspiciousOnly=$non_suspicious_only"
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl get "/api/v1/search?$qs" --no-auth)" || {
+        ___x_cmd_clawhub_u_handle_resp false "Search failed for '$q':"
+        return 1
+    }
+    ___x_cmd_clawhub_u_fmt "$fmt" ___x_cmd_clawhub_skill_search___human
+}
+
+___x_cmd_clawhub_skill_search___human(){
+    printf "%s\n" "$resp" | ___x_cmd jq -r '.results[] | [.slug, (.summary // "" | .[0:80])] | @tsv' \
+        | ___x_cmd_cmds awk -F'\t' 'BEGIN {
+            h1 = "SLUG"; h2 = "DESCRIPTION"; w = 35
+            pad = w - length(h1); if (pad < 2) pad = 2
+            s = h1; while (pad-- > 0) s = s " "
+            printf "\033[1;36m%s%s\033[0m\n", s, h2
+        } {
+            pad = w - length($1); if (pad < 2) pad = 2
+            s = $1; while (pad-- > 0) s = s " "
+            printf "\033[36m%s\033[0m\033[22;90m%s\033[0m\n", s, $2
+        }'
+}
+
+# GET /api/v1/skills?limit=&cursor=
+# Optional: nonSuspiciousOnly=true
+___x_cmd_clawhub_skill_ls(){
+    local X_help_cmd='___x_cmd_clawhub___help skill ls'
+    help:arg:parse
+
+    local fmt=auto
+    local limit=; local cursor=; local non_suspicious_only=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|--yml)            fmt="${1#--}";                      shift   ;;
+            --limit|-n)              limit="$2";                        shift 2 ;;
+            --cursor)                cursor="$2";                       shift 2 ;;
+            --non-suspicious-only)   non_suspicious_only="true";        shift   ;;
+            -*)  clawhub:error "Unknown option: $1"; return 1 ;;
+            *)   shift ;;
+        esac
+    done
+
+    local qs=""
+    [ -z "$limit" ]    || qs="${qs:+$qs&}limit=$limit"
+    [ -z "$cursor" ]   || qs="${qs:+$qs&}cursor=$cursor"
+    [ -z "$non_suspicious_only" ] || qs="${qs:+$qs&}nonSuspiciousOnly=$non_suspicious_only"
+
+    local url="/api/v1/skills"
+    [ -z "$qs" ] || url="$url?$qs"
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl get "$url")" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to list skills:"
+        return 1
+    }
+    ___x_cmd_clawhub_u_fmt "$fmt" ___x_cmd_clawhub_skill_ls___human
+}
+
+___x_cmd_clawhub_skill_ls___human(){
+    printf "%s\n" "$resp" | ___x_cmd jq -r '.items[] | [.slug, (.summary // "" | .[0:80])] | @tsv' \
+        | ___x_cmd_cmds awk -F'\t' 'BEGIN {
+            h1 = "SLUG"; h2 = "DESCRIPTION"; w = 35
+            pad = w - length(h1); if (pad < 2) pad = 2
+            s = h1; while (pad-- > 0) s = s " "
+            printf "\033[1;36m%s%s\033[0m\n", s, h2
+        } {
+            pad = w - length($1); if (pad < 2) pad = 2
+            s = $1; while (pad-- > 0) s = s " "
+            printf "\033[36m%s\033[0m\033[22;90m%s\033[0m\n", s, $2
+        }'
+}

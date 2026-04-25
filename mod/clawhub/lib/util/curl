@@ -1,0 +1,139 @@
+# shellcheck shell=dash
+
+___x_cmd_clawhub_u_curl_header(){
+    local key="$1"
+    [ -n "$key" ] || M='Provide key' N=clawhub log:ret:64
+
+    < "$___X_CMD_CLAWHUB_TMP/header.$$.out" ___x_cmd_cmds awk -v key="$key" '
+        BEGIN { FS=": "; }
+        $1 == key { print $2; exit 0; }
+    '
+}
+
+___x_cmd_clawhub_u_curl_resp_code(){
+    < "$___X_CMD_CLAWHUB_TMP/header.$$.out" ___x_cmd_cmds_awk '($1 ~ "HTTP/(1.*|2)$" && $3 != "Connection" && $4 != "established" && $2 != "302") {
+        print  int($2);
+        exit(0)
+    }'
+}
+
+# Rate limit handling:
+#   On 429, reads Retry-After or RateLimit-Reset headers and sleeps with jitter.
+#   Returns 1 to let caller retry or abort.
+___x_cmd_clawhub_u_curl_rate_limit_wait(){
+    local retry_after;  retry_after="$(___x_cmd_clawhub_u_curl_header "retry-after")"
+    local delay=
+    if [ -n "$retry_after" ]; then
+        delay="$retry_after"
+    else
+        local rl_reset; rl_reset="$(___x_cmd_clawhub_u_curl_header "ratelimit-reset")"
+        [ -n "$rl_reset" ] && delay="$rl_reset"
+    fi
+    [ -n "$delay" ] || delay=5
+
+    # Add jitter: 0 ~ 1s
+    local jitter; jitter="$(( ( ($(___x_cmd_cmds date +%s) + $$ ) % 1000 ) * 1000 ))"
+    jitter="$(( jitter / 1000000 ))"
+
+    clawhub:warn "Rate limited. Waiting ${delay}s (+${jitter}s jitter)..."
+    ___x_cmd_cmds sleep "$(( delay + jitter ))"
+    return 1
+}
+
+# ___x_cmd_clawhub_u_curl <method> <url_path> [options] [-- key=value ...]
+#
+# Methods: get, post, put, patch, delete
+#
+# Options:
+#   --data-binary <data>   Send raw binary data
+#   -F <field>             Form field (e.g., -F "file=@path")
+#   -H <header>            Extra header
+#   --no-auth              Skip token injection (public endpoints)
+#
+# Key-value pairs after -- are URL-encoded as query params (GET) or form data (POST).
+#
+# Example:
+#   ___x_cmd_clawhub_u_curl get /api/v1/search -- "q=foo" "highlightedOnly=true"
+#   ___x_cmd_clawhub_u_curl post /api/v1/skills -F "file=@archive.tar.gz" -F "slug=my-skill"
+___x_cmd_clawhub_u_curl()(
+    local method="$1"
+    local url_path="$2"; shift 2
+    local ___X_CMD_CLAWHUB_SERVICE_URL="${___X_CMD_CLAWHUB_SERVICE_URL:-"https://clawhub.ai"}"
+    local ___X_CMD_CLAWHUB_PRIMARY_URL="${___X_CMD_CLAWHUB_PRIMARY_URL:-"https://clawhub.ai"}"
+    [ -n "$method" ]   || M='Provide method' N=clawhub log:ret:64
+    [ -n "$url_path" ] || M='Provide url_path' N=clawhub log:ret:64
+
+    local no_auth=
+    local json_header="-H 'Content-Type: application/json'"
+    local file="" header=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --data-binary)
+                json_header="" file="$file --data-binary '$2'" ; shift 2 ;;
+            -F) file="$file -F '$2'"; json_header=""           ; shift 2 ;;
+            -H) header="$header -H '$2'"                        ; shift 2 ;;
+            --no-auth) no_auth=1                                ; shift   ;;
+            --) shift; break ;;
+            *)  break ;;
+        esac
+    done
+
+    local resp_path="$___X_CMD_CLAWHUB_TMP/resp.$$.out"
+    local header_path="$___X_CMD_CLAWHUB_TMP/header.$$.out"
+    ___x_cmd rmrf "$resp_path" "$header_path"
+
+    if [ -z "$no_auth" ]; then
+        local token; token="$(___x_cmd_clawhub_u_get_token)" || return
+        [ -z "$token" ] || header="$header -H 'Authorization: Bearer $token'"
+        ___X_CMD_CLAWHUB_SERVICE_URL="$___X_CMD_CLAWHUB_PRIMARY_URL"
+    else
+        # Only use CN mirror for paths the mirror actually supports:
+        #   GET /api/v1/search?...       (search)
+        #   GET /api/v1/download?...     (download)
+        #   GET /api/v1/skills/{slug}    (skill detail, no sub-path)
+        local use_mirror=0
+        case "$url_path" in
+            /api/v1/search)         use_mirror=1 ;;
+            /api/v1/search\?*)      use_mirror=1 ;;
+            /api/v1/download\?*)    use_mirror=1 ;;
+            /api/v1/skills/*)       use_mirror=1 ;;
+        esac
+        # Exclude sub-paths: /skills/{slug}/versions, /file, /scan, etc.
+        case "$url_path" in
+            /api/v1/skills/*/*)     use_mirror=0 ;;
+        esac
+        if [ "$use_mirror" = 0 ]; then
+            ___X_CMD_CLAWHUB_SERVICE_URL="$___X_CMD_CLAWHUB_PRIMARY_URL"
+        fi
+    fi
+
+    local cmd="___x_cmd curl -sSL"
+    case "$method" in
+        get)    cmd="$cmd -X GET -G" ;;
+        put)    cmd="$cmd -X PUT" ;;
+        post)   cmd="$cmd -X POST" ;;
+        patch)  cmd="$cmd -X PATCH" ;;
+        delete) cmd="$cmd -X DELETE" ;;
+        *)      M="Unknown method: $method" N=clawhub log:ret:64 ;;
+    esac
+
+    cmd="$cmd -D '$header_path' -o '$resp_path' \
+        $header $json_header $(___x_cmd curl gencode "$@") $file \
+        '$___X_CMD_CLAWHUB_SERVICE_URL$url_path'"
+
+    clawhub:debug "Exec cmd: $cmd"
+    eval "$cmd"
+
+    local http_resp_code; http_resp_code="$(___x_cmd_clawhub_u_curl_resp_code)"
+
+    case "$http_resp_code" in
+        2*)  ___x_cmd_cmds cat "$resp_path"; return 0 ;;
+        429) ___x_cmd_clawhub_u_curl_rate_limit_wait; return 1 ;;
+        *)   ___x_cmd_cmds cat "$resp_path"; return 1 ;;
+    esac
+)
+
+___x_cmd_clawhub_u_curl_resp_json(){
+    local resp_path="$___X_CMD_CLAWHUB_TMP/resp.$$.out"
+    [ -f "$resp_path" ] && ___x_cmd_cmds cat "$resp_path"
+}

@@ -55,14 +55,11 @@ function pc(label, val,    color) {
     # Extract refresh rate from current mode
     n = split($0, fields)
     for (i = 1; i <= n; i++) {
-        if (fields[i] == "*") {
-            # Rate is the field before *
-            if (i > 1) {
-                rate = fields[i-1]
-                # Sometimes rate has + suffix (preferred)
-                gsub(/\+/, "", rate)
-                if (rate + 0 > 0) pc("refresh rate", rate " Hz")
-            }
+        if (index(fields[i], "*") > 0) {
+            # Rate is the field containing * (e.g. "59.96*+")
+            rate = fields[i]
+            gsub(/\*|\+/, "", rate)
+            if (rate + 0 > 0) pc("refresh rate", rate " Hz")
             break
         }
     }
