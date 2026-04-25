@@ -1,6 +1,6 @@
 # shellcheck shell=dash disable=2120
 
-xrc:mod:lib     agent       request/requestasync request/workspace
+xrc:mod:lib     agent       request/workspace request/util
 
 ___x_cmd_agent_request(){
     # local retry=1
@@ -12,10 +12,14 @@ ___x_cmd_agent_request(){
     local output_format="text"
     local output_file=""
     local overwrite=""
+    local stdoutfile=""
+    local stderrfile=""
 
     local pipe=""
     local user_session_id=""
     local workspace=""
+    local reference_workspace=""
+    local reference_name=""
     local is_no_thinking=""
 
     [ "$#" -gt 0 ] || set -- --help
@@ -32,6 +36,10 @@ ___x_cmd_agent_request(){
             --json)         output_format=json;                 shift ;;
             --session)      user_session_id="$2";               arg:2:shift ;;
             --workspace)    workspace="$2";                     arg:2:shift ;;
+            --reference-workspace)
+                            reference_workspace="$2";           arg:2:shift ;;
+            --stdout-file)  stdoutfile="$2";                    arg:2:shift ; ___x_cmd ensurefp "$stdoutfile";;
+            --stderr-file)  stderrfile="$2";                    arg:2:shift ; ___x_cmd ensurefp "$stderrfile";;
 
             # --retry)        retry="$2" ; arg:2:shift ;;
 
@@ -79,6 +87,17 @@ A
         read -r user_session_id < "$workspace_session_file"
     fi
 
+    if [ -n "$reference_workspace" ]; then
+        local reference_workspace_abs
+        reference_workspace_abs="$(cd "$reference_workspace" && pwd)" 2>/dev/null || reference_workspace_abs="$reference_workspace"
+        reference_workspace="$reference_workspace_abs"
+
+        x_=""; ___x_cmd_agent_request___reference_name_ "$reference_workspace" "$reference_name"
+        reference_name="${x_:-reference}"
+        x_=""; ___x_cmd_agent_request___reference_workspace_prompt_ "${workspace:-$PWD}" "$reference_workspace" "$reference_name" || return $?
+        content="${content}${x_}"
+    fi
+
     local IFS=" " ; content="${content}${NL}${*}${NL}"
 
     if [ -z "$output_file" ]; then
@@ -117,10 +136,11 @@ ____X_CMD_AGENT_ERR_NETWORK_TIMEOUT=124
 
 ___x_cmd_agent_request___run(){
     agent:info "Sending request to harness '$harness'"
+    ___x_cmd_agent_request___run_validate || return $?
     ___x_cmd retry -i 3 -m 3 ___x_cmd_agent_request___run_attempt
 }
 
-___x_cmd_agent_request___run_attempt(){
+___x_cmd_agent_request___run_validate(){
     case "$harness" in
         claude)
                 local loggedIn=; loggedIn="$( ___x_cmd claude -- auth status | ___x_cmd jo .loggedIn )"
@@ -129,7 +149,6 @@ ___x_cmd_agent_request___run_attempt(){
                         --tip1 "x claude auth login" \
                         --tip2 "x claude use -h" \
                         "Claude auth status is not logged in"
-                    ___X_CMD_RETRY_ABORT=1
                     return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
                 fi
                 ;;
@@ -138,25 +157,43 @@ ___x_cmd_agent_request___run_attempt(){
                     agent:warn \
                         --tip "x codex login" \
                         "Codex auth status is not logged in"
-                    ___X_CMD_RETRY_ABORT=1
                     return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
                 fi
                 ;;
         cursor)
                 ___x_cmd hascmd cursor || ___x_cmd hascmd agent || {
                     agent:error "Not found cursor command"
-                    ___X_CMD_RETRY_ABORT=1
                     return 1
                 }
 
                 if [ "$( ___x_cmd_agent_request___cursor_runcmd status --format json | ___x_cmd jo .isAuthenticated )" != "true" ]; then
                     agent:warn "Cursor auth status is not logged in"
-                    ___X_CMD_RETRY_ABORT=1
                     return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
                 fi
                 ;;
+        gemini-cli)
+                ___x_cmd hascmd gemini || ___x_cmd env use gemini-cli  || {
+                    agent:error "Not found gemini command"
+                    return 1
+                }
+                ;;
+        opencode)
+                ___x_cmd hascmd opencode || ___x_cmd env use opencode || {
+                    agent:error "Not found opencode command"
+                    return 1
+                }
+                ;;
+        kimi-cli)
+                ___x_cmd hascmd kimi || ___x_cmd kimi --install  || {
+                    agent:error "Not found kimi command"
+                    return 1
+                }
+                ;;
     esac
-    ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking"
+}
+
+___x_cmd_agent_request___run_attempt(){
+    ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
     local ret=$?
 
     if [ $ret -eq $____X_CMD_AGENT_ERR_AUTHFAILURE ]; then
@@ -168,14 +205,14 @@ ___x_cmd_agent_request___run_attempt(){
                     return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
                 }
 
-                ___x_cmd_agent_request___run_exec "$harness" "Say OK" "text" "" "" "1" >/dev/null 2>&1 || {
+                ___x_cmd_agent_request___run_exec "$harness" "Say OK" "text" "" "" "1" "/dev/null" "/dev/null" "" || {
                     ret=$?
                     ___X_CMD_RETRY_ABORT=1
                     return $ret
                 }
 
                 agent:info "Auto-login succeeded, retrying original request"
-                ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking"
+                ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
                 ret=$?
                 ;;
         esac
@@ -194,12 +231,18 @@ ___x_cmd_agent_request___run_exec(){(
     local user_session_id="$4"
     local workspace="$5"
     local is_no_thinking="$6"
+    local stdoutfile="$7"
+    local stderrfile="$8"
+    local reference_workspace="$9"
     shift $#
 
     local session_map_file=""
     local real_session_id=""
     local user_session_cwd=""
     local is_session_first=""
+
+    [ -z "$stdoutfile" ] || exec > "$stdoutfile"
+    [ -z "$stderrfile" ] || exec 2> "$stderrfile"
 
     if [ -n "$user_session_id" ]; then
         session_map_file="$___X_CMD_ROOT_TMP/agent/request/session/$harness/$user_session_id"
@@ -225,21 +268,6 @@ ___x_cmd_agent_request___run_exec(){(
     fi
 
     case "$harness" in
-        kimi-cli)
-            if [ -n "$user_session_id" ]; then
-                if [ "$is_session_first" = "1" ]; then
-                    real_session_id="$( ___x_cmd uuid )"
-                    printf "%s\n" "$real_session_id" "$user_session_cwd" > "$session_map_file"
-                fi
-                set -- --session "$real_session_id"
-            fi
-
-            if [ -n "$is_no_thinking" ]; then
-                set -- --no-thinking
-            fi
-
-            ___x_cmd kimi -- "$@" --print --output-format stream-json --final-message-only --prompt "$content" < /dev/null | ___x_cmd_agent_request___handle_output kimi-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
-            ;;
         claude)
             if [ -n "$user_session_id" ]; then
                 if [ "$is_session_first" = "1" ]; then
@@ -255,6 +283,7 @@ ___x_cmd_agent_request___run_exec(){(
                 --verbose --output-format stream-json \
                 --dangerously-skip-permissions \
                 --allowedTools "Write,Read,Edit,Bash(x *),Bash(x-cmd *),Bash(source ~/.x-cmd.root/X *),Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)" \
+                ${reference_workspace:+--add-dir "$reference_workspace"} \
                 --print "$content" < /dev/null | ___x_cmd_agent_request___handle_output claude "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
         codex)
@@ -264,25 +293,9 @@ ___x_cmd_agent_request___run_exec(){(
                     set -- "$@" resume "$real_session_id"
                 fi
             fi
-            ___x_cmd codex -- "$@" --json --full-auto --skip-git-repo-check "$content" < /dev/null | ___x_cmd_agent_request___handle_output codex "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
-            ;;
-        gemini-cli)
-            if [ -n "$user_session_id" ]; then
-                if [ "$is_session_first" != "1" ]; then
-                    set -- --resume "$real_session_id"
-                fi
-            fi
-
-            ___x_cmd gemini cli -- --yolo "$@" --output-format stream-json --prompt "$content" < /dev/null | ___x_cmd_agent_request___handle_output gemini-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
-            ;;
-        opencode)
-            if [ -n "$user_session_id" ]; then
-                if [ "$is_session_first" != "1" ]; then
-                    set -- --session "$real_session_id"
-                fi
-            fi
-
-            ___x_cmd opencode run "$@" --format json "$content" < /dev/null | ___x_cmd_agent_request___handle_output opencode "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+            ___x_cmd codex -- "$@" --json --full-auto --skip-git-repo-check \
+                ${reference_workspace:+--add-dir "$reference_workspace"} \
+                "$content" < /dev/null | ___x_cmd_agent_request___handle_output codex "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
         cursor)
             if [ -n "$user_session_id" ]; then
@@ -298,6 +311,43 @@ ___x_cmd_agent_request___run_exec(){(
             fi
 
             ___x_cmd_agent_request___cursor_runcmd "$@" --trust --yolo --print "$content"
+            ;;
+        gemini-cli)
+            if [ -n "$user_session_id" ]; then
+                if [ "$is_session_first" != "1" ]; then
+                    set -- --resume "$real_session_id"
+                fi
+            fi
+
+            ___x_cmd gemini cli -- --yolo "$@" \
+                ${reference_workspace:+--include-directories "$reference_workspace"} \
+                --output-format stream-json --prompt "$content" < /dev/null | ___x_cmd_agent_request___handle_output gemini-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+            ;;
+        opencode)
+            if [ -n "$user_session_id" ]; then
+                if [ "$is_session_first" != "1" ]; then
+                    set -- --session "$real_session_id"
+                fi
+            fi
+
+            ___x_cmd opencode run "$@" --format json "$content" < /dev/null | ___x_cmd_agent_request___handle_output opencode "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+            ;;
+        kimi-cli)
+            if [ -n "$user_session_id" ]; then
+                if [ "$is_session_first" = "1" ]; then
+                    real_session_id="$( ___x_cmd uuid )"
+                    printf "%s\n" "$real_session_id" "$user_session_cwd" > "$session_map_file"
+                fi
+                set -- --session "$real_session_id"
+            fi
+
+            if [ -n "$is_no_thinking" ]; then
+                set -- --no-thinking
+            fi
+
+            ___x_cmd kimi -- "$@" --print --output-format stream-json --final-message-only \
+                ${reference_workspace:+--add-dir "$reference_workspace"} \
+                --prompt "$content" < /dev/null | ___x_cmd_agent_request___handle_output kimi-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
     esac
 )}
@@ -330,10 +380,9 @@ ___x_cmd_agent_request___cursor_runcmd(){
             ___x_cmd_cmds agent "$@"
         }
     else
-        claw:error "Not found cursor or agent command"
+        agent:error "Not found cursor or agent command"
         return 1
     fi
 
     ___x_cmd_agent_request___cursor_runcmd "$@"
 }
-

@@ -1,6 +1,19 @@
 # cpuinfo.awk - Merge /proc/cpuinfo: consolidate identical fields across processors
 # Input: /proc/cpuinfo format (paragraph-separated records)
 
+function C(c, s) { return tty ? "\033[" c "m" s "\033[0m" : s }
+function pc(label, val,    color) {
+    if (label ~ /^(processor|physical id|siblings|core id|model name|vendor|cpu family|model|stepping|apicid|initial apicid|microcode)/) color = "1;36"
+    else if (label ~ /cache size|clflush size|L[123] |cache line/) color = "1;33"
+    else if (label ~ /cpu MHz|bogomips|frequency|^bus freq/) color = "1;35"
+    else if (label ~ /^(page size|memory$)/) color = "1;32"
+    else if (label ~ /cpu cores$|cores:/) color = "1;34"
+    else if (label ~ /^(flags|fpu|fpu_exception|cpuid level|wp|address sizes|power management)/) color = "37"
+    else color = "0"
+    if (tty) printf "\033[%sm%-25s\033[0m: %s\n", color, label, val
+    else printf "%-25s: %s\n", label, val
+}
+
 BEGIN { RS = ""; FS = "\n" }
 
 {
@@ -23,8 +36,8 @@ BEGIN { RS = ""; FS = "\n" }
 }
 
 END {
-    printf "%-25s: %d\n", "processor count", nproc
+    pc("processor count", nproc)
     for (i = 1; i <= nfields; i++) {
-        printf "%-25s: %s\n", field_order[i], firstval[field_order[i]]
+        pc(field_order[i], firstval[field_order[i]])
     }
 }

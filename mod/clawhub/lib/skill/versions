@@ -1,0 +1,61 @@
+# shellcheck shell=dash
+
+# GET /api/v1/skills/{slug}/versions?limit=&cursor=
+___x_cmd_clawhub_skill_versions(){
+    local X_help_cmd='___x_cmd_clawhub___help skill versions'
+    help:arg:parse
+
+    local fmt=auto
+    local slug="$1"; [ -n "$slug" ] || M='Provide skill slug' N=clawhub log:ret:64
+    shift
+
+    local limit=; local cursor=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|--yml) fmt="${1#--}"; shift ;;
+            --limit|-n)   limit="$2";    shift 2 ;;
+            --cursor)     cursor="$2";   shift 2 ;;
+            *) break ;;
+        esac
+    done
+
+    local qs=""
+    [ -z "$limit" ]  || qs="limit=$limit"
+    [ -z "$cursor" ] || qs="${qs:+$qs&}cursor=$cursor"
+
+    local url="/api/v1/skills/$(___x_cmd url encode "$slug")/versions"
+    [ -z "$qs" ] || url="$url?$qs"
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl get "$url" --no-auth)" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to get versions for '$slug':"
+        return 1
+    }
+    ___x_cmd_clawhub_u_fmt "$fmt" ___x_cmd_clawhub_skill_versions___human
+}
+
+___x_cmd_clawhub_skill_versions___human(){
+    printf "%s\n" "$resp" | ___x_cmd jq -r '.items[] | [.version, (.createdAt/1000 | strftime("%Y-%m-%d %H:%M")), .changelogSource] | @tsv' \
+        | ___x_cmd_cmds awk -F'\t' 'BEGIN {
+            printf "\033[1;36m%-12s %-20s %s\033[0m\n", "VERSION", "DATE", "SOURCE"
+        } {
+            printf "\033[36m%-12s\033[0m \033[22;90m%-20s %s\033[0m\n", $1, $2, $3
+        }'
+}
+
+# GET /api/v1/skills/{slug}/versions/{version}
+___x_cmd_clawhub_skill_version(){
+    local X_help_cmd='___x_cmd_clawhub___help skill version'
+    help:arg:parse
+
+    local slug="$1";    [ -n "$slug" ]    || M='Provide skill slug'     N=clawhub log:ret:64
+    local version="$2"; [ -n "$version" ] || M='Provide version string' N=clawhub log:ret:64
+    shift 2
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl get "/api/v1/skills/$(___x_cmd url encode "$slug")/versions/$(___x_cmd url encode "$version")" --no-auth)" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to get '$slug@$version':"
+        return 1
+    }
+    printf "%s\n" "$resp"
+}

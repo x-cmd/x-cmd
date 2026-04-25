@@ -5,7 +5,7 @@
 #
 # Usage: python3 <this_file> [tty]
 
-import ctypes, ctypes.util, subprocess, sys, json
+import ctypes, ctypes.util, subprocess, sys, json, struct
 
 tty = len(sys.argv) > 1 and sys.argv[1] == "1"
 
@@ -153,5 +153,54 @@ try:
             iokit.IOObjectRelease(service)
         iokit.IOObjectRelease(iterator)
         break
+except:
+    pass
+
+# ── GPU frequency via pmgr voltage-states9-sram ────────────────────
+# Same algorithm as fastfetch gpu_apple.c detectFrequency()
+try:
+    if not iokit:
+        raise Exception("IOKit not loaded")
+    if not cf:
+        raise Exception("CoreFoundation not loaded")
+
+    iokit.IOServiceGetMatchingService.restype = ctypes.c_uint32
+    iokit.IOServiceGetMatchingService.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+    iokit.IOServiceNameMatching.restype = ctypes.c_void_p
+    iokit.IOServiceNameMatching.argtypes = [ctypes.c_char_p]
+    iokit.IOObjectRelease.argtypes = [ctypes.c_uint32]
+    cf.CFDataGetLength.restype = ctypes.c_int64
+    cf.CFDataGetLength.argtypes = [ctypes.c_void_p]
+    cf.CFDataGetBytePtr.restype = ctypes.c_void_p
+    cf.CFDataGetBytePtr.argtypes = [ctypes.c_void_p]
+
+    matching = iokit.IOServiceNameMatching(b"pmgr")
+    if matching:
+        entry = iokit.IOServiceGetMatchingService(ctypes.c_uint32(0), matching)
+        if entry:
+            cfkey = cfstr(b"voltage-states9-sram")
+            prop = iokit.IORegistryEntryCreateCFProperty(entry, cfkey, None, 0)
+            cf.CFRelease(cfkey)
+            if prop:
+                length = cf.CFDataGetLength(prop)
+                ptr = cf.CFDataGetBytePtr(prop)
+                if ptr and length > 0 and length % 8 == 0:
+                    data = (ctypes.c_ubyte * length).from_address(ptr)
+                    vals = struct.unpack('<' + 'I' * (length // 4), bytes(data))
+                    pmax = vals[0]
+                    for i in range(2, len(vals), 2):
+                        if vals[i] > 0:
+                            pmax = max(pmax, vals[i])
+                    if pmax > 0:
+                        if pmax > 100000000:
+                            mhz = pmax // 1000 // 1000
+                        else:
+                            mhz = pmax // 1000
+                        if mhz >= 1000:
+                            p("gpu max frequency", f"{mhz / 1000:.2f} GHz", "1;35")
+                        else:
+                            p("gpu max frequency", f"{mhz} MHz", "1;35")
+                cf.CFRelease(prop)
+            iokit.IOObjectRelease(entry)
 except:
     pass

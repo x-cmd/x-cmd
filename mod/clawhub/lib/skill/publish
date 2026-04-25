@@ -1,0 +1,37 @@
+# shellcheck shell=dash
+
+# POST /api/v1/skills (multipart)
+___x_cmd_clawhub_skill_publish(){
+    local X_help_cmd='___x_cmd_clawhub___help skill publish'
+    help:arg:parse
+
+    local slug=; local version=; local archive=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --slug)     slug="$2";     shift 2 ;;
+            --version)  version="$2";  shift 2 ;;
+            --archive)  archive="$2";  shift 2 ;;
+            *)  [ -z "$archive" ] && archive="$1" || { clawhub:error "Unexpected arg: $1"; return 1; }; shift ;;
+        esac
+    done
+
+    [ -n "$archive" ] || M='Provide archive file path (--archive or positional)' N=clawhub log:ret:64
+    [ -f "$archive" ] || M="Archive not found: $archive" N=clawhub log:ret:64
+
+    local curl_args=""
+    [ -z "$slug" ]    || curl_args="$curl_args -F 'slug=$slug'"
+    [ -z "$version" ] || curl_args="$curl_args -F 'version=$version'"
+    curl_args="$curl_args -F 'file=@$archive'"
+
+    # Use ___x_cmd_clawhub_u_curl for rate limit handling and consistent behavior
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl post /api/v1/skills $curl_args)" || {
+        local http_code="$(< "$___X_CMD_CLAWHUB_TMP/header.$$.out" ___x_cmd_cmds awk '($1 ~ "HTTP/(1.*|2)$" && $2 ~ /^[0-9]+$/) { print int($2); exit }')"
+        case "$http_code" in
+            429) ___x_cmd_clawhub_u_handle_resp false "Rate limited. Try again later." ;;
+            *)   ___x_cmd_clawhub_u_handle_resp false "Publish failed:" ;;
+        esac
+        return 1
+    }
+    printf "%s\n" "$resp"
+}

@@ -23,19 +23,25 @@ ___x_cmd_claw_run(){
 
     claw:info "X-Claw agent runtime active on $im — awaiting instructions and ready to act"
 
+    # Clean up stale heartbeat state from previous run
+    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/current_im_chatid"
+
     if ! ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-runner; then
         ___x_cmd worker run --ns x-claw-default-worker --name heartbeat-runner -- ___x_cmd_claw_run_hearbeatgenerator "$___X_CMD_CLAW_BOT_MQ" "$im"
     fi
 
-    ___X_CMD_TAILER_HANDLE="___x_cmd_claw_run___agentwork" \
-    ___x_cmd tailer run "$___X_CMD_CLAW_BOT_MQ" || {
+    (
+        trap '' INT
+        ___X_CMD_TAILER_HANDLE="___x_cmd_claw_run___agentwork" \
+        ___x_cmd tailer run "$___X_CMD_CLAW_BOT_MQ"
+    ) || {
         local exitcode="$?"
-        cron:debug "Interrupted by signal, stopping heartbeat worker"
+        claw:debug "Interrupted by signal, stopping heartbeat worker"
         ___x_cmd worker stop --ns x-claw-default-worker --name heartbeat-runner
         return "$exitcode"
     }
 
-    cron:debug "Stopping heartbeat worker"
+    claw:debug "Stopping heartbeat worker"
     ___x_cmd worker stop --ns x-claw-default-worker --name heartbeat-runner
 }
 
@@ -43,9 +49,9 @@ ___x_cmd_claw_run___agentwork(){
     local msg="$1"
     case "$msg" in
         HEARTBEAT:*)
-            ___x_cmd_claw_run___agentwork___heartbeat "${msg#*:}"       ;;
+            ___x_cmd_claw_run___agentwork___heartbeat "${msg#*:}"   ;;
         weixin:*|qywx:*|feishu:*|telegram:*)
-            ___x_cmd_claw_run___agentwork___handlemsg "$msg"            ;;
+            ___x_cmd_claw_run___agentwork___handlemsg "$msg"        ;;
 
         # other agents.
     esac

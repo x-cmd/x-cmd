@@ -4,11 +4,25 @@ ___x_cmd_hub_file_share(){
     local X_help_cmd='___x_cmd_hub___help file share'
     help:arg-null:parse
 
+    local op="$1"
+    case "$op" in
+        ls|list)      shift; ___x_cmd_hub_file_share_ls "$@"      ; return ;;
+        rm|delete)    shift; ___x_cmd_hub_file_share_rm "$@"      ; return ;;
+        update)       shift; ___x_cmd_hub_file_share_update "$@"  ; return ;;
+    esac
+
+    # Default: create share
+    ___x_cmd_hub_file_share_create "$@"
+}
+
+___x_cmd_hub_file_share_create(){
     local expiresIn=
+    local requireLogin=
     while [ $# -gt 0 ]; do
         case "$1" in
-            --expires|-e)   expiresIn="$2"; shift 2 ;;
-            *)              break ;;
+            --expires|-e)       expiresIn="$2";      shift 2 ;;
+            --require-login)    requireLogin=true;    shift ;;
+            *)                  break ;;
         esac
     done
 
@@ -16,8 +30,8 @@ ___x_cmd_hub_file_share(){
     [ -n "$remotefp" ] || { ___x_cmd_ui_tf false "Remote file path is required"; return 1; }
     remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
 
-    local data="{}";
-    [ -z "$expiresIn" ] || data="$(___x_cmd jo dict expiresIn="$expiresIn")"
+    local data
+    data="$(___x_cmd jo dict ${expiresIn:+"expiresIn=$expiresIn"} ${requireLogin:+"requireLogin=$requireLogin"})"
 
     local resp=
     resp="$(___x_cmd_hub_u_curl post "/api/v0/file/share?res=$(___x_cmd url encode "$remotefp")" data)" || {
@@ -32,4 +46,92 @@ ___x_cmd_hub_file_share(){
         printf "  - Share ID: %s\n" "$shareId"
         printf "  - Share URL: %s\n" "$url"
     }
+}
+
+___x_cmd_hub_file_share_ls(){
+    local X_help_cmd='___x_cmd_hub___help file share ls'
+    help:arg:parse
+
+    local json=
+    local page=1
+    local limit=20
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|-j)      json=true;      shift ;;
+            --page|-p)      page="$2";       shift 2 ;;
+            --limit|-l)     limit="$2";      shift 2 ;;
+            *)              break ;;
+        esac
+    done
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl get "/api/v0/file/share/list?page=${page}&limit=${limit}")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to list shares:"
+        return 1
+    }
+
+    [ -z "$json" ] || { printf "%s\n" "$resp"; return 0; }
+
+    printf "%s" "$resp" | {
+        local total=;
+        local list=;
+        ___x_cmd jo env . .total .list
+        [ "$total" = "0" ] && { printf "No shares found.\n"; return 0; }
+        printf "Total: %s\n\n" "$total"
+        printf "%s" "$list" | \
+            ___x_cmd jo 2c .shareId .filename .status .viewCount .expiresAt .createTime | \
+            ___x_cmd csv header --add shareId filename status viewCount expiresAt createTime | \
+            ___x_cmd_hub_u_st_tab 15,20,10,10,20,20
+    }
+}
+
+___x_cmd_hub_file_share_rm(){
+    local X_help_cmd='___x_cmd_hub___help file share rm'
+    help:arg:parse
+
+    local shareId="$1"
+    [ -n "$shareId" ] || { ___x_cmd_ui_tf false "Share ID is required"; return 1; }
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl delete "/api/v0/file/share/$(___x_cmd url encode "$shareId")")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to delete share $shareId"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Share deleted successfully"
+}
+
+___x_cmd_hub_file_share_update(){
+    local X_help_cmd='___x_cmd_hub___help file share update'
+    help:arg:parse
+    local shareStatus=
+    local requireLogin=
+    local expiresIn=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --status|-s)        shareStatus="$2";        shift 2 ;;
+            --require-login)    requireLogin=true;   shift ;;
+            --expires|-e)       expiresIn="$2";      shift 2 ;;
+            *)                  break ;;
+        esac
+    done
+
+    local shareId="$1"
+    [ -n "$shareId" ] || { ___x_cmd_ui_tf false "Share ID is required"; return 1; }
+
+    # Build JSON body
+    [ -n "$shareStatus" ] || [ -n "$requireLogin" ] || [ -n "$expiresIn" ] || {
+        ___x_cmd_ui_tf false "At least one option is required (--status, --require-login, --expires)"
+        return 1
+    }
+    local data
+    data="$(___x_cmd jo dict ${shareStatus:+"status=$shareStatus"} ${requireLogin:+"requireLogin=$requireLogin"} ${expiresIn:+"expiresIn=$expiresIn"})"
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl patch "/api/v0/file/share/$(___x_cmd url encode "$shareId")" data)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to update share $shareId"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Share updated successfully"
 }

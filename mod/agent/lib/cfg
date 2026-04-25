@@ -23,8 +23,8 @@ ___X_CMD_AGENT_MODEL='claude
 codex
 cursor
 gemini-cli
-kimi-cli
 opencode
+kimi-cli
 '
 
 ___x_cmd_agent_init(){
@@ -41,6 +41,182 @@ ___x_cmd_agent_init(){
         one_harness         "Set up the default harness for Agent 001"                  \
                             "${cur_one_harness:-"$___X_CMD_AGENT_ONE_HARNESS"}" '='     \
                             "$___X_CMD_AGENT_MODEL" || return $?
+
+
+
+    # Configure default AI harness
+    local x_=""; ___x_cmd_agent_harness_ || return $?
+    local default_harness="$x_"
+    local style_warn style_error style_end
+    style_warn="$(___x_cmd ui style yellow)"
+    style_error="$(___x_cmd ui style red)"
+    style_end="$(___x_cmd ui style end)"
+    case "$default_harness" in
+        claude)
+            local loggedIn=; loggedIn="$( ___x_cmd claude -- auth status | ___x_cmd jo .loggedIn )"
+            if [ "$loggedIn" != "true" ]; then
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Claude: You're not logged in yet."
+                printf >&2 "%s\n" "  Let's get you set up. You can either log in with your Anthropic account"
+                printf >&2 "%s\n" "  or use a third-party model provider."
+                printf >&2 "%s\n" ""
+                local _id; ___x_cmd ui select _id "Choose how to connect Claude:" \
+                    "x claude auth login            # Log in with your Anthropic account" \
+                    "x claude use <provider>        # Use a third-party model provider" || return $?
+                case "$_id" in
+                    1)
+                        printf >&2 "%s\n" "  Logging in to Claude..."
+                        ___x_cmd claude auth login || {
+                            printf >&2 "${style_error}%s${style_end}\n" "  Claude login failed."
+                            return 1
+                        } ;;
+                    2)
+                        printf >&2 "%s\n" "  Which provider would you like to use?"
+                        local select_name; select_name="$( ___x_cmd pick printf "%s\n" deepseek/ds kimi minimax/mm mthreads/mt zhipu/glm sili openrouter doubao other )" || return $?
+                        case "$select_name" in
+                            deepseek/ds|kimi|minimax/mm|mthreads/mt|zhipu/glm|sili|openrouter|doubao)
+                                select_name="${select_name%%/*}"
+                                printf >&2 "  Switching Claude to use '%s'...\n" "$select_name"
+                                ___x_cmd claude use "$select_name" || {
+                                    printf >&2 "${style_error}%s${style_end}\n" "  Failed to configure Claude for '$select_name'."
+                                    printf >&2 "%s\n" "  Please check your API key setup, then run:"
+                                    printf >&2 "%s\n" "    x claude use $select_name"
+                                    return 1
+                                }
+                                ;;
+                            *)  printf >&2 "%s\n" "  Run 'x claude use --help' for more options."
+                                ___x_cmd claude use --help
+                                ;;
+                        esac
+                        ;;
+                    *)  printf >&2 "${style_error}%s${style_end}\n" "  Unsupported option '$_id'" ;;
+                esac
+            fi
+            ;;
+        codex)
+            if [ "$( ___x_cmd codex -- login status )" = "Not logged in" ]; then
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Codex: You're not logged in yet."
+                printf >&2 "%s\n" "  Would you like to log in now?"
+                printf >&2 "%s\n" ""
+                ___x_cmd ui yesno "Log in to Codex now?" || return $?
+                printf >&2 "%s\n" "  Logging in to Codex..."
+                ___x_cmd codex login || {
+                    printf >&2 "${style_error}%s${style_end}\n" "  Codex login failed."
+                    return 1
+                }
+            fi
+            ;;
+        cursor)
+            ___x_cmd hascmd cursor || ___x_cmd hascmd agent || {
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Cursor Agent is not installed yet."
+                printf >&2 "%s\n" "  Let's get it set up for you."
+                printf >&2 "%s\n" ""
+                ___x_cmd install --cat cursor || return $?
+                ___x_cmd install cursor || {
+                    printf >&2 "${style_error}%s${style_end}\n" "  Failed to install Cursor Agent."
+                    return 1
+                }
+                printf >&2 "%s\n" "  Cursor Agent installed successfully."
+            }
+
+            if [ "$( ___x_cmd_agent_request___cursor_runcmd status --format json | ___x_cmd jo .isAuthenticated )" != "true" ]; then
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Cursor: You're not logged in yet."
+                printf >&2 "%s\n" "  Would you like to authenticate now?"
+                printf >&2 "%s\n" ""
+                ___x_cmd ui yesno "Log in to Cursor now?" || return $?
+                printf >&2 "%s\n" "  Logging in to Cursor..."
+                ___x_cmd_agent_request___cursor_runcmd login || {
+                    printf >&2 "${style_error}%s${style_end}\n" "  Cursor login failed."
+                    return 1
+                }
+            fi
+            ;;
+        gemini-cli)
+            ___x_cmd hascmd gemini || {
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Gemini CLI is not installed yet."
+                printf >&2 "%s\n" "  Would you like me to install it for you?"
+                printf >&2 "%s\n" ""
+                ___x_cmd ui yesno "Install Gemini CLI now?" || return $?
+                ___x_cmd env use gemini-cli  || {
+                    printf >&2 "${style_error}%s${style_end}\n" "  Failed to install Gemini CLI."
+                    return 1
+                }
+                printf >&2 "%s\n" "  Gemini CLI installed successfully."
+            }
+            [ -n "$GEMINI_API_KEY" ] || ___x_cmd gemini --has-apikey || {
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Gemini: API key not configured yet."
+                printf >&2 "%s\n" "  Let's set it up interactively."
+                printf >&2 "%s\n" ""
+                ___x_cmd ui yesno "Configure Gemini API key now?" || return $?
+                printf >&2 "%s\n" "  Setting up Gemini..."
+                ___x_cmd gemini init || {
+                    printf >&2 "${style_error}%s${style_end}\n" "  Gemini setup failed."
+                    return 1
+                }
+            }
+            ;;
+        opencode)
+            ___x_cmd hascmd opencode || {
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Opencode is not installed yet."
+                printf >&2 "%s\n" "  Would you like me to install it for you?"
+                printf >&2 "%s\n" ""
+                ___x_cmd ui yesno "Install Opencode now?" || return $?
+                ___x_cmd env use opencode || {
+                    printf >&2 "${style_error}%s${style_end}\n" "  Failed to install Opencode."
+                    return 1
+                }
+                printf >&2 "%s\n" "  Opencode installed successfully."
+            }
+
+            [ -f "$HOME/.local/share/opencode/auth.json" ] || {
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Opencode: You're not authenticated yet."
+                printf >&2 "%s\n" "  Let's log you in."
+                printf >&2 "%s\n" ""
+                ___x_cmd ui yesno "Log in to Opencode now?" || return $?
+                printf >&2 "%s\n" "  Logging in to Opencode..."
+                ___x_cmd opencode auth login || {
+                    printf >&2 "${style_error}%s${style_end}\n" "  Opencode login failed."
+                    return 1
+                }
+            }
+            ;;
+        kimi-cli)
+            ___x_cmd hascmd kimi || {
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Kimi CLI is not installed yet."
+                printf >&2 "%s\n" "  Would you like me to install it for you?"
+                printf >&2 "%s\n" ""
+                ___x_cmd ui yesno "Install Kimi CLI now?" || return $?
+                ___x_cmd kimi --install || {
+                    printf >&2 "${style_error}%s${style_end}\n" "  Failed to install Kimi CLI."
+                    return 1
+                }
+                printf >&2 "%s\n" "  Kimi CLI installed successfully."
+            }
+
+            [ -f "$HOME/.kimi/config.toml" ] || {
+                printf >&2 "%s\n" ""
+                printf >&2 "${style_warn}%s${style_end}\n" "  Kimi: You're not logged in yet."
+                printf >&2 "%s\n" "  Let's get you authenticated."
+                printf >&2 "%s\n" ""
+                ___x_cmd ui yesno "Log in to Kimi Cli now?" || return $?
+                printf >&2 "%s\n" "  Logging in to Kimi..."
+                ___x_cmd kimi login || {
+                    printf >&2 "${style_error}%s${style_end}\n" "  Kimi login failed."
+                    return 1
+                }
+            }
+            ;;
+        *) ;;
+    esac
+
 }
 
 ___x_cmd_agent_harness_(){
