@@ -37,7 +37,8 @@ function draw_form(o, kp, x1, x2, y1, y2, opt, \
 
 function draw_form___on_foot(o, kp, x1, x2, y1, y2, opt,             s){
     if ( ! opt_get( opt, "form.body.change" ) ) return
-    if (opt_get( opt, "form.is_ctrl_form_sel" )) s = "<↑/↓>:Select    <Enter>:Confirm    <Tab>:Skip"
+    if (opt_get( opt, "form.is_ctrl_form_sel" )) s = "<↑/↓>:Select    <Enter>:Confirm    <Tab>:Next"
+    else if (opt_get( opt, "form.is_ctrl_exit_strategy" )) s = "<↑/↓>:Change Edit Row    <←/→>:Switch Button    <Enter>:Confirm"
     else s = "<Tab/↑/↓>:Change Edit Row    <Enter>:Confirm Form"
     s = th( UI_TEXT_DIM, s )
     return painter_clear_screen(x1, x2, y1, y2) painter_goto_rel(x1, y1) s

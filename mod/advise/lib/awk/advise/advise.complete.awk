@@ -4,7 +4,7 @@
 
 # Resolves $ref references and parses groups (subcmd/option/flag)
 # Returns true on success, false on failure (with error message in dev mode)
-function advise_get_ref_and_group(obj, kp,        msg, subcmd_group, option_group, flag_group){
+function advise_get_ref_and_group(obj, kp, subcmd_group, option_group, flag_group,        msg ){
     if ((msg = comp_advise_get_ref(obj, kp)) != true) {
         if ( ___X_CMD_ADVISE_DEV_MOD == 1 ) advise_error( msg )
         else return false

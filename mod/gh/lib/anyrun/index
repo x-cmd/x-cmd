@@ -1,0 +1,291 @@
+# shellcheck shell=sh disable=SC2039,3043
+
+___x_cmd_gh_anyrun(){
+    param:scope  ___x_cmd_github
+    param:subcmd ___x_cmd_gh_anyrun                    \
+        run                     "Run a script on GitHub Actions"        \
+        wait                    "Wait for a workflow run to complete"   \
+        init                    "Upload workflow file to repository"
+    param:subcmd:try
+    param:run
+
+    ___x_cmd_gh_anyrun _param_help_doc
+    return 1
+}
+
+# Section: Run
+
+___x_cmd_gh_anyrun_run(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                   <>:RepoName
+    --ref           "The git reference for the workflow"          <>=""
+    --json|-j       "output json data"
+A
+    param:run
+
+    local owner_repo=""
+    ___x_cmd_gh_param_init_owner_repo
+
+    if [ -z "$owner_repo" ]; then
+        gh:error "Please provide --repo <owner/repo>"
+        return 64
+    fi
+
+    [ $# -gt 0 ] || {
+        gh:error "Please provide a script to run"
+        return 64
+    }
+
+    # Collect all remaining args as a single command string
+    # This preserves spaces in arguments like: echo "hello   world"
+    # Skip -- if present (it's used to separate options from arguments)
+    local cmd_args=""
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "--" ]; then
+            shift
+            continue
+        fi
+        cmd_args="$cmd_args $1"
+        shift
+    done
+    cmd_args="${cmd_args# }"  # Trim leading space
+
+    local script=""
+    local filename=""
+
+    # Check if it's a local file path - if so, base64 encode it
+    if [ -f "${cmd_args}" ]; then
+        # Local file - base64 encode its contents
+        filename="$(basename "$cmd_args")"
+        script="$(___x_cmd base64 < "$cmd_args")"
+    else
+        # Inline command - base64 encode the command string
+        script="$(printf "%s" "$cmd_args" | ___x_cmd base64)"
+        filename="inline-command.sh"
+    fi
+
+    # Trigger workflow
+    gh:info "Triggering workflow..."
+
+    # Get default branch if ref not provided
+    if [ -z "$ref" ]; then
+        local x_default_branch=""
+        if ! ___x_cmd_gh___get_x_default_branch_; then
+            gh:error "Can not get default branch of repo $owner_repo"
+            return 1
+        fi
+        ref="$x_default_branch"
+    fi
+
+    # Build inputs JSON using direct printf for proper format
+    local gen_gh_json=""
+    gen_gh_json="$(printf '{"ref":"%s","inputs":{"filename":"%s","script":"%s"}}' "$ref" "$filename" "$script")"
+
+    # Use curl to trigger workflow dispatch
+    local tmp_json="${___X_CMD_GH_TMP}/anyrun_dispatch_$$.json"
+    printf '%s' "$gen_gh_json" > "$tmp_json"
+
+    local http_code
+    http_code="$(curl -sL -X POST -H "Authorization: Bearer $(gh auth token)" \
+        -H "Accept: application/vnd.github+json" \
+        -H "Content-Type: application/json" \
+        --data "@$tmp_json" \
+        "https://api.github.com/repos/${owner_repo}/actions/workflows/x-cmd-gh-anyrun.yml/dispatches" \
+        -w "%{http_code}" -o /dev/null)"
+
+    ___x_cmd rmrf "$tmp_json"
+
+    if [ "$http_code" = "204" ] || [ "$http_code" = "200" ]; then
+        gh:info "Workflow triggered successfully"
+    else
+        gh:error "Failed to trigger workflow. HTTP code: $http_code"
+        return 1
+    fi
+
+    # Find the run we just triggered
+    local run_id=""
+    local run_page=1
+    while [ -z "$run_id" ] && [ "$run_page" -le 3 ]; do
+        local tmp_runs="${___X_CMD_GH_TMP}/anyrun_runs_$$.json"
+        gh api "/repos/${owner_repo}/actions/workflows/x-cmd-gh-anyrun.yml/runs?page=$run_page" > "$tmp_runs" 2>/dev/null
+        run_id="$(x jo .workflow_runs < "$tmp_runs" 2>/dev/null | x jo q0 1.1.id 2>/dev/null)"
+        ___x_cmd rmrf "$tmp_runs"
+        [ -n "$run_id" ] || break
+        run_page=$((run_page + 1))
+    done
+
+    if [ -z "$run_id" ]; then
+        gh:warn "Workflow triggered but could not find run ID. Use 'x gh anyrun wait' with the run ID when available."
+        return 0
+    fi
+
+    gh:info "Run ID: $run_id"
+
+    # Wait for completion
+    ___x_cmd_gh_anyrun_wait_for_run "$owner_repo" "$run_id" "$json"
+}
+
+# EndSection
+
+# Section: Wait
+
+___x_cmd_gh_anyrun_wait(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    #1              "Run ID"                                     <>:Number
+    --repo|-r       "<owner_path>/<repo_path>"                   <>:RepoName
+    --json|-j       "output json data"
+A
+    param:run
+
+    local owner_repo=""
+    ___x_cmd_gh_param_init_owner_repo
+
+    if [ -z "$owner_repo" ]; then
+        gh:error "Please provide --repo <owner/repo>"
+        return 64
+    fi
+
+    [ -n "$1" ] || { gh:error "Please provide run ID"; return 64; }
+    local run_id="$1"
+
+    ___x_cmd_gh_anyrun_wait_for_run "$owner_repo" "$run_id" "$json"
+}
+
+___x_cmd_gh_anyrun_wait_for_run(){
+    local owner_repo="$1"
+    local run_id="$2"
+    local output_json="${3:-}"
+
+    gh:info "Waiting for run $run_id to complete..."
+
+    local run_status=""
+    local __conclusion=""
+    while true; do
+        sleep 30
+
+        local tmp_status="${___X_CMD_GH_TMP}/anyrun_status_$$.json"
+        gh api "/repos/${owner_repo}/actions/runs/${run_id}" > "$tmp_status" 2>/dev/null
+        run_status="$(x jo .status < "$tmp_status" | tr -d '"')"
+        __conclusion="$(x jo .conclusion < "$tmp_status" | tr -d '"')"
+        ___x_cmd rmrf "$tmp_status"
+        gh:info "Status: $run_status, Conclusion: $__conclusion"
+
+        if [ "$run_status" = "completed" ]; then
+            break
+        fi
+    done
+
+    gh:info "Run completed. Conclusion: $__conclusion"
+
+    # Download output artifact
+    local artifact_id
+    artifact_id="$(gh api "/repos/${owner_repo}/actions/runs/${run_id}/artifacts" 2>/dev/null | x jo .artifacts | x jo q0 1.1.id 2>/dev/null)"
+
+    if [ -n "$artifact_id" ] && [ "$artifact_id" != "null" ]; then
+        gh:info "Downloading output artifact..."
+        local tmp_dir="${___X_CMD_GH_TMP}/anyrun_output_$$"
+        ___x_cmd mkdirp "$tmp_dir"
+
+        ___x_cmd_gh_curl download "/repos/${owner_repo}/actions/artifacts/${artifact_id}/zip" \
+            "${tmp_dir}/output.zip" || {
+            gh:warn "Failed to download output artifact"
+        }
+
+        if [ -f "${tmp_dir}/output.zip" ]; then
+            ___x_cmd uz "${tmp_dir}/output.zip" "$tmp_dir" 2>/dev/null
+            if [ -f "${tmp_dir}/output.log" ]; then
+                gh:info "=== Output ==="
+                ___x_cmd_cmds_cat "${tmp_dir}/output.log"
+            fi
+        fi
+        ___x_cmd rmrf "$tmp_dir"
+    else
+        gh:info "No output artifact found. Check workflow run logs at https://github.com/${owner_repo}/actions/runs/${run_id}"
+    fi
+
+    if [ -n "$output_json" ] || [ -n "$ENFORCE_JSON" ]; then
+        printf "%s\n" "$run_data"
+    fi
+}
+
+# EndSection
+
+# Section: Init
+
+___x_cmd_gh_anyrun_init(){
+    param:scope ___x_cmd_github
+    param:dsl <<A
+options:
+    --repo|-r       "<owner_path>/<repo_path>"                   <>:RepoName
+    --branch        "The branch name. Default is repo default branch"  <>=""
+    --message       "The commit message"                           <>="Add x-cmd-gh-anyrun workflow"
+    --json|-j       "output json data"
+A
+    param:run
+
+    local owner_repo=""
+    ___x_cmd_gh_param_init_owner_repo
+
+    if [ -z "$owner_repo" ]; then
+        gh:error "Please provide --repo <owner/repo>"
+        return 64
+    fi
+
+    local workflow_path=".github/workflows/x-cmd-gh-anyrun.yml"
+    local workflow_file="${___X_CMD_ROOT_MOD}/gh/lib/anyrun/x-cmd-gh-anyrun.yml"
+
+    if [ ! -f "$workflow_file" ]; then
+        gh:error "Workflow file not found: $workflow_file"
+        return 1
+    fi
+
+    gh:info "Uploading workflow to $owner_repo:$workflow_path"
+
+    # Get sha if file exists
+    local sha=""
+    local ref="${branch:-}"
+    if [ -z "$ref" ]; then
+        local x_default_branch=""
+        if ! ___x_cmd_gh___get_x_default_branch_; then
+            gh:error "Can not get default branch of repo $owner_repo"
+            return 1
+        fi
+        ref="$x_default_branch"
+    fi
+
+    sha="$(___x_cmd_gh_curl get "/repos/${owner_repo}/contents/${workflow_path}" "ref=$ref" 2>/dev/null | x jo .sha 2>/dev/null)"
+
+    # Base64 encode the workflow file
+    local content
+    content="$(___x_cmd base64 < "$workflow_file")"
+
+    # Create or update the file
+    local gen_gh_json=""
+    if [ -n "$sha" ]; then
+        gen_gh_json="$(x jo dict content="$content" message="$message" sha="$sha" branch="$ref")"
+    else
+        gen_gh_json="$(x jo dict content="$content" message="$message" branch="$ref")"
+    fi
+
+    ___x_cmd_gh_curl put "/repos/${owner_repo}/contents/${workflow_path}" "gen_gh_json" | (
+        if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+            ___x_cmd_cmds_cat
+            ___x_cmd_gh_http_error
+            return
+        fi
+        x jo env . _sha=.content.sha gh_resp_msg=.message gh_resp_err=.errors _path=.content.path
+        if [ -n "$_sha" ]; then
+            ___x_cmd_ui_tf true "[OK]: Workflow uploaded to $owner_repo $_path"
+        else
+            ___x_cmd_ui_tf false "[FAIL] Upload workflow:" >&2
+            ___x_cmd_gh____handle_resp
+            return 1
+        fi
+    )
+}
+
+# EndSection

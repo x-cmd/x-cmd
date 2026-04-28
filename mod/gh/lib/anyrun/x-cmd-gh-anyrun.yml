@@ -1,0 +1,64 @@
+name: x-cmd-gh-anyrun
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "Base64 encoded command string to execute"
+        required: false
+        type: string
+      filename:
+        description: "Filename for display only"
+        required: false
+        type: string
+      artifact_id:
+        description: "Artifact ID containing script to download and execute"
+        required: false
+        type: string
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download artifact if artifact_id provided
+        if: inputs.artifact_id != ''
+        run: |
+          gh api -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ inputs.artifact_id }}/zip \
+            -o artifact.zip
+          unzip -o artifact.zip
+          echo "FILENAME=$(ls -1 *.sh *.py *.js 2>/dev/null | head -1 || echo 'script')" >> $GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Execute command
+        run: |
+          if [ -n "${{ inputs.script }}" ]; then
+            CMD=$(echo "${{ inputs.script }}" | base64 -d)
+            FILENAME="${{ inputs.filename }}"
+            echo "=== Running: $FILENAME ===" | tee output.log
+            echo "Command: $CMD" >> output.log
+            eval "$CMD" 2>&1 | tee -a output.log
+            EXIT_CODE=${PIPESTATUS[0]}
+            echo "=== Exit code: $EXIT_CODE ===" >> output.log
+            exit $EXIT_CODE
+          elif [ -n "${{ inputs.artifact_id }}" ]; then
+            FILENAME="${FILENAME:-script}"
+            chmod +x "$FILENAME"
+            echo "=== Running: $FILENAME ===" | tee output.log
+            bash "$FILENAME" 2>&1 | tee -a output.log
+            echo "=== Exit code: $? ===" >> output.log
+          else
+            echo "Error: Either script or artifact_id must be provided" | tee output.log
+            exit 1
+          fi
+
+      - name: Upload output artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-cmd-gh-anyrun-output
+          path: output.log
+          retention-days: 1

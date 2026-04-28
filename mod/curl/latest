@@ -1,19 +1,31 @@
 # Author:       Li Junhao           l@x-cmd.com
 # shellcheck    shell=sh            disable=SC2039,SC1090,SC3043,SC2263
 
-xrc:mod:lib curl init gencode
+xrc:mod:lib     curl    init gencode
 
 ___x_cmd_curl(){
-    case "$1" in
-        gencode)        shift; ___x_cmd_curl_gencode "$@" ;;
-        -h|--help)      M='curl' help:ret:0           ;;
-        version_)       ___x_cmd_curl_version_        ;;
-        *)              ___x_cmd___curl_origin "$@" ;;
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      M='curl' help:ret:0                 ;;
+        fallbackrun|gencode|version_)
+                        ___x_cmd_curl_"$op" "$@"            ;;
+        --)             ___x_cmd___curl_origin  "$@"        ;;
+        *)              ___x_cmd___curl_origin  "$op" "$@"  ;;
     esac
 }
 
+___x_cmd_curl_fallbackrun(){
+    local fallbackbin="$___X_CMD_ROOT_DATA/pkg/bin/curl/curl"
+
+    [ -e "$fallbackbin" ] ||    ___x_cmd___curl___download_curl || return $?
+
+    "$___X_CMD_ROOT_DATA/pkg/bin/curl/curl" "$@"
+}
+
+
 ___x_cmd_curl_version_(){
-    local version_data="$(___x_cmd___curl_origin --version)"
+    local version_data;
+    version_data="$(___x_cmd___curl_origin --version)"
     read -r x_ <<A
 $version_data
 A
@@ -43,7 +55,7 @@ A
 
 ___x_cmd_curl_ensure776plus(){
     ___x_cmd_curl___is_ge_776 || {
-        __x_cmd___curl_origin(){
+        ___x_cmd___curl_origin(){
            ___x_cmd cosmo curl "$@"
         }
     }
@@ -56,31 +68,38 @@ ___x_cmd_curl___isavaiable(){
     case "$x_" in
         /snap/bin/*)        return 1 ;;
     esac
-    if ___x_cmd os is gitbash;then
-        return 1
-    fi
 }
 
 ___x_cmd___curl_origin(){
-    if ___x_cmd_curl___isavaiable; then
-        eval '
-        ___x_cmd___curl_origin(){
-            PATH="$___X_CMD_INNER_PATH" command curl "$@"
-        }
-        '
-    elif (___x_cmd___curl___download_curl; ); then
-        eval '
-        ___x_cmd___curl_origin(){
-            '"$___X_CMD_ROOT_DATA/pkg/bin/curl/curl"' "$@"
-        }
-        '
+    if [ -f "$___X_CMD_ROOT_DATA/curl/config/use-fallback-curl" ]; then
+        ___x_cmd___curl_origin___usefallback
+    elif ___x_cmd_curl___isavaiable; then
+        ___x_cmd___curl_origin___useenv
     else
-        x:error "Fail to download curl."
-        return 1
-    fi
-    ___x_cmd___curl_origin "$@"
+        ___x_cmd___curl_origin___usefallback
+    fi && ___x_cmd___curl_origin "$@"
 }
 
+___x_cmd___curl_origin___useenv(){
+    eval '
+    ___x_cmd___curl_origin(){
+        PATH="$___X_CMD_INNER_PATH" command curl "$@"
+    }
+    '
+}
+
+___x_cmd___curl_origin___usefallback(){
+    ___x_cmd___curl___download_curl || {
+        x:error "Fail to download x-cmd provicded fallback curl."
+        return 1
+    }
+
+    eval '
+    ___x_cmd___curl_origin(){
+        "\$___X_CMD_ROOT_DATA/pkg/bin/curl/curl" "$@"
+    }
+    '
+}
 
 # code="$(x curl gencode fsdafs adf page)"
 

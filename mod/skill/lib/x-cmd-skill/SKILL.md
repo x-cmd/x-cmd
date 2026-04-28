@@ -38,11 +38,15 @@ metadata:
 
 ---
 
-## Run `x skill` to browse 200+ skills
+## Run `x skill lr` to browse 500+ skills
 
-```bash
-x skill
-```
+| Command | Purpose |
+|---------|---------|
+| `x skill lr` | List all remote skills (<skill-id><tab><desc>) |
+| `x skill add <skill-id>` | Add skill for next session |
+| `x skill info <skill-id>` | Download and show skill summary and path |
+
+**x-mod/<mod>**: Use `x <mod> --help` for more examples. Just add notes to AGENTS.md to reuse.
 
 ---
 

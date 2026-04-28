@@ -1,0 +1,103 @@
+# shellcheck shell=dash
+
+___x_cmd_telegram_bot_download(){
+    param:void
+    [ $# -gt 0 ] || set -- help
+
+    local msgs
+    local filename
+    local overwrite
+    local output_dir
+    local dry_run
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m telegram bot download "$@" ; return 0 ;;
+            -d|--dir)               output_dir="$2" ;   arg:2:shift ;;
+            --name)                 filename="$2" ;     arg:2:shift ;;
+            --dry-run)              dry_run=1 ;         shift ;;
+            -y|--yes)               overwrite=1 ;       shift ;;
+            *)                      msgs="$*"; break ;;
+        esac
+    done
+
+    local token
+    ___x_cmd_telegram_cur token:= 2>/dev/null
+    [ -n "$token" ] || N=telegram M="Please setting up your token first ==> 'x telegram init'" log:ret:1
+
+    local proxy
+    ___x_cmd_telegram_cur proxy:= 2>/dev/null
+
+
+    local MSG_TEXT_TEXT="" MSG_IMG_ID="" MSG_DOCUMENT_ID="" MSG_VIDEO_ID=""
+    ___x_cmd jo env .result.1.message                       \
+                    MSG_TEXT_TEXT=.text                    \
+                    MSG_IMG_ID=.photo.3.file_id            \
+                    MSG_DOCUMENT_ID=.document.file_id       \
+                    MSG_VIDEO_ID=.video.1.file_id <<A
+$msgs
+A
+
+    local file_id="" default_ext=""
+    if [ -n "$MSG_IMG_ID" ]; then
+        file_id="$MSG_IMG_ID"
+        default_ext=".jpg"
+    elif [ -n "$MSG_DOCUMENT_ID" ]; then
+        file_id="$MSG_DOCUMENT_ID"
+        default_ext=".bin"
+    fi
+
+    if [ -z "$file_id" ]; then
+        telegram:error "Missing file id"
+        return 1
+    fi
+
+    local out_file=""
+    if [ -n "$filename" ]; then
+        out_file="$filename"
+        case "$filename" in
+            *.*)        ;;
+            *)          out_file="${filename}${default_ext}" ;;
+        esac
+    elif [ -n "$file_name" ]; then
+        out_file="$file_name"
+    else
+        out_file="${file_id}${default_ext}"
+    fi
+
+    if [ -n "$output_dir" ]; then
+        ___x_cmd mkdirp "$output_dir"
+        out_file="${output_dir}/${out_file}"
+    fi
+
+    if [ -f "$out_file" ] && [ "$overwrite" != "1" ]; then
+        telegram:error "File already exists: $out_file (use -y to overwrite)"
+        return 1
+    fi
+
+    local file_path
+    file_path="$(___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} "https://api.telegram.org/bot${token}/getFile?file_id=${file_id}" | \
+        ___x_cmd jq -r .result.file_path)"
+
+    if [ -z "$file_path" ] || [ "$file_path" = "null" ]; then
+        telegram:error "Failed to get file path: $file_path"
+        return 1
+    fi
+
+    if [ "$dry_run" = "1" ]; then
+        telegram:info "[DRY RUN] Would download to: $out_file"
+        telegram:info "[DRY RUN] URL: https://api.telegram.org/file/bot${token}/${file_path}"
+        return 0
+    fi
+
+    telegram:info "Downloading media file..."
+    if ! ___x_cmd curl -s -L ${proxy:+-x} ${proxy:+"$proxy"} \
+        "https://api.telegram.org/file/bot${token}/${file_path}" \
+        -o "$out_file"; then
+        telegram:error "Download failed"
+        return 1
+    fi
+
+    local dir_part="${out_file%/*}"
+    [ "$dir_part" = "$out_file" ] && dir_part="."
+    telegram:info "Download success: ${out_file##*/} -> $dir_part"
+}

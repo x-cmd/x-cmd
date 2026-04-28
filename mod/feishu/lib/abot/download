@@ -1,0 +1,98 @@
+# shellcheck shell=dash
+
+___x_cmd_feishu_abot_download(){
+    [ $# -gt 0 ]    ||  set -- help
+
+    local msgs
+    local filename
+    local overwrite
+    local output_dir
+    local dry_run
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m feishu abot download "$@" ; return 0 ;;
+            -d|--dir)               output_dir="$2" ;   arg:2:shift ;;
+            --name)                 filename="$2" ;     arg:2:shift ;;
+            --dry-run)              dry_run=1 ;         shift ;;
+            -y|--yes)               overwrite=1 ;       shift ;;
+            *)                      msgs="$*"; break ;;
+        esac
+    done
+
+
+    local cur_token
+    local x_=; ____x_cmd_tenant_token || return $?
+    cur_token="$x_"
+
+    local MSG_ID="" MSG_TYPE="" MSG_CONTENT=""
+    ___x_cmd jo env .   \
+            MSG_ID=.message_id                     \
+            MSG_TYPE=.msg_type                      \
+            MSG_CONTENT=.body.content <<A
+$msgs
+A
+
+    local file_key="" default_ext="" msg_file_name=""
+    case "$MSG_TYPE" in
+        image)
+            file_key="$(printf "%s" "$MSG_CONTENT" | ___x_cmd jq -r .image_key)"
+            default_ext=".jpg"
+            ;;
+        file)
+            file_key="$(printf "%s" "$MSG_CONTENT" | ___x_cmd jq -r .file_key)"
+            msg_file_name="$(printf "%s" "$MSG_CONTENT" | ___x_cmd jq -r .file_name)"
+            default_ext=".bin"
+            ;;
+        text)
+            feishu:info "Text message, nothing to download"
+            return 0
+            ;;
+        *)
+    esac
+
+    if [ -z "$file_key" ]; then
+        feishu:error "Missing file key"
+        return 1
+    fi
+
+    local out_file=""
+    if [ -n "$filename" ]; then
+        out_file="$filename"
+        case "$filename" in
+            *.*)        ;; # has extension, keep as-is
+            *)          out_file="${filename}${default_ext}" ;;
+        esac
+    elif [ -n "$msg_file_name" ]; then
+        out_file="$msg_file_name"
+    else
+        out_file="${file_key}${default_ext}"
+    fi
+
+    if [ -n "$output_dir" ]; then
+        ___x_cmd mkdirp "$output_dir"
+        out_file="${output_dir}/${out_file}"
+    fi
+
+    if [ -f "$out_file" ] && [ "$overwrite" != "1" ]; then
+        feishu:error "File already exists: $out_file (use -y to overwrite)"
+        return 1
+    fi
+
+    [ "$dry_run" = "1" ] && {
+        feishu:info "[DRY RUN] Would download to: $out_file"
+        feishu:info "[DRY RUN] URL: https://open.feishu.cn/open-apis/im/v1/messages/${MSG_ID}/resources/${file_key}?type=${MSG_TYPE}"
+        return 0
+    }
+
+
+    if ! ___x_cmd curl -s -L -X GET "https://open.feishu.cn/open-apis/im/v1/messages/${MSG_ID}/resources/${file_key}?type=${MSG_TYPE}" \
+        -H "Authorization: Bearer $cur_token" \
+        -o "$out_file"; then
+        feishu:error "Download failed"
+        return 1
+    fi
+
+    local dir_part="${out_file%/*}"
+    [ "$dir_part" = "$out_file" ] && dir_part="."
+    feishu:info "Download success: ${out_file##*/} -> $dir_part"
+}

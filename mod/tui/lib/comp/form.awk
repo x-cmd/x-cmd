@@ -27,7 +27,8 @@ function comp_form_handle(o, kp, char_value, char_name, char_type,          r, _
             if (char_name == U8WC_NAME_HORIZONTAL_TAB) {
                 ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel")
                 if (r == comp_form_get_data_len(o, kp)) {
-                    ctrl_num_set(o, kp SUBSEP "ctrl.form.row", 1)
+                    comp_form_exit_strategy_toggle(o, kp)
+                    change_set( o, kp, "form.button" )
                 } else {
                     ctrl_num_inc(o, kp SUBSEP "ctrl.form.row")
                 }
@@ -59,15 +60,9 @@ function comp_form_handle(o, kp, char_value, char_name, char_type,          r, _
         }
         else if ((char_name == U8WC_NAME_HORIZONTAL_TAB) || (char_name == U8WC_NAME_DOWN) || (char_name == U8WC_NAME_CARRIAGE_RETURN)){
             if (comp_form_get_cur_row(o, kp) == comp_form_get_data_len(o, kp)) {
-                if (char_name == U8WC_NAME_HORIZONTAL_TAB) {
-                    ctrl_num_set(o, kp SUBSEP "ctrl.form.row", 1)
-                    comp_form___ctrl_sel( o, kp )
-                    change_set( o, kp, "form.body" )
-                } else {
-                    comp_form_exit_strategy_toggle(o, kp)
-                    change_set( o, kp, "form.button" )
-                    change_set( o, kp, "form.body" )
-                }
+                comp_form_exit_strategy_toggle(o, kp)
+                change_set( o, kp, "form.button" )
+                change_set( o, kp, "form.body" )
             } else {
                 ctrl_num_inc(o, kp SUBSEP "ctrl.form.row")
                 comp_form___ctrl_sel( o, kp )
@@ -85,8 +80,15 @@ function comp_form_handle(o, kp, char_value, char_name, char_type,          r, _
 
 function comp_form___ctrl_exit_strategy(o, kp, char_value, char_name, char_type){
 
-    if ((char_name == U8WC_NAME_UP) || (char_name == U8WC_NAME_DOWN))   {
+    if (char_name == U8WC_NAME_UP) {
         comp_form_exit_strategy_toggle(o, kp)
+        ctrl_num_set(o, kp SUBSEP "ctrl.form.row", comp_form_get_data_len(o, kp))
+        comp_form___ctrl_sel(o, kp, true)
+        change_set( o, kp, "form.body" )
+    }
+    else if (char_name == U8WC_NAME_DOWN) {
+        comp_form_exit_strategy_toggle(o, kp)
+        ctrl_num_set(o, kp SUBSEP "ctrl.form.row", 1)
         comp_form___ctrl_sel(o, kp, true)
         change_set( o, kp, "form.body" )
     }
@@ -106,9 +108,16 @@ function comp_form___ctrl_lineedit(o, kp, char_value, char_name, char_type,     
     return false
 }
 
-function comp_form___ctrl_sel(o, kp, v,        r){
+function comp_form___ctrl_sel(o, kp, v,        r, gkp, val){
     r = comp_form_get_cur_row(o, kp)
     if (comp_form_is_ctrl_exit_strategy(o, kp) || (! comp_form_data_is_select(o, kp, r))) return
+    gkp = kp SUBSEP r SUBSEP "comp.gsel"
+    val = comp_lineedit_get(o, kp SUBSEP "lineedit" SUBSEP r)
+    if (val != "") {
+        comp_gsel___slct_put(o, gkp, "")
+        comp_gsel_model_end(o, gkp)
+        if (! comp_gsel_set_cur_item(o, gkp, val)) return
+    }
     (v == "") ? ctrl_sw_toggle(o, kp SUBSEP "ctrl.form.sel") : ctrl_sw_set(o, kp SUBSEP "ctrl.form.sel", v)
     change_set( o, kp, "form.sel" )
 }
@@ -180,6 +189,7 @@ function comp_form_model_end(o, kp,         r, i, l){
     for (i=1; i<=l; ++i){
         if (comp_form_data_is_select(o, kp, i)) {
             comp_gsel_init(o, kp SUBSEP i SUBSEP "comp.gsel")
+            comp_gsel_model_end(o, kp SUBSEP i SUBSEP "comp.gsel")
         }
     }
     comp_form___ctrl_sel(o, kp, true)

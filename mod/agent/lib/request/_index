@@ -132,6 +132,7 @@ Output your response wrapped with:
 }
 
 ____X_CMD_AGENT_ERR_AUTHFAILURE=77
+____X_CMD_AGENT_ERR_SESSION_INVALID=78
 ____X_CMD_AGENT_ERR_NETWORK_TIMEOUT=124
 
 ___x_cmd_agent_request___run(){
@@ -149,6 +150,14 @@ ___x_cmd_agent_request___run_validate(){
                         --tip1 "x claude auth login" \
                         --tip2 "x claude use -h" \
                         "Claude auth status is not logged in"
+                    return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
+                fi
+                ;;
+        claude-*)
+                local subcmd="${harness#claude-}"
+                local loggedIn=; loggedIn="$( ___x_cmd claude "$subcmd" auth status | ___x_cmd jo .loggedIn )"
+                if [ "$loggedIn" != "true" ]; then
+                    agent:warn "Claude auth status is not logged in"
                     return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
                 fi
                 ;;
@@ -196,6 +205,19 @@ ___x_cmd_agent_request___run_attempt(){
     ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
     local ret=$?
 
+    if [ $ret -eq 0 ]; then
+        agent:debug "Request completed successfully"
+        return 0
+    fi
+
+    if [ -n "$user_session_id" ]; then
+        session_map_file="$___X_CMD_ROOT_TMP/agent/request/session/$harness/$user_session_id"
+        [ ! -f "$session_map_file" ] || {
+            agent:debug "Cleaning up session map file"
+            ___x_cmd rmrf "$session_map_file"
+        }
+    fi
+
     if [ $ret -eq $____X_CMD_AGENT_ERR_AUTHFAILURE ]; then
         case "$harness" in
             kimi-cli)
@@ -221,7 +243,6 @@ ___x_cmd_agent_request___run_attempt(){
         return $ret
     fi
 
-    return $ret
 }
 
 ___x_cmd_agent_request___run_exec(){(
@@ -268,7 +289,7 @@ ___x_cmd_agent_request___run_exec(){(
     fi
 
     case "$harness" in
-        claude)
+        claude|claude-*)
             if [ -n "$user_session_id" ]; then
                 if [ "$is_session_first" = "1" ]; then
                     real_session_id="$( ___x_cmd uuid )"
@@ -279,7 +300,12 @@ ___x_cmd_agent_request___run_exec(){(
                 fi
             fi
 
-            IS_SANDBOX=1 ___x_cmd claude -- "$@" \
+            local claude_subcmd="--"
+            case "$harness" in
+                claude-*)   claude_subcmd="${harness#claude-}" ;;
+            esac
+
+            IS_SANDBOX=1 ___x_cmd claude "$claude_subcmd" "$@" \
                 --verbose --output-format stream-json \
                 --dangerously-skip-permissions \
                 --allowedTools "Write,Read,Edit,Bash(x *),Bash(x-cmd *),Bash(source ~/.x-cmd.root/X *),Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)" \
