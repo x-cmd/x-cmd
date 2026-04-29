@@ -8,7 +8,8 @@ ___x_cmd_worker___main(){
     local op="$1" ;         shift
     case "$op" in
         -h|--help)          ___x_cmd help -m worker "$@" ; return 0 ;;
-        isalive|info|run|stop)   ___x_cmd_worker_"$op"  "$@" ;;
+        isalive|info|run|stop|ls)
+                            ___x_cmd_worker_"$op"  "$@" ;;
         *)                  N=claw M="Unknown subcmd -> $op" log:ret:64
     esac
 }
@@ -28,9 +29,9 @@ ___x_cmd_worker_isalive(){
     done
 
     [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
-    local dir="$___X_CMD_ROOT_DATA/runner/$ns"
-    local runnerfile="$dir/runner.$name"
-    [ -f "$runnerfile" ] || return 1
+    local dir="$___X_CMD_ROOT_DATA/worker/$ns"
+    local runnerfile_pid="$dir/runner.$name/_PIDFILE"
+    [ -f "$runnerfile_pid" ] || return 1
 
 
     local process_id=""
@@ -38,7 +39,7 @@ ___x_cmd_worker_isalive(){
     {
         read -r process_id
         read -r fingerprint
-    } < "$runnerfile"
+    } < "$runnerfile_pid"
 
     ___x_cmd ps fingerprint check "$process_id" "$fingerprint"
 }
@@ -58,9 +59,9 @@ ___x_cmd_worker_info(){
     done
 
     [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
-    local dir="$___X_CMD_ROOT_DATA/runner/$ns"
-    local runnerfile="$dir/runner.$name"
-    [ -f "$runnerfile" ] || return 1
+    local dir="$___X_CMD_ROOT_DATA/worker/$ns"
+    local runnerfile_pid="$dir/runner.$name/_PIDFILE"
+    [ -f "$runnerfile_pid" ] || return 1
 
     local process_id=""
     local fingerprint=""
@@ -69,7 +70,7 @@ ___x_cmd_worker_info(){
         read -r process_id
         read -r fingerprint
         read -r stime
-    } < "$runnerfile"
+    } < "$runnerfile_pid"
 
     local state="ongoing"
     ___x_cmd ps fingerprint check "$process_id" "$fingerprint" || state="done"
@@ -93,24 +94,35 @@ ___x_cmd_worker_run(){
     done
 
     [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
-    local dir="$___X_CMD_ROOT_DATA/runner/$ns"
-    ___x_cmd mkdirp "$dir"
-    local runnerfile="$dir/runner.$name"
+    local dir="$___X_CMD_ROOT_DATA/worker/$ns"
+    local runnerfile_dir="$dir/runner.$name"
+    local runnerfile_pid="$runnerfile_dir/_PIDFILE"
+
+    ___x_cmd mkdirp "$runnerfile_dir"
 
     local process_id
-    exec 3>&1
-    process_id="$( trap ":;" HUP ; "$@" >&3 2>&3 </dev/null & printf "%s\n" "$!")"
-    exec 3>&-
-
     local x_
-    ___x_cmd ps fingerprint get_ "$process_id"
-    local fingerprint="$x_"
 
-    ___x_cmd ps fingerprint toepoch_ "$fingerprint"
-    local stime="$x_"
+    (
+        trap ":;" HUP ;
 
-    printf "%s\n" "$process_id" "$fingerprint" "$stime">"$runnerfile"
-    ___x_cmd_cmds sleep 0.1     # TODO: in the future. we will have a creator lock.
+        ___x_cmd epoch get_
+
+        printf "%s\n" "$*" >"$runnerfile_dir/_CMD.${x_}.$$.txt"
+        "$@" >>"$runnerfile_dir/_LOG.${x_}.$$.txt" 2>&1 </dev/null &
+
+        process_id="$!"
+
+        ___x_cmd ps fingerprint get_ "$process_id"
+        local fingerprint="$x_"
+
+        ___x_cmd ps fingerprint toepoch_ "$fingerprint"
+        local stime="$x_"
+
+        printf "%s\n" "$process_id" "$fingerprint" "$stime">"$runnerfile_pid"
+        ___x_cmd_cmds sleep 0.1     # TODO: in the future. we will have a creator lock.
+    )
+
 }
 
 ___x_cmd_worker_stop(){
@@ -130,20 +142,21 @@ ___x_cmd_worker_stop(){
     done
 
     [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
-    local dir="$___X_CMD_ROOT_DATA/runner/$ns"
-    local runnerfile="$dir/runner.$name"
-    [ -f "$runnerfile" ] || return 0
+    local dir="$___X_CMD_ROOT_DATA/worker/$ns"
+    local runnerfile_dir="$dir/runner.$name"
+    local runnerfile_pid="$runnerfile_dir/_PIDFILE"
+    [ -f "$runnerfile_pid" ] || return 0
 
     local process_id=""
     local fingerprint=""
     {
         read -r process_id
         read -r fingerprint
-    } < "$runnerfile"
+    } < "$runnerfile_pid"
 
     if ___x_cmd ps fingerprint check "$process_id" "$fingerprint"; then
         if ! ___x_cmd kill -r "$process_id" 2>/dev/null; then
-            ___x_cmd ps fingerprint check "$process_id" "$fingerprint" || { ___x_cmd rmrf "$runnerfile"; return 0; }
+            ___x_cmd ps fingerprint check "$process_id" "$fingerprint" || return 0
             return 1
         fi
 
@@ -159,5 +172,5 @@ ___x_cmd_worker_stop(){
         fi
     fi
 
-    ___x_cmd rmrf "$runnerfile"
+    # ___x_cmd rmrf "$runnerfile_pid"
 }

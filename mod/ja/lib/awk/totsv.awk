@@ -20,7 +20,7 @@ BEGIN{
         for (i=1; i<=ARG_ARR_L; ++i){
             cell = jstr1(o, ARG_ARR[i])
             if (cell ~ "^\"") cell = juq(cell)
-            _res = (( i == 1 ) ? "" : _res "\t" ) tsv_esacpe(cell)
+            _res = (( i == 1 ) ? "" : _res "\t" ) tsv_esc(cell)
         }
         print _res
         fflush()

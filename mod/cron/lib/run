@@ -141,9 +141,12 @@ ___x_cmd_cron_run___execute_async(){
     [ -f "$jobdir/cmd" ] || return 0
     ___x_cmd mkdirp "$instance_dir"
 
-    exec 3>&1
-    ( trap ":;" HUP ; . "$jobdir/cmd" >&3 & printf "%s\n" "$!" ; ) | {
-        read -r pid
+    (
+        trap ":;" HUP ;
+
+        . "$jobdir/cmd" </dev/null &
+
+        pid="$!"
 
         local cron_desc=""
         if [ -f "$jobdir/desc" ]; then
@@ -153,12 +156,10 @@ ___x_cmd_cron_run___execute_async(){
 
         if ___x_cmd os is darwin; then
             # The darwin will use ps to get fingerprint, while the linux just readfile, so in darwin, use &
-            (
-                {
-                    printf '%s\n' "$pid"
-                    ___x_cmd ps fingerprint get "$pid"
-                } > "$instance_file" &
-            )
+            {
+                printf '%s\n' "$pid"
+                ___x_cmd ps fingerprint get "$pid"
+            } > "$instance_file" &
         else
             {
                 printf '%s\n' "$pid"
@@ -168,16 +169,12 @@ ___x_cmd_cron_run___execute_async(){
 
         if [ -f "$jobdir/once" ]; then
             # Wait for job to finish, then auto-delete
-            (
-                {
-                    while kill -0 "$pid" 2>/dev/null; do
-                        ___x_cmd_cmds sleep 1
-                    done
-                    ___x_cmd rmrf "$jobdir"
-                } &
-            )
+            {
+                while kill -0 "$pid" 2>/dev/null; do
+                    ___x_cmd_cmds sleep 1
+                done
+                ___x_cmd rmrf "$jobdir"
+            } &
         fi
-    }
-    exec 3>&-
-
+    )
 }

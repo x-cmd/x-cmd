@@ -1,4 +1,4 @@
-# shellcheck shell=dash disable=SC2016
+
 BEGIN{
     HARNESS = ENVIRON[ "harness" ]
     OUTPUT_FORMAT = ENVIRON[ "output_format" ]
@@ -29,12 +29,15 @@ function handle_response_stream_json( s,           o ){
         if (s ~ "^ *\\[DONE\\]$") exit(0)
 
         handle_error_text(s)
-        if (s !~ "^ *\\{") return
+        if (s !~ "^ *\\{") {
+            log_error( "agent", s )
+            exit(1)
+        }
 
         jiparse_after_tokenize(o, s)
 
         if ( JITER_LEVEL != 0 ){
-            log_error( "agent", "The response output json format is incorrect")
+            log_error( "agent", "Malformed JSON response from " HARNESS )
             exit(1)
         }
 
@@ -68,6 +71,7 @@ function handle_error_text(s,           obj, result){
         JITER_LEVEL = JITER_CURLEN = 0
         if (( obj[ Q2_1, "\"type\"" ] == "\"result\"" ) && ( obj[ Q2_1, "\"is_error\"" ] == "true" )) {
             result = juq( obj[ Q2_1, "\"result\"" ] )
+            log_error( "agent", result )
             if ( result ~ "^API Error" ){
                 exit( 1 )
             }

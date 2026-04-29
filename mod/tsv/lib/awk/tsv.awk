@@ -4,7 +4,7 @@ function tsv_init(){
     RS = "\n"
 }
 
-function tsv_unesacpe( v,   _sw ){
+function tsv_unesc( v,   _sw ){
     if (v ~ /\\/) {
         if (gsub( /\\\\/,   "\n", v ))    _sw = 1
 
@@ -19,7 +19,7 @@ function tsv_unesacpe( v,   _sw ){
     return v
 }
 
-function tsv_esacpe( v ){
+function tsv_esc( v ){
     if (v ~ /[\r\n\t\\]/) {
         # gsub( "\\", "\\\\", v )
         gsub( "\\\\", "&\\", vd )
@@ -29,7 +29,3 @@ function tsv_esacpe( v ){
     }
     return v
 }
-
-
-
-

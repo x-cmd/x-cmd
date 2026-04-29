@@ -1,0 +1,158 @@
+
+___x_cmd_weixin_parse(){
+    local range="$1"
+    local start_line=""
+    local end_line=""
+
+    case "$range" in
+        --help|-h)
+            ___x_cmd help -m weixin parse "$@"
+            return 0
+            ;;
+        *:*)
+            start_line="${range%%:*}"
+            end_line="${range##*:}"
+            ;;
+        *)
+            start_line="$1"
+            end_line="$2"
+            ;;
+    esac
+
+    local botdata="$___X_CMD_WEIXIN_BOT_DATA"
+    [ -f "$botdata" ] || return 1
+
+    { [ -n "$start_line" ] && [ "$start_line" -gt 0 ]; } || N=weixin M="Invalid start line for parse msg: '${start_line}'" log:ret:64
+
+    start_line="${start_line}" \
+    end_line="${end_line}" \
+    ___x_cmd awk0 -m j/json -m j/jiter \
+        -f "$___X_CMD_ROOT_MOD/weixin/lib/awk/bot_parse.awk" < "$botdata" | {
+        local is_ref="" msg_type="" msg_text="" msg_img_media_fullurl="" msg_img_media_aeskey="" msg_img_media_aeskey_64="" msg_video_media_fullurl="" msg_video_media_aeskey_64="" msg_file_media_fullurl="" msg_file_media_aeskey_64="" msg_file_media_aeskey_name="" msg_voice_media_fullurl="" msg_voice_media_aeskey_64=""
+        local last_ref_str=""
+        while   read -r is_ref && \
+                read -r msg_type && \
+                read -r msg_text && \
+                read -r msg_img_media_fullurl && \
+                read -r msg_img_media_aeskey && \
+                read -r msg_img_media_aeskey_64 && \
+                read -r msg_video_media_fullurl && \
+                read -r msg_video_media_aeskey_64 && \
+                read -r msg_file_media_fullurl && \
+                read -r msg_file_media_aeskey_64 && \
+                read -r msg_file_media_aeskey_name && \
+                read -r msg_voice_media_fullurl && \
+                read -r msg_voice_media_aeskey_64; do
+            if [ "$is_ref" = "1" ]; then
+                last_ref_str="$( ___x_cmd_weixin_parse_item_decrypt___ "$is_ref" "$last_ref_str" "$msg_type" "$msg_text" "$msg_img_media_fullurl" "$msg_img_media_aeskey" "$msg_img_media_aeskey_64" "$msg_video_media_fullurl" "$msg_video_media_aeskey_64" "$msg_file_media_fullurl" "$msg_file_media_aeskey_64" "$msg_file_media_aeskey_name" "$msg_voice_media_fullurl" "$msg_voice_media_aeskey_64" ) "
+            else
+                ___x_cmd_weixin_parse_item_decrypt___ "$is_ref" "$last_ref_str" "$msg_type" "$msg_text" "$msg_img_media_fullurl" "$msg_img_media_aeskey" "$msg_img_media_aeskey_64" "$msg_video_media_fullurl" "$msg_video_media_aeskey_64" "$msg_file_media_fullurl" "$msg_file_media_aeskey_64" "$msg_file_media_aeskey_name" "$msg_voice_media_fullurl" "$msg_voice_media_aeskey_64"
+                last_ref_str=""
+            fi
+        done
+    }
+}
+
+___x_cmd_weixin_parse_item_decrypt___(){
+    local is_ref="$1"
+    local bodystr="$2"
+    local msg_type="$3"
+    local msg_text="$4"
+    local msg_img_media_fullurl="$5"
+    local msg_img_media_aeskey="$6"
+    local msg_img_media_aeskey_64="$7"
+    local msg_video_media_fullurl="$8"
+    local msg_video_media_aeskey_64="$9"
+    local msg_file_media_fullurl="${10}"
+    local msg_file_media_aeskey_64="${11}"
+    local msg_file_media_aeskey_name="${12}"
+    local msg_voice_media_fullurl="${13}"
+    local msg_voice_media_aeskey_64="${14}"
+
+    local cdn_url=""; local default_ext=""; local original_filename="";
+    local aes_key_hex="";
+    local typename="Text"
+
+    if [ "$msg_type" = "1" ]; then
+        bodystr="${bodystr}${msg_text}"
+    else
+        case "$msg_type" in
+            2)
+                cdn_url="$msg_img_media_fullurl"
+                if [ -n "$msg_img_media_aeskey" ]; then
+                    aes_key_hex="$msg_img_media_aeskey"
+                else
+                    aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$msg_img_media_aeskey_64")
+                fi
+                default_ext=".jpg"
+                typename="Image"
+                ;;
+            5)
+                cdn_url="$msg_video_media_fullurl"
+                aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$msg_video_media_aeskey_64")
+                default_ext=".mp4"
+                typename="Video"
+                ;;
+            4)
+                cdn_url="$msg_file_media_fullurl"
+                aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$msg_file_media_aeskey_64")
+                default_ext=".bin"
+                original_filename="$msg_file_media_aeskey_name"
+                typename="File"
+                ;;
+            3)
+                cdn_url="$msg_voice_media_fullurl"
+                aes_key_hex=$(___x_cmd_weixin_parse_aes_key___ "$msg_voice_media_aeskey_64")
+                default_ext=".silk"
+                typename="Voice"
+                ;;
+            *)
+                typename="Unknown"
+                bodystr="${bodystr}[Unsupported message type]"
+                ;;
+        esac
+        if [ "$typename" != "Unknown" ]; then
+            local filename; filename="$( ___x_cmd sha512 <<A
+$msg_voice_media_aeskey_64
+A
+)"
+            filename="${filename%"${filename#????????????????}"}"
+            local output_dir="$___X_CMD_WEIXIN_BOT_DATA_MEDIA_DIR"
+            [ -d "$output_dir" ] || ___x_cmd mkdirp "$output_dir"
+            local out_file=""
+            if [ -n "$original_filename" ]; then
+                out_file="${output_dir}/${original_filename}"
+            else
+                out_file="${output_dir}/decrypted_${filename}${default_ext}"
+            fi
+
+            if [ ! -f "$out_file" ]; then
+                if [ -z "$cdn_url" ] || [ -z "$aes_key_hex" ];then
+                    weixin:error "Missing CDN URL or AES Key"
+                    return 1
+                fi
+
+                local tmp_bin="${___X_CMD_WEIXIN_TMP}/weixin_dl_${filename}.bin"
+                ___x_cmd curl -s -L "$cdn_url" -o "$tmp_bin" || {
+                    weixin:error "Failed to download media file"
+                    return 1
+                }
+
+                ___x_cmd openssl enc -d -aes-128-ecb -K "$aes_key_hex" -nosalt -in "$tmp_bin" -out "$out_file" || {
+                    weixin:error "File decryption failed"
+                    ___x_cmd rmrf "$out_file"
+                    ___x_cmd rmrf "$tmp_bin"
+                    return 1
+                }
+                ___x_cmd rmrf "$tmp_bin"
+            fi
+            bodystr="${bodystr}${out_file}"
+        fi
+    fi
+
+    if [ "$is_ref" = "1" ]; then
+        printf "[REF:%s:%s]\n" "$typename" "$bodystr"
+    else
+        printf "%s\t%s\n" "$typename" "$bodystr"
+    fi
+}
