@@ -30,6 +30,7 @@ function parse_item(o, kp, is_ref,          msg_type, msg_text, msg_img_media_fu
            msg_video_media_fullurl, msg_video_media_aeskey_64, msg_file_media_fullurl, msg_file_media_aeskey_64, msg_file_media_aeskey_name,
            msg_voice_media_fullurl, msg_voice_media_aeskey_64, ref_msg_kp){
     msg_type = o[ kp SUBSEP "\"type\"" ]
+    msg_time = o[ kp SUBSEP "\"create_time_ms\"" ]
     msg_text = juq( o[ kp SUBSEP "\"text_item\"", "\"text\"" ] )
     msg_img_media_fullurl = juq( o[ kp SUBSEP "\"image_item\"", "\"media\"", "\"full_url\"" ] )
     msg_img_media_aeskey = juq( o[ kp SUBSEP "\"image_item\"", "\"aeskey\"" ] )
@@ -52,6 +53,7 @@ function parse_item(o, kp, is_ref,          msg_type, msg_text, msg_img_media_fu
     }
 
     print is_ref
+    print msg_time
     print msg_type
     print msg_text
     print msg_img_media_fullurl

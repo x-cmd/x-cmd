@@ -21,6 +21,7 @@ ___x_cmd_agent_request(){
     local reference_workspace=""
     local reference_name=""
     local is_no_thinking=""
+    local timeout_secs=""
 
     [ "$#" -gt 0 ] || set -- --help
     while [ $# -gt 0 ]; do
@@ -40,7 +41,7 @@ ___x_cmd_agent_request(){
                             reference_workspace="$2";           arg:2:shift ;;
             --stdout-file)  stdoutfile="$2";                    arg:2:shift ; ___x_cmd ensurefp "$stdoutfile";;
             --stderr-file)  stderrfile="$2";                    arg:2:shift ; ___x_cmd ensurefp "$stderrfile";;
-
+            --timeout)      timeout_secs="$2";                   arg:2:shift ;;
             # --retry)        retry="$2" ; arg:2:shift ;;
 
             --)             shift; break ;;
@@ -202,7 +203,14 @@ ___x_cmd_agent_request___run_validate(){
 }
 
 ___x_cmd_agent_request___run_attempt(){
-    ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
+
+    if [ "$timeout_secs" -gt 0 ]; then
+        ___x_cmd_agent_request___timeout "$timeout_secs" ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
+    else
+        ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
+    fi
+
+
     local ret=$?
 
     if [ $ret -eq 0 ]; then
@@ -210,10 +218,19 @@ ___x_cmd_agent_request___run_attempt(){
         return 0
     fi
 
+    if [ "$ret" = 124 ]; then
+        ___X_CMD_RETRY_ABORT=1
+        return 124
+    fi
+
     if [ -n "$user_session_id" ]; then
         session_map_file="$___X_CMD_ROOT_TMP/agent/request/session/$harness/$user_session_id"
         [ ! -f "$session_map_file" ] || {
             agent:debug "Cleaning up session map file"
+            local real_session_id="" user_session_cwd=""
+            { read -r real_session_id && read -r user_session_cwd; } < "$session_map_file"
+            local x_=""; ___x_cmd data timestamp_
+            printf "timestamp: %s\nuser_session_cwd: %s\nuser_session_id: %s\nreal_session_id: %s\n" "$x_" "$user_session_cwd" "$user_session_id" "$real_session_id" >> "$___X_CMD_ROOT_TMP/agent/request/session/$harness/breakage_session"
             ___x_cmd rmrf "$session_map_file"
         }
     fi
@@ -262,8 +279,8 @@ ___x_cmd_agent_request___run_exec(){(
     local user_session_cwd=""
     local is_session_first=""
 
-    [ -z "$stdoutfile" ] || exec > "$stdoutfile"
-    [ -z "$stderrfile" ] || exec 2> "$stderrfile"
+    [ -z "$stdoutfile" ] || exec >> "$stdoutfile"
+    [ -z "$stderrfile" ] || exec 2>> "$stderrfile"
 
     if [ -n "$user_session_id" ]; then
         session_map_file="$___X_CMD_ROOT_TMP/agent/request/session/$harness/$user_session_id"

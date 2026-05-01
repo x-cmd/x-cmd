@@ -1,0 +1,124 @@
+# shellcheck shell=dash
+
+___x_cmd_qywx_listen(){
+    param:void
+
+    local format=
+    local fp=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m qywx listen "$@" ; return 0 ;;
+            --fp)           fp=1 ;          shift ;;
+            --json)         format="json";  shift ;;
+            *)              N=qywx M="Unknown op -> $1" log:ret:64   ;;
+        esac
+    done
+
+    ___x_cmd_qywx_bot_sub "$@" | {
+        local msg_line
+        while read -r msg_line; do
+            if [ -n "$fp" ]; then
+                local chatid=
+                ___x_cmd jo env . chatid=.body.chatid <<A
+$msg_line
+A
+                if [ -n "$chatid" ]; then
+                    ___X_CMD_QYWX_BOT_DATA="${___X_CMD_QYWX_BOT_PATH}/data_${chatid}.tsv"
+                    ___x_cmd ensurefp "$___X_CMD_QYWX_BOT_DATA"
+                    printf "%s\n" "$msg_line"  >> "$___X_CMD_QYWX_BOT_DATA"
+                    ___x_cmd tailer pub "$___X_CMD_ROOT_DATA/qywx/sub" "qywx:${chatid}"
+                fi
+            elif [ "$format" = "json" ]; then
+                printf "%s\n" "$msg_line"
+            else
+                printf "%s\n" "$msg_line"
+            fi
+        done
+    }
+}
+
+___x_cmd_qywx_bot_sub(){
+    local noheartbeat=;
+    local op="$1";          shift
+    case "$op" in
+        --timeout)         ;;
+        --noheartbeat)    noheartbeat=1 ;;
+    esac
+
+    local bot_id=
+    local bot_secret=
+    ___x_cmd_qywx_cur bot_id:= bot_secret:= 2>/dev/null
+
+    [ -n "$bot_secret" ] || {
+        qywx:error "Please setting up your token first ==> 'x qywx init'"
+        ___x_cmd qywx init || return $?
+    }
+
+    ___x_cmd hascmd websocat || {
+        ___x_cmd env use websocat || return $?
+    }
+
+    local x_
+    ___x_cmd_qywx_gateway_status_
+    [ "$x_" != alive ] || {
+        ___x_cmd_cmds pkill -f 'websocat -n wss://openws.work.weixin.qq.com'
+        sleep 2
+    }
+
+    printf "" > "$___X_CMD_QYWX_BOT_WEBSOCKET"
+    ___x_cmd_cmds tail -f "$___X_CMD_QYWX_BOT_WEBSOCKET" | ___x_cmd websocat -n wss://openws.work.weixin.qq.com &
+    local wspid="$!"
+    local fp_pid="$___X_CMD_QYWX_BOT_PATH/subscribe"
+    ___x_cmd ensurefp "$fp_pid"
+    local fingerprint="$( ___x_cmd ps fingerprint get "$wspid" )"
+    ___x_cmd fprintf "$fp_pid"      "%s\n" "$wspid" "$fingerprint"
+
+    local req_id="aibot_subscribe_$$_$(date +%s%3N)"
+    printf '{"cmd":"aibot_subscribe","headers":{"req_id":"%s"},"body":{"bot_id":"%s","secret":"%s"}}\n' \
+        "$req_id" "$bot_id" "$bot_secret" >> "$___X_CMD_QYWX_BOT_WEBSOCKET"
+
+    [ -n "$noheartbeat" ] || ___x_cmd_qywx_bot_sub_heartbeat_loop &
+}
+
+___x_cmd_qywx_bot_sub_heartbeat_loop(){
+    while true; do
+        ___x_cmd_cmds sleep 30
+        local x_
+        ___x_cmd_qywx_gateway_status_
+        [ "$x_" = alive ] || return
+        local req_id="aibot_heartbeat_$(date +%s%3N)"
+        printf '{"cmd":"ping","headers":{"req_id":"%s"}}\n' "$req_id" >> "$___X_CMD_QYWX_BOT_WEBSOCKET"
+    done
+}
+
+___x_cmd_qywx_gateway_status(){
+    local x_
+    ___x_cmd_qywx_gateway_status_ || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_qywx_gateway_status_(){
+    local x_pid=""
+    local x_timestamp=""
+
+    local pidpath="$___X_CMD_QYWX_BOT_PATH/subscribe"
+
+    [ -f "$pidpath" ] || {
+        x_=notfound
+        return 0
+    }
+
+    {
+        read -r x_pid
+        read -r x_timestamp
+    } <"$pidpath"
+
+    ___x_cmd ps fingerprint check "$x_pid" "$x_timestamp"
+
+    case $? in
+        130)        x_=""; return 130 ;;
+        0)          x_=alive ;;
+        1)          x_=stop ;;
+        *)          qywx:error "Unexpected return code from 'x ps fingerprint check $pid $x_timestamp'"; return 1 ;;
+    esac
+}

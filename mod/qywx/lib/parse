@@ -1,0 +1,173 @@
+
+___x_cmd_qywx_parse(){
+    param:void
+
+    [ $# -gt 0 ] || set -- help
+    local op="$1" ;
+    case "$op" in
+        -h|--help)      ___x_cmd help -m qywx parse "$@" ; return 0 ;;
+    esac
+
+    local chatid="$1"
+    local range="$2"
+    local start_line=""
+    local end_line=""
+
+    case "$range" in
+        *:*)
+            start_line="${range%%:*}"
+            end_line="${range##*:}"
+            ;;
+        *)
+            start_line="$1"
+            end_line="$2"
+            ;;
+    esac
+
+    [ -n "$chatid" ] || N=qywx M="Please provide the chat ID" log:ret:1
+
+
+    local x_
+    local botdata
+    ___x_cmd_qywx_abot_data_which_ "$chatid" || return $?
+    botdata="$x_"
+    [ -f "$botdata" ] || N=qywx M="Data file not found for chat ${chatid}" log:ret:1
+
+    { [ -n "$start_line" ] && [ "$start_line" -gt 0 ]; } || N=qywx M="Invalid start line for parse msg: '${start_line}'" log:ret:64
+
+    start_line="${start_line}" \
+    end_line="${end_line}" \
+    ___x_cmd awk0 -m j/json -m j/jiter \
+        -f "$___X_CMD_ROOT_MOD/qywx/lib/awk/bot_parse.awk" < "$botdata" | {
+        local is_ref="" msg_type="" msg_text="" msg_from_userid="" msg_chatid="" last_ref_str=""
+        local msg_img_url="" msg_img_aeskey="" msg_video_url="" msg_video_aeskey="" msg_file_url="" msg_file_aeskey="" msg_file_name="" msg_voice_url="" msg_voice_aeskey=""
+        while   read -r is_ref && \
+                read -r msg_type && \
+                read -r msg_text && \
+                read -r msg_from_userid && \
+                read -r msg_chatid && \
+                read -r msg_img_url && \
+                read -r msg_img_aeskey && \
+                read -r msg_video_url && \
+                read -r msg_video_aeskey && \
+                read -r msg_file_url && \
+                read -r msg_file_aeskey && \
+                read -r msg_file_name && \
+                read -r msg_voice_url && \
+                read -r msg_voice_aeskey; do
+            if [ "$is_ref" = "1" ]; then
+                last_ref_str="$( ___x_cmd_qywx_parse_item_decrypt___ "$is_ref" "$last_ref_str" "$msg_type" "$msg_text" "$msg_from_userid" "$msg_chatid" "$msg_img_url" "$msg_img_aeskey" "$msg_video_url" "$msg_video_aeskey" "$msg_file_url" "$msg_file_aeskey" "$msg_file_name" "$msg_voice_url" "$msg_voice_aeskey") "
+            else
+                ___x_cmd_qywx_parse_item_decrypt___ "$is_ref" "$last_ref_str" "$msg_type" "$msg_text" "$msg_from_userid" "$msg_chatid" "$msg_img_url" "$msg_img_aeskey" "$msg_video_url" "$msg_video_aeskey" "$msg_file_url" "$msg_file_aeskey" "$msg_file_name" "$msg_voice_url" "$msg_voice_aeskey"
+                last_ref_str=""
+            fi
+        done
+    }
+}
+
+___x_cmd_qywx_parse_item_decrypt___(){
+    local is_ref="$1"
+    local bodystr="$2"
+    local msg_type="$3"
+    local msg_text="$4"
+    local msg_from_userid="${5}"
+    local msg_chatid="${6}"
+    local msg_img_url="${7}"
+    local msg_img_aeskey="${8}"
+    local msg_video_url="${9}"
+    local msg_video_aeskey="${10}"
+    local msg_file_url="${11}"
+    local msg_file_aeskey="${12}"
+    local msg_file_name="${13}"
+    local msg_voice_url="${14}"
+    local msg_voice_aeskey="${15}"
+
+    local cdn_url=""; local default_ext=""; local original_filename=""
+    local aes_key_hex=""
+    local typename="Text"
+
+    case "$msg_type" in
+        text)
+            bodystr="${bodystr}${msg_text}"
+            ;;
+        image)
+            cdn_url="$msg_img_url"
+            aes_key_hex="$msg_img_aeskey"
+            default_ext=".jpg"
+            typename="Image"
+            ;;
+        video)
+            cdn_url="$msg_video_url"
+            aes_key_hex="$msg_video_aeskey"
+            default_ext=".mp4"
+            typename="Video"
+            ;;
+        file)
+            cdn_url="$msg_file_url"
+            aes_key_hex="$msg_file_aeskey"
+            default_ext=".bin"
+            original_filename="$msg_file_name"
+            typename="File"
+            ;;
+        voice)
+            cdn_url="$msg_voice_url"
+            aes_key_hex="$msg_voice_aeskey"
+            default_ext=".silk"
+            typename="Voice"
+            ;;
+        *)
+            typename="Unknown"
+            bodystr="${bodystr}[Unsupported message type: ${msg_type}]"
+            ;;
+    esac
+
+    if [ "$typename" != "Unknown" ] && [ "$typename" != "Text" ]; then
+        local filename; filename="$( ___x_cmd sha512 <<A
+$msg_img_aeskey
+$msg_video_aeskey
+$msg_file_aeskey
+$msg_voice_aeskey
+$cdn_url
+A
+)"
+        filename="${filename%"${filename#????????????????}"}"
+        local output_dir="$___X_CMD_QYWX_BOT_DATA_MEDIA_DIR"
+        [ -d "$output_dir" ] || ___x_cmd mkdirp "$output_dir"
+        local out_file=""
+        if [ -n "$original_filename" ]; then
+            out_file="${output_dir}/${original_filename}"
+        else
+            out_file="${output_dir}/decrypted_${filename}${default_ext}"
+        fi
+
+        if [ ! -f "$out_file" ]; then
+            if [ -z "$cdn_url" ] || [ -z "$aes_key_hex" ];then
+                qywx:error "Missing CDN URL or AES Key"
+                return 1
+            fi
+
+            local tmp_bin="${___X_CMD_QYWX_TMP}/qywx_dl_${filename}.bin"
+            ___x_cmd curl -s -L "$cdn_url" -o "$tmp_bin" || {
+                qywx:error "Failed to download media file"
+                return 1
+            }
+
+            local key=$(printf '%s' "$aes_key_hex" | base64 -d 2>/dev/null | od -A n -t x1 -N 32 -v | tr -d ' \n')
+            local iv_hex=$(printf '%s' "$aes_key_hex" | base64 -d 2>/dev/null | od -A n -t x1 -N 16 -v | tr -d ' \n')
+            ___x_cmd openssl enc -aes-256-cbc -d -K "$key" -iv "$iv_hex" -nopad -in "$tmp_bin" -out "$out_file" || {
+                qywx:error "File decryption failed"
+                ___x_cmd rmrf "$out_file"
+                ___x_cmd rmrf "$tmp_bin"
+                return 1
+            }
+            ___x_cmd rmrf "$tmp_bin"
+        fi
+        bodystr="${bodystr}${out_file}"
+    fi
+
+    if [ "$is_ref" = "1" ]; then
+        printf "[REF:%s:%s]\n" "$typename" "$bodystr"
+    else
+        printf "%s\t%s\n" "$typename" "$bodystr"
+    fi
+}

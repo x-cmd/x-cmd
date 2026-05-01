@@ -1,0 +1,136 @@
+# shellcheck shell=dash
+
+___x_cmd_feishu_parse(){
+    param:void
+
+    [ $# -gt 0 ] || set -- help
+    local op="$1" ;
+    case "$op" in
+        -h|--help)      ___x_cmd help -m feishu parse "$@" ; return 0 ;;
+    esac
+
+    local chatid="$1"
+    local range="$2"
+    local start_line=""
+    local end_line=""
+
+    case "$range" in
+        *:*)
+            start_line="${range%%:*}"
+            end_line="${range##*:}"
+            ;;
+        *)
+            start_line="$2"
+            end_line="$3"
+            ;;
+    esac
+
+    [ -n "$chatid" ] || N=feishu M="Please provide the chat ID" log:ret:1
+
+    local x_
+    local botdata
+    ___x_cmd_feishu_abot_data_which_ "$chatid" || return $?
+    botdata="$x_"
+    [ -f "$botdata" ] || N=feishu M="Data file not found for chat ${chatid}" log:ret:1
+
+    { [ -n "$start_line" ] && [ "$start_line" -gt 0 ]; } || N=feishu M="Invalid start line for parse msg: '${start_line}'" log:ret:64
+
+    start_line="${start_line}" \
+    end_line="${end_line}"   \
+    ___x_cmd awk0 -m j/json -m j/jiter \
+            -f "$___X_CMD_ROOT_MOD/feishu/lib/awk/bot_parse.awk" < "$botdata" | {
+        local is_ref="" msg_time="" msg_type="" msg_text="" msg_image_key="" msg_file_key="" msg_file_name="" msg_chat_id="" msg_message_id=""
+        local last_ref_str=""
+        while   read -r is_ref && \
+                read -r msg_time && \
+                read -r msg_type && \
+                read -r msg_text && \
+                read -r msg_image_key && \
+                read -r msg_file_key && \
+                read -r msg_file_name && \
+                read -r msg_chat_id && \
+                read -r msg_message_id; do
+            if [ "$is_ref" = "1" ]; then
+                last_ref_str="$( ___x_cmd_feishu_parse_item___ "$is_ref" "$last_ref_str" "$msg_time" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id" ) "
+            else
+                ___x_cmd_feishu_parse_item___ "$is_ref" "$last_ref_str" "$msg_time" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id"
+                last_ref_str=""
+            fi
+        done
+    }
+}
+
+___x_cmd_feishu_parse_item___(){
+    local is_ref="$1"
+    local bodystr="$2"
+    local msg_time="$3"
+    local msg_type="$4"
+    local msg_text="$5"
+    local msg_image_key="$6"
+    local msg_file_key="$7"
+    local msg_file_name="$8"
+    local msg_chat_id="$9"
+    local msg_message_id="${10}"
+
+    local typename="Text" file_key="" default_ext="" download_type=""
+    case "$msg_type" in
+        text)
+            bodystr="${bodystr}${msg_text}"
+            ;;
+        image)
+            typename="Image"
+            file_key="$msg_image_key"
+            download_type="image"
+            default_ext=".jpg"
+            ;;
+        file)
+            typename="File"
+            file_key="$msg_file_key"
+            download_type="file"
+            ;;
+        media)
+            typename="File"
+            file_key="$msg_file_key"
+            download_type="file"
+            ;;
+        *)
+            typename="Unknown"
+            bodystr="${bodystr}[Unsupported message type: ${msg_type}]"
+            ;;
+    esac
+
+    if [ "$typename" != "Unknown" ] && [ -n "$file_key" ]; then
+        local filename="${file_key%"${file_key#????????????????}"}"
+        local output_dir="$___X_CMD_FEISHU_BOT_DATA_DIR"
+        [ -d "$output_dir" ] || ___x_cmd mkdirp "$output_dir"
+
+        local out_file=""
+        if [ -n "$msg_file_name" ]; then
+            out_file="${output_dir}/${msg_file_name}"
+        else
+            out_file="${output_dir}/decrypted_${filename}${default_ext}"
+        fi
+
+        if [ ! -f "${out_file}" ]; then
+            local x_=; ____x_cmd_tenant_token || return $?
+            local cur_token="$x_"
+
+            local tmp_file="${___X_CMD_FEISHU_TMP}/feishu_dl_${msg_message_id}"
+            if ! ___x_cmd curl -s -L -X GET "https://open.feishu.cn/open-apis/im/v1/messages/${msg_message_id}/resources/${file_key}?type=${download_type}" \
+                -H "Authorization: Bearer $cur_token" \
+                -o "$tmp_file"; then
+                feishu:error "Download failed for ${msg_message_id}"
+                return 1
+            fi
+
+            [ -f "$tmp_file" ] && mv "$tmp_file" "$out_file"
+        fi
+        bodystr="${bodystr}${out_file}"
+    fi
+
+    if [ "$is_ref" = "1" ]; then
+        printf "[REF:%s:%s] \n" "$typename" "$bodystr"
+    else
+        printf "%s\t%s\t%s\n" "$msg_time" "$typename" "$bodystr"
+    fi
+}

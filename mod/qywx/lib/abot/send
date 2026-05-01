@@ -1,0 +1,107 @@
+# shellcheck shell=dash
+
+___x_cmd_qywx_abot_send(){
+    param:void
+
+    [ $# -gt 0 ]    ||  set -- --help
+    local op="$1" ;     shift
+    case "$op" in
+        -h|--help)
+                ___x_cmd help -m qywx abot send ; return 0 ;;
+        --text|--image|--file)
+                ___x_cmd_qywx_abot_send_"${op#--}" "$@"
+                ;;
+        *)      N=qywx M="Unknown op -> $op" log:ret:64   ;;
+    esac
+}
+
+___x_cmd_qywx_abot_send_text(){
+    local chatid=
+    local chat_type=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --chatid)      chatid="$2" ; arg:2:shift ;;
+            --chat_type)   chat_type="$2" ; arg:2:shift ;;
+            -h|--help)     ___x_cmd help -m qywx abot send --text; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    [ -n "$chatid" ] || N=qywx M="chatid is required" log:ret:1
+    local msg="$1"
+    [ -n "$msg" ] || N=qywx M="message content is required" log:ret:1
+    msg="$( ___x_cmd_qywx_jqu "$msg")"
+
+    local req_id="send_$$_$(date +%s%3N)"
+    local msg_json="$(printf '{"cmd":"aibot_send_msg","headers":{"req_id":"%s"},"body":{"chatid":"%s","chat_type":%s,"msgtype":"markdown","markdown":{"content":%s}}}' "$req_id" "$chatid" "$chat_type" "$msg")"
+
+    qywx:debug "$(printf "%s" "$msg_json")"
+    ___x_cmd_qywx_abot_send___ "$msg_json"
+}
+
+___x_cmd_qywx_abot_send_image(){
+    local chatid=
+    local chat_type=0
+    local image_path=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)     ___x_cmd help -m qywx abot send --image; return 0 ;;
+            --chatid)      chatid="$2" ; arg:2:shift ;;
+            --chat_type)   chat_type="$2" ; arg:2:shift ;;
+            *) break ;;
+        esac
+    done
+
+    [ -n "$chatid" ] || N=qywx M="chatid is required" log:ret:1
+    local image_path="$1"
+    [ -n "$image_path" ] || N=qywx M="image path is required" log:ret:1
+    [ -f "$image_path" ] || N=qywx M="File not found: $image_path" log:ret:1
+
+    local md5="$(___x_cmd md5 "$image_path")"
+    local base64="$(___x_cmd base64 "$image_path" | ___x_cmd_cmds awk '{printf "%s", $0}')"
+
+    local req_id="send_$$_$(date +%s%3N)"
+    local msg_json="$(printf '{"cmd":"aibot_send_msg","headers":{"req_id":"%s"},"body":{"chatid":"%s","chat_type":%s,"msgtype":"image","image":{"md5":"%s","base64":"%s"}}}' "$req_id" "$chatid" "$chat_type" "$md5" "$base64")"
+
+    qywx:debug "$(printf "%s" "$msg_json")"
+    ___x_cmd_qywx_abot_send___ "$msg_json"
+}
+
+___x_cmd_qywx_abot_send_file(){
+    local chatid=
+    local chat_type=0
+    local file_path=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)     ___x_cmd help -m qywx abot send --file; return 0 ;;
+            --chatid)      chatid="$2" ; arg:2:shift ;;
+            --chat_type)   chat_type="$2" ; arg:2:shift ;;
+            *) break ;;
+        esac
+    done
+
+    [ -n "$chatid" ] || N=qywx M="chatid is required" log:ret:1
+    local file_path="$1"
+    [ -n "$file_path" ] || N=qywx M="file path is required" log:ret:1
+    [ -f "$file_path" ] || N=qywx M="File not found: $file_path" log:ret:1
+
+    # Upload file first to get media_id
+    local x_=; ___x_cmd_qywx_bot___upload_media_ --file "$file_path" || return $?
+    local media_id="$x_"
+
+    local req_id="send_$$_$(date +%s%3N)"
+    local msg_json="$(printf '{"cmd":"aibot_send_msg","headers":{"req_id":"%s"},"body":{"chatid":"%s","chat_type":%s,"msgtype":"file","file":{"media_id":"%s"}}}' "$req_id" "$chatid" "$chat_type" "$media_id")"
+
+    qywx:debug "$(printf "%s" "$msg_json")"
+    ___x_cmd_qywx_abot_send___ "$msg_json"
+}
+
+___x_cmd_qywx_abot_send___(){
+    local x_
+    ___x_cmd_qywx_gateway_status_
+    [ "$x_" = alive ] || {
+        ___x_cmd_qywx_bot_sub --noheartbeat || return $?
+        sleep 2
+    }
+    printf "%s\n" "$msg_json" >> "$___X_CMD_QYWX_BOT_WEBSOCKET"
+}

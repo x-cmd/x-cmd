@@ -9,6 +9,7 @@ ___x_cmd_hub_file_share(){
         ls|list)      shift; ___x_cmd_hub_file_share_ls "$@"      ; return ;;
         rm|delete)    shift; ___x_cmd_hub_file_share_rm "$@"      ; return ;;
         update)       shift; ___x_cmd_hub_file_share_update "$@"  ; return ;;
+        zip)          shift; ___x_cmd_hub_file_share_zip "$@"     ; return ;;
     esac
 
     # Default: create share
@@ -79,9 +80,9 @@ ___x_cmd_hub_file_share_ls(){
         [ "$total" = "0" ] && { printf "No shares found.\n"; return 0; }
         printf "Total: %s\n\n" "$total"
         printf "%s" "$list" | \
-            ___x_cmd jo 2c .shareId .filename .status .viewCount .expiresAt .createTime | \
-            ___x_cmd csv header --add shareId filename status viewCount expiresAt createTime | \
-            ___x_cmd_hub_u_st_tab 15,20,10,10,20,20
+            ___x_cmd jo 2c .shareId .filename .shareType .status .viewCount .expiresAt .createTime | \
+            ___x_cmd csv header --add shareId filename shareType status viewCount expiresAt createTime | \
+            ___x_cmd_hub_u_st_tab 15,20,10,10,10,20,20
     }
 }
 
@@ -134,4 +135,44 @@ ___x_cmd_hub_file_share_update(){
     }
 
     ___x_cmd_hub_u_handle_resp true "Share updated successfully"
+}
+
+___x_cmd_hub_file_share_zip(){
+    local X_help_cmd='___x_cmd_hub___help file share zip'
+    help:arg:parse
+
+    local expiresIn=
+    local requireLogin=
+    local entryPath=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --expires|-e)       expiresIn="$2";      shift 2 ;;
+            --require-login)    requireLogin=true;   shift   ;;
+            --entry)            entryPath="$2";      shift 2 ;;
+            *)                  break ;;
+        esac
+    done
+
+    local remotefp="$1"
+    [ -n "$remotefp" ] || { ___x_cmd_ui_tf false "Remote file path is required"; return 1; }
+    remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
+
+    local data
+    data="$(___x_cmd jo dict ${expiresIn:+"expiresIn=$expiresIn"} ${requireLogin:+"requireLogin=$requireLogin"} ${entryPath:+"entryPath=$entryPath"})"
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl post "/api/v0/file/share/zip?res=$(___x_cmd url encode "$remotefp")" data)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to create zip share for $remotefp"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Zip share created successfully:"
+    printf "%s" "$resp" | {
+        local shareId=; local url=; local entryFile=; local totalFiles=;
+        ___x_cmd jo env . .shareId .url .entryFile .totalFiles
+        printf "  - Share ID:    %s\n" "$shareId"
+        printf "  - Share URL:   %s\n" "$url"
+        printf "  - Entry file:  %s\n" "$entryFile"
+        printf "  - Total files: %s\n" "$totalFiles"
+    }
 }
