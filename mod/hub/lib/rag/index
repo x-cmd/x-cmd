@@ -1,0 +1,101 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_rag(){
+    [ $# -gt 0 ] || { ___x_cmd help -m hub rag ; return;}
+    local subcmd="$1"; shift
+    case "$subcmd" in
+        -h|--help)      ___x_cmd help -m hub rag ; return ;;
+        ask)            ___x_cmd_hub_rag_ask "$@"    ;;
+        upload|put)     ___x_cmd_hub_rag_upload "$@" ;;
+        list|ls)        ___x_cmd_hub_rag_list "$@"   ;;
+        delete|rm)      ___x_cmd_hub_rag_delete "$@" ;;
+        *)              ___x_cmd_hub_rag_ask "${subcmd}" "$@" ;;
+    esac
+}
+
+___x_cmd_hub_rag_ask(){
+    local scope=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd_hub___help rag ask ; return ;;
+            --scope)        scope="$2"; shift 2 ;;
+            *)              break ;;
+        esac
+    done
+    local question="$*"
+    [ -n "$question" ] || { hub:error "Please provide a question"; return 1; }
+
+    local body
+    body="$(___x_cmd jo dict question="$question" ${scope:+"scope=$scope"})"
+    ___x_cmd_hub_u_curl post /api/v0/ai/rag -H "Content-Type: application/json" --data-binary "$body"
+}
+
+# --- upload / list / delete ---
+
+___x_cmd_hub_rag_upload(){
+    local force=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd_hub___help rag upload ; return ;;
+            --force|-f) force=true; shift ;;
+            *)          break ;;
+        esac
+    done
+    local file="$1"
+    [ -n "$file" ] || { hub:error "Please provide a file path"; return 1; }
+    [ -f "$file" ] || { hub:error "File does not exist: $file"; return 1; }
+
+    ___x_cmd_hub_u_curl post /api/v0/ai/knowledge -F "file=@$file" ${force:+"-F"} ${force:+"force=true"} | {
+        local path="" err=""
+        ___x_cmd jo env . .path .err
+        if [ -n "$path" ]; then
+            ___x_cmd_ui_tf true "Uploaded: $path"
+        else
+            ___x_cmd_ui_tf false "Upload failed: ${err:-unknown error}"
+            return 1
+        fi
+    }
+}
+
+___x_cmd_hub_rag_list(){
+    local recurse=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)    ___x_cmd_hub___help rag list ; return ;;
+            --recurse|-R) recurse=true; shift ;;
+            *)            break ;;
+        esac
+    done
+
+    ___x_cmd_hub_u_curl get /api/v0/ai/knowledge ${recurse:+"recurse=true"} | {
+        local files="" err=""
+        ___x_cmd jo env . .files .err
+        if [ -n "$err" ]; then
+            hub:error "$err"
+            return 1
+        fi
+        [ -z "$files" ] || printf "%s\n" "$files"
+    }
+}
+
+___x_cmd_hub_rag_delete(){
+    local recursive=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)        ___x_cmd_hub___help rag delete ; return ;;
+            --recursive|-r)   recursive=true; shift ;;
+            *)                break ;;
+        esac
+    done
+    local filename="$1"
+    [ -n "$filename" ] || { hub:error "Please provide a filename"; return 1; }
+
+    local url_path
+    url_path="/api/v0/ai/knowledge/$(___x_cmd url encode "$filename")"
+    if ___x_cmd_hub_u_curl delete "$url_path" ${recursive:+"recursive=true"}; then
+        ___x_cmd_ui_tf true "Deleted: $filename"
+    else
+        ___x_cmd_ui_tf false "Failed to delete: $filename"
+        return 1
+    fi
+}

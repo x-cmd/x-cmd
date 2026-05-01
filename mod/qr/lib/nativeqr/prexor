@@ -1,0 +1,152 @@
+# Generate precompiled bitwise and GF(256) tables for POSIX awk
+# Output: $___X_CMD_ROOT_DATA/qr/precompile.awk
+# Tables are wrapped in BEGIN block so they execute without input
+___x_cmd_qr_prexor(){
+    local cached="$___X_CMD_ROOT_DATA/qr/precompile.awk"
+
+    # Return cached path if exists
+    [ -f "$cached" ] && {
+        printf "%s" "$cached"
+        return 0
+    }
+
+    # Ensure directory exists
+    mkdir -p "$___X_CMD_ROOT_DATA/qr" || return 1
+
+    local tmpfile="$cached.tmp.$$"
+    {
+        printf 'BEGIN {\n'
+
+        # nibble_xor
+        printf '    # nibble_xor[a*16+b] = a XOR b\n'
+        local a b r line
+        for a in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            line="    "
+            for b in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                r=$((a ^ b))
+                line="$line nibble_xor[$((a * 16 + b))]=$r;"
+            done
+            printf '%s\n' "$line"
+        done
+        printf '\n'
+
+        # nibble_and
+        printf '    # nibble_and[a*16+b] = a AND b\n'
+        for a in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            line="    "
+            for b in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                r=$((a & b))
+                line="$line nibble_and[$((a * 16 + b))]=$r;"
+            done
+            printf '%s\n' "$line"
+        done
+        printf '\n'
+
+        # nibble_or
+        printf '    # nibble_or[a*16+b] = a OR b\n'
+        for a in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            line="    "
+            for b in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                r=$((a | b))
+                line="$line nibble_or[$((a * 16 + b))]=$r;"
+            done
+            printf '%s\n' "$line"
+        done
+        printf '\n'
+
+        # high_nibble
+        printf '    # high_nibble[byte] = byte / 16\n'
+        local i j
+        for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            line="    "
+            for j in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                line="$line high_nibble[$((i*16+j))]=$i;"
+            done
+            printf '%s\n' "$line"
+        done
+        printf '\n'
+
+        # low_nibble
+        printf '    # low_nibble[byte] = byte %% 16\n'
+        for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            line="    "
+            for j in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                line="$line low_nibble[$((i*16+j))]=$j;"
+            done
+            printf '%s\n' "$line"
+        done
+        printf '\n'
+
+        # nibble_bits
+        printf '    # nibble_bits[nibble*4 + bit] = bit value (0=MSB, 3=LSB)\n'
+        local nibble bit val set
+        for nibble in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            line="    "
+            for bit in 0 1 2 3; do
+                val=$(( 8 >> bit ))
+                set=$(( (nibble & val) == val ? 1 : 0 ))
+                line="$line nibble_bits[$((nibble*4+bit))]=$set;"
+            done
+            printf '%s\n' "$line"
+        done
+        printf '\n'
+
+        # GF(256) exp table: exp_tbl[i] = 2^i in GF(256)
+        printf '    # GF(256) exponent table: exp_tbl[i] = 2^i\n'
+        local exp_val=1
+        local idx
+        for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            printf '    '
+            for j in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                idx=$((i * 16 + j))
+                if [ $idx -le 254 ]; then
+                    printf 'exp_tbl[%d]=%d;' "$idx" "$exp_val"
+                    exp_val=$((exp_val * 2))
+                    if [ $exp_val -ge 256 ]; then
+                        exp_val=$((exp_val ^ 0x11D))
+                    fi
+                fi
+            done
+            printf '\n'
+        done
+        printf '\n'
+
+        # GF(256) log table: log_tbl[a] = i where exp_tbl[i] = a
+        # Build exp table in shell, then compute log - FIXED
+        printf '    # GF(256) log table: log_tbl[a] = i where exp_tbl[i] = a\n'
+        exp_val=1
+        for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            for j in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                idx=$((i * 16 + j))
+                if [ $idx -le 254 ]; then
+                    eval "exp_sh_$idx=$exp_val"
+                    exp_val=$((exp_val * 2))
+                    if [ $exp_val -ge 256 ]; then
+                        exp_val=$((exp_val ^ 0x11D))
+                    fi
+                fi
+            done
+        done
+
+        # Initialize log_tbl[0] = 0
+        printf '    log_tbl[0]=0;\n'
+
+        # Now set log_tbl[exp_sh_i] = i for each valid index
+        for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            printf '    '
+            for j in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                idx=$((i * 16 + j))
+                if [ $idx -le 254 ]; then
+                    eval "exp_val=\$exp_sh_$idx"
+                    printf 'log_tbl[%d]=%d;' "$exp_val" "$idx"
+                fi
+            done
+            printf '\n'
+        done
+
+        printf '}\n'
+
+    } > "$tmpfile" && mv "$tmpfile" "$cached"
+
+    printf "%s" "$cached"
+}

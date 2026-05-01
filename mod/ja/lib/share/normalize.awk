@@ -50,7 +50,9 @@ function jinormal_printkv( item ) {
     if ( JITER_LAST_KP != "" ) {
         # print "JITER_CURLEN:" JITER_CURLEN
         if (JITER_CURLEN > 1)  print ","
-        print quote_key(JITER_LAST_KP) "\n:\n" quote_value(item)
+        print quote_key(JITER_LAST_KP)
+        print ":"
+        print quote_value(item)
         JITER_LAST_KP = ""
     } else {
         JITER_CURLEN = JITER_CURLEN + 1

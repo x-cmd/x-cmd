@@ -7,6 +7,7 @@ ___X_CMD_CLAW_DIR="$___X_CMD_ROOT_DATA/claw"
 ___X_CMD_CLAW_BOT_WS="$___X_CMD_CLAW_DIR/workspace/default"
 ___X_CMD_CLAW_BOT_MQ="$___X_CMD_CLAW_BOT_WS/.x-cmd/tailer-mq"
 ___X_CMD_CLAW_BOT_HEARTBEAT="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/heartbeat"
+___X_CMD_CLAW_BOT_STDOUT_LOG_DIR="$___X_CMD_CLAW_BOT_WS/.x-cmd/logs/stdout"
 
 ___x_cmd_claw_run(){
     [ "$#" -gt 0 ] || set -- --help
@@ -26,6 +27,8 @@ ___x_cmd_claw_run(){
     # Clean up stale heartbeat state from previous run
     ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/current_im_chatid"
 
+    # claw:info "Use 'x claw log $x_' to view real-time agent logs"
+
     if ! ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-runner; then
         claw:debug "Starting heartbeat worker"
         ___x_cmd worker run --ns x-claw-default-worker --name heartbeat-runner -- ___x_cmd_claw_run_hearbeatgenerator "$___X_CMD_CLAW_BOT_MQ" "$im"
@@ -34,6 +37,7 @@ ___x_cmd_claw_run(){
     claw:debug "Entering tailer loop to process incoming MQ messages"
     (
         trap '' INT
+
         ___X_CMD_TAILER_HANDLE="___x_cmd_claw_run___agentwork" \
         ___x_cmd tailer run "$___X_CMD_CLAW_BOT_MQ"
     ) || {
@@ -61,6 +65,24 @@ ___x_cmd_claw_run___agentwork(){
 
 ___x_cmd_claw_workat(){
     :
+}
+
+___x_cmd_claw_log(){
+    local timestamp="$1"
+    local dir="$___X_CMD_CLAW_BOT_STDOUT_LOG_DIR"
+    [ -d "$dir" ] || {
+        claw:error "No logs found for claw bot. Directory '$dir' does not exist."
+        return 1
+    }
+
+    [ -n "$timestamp" ] || {
+        timestamp="$(___x_cmd fsiter --ls "$dir" | ___x_cmd_cmds sort -r | ___x_cmd_cmds head -n 1)"
+        [ -n "$timestamp" ] || {
+            claw:error "No logs found for claw bot. Directory '$dir' is empty."
+            return 1
+        }
+    }
+    ___x_cmd_cmds tail -F "$dir/$timestamp"
 }
 
 ___x_cmd_claw_run___ensure(){

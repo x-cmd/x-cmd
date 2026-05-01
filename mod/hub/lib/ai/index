@@ -7,8 +7,6 @@ ___x_cmd_hub_ai(){
     local subcmd="$1";shift
     case "$subcmd" in
         -h|--help)      ___x_cmd help -m hub ai ; return  ;;
-        emb|embedding)  ___x_cmd_hub_ai_emb "$@"    ;;
-        del)            ___x_cmd_hub_ai_del "$@"    ;;
         chat)           ___x_cmd_hub_ai_chat "$@"     ;;
         agent)          ___x_cmd_hub_ai_agent "$@"    ;;
         convo)          ___x_cmd_hub_ai_convo "$@"  ;;
@@ -31,25 +29,6 @@ ___x_cmd_hub_ai_chat(){
 
 }
 
-___x_cmd_hub_search(){
-    [ $# -gt 0 ] || { ___x_cmd_hub___help search ; return;}
-    case "$1" in
-        --help|-h) ___x_cmd_hub___help search; return;;
-    esac
-    ___x_cmd_hub_ai_x_cmd_search_ "$@" | (
-        ___x_cmd jo env . .msg
-        printf "%s" "$msg" | ___x_cmd md show
-    )
-}
-
-___x_cmd_hub_ai_x_cmd_search_(){
-    ___x_cmd ccmd 12h -- ___x_cmd hub account info -j | (
-        ___x_cmd jo env . .id .region
-        ___x_cmd ccmd 10m -- ___x_cmd curl -sSL -X GET -G --data-urlencode question="$*" --data-urlencode userId="$id" \
-                             --data-urlencode region="$region"  "${___X_CMD_HUB_AI_SERVICE}/ai/x-cmd/search"
-    )
-}
-
 ___x_cmd_hub_ai___json(){
     ___x_cmd ccmd 12h -- ___x_cmd hub account info -j | (
         ___x_cmd jo env . .id
@@ -60,62 +39,6 @@ ___x_cmd_hub_ai___json(){
 ___x_cmd_hub_ai___tsv(){
     ___x_cmd_hub_ai___json "$@" | ___x_cmd jo '.*' | ___x_cmd ja jl2t .id .title .content
 }
-
-___x_cmd_hub_ai_emb(){
-    [ $# -gt 0 ] || { ___x_cmd_hub___help ai emb ; return;}
-    local title
-    local file
-    local content
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -h|--help)      ___x_cmd_hub___help ai emb; return;;
-            -t|--title)     title="$2";         arg:2:shift;;
-            -f)             file="$2";          arg:2:shift;;
-            *)              content="$*";       break;;
-        esac
-    done
-    [ -z "$file" ] || [ -f "$file" ] || { hub:error "${file} file does not exist"; return 1;}
-    local file_size
-    file_size=$(wc -c "${file}")
-    file_size=${file_size% *}
-    [ "$file_size" -lt 2000000 ] || M='The file size must not exceed 2MB.' N=hub log:ret:64
-    ___x_cmd ccmd 12h -- ___x_cmd hub account info -j | (
-       ___x_cmd jo env . .id
-       hub:debug "___x_cmd curl -X POST ${___X_CMD_HUB_AI_SERVICE}/ai/embedding ${id+"--form"} ${id+userId="$id"}                   \
-                    ${title+"--form"} ${title+title="$title"}           \
-                    ${content+"--form"} ${content+content="$content"}   \
-                    ${file+"--form"} ${file+file=@"$file"}"
-
-       ___x_cmd curl -sSL -X POST "${___X_CMD_HUB_AI_SERVICE}/ai/embedding" \
-            ${id+"--form"} ${id+userId="$id"}                   \
-            ${title+"--form"} ${title+title="$title"}           \
-            ${content+"--form"} ${content+content="$content"}   \
-            ${file+"--form"} ${file+file=@"$file"} | (
-            ___x_cmd jo env . msg=.msg err=.error
-            if [ -n "${msg}" ]; then
-                ___x_cmd_ui_tf true  "[Success]: ${msg}"
-            else
-                ___x_cmd_ui_tf false "[Fail]: ${err}" >&2
-                return 1
-            fi
-        )
-    )
-}
-
-___x_cmd_hub_ai_del(){
-    local id="$1"
-    [ -n "$id" ] || { hub:error "Please enter at least one ID" ; return 1;}
-    ___x_cmd ccmd 30m -- x hub account info -j | (
-       ___x_cmd jo env . .id
-        local data
-        data="$(printf "%s" "{userId:${id},id:[${id}]}" | ___x_cmd jo fmt)"
-        ___x_cmd curl -sSL -f -X POST '${___X_CMD_HUB_AI_SERVICE}/ai/embdel' \
-            -H 'Content-Type: application/json' \
-            -d "${data}" >/dev/null || { ___x_cmd_ui_tf false "Failed to delete vector data ${id}";  return 1;}
-         ___x_cmd_ui_tf true "success"
-    )
-}
-
 
 ___x_cmd_hub_ai___fzfinfo(){
     printf "%s" "$@" |  ___x_cmd_cmds awk '{

@@ -1,0 +1,149 @@
+# shellcheck shell=dash
+
+___x_cmd_telegram_parse(){
+    param:void
+
+    [ $# -gt 0 ] || set -- help
+    local op="$1" ;
+    case "$op" in
+        -h|--help)      ___x_cmd help -m telegram parse "$@" ; return 0 ;;
+    esac
+
+    local chatid="$1"
+    local range="$2"
+    local start_line=""
+    local end_line=""
+
+    case "$range" in
+        *:*)
+            start_line="${range%%:*}"
+            end_line="${range##*:}"
+            ;;
+        *)
+            start_line="$2"
+            end_line="$3"
+            ;;
+    esac
+
+    [ -n "$chatid" ] || N=telegram M="Please provide the chat ID" log:ret:1
+
+    local x_
+    local botdata
+    ___x_cmd_telegram_bot_data_which_ "$chatid" || return $?
+    botdata="$x_"
+    [ -f "$botdata" ] || N=telegram M="Data file not found for chat ${chatid}" log:ret:1
+
+    { [ -n "$start_line" ] && [ "$start_line" -gt 0 ]; } || N=telegram M="Invalid start line for parse msg: '${start_line}'" log:ret:64
+
+    start_line="${start_line}" \
+    end_line="${end_line}"  \
+    ___x_cmd awk0 -m j/json -m j/jiter \
+            -f "$___X_CMD_ROOT_MOD/telegram/lib/awk/bot_parse.awk" < "$botdata"| {
+        local is_ref="" msg_date="" msg_text="" msg_photo_id="" msg_document_id="" msg_video_id="" msg_voice_id="" msg_audio_id="" msg_from_id="" msg_chat_id="" msg_message_id=""
+        local last_ref_str=""
+        while   read -r is_ref && \
+                read -r msg_date && \
+                read -r msg_text && \
+                read -r msg_photo_id && \
+                read -r msg_document_id && \
+                read -r msg_video_id && \
+                read -r msg_voice_id && \
+                read -r msg_audio_id && \
+                read -r msg_from_id && \
+                read -r msg_chat_id && \
+                read -r msg_message_id; do
+            if [ "$is_ref" = "1" ]; then
+                last_ref_str="$( ___x_cmd_telegram_parse_item___ "$is_ref" "$last_ref_str" "$msg_date" "$msg_text" "$msg_photo_id" "$msg_document_id" "$msg_video_id" "$msg_voice_id" "$msg_audio_id" "$msg_from_id" "$msg_chat_id" "$msg_message_id" )"
+            else
+                ___x_cmd_telegram_parse_item___ "$is_ref" "$last_ref_str" "$msg_date" "$msg_text" "$msg_photo_id" "$msg_document_id" "$msg_video_id" "$msg_voice_id" "$msg_audio_id" "$msg_from_id" "$msg_chat_id" "$msg_message_id"
+                last_ref_str=""
+            fi
+        done
+    }
+}
+
+___x_cmd_telegram_parse_item___(){
+    local is_ref="$1"
+    local bodystr="$2"
+    local msg_date="$3"
+    local msg_text="$4"
+    local msg_photo_id="$5"
+    local msg_document_id="$6"
+    local msg_video_id="$7"
+    local msg_voice_id="$8"
+    local msg_audio_id="$9"
+    local msg_from_id="${10}"
+    local msg_chat_id="${11}"
+    local msg_message_id="${12}"
+
+    local typename="Text" file_id="" default_ext=""
+
+    if [ -n "$msg_text" ]; then
+        bodystr="${bodystr}${msg_text}"
+    elif [ -n "$msg_photo_id" ]; then
+        file_id="$msg_photo_id"
+        typename="Image"
+        default_ext=".jpg"
+    elif [ -n "$msg_video_id" ]; then
+        file_id="$msg_video_id"
+        typename="Video"
+        default_ext=".mp4"
+    elif [ -n "$msg_document_id" ]; then
+        file_id="$msg_document_id"
+        typename="File"
+        default_ext=".bin"
+    elif [ -n "$msg_voice_id" ]; then
+        file_id="$msg_voice_id"
+        typename="Voice"
+        default_ext=".ogg"
+    elif [ -n "$msg_audio_id" ]; then
+        file_id="$msg_audio_id"
+        typename="Audio"
+        default_ext=".mp3"
+    else
+        typename="Unknown"
+        bodystr="${bodystr}[Unsupported message type]"
+    fi
+
+    if [ "$typename" != "Unknown" ] && [ -n "$file_id" ]; then
+        local output_dir="$___X_CMD_TELEGRAM_BOT_DATA_MEDIA_DIR"
+        [ -d "$output_dir" ] || ___x_cmd mkdirp "$output_dir"
+
+        local out_file="${output_dir}/${typename}_${msg_message_id}${default_ext}"
+
+        if [ ! -f "${out_file}" ]; then
+            local token
+            ___x_cmd_telegram_cur token:= 2>/dev/null
+            [ -n "$token" ] || N=telegram M="Please setting up your token first ==> 'x telegram init'" log:ret:1
+
+            local proxy
+            ___x_cmd_telegram_cur proxy:= 2>/dev/null
+
+            local file_path
+            file_path="$(___x_cmd curl -s ${proxy:+-x} ${proxy:+"$proxy"} "https://api.telegram.org/bot${token}/getFile?file_id=${file_id}" | \
+                ___x_cmd jq -r .result.file_path)"
+
+            if [ -z "$file_path" ] || [ "$file_path" = "null" ]; then
+                telegram:error "Failed to get file path: $file_path"
+                return 1
+            fi
+
+            local tmp_file="${___X_CMD_TELEGRAM_TMP}/telegram_dl_${msg_message_id}"
+            if ! ___x_cmd curl -s -L ${proxy:+-x} ${proxy:+"$proxy"} \
+                "https://api.telegram.org/file/bot${token}/${file_path}" \
+                -o "$tmp_file"; then
+                telegram:error "Download failed"
+                return 1
+            fi
+
+            [ -f "$tmp_file" ] && mv "$tmp_file" "$out_file"
+        fi
+        bodystr="${bodystr}${out_file}"
+    fi
+
+    if [ "$is_ref" = "1" ]; then
+        printf "[REF:%s:%s] \n" "$typename" "$bodystr"
+    else
+        printf "%s\t%s\t%s\n" "$msg_date" "$typename" "$bodystr"
+    fi
+}
