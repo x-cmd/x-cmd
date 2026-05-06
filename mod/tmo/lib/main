@@ -1,0 +1,80 @@
+# shellcheck shell=dash
+
+___x_cmd_tmo___main(){
+    [ "$#" -gt 0 ]  ||      set -- --help
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m tmo "$@";    return 0 ;;
+            --)             shift ;;
+            *)              break ;;
+        esac
+    done
+
+    [ $# -gt 0 ]    ||      N=tmo M="Provide timeout in the first argument." log:ret:64
+    local timeout="$1";     shift
+
+    local x_
+    ___x_cmd humantime tosec_ "$timeout" 2>/dev/null  || N=tmo M="Invalid timeout -> ${timeout}" log:ret:64
+    timeout="$x_"
+
+    (
+        ___x_cmd_tmo___main_to_reduce_kill_log "$@"
+    )
+
+    local ret=$?
+    case $ret in
+        137)        return 124  ;;
+        *)          return $ret ;;
+    esac
+}
+
+___x_cmd_tmo___main_to_reduce_kill_log(){
+    # set -m
+
+    # trap 'kill -s INT -- "-$pidofsubshell"  2>/dev/null; exit 130' INT
+    # trap 'kill -s TERM -- "-$pidofsubshell" 2>/dev/null; exit 124' TERM
+
+    # trap 'kill -s INT 0; exit 130' INT
+    # trap 'kill -s TERM 0; exit 124' TERM
+
+    ___x_cmd pidofsubshell_ ;                       local pidofsubshell="$x_"
+    ___x_cmd ps fingerprint get_ "$pidofsubshell" ; local fingerprint="$x_"
+
+    (
+        local inner_sleep_pid
+
+        trap 'kill ${inner_sleep_pid} 2>/dev/null; exit 0' TERM INT
+
+        sleep "$timeout" &
+        inner_sleep_pid=$!
+
+        wait $inner_sleep_pid 2>/dev/null
+
+        if ___x_cmd ps fingerprint check "$pidofsubshell" "$fingerprint" 1>/dev/null 2>&1; then
+            # command kill -s KILL -- "-${pidofsubshell}"
+            # TODO: using x kill --tree to kill.
+            # pkill -KILL -P "${pidofsubshell}" 2>/dev/null
+            ___x_cmd kill tree -s KILL "${pidofsubshell}" 2>/dev/null
+            exit 124
+        fi
+    ) </dev/null  &
+
+    local sleep_pid=$!
+
+    # trap 'kill -s INT 0; exit 130'  INT
+    # trap 'kill -s TERM 0; exit 124' TERM
+
+    "$@"
+
+    local ret=$?
+
+    trap - INT TERM
+
+    {
+        kill -s TERM -- "$sleep_pid"
+        wait            "$sleep_pid" 2>/dev/null
+    }  2>/dev/null
+
+    return $ret
+}

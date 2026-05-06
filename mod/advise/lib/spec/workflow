@@ -1,0 +1,86 @@
+
+___x_cmd_advise_spec_init(){
+
+    # x advise init --mod "<dir>"
+    # x advise init --ws "<file>"
+
+    ___x_cmd_cmds cp        \
+        "$___X_CMD_ROOT_MOD/advise/lib/spec/resource/tmpl.mod.yml" \
+        "adv/index.yml"
+}
+
+___x_cmd_advise_spec_write(){
+
+    ___x_cmd agent request \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/spec/resource/spec.md" \
+    "$( ___x_cmd_cmds cat <<A
+
+## 如果当前是一个 x-cmd 模块  判别标准: 模块根文件夹有 .x-cmd 文件夹，且 有 latest 文件，latest 文件有 ___x_cmd_<mod_name> )
+
+那么请 copy "$___X_CMD_ROOT_MOD/advise/lib/spec/resource/tmpl.mod.yml" 到 adv/index.yml
+并阅读 模块的代码，按照实际实现情况进行编写。请谨遵 spec.md 执行。
+
+完成后，请对模块项目目录下 执行 x scotty mod install ， 该命令实现将 模块的 adv/index.yml 安装到 x-cmd 用户目录。
+
+A
+)"
+}
+
+# Lint: validate adv/index.yml by generating and rendering help
+# Usage: x advise spec lint [--path] <module_path>
+#   or:   x advise spec lint (from within a module directory)
+___x_cmd_advise_spec_lint(){
+    local lint_path="${1:-.}"
+
+    # If first argument is --path, use second argument as path
+    case "$lint_path" in
+        --path)
+            lint_path="${2:-.}"
+            ;;
+    esac
+
+    # Resolve absolute path
+    if [ "$lint_path" != "." ]; then
+        lint_path="$(___x_cmd_cmds_readlink_f "$lint_path" 2>/dev/null || echo "$lint_path")"
+    fi
+
+    # Check if adv/index.yml exists
+    local adv_yml="$lint_path/adv/index.yml"
+    if [ ! -f "$adv_yml" ]; then
+        advise:error "Not found $adv_yml"
+        return 1
+    fi
+
+    # Determine module name
+    local mod_name
+    mod_name="$(basename "$lint_path")"
+
+    # Generate advise.jso
+    advise:info "Generating advise.jso for module: $mod_name"
+    xrc:mod:lib     advise  gen_advise
+    if ! ___x_cmd_advise_gen_advise "$mod_name" "$lint_path"; then
+        advise:error "Failed to generate advise.jso"
+        return 1
+    fi
+
+    # Get advise.jso path
+    local advise_jso="$___X_CMD_ROOT_ADV/$mod_name/advise.jso"
+    if [ ! -f "$advise_jso" ]; then
+        advise:error "advise.jso not found: $advise_jso"
+        return 1
+    fi
+
+    # Render and display help using helpapp
+    advise:info "Rendering help for $mod_name..."
+    xrc:mod:lib     helpapp   gen_help
+    ___x_cmd_helpapp_gen_help "$advise_jso"
+
+    advise:info "Lint complete for $mod_name"
+}
+
+# use ai test
+___x_cmd_advise_spec_aitest(){
+    :
+}
+
+

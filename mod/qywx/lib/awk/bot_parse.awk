@@ -6,17 +6,39 @@ BEGIN{
 }
 
 NR >= start_line && ( is_recent || (NR <= end_line) ){
-    parse_msg($0)
+    parse_msg($0, 0, SUBSEP "\"1\"" SUBSEP "\"body\"")
 }
 
-function parse_msg( s,        o, kp, kp2, msg_type, msg_time, msg_text, msg_from, msg_chatid,
+function parse_msg( s, is_ref, kp,        o, kp2, msg_type, msg_time, msg_text, msg_from, msg_chatid,
            img_url, img_aeskey, video_url, video_aeskey,
            file_url, file_aeskey, file_name, voice_url, voice_aeskey,
-           mi, arrlen, mixed_kp, mixed_item_type, mixed_item_text, mixed_item_key){
+           mi, arrlen, mixed_kp, mixed_item_type, mixed_item_text, mixed_item_key,
+           ref_kp, ref_msgtype, ref_text){
     jiparse_after_tokenize(o, s)
     JITER_LEVEL = JITER_CURLEN = 0
 
-    kp = SUBSEP "\"1\"" SUBSEP "\"body\""
+    ref_kp = kp SUBSEP "\"quote\""
+    if (o[ ref_kp ] == "{"){
+        ref_msgtype = juq(o[ ref_kp SUBSEP "\"msgtype\"" ])
+        ref_text = juq(o[ ref_kp SUBSEP "\"text\"" SUBSEP "\"content\""])
+        if (ref_text != ""){
+            ref_text = parse_tsv_esc(ref_text)
+        }
+        print 1
+        print ref_msgtype
+        print ref_text
+        print ""
+        print ""
+        print ""
+        print ""
+        print ""
+        print ""
+        print ""
+        print ""
+        print ""
+        print ""
+        print ""
+    }
 
     msg_type = juq(o[ kp SUBSEP "\"msgtype\"" ])
 
@@ -69,7 +91,7 @@ function parse_msg( s,        o, kp, kp2, msg_type, msg_time, msg_text, msg_from
         msg_text = parse_tsv_esc(msg_text)
     }
 
-    print 0
+    print is_ref
     print msg_type
     print msg_text
     print msg_from

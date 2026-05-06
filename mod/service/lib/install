@@ -1,0 +1,267 @@
+# shellcheck shell=dash
+
+
+___x_cmd_service_install(){
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m service install "$@" ; return 0 ;;
+            *)              break ;;
+        esac
+    done
+
+    local name="$1"
+    [ -n "$name" ]      ||  N=service M="Please provide service name." log:ret:64
+
+    local x_
+    ___x_cmd os name_   ||  N=service M="Fail to fetch os info." log:ret:1
+    local os="$x_"
+
+    case "$os" in
+        darwin)         ___x_cmd_service_install_darwin     "$name" ;;
+        linux)          ___x_cmd_service_install_linux      "$name" ;;
+        win)            ___x_cmd_service_install_win        "$name" ;;
+        *)              N=service M="Unsupported OS: $os" log:ret:1 ;;
+    esac
+}
+
+___x_cmd_service_install_darwin(){
+    local name="$1"
+    local plist_dir="${HOME}/Library/LaunchAgents"
+    local x_
+    ___x_cmd user name_ || N=service M="Fail to fetch user name" log:ret:1
+    local user="$x_"
+
+    local plist_file="${plist_dir}/com.x-cmd.${name}.${user}.plist"
+
+    [ -d "$plist_dir" ] || {
+        service:error "LaunchAgents directory not found: $plist_dir"
+        return 1
+    }
+
+    # Check if already installed
+    if [ -f "$plist_file" ]; then
+        service:info "Service [name=$name] is already installed."
+        return 0
+    fi
+
+    cat > "$plist_file" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.x-cmd.${name}.${user}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${HOME}/.x-cmd.root/bin/x-cmd</string>
+        <string>service</string>
+        <string>start</string>
+        <string>${name}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>${HOME}/.x-cmd.root/local/data/service/data/${name}/log/latest.log</string>
+    <key>StandardErrorPath</key>
+    <string>${HOME}/.x-cmd.root/local/data/service/data/${name}/log/latest.log</string>
+</dict>
+</plist>
+EOF
+
+    chmod 644 "$plist_file"
+    service:info "Service [name=$name] installed to $plist_file"
+    service:info "Run 'launchctl load $plist_file' to start now, or reboot to start automatically."
+}
+
+___x_cmd_service_install_linux(){
+    local name="$1"
+    local x_
+    ___x_cmd user name_ || N=service M="Fail to fetch user name" log:ret:1
+    local user="$x_"
+
+    local unit_dir="${HOME}/.config/systemd/user"
+    local unit_file="${unit_dir}/x-cmd-${name}-${user}.service"
+
+    # Check if systemd is available
+    ___x_cmd hascmd systemctl || N=service M="systemd not found on this system" log:ret:1
+
+    ___x_cmd mkdirp "$unit_dir"
+
+    # Check if already installed
+    if [ -f "$unit_file" ]; then
+        service:info "Service [name=$name] is already installed."
+        return 0
+    fi
+
+    cat > "$unit_file" <<EOF
+[Unit]
+Description=x-cmd service: ${name}
+After=default.target
+
+[Service]
+Type=forking
+ExecStart=${HOME}/.x-cmd.root/bin/x-cmd service start ${name}
+ExecStop=${HOME}/.x-cmd.root/bin/x-cmd service stop ${name}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+    chmod 644 "$unit_file"
+    service:info "Service [name=$name] installed to $unit_file"
+    service:info "Run 'systemctl --user enable x-cmd-${name}-${user}.service' to enable at login."
+}
+
+___x_cmd_service_install_win(){
+    local name="$1"
+    local x_ user=
+    if ___x_cmd_user_name_ 2>/dev/null; then
+        user="$x_"
+    else
+        user="${USER:-$(command whoami 2>/dev/null)}"
+    fi
+
+    # Check if schtasks is available
+    command -v schtasks >/dev/null 2>&1 || {
+        service:error "schtasks not found on this system"
+        return 1
+    }
+
+    # Check if already installed
+    if schtasks /query /tn "x-cmd-${name}-${user}" >/dev/null 2>&1; then
+        service:info "Service [name=$name] is already installed."
+        return 0
+    fi
+
+    local xcmd_path="${HOME}/.x-cmd.root/bin/x-cmd"
+    # Convert to Windows path format using appropriate method for the environment
+    if command -v cygpath >/dev/null 2>&1; then
+        xcmd_path="$( cygpath -w "$xcmd_path" )"
+    elif command -v wslpath >/dev/null 2>&1; then
+        xcmd_path="$( wslpath -w "$xcmd_path" )"
+    fi
+    # If neither available, use as-is (should work in MSYS/Git Bash)
+
+    local log_dir="${HOME}/.x-cmd.root/local/data/service/data/${name}/log"
+    local log_path="${log_dir}/latest.log"
+    if command -v cygpath >/dev/null 2>&1; then
+        log_path="$( cygpath -w "$log_path" )"
+    elif command -v wslpath >/dev/null 2>&1; then
+        log_path="$( wslpath -w "$log_path" )"
+    fi
+
+    # Create log directory
+    command mkdir -p "$log_dir" 2>/dev/null || true
+
+    # Create scheduled task
+    # /SC ONLOGON - Run at user logon
+    # /TR - Task to run
+    # /F - Force create (overwrite if exists)
+    schtasks /create /tn "x-cmd-${name}-${user}" \
+        /tr "\"$xcmd_path\" service start ${name}" \
+        /sc onlogon \
+        /rl limited \
+        /f 2>&1 || {
+        service:error "Failed to create scheduled task for [name=$name]"
+        return 1
+    }
+
+    service:info "Service [name=$name] installed to Windows Task Scheduler"
+    service:info "The service will start automatically when you log on."
+}
+
+___x_cmd_service_uninstall(){
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m service uninstall "$@" ; return 0 ;;
+            *)              break ;;
+        esac
+    done
+
+    local name="$1"
+    [ -n "$name" ]      ||  N=service M="Please provide service name." log:ret:64
+
+    local x_
+    ___x_cmd os name_   ||  N=service M="Fail to fetch os info." log:ret:1
+    local os="$x_"
+
+    case "$os" in
+        darwin)         ___x_cmd_service_uninstall_darwin "$name" ;;
+        linux)          ___x_cmd_service_uninstall_linux "$name" ;;
+        win)            ___x_cmd_service_uninstall_win "$name" ;;
+        *)              N=service M="Unsupported OS: $os" log:ret:1 ;;
+    esac
+}
+
+___x_cmd_service_uninstall_darwin(){
+    local name="$1"
+    local x_ user=
+    if ___x_cmd_user_name_ 2>/dev/null; then
+        user="$x_"
+    else
+        user="${USER:-$(command whoami 2>/dev/null)}"
+    fi
+    local plist_file="${HOME}/Library/LaunchAgents/com.x-cmd.${name}.${user}.plist"
+
+    if [ ! -f "$plist_file" ]; then
+        service:info "Service [name=$name] is not installed."
+        return 0
+    fi
+
+    # Try to unload first (ignore errors if not loaded)
+    launchctl unload "$plist_file" 2>/dev/null || true
+
+    command rm -f "$plist_file"
+    service:info "Service [name=$name] uninstalled from $plist_file"
+}
+
+___x_cmd_service_uninstall_linux(){
+    local name="$1"
+    local x_ user=
+    if ___x_cmd_user_name_ 2>/dev/null; then
+        user="$x_"
+    else
+        user="${USER:-$(command whoami 2>/dev/null)}"
+    fi
+    local unit_file="${HOME}/.config/systemd/user/x-cmd-${name}-${user}.service"
+
+    if [ ! -f "$unit_file" ]; then
+        service:info "Service [name=$name] is not installed."
+        return 0
+    fi
+
+    # Try to disable first (ignore errors if not enabled)
+    systemctl --user disable "x-cmd-${name}-${user}.service" 2>/dev/null || true
+    systemctl --user stop "x-cmd-${name}-${user}.service" 2>/dev/null || true
+
+    command rm -f "$unit_file"
+    service:info "Service [name=$name] uninstalled from $unit_file"
+}
+
+___x_cmd_service_uninstall_win(){
+    local name="$1"
+    local x_ user=
+    if ___x_cmd_user_name_ 2>/dev/null; then
+        user="$x_"
+    else
+        user="${USER:-$(command whoami 2>/dev/null)}"
+    fi
+
+    # Check if task exists
+    if ! schtasks /query /tn "x-cmd-${name}-${user}" >/dev/null 2>&1; then
+        service:info "Service [name=$name] is not installed."
+        return 0
+    fi
+
+    # Delete the scheduled task
+    schtasks /delete /tn "x-cmd-${name}-${user}" /f 2>&1 || {
+        service:error "Failed to delete scheduled task for [name=$name]"
+        return 1
+    }
+
+    service:info "Service [name=$name] uninstalled from Windows Task Scheduler"
+}

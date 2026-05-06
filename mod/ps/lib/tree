@@ -1,0 +1,83 @@
+
+___x_cmd_ps_tree(){
+    [ "$#" -gt 0 ] ||       set  --     --auto
+
+    local fmt=auto
+    local order=bfs
+    local target_pid=""
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m ps tree;      return ;;
+            --tsv|--csv|--pidlist|--pidline|--auto|--app)
+                                fmt="${1#--}"; shift ;;
+            --reverse)          order=reverse; shift ;;
+            --)                 shift ; break ;;
+            -*)                  shift ;;
+            *)
+                if [ -z "$target_pid" ]; then
+                    target_pid="$1"
+                    shift
+                else
+                    break
+                fi
+            ;;
+        esac
+    done
+
+    [ -n "$target_pid" ] ||          N=ps M="Please provide pid" log:ret:64
+
+    local mode=proc
+    if ___x_cmd os is darwin; then
+        mode=ps
+    fi
+
+    ___x_cmd_ps_tree___"$fmt" "$@"
+}
+
+___x_cmd_ps_tree___auto(){
+    if ___x_cmd is stdout2tty; then
+        ___x_cmd_ps_tree___app "$@"
+    else
+        ___x_cmd_ps_tree___tsv "$@"
+    fi
+}
+
+___x_cmd_ps_tree___app(){
+    ___x_cmd_ps_tree___raw csv | ___x_cmd csv --app
+}
+
+___x_cmd_ps_tree___tsv(){
+    ___x_cmd_ps_tree___raw tsv
+}
+
+___x_cmd_ps_tree___csv(){
+    ___x_cmd_ps_tree___raw csv
+}
+
+___x_cmd_ps_tree___pidlist(){
+    ___x_cmd_ps_tree___raw pidlist
+}
+
+___x_cmd_ps_tree___pidline(){
+    ___x_cmd_ps_tree___raw pidline
+}
+
+___x_cmd_ps_tree___raw(){
+    local fmt="$1"
+
+    local awk_script="$___X_CMD_ROOT_MOD/ps/lib/awk/tree.awk"
+
+    if [ "$mode" = "proc" ]; then
+        ___x_cmd_cmds_ls /proc/ 2>/dev/null | \
+            ___x_cmd_cmds awk -v root="$target_pid" -v mode="$mode" -v order="$order" -v output="$fmt" -f "$awk_script"
+    else
+        if [ "$fmt" = "pidlist" ] || [ "$fmt" = "pidline" ]; then
+            ___x_cmd_cmds ps -ax -o pid=,ppid= 2>/dev/null | \
+                ___x_cmd_cmds awk -v root="$target_pid" -v mode="$mode" -v order="$order" -v output="$fmt" -f "$awk_script"
+        else
+            ___x_cmd_cmds ps -ax -o user,ppid,pid,tty,pcpu,pmem,vsz,rss,stat,time,command 2>/dev/null | \
+                ___x_cmd_cmds awk -v root="$target_pid" -v mode="$mode" -v order="$order" -v output="$fmt" -f "$awk_script"
+        fi
+    fi
+}

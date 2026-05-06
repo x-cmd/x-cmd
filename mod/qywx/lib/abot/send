@@ -97,11 +97,33 @@ ___x_cmd_qywx_abot_send_file(){
 }
 
 ___x_cmd_qywx_abot_send___(){
+    ___x_cmd hascmd websocat || {
+        ___x_cmd env use websocat || return $?
+    }
+
     local x_
     ___x_cmd_qywx_gateway_status_
-    [ "$x_" = alive ] || {
-        ___x_cmd_qywx_bot_sub --noheartbeat || return $?
-        sleep 2
-    }
-    printf "%s\n" "$msg_json" >> "$___X_CMD_QYWX_BOT_WEBSOCKET"
+    if [ "$x_" = alive ]; then
+        printf "%s\n" "$msg_json" >> "$___X_CMD_QYWX_BOT_WEBSOCKET"
+    else
+        local bot_id=
+        local bot_secret=
+        ___x_cmd_qywx_cur bot_id:= bot_secret:= 2>/dev/null
+
+        [ -n "$bot_secret" ] || {
+            qywx:error "Please setting up your token first ==> 'x qywx init'"
+            return 1
+        }
+
+        {
+            printf '{"cmd":"aibot_subscribe","headers":{"req_id":"%s"},"body":{"bot_id":"%s","secret":"%s"}}\n' \
+                "aibot_subscribe_$$_$(date +%s%3N)" "$bot_id" "$bot_secret"
+
+            ___x_cmd sleep 1
+
+            printf "%s\n" "$msg_json"
+            # --max-messages-rev=2: wait for 2 responses (subscribe_ok + send_ok) before exit.
+            # Without it, stdin EOF causes immediate close, losing responses.
+        } | ___x_cmd websocat --max-messages-rev=2 wss://openws.work.weixin.qq.com
+    fi
 }

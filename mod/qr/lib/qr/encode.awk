@@ -1,6 +1,6 @@
 # QR Code Encoder - Pure AWK Implementation
 # Uses precompiled GF(256) tables for multiplication and bitwise ops
-@include "precompile.awk"
+@include "gf256.awk"
 
 BEGIN {
     # QR Version 1-15 capacity tables (Byte mode, EC Level L)
@@ -74,15 +74,15 @@ BEGIN {
     DATA_CODEWORDS[15] = 44
 
     # Format info strings for mask patterns 0-7, EC level L
-    # Extracted from qrcode library (verified correct for scannable QR)
-    FORMAT_L[0] = "111011111000100"
-    FORMAT_L[1] = "111001011110011"
-    FORMAT_L[2] = "111110110101010"
-    FORMAT_L[3] = "111100010011101"
-    FORMAT_L[4] = "110011000101111"
-    FORMAT_L[5] = "110001100011000"
-    FORMAT_L[6] = "110110001000001"
-    FORMAT_L[7] = "110100101110110"
+    # LSB-first format strings (matching Python implementation)
+    FORMAT_L[0] = "001000111110111"
+    FORMAT_L[1] = "110011110100111"
+    FORMAT_L[2] = "010101011011111"
+    FORMAT_L[3] = "101110010001111"
+    FORMAT_L[4] = "111101000110011"
+    FORMAT_L[5] = "000110001100011"
+    FORMAT_L[6] = "100000100011011"
+    FORMAT_L[7] = "011011101001011"
 }
 
 # Byte XOR using gawk's xor() function
@@ -90,18 +90,9 @@ function gf_xor(a, b) {
     return xor(a, b)
 }
 
-# GF(256) multiplication using log/exp tables (still needed)
-function gf_mul(a, b,    la, lb, t) {
-    if (a == 0 || b == 0) return 0
-    la = log_tbl[a]
-    lb = log_tbl[b]
-    t = (la + lb) % 255
-    return exp_tbl[t]
-}
-
 # Get bit at position (0=MSB, 7=LSB) from byte using gawk bitwise
 function get_bit(byte, pos) {
-    return and(rshift(byte, 7-pos), 1)
+    return and(rshift(byte, pos), 1)
 }
 
 # Determine version needed for data length
@@ -159,7 +150,7 @@ function encode_data(data, version,    bits, i, c, len) {
 # Pad bits to fill data capacity
 function pad_bits(bits, version,    padded, rem, pad_byte) {
     padded = bits
-    max_bits = DATA_CODEWORDS[version] * 8
+    max_bits = CAPACITY[version] * 8
 
     # Add terminator (max 4 bits)
     rem = max_bits - length(padded)
@@ -181,12 +172,15 @@ function pad_bits(bits, version,    padded, rem, pad_byte) {
 }
 
 # Convert bit string to byte array
-function bits_to_bytes(bits, bytes,    i, j, byte, n) {
-    n = length(bits) / 8
+# For QR, the bit string is: mode(4) + count(8) + data + terminator + padding
+# We need to skip the first 12 bits (mode + count) when extracting data bytes
+function bits_to_bytes(bits, bytes, skip,    i, j, byte, n, pos) {
+    n = int(length(bits) / 8)
     for (i = 0; i < n; i++) {
         byte = 0
+        pos = skip + i * 8
         for (j = 0; j < 8; j++) {
-            if (substr(bits, i*8 + j + 1, 1) == "1")
+            if (substr(bits, pos + j + 1, 1) == "1")
                 byte += pw2(7 - j)
         }
         bytes[i] = byte
@@ -203,7 +197,10 @@ function pw2(n,    i, r) {
 
 # Ordinal value of character - get ASCII byte value
 function ord(c,    s) {
-    s = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\x5b]^\x60abcdefghijklmnopqrstuvwxyz{|}~"
+    # Standard ASCII printable characters (space to ~)
+    # AWK string: space is position 1, '!' is 2, etc.
+    # ASCII: space=32, '!'=33, ... '~'=126
+    s = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
     return index(s, c) > 0 ? index(s, c) + 31 : 0
 }
 
@@ -239,7 +236,7 @@ function init_gen_poly(gen, ec_len,    i) {
 
     # For ec_len = 7 (V1):
     if (ec_len == 7) {
-        gen[0] = 0;  gen[1] = 87;  gen[2] = 229; gen[3] = 146; gen[4] = 77;  gen[5] = 224; gen[6] = 248; gen[7] = 120
+        gen[0] = 1;  gen[1] = 87;  gen[2] = 229; gen[3] = 146; gen[4] = 77;  gen[5] = 224; gen[6] = 248; gen[7] = 120
         return
     }
     # For ec_len = 10 (V2):
@@ -274,7 +271,7 @@ function init_gen_poly(gen, ec_len,    i) {
 # Build QR matrix
 function build_matrix(result, total_len, version,    matrix, size, i, j, bit_idx, mask) {
     size = MATRIX_SIZE[version]
-    mask = 0  # Use mask 0 for simplicity
+    mask = 7  # Use mask 7 to match qrcode's default
 
     # Initialize
     for (i = 0; i < size; i++) {
@@ -389,21 +386,53 @@ function add_alignment(matrix, version, size,    pos, i, j, center, n, step) {
 }
 
 function is_reserved(row, col, size) {
-    # Finder patterns (7x7 at corners)
-    if (row < 8 && col < 8) return 1         # top-left finder area
-    if (row < 8 && col > size - 8) return 1    # top-right finder area
-    if (row > size - 8 && col < 8) return 1   # bottom-left finder area
-    # Timing patterns (row 6 and column 6)
-    if (row == 6 || col == 6) return 1
-    # Separator - only around finder patterns, not entire row/col 7
-    # Row 7, cols 0-8 (left side separator)
+    # Finder pattern areas - the 7x7 inner region of each corner
+    if (row < 7 && col < 7) return 1         # top-left finder area
+    if (row < 7 && col >= size - 7) return 1    # top-right finder area
+    if (row >= size - 7 && col < 7) return 1   # bottom-left finder area
+    # Bottom-right finder only for v2+ (size >= 25)
+    if (size >= 25 && row >= size - 7 && col >= size - 7) return 1
+
+    # Timing pattern - horizontal (row 6, cols 8 to size-9)
+    if (row == 6 && col >= 8 && col < size - 8) return 1
+    # Timing pattern - vertical (col 6, rows 8 to size-9)
+    if (col == 6 && row >= 8 && row < size - 8) return 1
+
+    # Separator row 7 around top-left finder (cols 0-8)
     if (row == 7 && col < 8) return 1
-    # Row 7, cols size-8 to size-1 (right side separator)
-    if (row == 7 && col > size - 8) return 1
-    # Col 7, rows 0-8 (top separator)
+    # Separator row 7 around top-right finder (cols 13 to size-1)
+    if (row == 7 && col >= 13) return 1
+    # Separator row 13 around bottom-left finder (cols 0-8)
+    if (row == 13 && col < 8) return 1
+    # Separator row 13 around bottom-right finder (cols 13 to size-1, only for v2+)
+    if (size >= 25 && row == 13 && col >= 13) return 1
+
+    # Separator column 7 around top-left finder (rows 0-8)
     if (col == 7 && row < 8) return 1
-    # Col 7, rows size-8 to size-1 (bottom separator)
-    if (col == 7 && row > size - 8) return 1
+    # Separator column 13 around top-right finder (rows 0-8)
+    if (col == 13 && row < 8) return 1
+    # Separator column 7 around bottom-left finder (rows 13-20)
+    if (col == 7 && row >= size - 8) return 1
+    # Separator column 14 around bottom-right finder (rows 13-20, only for v2+)
+    if (size >= 25 && col == 14 && row >= size - 8) return 1
+
+    # Format information positions (ISO 18004)
+    # Row 8: col 20-13 (horizontal format bits 0-7)
+    if (row == 8 && col >= 13 && col <= 20) return 1
+    # Row 8: col 7,5,4,3,2,1,0 (horizontal format bits 8-14)
+    if (row == 8 && (col == 7 || col == 5 || col == 4 || col == 3 || col == 2 || col == 1 || col == 0)) return 1
+    # Row 7: col 8 (format bit 6)
+    if (row == 7 && col == 8) return 1
+    # Row 8: col 8 (format bit 7)
+    if (row == 8 && col == 8) return 1
+    # Col 8: rows 0-5 (vertical format bits 0-5)
+    if (col == 8 && row >= 0 && row <= 5) return 1
+    # Col 8: rows 14-20 (vertical format bits 8-14)
+    if (col == 8 && row >= 14 && row <= 20) return 1
+
+    # Fixed module at (size-8, 8) - always 1
+    if (row == size - 8 && col == 8) return 1
+
     return 0
 }
 
@@ -417,6 +446,7 @@ function place_data(matrix, size, data, data_len, mask,    bit_idx, i, j, k, col
                 row = (j % 2 == 0) ? size - 1 - i : i
                 if (is_reserved(row, col, size)) continue
                 byte_idx = int(bit_idx / 8)
+                if (byte_idx >= data_len) break
                 bit = 7 - (bit_idx % 8)
                 byte_val = data[byte_idx]
                 byte_val = get_bit(byte_val, bit)
@@ -425,7 +455,9 @@ function place_data(matrix, size, data, data_len, mask,    bit_idx, i, j, k, col
                 matrix[row, col] = byte_val
                 bit_idx++
             }
+            if (byte_idx >= data_len) break
         }
+        if (byte_idx >= data_len) break
     }
 }
 
@@ -453,28 +485,40 @@ function apply_mask(matrix, size, mask,    i, j) {
 }
 
 function add_format(matrix, size, format_bits, version,    i) {
-    # Around top-left finder
-    for (i = 0; i < 6; i++) {
-        matrix[8, i] = substr(format_bits, i+1, 1) + 0
+    # Format information placement matching qrcode library exactly:
+    # Horizontal (row 8): col 20 down to col 13 for bits 0-7
+    for (i = 0; i < 8; i++) {
+        matrix[8, 20 - i] = substr(format_bits, i+1, 1) + 0
     }
-    matrix[8, 7] = substr(format_bits, 7, 1) + 0
+
+    # Row 8, remaining: col 7 (bit 8), col 5 (bit 9), col 4 (bit 10),
+    # col 3 (bit 11), col 2 (bit 12), col 1 (bit 13), col 0 (bit 14)
+    matrix[8, 7] = substr(format_bits, 9, 1) + 0
+    matrix[8, 5] = substr(format_bits, 10, 1) + 0
+    matrix[8, 4] = substr(format_bits, 11, 1) + 0
+    matrix[8, 3] = substr(format_bits, 12, 1) + 0
+    matrix[8, 2] = substr(format_bits, 13, 1) + 0
+    matrix[8, 1] = substr(format_bits, 14, 1) + 0
+    matrix[8, 0] = substr(format_bits, 15, 1) + 0
+
+    # Row 7, col 8: format[6]
+    matrix[7, 8] = substr(format_bits, 7, 1) + 0
+
+    # Row 8, col 8: format[7]
     matrix[8, 8] = substr(format_bits, 8, 1) + 0
-    matrix[7, 8] = substr(format_bits, 9, 1) + 0
 
-    # Left of top-left finder (vertical, bits 9-14)
+    # Vertical (col 8, rows 0-5): format[0-5]
     for (i = 0; i < 6; i++) {
-        matrix[5 - i, 8] = substr(format_bits, 9 + i, 1) + 0
+        matrix[i, 8] = substr(format_bits, i+1, 1) + 0
     }
 
-    # Below bottom-left finder
-    for (i = 0; i < 8; i++) {
-        matrix[size - 1 - i, 8] = substr(format_bits, 15 - i, 1) + 0
+    # Bottom vertical (col 8, rows 14-20): format[8-14]
+    for (i = 0; i < 7; i++) {
+        matrix[14 + i, 8] = substr(format_bits, 9 + i, 1) + 0
     }
 
-    # Right of top-right finder
-    for (i = 0; i < 8; i++) {
-        matrix[8, size - 8 + i] = substr(format_bits, i+1, 1) + 0
-    }
+    # Fixed module at (size-8, 8) - always 1
+    matrix[size - 8, 8] = 1
 }
 
 function add_version(matrix, size, version,    i) {
@@ -486,6 +530,16 @@ function add_version(matrix, size, version,    i) {
 }
 
 # Render QR code to terminal using half blocks to pack 2 rows per visual line
+function render_raw(matrix, size,    i, j) {
+    for (i = 0; i < size; i++) {
+        line = ""
+        for (j = 0; j < size; j++) {
+            line = line (matrix[i, j] ? "1" : "0")
+        }
+        print line
+    }
+}
+
 function render(matrix, size,    i, j, line, top, bot, indent) {
     indent = "  "  # 2 spaces left margin
     # Top margin
@@ -514,22 +568,41 @@ function render(matrix, size,    i, j, line, top, bot, indent) {
 }
 
 # Main encoding function
-function qr_encode(data,    version, bits, padded, n_bytes, bytes, ec_len, result, total_len, size, matrix) {
+function qr_encode(data,    version, bits, padded, n_bytes, bytes, ec_len, result, total_len, size, i, data_len, pad_byte) {
     version = get_version(length(data))
     ec_len = get_ec_codewords(version)
 
     bits = encode_data(data, version)
     padded = pad_bits(bits, version)
-    n_bytes = bits_to_bytes(padded, bytes)
+    # n_bytes is the data capacity (total codewords for this version)
+    n_bytes = CAPACITY[version]
+    data_len = length(data)
+
+    # Extract all n_bytes bytes from padded bit string
+    bits_to_bytes(padded, bytes, 0)
+
+    # Fill remaining data codewords with padding pattern (0xEC, 0x11 alternating)
+    # Bytes 0 and 1 are mode+count and count+first data byte
+    # Bytes data_len onwards are overwritten with pad pattern
+    pad_byte = 0xEC
+    for (i = data_len; i < n_bytes; i++) {
+        bytes[i] = pad_byte
+        pad_byte = (pad_byte == 0xEC) ? 0x11 : 0xEC
+    }
 
     total_len = rs_encode(bytes, n_bytes, ec_len, result)
 
     size = build_matrix(result, total_len, version, matrix)
-    render(matrix, size)
+    if (DEBUG) {
+        render_raw(matrix, size)
+    } else {
+        render(matrix, size)
+    }
 }
 
 # Main entry point when run via awk
 BEGIN {
+    DEBUG = (DEBUG == "") ? 0 : DEBUG  # 0=no debug, 1=raw matrix, 2=verbose
     if (DATA != "") {
         qr_encode(DATA)
         exit

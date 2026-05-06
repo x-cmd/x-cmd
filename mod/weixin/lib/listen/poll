@@ -30,12 +30,32 @@ ___x_cmd_weixin_listen_poll(){
 
     local resp=""
     local get_updates_buf=; local msgs=; local  context_token=;
+    local curl_errcode=0
+    local fail_count=0
     while true; do
         resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
-            weixin:error "Failed to listen for messages: $resp"
-            ___x_cmd sleep 1s || return $?      # why ?
-            return 1
+            curl_errcode=$?
+            case "$curl_errcode" in
+                28)
+                    continue ;;
+                130)
+                    weixin:error "Exit because recved Interrupt."
+                    return 1 ;;
+                *)
+                    fail_count=$((fail_count+1))
+                    weixin:error "[fail-count=$fail_count] Failed to listen for messages: $resp"
+                    ___x_cmd sleep 1s || return $?      # why ?
+
+                    # if [ "$fail_count" -le 5 ]; then
+                    #     continue
+                    # else
+                    #     return 1
+                    # fi
+                    return 1
+                    ;;
+            esac
         }
+        fail_count=0
 
         get_updates_buf=""; msgs=""; context_token="";
         ___x_cmd jo env . .get_updates_buf .msgs context_token=.msgs.1.context_token  <<A
@@ -110,7 +130,6 @@ A
 
         [ "$msgs" = "[]" ] || {
             printf "%s" "$context_token" > "$___X_CMD_WEIXIN_CONTEXT_TOKEN"
-            weixin:info "You can run ``x weixin bot send --text <context>`` to send a message."
             return
         }
     done
@@ -119,7 +138,7 @@ A
 
 ___x_cmd_weixin_getupdates(){
     local sync_buf="${1:-""}"
-    ___x_cmd_weixin_u_curl "POST" "/ilink/bot/getupdates" -d '{"get_updates_buf":"'"$sync_buf"'", "base_info":{ "channel_version": "1.0.2" }}'
+    ___x_cmd_weixin_u_curl "POST" "/ilink/bot/getupdates" --max-time 60 -d '{"get_updates_buf":"'"$sync_buf"'", "base_info":{ "channel_version": "1.0.2" }}'
 }
 
 ___x_cmd_weixin_item_decrypt___(){
