@@ -1,0 +1,78 @@
+# shellcheck shell=dash
+
+# timeout wrapper with busybox/cosmo fallback
+# Enhance timeout command duration argument, now support 1d2h.
+
+___x_cmd_timeout___main(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local signal=""
+    local kill=""
+
+    local preserve_status=""
+    local foreground=""
+    local verbose=""
+
+    local nobusybox=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m timeout "$@"; return ;;
+
+            -k|--kill-after)    kill=$2;            arg:2:shift ;;
+            -s|--signal)        signal="$2";        arg:2:shift ;;
+            -v|--verbose)       verbose=1 ;         shift       ;;
+            --foreground)       foreground=1;       shift       ;;
+            --preserve-status)  preserve_status=1;  shift       ;;
+            --)                 shift ;     break ;;
+            --*)                N=timeout M="Unknown option -> $1" log:ret:64 ;;
+            *)                  break ;;
+        esac
+    done
+
+    [ $# -gt 0 ]                            || N=timeout M="Provide duration in the first argument."            log:ret:64
+    local duration="$1" ;    shift
+
+    local x_=""
+    ___x_cmd humantime tosec_ "$duration"   || N=timeout M="Fail to convert duration to seconds -> $duration"   log:ret:64
+    duration="$x_"
+
+    [ -z "$signal" ]    || set --       -s      "$signal"
+    [ -z "$kill" ]      || set -- "$@"  -k      "$kill"
+
+    [ -z "$verbose" ] || {
+        set -- "$@"        --verbose
+        nobusybox=1
+    }
+
+    [ -z "$preserve_status" ] || {
+        set -- "$@"        --preserve-status
+        nobusybox=1
+    }
+
+    [ -z "$foreground" ] || {
+        set -- "$@"        --foreground
+        nobusybox=1
+    }
+
+    if [ -z "$nobusybox" ]; then
+        if ___x_cmd_hascmd timeout; then
+            ___x_cmd_cmds    timeout "$duration" "$@"
+        else
+            ___x_cmd cosmo   timeout "$duration" "$@"
+        fi
+    else
+        local x_=""
+
+        if ___x_cmd whichbin_ timeout && [ -n "$x_" ]; then
+            ___x_cmd readlink_recursive_ "$x_"
+
+            case "$x_" in
+                */busybox*)  ;;
+                *)          ___x_cmd_cmds    timeout "$duration" "$@" ; return $? ;;
+            esac
+        fi
+
+        ___x_cmd cosmo   timeout "$duration" "$@"
+    fi
+}

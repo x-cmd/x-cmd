@@ -1,19 +1,72 @@
-# shellcheck shell=dash
+# shellcheck shell=dash disable=SC2016
 
-xrc:mod:lib     kill    ls   __cmd  recursive   byport
+xrc:mod:lib     kill    ls   recursive   byport
 
 ___x_cmd_kill___main(){
-    [ "$#" -gt 0 ] ||   set  --     --ls
+    [ "$#" -gt 0 ] ||       set  --     --ls
 
-    local op="$1";      shift
+    local op="$1";          shift
     case "$op" in
-        -h|--help)      ___x_cmd help -m kill;    return ;;
-        -l|--ls)        ___x_cmd_kill___ls          "$@" ;;
-        -r|--recursive) ___x_cmd_kill___recursive   "$@" ;;
+        -h|--help)          ___x_cmd help -m kill;      return ;;
+        -l|--ls)            ___x_cmd_kill___ls              "$@" ;;
+        -r|--recursive)     ___x_cmd_kill___recursive       "$@" ;;
 
-        byport)         ___x_cmd_kill_byport        "$@" ;;
-        *)              ___x_cmd_kill___cmd "$op"   "$@" ;;
+        byport)             ___x_cmd_kill_byport            "$@" ;;
+        byfp|byfingerprint) ___x_cmd_kill_byfingerprint     "$@" ;;
+        tree)               ___x_cmd_kill_tree              "$@" ;;
+        --|--cmd)           ___x_cmd_kill___cmd             "$@" ;;
+        *)                  ___x_cmd_kill___cmd "$op"       "$@" ;;
     esac
 }
 
+___x_cmd_kill___cmd(){
+    ___x_cmd_cmds kill "$@"
+}
 
+___x_cmd_kill_byfingerprint(){
+    local KILLARG
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -s|-n)  arg:add KILLARG "$1" "$2" ; arg:2:shift ;;
+            --)     shift; break ;;
+            -*)     arg:add KILLARG "$1" ; shift ;;
+            *)      break ;;
+        esac
+    done
+
+    local pid
+    local fingerprint
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            *=*)
+                    pid="${1%%=*}"
+                    fingerprint="${1#*=}"
+                    ! ___x_cmd ps check "$pid" "$fingerprint"  ||   eval ___x_cmd_kill___cmd "$KILLARG" '"$pid"'
+                    ;;
+            *)      eval ___x_cmd_kill___cmd "$KILLARG" '"$1"' ;;
+        esac
+        shift
+    done
+}
+
+___x_cmd_kill_tree(){
+    [ "$#" -gt 0 ]      ||      set  --     --help
+
+    local signal=TERM #KILL
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          shift; ___x_cmd help -m kill tree "$@" ; return ;;
+            -s)                 signal="$2"; arg:2:shift ;;
+            *)                  break ;;
+        esac
+    done
+
+    [ $# -gt 0 ]    ||          N=kill M="Please provide target pid." log:ret:64
+    local target_pid="$1"
+
+    local pids; pids="$( ___x_cmd ps tree --pidline --reverse "$target_pid" )"
+    [ -n "$pids" ] || N=kill M="Fail to find pid tree for $target_pid" log:ret:1
+    eval ___x_cmd_kill___cmd  -s "$signal" "$pids"
+}

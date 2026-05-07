@@ -1,0 +1,161 @@
+# ___x_cmd_claw_qywx -h
+
+___x_cmd_claw_qywx(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local op="$1" ;     shift
+    case "$op" in
+        --help|-h)
+            ___x_cmd help -m claw qywx ; return 0 ;;
+        get-msg)
+            ___x_cmd_claw_qywx_get_msg "$@" ;;
+        get-unread)
+            ___x_cmd_claw_qywx_get_unread "$@" ;;
+        has-unread)
+            ___x_cmd_claw_qywx_has_unread "$@" ;;
+        unread-count)
+            ___x_cmd_claw_qywx_unread_count "$@" ;;
+        recent-msg)
+            ___x_cmd_claw_qywx_recent_msg "$@" ;;
+        update-offset)
+            ___x_cmd_claw_qywx_update_offset "$@" ;;
+        *)  N=claw M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_claw_qywx_get_unread(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide qywx chatid" log:ret:64
+    local datadir_offset="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/DATA_OFFSET/qywx-${chatid}"
+
+    local offset=0
+    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+
+    local x_=""
+    ___x_cmd qywx abot data which_ "$chatid"
+    local botdata="$x_"
+
+    local total_line=0
+    if [ -f "$botdata" ]; then
+        x_=""; ___x_cmd_claw_run___msg_line_count_ "$botdata" || return $?
+        total_line="$x_"
+    fi
+
+    local msg_unread_count="$((total_line - offset))"
+    local end_line="$offset"
+
+    if [ "$msg_unread_count" -gt 0 ]; then
+        local start_line=""
+        local msgprompt=""
+        if [ "$msg_unread_count" -gt 10 ]; then
+            start_line="$((total_line - 9))"
+            end_line="$total_line"
+            msgprompt="You have $msg_unread_count unread messages. Here are the latest 10 (from line $start_line to line $end_line):"
+        else
+            start_line="$((offset + 1))"
+            end_line="$total_line"
+            msgprompt="You have $msg_unread_count unread messages (from line $start_line to line $end_line):"
+        fi
+        printf "%s\n" "$msgprompt"
+        ___x_cmd_claw_qywx_get_msg "$chatid" "$start_line" "$end_line"
+        printf "%s\n" "---"
+    else
+        printf "%s\n" "You have no unread messages."
+    fi
+
+    printf "%s\n" \
+        "ACTION REQUIRED: After processing the above messages, you MUST run these commands in order:" \
+        "  1. x claw qywx update-offset \"${chatid}\" $end_line" \
+        "  2. x claw qywx unread-count \"${chatid}\"" \
+        "" \
+        "Notice: As an AI agent, you can use the following commands to retrieve Qywx messages:" \
+        "  x claw qywx -h                                   # Show help" \
+        "  x claw qywx get-msg \"${chatid}\" <start>:<end>  # Get messages by line range (e.g. 100:200)" \
+        "  x claw qywx recent-msg \"${chatid}\"             # Get recent messages" \
+        "  x claw qywx unread-count \"${chatid}\"           # Get unread message count" \
+        "  x claw qywx update-offset \"${chatid}\" <line>   # Mark messages as read up to specified line"
+}
+
+___x_cmd_claw_qywx_get_msg(){
+    ___x_cmd qywx parse "$@"
+}
+
+___x_cmd_claw_qywx_recent_msg(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide qywx chatid" log:ret:64
+    local datadir_offset="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/DATA_OFFSET/qywx-${chatid}"
+
+    local offset=0
+    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+    ___x_cmd_claw_qywx_get_msg "$chatid" "$((offset+1))"
+}
+
+___x_cmd_claw_qywx_update_offset(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide qywx chatid" log:ret:64
+    local end_line="$2"
+    local datadir_offset="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/DATA_OFFSET/qywx-${chatid}"
+
+    local x_=""
+    ___x_cmd qywx abot data which_ "$chatid"
+    local botdata="$x_"
+
+    local total_line=0
+    if [ -f "$botdata" ]; then
+        x_=""; ___x_cmd_claw_run___msg_line_count_ "$botdata" || return $?
+        total_line="$x_"
+    fi
+
+    [ -n "$end_line" ] || N=claw M="No line number provided for update-offset" log:ret:64
+
+    case "$end_line" in
+        *[!0-9]*)
+            claw:warn "Invalid line number '$end_line', defaulting to 0"
+            end_line=0
+            ;;
+    esac
+
+    if [ "$end_line" -gt "$total_line" ]; then
+        claw:warn "Line number $end_line exceeds total lines $total_line, setting to $total_line"
+        end_line="$total_line"
+    fi
+
+    local offset=0
+    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+
+    ___x_cmd ensurefp "$datadir_offset"
+    [ "$end_line" -le "$offset" ] || printf "%s\n" "$end_line" > "$datadir_offset"
+}
+
+___x_cmd_claw_qywx_has_unread(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide qywx chatid" log:ret:64
+    local x_=""; ___x_cmd_claw_qywx_unread_count_ "$@" || return $?
+    [ "$x_" -gt 0 ]
+}
+
+___x_cmd_claw_qywx_unread_count_(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide qywx chatid" log:ret:64
+    local datadir_offset="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/DATA_OFFSET/qywx-${chatid}"
+
+    local offset=0
+    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+    offset="${offset:-0}"
+
+    x_=""; ___x_cmd qywx abot data which_ "$chatid"
+    local botdata="$x_"
+
+    local total_line=0
+    if [ -f "$botdata" ]; then
+        x_=""; ___x_cmd_claw_run___msg_line_count_ "$botdata" || return $?
+        total_line="$x_"
+    fi
+
+    x_="$((total_line - offset))"
+}
+
+___x_cmd_claw_qywx_unread_count(){
+    local x_=""; ___x_cmd_claw_qywx_unread_count_ "$@" || return $?
+    printf "%s\n" "$x_"
+}

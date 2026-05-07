@@ -17,7 +17,9 @@ BEGIN{
 # END{ printf( "%s", "\n" ); }
 
 function handle_response_stream_json( s,           o ){
-    if ( OUTPUT_FORMAT == "json" ) {
+    if ( s ~ "^\\[EXITCODE\\] ([0-9]+) *$" ) {
+        exit( int(substr(s, 12)) )
+    } else if ( OUTPUT_FORMAT == "json" ) {
         print s
         handle_error_text(s)
         fflush()

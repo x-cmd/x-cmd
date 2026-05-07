@@ -21,7 +21,7 @@ ___x_cmd_agent_request(){
     local reference_workspace=""
     local reference_name=""
     local is_no_thinking=""
-    local timeout_secs=""
+    local timeout_secs="3000"
 
     [ "$#" -gt 0 ] || set -- --help
     while [ $# -gt 0 ]; do
@@ -41,7 +41,7 @@ ___x_cmd_agent_request(){
                             reference_workspace="$2";           arg:2:shift ;;
             --stdout-file)  stdoutfile="$2";                    arg:2:shift ; ___x_cmd ensurefp "$stdoutfile";;
             --stderr-file)  stderrfile="$2";                    arg:2:shift ; ___x_cmd ensurefp "$stderrfile";;
-            --timeout)      timeout_secs="$2";                   arg:2:shift ;;
+            --timeout)      timeout_secs="$2";                  arg:2:int; arg:2:shift ;;
             # --retry)        retry="$2" ; arg:2:shift ;;
 
             --)             shift; break ;;
@@ -49,6 +49,7 @@ ___x_cmd_agent_request(){
         esac
     done
 
+    timeout_secs="${timeout_secs:-3000}"
     local x_=""
     if [ -z "$harness" ]; then
         x_=""; ___x_cmd_agent_harness_
@@ -158,7 +159,7 @@ ___x_cmd_agent_request___run_validate(){
                 local subcmd="${harness#claude-}"
                 local loggedIn=; loggedIn="$( ___x_cmd claude "$subcmd" auth status | ___x_cmd jo .loggedIn )"
                 if [ "$loggedIn" != "true" ]; then
-                    agent:warn "Claude auth status is not logged in"
+                    agent:warn "Claude $subcmd auth status is not logged in"
                     return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
                 fi
                 ;;
@@ -203,14 +204,7 @@ ___x_cmd_agent_request___run_validate(){
 }
 
 ___x_cmd_agent_request___run_attempt(){
-
-    if [ "$timeout_secs" -gt 0 ]; then
-        ___x_cmd_agent_request___timeout "$timeout_secs" ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
-    else
-        ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
-    fi
-
-
+    ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
     local ret=$?
 
     if [ $ret -eq 0 ]; then
@@ -220,6 +214,7 @@ ___x_cmd_agent_request___run_attempt(){
 
     if [ "$ret" = 124 ]; then
         ___X_CMD_RETRY_ABORT=1
+        agent:error "Agent request timed out after ${timeout_secs}s"
         return 124
     fi
 
@@ -257,6 +252,7 @@ ___x_cmd_agent_request___run_attempt(){
         esac
     elif [ $ret -eq 130 ]; then
         ___X_CMD_RETRY_ABORT=1
+        agent:warn "Agent request interrupted by user (SIGINT)"
         return $ret
     fi
 
@@ -322,12 +318,15 @@ ___x_cmd_agent_request___run_exec(){(
                 claude-*)   claude_subcmd="${harness#claude-}" ;;
             esac
 
-            IS_SANDBOX=1 ___x_cmd claude "$claude_subcmd" "$@" \
+            {
+                IS_SANDBOX=1 ___x_cmd timeout "$timeout_secs" x-cmd claude "$claude_subcmd" "$@" \
                 --verbose --output-format stream-json \
                 --dangerously-skip-permissions \
                 --allowedTools "Write,Read,Edit,Bash(x *),Bash(x-cmd *),Bash(source ~/.x-cmd.root/X *),Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)" \
                 ${reference_workspace:+--add-dir "$reference_workspace"} \
-                --print "$content" < /dev/null | ___x_cmd_agent_request___handle_output claude "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+                --print "$content" < /dev/null
+                printf "%s\n" "[EXITCODE] $?"
+            } | ___x_cmd_agent_request___handle_output claude "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
         codex)
             set -- exec
@@ -336,9 +335,12 @@ ___x_cmd_agent_request___run_exec(){(
                     set -- "$@" resume "$real_session_id"
                 fi
             fi
-            ___x_cmd codex -- "$@" --json --full-auto --skip-git-repo-check \
+            {
+                ___x_cmd timeout "$timeout_secs" x-cmd codex -- "$@" --json --full-auto --skip-git-repo-check \
                 ${reference_workspace:+--add-dir "$reference_workspace"} \
-                "$content" < /dev/null | ___x_cmd_agent_request___handle_output codex "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+                "$content" < /dev/null
+                printf "%s\n" "[EXITCODE] $?"
+            } | ___x_cmd_agent_request___handle_output codex "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
         cursor)
             if [ -n "$user_session_id" ]; then
@@ -362,9 +364,12 @@ ___x_cmd_agent_request___run_exec(){(
                 fi
             fi
 
-            ___x_cmd gemini cli -- --yolo "$@" \
+            {
+                ___x_cmd timeout "$timeout_secs" x-cmd gemini cli -- --yolo "$@" \
                 ${reference_workspace:+--include-directories "$reference_workspace"} \
-                --output-format stream-json --prompt "$content" < /dev/null | ___x_cmd_agent_request___handle_output gemini-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+                --output-format stream-json --prompt "$content" < /dev/null
+                printf "%s\n" "[EXITCODE] $?"
+            } | ___x_cmd_agent_request___handle_output gemini-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
         opencode)
             if [ -n "$user_session_id" ]; then
@@ -373,7 +378,10 @@ ___x_cmd_agent_request___run_exec(){(
                 fi
             fi
 
-            ___x_cmd opencode run "$@" --format json "$content" < /dev/null | ___x_cmd_agent_request___handle_output opencode "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+            {
+                ___x_cmd timeout "$timeout_secs" x-cmd opencode run "$@" --format json "$content" < /dev/null
+                printf "%s\n" "[EXITCODE] $?"
+            } | ___x_cmd_agent_request___handle_output opencode "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
         kimi-cli)
             if [ -n "$user_session_id" ]; then
@@ -388,9 +396,12 @@ ___x_cmd_agent_request___run_exec(){(
                 set -- --no-thinking
             fi
 
-            ___x_cmd kimi -- "$@" --print --output-format stream-json --final-message-only \
+            {
+                ___x_cmd timeout "$timeout_secs" x-cmd kimi -- "$@" --print --output-format stream-json --final-message-only \
                 ${reference_workspace:+--add-dir "$reference_workspace"} \
-                --prompt "$content" < /dev/null | ___x_cmd_agent_request___handle_output kimi-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
+                --prompt "$content" < /dev/null
+                printf "%s\n" "[EXITCODE] $?"
+            } | ___x_cmd_agent_request___handle_output kimi-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_map_file"
             ;;
     esac
 )}
@@ -416,11 +427,11 @@ ___x_cmd_agent_request___handle_output(){
 ___x_cmd_agent_request___cursor_runcmd(){
     if ___x_cmd hascmd cursor; then
         ___x_cmd_agent_request___cursor_runcmd(){
-            ___x_cmd_cmds cursor agent "$@"
+            ___x_cmd timeout "$timeout_secs" cursor agent "$@"
         }
     elif ___x_cmd hascmd agent; then
         ___x_cmd_agent_request___cursor_runcmd(){
-            ___x_cmd_cmds agent "$@"
+            ___x_cmd timeout "$timeout_secs" agent "$@"
         }
     else
         agent:error "Not found cursor or agent command"
