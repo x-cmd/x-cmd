@@ -1,18 +1,4 @@
-
-___x_cmd_claw_ensure_worker_is_running(){
-    local agent_type="$1"
-    local agent_chatid="$2"
-
-    ___x_cmd service ensure "agent-${agent_type}-${agent_chatid}" "___x_cmd_claw_$type"
-}
-
-___x_cmd_claw_run_elegantrun(){
-    ( "$@" & )
-}
-
-___x_cmd_claw_workat(){
-    :
-}
+# shellcheck shell=dash
 
 ___x_cmd_claw_run___msg_line_count_(){
     local botdata="$1"
@@ -27,31 +13,72 @@ ___x_cmd_claw_run___msg_line_count_(){
     fi
 }
 
-# ___x_cmd_claw_run_worker(){
-#     local msg="$1"
-
-#     case "$TYPE" in
-#         weixi|qywx|feishu|telegram|discord|whatsapp)
-#             ___x_cmd_claw_ensure_worker_is_running "$TYPE" "$CHATID"
-#             ___x_cmd tail send "$TYPE-$CHATID" "$msg"   # Forward the message to the agent
-#             ;;
-#         *)
-#             N=claw M="Unsupported worder -> $TYPE" log:ret:1
-#             ;;
-#     esac
-# }
-
-# ___x_cmd_claw_run___othermode(){
-#     while ___x_cmd tailer wait --offset "$offset"; do
-#         ___x_cmd tailer recent --offset "$offset"       || return 130
-#     done
-# }
-
-# preference set name
-# preference set tz
-# preference set lang
-
-___x_cmd_claw_pref(){
-    :
+___x_cmd_claw_run___detect_im_(){
+    x_=""
+    local im; for im in weixin feishu telegram qywx; do
+        ___x_cmd "$im" --isready || continue
+        x_="$im"
+        return 0
+    done
+    return 1
 }
 
+___x_cmd_claw_run___activate_im(){
+    local im="${1:-"weixin"}"
+    claw:info "Activating IM platform $im"
+
+    ___x_cmd_claw_run___ensure "$im" || return $?
+
+    local imfile="$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity/$im"
+    [ -f "$imfile" ] || ___x_cmd touch "$imfile"
+
+    claw:info "IM platform activated $im"
+}
+
+___x_cmd_claw_run___deactivate_im(){
+    local im="${1:-"weixin"}"
+    claw:info "Deactivating IM platform $im"
+
+    case "$im" in
+        weixin|telegram)
+            ___x_cmd "$im" bot service stop || return $?
+            ;;
+        feishu|qywx)
+            ___x_cmd "$im" abot service stop || return $?
+            ;;
+        *)  claw:error "Unsupported IM platform $im"
+            return 1
+            ;;
+    esac
+    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity/$im"
+
+    claw:info "IM platform deactivated $im — service stopped and activity marker removed"
+}
+
+___x_cmd_claw_run___list_activate(){
+    local imdir="$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity"
+    [ -d "$imdir" ] || return 0
+    ___x_cmd fsiter --ls "$imdir"
+}
+
+___x_cmd_claw_run___ensure(){
+    ___x_cmd agent isready || {
+        claw:error "Agent is not ready. Please run 'x agent init' to setup the agent first."
+        return 1
+    }
+
+    local im="${1:-"weixin"}"
+    case "$im" in
+        weixin|telegram)
+            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/$im/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
+            ___x_cmd "$im" bot service ensure || return $?
+            ;;
+        feishu|qywx)
+            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/$im/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
+            ___x_cmd "$im" abot service ensure || return $?
+            ;;
+        *)  claw:error "Unsupported IM platform $im"
+            return 1
+            ;;
+    esac
+}

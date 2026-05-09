@@ -1,32 +1,90 @@
 
 ___x_cmd_ccal_info(){
-    case "$1" in
-        -h|--help)      ___x_cmd help -m ccal info "$@" ; return 0 ;;
-    esac
+    local mode=auto
+    local date_arg=""
 
-    case "$1" in
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m ccal info "$@" ; return 0 ;;
+            --tsv|--csv|--tty|--yml|--auto)
+                                mode="${1#--}" ;;
+            -a|--all)           mode=all ;;
+            *)                  date_arg="$1"; break ;;
+        esac
+        shift
+    done
+
+    case "$date_arg" in
         *-*-*|*/*/*)    ;;
-        *-*)            set -- "$1-01" ;;
-        */*)            set -- "$1/01" ;;
-        *)              ___x_cmd_ccal_draw "$1"
-                        return
+        *-*)            date_arg="${date_arg}-01" ;;
+        */*)            date_arg="${date_arg}/01" ;;
+        *)              date_arg="$(date +%Y-%m-%d)"
+                        ;;
     esac
 
     local x_
-    ___x_cmd_ccal_util_normalize0_ "$1"
+    ___x_cmd_ccal_util_normalize0_ "$date_arg"
     ___x_cmd_ccal_util_isvalid "$x_" || return $?
 
-    HLDAY="$x_" ___x_cmd_ccal_draw "$x_"
+    local year="${x_%%-*}"
+    local month="${x_#*-}"; month="${month%-*}"
+    local day="${x_##*-}"
 
-    # ___x_cmd_ccal_lunar cat "$y" "$m" | {
-    #     ___x_cmd_cmds awk -v ymd="$ymd" -v FS='\t' '
-    # $1~ymd{
-    #     printf("  \033[31m[宜] %s\n", $12)
-    #     printf("\n")
-    #     printf("  \033[32m[忌] %s\n", $13)
-    #     exit
-    # }
-    # '
-    # }
+    # Pad month and day to 2 digits
+    month="${month#0}"
+    [ "$month" -lt 10 ] && month="0$month"
+    day="${day#0}"
+    [ "$day" -lt 10 ] && day="0$day"
 
+    # Build normalized target date
+    x_="${year}-${month}-${day}"
+
+    if [ "$mode" = auto ]; then
+        if ___x_cmd_is_stdout2tty; then
+            mode=tty
+        else
+            mode=yml
+        fi
+    fi
+
+    case "$mode" in
+        tsv)
+            ___x_cmd_ccal_lunar_cat --tsv "$year" "$month" | \
+                ___x_cmd_cmds awk -F'\t' -v target="$x_" \
+                    '$1 == target { print; exit }'
+            ;;
+        csv)
+            ___x_cmd_ccal_lunar_cat --tsv "$year" "$month" | \
+                ___x_cmd_cmds awk -F'\t' -v target="$x_" \
+                    '$1 == target { print; exit }' | \
+                ___x_cmd tsv tocsv
+            ;;
+        yml)
+            ___x_cmd_ccal_lunar_cat --tsv "$year" "$month" | \
+                ___x_cmd_cmds awk -F'\t' -v target="$x_" \
+                    '$1 == target { print; exit }' | \
+                ___x_cmd_cmds awk -F'\t' '
+                {
+                    printf "date: %s\n", $1
+                    printf "lunar_date: %s\n", $2
+                    printf "lunar_daycount: %s\n", $3
+                    printf "jianchu: %s\n", $4
+                    printf "weekday: %s\n", $5
+                    printf "bazi: %s\n", $6
+                    printf "jieqi: %s\n", $7
+                    printf "jieqi_next: %s\n", $8
+                    printf "holiday: %s\n", $9
+                    printf "xiuxi: %s\n", $10
+                    printf "related: %s\n", $11
+                    printf "yi: %s\n", $12
+                    printf "ji: %s\n", $13
+                }'
+            ;;
+        all)
+            ___x_cmd_ccal_lunar_cat --tsv "$year" "$month"
+            ;;
+        tty|*)
+            HLDAY="$x_" ___x_cmd_ccal_draw "$x_"
+            ;;
+    esac
 }

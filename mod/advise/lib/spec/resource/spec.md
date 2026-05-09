@@ -116,6 +116,22 @@ Advise 与以下三个操作紧密关联：
 
 **注意**: `<synopsis>` **只能在模块级别**定义，子命令/选项级别不可使用。
 
+**⚠️ 重要规则：选项必须前置**
+
+在 synopsis、tldr、所有文档示例中，**选项（option）必须放在参数（argument）之前**。
+
+| 类型 | 示例 |
+|------|------|
+| ✅ 正确 | `x ccal info --yml 2026-05-09` |
+| ❌ 错误 | `x ccal info 2026-05-09 --yml` |
+| ✅ 正确 | `x ccal tiaoxiu -n 30 2026-05-01` |
+| ❌ 错误 | `x ccal tiaoxiu 2026-05-01 -n 30` |
+
+**说明**：
+- 选项包括：`--<flag>`、`--<key> <value>`、`-<short>`
+- 代码层面可以支持选项后置，但文档中**绝对不要鼓励这种写法**
+- 这是 x-cmd 的设计规范，必须遵守
+
 ### 3.4 `<desc>` - 模块描述
 
 ```yaml
@@ -136,6 +152,9 @@ Advise 与以下三个操作紧密关联：
 
 ### 3.5 `<tip>` - 使用提示
 
+`<tip>` 是**列表格式**，不同事项分项列举，每项聚焦一个要点。可以在**模块级别**和**子命令级别**使用。
+
+**模块级别 tip**：
 ```yaml
 <tip>:
   - cn: |
@@ -148,6 +167,24 @@ Advise 与以下三个操作紧密关联：
       2. Tip content 2
 ```
 
+**子命令级别 tip**：
+```yaml
+<subcmd>:
+  <desc>: ...
+  <tip>:
+    - cn: "要点1：xxx"
+      en: "Point 1: xxx"
+    - cn: "要点2：xxx"
+      en: "Point 2: xxx"
+```
+
+**tip 使用原则**：
+- **避免 desc 过于冗长**：详细的说明应该拆到 tip 中，而不是堆在 desc 里
+- **每项只讲一个要点**：tip 是列表，每项聚焦一个点
+- **子命令 tip 放在 subcmd 定义下**：子命令级别的 tip 随 subcmd 定义走
+
+---
+
 ### 3.6 `<tldr>` - 常用示例
 
 ```yaml
@@ -157,27 +194,110 @@ Advise 与以下三个操作紧密关联：
     en: "Example: English description"          # 英文描述
 ```
 
-**TLDR 编写原则**:
-- 描述前缀规范:
-  - 功能模块: `"示例: xxx"`
-  - 测试模块: `"测试: xxx"`
-  - 危险操作: `"警告: xxx"`
-- 展示最强能力: 多值、批量、复杂模式
-- 覆盖主要功能点
-
-**强弱示例对比**:
-
-```yaml
-# ❌ 弱示例 - 只展示单值
-- cmd: x assert is-int 42
-  cn: "示例: 整数检查"
-
-# ✅ 强示例 - 展示批量能力
-- cmd: x assert is-int 1 2 3 4 5
-  cn: "测试: 批量验证多值都是整数"
-```
+**核心定位**:
+- TLDR 是 **help 的入口**，人和 AI 共同使用
+- 帮助 AI 快速理解模块能力，建立初步认知
+- 引导 AI 在需要时通过 `x <mod> <subcmd> --help` 获取详细信息
 
 ---
+
+## 3.6.1 TLDR 编写核心原则
+
+### ⚠️ 首要规则：选项必须前置
+
+**TLDR 中的命令示例，选项必须放在参数之前：**
+
+| 正确示例 | 错误示例 |
+|---------|---------|
+| `x ccal info --yml 2026-05-09` | `x ccal info 2026-05-09 --yml` |
+| `x ccal ls --yml 2026-05` | `x ccal ls 2026-05 --yml` |
+| `x ccal tiaoxiu -n 30` | `x ccal tiaoxiu 2026-05-01 -n 30` |
+
+**代码可能支持选项后置，但 TLDR 中绝对不要这样写！**
+
+### 1. 顶层 tldr 引导 AI 认知
+- 每个模块的 help 顶层 tldr 很重要，应该尽量引导 AI 了解常用功能
+- AI 通过 tldr 建立对模块能力的第一印象
+
+### 2. 第一个 tldr：入门代表命令
+- 第一个 tldr 是人和 AI 共同能用的入门代表命令
+- 应该是最常用、最基础的用法，一用即有结果
+- 让 AI 知道"这个模块是做什么的"
+- 对于工具类模块，第一个 tldr 通常是 `x <mod>`（不带参数）或 `x <mod> info`
+
+### 3. 后续 tldr：让 AI 知道能获得什么工具
+- 后续 tldr 主要让 AI 知道能获得什么工具/能力
+- 展示模块的核心功能和适用场景
+- AI 可以反推用 `x <mod> <subcmd> --help` 来看更多细节
+
+### 4. 不怕重复，不同角度多场景描述
+- **不用担心重复**：上层 subcmd 可能会与重要子 subcmd 的 tldr 重合
+- **多角度描述**：同一功能可以从不同使用场景描述
+- **提供更多选择**：AI 可以根据不同场景选择合适的命令
+
+### 5. 描述前缀规范
+| 前缀 | 用途 | 示例 |
+|------|------|------|
+| `"示例: xxx"` | 功能模块 | `"示例: 查看主机信息"` |
+| `"测试: xxx"` | 测试模块 | `"测试: 验证整数类型"` |
+| `"警告: xxx"` | 危险操作 | `"警告: 删除不可恢复"` |
+
+### 6. 展示最强能力
+- 多值、批量、复杂模式 > 单值简单模式
+- 让 AI 知道模块的上限能力
+
+---
+
+## 3.6.2 TLDR 编写示例
+
+**好的 TLDR 结构（多角度）**：
+
+```yaml
+<tldr>:
+  # 第一个：入门代表命令
+  - cmd: x host
+    cn: "示例: 交互式查看 hosts 文件"
+    en: "Example: interactive view hosts file"
+
+  # 后续：多角度展示能力
+  - cmd: x host cat
+    cn: "示例: 管道方式获取 hosts 内容"
+    en: "Example: get hosts content via pipe"
+
+  - cmd: x host get localhost
+    cn: "示例: 查询指定主机名的 IP"
+    en: "Example: lookup IP for hostname"
+
+  - cmd: x host ls
+    cn: "示例: 列出所有主机名"
+    en: "Example: list all hostnames"
+
+  - cmd: x host app
+    cn: "示例: 交互式模糊查找主机"
+    en: "Example: interactive fuzzy search hosts"
+```
+
+## 3.6.3 子命令级别的 tldr
+
+子命令的 tldr 可以与父级 tldr 有部分重合，但应该**聚焦该子命令的独特价值**。
+
+```yaml
+host:
+  <desc>: ...
+  <tldr>:                    # 顶层 tldr - 整体认知
+    - cmd: x host
+      cn: "示例: 交互式查看 hosts"
+    - cmd: x host get localhost
+      cn: "示例: 查询主机 IP"
+
+  get:                       # 子命令 tldr - 聚焦该子命令
+    <desc>: 获取主机名对应的 IP
+    <tldr>:
+      - cmd: x host get localhost
+        cn: "示例: 获取 localhost 的 IP"
+      - cmd: x host get example.com
+        cn: "示例: 获取任意域名的 IP"
+```
 
 ## 四、子命令定义（核心语法）
 

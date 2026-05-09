@@ -1,0 +1,92 @@
+# shellcheck shell=dash disable=2016
+
+___x_cmd_claw_log(){
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m claw log "$@" ; return 0 ;;
+            *)          break ;;
+        esac
+    done
+
+    local dir="$___X_CMD_CLAW_BOT_STDOUT_LOG_DIR"
+    [ -d "$dir" ] || {
+        claw:warn "No logs found for claw bot. Directory '$dir' does not exist."
+        return 1
+    }
+
+    local recent_ts=""; read -r recent_ts <<A
+$( ___x_cmd fsiter --ls --folder "$dir" | ___x_cmd_cmds sort -r )
+A
+
+    [ -n "$recent_ts" ] || return 0
+    local ht; ht="$( ___x_cmd date iso "$recent_ts" )"
+    claw:info "Showing logs from $ht"
+    ___x_cmd_claw_log___recent "$dir/$recent_ts"
+}
+
+___x_cmd_claw_log___recent(){
+    local dir="$1"
+    [ -d "$dir" ] || return 0
+    ___x_cmd_claw_log___output_all "$dir"
+
+    shift $#
+    local x_="" l=""
+    ___x_cmd fsiter --file_ "$dir"
+    while read -r l; do
+        set -- "$@" "$dir/$l"
+    done <<A
+$x_
+A
+    ___x_cmd_cmds tail -F -q -n 0 "$@" | ___x_cmd awk0 -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_output_realtime.awk"
+}
+
+___x_cmd_claw_log___watch(){(
+    local dir="$1"
+    [ -d "$dir" ] || return 0
+    ___x_cmd_claw_log___output_all "$dir"
+
+    local aggregate="$dir/.log_aggregate"
+    local tracked="$dir/.log_tracked"
+    local pids="$dir/.log_pids"
+    : > "$aggregate"
+    : > "$tracked"
+    : > "$pids"
+
+    (
+        trap 'while read -r p; do [ -n "$p" ] && ___x_cmd kill tree "$p" 2>/dev/null; done < "$pids"; ___x_cmd rmrf  "$aggregate" "$tracked" "$pids"; exit' INT TERM
+
+        while true; do
+            for f in "$dir"/*; do
+                [ -f "$f" ] || continue
+                case "$f" in
+                    "$aggregate"|"$tracked"|"$pids") continue ;;
+                esac
+                ___x_cmd_cmds grep -Fxq "$f" "$tracked" 2>/dev/null && continue
+
+                printf '%s\n' "$f" >> "$tracked"
+                ___x_cmd_cmds tail -F -q -n 0 "$f" >> "$aggregate" 2>/dev/null &
+                printf '%s\n' "$!" >> "$pids"
+            done
+            sleep 2
+        done
+    ) &
+    local scanner_pid=$!
+
+    ___x_cmd_cmds tail -F -q -n 0 "$aggregate" | \
+        ___x_cmd awk0 -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_output_realtime.awk"
+
+    ___x_cmd kill tree "$scanner_pid" 2>/dev/null
+    wait "$scanner_pid" 2>/dev/null
+    ___x_cmd rmrf "$aggregate" "$tracked" "$pids"
+)}
+
+___x_cmd_claw_log___output_all(){
+    local dir="$1"
+    [ -d "$dir" ] || return 0
+
+    {
+        local i; for i in "$dir"/*; do
+            ___x_cmd_cmds cat "$i"
+        done
+    } | ___x_cmd awk0 -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_output_all.awk"
+}

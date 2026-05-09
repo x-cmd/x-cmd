@@ -116,7 +116,15 @@ ___x_cmd_qywx_parse_item_decrypt___(){
             typename="Voice"
             ;;
         mixed)
-            bodystr="${bodystr}${msg_text}"
+            if [ -n "$msg_text" ]; then
+                bodystr="${bodystr}${msg_text}"
+            fi
+            if [ -n "$msg_img_url" ]; then
+                typename="Image"
+                cdn_url="$msg_img_url"
+                aes_key_hex="$msg_img_aeskey"
+                default_ext=".jpg"
+            fi
             ;;
         *)
             typename="Unknown"
@@ -155,17 +163,27 @@ A
                 return 1
             }
 
-            local key=$(printf '%s' "$aes_key_hex" | base64 -d 2>/dev/null | od -A n -t x1 -N 32 -v | tr -d ' \n')
-            local iv_hex=$(printf '%s' "$aes_key_hex" | base64 -d 2>/dev/null | od -A n -t x1 -N 16 -v | tr -d ' \n')
-            ___x_cmd openssl enc -aes-256-cbc -d -K "$key" -iv "$iv_hex" -nopad -in "$tmp_bin" -out "$out_file" || {
-                qywx:error "File decryption failed"
-                ___x_cmd rmrf "$out_file"
-                ___x_cmd rmrf "$tmp_bin"
-                return 1
-            }
-            ___x_cmd rmrf "$tmp_bin"
+            local line=;
+            read -r line < "$tmp_bin"
+            case $line in
+                "<?xml"*)
+                    bodystr="${bodystr} Download ${typename} Failed: Request expired or Access Denied" ;;
+                *)
+                    local key=$(printf '%s' "$aes_key_hex" | base64 -d 2>/dev/null | od -A n -t x1 -N 32 -v | tr -d ' \n')
+                    local iv_hex=$(printf '%s' "$aes_key_hex" | base64 -d 2>/dev/null | od -A n -t x1 -N 16 -v | tr -d ' \n')
+                    ___x_cmd openssl enc -aes-256-cbc -d -K "$key" -iv "$iv_hex" -nopad -in "$tmp_bin" -out "$out_file" || {
+                        qywx:error "File decryption failed"
+                        ___x_cmd rmrf "$out_file"
+                        ___x_cmd rmrf "$tmp_bin"
+                        return 1
+                    }
+                    ___x_cmd rmrf "$tmp_bin"
+                    bodystr="${bodystr}${out_file}"
+                    ;;
+            esac
+        else
+            bodystr="${bodystr}${out_file}"
         fi
-        bodystr="${bodystr}${out_file}"
     fi
 
     if [ "$is_ref" = "1" ]; then

@@ -39,7 +39,7 @@ ___x_cmd_feishu_parse(){
     end_line="${end_line}"   \
     ___x_cmd awk0 -m j/json -m j/jiter \
             -f "$___X_CMD_ROOT_MOD/feishu/lib/awk/bot_parse.awk" < "$botdata" | {
-        local is_ref="" msg_time="" msg_type="" msg_text="" msg_image_key="" msg_file_key="" msg_file_name="" msg_chat_id="" msg_message_id=""
+        local is_ref="" msg_time="" msg_type="" msg_text="" msg_image_key="" msg_file_key="" msg_file_name="" msg_chat_id="" msg_message_id="" msg_parent_id=""
         local last_ref_str=""
         while   read -r is_ref && \
                 read -r msg_time && \
@@ -49,15 +49,54 @@ ___x_cmd_feishu_parse(){
                 read -r msg_file_key && \
                 read -r msg_file_name && \
                 read -r msg_chat_id && \
-                read -r msg_message_id; do
+                read -r msg_message_id && \
+                read -r msg_parent_id; do
             if [ "$is_ref" = "1" ]; then
-                last_ref_str="$( ___x_cmd_feishu_parse_item___ "$is_ref" "$last_ref_str" "$msg_time" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id" ) "
+                last_ref_str="$( ___x_cmd_feishu_parse_item___ "$is_ref" "$last_ref_str" "$msg_time" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id" "$msg_parent_id" ) "
             else
-                ___x_cmd_feishu_parse_item___ "$is_ref" "$last_ref_str" "$msg_time" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id"
+                ___x_cmd_feishu_parse_item___ "$is_ref" "$last_ref_str" "$msg_time" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id" "$msg_parent_id"
                 last_ref_str=""
             fi
         done
     }
+}
+
+___x_cmd_feishu_get_ref_message(){
+    local msg_id="$1"
+    local x_=; ____x_cmd_tenant_token || return $?
+    local cur_token="$x_"
+
+    ___x_cmd curl -s -L -X GET "https://open.feishu.cn/open-apis/im/v1/messages/${msg_id}" \
+        -H "Authorization: Bearer $cur_token"
+}
+
+___x_cmd_feishu_parse_ref_content(){
+    local ref_json="$1"
+    local ref_type ref_content ref_text ref_image_key ref_file_key ref_file_name
+
+    ref_type="$(printf "%s" "$ref_json" | ___x_cmd jo .data.items[0].msg_type 2>/dev/null)"
+    ref_content="$(printf "%s" "$ref_json" | ___x_cmd jo .data.items[0].body.content 2>/dev/null)"
+
+    [ -z "$ref_content" ] && return 1
+
+    case "$ref_type" in
+        text)
+            ref_text="$(printf "%s" "$ref_content" | ___x_cmd jo .text 2>/dev/null)"
+            printf "%s" "$ref_text"
+            ;;
+        image)
+            ref_image_key="$(printf "%s" "$ref_content" | ___x_cmd jo .image_key 2>/dev/null)"
+            printf "[Image:%s]" "$ref_image_key"
+            ;;
+        file)
+            ref_file_key="$(printf "%s" "$ref_content" | ___x_cmd jo .file_key 2>/dev/null)"
+            ref_file_name="$(printf "%s" "$ref_content" | ___x_cmd jo .file_name 2>/dev/null)"
+            printf "[File:%s:%s]" "$ref_file_key" "$ref_file_name"
+            ;;
+        *)
+            printf "[%s]" "$ref_type"
+            ;;
+    esac
 }
 
 ___x_cmd_feishu_parse_item___(){
@@ -71,6 +110,7 @@ ___x_cmd_feishu_parse_item___(){
     local msg_file_name="$8"
     local msg_chat_id="$9"
     local msg_message_id="${10}"
+    local msg_parent_id="${11}"
 
     local typename="Text" file_key="" default_ext="" download_type=""
     case "$msg_type" in
@@ -126,6 +166,13 @@ ___x_cmd_feishu_parse_item___(){
             [ -f "$tmp_file" ] && mv "$tmp_file" "$out_file"
         fi
         bodystr="${bodystr}${out_file}"
+    fi
+
+    if [ "$is_ref" = "1" ] && [ -n "$msg_parent_id" ]; then
+        local ref_json ref_content
+        ref_json="$(___x_cmd_feishu_get_ref_message "$msg_parent_id")"
+        ref_content="$(___x_cmd_feishu_parse_ref_content "$ref_json")"
+        bodystr="${ref_content}${bodystr}"
     fi
 
     if [ "$is_ref" = "1" ]; then

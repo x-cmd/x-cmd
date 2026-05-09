@@ -53,6 +53,7 @@ ___x_cmd_hub_account_login(){
         website)   ___x_cmd_hub_account_login_website    ""       ;;
         wxqr)      ___x_cmd_hub_account_login_wechat_qr           ;;
         email)     ___x_cmd_hub_account_login_email      "$@"     ;;
+        agent)     ___x_cmd_hub_account_login_agent      "$@"     ;;
         *)         hub:error "Unknown login type: $login_type" ;;
     esac
 }
@@ -121,6 +122,72 @@ ___x_cmd_hub_account_login_email(){
         }
     fi
     ___x_cmd_hub_account_login_email_witharg "$email"
+}
+
+___x_cmd_hub_account_login_agent(){
+    local ___X_CMD_HUB_AGENT_POLL_INTERVAL=3
+    local ___X_CMD_HUB_AGENT_POLL_TIMEOUT=300
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --interval) ___X_CMD_HUB_AGENT_POLL_INTERVAL="$2" ; shift 2 ;;
+            --timeout)  ___X_CMD_HUB_AGENT_POLL_TIMEOUT="$2"  ; shift 2 ;;
+            *) break ;;
+        esac
+    done
+
+    local ticket; ticket="$(___x_cmd_hub_u_ticket_generate)" || return 1
+
+    local url; url="https://hub.x-cmd.com/login?ticket=${ticket}&expire=${___X_CMD_HUB_LOGIN_EXPIRE}&region=${___X_CMD_HUB_LOGIN_REGION}"
+
+    printf "URL=%s\n" "$url"
+    printf "STATUS=waiting\n"
+
+    local elapsed=0
+    local agent_tmp="$___X_CMD_HUB_TMP/agent_verify.$$"
+
+    while [ "$elapsed" -lt "$___X_CMD_HUB_AGENT_POLL_TIMEOUT" ]; do
+        ___x_cmd_cmds sleep "$___X_CMD_HUB_AGENT_POLL_INTERVAL"
+        elapsed=$((elapsed + ___X_CMD_HUB_AGENT_POLL_INTERVAL))
+
+        # Try to get endpoint
+        local endpoint=
+        endpoint="$(NO_AUTH=1 ___x_cmd_hub_u_curl get /api/v0/account/ticket/endpoint ticket== 2>/dev/null | {
+            local msg=; local resp=
+            ___x_cmd jo env . resp=.endpoint .msg
+            [ -n "$resp" ] && printf "%s" "$resp"
+        })" 2>/dev/null || continue
+        [ -n "$endpoint" ] || continue
+
+        ___X_CMD_HUB_SERVICE_URL="$endpoint"
+
+        # Try to verify
+        ___x_cmd rmrf "$agent_tmp" 2>/dev/null
+        NO_AUTH=1 ___x_cmd_hub_u_curl get /api/v0/account/verify ticket== 2>/dev/null | {
+            local name=; local token=; local region=
+            ___x_cmd jo env . .name .token .region
+            [ -n "$token" ] || return 0
+            printf '%s\n' "$token" "$name" "$region" > "$agent_tmp"
+        }
+
+        [ -f "$agent_tmp" ] || continue
+
+        local token='' name='' region=''
+        { read -r token; read -r name; read -r region; } < "$agent_tmp"
+        ___x_cmd rmrf "$agent_tmp"
+
+        ___x_cmd_hub_cfg --set endpoint="$endpoint"
+        ___x_cmd_hub_cfg --set token="$token"
+
+        printf "STATUS=success\n"
+        printf "NAME=%s\n" "$name"
+        printf "REGION=%s\n" "$region"
+        return 0
+    done
+
+    printf "STATUS=timeout\n"
+    ___x_cmd rmrf "$agent_tmp" 2>/dev/null
+    return 1
 }
 
 # TODO: refactor

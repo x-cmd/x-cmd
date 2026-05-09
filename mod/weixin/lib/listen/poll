@@ -29,7 +29,6 @@ ___x_cmd_weixin_listen_poll(){
     weixin:info "Starting long-poll listener..."
 
     local resp=""
-    local get_updates_buf=; local msgs=; local  context_token=;
     local curl_errcode=0
     local fail_count=0
     while true; do
@@ -55,12 +54,23 @@ ___x_cmd_weixin_listen_poll(){
                     ;;
             esac
         }
-        fail_count=0
 
-        get_updates_buf=""; msgs=""; context_token="";
-        ___x_cmd jo env . .get_updates_buf .msgs context_token=.msgs.1.context_token  <<A
+        local get_updates_buf="" msgs="" context_token="" errcode=""
+        ___x_cmd jo env . .get_updates_buf .msgs .errcode context_token=.msgs.1.context_token  <<A
 $resp
 A
+
+        if [ -n "$errcode" ] && [ "$errcode" != "0" ]; then
+            fail_count=$((fail_count+1))
+            weixin:error "[fail-count=$fail_count] Failed to listen for messages: $resp"
+            if [ "$fail_count" -lt 5 ]; then
+                ___x_cmd sleep 1s || return $?
+                continue
+            else
+                return 1
+            fi
+        fi
+        fail_count=0
 
         [ -n "$msgs" ] || {
             weixin:error "Failed to listen for messages: $resp"

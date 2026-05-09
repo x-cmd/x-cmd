@@ -1,0 +1,103 @@
+# shellcheck shell=bash  disable=2034
+xrc cfgy param
+___x_cmd_umami_cfg(){
+    param:void
+    [ "$#" -gt 0 ] || set -- --help
+
+    local X_help_cmd=; X_help_cmd='x help -m umami --cfg' help:arg:parse
+    ___x_cmd_umami_cfg___invoke "$@"
+}
+
+___x_cmd_umami_cur(){
+    param:void
+    local X_help_cmd=; X_help_cmd='x help -m umami --cur' help:arg:parse
+    ___x_cmd_umami_cfg___invoke --current "$@"
+}
+
+
+___x_cmd_umami_init(){
+    param:void
+    local X_help_cmd=; X_help_cmd='x help -m umami --init' help:arg:parse
+    local cur_endpoint=; local cur_token=
+    if [ -f "$(___x_cmd_umami_cur --get config)" ]; then
+        ___x_cmd_umami_cur cur_token:=token cur_endpoint:=endpoint
+    fi
+
+    cur_token=; ___x_cmd_umami_init_ || return 1
+
+    ___x_cmd_umami_cfg___invoke set "endpoint=$cur_endpoint" "token=$cur_token" || return
+
+    umami:info "Initial configuration successful."
+}
+
+___x_cmd_umami_init_(){
+    local ___X_CMD_TUI_FORM_UNSET=
+    local ___X_CMD_TUI_FORM_FINAL_COMMAND=
+    local x_=
+    local endpoint=
+
+    if ___x_cmd ui yesno "using Umami Cloud?";then
+        local token=
+        ___x_cmd tui form --return var  \
+            endpoint   "Endpoint"  "${___X_CMD_UMAMI___API_ENDPOINT_CLOUD}"                            -- \
+            token      "API key"   ""                                                        '=~*' '^[A-Za-z0-9_-]+$'   || return
+        if [ "$___X_CMD_TUI_FORM_FINAL_COMMAND" = "execute" ];then
+            cur_endpoint="$endpoint"
+            cur_token="$token"
+        fi
+    else
+        local username=
+        local password=
+        [ "$cur_endpoint" != "$___X_CMD_UMAMI___API_ENDPOINT_CLOUD" ] || cur_endpoint=
+        ___x_cmd tui form --return var  \
+            endpoint   "Self-hosting Endpoint"  "${cur_endpoint:-"http://<your-umami-instance>/api"}"                             -- \
+            username   "Username"               ""                                                    -- \
+            password   "Password"               ""                '=~*'                               || return
+        if [ "$___X_CMD_TUI_FORM_FINAL_COMMAND" = "execute" ];then
+            cur_endpoint="$endpoint"
+            x_=; ___x_cmd_umami___get_token_ "$endpoint" "$username" "$password"
+            cur_token="$x_"
+        fi
+    fi
+    eval "$___X_CMD_TUI_FORM_UNSET"
+    [ -n "$cur_endpoint" ]  || M='Please configure Endpoint.'   N=umami log:ret:1
+    [ -n "$cur_token" ]     || M="Failed to obtain token."      N=umami log:ret:1
+}
+
+
+___X_CMD_UMAMI_CFG_VARLIST="token,endpoint"
+___x_cmd_umami_cfg___invoke(){
+
+    # shellcheck disable=2154
+    ___x_cmd_cfgy_obj   \
+        --prefix            ___X_CMD_UMAMI_CFG_DATA                     \
+        --default-config    "${___X_CMD_ROOT_CFG}/umami/X.cfg.yml"      \
+        --current-config    "${___X_CMD_FCT_LOCAL_CONFIG}"              \
+        --current-profile   "${___X_CMD_FCT_LOCAL_PROFILE}"             \
+        --varlist           "$___X_CMD_UMAMI_CFG_VARLIST"               \
+        "$@"
+}
+
+___x_cmd_umami___get_token_(){
+    local endpoint="$1"
+    local data="\"username\": \"$2\", \"password\": \"$3\""
+    data="{ ${data} }"
+
+    local tmp_token=
+    local result=
+    umami:debug \'x curl -sS -L -X POST "\"${endpoint}/auth/login\"" -H "\"Content-Type: application/json\"" -H "\"Accept: application/json\"" -d "$data"\'
+    result="$(
+        ___x_cmd curl -sS -L -X POST "${endpoint}/auth/login"                       \
+        -H "Content-Type: application/json"                                     \
+        -H "Accept: application/json"                                           \
+        -d "$data"
+    )"
+    printf "%s" "$result" | ___x_cmd jo env 1 tmp_token=.token
+    [ -n "$tmp_token" ] || {
+        x:error "$result"
+        return 1
+    }
+
+    x_="$tmp_token"
+    return 0
+}

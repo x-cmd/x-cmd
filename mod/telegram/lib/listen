@@ -31,36 +31,59 @@ ___x_cmd_telegram_listen(){
     local offsetfp="$___X_CMD_TELEGRAM_TMP/offset"
     [ ! -f "$offsetfp" ] || read -r offset <"$offsetfp"
 
+    local curl_errcode=0
+    local fail_count=0
     while true; do
         local resp=;
         resp="$(___x_cmd_telegram_getupdates | ___x_cmd jq -c )" || {
-            telegram:error "Failed to get updates: $resp"
-            ___x_cmd sleep 1s
-            return 1
+            curl_errcode=$?
+            case "$curl_errcode" in
+                28)
+                    continue ;;
+                130)
+                    telegram:error "Exit because recved Interrupt."
+                    return 1 ;;
+                *)
+                    telegram:error "Failed to get updates: $resp"
+                    ___x_cmd sleep 1
+                    return 1 ;;
+            esac
         }
 
-        local msg
-        ___x_cmd jo env . msg=.result <<A
+        local msg="" status="" chatid="" error_code=""
+        ___x_cmd jo env . msg=.result status=.ok error_code=.error_code chatid=.result.1.message.chat.id <<A
 $resp
 A
+
+        if [ "$status" = "false" ] || [ -n "$error_code" ]; then
+            fail_count=$((fail_count+1))
+            telegram:error "[fail-count=$fail_count] Failed to get updates: $resp"
+            case "$error_code" in
+                401) return 1 ;;
+                *)
+                    if [ "$fail_count" -lt 5 ]; then
+                        ___x_cmd sleep 1s || return $?
+                        continue
+                    else
+                        return 1
+                    fi
+                    ;;
+            esac
+        fi
+        fail_count=0
+
         [ "$msg" != "[]" ] || continue
 
         offset="$(printf "%s\n" "$resp" | ___x_cmd jq ".result[-1].update_id + 1")"
         printf "%s\n" "$offset" > "$offsetfp"
 
-
         if [ -n "$fp" ]; then
-            case "$resp" in
-                *"chat"*)
-                        local chatid=;
-                        chatid="${resp#*'"chat":{"id":'}"
-                        chatid="${chatid%%,*}"
-                        ___X_CMD_TELEGRAM_BOT_DATA="${___X_CMD_TELEGRAM_BOT_PATH}/data_${chatid}.tsv"
-                        ___x_cmd ensurefp "$___X_CMD_TELEGRAM_BOT_DATA"
-                        printf "%s\n" "$resp"  >> "$___X_CMD_TELEGRAM_BOT_DATA"
-                        ___x_cmd tailer pub "$___X_CMD_ROOT_DATA/telegram/sub" "telegram:${chatid}"
-                        ;;
-            esac
+            if [ -n "$chatid" ]; then
+                ___X_CMD_TELEGRAM_BOT_DATA="${___X_CMD_TELEGRAM_BOT_PATH}/data_${chatid}.tsv"
+                ___x_cmd ensurefp "$___X_CMD_TELEGRAM_BOT_DATA"
+                printf "%s\n" "$resp"  >> "$___X_CMD_TELEGRAM_BOT_DATA"
+                ___x_cmd tailer pub "$___X_CMD_ROOT_DATA/telegram/sub" "telegram:${chatid}"
+            fi
         elif [ "$format" = "json" ]; then
             printf "%s\n" "$resp"
         else
