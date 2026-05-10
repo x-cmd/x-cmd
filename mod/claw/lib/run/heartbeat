@@ -5,9 +5,11 @@
 # x cron add --ns "x-claw/default" ""
 
 ___x_cmd_claw_run___agentwork___heartbeat(){
-    local logfp="$___X_CMD_CLAW_BOT_STDOUT_LOG_DIR/heartbeat.log"
-    ___x_cmd ensurefp "$logfp"
-    exec >>"$logfp" 2>&1
+    if [ -n "$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR" ]; then
+        local logfp="$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR/heartbeat.log"
+        ___x_cmd ensurefp "$logfp"
+        exec >>"$logfp" 2>&1
+    fi
 
     local current_ts="$1"
     local heartbeat_tsfile="$___X_CMD_CLAW_BOT_HEARTBEAT/lastheartbeat_ts"
@@ -19,61 +21,77 @@ ___x_cmd_claw_run___agentwork___heartbeat(){
 
     ___x_cmd cron runonce --ns "x-claw-default"
 
-    # check agent has unread message, and it is not working, if exists, run the agent.
-    local imfile="$___X_CMD_CLAW_BOT_HEARTBEAT/current_im_chatid"
-    local current_im=""; local current_chatid="";
-    [ -f "$imfile" ] || return 0
-    read -r current_im current_chatid < "$imfile"
+    # Skip if previous heartbeat worker is still running
+    if ___x_cmd worker isalive --ns x-claw-default-worker --name x-claw-heartbeat; then
+        claw:info "[HB] Global heartbeat worker (x-claw-heartbeat) still running — skipping this cycle"
+        return 0
+    fi
 
-    # Ensure IM service is always online before any operation
-    case "$current_im" in
-        feishu|qywx)
-                ___x_cmd "$current_im" abot service ensure  || return 130 ;;
-        *)      ___x_cmd "$current_im" bot service ensure   || return 130 ;;
-    esac
+    ___x_cmd worker run --ns x-claw-default-worker --name x-claw-heartbeat -- ___x_cmd_claw_run___heartbeat___orchestrate
+}
 
-    local idle_count=0
+___x_cmd_claw_run___heartbeat___orchestrate(){
+    local active_im=""; local active_chatid=""; local active_ts=""
+    local imdir="$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity"
+    [ -d "$imdir" ] || {
+        claw:warn "[HB] No IM activity directory found at $imdir — ensure 'x claw start' has been run"
+        return 0
+    }
+
+    local i; for i in "$imdir"/*; do
+        [ -f "$i" ] || continue
+        active_im="${i##*/}"
+        ___x_cmd_claw_run___ensure "$active_im" || return 130
+
+        read -r active_chatid active_ts < "$i"
+        [ -n "$active_chatid" ] || continue
+        ___x_cmd_claw_run___heartbeat___probe "$active_im" "$active_chatid"
+    done
+
     local idle_file="$___X_CMD_CLAW_BOT_HEARTBEAT/idle_count"
     local heartbeat_done_file="$___X_CMD_CLAW_BOT_HEARTBEAT/heartbeat_done"
-    [ ! -f "$idle_file" ] || read -r idle_count < "$idle_file"
+    # Skip heartbeat agent if already confirmed idle by agent itself
+    [ ! -f "$heartbeat_done_file" ] || return 0
 
-    # Activity: unread message pending to be processed
+    # Skip heartbeat agent during initial observation period [3, 30)
+    local idle_count=0
+    [ ! -f "$idle_file" ] || read -r idle_count < "$idle_file"
+    [ "$idle_count" -ge 3 ] || return 0
+    [ "$idle_count" -lt 30 ] || return 0
+    claw:info "[HB] Global idle counter = $idle_count — launching global heartbeat agent"
+    ___x_cmd_claw_run___agentrequest___handleheartbeat
+}
+
+___x_cmd_claw_run___heartbeat___probe(){
+    local current_im="$1"
+    local current_chatid="$2"
+    local idle_file="$___X_CMD_CLAW_BOT_HEARTBEAT/idle_count"
+    local heartbeat_done_file="$___X_CMD_CLAW_BOT_HEARTBEAT/heartbeat_done"
+
+    # Activity: unread message pending to be processed — launch agent if not already handling
     if ___x_cmd claw "$current_im" has-unread "$current_chatid" && ! ___x_cmd worker isalive --ns x-claw-default-worker --name "${current_im}-${current_chatid}"; then
         printf "%s\n" "0" > "$idle_file"
         ___x_cmd rmrf "$heartbeat_done_file"
-        claw:info "Unread message detected, launching agent request"
+        claw:info "[HB] [$current_im:$current_chatid] Unread messages detected — launching message handler"
         ___x_cmd_claw_run___agentwork___handlemsg "${current_im}:${current_chatid}"
         return 0
     fi
 
     # Activity: message worker still running
     if ___x_cmd worker isalive --ns x-claw-default-worker --name "${current_im}-${current_chatid}"; then
-        claw:debug "Message worker still running, skipping heartbeat"
+        claw:info "[HB] [$current_im:$current_chatid] Message handler still active — resetting idle counter"
         printf "%s\n" "0" > "$idle_file"
         ___x_cmd rmrf "$heartbeat_done_file"
         return 0
     fi
 
-    # No external activity detected: increment idle counter
-    # Note: heartbeat worker is internal task, counter keeps growing while it runs
+    # No external activity: increment global idle counter
+    # The heartbeat worker itself is internal; counter accumulates across ticks
+    local idle_count=0
+    [ ! -f "$idle_file" ] || read -r idle_count < "$idle_file"
     idle_count=$(( idle_count + 1 ))
     printf "%s\n" "$idle_count" > "$idle_file"
-    claw:debug "Tick ${idle_count} — no external pulse detected"
-
-    # Skip if previous heartbeat worker is still running
-    if ___x_cmd worker isalive --ns x-claw-default-worker --name x-claw-heartbeat; then
-        claw:info "Previous heartbeat worker is still running, skipping heartbeat"
-        return 0
-    fi
-
-    # Skip heartbeat agent if already confirmed idle by agent itself
-    [ ! -f "$heartbeat_done_file" ] || return 0
-
-    # Skip heartbeat agent during initial observation period (first 3 idle cycles)
-    [ "$idle_count" -ge 3 ] || return 0
-    [ "$idle_count" -lt 30 ] || return 0
-    claw:info "Launching heartbeat agent for $current_im:$current_chatid (idle=$idle_count)"
-    ___x_cmd worker run --ns x-claw-default-worker --name x-claw-heartbeat -- ___x_cmd_claw_run___agentrequest___handleheartbeat "$current_im" "$current_chatid"
+    claw:info "[HB] [$current_im:$current_chatid] No activity detected — idle counter = $idle_count"
 }
 
 ___x_cmd_claw_run_hearbeatgenerator(){

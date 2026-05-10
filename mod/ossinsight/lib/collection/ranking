@@ -1,0 +1,98 @@
+# shellcheck shell=dash
+
+# Section: collection repo ranking
+# https://ossinsight.io/docs/api/collection-repo-ranking-by-stars
+# https://ossinsight.io/docs/api/collection-repo-ranking-by-issues
+# https://ossinsight.io/docs/api/collection-repo-ranking-by-prs
+
+___x_cmd_ossinsight_collection_ranking(){
+    [ "$#" -gt 0 ] || set -- --help
+    local op="$1"; shift
+
+    local type="stars"
+    local collection_id=""
+    local period="30d"
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --type)
+                [ -n "$2" ] || { N=ossinsight M="Provide ranking type" log:ret:1; }
+                type="$2"; shift 2 ;;
+            --collection-id|--collection)
+                [ -n "$2" ] || { N=ossinsight M="Provide collection id" log:ret:1; }
+                collection_id="$2"; shift 2 ;;
+            --period)
+                [ -n "$2" ] || { N=ossinsight M="Provide period" log:ret:1; }
+                period="$2"; shift 2 ;;
+            --app|--raw|--csv|--tsv|--json|--yml|--no-header)
+                break ;;
+            -h|--help)
+                ___x_cmd help -m ossinsight collection ranking "$@"
+                return 0
+                ;;
+            *)
+                [ -z "$collection_id" ] && collection_id="$1"
+                shift ;;
+        esac
+    done
+
+    [ -n "$collection_id" ] || { N=ossinsight M="Provide collection id" log:ret:1; }
+
+    case "$op" in
+        --app)        ___x_cmd_ossinsight_collection_ranking___app   "$@" ;;
+        --raw)        ___x_cmd_ossinsight_collection_ranking___raw   "$@" ;;
+        --csv)        ___x_cmd_ossinsight_collection_ranking___csv   "$@" ;;
+        --tsv)        ___x_cmd_ossinsight_collection_ranking___tsv   "$@" ;;
+        --json)       ___x_cmd_ossinsight_collection_ranking___json  "$@" ;;
+        --yml)        ___x_cmd_ossinsight_collection_ranking___yml   "$@" ;;
+        --no-header)  ___x_cmd_ossinsight_collection_ranking___csv --no-header "$@" ;;
+        *)            ___x_cmd_ossinsight_collection_ranking___raw   "$@" ;;
+    esac
+}
+
+___x_cmd_ossinsight_collection_ranking___raw(){
+    local arg="collection_id=${collection_id}&type=${type}&period=${period}"
+    ___x_cmd_ossinsight_api get "/collections/ranking?${arg}"
+}
+
+___x_cmd_ossinsight_collection_ranking___json(){
+    ___x_cmd_ossinsight_collection_ranking___raw "$@" | ___x_cmd jo fmt
+}
+
+___x_cmd_ossinsight_collection_ranking___yml(){
+    ___x_cmd_ossinsight_collection_ranking___raw "$@" | ___x_cmd j2y
+}
+
+___x_cmd_ossinsight_collection_ranking___csv(){
+    local csv_flags="--add"
+    case "$1" in
+        --no-header) csv_flags=""; shift ;;
+    esac
+    ___x_cmd_ossinsight_collection_ranking___raw "$@" \
+        | ___x_cmd jo 1.data \
+        | ___x_cmd jo 2c .rank .repo_id .repo_full_name .stars .added_stars .percentile \
+        | ___x_cmd csv header $csv_flags rank repo_id repo_full_name stars added_stars percentile
+}
+
+___x_cmd_ossinsight_collection_ranking___tsv(){
+    local print_header=1
+    case "$1" in
+        --no-header) print_header=""; shift ;;
+    esac
+    if [ -n "$print_header" ]; then
+        printf "rank\trepo_id\trepo_full_name\tstars\tadded_stars\tpercentile\n"
+    fi
+    ___x_cmd_ossinsight_collection_ranking___raw "$@" \
+        | ___x_cmd jo 1.data \
+        | ___x_cmd jo 2c .rank .repo_id .repo_full_name .stars .added_stars .percentile \
+        | tr ',' '\t'
+}
+
+___x_cmd_ossinsight_collection_ranking___app(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_ossinsight_collection_ranking___csv "$@" | ___x_cmd csv app
+    else
+        ___x_cmd_ossinsight_collection_ranking___tsv "$@"
+    fi
+}
+# EndSection

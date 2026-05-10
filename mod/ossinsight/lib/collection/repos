@@ -1,0 +1,96 @@
+# shellcheck shell=dash
+
+# Section: list repos of collection
+# https://ossinsight.io/docs/api/list-repos-of-collection
+
+___x_cmd_ossinsight_collection_repos(){
+    [ "$#" -gt 0 ] || set -- --help
+    local op="$1"; shift
+
+    local collection_id=""
+    local page=1
+    local page_size=20
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --collection-id|--collection)
+                [ -n "$2" ] || { N=ossinsight M="Provide collection id" log:ret:1; }
+                collection_id="$2"; shift 2 ;;
+            --page)
+                [ -n "$2" ] || { N=ossinsight M="Provide page number" log:ret:1; }
+                page="$2"; shift 2 ;;
+            --page-size)
+                [ -n "$2" ] || { N=ossinsight M="Provide page size" log:ret:1; }
+                page_size="$2"; shift 2 ;;
+            --app|--raw|--csv|--tsv|--json|--yml|--no-header)
+                break ;;
+            -h|--help)
+                ___x_cmd help -m ossinsight collection repos "$@"
+                return 0
+                ;;
+            *)
+                [ -z "$collection_id" ] && collection_id="$1"
+                shift ;;
+        esac
+    done
+
+    [ -n "$collection_id" ] || { N=ossinsight M="Provide collection id" log:ret:1; }
+
+    case "$op" in
+        --app)        ___x_cmd_ossinsight_collection_repos___app   "$@" ;;
+        --raw)        ___x_cmd_ossinsight_collection_repos___raw   "$@" ;;
+        --csv)        ___x_cmd_ossinsight_collection_repos___csv   "$@" ;;
+        --tsv)        ___x_cmd_ossinsight_collection_repos___tsv   "$@" ;;
+        --json)       ___x_cmd_ossinsight_collection_repos___json  "$@" ;;
+        --yml)        ___x_cmd_ossinsight_collection_repos___yml   "$@" ;;
+        --no-header)  ___x_cmd_ossinsight_collection_repos___csv --no-header "$@" ;;
+        *)            ___x_cmd_ossinsight_collection_repos___raw   "$@" ;;
+    esac
+}
+
+___x_cmd_ossinsight_collection_repos___raw(){
+    local arg="collection_id=${collection_id}&page=${page}&page_size=${page_size}"
+    ___x_cmd_ossinsight_api get "/collections/repos?${arg}"
+}
+
+___x_cmd_ossinsight_collection_repos___json(){
+    ___x_cmd_ossinsight_collection_repos___raw "$@" | ___x_cmd jo fmt
+}
+
+___x_cmd_ossinsight_collection_repos___yml(){
+    ___x_cmd_ossinsight_collection_repos___raw "$@" | ___x_cmd j2y
+}
+
+___x_cmd_ossinsight_collection_repos___csv(){
+    local csv_flags="--add"
+    case "$1" in
+        --no-header) csv_flags=""; shift ;;
+    esac
+    ___x_cmd_ossinsight_collection_repos___raw "$@" \
+        | ___x_cmd jo 1.data \
+        | ___x_cmd jo 2c .id .full_name .name .description .stars .language .primary_language .forked \
+        | ___x_cmd csv header $csv_flags id full_name name description stars language primary_language forked
+}
+
+___x_cmd_ossinsight_collection_repos___tsv(){
+    local print_header=1
+    case "$1" in
+        --no-header) print_header=""; shift ;;
+    esac
+    if [ -n "$print_header" ]; then
+        printf "id\tfull_name\tname\tdescription\tstars\tlanguage\tprimary_language\tforked\n"
+    fi
+    ___x_cmd_ossinsight_collection_repos___raw "$@" \
+        | ___x_cmd jo 1.data \
+        | ___x_cmd jo 2c .id .full_name .name .description .stars .language .primary_language .forked \
+        | tr ',' '\t'
+}
+
+___x_cmd_ossinsight_collection_repos___app(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_ossinsight_collection_repos___csv "$@" | ___x_cmd csv app
+    else
+        ___x_cmd_ossinsight_collection_repos___tsv "$@"
+    fi
+}
+# EndSection

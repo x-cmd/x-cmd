@@ -1,8 +1,7 @@
 # shellcheck shell=dash
 
 ___x_cmd_clawhub_account_login(){
-    local X_help_cmd='___x_cmd_clawhub___help account login'
-    help:arg:parse
+    case "$1" in -h|--help) shift; ___x_cmd help -m clawhub account login "$@" ; return 0 ;; esac
 
     local input_token=
     if [ $# -gt 0 ]; then
@@ -38,7 +37,7 @@ ___x_cmd_clawhub_account_login(){
 
     # Verify token with whoami
     clawhub:info "Verifying token..."
-    if ! ___x_cmd_clawhub_account_whoami; then
+    if ! ___x_cmd_clawhub_account_whoami --auto; then
         clawhub:error "Token verification failed"
         ___x_cmd_clawhub_cfg --unset token
         return 1
@@ -46,8 +45,16 @@ ___x_cmd_clawhub_account_login(){
 }
 
 ___x_cmd_clawhub_account_whoami(){
-    local X_help_cmd='___x_cmd_clawhub___help account whoami'
-    help:arg:parse
+    local fmt=auto
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  shift; ___x_cmd help -m clawhub account whoami "$@" ; return 0 ;;
+            --json|--yml|--auto)
+                        fmt="${1#--}"
+                        shift ;;
+            *)          break ;;
+        esac
+    done
 
     local resp=
     resp="$(___x_cmd_clawhub_u_curl get /api/v1/whoami)" || {
@@ -55,13 +62,18 @@ ___x_cmd_clawhub_account_whoami(){
         return 1
     }
 
-    local handle; local displayName; local image
-    printf "%s" "$resp" | {
-        ___x_cmd jo env . handle=.user.handle displayName=.user.displayName image=.user.image
+    ___x_cmd_clawhub_u_fmt "$fmt" ___x_cmd_clawhub_account_whoami___human
+}
 
-        ___x_cmd_clawhub_u_handle_resp true "Account info:" \
-            "handle: ${handle:-}" \
-            ${displayName:+"displayName: $displayName"} \
-            ${image:+"image: $image"}
-    }
+___x_cmd_clawhub_account_whoami___human(){
+    printf "%s" "$resp" | ___x_cmd jo -r '.user | "handle: \(.handle)\ndisplayName: \(.displayName // "N/A")\nimage: \(.image // "N/A")\n"'
+}
+
+___x_cmd_clawhub_account_is_login(){
+    local token; ___x_cmd_clawhub_cur token:=token 2>/dev/null
+    [ -n "$token" ] || return 1
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl get /api/v1/whoami)" || return 1
+    return 0
 }

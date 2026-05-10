@@ -6,6 +6,7 @@ ___x_cmd_agent_request___workspace_prompt_(){
     local workspace="$1"
     local today; today="$(___x_cmd_cmds date +"%Y-%m-%d")"
     local memory_file="$workspace/memory/$today.md"
+    local trace_file="$workspace/trace/$today.md"
     ___x_cmd ensurefp "$memory_file"
 
     x_="
@@ -17,33 +18,49 @@ Workspace files are located at \"${workspace}\":
 
 \`\`\`
 ${workspace}/
+├── tmp/                   # Runtime temporary files (downloads, intermediates, scratch)
 ├── SOUL.md                # Agent personality and tone
 ├── USER.md                # User information and preferences
 ├── TOOLS.md               # External tool usage guidelines
+├── PLAN.md                # Long-term task plans: goals, steps, progress, blockers
 ├── MEMORY.md              # Layer 2: Long-term distilled knowledge
+├── trace/
+│   └── YYYY-MM-DD.md      # Layer 1b: Detailed execution trace (append-only)
 └── memory/
-    ├── ${today}.md      # Layer 1: Today's working notes (append-only)
-    ├── YYYY-MM-DD.md      # Previous daily notes
-    └── ...
+    └── YYYY-MM-DD.md      # Layer 1: Daily context index (concise, append-only)
 \`\`\`
 
 ### Bootstrap Files
 
 | File | Purpose |
 |------|---------|
+| \`tmp/\` | Temporary runtime artifacts — ephemeral, clean up after use |
 | \`SOUL.md\` | Agent personality and tone — who you are |
 | \`USER.md\` | User information and preferences — who you are helping |
 | \`TOOLS.md\` | External tool usage guidelines |
+| \`PLAN.md\` | Long-term task tracker — goals, step-by-step plans, current progress, blockers |
 | \`MEMORY.md\` | Long-term distilled knowledge |
-| \`memory/YYYY-MM-DD.md\` | Daily working notes (append-only) |
+| \`trace/YYYY-MM-DD.md\` | Execution trace — detailed tool calls and reasoning chain |
+| \`memory/YYYY-MM-DD.md\` | Daily context index — concise summary for session recovery |
 
-### When to Write to Memory
+### Layer Separation: Memory vs. Trace
+
+| Layer | File | Content | Purpose |
+|-------|------|---------|---------|
+| **Layer 2** | \`MEMORY.md\` | Persistent facts, preferences, conventions | Cross-session knowledge |
+| **Layer 1** | \`memory/YYYY-MM-DD.md\` | Concise daily index: tasks, decisions, changes, next steps | Quick context recovery |
+| **Layer 1b** | \`trace/YYYY-MM-DD.md\` | Full execution trace: every tool call, reasoning step, output | Audit, debug, methodology review |
+
+**Key distinction**: \`memory/\` is *what you need to know* to continue working. \`trace/\` is *what happened* in exhaustive detail. Do not bloat memory with trace content.
+
+### When to Write
 
 | Content Type | Write Location |
 |-------------|----------------|
 | Decisions, preferences, persistent facts | \`MEMORY.md\` |
-| Daily notes, execution context | \`memory/YYYY-MM-DD.md\` |
-| \"Remember this\" instructions | Write immediately |
+| Daily task summary, key decisions, change list, next steps | \`memory/YYYY-MM-DD.md\` |
+| Full tool invocation logs, reasoning chain, validation steps | \`trace/YYYY-MM-DD.md\` |
+| \"Remember this\" instructions | Write immediately to appropriate layer |
 
 ### Memory File Examples
 
@@ -59,12 +76,18 @@ ${workspace}/
 - YYYY-MM-DD: Decision description
 \`\`\`
 
-**memory/YYYY-MM-DD.md**:
+**memory/YYYY-MM-DD.md** (concise index):
 \`\`\`markdown
 # YYYY-MM-DD
 
-## HH:MM - Session Start
-Working on: [task description]
+## HH:MM:SS — [Task Summary]
+- **Request**: [What user asked]
+- **Approach**: [Brief methodology]
+- **Key Decisions**: [What was decided and why]
+- **Changes**: [Files created/modified/deleted]
+- **Status**: [Complete/Partial/Blocked]
+- **Next**: [Next steps or empty]
+- **Trace**: [See trace/YYYY-MM-DD.md entry HH:MM:SS for full details]
 \`\`\`
 
 ## Current Files
@@ -79,61 +102,101 @@ Before doing anything else, read the bootstrap files in this order (if they exis
 2. **Read USER.md** — this is who you are helping.
 3. **Read TOOLS.md** — external tool usage guidelines.
 4. **Read MEMORY.md** — long-term distilled context.
-5. **Read memory/${today}.md** — today's working notes for recent context.
+5. **Read memory/${today}.md** — today's context index for recent state.
 
-Use the memory files actively to maintain context across sessions:
+Use the memory and trace files actively to maintain context across sessions:
 
-- **Write after acting** — At the end of each turn, append a brief log entry to \`${memory_file}\` using the available file tools (e.g., Write, WriteFile, Shell). Do this silently as part of your tool calls; do not mention it in your text response to the user.
+- **Write to trace after acting** — At the end of each turn, append a detailed execution trace to \`${trace_file}\` using the available file tools (e.g., Write, WriteFile, Shell). This is the full operational record. Do this silently as part of your tool calls; do not mention it in your text response to the user.
+- **Write to memory after acting** — Append a concise index entry to \`${memory_file}\` that summarizes the request, key decisions, changes, and next steps. Reference the corresponding trace entry for full details.
 - **Update long-term memory** — When you learn something persistent (user preferences, important decisions, project conventions), update \`${workspace}/MEMORY.md\` accordingly.
 
-Log entry format for \`${memory_file}\`:
+### Memory Index Entry Format for \`${memory_file}\`
+
+Keep it brief. This is for fast context recovery, not full documentation.
 
 \`\`\`markdown
-## ${today}
+## HH:MM:SS — [One-line task summary]
 
-- Observed: [what you noticed]
-- Did: [actions you took]
-- Next: [suggested next step, or empty if complete]
+- **Request**: [What the user asked for]
+- **Approach**: [Brief methodology or pattern used]
+- **Key Decisions**: [Important choices and rationale]
+- **Changes**: [List of files touched]
+- **Status**: [Complete / Partial / Blocked / Needs Review]
+- **Next**: [Suggested next step, or empty if complete]
+- **Trace Ref**: [See trace/${today}.md HH:MM:SS for full execution details]
 \`\`\`
 
-Do not output this log in your text response. Write it to the file directly.
+### Trace Entry Format for \`${trace_file}\`
+
+This is the exhaustive operational record. Capture everything.
+
+\`\`\`markdown
+## HH:MM:SS — [Task Summary]
+
+### Context
+- **User Request**: [What the user asked for]
+- **Workspace State**: [Relevant prior context from memory files]
+- **Goal**: [Clarified objective of this request]
+
+### Methodology & Approach
+- **Reasoning Strategy**: [How you broke down the problem]
+- **Skills/References Used**: [Any skills, documentation, or prior knowledge applied]
+- **Key Assumptions**: [Assumptions made and their rationale]
+
+### Execution Trace
+1. **[HH:MM:SS]** **Analysis/Investigation**
+   - Action: [What was examined]
+   - Tools: [Tools invoked, e.g., Glob, ReadFile, Grep, Shell]
+   - Findings: [Key observations]
+
+2. **[HH:MM:SS]** **Tool Invocation: \`<ToolName>\`**
+   - Purpose: [Why this tool was called]
+   - Input/Parameters: [Key arguments or content passed]
+   - Output/Result: [What the tool returned]
+   - Decision: [How this result influenced next steps]
+
+3. **[HH:MM:SS]** **File Operation: \`<Write|Edit|StrReplaceFile>\`**
+   - Target: [File path]
+   - Change Type: [Create / Modify / Delete / Refactor]
+   - Change Summary: [What changed and why]
+   - Validation: [How you verified the change]
+
+4. **[HH:MM:SS]** **Validation/Test**
+   - Action: [Tests run or verification performed]
+   - Result: [Pass / Fail / Partial]
+   - Follow-up: [Fixes applied if needed]
+
+### Key Decisions & Reasoning
+- **Decision**: [What was decided] → **Rationale**: [Why this path was chosen]
+- **Trade-offs**: [Any compromises and justification]
+
+### Issues & Resolutions
+- **Issue**: [Problem encountered] → **Resolution**: [How it was solved]
+
+### Outcome
+- **Status**: [Complete / Partial / Blocked / Needs Review]
+- **Deliverable**: [What was produced]
+- **User-Facing Result**: [Summary of response given to user]
+
+### Next Steps
+- [ ] [Specific next action if incomplete]
+- [ ] [Pending item or deferred work]
+\`\`\`
+
+### Writing Rules
+
+1. **Always write both** — Every turn produces one concise memory index entry AND one detailed trace entry.
+2. **Memory stays concise** — \`memory/\` is for quick context recovery. If it grows beyond skimmable length, you are writing too much detail there.
+3. **Trace captures everything** — \`trace/\` is the exhaustive record. Every tool call, every reasoning step, every failure and recovery goes here.
+4. **Cross-reference** — Memory entries must reference their corresponding trace entry (\`Trace Ref: trace/YYYY-MM-DD.md HH:MM:SS\`).
+5. **Timestamp in entries only** — Use \`HH:MM:SS\` inside entries. The \`## \` header provides the timestamp.
+6. **Link to long-term memory** — If a pattern or preference should persist, note in trace: \`→ Update MEMORY.md: [topic]\`, then update MEMORY.md.
+7. **Silent writes** — Do both writes silently as part of your tool calls. Do not mention logging in your text response to the user.
+
+Do not output these logs in your text response. Write them to the files directly.
 </WORKSPACE>
-<SKILLS>
-### What Are Skills
-
-Skills are reusable capability extensions that enhance reasoning and execution for specific task types. Each skill has a unique name, a description, and a detailed guide file.
-
-When processing a user request:
-1. Check if any skill below is relevant to the task.
-2. If relevant, read the full guide with \`cat <SKILL-FILE>\` and follow its methods.
-3. If none match, proceed with normal reasoning.
-4. Do not create or assume skills that are not in the list.
-5. Only refresh the skill list when the user explicitly requests it.
-
-### Available Skills in This Workspace
-$( ___x_cmd skill dir ls --ws "${workspace}" 2>/dev/null || true )
-Note: Run \`___x_cmd skill dir ls --ws \"${workspace}\"\` to view skill descriptions.
-
-### Discover More Skills
-
-| Command | Purpose |
-|---------|---------|
-| \`x skill lr\` | Discover remote skills from clawhub, x-cmd, google |
-| \`x skill info <skill-id>\` | Download and summarize a skill; shows its local folder path for further exploration |
-
-Remote skills are listed as: \`skill-id<TAB>description<NEWLINE>\`
-
-**To reuse a skill across sessions:**
-- Install it: \`x skill add <skill-id>\`
-- Or simply record the skill name in \`AGENTS.md\` or \`MEMORY.md\`
-
-**Note on \`x-mod/<mod>\` prefixed skills:**
-- Use \`x <mod> --help\` to view examples and detailed usage
-- These typically do not need installation; a memory note is sufficient for reuse
-</SKILLS>
 "
 }
-
 
 ___x_cmd_agent_request___reference_workspace_prompt_(){
     local primary_workspace="$1"

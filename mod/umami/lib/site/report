@@ -1,0 +1,546 @@
+# shellcheck shell=dash
+
+# Section: website report
+# Generate comprehensive analysis report for websites
+
+# Helper function to get website name from ID
+___x_cmd_umami_report_get_name(){
+    local _website_id="$1"
+    x umami site ls --json 2>/dev/null | ___x_cmd jo 1.data 2>/dev/null | \
+        tr ']' '\n' | grep -F "$_website_id" | head -1 | \
+        sed 's/.*"name":"\([^"]*\)".*/\1/; q'
+}
+
+# Helper function to get website domain from ID
+___x_cmd_umami_report_get_domain(){
+    local _website_id="$1"
+    x umami site ls --json 2>/dev/null | ___x_cmd jo 1.data 2>/dev/null | \
+        tr ']' '\n' | grep -F "$_website_id" | head -1 | \
+        sed 's/.*"domain":"\([^"]*\)".*/\1/; q'
+}
+
+# Parse y2j output to extract a value
+# Usage: ___x_cmd_umami_parse_y2j_value "$json_output" "pageviews" "value"
+___x_cmd_umami_parse_y2j_value(){
+    local _json="$1"
+    local _key="$2"
+    local _subkey="${3:-value}"
+    printf "%s\n" "$_json" | awk -v k="$_key" -v s="$_subkey" '
+        $0 ~ "^" k ":" {
+            found=1
+            next
+        }
+        found && /^[ \t]*value:|^[ \t]*prev:/ {
+            gsub(/^[ \t]*/, "")
+            gsub(/,$/, "")
+            if ($1 == s ":") {
+                sub(s ":", "")
+                gsub(/^[ \t]+/, "")
+                print
+                exit
+            }
+        }
+    '
+}
+
+# Get stat values from y2j formatted output
+___x_cmd_umami_get_stat(){
+    local _stat_json="$1"
+    local _key="$2"
+    local _type="${3:-value}"
+    printf "%s\n" "$_stat_json" | awk -v k="$_key" -v t="$_type" '
+        $0 ~ "^" k ":" {
+            block=$0
+            gsub(/:$/, "", block)
+        }
+        t == "value" && /[ \t]value:/ {
+            gsub(/[ \t]*value:[ \t]*/, "")
+            print
+            exit
+        }
+        t == "prev" && /[ \t]prev:/ {
+            gsub(/[ \t]*prev:[ \t]*/, "")
+            print
+            exit
+        }
+    '
+}
+
+___x_cmd_umami_site_report(){
+    local _op="$1"
+
+    case "$_op" in
+        -h|--help)      ___x_cmd help -m umami site report "$@" ; return ;;
+        overview|sum|s)  shift; ___x_cmd_umami_report_overview   "$@" ;;
+        trend|t)         shift; ___x_cmd_umami_report_trend       "$@" ;;
+        issue|i)         shift; ___x_cmd_umami_report_issue      "$@" ;;
+        full|f)          shift; ___x_cmd_umami_report_full       "$@" ;;
+        --json)          shift; ___x_cmd_umami_report_json       "$@" ;;
+        --csv)           shift; ___x_cmd_umami_report_csv        "$@" ;;
+        *)
+            [ -z "$_op" ] && set -- overview || set -- "$@"
+            ___x_cmd_umami_report_overview "$@"
+            ;;
+    esac
+}
+
+# Default: overview summary
+___x_cmd_umami_report_overview(){
+    local _period="15"
+    local _website_id=""
+
+    [ "$#" -gt 0 ] && [ -z "${1#*[0-9]*}" ] && _period="$1" && shift 2>/dev/null
+    [ "$#" -gt 0 ] && _website_id="$1"
+
+    if [ -n "$_website_id" ]; then
+        local _id
+        _id="$(___x_cmd_umami___search_website_id "$_website_id")" || return
+        ___x_cmd_umami_report_single "$_id" "$_period"
+    else
+        ___x_cmd_umami_report_all "$_period"
+    fi
+}
+
+___x_cmd_umami_report_all(){
+    local _period="${1:-15}"
+    local _start; _start="$(___x_cmd_umami___date "-$_period")"
+    local _end;   _end="$(___x_cmd_umami___date)"
+
+    printf "%s\n" "┌─────────────────────────────────────────────────────────────────────────────┐"
+    printf "%s\n" "│                         UMAMI 网站分析概览                                  │"
+    printf "%s\n" "└─────────────────────────────────────────────────────────────────────────────┘"
+    printf "  时间范围: 近 ${_period} 天\n\n"
+
+    printf "%-25s %-18s %-12s %-10s %-8s %-6s\n" \
+        "网站" "域名" "Pageviews" "访客数" "跳出率" "趋势"
+    printf "%s\n" "----------------------------------------------------------------------------------------"
+
+    # Get stats for each site via direct command
+    while IFS=$'\t' read -r _name _domain _shareId _rest; do
+        [ -z "$_name" ] && continue
+        local _stat_output; _stat_output="$(x umami site stat "$_name" 2>/dev/null || true)"
+
+        local _pv;   _pv="$(printf "%s\n" "$_stat_output" | awk '/^pageviews:/{found=1} found && /[[:space:]]+value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+        local _vis;  _vis="$(printf "%s\n" "$_stat_output" | awk '/^visitors:/{found=1} found && /[[:space:]]+value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+        local _bounces; _bounces="$(printf "%s\n" "$_stat_output" | awk '/^bounces:/{found=1} found && /[[:space:]]+value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+        local _visits; _visits="$(printf "%s\n" "$_stat_output" | awk '/^visits:/{found=1} found && /[[:space:]]+value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+        local _pv_prev; _pv_prev="$(printf "%s\n" "$_stat_output" | awk '/^pageviews:/{found=1} found && /[[:space:]]+prev:/ {gsub(/[^0-9]/, ""); print; exit}')"
+
+        # Debug output to stderr (won't interfere with the table formatting)
+        printf "DEBUG: name='%s' pv='%s' vis='%s' bounces='%s' visits='%s'\n" "$_name" "$_pv" "$_vis" "$_bounces" "$_visits" >&2
+
+        local _bounce_rate="N/A"
+        if [ -n "$_visits" ] && [ "$_visits" != "null" ] && [ "$_visits" -gt 0 ]; then
+            _bounce_rate="$(printf "%.0f%%" "$(printf "%s %s\n" "$_bounces" "$_visits" | ___x_cmd_cmds_awk '{print ($1/$2)*100}')")"
+        fi
+
+        local _trend "="
+        if [ -n "$_pv" ] && [ -n "$_pv_prev" ] && [ "$_pv_prev" != "null" ] && [ "$_pv_prev" -gt 0 ]; then
+            local _change; _change="$(printf "%s %s\n" "$_pv" "$_pv_prev" | ___x_cmd_cmds_awk '{print ($1-$2)*100/$2}')"
+            case "$_change" in
+                -*) _trend="-" ;;
+                *)  _trend="+" ;;
+            esac
+        fi
+
+        local _display_name="$_name"
+        [ ${#_display_name} -gt 25 ] && _display_name="${_display_name:0:22}..."
+
+        printf "%-25s %-18s %12s %10s %-10s %-6s\n" \
+            "$_display_name" "$_domain" "$_pv" "$_vis" "$_bounce_rate" "$_trend"
+    done < <(x umami site ls 2>/dev/null | tail -n +2)
+
+    printf "\n"
+}
+
+# Single site report
+___x_cmd_umami_report_single(){
+    local _website_id="$1"
+    local _period="${2:-15}"
+    local _start; _start="$(___x_cmd_umami___date "-$_period")"
+    local _end;   _end="$(___x_cmd_umami___date)"
+
+    local _prev_start; _prev_start="$(___x_cmd_umami___date "-$((_period * 2))")"
+    local _prev_end="$_prev_start"
+
+    # Get site info from website ID using helper functions
+    local _name; _name="$(___x_cmd_umami_report_get_name "$_website_id")"
+    local _domain; _domain="$(___x_cmd_umami_report_get_domain "$_website_id")"
+
+    [ -z "$_name" ] && _name="Unknown"
+    [ -z "$_domain" ] && _domain="Unknown"
+
+    printf "%s\n" "┌─────────────────────────────────────────────────────────────────────────────┐"
+    printf "%s %-40s %s\n" "│" "$_name" "│"
+    printf "%s %-40s %s\n" "│" "($_domain)" "│"
+    printf "%s\n" "└─────────────────────────────────────────────────────────────────────────────┘"
+
+    # Use x umami site stat to get stats (bypasses the awk issue)
+    # Note: Don't use 2>/dev/null inside $(...) as it causes output loss on errors
+    local _stat_output; _stat_output="$(x umami site stat ".id=$_website_id" 2>/dev/null || true)"
+    local _stat_prev_output; _stat_prev_output="$(x umami site stat ".id=$_website_id" --startAt "$_prev_start" --endAt "$_prev_end" 2>/dev/null || true)"
+    local _active_output; _active_output="$(x umami site active ".id=$_website_id" 2>/dev/null || true)"
+
+    local _pv;   _pv="$(printf "%s\n" "$_stat_output" | awk '/^pageviews:/{found=1} found && /[[:space:]]+value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _pv_prev; _pv_prev="$(printf "%s\n" "$_stat_output" | awk '/^pageviews:/{found=1} found && /[[:space:]]+prev:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _vis;  _vis="$(printf "%s\n" "$_stat_output" | awk '/^visitors:/{found=1} found && /[[:space:]]+value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _vis_prev; _vis_prev="$(printf "%s\n" "$_stat_output" | awk '/^visitors:/{found=1} found && /[[:space:]]+prev:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _bounces; _bounces="$(printf "%s\n" "$_stat_output" | awk '/^bounces:/{found=1} found && /[[:space:]]+value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _visits; _visits="$(printf "%s\n" "$_stat_output" | awk '/^visits:/{found=1} found && /[[:space:]]+value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _visits_prev; _visits_prev="$(printf "%s\n" "$_stat_output" | awk '/^visits:/{found=1} found && /[[:space:]]+prev:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _totaltime; _totaltime="$(printf "%s\n" "$_stat_output" | awk '/^totaltime:/{found=1} found && /[[:space:]]+value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _totaltime_prev; _totaltime_prev="$(printf "%s\n" "$_stat_output" | awk '/^totaltime:/{found=1} found && /[[:space:]]+prev:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _active_users; _active_users="$(printf "%s\n" "$_active_output" | awk '/[[:space:]]+visitors:/{gsub(/[^0-9]/, ""); print; exit}')"
+    [ -z "$_active_users" ] && _active_users="0"
+
+    printf "\n"
+    printf "%-15s %12s %12s %12s\n" "指标" "当前" "上月" "变化"
+    printf "%s\n" "────────────────────────────────────────────────────────"
+    printf "%-15s %12s %12s %12s\n" "Pageviews" "$_pv" "$_pv_prev" "$(___x_cmd_umami___calc_change "$_pv" "$_pv_prev")"
+    printf "%-15s %12s %12s %12s\n" "访客数" "$_vis" "$_vis_prev" "$(___x_cmd_umami___calc_change "$_vis" "$_vis_prev")"
+    printf "%-15s %12s %12s %12s\n" "访问次数" "$_visits" "$_visits_prev" "$(___x_cmd_umami___calc_change "$_visits" "$_visits_prev")"
+
+    local _bounce_rate; _bounce_rate="$(printf "%.1f%%" "$(printf "%s %s\n" "$_bounces" "$_visits" | ___x_cmd_cmds_awk '{if($2>0) print ($1/$2)*100; else print 0}')")"
+    local _prev_visits; _prev_visits="$(printf "%s\n" "$_stat_prev_output" | awk '/^visitors:/{found=1} found && /[ \t]value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _prev_bounces; _prev_bounces="$(printf "%s\n" "$_stat_prev_output" | awk '/^bounces:/{found=1} found && /[ \t]value:/ {gsub(/[^0-9]/, ""); print; exit}')"
+    local _bounce_prev_rate; _bounce_prev_rate="$(printf "%.1f%%" "$(printf "%s %s\n" "$_prev_bounces" "$_prev_visits" | ___x_cmd_cmds_awk '{if($2>0) print ($1/$2)*100; else print 0}')")"
+
+    printf "%-15s %12s %12s %12s\n" "跳出率" "$_bounce_rate" "$_bounce_prev_rate" "$(___x_cmd_umami___calc_change_rate "$_bounce_rate" "$_bounce_prev_rate")"
+    printf "%-15s %12s %12s %12s\n" "活跃用户" "$_active_users" "-" "-"
+    printf "%-15s %12s %12s %12s\n" "总时长(秒)" "$_totaltime" "$_totaltime_prev" "$(___x_cmd_umami___calc_change "$_totaltime" "$_totaltime_prev")"
+
+    printf "\n"
+
+    printf "  --- 国家/地区分布 (Top 5) ---\n"
+    local _country_output; _country_output="$(x umami site metric "$_website_id" --type country --limit 5 2>/dev/null)"
+    printf "%s\n" "$_country_output" | while read -r line; do
+        case "$line" in
+            *"x":*) country="$(echo "$line" | sed 's/.*"x":*"\?\([^"]*\)"\?.*/\1/')" ;;
+            *"y":*) count="$(echo "$line" | sed 's/.*"y":*\([0-9]*\).*/\1/')"
+                [ -n "$country" ] && printf "    %-10s %10s\n" "$country" "$count"
+                country=""
+                ;;
+        esac
+    done
+
+    printf "\n  --- 设备类型 ---\n"
+    local _device_output; _device_output="$(x umami site metric "$_website_id" --type device 2>/dev/null)"
+    printf "%s\n" "$_device_output" | while read -r line; do
+        case "$line" in
+            *"x":*) device="$(echo "$line" | sed 's/.*"x":*"\?\([^"]*\)"\?.*/\1/')" ;;
+            *"y":*) count="$(echo "$line" | sed 's/.*"y":*\([0-9]*\).*/\1/')"
+                [ -n "$device" ] && printf "    %-10s %10s\n" "$device" "$count"
+                device=""
+                ;;
+        esac
+    done
+
+    printf "\n  --- 热门页面 (Top 5) ---\n"
+    local _url_output; _url_output="$(x umami site metric "$_website_id" --type url --limit 5 2>/dev/null)"
+    printf "%s\n" "$_url_output" | while read -r line; do
+        case "$line" in
+            *"x":*) url="$(echo "$line" | sed 's/.*"x":*"\?\([^"]*\)"\?.*/\1/')" ;;
+            *"y":*) count="$(echo "$line" | sed 's/.*"y":*\([0-9]*\).*/\1/')"
+                [ -z "$url" ] && url="(直接访问)"
+                [ ${#url} -gt 50 ] && url="${url:0:47}..."
+                printf "    %-50s %8s\n" "$url" "$count"
+                url=""
+                ;;
+        esac
+    done
+}
+
+___x_cmd_umami___calc_change(){
+    local _cur="$1"; local _prev="$2"
+    [ "$_prev" = "null" ] || [ -z "$_prev" ] || [ "$_prev" = "0" ] && printf "%s" "-" && return
+    local _change; _change="$(printf "%s %s\n" "$_cur" "$_prev" | ___x_cmd_cmds_awk '{if($2==0) print 0; else print ($1-$2)*100/$2}')"
+    local _sign=""; [ -n "$_change" ] && [ "${_change%%.*}" != "-" ] && _sign="+"
+    printf "%s%.1f%%" "$_sign" "$_change"
+}
+
+___x_cmd_umami___calc_change_rate(){
+    local _cur="$1"; local _prev="$2"
+    local _cur_num; _cur_num="$(printf "%s\n" "$_cur" | ___x_cmd_cmds_awk '{gsub(/%/, ""); print}')"
+    local _prev_num; _prev_num="$(printf "%s\n" "$_prev" | ___x_cmd_cmds_awk '{gsub(/%/, ""); print}')"
+    ___x_cmd_umami___calc_change "$_cur_num" "$_prev_num"
+}
+
+# Trend report
+___x_cmd_umami_report_trend(){
+    local _period="${1:-30}"
+    local _website_id="$2"
+    local _start; _start="$(___x_cmd_umami___date "-$_period")"
+    local _end;   _end="$(___x_cmd_umami___date)"
+
+    printf "%s\n" "┌─────────────────────────────────────────────────────────────────────────────┐"
+    printf "%s\n" "│                         流量趋势分析                                          │"
+    printf "%s\n" "└─────────────────────────────────────────────────────────────────────────────┘"
+    printf "  时间范围: 近 ${_period} 天\n\n"
+
+    if [ -n "$_website_id" ]; then
+        local _id; _id="$(___x_cmd_umami___search_website_id "$_website_id")" || return
+        ___x_cmd_umami_report_single_trend "$_id" "$_period"
+    else
+        while IFS=$'\t' read -r _name _domain _rest; do
+            [ -z "$_name" ] && continue
+            local _id; _id="$(___x_cmd_umami___search_website_id "$_name")" || continue
+            printf "\n=== %s ===\n" "$_name"
+            local _url_json; _url_json="$(___x_cmd_umami_api get "/$_id/metrics?type=url&limit=5&startAt=$_start&endAt=$_end" 2>/dev/null)"
+            printf "%s\n" "$_url_json" | while read -r line; do
+                case "$line" in
+                    *"x":*) url="$(echo "$line" | sed 's/.*"x":*"\?\([^"]*\)"\?.*/\1/')" ;;
+                    *"y":*) count="$(echo "$line" | sed 's/.*"y":*\([0-9]*\).*/\1/')"
+                        [ -n "$url" ] || url="(直接访问)"
+                        printf "  %-50s %8s\n" "$url" "$count"
+                        url=""
+                        ;;
+                esac
+            done
+        done < <(x umami site ls 2>/dev/null | tail -n +2)
+    fi
+}
+
+___x_cmd_umami_report_single_trend(){
+    local _website_id="$1"
+    local _period="$2"
+    local _start; _start="$(___x_cmd_umami___date "-$_period")"
+    local _end;   _end="$(___x_cmd_umami___date)"
+
+    local _pv_json; _pv_json="$(___x_cmd_umami_api get "/$_website_id/pageviews?startAt=$_start&endAt=$_end&unit=day")"
+
+    printf "\n  每日 Pageviews 趋势:\n"
+    printf "  %-15s %10s %10s\n" "日期" "Pageviews" "访客数"
+    printf "  %s\n" "--------------------------------------------"
+
+    # Parse the pageviews JSON and output trend data
+    printf "%s\n" "$_pv_json" | awk '
+        BEGIN { first=1 }
+        /\[\]/ { next }
+        /\{/ { in_obj=1; first=1; next }
+        /!/ { in_obj=0; next }
+        in_obj && /"t":/ {
+            gsub(/.*"t":/, "")
+            gsub(/,/, "")
+            gsub(/^[ \t]*/, "")
+            ts=$0
+        }
+        in_obj && /"v":/ {
+            gsub(/.*"v":/, "")
+            gsub(/,/, "")
+            gsub(/^[ \t]*/, "")
+            pv=$0
+        }
+        in_obj && /"w":/ {
+            gsub(/.*"w":/, "")
+            gsub(/,/, "")
+            gsub(/^[ \t]*/, "")
+            vis=$0
+            if (ts ~ /^[0-9]+$/) {
+                cmd = "awk \"BEGIN { print strftime(\\\"%Y-%m-%d\\\", " ts "/1000) }\""
+                cmd | getline date
+                close(cmd)
+                printf "  %-15s %10s %10s\n", date, pv, vis
+            }
+            ts=""
+        }
+    '
+}
+
+# Issue report
+___x_cmd_umami_report_issue(){
+    local _period="${1:-15}"
+    local _start; _start="$(___x_cmd_umami___date "-$_period")"
+    local _end;   _end="$(___x_cmd_umami___date)"
+
+    printf "%s\n" "┌─────────────────────────────────────────────────────────────────────────────┐"
+    printf "%s\n" "│                         问题诊断报告                                          │"
+    printf "%s\n" "└─────────────────────────────────────────────────────────────────────────────┘"
+    printf "  时间范围: 近 ${_period} 天\n\n"
+
+    while IFS=$'\t' read -r _name _domain _rest; do
+        [ -z "$_name" ] && continue
+        local _id; _id="$(___x_cmd_umami___search_website_id "$_name")" || continue
+        local _stat_json; _stat_json="$(___x_cmd_umami_api get "/$_id/stats?startAt=$_start&endAt=$_end" 2>/dev/null)"
+
+        local _pv;   _pv="$(___x_cmd_umami_get_stat "$_stat_json" "pageviews" "value")"
+        local _visits; _visits="$(___x_cmd_umami_get_stat "$_stat_json" "visits" "value")"
+        local _bounces; _bounces="$(___x_cmd_umami_get_stat "$_stat_json" "bounces" "value")"
+        local _pv_prev; _pv_prev="$(___x_cmd_umami_get_stat "$_stat_json" "pageviews" "prev")"
+        local _issue_found=0
+
+        # Check bounce rate
+        if [ -n "$_visits" ] && [ "$_visits" != "null" ] && [ "$_visits" -gt 0 ]; then
+            local _bounce_rate; _bounce_rate="$(printf "%s %s\n" "$_bounces" "$_visits" | ___x_cmd_cmds_awk '{if($2>0) print ($1/$2)*100; else print 0}')"
+            [ "${_bounce_rate%.*}" -gt 85 ] 2>/dev/null && {
+                [ "$_issue_found" -eq 0 ] && printf "\n%s\n" "--- $_name ---" && _issue_found=1
+                printf "  [!] 高跳出率: %.0f%%\n" "$_bounce_rate"
+            }
+        fi
+
+        # Check low traffic
+        if [ -n "$_pv" ] && [ "$_pv" != "null" ] && [ "$_pv" -gt 0 ]; then
+            local _daily_pv; _daily_pv=$((_pv / _period))
+            [ "$_daily_pv" -lt 50 ] && {
+                [ "$_issue_found" -eq 0 ] && printf "\n%s\n" "--- $_name ---" && _issue_found=1
+                printf "  [!] 低流量警告: 日均 %s PV\n" "$_daily_pv"
+            }
+        fi
+
+        # Check negative trend
+        if [ -n "$_pv" ] && [ -n "$_pv_prev" ] && [ "$_pv_prev" != "null" ] && [ "$_pv_prev" -gt 0 ]; then
+            local _change; _change="$(printf "%s %s\n" "$_pv" "$_pv_prev" | ___x_cmd_cmds_awk '{if($2==0) print 0; else print ($1-$2)*100/$2}')"
+            [ -n "$_change" ] && [ "${_change%%.*}" = "-" ] && {
+                local _change_abs; _change_abs="${_change#-}"
+                [ "${_change_abs%.*}" -gt 20 ] 2>/dev/null && {
+                    [ "$_issue_found" -eq 0 ] && printf "\n%s\n" "--- $_name ---" && _issue_found=1
+                    printf "  [!] 流量下降: %s%%\n" "$_change"
+                }
+            }
+        fi
+
+        # Check high growth
+        if [ -n "$_pv" ] && [ -n "$_pv_prev" ] && [ "$_pv_prev" != "null" ] && [ "$_pv_prev" -gt 0 ]; then
+            local _change; _change="$(printf "%s %s\n" "$_pv" "$_pv_prev" | ___x_cmd_cmds_awk '{if($2==0) print 0; else print ($1-$2)*100/$2}')"
+            [ -n "$_change" ] && [ "${_change%%.*}" != "-" ] && {
+                [ "${_change%.*}" -gt 200 ] 2>/dev/null && {
+                    [ "$_issue_found" -eq 0 ] && printf "\n%s\n" "--- $_name ---" && _issue_found=1
+                    printf "  [*] 流量异常增长: +%s%%\n" "$_change"
+                }
+            }
+        fi
+    done < <(x umami site ls 2>/dev/null | tail -n +2)
+
+    printf "\n"
+    printf "%s\n" "=============================================="
+    printf "%s\n" "  说明: [!] 表示需要关注的问题"
+    printf "%s\n" "        [*] 表示需要确认的异常"
+    printf "%s\n" "=============================================="
+}
+
+# Full comprehensive report
+___x_cmd_umami_report_full(){
+    local _period="${1:-15}"
+    local _website_id="$2"
+
+    if [ -n "$_website_id" ]; then
+        local _id; _id="$(___x_cmd_umami___search_website_id "$_website_id")" || return
+        printf "\n"
+        ___x_cmd_umami_report_single "$_id" "$_period"
+        printf "\n"
+        ___x_cmd_umami_report_single_trend "$_id" "$_period"
+    else
+        ___x_cmd_umami_report_all "$_period"
+    fi
+}
+
+# JSON output
+___x_cmd_umami_report_json(){
+    local _period="${1:-15}"
+    local _start; _start="$(___x_cmd_umami___date "-$_period")"
+    local _end;   _end="$(___x_cmd_umami___date)"
+    local _website_id="$2"
+
+    if [ -n "$_website_id" ]; then
+        local _id; _id="$(___x_cmd_umami___search_website_id "$_website_id")" || return
+        ___x_cmd_umami_report_single_json "$_id" "$_start" "$_end"
+    else
+        ___x_cmd_umami_report_all_json "$_start" "$_end"
+    fi
+}
+
+___x_cmd_umami_report_all_json(){
+    local _start="$1"; local _end="$2"
+
+    printf "{"
+    printf "\"report\": \"umami_all_sites\","
+    printf "\"period\": {\"start\": %s, \"end\": %s}," "$_start" "$_end"
+    printf "\"sites\": ["
+
+    local _first=1
+    x umami site ls --json 2>/dev/null | ___x_cmd jo 1.data | while read -r _site; do
+        [ -z "$_site" ] && continue
+        local _id;   _id="$(printf "%s\n" "$_site" | ___x_cmd jo -g .id)"
+        local _name; _name="$(printf "%s\n" "$_site" | ___x_cmd jo -g .name)"
+        local _domain; _domain="$(printf "%s\n" "$_site" | ___x_cmd jo -g .domain)"
+
+        [ "$_first" -eq 1 ] && _first=0 || printf ","
+        printf "\n  {\n"
+        printf "    \"id\": \"%s\",\n" "$_id"
+        printf "    \"name\": \"%s\",\n" "$_name"
+        printf "    \"domain\": \"%s\",\n" "$_domain"
+
+        local _stat_json; _stat_json="$(___x_cmd_umami_api get "/$_id/stats?startAt=$_start&endAt=$_end" 2>/dev/null)"
+        printf "    \"pageviews\": %s,\n" "$(___x_cmd_umami_get_stat "$_stat_json" "pageviews" "value")"
+        printf "    \"pageviews_prev\": %s,\n" "$(___x_cmd_umami_get_stat "$_stat_json" "pageviews" "prev")"
+        printf "    \"visitors\": %s,\n" "$(___x_cmd_umami_get_stat "$_stat_json" "visitors" "value")"
+        printf "    \"visitors_prev\": %s,\n" "$(___x_cmd_umami_get_stat "$_stat_json" "visitors" "prev")"
+        printf "    \"bounces\": %s,\n" "$(___x_cmd_umami_get_stat "$_stat_json" "bounces" "value")"
+        printf "    \"visits\": %s\n" "$(___x_cmd_umami_get_stat "$_stat_json" "visits" "value")"
+        printf "  }"
+    done
+
+    printf "\n]"
+    printf "}\n"
+}
+
+___x_cmd_umami_report_single_json(){
+    local _website_id="$1"
+    local _start="$2"; local _end="$3"
+
+    # Get site info from website ID using helper functions
+    local _name; _name="$(___x_cmd_umami_report_get_name "$_website_id")"
+    local _domain; _domain="$(___x_cmd_umami_report_get_domain "$_website_id")"
+
+    [ -z "$_name" ] && _name="Unknown"
+    [ -z "$_domain" ] && _domain="Unknown"
+
+    printf "{"
+    printf "\"report\": \"umami_single_site\","
+    printf "\"website\": {\"id\": \"%s\", \"name\": \"%s\", \"domain\": \"%s\"}," \
+        "$_website_id" "$_name" "$_domain"
+    printf "\"period\": {\"start\": %s, \"end\": %s}," "$_start" "$_end"
+
+    local _stat_json;   _stat_json="$(___x_cmd_umami_api get "/$_website_id/stats?startAt=$_start&endAt=$_end")"
+    local _country_json; _country_json="$(___x_cmd_umami_api get "/$_website_id/metrics?type=country&limit=10&startAt=$_start&endAt=$_end")"
+    local _device_json; _device_json="$(___x_cmd_umami_api get "/$_website_id/metrics?type=device&startAt=$_start&endAt=$_end")"
+    local _url_json;   _url_json="$(___x_cmd_umami_api get "/$_website_id/metrics?type=url&limit=10&startAt=$_start&endAt=$_end")"
+    local _ref_json;   _ref_json="$(___x_cmd_umami_api get "/$_website_id/metrics?type=referrer&limit=10&startAt=$_start&endAt=$_end")"
+
+    printf "\"stats\": "
+    printf "%s\n" "$_stat_json" | ___x_cmd jo fmt
+    printf ",\n\"country\": "
+    printf "%s\n" "$_country_json" | ___x_cmd jo fmt
+    printf ",\n\"device\": "
+    printf "%s\n" "$_device_json" | ___x_cmd jo fmt
+    printf ",\n\"top_urls\": "
+    printf "%s\n" "$_url_json" | ___x_cmd jo fmt
+    printf ",\n\"referrers\": "
+    printf "%s\n" "$_ref_json" | ___x_cmd jo fmt
+    printf "\n}\n"
+}
+
+# CSV output
+___x_cmd_umami_report_csv(){
+    local _period="${1:-15}"
+    local _start; _start="$(___x_cmd_umami___date "-$_period")"
+    local _end;   _end="$(___x_cmd_umami___date)"
+
+    printf "%s\n" "name,domain,pageviews,pageviews_prev,visitors,visitors_prev,bounces,visits"
+
+    while IFS=$'\t' read -r _name _domain _rest; do
+        [ -z "$_name" ] && continue
+        local _id; _id="$(___x_cmd_umami___search_website_id "$_name")" || continue
+
+        local _stat_json; _stat_json="$(___x_cmd_umami_api get "/$_id/stats?startAt=$_start&endAt=$_end" 2>/dev/null)"
+
+        local _pv;      _pv="$(___x_cmd_umami_get_stat "$_stat_json" "pageviews" "value")"
+        local _pv_prev; _pv_prev="$(___x_cmd_umami_get_stat "$_stat_json" "pageviews" "prev")"
+        local _vis;     _vis="$(___x_cmd_umami_get_stat "$_stat_json" "visitors" "value")"
+        local _vis_prev; _vis_prev="$(___x_cmd_umami_get_stat "$_stat_json" "visitors" "prev")"
+        local _bounces; _bounces="$(___x_cmd_umami_get_stat "$_stat_json" "bounces" "value")"
+        local _visits;  _visits="$(___x_cmd_umami_get_stat "$_stat_json" "visits" "value")"
+
+        printf "\"%s\",\"%s\",%s,%s,%s,%s,%s,%s\n" \
+            "$_name" "$_domain" "$_pv" "$_pv_prev" "$_vis" "$_vis_prev" "$_bounces" "$_visits"
+    done < <(x umami site ls 2>/dev/null | tail -n +2)
+}

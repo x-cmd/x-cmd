@@ -32,37 +32,54 @@ ___x_cmd_claw_service(){
 }
 
 ___x_cmd_claw_service_start(){
-    [ "$#" -gt 0 ] ||   set -- --help
+    local imlist=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                        shift; ___x_cmd help -m claw start "$@" ; return 0 ;;
+            --feishu|--weixin|--telegram|--qywx)
+                        imlist="${imlist}${1#--}
+"
+                        shift ;;
+            --imlist)   imlist="$2"; arg:2:shift ;;
+            *)          claw:error "Unsupported option -> $1"
+                        return 1
+                        ;;
+        esac
+    done
 
-    local im=;
-    local op="$1";          shift
-    case "$op" in
-        -h|--help)
-                    ___x_cmd help -m claw service start "$@" ; return 0 ;;
-        feishu|weixin|telegram|qywx)
-                    im="$op" ;;
-        *)          claw:error "Unsupported IM platform: $op"
-                    return 1
-                    ;;
-    esac
+    local x_=""
+    [ -n "$imlist" ] || imlist="$( ___x_cmd_claw_run___list_activate )"
+    [ -n "$imlist" ] || {
+        ___x_cmd_claw_run___detect_im_ || {
+            claw:warn "No ready IM platform found, falling back to weixin"
+            x_="weixin"
+        }
+        imlist="$x_"
+    }
 
-    claw:info "Ensuring $im listener is ready"
-    ___x_cmd_claw_run___ensure "$im" || {
-        claw:error "Failed to start $im listener, claw service startup interrupted"
-        return 1
+    local im=; while read -r im; do
+        [ -n "$im"  ] || continue
+        ___x_cmd_claw_run___activate_im "$im" || return $?
+    done <<A
+$imlist
+A
+
+    ! ___x_cmd service isalive x-claw-service || {
+        claw:info "claw service is already running. Use 'x claw log' to view logs"
+        return 0
     }
 
     claw:info "Starting claw service"
-    ___x_cmd service start      x-claw-service  --  x-cmd claw service run "$@"
+    ___x_cmd service start      x-claw-service  --  x-cmd claw service run || return $?
 
     ___x_cmd sleep 2
     ___x_cmd service isalive x-claw-service || {
-        claw:error "Failed to start claw service"
+        claw:error "Failed to start claw service — check logs for details"
         ___x_cmd service log tail x-claw-service
         return 1
     }
 
-    # alive stop
     local status_msg; status_msg="$( ___x_cmd_claw_service_status )"
 
     if [ "$status_msg" = alive ]; then
@@ -74,55 +91,59 @@ ___x_cmd_claw_service_start(){
 }
 
 ___x_cmd_claw_service_stop(){
-    [ "$#" -gt 0 ] ||   set -- --help
+    local imlist=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                        shift; ___x_cmd help -m claw stop "$@" ; return 0 ;;
+            --feishu|--weixin|--telegram|--qywx)
+                        imlist="${imlist}${1#--}
+"
+                        shift ;;
+            --imlist)   imlist="$2"; arg:2:shift ;;
+            *)          claw:error "Unsupported option -> $1"
+                        return 1
+                        ;;
+        esac
+    done
 
-    local im="$1"; shift
-    case "$im" in
-        -h|--help)
-            ___x_cmd help -m claw service stop "$@" ; return 0 ;;
-        feishu|weixin|telegram|qywx)
-            ;;
-        *)      claw:error "Unsupported IM platform: $im"
-            return 1
-            ;;
-    esac
+    [ -n "$imlist" ] || imlist="$( ___x_cmd_claw_run___list_activate )"
+    while read -r im; do
+        [ -n "$im"  ] || continue
+        ___x_cmd_claw_run___deactivate_im "$im" || return $?
+    done <<A
+$imlist
+A
 
     if ___x_cmd service isalive x-claw-service; then
-        if ___x_cmd service isalive "x-$im-listener"; then
-            claw:info "Stopping $im listener"
-            ___x_cmd service stop       "x-$im-listener"
-        fi
-
         claw:info "Stopping claw service"
         ___x_cmd service stop       x-claw-service
-        # TODO: rm log
     else
-        claw:warn "claw service is not running"
+        claw:info "claw service is not running"
     fi
+
+    ___x_cmd_claw_run___teardown
 }
 
 ___x_cmd_claw_service_restart(){
-    [ "$#" -gt 0 ] ||   set -- --help
+    local imlist=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                        shift; ___x_cmd help -m claw restart "$@" ; return 0 ;;
+            --feishu|--weixin|--telegram|--qywx)
+                        imlist="${imlist}${1#--}
+"
+                        shift ;;
+            *)          claw:error "Unsupported option -> $1"
+                        return 1
+                        ;;
+        esac
+    done
 
-    local im="$1"; shift
-    case "$im" in
-        -h|--help)
-                    ___x_cmd help -m claw service restart "$@" ; return 0 ;;
-        feishu|weixin|telegram|qywx)
-                    ;;
-        *)          claw:error "Unsupported IM platform: $im"
-                    return 1
-                    ;;
-    esac
-
-    if ___x_cmd service isalive x-claw-service; then
-        ___x_cmd_claw_service_stop "$im" || {
-            claw:warn "Claw service is not stopped. Please try 'x service stop --force x-claw-service'"
-            return 1
-        }
-    fi
-
-    ___x_cmd_claw_service_start "$im"
+    [ -n "$imlist" ] || imlist="$( ___x_cmd_claw_run___list_activate )"
+    ___x_cmd_claw_service_stop  --imlist "$imlist" || return $?
+    ___x_cmd_claw_service_start --imlist "$imlist"
 }
 
 ___x_cmd_claw_service_status(){
@@ -133,73 +154,64 @@ ___x_cmd_claw_service_log(){
     ___x_cmd service log tail     x-claw-service
 }
 
-# Fetch msg from the msgloop
-
 ___x_cmd_claw_service_run(){
-    local im="${1:-"weixin"}"
-    case "$im" in
-        weixin|telegram|feishu|qywx)
-            ___x_cmd claw run "$im" || return $?
-            ;;
-        *)  claw:error "Unsupported IM platform: $im"
-            return 1
-            ;;
-    esac
+    ___x_cmd_claw_runstart
 }
 
-___x_cmd_claw_weixin_run(){
-    :
-}
+# Fetch msg from the msgloop
+# ___x_cmd_claw_weixin_run(){
+#     :
+# }
 
-___x_cmd_claw_feishu_run(){
-    local chatid="$1"
+# ___x_cmd_claw_feishu_run(){
+#     local chatid="$1"
 
-    # MSG_CHATID
-    # MSG_JSON
-    # MSG_BODY
-    # MSG_RECEIPTION
-    ___x_cmd_claw_feishu_run_handler(){
-        ___x_cmd agent session handle --name "$MSG_CHATID" --msg "$MSG_BODY"
-    }
+#     # MSG_CHATID
+#     # MSG_JSON
+#     # MSG_BODY
+#     # MSG_RECEIPTION
+#     ___x_cmd_claw_feishu_run_handler(){
+#         ___x_cmd agent session handle --name "$MSG_CHATID" --msg "$MSG_BODY"
+#     }
 
-    ___x_cmd_feishu_loop "$chatid" -- ___x_cmd_claw_feishu_run_handler
-}
-
-
-# x agent chat init --name "$chatid" --msg "从现在开始，请以简易方式进行回复。"
-# x feishu react -- -- x agent chat handle --name "$chatid" --msg "$( jq .msg.body <"$MSG")"
-# x weixin react --chatid "$chatid" --engine claude --spirit x-claw
-# x weixin react --chatid "$chatid" -- x agent chat handle --name x-claw "weixin-$chatid" "$chatid" "$msg"
+#     ___x_cmd_feishu_loop "$chatid" -- ___x_cmd_claw_feishu_run_handler
+# }
 
 
-# Do we have a default conductor
-
-# ___x_cmd_feishu_loop --appid "$id" --appsecret "$secret" --worker
-
-#
-
-___x_cmd_claw_qywx_run(){
-    local chatid="$1"
-
-    while true; do
-        ___x_cmd qywx bot subscribe "$chatid" | {
-            ___x_cmd agent session init --name "$chatid" "<Very big prompt>"
-            while read -r json_msg; do
-                ___x_cmd agent session handle --name "$chatid" --msg "$json_msg" \
-                    || case $? in  130)     return 130 ;; esac
-                # read file from json_response
-                ___x_cmd qwyx bot send "$chatid" "$json_response"
-            done
-        }
-
-        claw:info 'Restart in 5 seconds.'
-        ___x_cmd sleep 5s || return $?
-    done
-}
+# # x agent chat init --name "$chatid" --msg "从现在开始，请以简易方式进行回复。"
+# # x feishu react -- -- x agent chat handle --name "$chatid" --msg "$( jq .msg.body <"$MSG")"
+# # x weixin react --chatid "$chatid" --engine claude --spirit x-claw
+# # x weixin react --chatid "$chatid" -- x agent chat handle --name x-claw "weixin-$chatid" "$chatid" "$msg"
 
 
+# # Do we have a default conductor
 
-___x_cmd_claw_telegram_run(){
-    :
-}
+# # ___x_cmd_feishu_loop --appid "$id" --appsecret "$secret" --worker
+
+# #
+
+# ___x_cmd_claw_qywx_run(){
+#     local chatid="$1"
+
+#     while true; do
+#         ___x_cmd qywx bot subscribe "$chatid" | {
+#             ___x_cmd agent session init --name "$chatid" "<Very big prompt>"
+#             while read -r json_msg; do
+#                 ___x_cmd agent session handle --name "$chatid" --msg "$json_msg" \
+#                     || case $? in  130)     return 130 ;; esac
+#                 # read file from json_response
+#                 ___x_cmd qwyx bot send "$chatid" "$json_response"
+#             done
+#         }
+
+#         claw:info 'Restart in 5 seconds.'
+#         ___x_cmd sleep 5s || return $?
+#     done
+# }
+
+
+
+# ___x_cmd_claw_telegram_run(){
+#     :
+# }
 

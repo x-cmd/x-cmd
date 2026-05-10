@@ -11,7 +11,7 @@ BEGIN{
     parse_item_list($0)
 }
 
-function parse_item_list( s,         o, basekp, msg_text, msg_image_key, msg_file_key, msg_file_name, msg_chat_id, msg_message_id, msg_sender_id, msg_type, body_content, inner_json, msg_timestamp){
+function parse_item_list( s,         o, basekp, msg_text, msg_image_key, msg_file_key, msg_file_name, msg_chat_id, msg_message_id, msg_sender_id, msg_type, body_content, inner_json, msg_timestamp, parent_id, is_ref){
     jiparse_after_tokenize(o, s)
     JITER_LEVEL = JITER_CURLEN = 0
 
@@ -24,6 +24,8 @@ function parse_item_list( s,         o, basekp, msg_text, msg_image_key, msg_fil
     msg_message_id = juq( o[ basekp SUBSEP "\"message_id\"" ] )
     msg_sender_id = juq( o[ basekp SUBSEP "\"sender\"" SUBSEP "\"id\"" ] )
     msg_timestamp = juq( o[ basekp SUBSEP "\"create_time\"" ] )
+    parent_id = juq( o[ basekp SUBSEP "\"parent_id\"" ] )
+    is_ref = (parent_id != "") ? "1" : "0"
 
     msg_text = ""
     msg_image_key = ""
@@ -108,7 +110,7 @@ function parse_item_list( s,         o, basekp, msg_text, msg_image_key, msg_fil
         }
     }
 
-    print ""
+    print is_ref
     print msg_timestamp
     print msg_type
     print msg_text
@@ -117,6 +119,7 @@ function parse_item_list( s,         o, basekp, msg_text, msg_image_key, msg_fil
     print msg_file_name
     print msg_chat_id
     print msg_message_id
+    print parent_id
 }
 
 function parse_tsv_esc( v ){

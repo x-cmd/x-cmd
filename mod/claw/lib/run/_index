@@ -1,13 +1,14 @@
 
 # claw = memory + soul + note + tailer-mq + cron
 
-xrc:mod:lib     claw   run/heartbeat   run/msg  run/agentrequest   run/util
+xrc:mod:lib     claw   run/heartbeat   run/msg  run/agentrequest   run/util run/log
 
 ___X_CMD_CLAW_DIR="$___X_CMD_ROOT_DATA/claw"
 ___X_CMD_CLAW_BOT_WS="$___X_CMD_CLAW_DIR/workspace/default"
 ___X_CMD_CLAW_BOT_MQ="$___X_CMD_CLAW_BOT_WS/.x-cmd/tailer-mq"
-___X_CMD_CLAW_BOT_HEARTBEAT="$___X_CMD_CLAW_BOT_WS/.x-cmd/data/heartbeat"
-___X_CMD_CLAW_BOT_STDOUT_LOG_DIR="$___X_CMD_CLAW_BOT_WS/.x-cmd/logs/stdout"
+___X_CMD_CLAW_BOT_DATA="$___X_CMD_CLAW_BOT_WS/.x-cmd/data"
+___X_CMD_CLAW_BOT_HEARTBEAT="$___X_CMD_CLAW_BOT_DATA/heartbeat"
+___X_CMD_CLAW_BOT_STDOUT_LOG_DIR="$___X_CMD_CLAW_BOT_DATA/logs"
 
 ___x_cmd_claw_run(){
     [ "$#" -gt 0 ] || set -- --help
@@ -19,18 +20,40 @@ ___x_cmd_claw_run(){
         esac
     done
 
-    local im="${1:-"weixin"}"
-    ___x_cmd_claw_run___ensure "$im" || return $?
+    local im="" x_=""
+    if [ "$#" -gt 0 ]; then
+        for im in "$@"; do
+            ___x_cmd_claw_run___activate_im "$im" || return $?
+        done
+    else
+        x_="";
+        if ___x_cmd_claw_run___detect_im_; then
+            im="$x_"
+        else
+            claw:warn "No ready IM platform found, falling back to weixin"
+            im="weixin"
+        fi
+        ___x_cmd_claw_run___activate_im "$im" || return $?
+    fi
 
-    claw:info "X-Claw agent runtime active on $im — awaiting instructions and ready to act"
+    ___x_cmd_claw_runstart
+}
 
-    # Clean up stale heartbeat state from previous run
-    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/current_im_chatid"
+___x_cmd_claw_runstart(){(
+    export ___X_CMD_LOG_C_TF="$___X_CMD_LOG_C_TF"
+    [ -n "$___X_CMD_LOG_C_TF" ] || [ -t 2 ] || ___X_CMD_LOG_C_TF=0
+    ___x_cmd log timestamp epoch
 
-    # claw:info "Use 'x claw log $x_' to view real-time agent logs"
+    local x_=""; ___x_cmd epoch get_
+    ___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR="$___X_CMD_CLAW_BOT_STDOUT_LOG_DIR/$x_"
 
+    local logfp="$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR/runner.log"
+    ___x_cmd ensurefp "$logfp"
+    exec >>"$logfp" 2>&1
+
+    claw:info "X-Claw agent runtime active — awaiting instructions and ready to act"
     if ! ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-runner; then
-        claw:debug "Starting heartbeat worker"
+        claw:debug "[HB] Starting heartbeat worker"
         ___x_cmd worker run --ns x-claw-default-worker --name heartbeat-runner -- ___x_cmd_claw_run_hearbeatgenerator "$___X_CMD_CLAW_BOT_MQ" "$im"
     fi
 
@@ -42,18 +65,25 @@ ___x_cmd_claw_run(){
         ___x_cmd tailer run "$___X_CMD_CLAW_BOT_MQ"
     ) || {
         local exitcode="$?"
-        claw:debug "Interrupted by signal, stopping heartbeat worker"
-        ___x_cmd worker stop --ns x-claw-default-worker --name heartbeat-runner
+        claw:warn "Tailer loop exited with code $exitcode — initiating teardown"
+        ___x_cmd_claw_run___teardown
         return "$exitcode"
     }
 
-    claw:debug "Stopping heartbeat worker"
+    ___x_cmd_claw_run___teardown
+)}
+
+___x_cmd_claw_run___teardown(){
+    claw:info "Shutting down X-Claw runtime — stopping services and cleaning up state"
+
+    claw:debug "[HB] Removing IM activity state directory: $___X_CMD_CLAW_BOT_HEARTBEAT/im_activity"
+    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity"
+
+    claw:debug "[HB] Stopping heartbeat worker (namespace: x-claw-default-worker, name: heartbeat-runner)"
     ___x_cmd worker stop --ns x-claw-default-worker --name heartbeat-runner
 }
 
 ___x_cmd_claw_run___agentwork(){
-    ___x_cmd log timestamp on
-
     local msg="$1"
     case "$msg" in
         HEARTBEAT:*)
@@ -62,66 +92,5 @@ ___x_cmd_claw_run___agentwork(){
             ___x_cmd_claw_run___agentwork___handlemsg "$msg"        ;;
 
         # other agents.
-    esac
-}
-
-___x_cmd_claw_log(){
-    local isall=0
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --help|-h)  ___x_cmd help -m claw log "$@" ; return 0 ;;
-            --all)      isall=1; shift ;;
-            *)          break ;;
-        esac
-    done
-
-    local dir="$___X_CMD_CLAW_BOT_STDOUT_LOG_DIR"
-    [ -d "$dir" ] || {
-        claw:error "No logs found for claw bot. Directory '$dir' does not exist."
-        return 1
-    }
-
-    shift $#
-    if [ "$isall" -eq 1 ]; then
-        set -- -n +1
-    fi
-
-    local x_="" l=""
-    ___x_cmd fsiter --file_ "$dir"
-    while read -r l; do
-        set -- "$@" "$dir/$l"
-    done <<A
-$x_
-A
-    ___x_cmd_cmds tail -F -q "$@"
-}
-
-___x_cmd_claw_run___ensure(){
-    ___x_cmd agent isready || {
-        claw:error "Agent is not ready. Please run 'x agent init' to setup the agent first."
-        return 1
-    }
-
-    local im="${1:-"weixin"}"
-    case "$im" in
-        weixin)
-            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/weixin/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
-            ___x_cmd weixin bot service ensure || return $?
-            ;;
-        telegram)
-            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/telegram/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
-            ___x_cmd telegram bot service ensure || return $?
-            ;;
-        feishu)
-            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/feishu/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
-            ___x_cmd feishu abot service ensure || return $?
-            ;;
-        qywx)
-            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/qywx/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
-            ___x_cmd qywx abot service ensure || return $?
-            ;;
-        *)  claw:error "Unsupported IM platform: $im"
-            return 1
-            ;;
     esac
 }

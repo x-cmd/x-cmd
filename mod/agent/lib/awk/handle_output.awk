@@ -86,6 +86,13 @@ function handle_error_text(s,           obj, result){
             log_error( "agent", juq(obj[ Q2_1, "\"error\"", "\"message\"" ] ))
             exit( 1 )
         }
+    } else if (s ~ "^ *\\{"){
+        jiparse_after_tokenize(obj, s)
+        JITER_LEVEL = JITER_CURLEN = 0
+        if ( obj[ Q2_1, "\"type\"" ] == "\"error\"" ){
+            log_error( "agent", jstr(obj, Q2_1))
+            exit( 1 )
+        }
     }
 }
 

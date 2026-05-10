@@ -1,0 +1,80 @@
+# shellcheck shell=dash
+
+# Section: event data fields
+# https://umami.is/docs/api/event-data#get-/api/event-data/events
+___x_cmd_umami_event_field(){
+    case "$1" in
+        --csv)        shift; ___x_cmd_umami_event_field___csv    "$@" ;;
+        --json)       shift; ___x_cmd_umami_event_field___json   "$@" ;;
+        --app)        shift; ___x_cmd_umami_event_field___app    "$@" ;;
+        --raw)        shift; ___x_cmd_umami_event_field___raw    "$@" ;;
+
+        -h|--help)    ___x_cmd help -m umami event field         "$@" ;;
+        *)            ___x_cmd_umami_event_field___app           "$@" ;;
+    esac
+}
+
+___x_cmd_umami_event_field___raw(){
+    local arg=;local key=;
+    local _start=; local _end=;
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --startAt)
+                key="${1#--}"
+                [ -n "$2" ] || M="Provide a $key" N=umami log:ret:1
+                arg="${arg}&${key}=${2}"
+                _start=1
+                shift 2;;
+            --endAt)
+                key="${1#--}"
+                [ -n "$2" ] || M="Provide a $key" N=umami log:ret:1
+                arg="${arg}&${key}=${2}"
+                _end=1
+                shift 2;;
+            *)
+                break ;;
+        esac
+    done
+    [ -n "$_start" ] || arg="startAt=$(___x_cmd_umami___date -15)&${arg}"
+    [ -n "$_end" ]   || arg="endAt=$(___x_cmd_umami___date)&${arg}"
+    [ -n "$arg" ]    && arg="?${arg#&}"
+
+    local _website_id="$1";  [ -n "$_website_id" ] || M='Provide a websiteID'   N=umami log:ret:1
+    ___x_cmd_umami___transform_website_id || return
+
+    # v2 API: /websites/:websiteId/event-data/fields
+    ___x_cmd_umami_api get "/websites/${_website_id}/event-data/fields${arg}"
+}
+
+___x_cmd_umami_event_field___json(){
+    ___x_cmd_umami_event_field___raw "$@"
+}
+
+___x_cmd_umami_event_field___csv(){
+    ___x_cmd_umami_event_field___raw "$@" \
+        | ___x_cmd jo 2c                            \
+            .propertyName .dataType .value .total \
+        | ___x_cmd csv header --add                 \
+            propertyName dataType value total
+}
+
+___x_cmd_umami_event_field___app(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_umami_event_field___app_ "$@"
+    else
+        ___x_cmd_umami_event_field___raw "$@"
+    fi
+}
+___x_cmd_umami_event_field___app_(){
+    local data=
+    local line_count=
+    data="$(___x_cmd_umami_event_field___csv "$@")"
+    line_count="$(printf "%s" "$data" | wc -l)"
+
+    if [ "$line_count" -gt 1 ]; then
+        printf "%s\n" "$data" | ___x_cmd csv app
+    else
+        printf "%s\n" "$data"
+    fi
+}
+# EndSection

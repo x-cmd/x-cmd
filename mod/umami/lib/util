@@ -1,0 +1,61 @@
+# shellcheck shell=dash
+
+___x_cmd_umami___transform_website_id(){
+    [ -n "$_website_id" ] || M='accepts _website_id, received empty' arg:ret:64
+    case "$_website_id" in
+        .id=*)
+            _website_id="${_website_id#*'.id='}"
+            ;;
+        *)
+            local _tmp_website_id=""
+            _tmp_website_id="$(___x_cmd_umami___search_website_id "${_website_id}")"
+            [ -n "$_tmp_website_id" ] || {
+                umami:error "Website not found ->${_website_id}"
+                return 1
+            }
+            _website_id="$_tmp_website_id"
+        ;;
+    esac
+}
+
+___x_cmd_umami___search_website_id(){
+    local _input="$1"
+    local _id=
+    local _domain=
+    local _name=
+
+    # Try exact name match first, then domain match, then prefix match
+    ___x_cmd_umami_site_ls___raw \
+        | ___x_cmd jo env 1.data.\* _id=.id _name=.name _domain=.domain -- '
+            if [ "$_name" = "'"$_input"'" ]; then
+                printf "%s\n" "$_id"
+                exit 0
+            fi
+        '
+
+    # Try domain match
+    ___x_cmd_umami_site_ls___raw \
+        | ___x_cmd jo env 1.data.\* _id=.id _name=.name _domain=.domain -- '
+            if [ "$_domain" = "'"$_input"'" ]; then
+                printf "%s\n" "$_id"
+                exit 0
+            fi
+        '
+
+    # Try prefix match (input starts with name)
+    ___x_cmd_umami_site_ls___raw \
+        | ___x_cmd jo env 1.data.\* _id=.id _name=.name _domain=.domain -- '
+            if [ "${_name#$_input}" != "$_name" ]; then
+                printf "%s\n" "$_id"
+                exit 0
+            fi
+        '
+
+    # Try contains match (input is contained in name)
+    ___x_cmd_umami_site_ls___raw \
+        | ___x_cmd jo env 1.data.\* _id=.id _name=.name _domain=.domain -- '
+            case "$_name" in
+                *'"$_input"'*) printf "%s\n" "$_id" ;;
+            esac
+        '
+}

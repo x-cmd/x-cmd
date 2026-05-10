@@ -1,0 +1,97 @@
+# shellcheck shell=dash
+
+# Section: list trending repos
+# https://ossinsight.io/docs/api/list-trending-repos
+___x_cmd_ossinsight_trend_ls(){
+    [ "$#" -gt 0 ] || set -- --app
+    local op="$1"; shift
+
+    local period="30d"
+    local language=""
+    local page=1
+    local page_size=50
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --period)
+                [ -n "$2" ] || { N=ossinsight M="Provide period" log:ret:1; }
+                period="$2"; shift 2 ;;
+            --language|--lang)
+                [ -n "$2" ] || { N=ossinsight M="Provide language" log:ret:1; }
+                language="$2"; shift 2 ;;
+            --page)
+                [ -n "$2" ] || { N=ossinsight M="Provide page number" log:ret:1; }
+                page="$2"; shift 2 ;;
+            --page-size)
+                [ -n "$2" ] || { N=ossinsight M="Provide page size" log:ret:1; }
+                page_size="$2"; shift 2 ;;
+            --app|--raw|--csv|--tsv|--json|--yml|--no-header)
+                break ;;
+            -h|--help)
+                ___x_cmd help -m ossinsight trend ls "$@"
+                return 0
+                ;;
+            *)
+                break ;;
+        esac
+    done
+
+    case "$op" in
+        --app)        ___x_cmd_ossinsight_trend_ls___app   "$@" ;;
+        --raw)        ___x_cmd_ossinsight_trend_ls___raw   "$@" ;;
+        --csv)        ___x_cmd_ossinsight_trend_ls___csv   "$@" ;;
+        --tsv)        ___x_cmd_ossinsight_trend_ls___tsv   "$@" ;;
+        --json)       ___x_cmd_ossinsight_trend_ls___json  "$@" ;;
+        --yml)        ___x_cmd_ossinsight_trend_ls___yml   "$@" ;;
+        --no-header)  ___x_cmd_ossinsight_trend_ls___csv --no-header "$@" ;;
+        *)            ___x_cmd_ossinsight_trend_ls___raw   "$@" ;;
+    esac
+}
+
+___x_cmd_ossinsight_trend_ls___raw(){
+    local arg="page=${page}&page_size=${page_size}"
+    [ -n "$language" ] && arg="${arg}&language=${language}"
+    ___x_cmd_ossinsight_api get "/trends/repos?${arg}"
+}
+
+___x_cmd_ossinsight_trend_ls___json(){
+    ___x_cmd_ossinsight_trend_ls___raw "$@" | ___x_cmd jo fmt
+}
+
+___x_cmd_ossinsight_trend_ls___yml(){
+    ___x_cmd_ossinsight_trend_ls___raw "$@" | ___x_cmd j2y
+}
+
+___x_cmd_ossinsight_trend_ls___csv(){
+    local csv_flags="--add"
+    case "$1" in
+        --no-header) csv_flags=""; shift ;;
+    esac
+    ___x_cmd_ossinsight_trend_ls___raw "$@" \
+        | ___x_cmd jo 1.data.rows \
+        | ___x_cmd jo 2c .repo_id .repo_name .primary_language .description .stars .forks .pull_requests .pushes .total_score \
+        | ___x_cmd csv header $csv_flags repo_id repo_name primary_language description stars forks pull_requests pushes total_score
+}
+
+___x_cmd_ossinsight_trend_ls___tsv(){
+    local print_header=1
+    case "$1" in
+        --no-header) print_header=""; shift ;;
+    esac
+    if [ -n "$print_header" ]; then
+        printf "repo_id\trepo_name\tprimary_language\tdescription\tstars\tforks\tpull_requests\tpushes\ttotal_score\n"
+    fi
+    ___x_cmd_ossinsight_trend_ls___raw "$@" \
+        | ___x_cmd jo 1.data.rows \
+        | ___x_cmd jo 2c .repo_id .repo_name .primary_language .description .stars .forks .pull_requests .pushes .total_score \
+        | tr ',' '\t'
+}
+
+___x_cmd_ossinsight_trend_ls___app(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_ossinsight_trend_ls___csv "$@" | ___x_cmd csv app
+    else
+        ___x_cmd_ossinsight_trend_ls___tsv "$@"
+    fi
+}
+# EndSection
