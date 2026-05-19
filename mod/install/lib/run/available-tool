@@ -1,0 +1,116 @@
+
+# tsv: name is-already-installed
+# tip: if pixi|pkgx|asdf|scoop not available, x pixi|pkgx|asdf|scoop --install
+
+# use this to query aviable tool
+# x install --available-tool --installed
+# x install --available-tool --printname
+# x install --available-tool --tsv|--csv|--app
+
+___X_CMD_INSTALL_TOOL_LIST="
+x
+winget
+brew
+apt
+dnf
+yum
+pacman
+apk
+scoop
+choco
+uv
+pip
+bun
+npm
+cargo
+go
+curl
+wget
+eget
+pixi
+pkgx
+asdf
+"
+
+___x_cmd_install_available_tool(){
+    [ $# -gt 0 ]    ||  set -- --tsv
+
+    local fmt=tsv
+    local mode=all
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m install --available-tool "$@"; return 0 ;;
+            --tsv|--csv|--app|--printname)
+                        fmt="${1#--}" ;   shift ;;
+            --installed)
+                        mode="${1#--}";   shift ;;
+            *)              break ;;
+        esac
+    done
+
+    ___x_cmd_install_available_tool___"$fmt" "$mode"
+}
+
+
+___x_cmd_install_available_tool___tsv(){
+    local mode="$1"
+
+    printf "%s\t%s\n" "name" "installed"
+    while read -r tool; do
+        [ -n "$tool" ] ||      continue
+        if ___x_cmd_hascmd "$tool";then
+            printf "%s\t%s\n" "$tool" "yes"
+        else
+            [ "$mode" = "installed" ] || printf "%s\t%s\n" "$tool" "no"
+        fi
+    done <<A
+$___X_CMD_INSTALL_TOOL_LIST
+A
+}
+
+___x_cmd_install_available_tool___csv(){
+    ___x_cmd_install_available_tool___tsv "$@" | ___x_cmd tsv tocsv
+}
+
+___x_cmd_install_available_tool___printname(){
+    ___x_cmd_install_available_tool___tsv "$@" | ___x_cmd ta 'NR > 1 { print $1 }'
+}
+
+___x_cmd_install_available_tool___app(){
+    local ___X_CMD_CSV_APP_SHBIN_CODE=
+
+    install:info "Ctrl-D to exit. Ctrl-C to interrupt."
+    local ___X_CMD_CSV_APP_DATA_name=""
+    local ___X_CMD_CSV_APP_DATA_installed=""
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc install"   \
+    ___x_cmd csv app --clear --return var       \
+            ___x_cmd_install_available_tool___csv || return 1
+
+    [ -n "$___X_CMD_CSV_APP_DATA_name" ] || return 0
+
+    if [ "$___X_CMD_CSV_APP_DATA_installed" = "no" ]; then
+        local id=
+        case "$___X_CMD_CSV_APP_DATA_name" in
+            pixi|pkgx|asdf|scoop)
+                ___x_cmd ui select id,cmd "What to do next?"   \
+                    "x $___X_CMD_CSV_APP_DATA_name --install"  \
+                    "EXIT" || return 1
+                case "$id" in
+                    1)  ___x_cmd "$___X_CMD_CSV_APP_DATA_name" --install  ;;
+                    *)  return 0 ;;
+                esac
+                ;;
+            uv)
+                ___x_cmd ui select id,cmd "What to do next?"   \
+                    "x pkg use $___X_CMD_CSV_APP_DATA_name"  \
+                    "EXIT" || return 1
+                case "$id" in
+                    1)  ___x_cmd pkg use "$___X_CMD_CSV_APP_DATA_name"  ;;
+                    *)  return 0 ;;
+                esac
+                ;;
+        esac
+
+    fi
+}
+

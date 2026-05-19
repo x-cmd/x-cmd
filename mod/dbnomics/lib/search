@@ -1,0 +1,66 @@
+# shellcheck shell=dash
+
+# Section: search
+# GET /search?q=...
+___x_cmd_dbnomics_search(){
+    local op="--app"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --app|--raw|--json|--csv|--tsv)
+                op="$1"; shift ;;
+            -h|--help)
+                ___x_cmd help -m dbnomics search "$@"; return ;;
+            *) break ;;
+        esac
+    done
+    case "$op" in
+        --app)        ___x_cmd_dbnomics_search___app   "$@" ;;
+        --raw)        ___x_cmd_dbnomics_search___raw   "$@" ;;
+        --json)       ___x_cmd_dbnomics_search___json  "$@" ;;
+        --csv)        ___x_cmd_dbnomics_search___csv   "$@" ;;
+        --tsv)        ___x_cmd_dbnomics_search___tsv   "$@" ;;
+    esac
+}
+
+___x_cmd_dbnomics_search___raw(){
+    local arg=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --app|--raw|--json|--csv|--tsv) shift ;;
+            --limit)    arg="${arg:+${arg}&}limit=$2"; shift 2 ;;
+            --offset)   arg="${arg:+${arg}&}offset=$2"; shift 2 ;;
+            *)          break ;;
+        esac
+    done
+    local q="$1"
+    [ -n "$q" ] || M='Provide a search query' N=dbnomics log:ret:1
+    q="$(___x_cmd url encode "$q")"
+    arg="q=${q}${arg:+&${arg}}"
+    arg="?${arg}"
+    ___x_cmd_dbnomics_api get "/search${arg}"
+}
+
+___x_cmd_dbnomics_search___json(){
+    ___x_cmd_dbnomics_search___raw "$@" | jq .
+}
+
+___x_cmd_dbnomics_search___csv(){
+    ___x_cmd_dbnomics_search___raw "$@" \
+        | ___x_cmd_dbnomics___json2csv results.docs .code .name .provider_code .provider_name .nb_series .nb_matching_series .indexed_at \
+        | ___x_cmd csv header --add code name provider_code provider_name nb_series nb_matching_series indexed_at
+}
+
+___x_cmd_dbnomics_search___tsv(){
+    printf "code\tname\tprovider_code\tprovider_name\tnb_series\tnb_matching_series\tindexed_at\n"
+    ___x_cmd_dbnomics_search___raw "$@" \
+        | ___x_cmd_dbnomics___json2tsv results.docs .code .name .provider_code .provider_name .nb_series .nb_matching_series .indexed_at
+}
+
+___x_cmd_dbnomics_search___app(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_dbnomics_search___csv "$@" | ___x_cmd csv app
+    else
+        ___x_cmd_dbnomics_search___tsv "$@"
+    fi
+}
+# EndSection

@@ -1,0 +1,234 @@
+# shellcheck shell=dash
+
+# Section: series
+# GET /series/{provider_code}/{dataset_code}
+# GET /series/{provider_code}/{dataset_code}/{series_code}
+# GET /series?series_ids=...
+___x_cmd_dbnomics_series(){
+    [ "$#" -gt 0 ] || set -- ls
+    local op="$1"; shift
+    case "$op" in
+        ls|list)      ___x_cmd_dbnomics_series_ls    "$@" ;;
+        get)          ___x_cmd_dbnomics_series_get   "$@" ;;
+        ids)          ___x_cmd_dbnomics_series_ids   "$@" ;;
+        --app|--raw|--json|--csv|--tsv|--limit|--offset)
+                        set -- "$op" "$@"
+                        ___x_cmd_dbnomics_series_ls "$@" ;;
+        -h|--help)    ___x_cmd help -m dbnomics series "$@" ;;
+        *)
+            for _arg in "$@"; do
+                case "$_arg" in
+                    --app|--raw|--json|--csv|--tsv)
+                        set -- "$_arg" "$op" "$@"
+                        ___x_cmd_dbnomics_series_ls "$@"
+                        return ;;
+                esac
+            done
+            ___x_cmd_dbnomics_series_ls "$op" "$@" ;;
+    esac
+}
+
+___x_cmd_dbnomics_series_ls(){
+    local op="--app"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --app|--raw|--json|--csv|--tsv)
+                op="$1"; shift ;;
+            -h|--help)
+                ___x_cmd help -m dbnomics series ls "$@"; return ;;
+            *) break ;;
+        esac
+    done
+    case "$op" in
+        --app)        ___x_cmd_dbnomics_series_ls___app   "$@" ;;
+        --raw)        ___x_cmd_dbnomics_series_ls___raw   "$@" ;;
+        --json)       ___x_cmd_dbnomics_series_ls___json  "$@" ;;
+        --csv)        ___x_cmd_dbnomics_series_ls___csv   "$@" ;;
+        --tsv)        ___x_cmd_dbnomics_series_ls___tsv   "$@" ;;
+    esac
+}
+
+___x_cmd_dbnomics_series_ls___raw(){
+    local provider_code="" dataset_code="" series_code=""
+    local arg=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --app|--raw|--json|--csv|--tsv) shift ;;
+            --observations)   arg="${arg:+${arg}&}observations=1";   shift ;;
+            --facets)         arg="${arg:+${arg}&}facets=1";          shift ;;
+            --no-metadata)    arg="${arg:+${arg}&}metadata=0";        shift ;;
+            --format)         arg="${arg:+${arg}&}format=$2";         shift 2 ;;
+            --align-periods)  arg="${arg:+${arg}&}align_periods=1";   shift ;;
+            --dimensions)     arg="${arg:+${arg}&}dimensions=$2";     shift 2 ;;
+            --q)              arg="${arg:+${arg}&}q=$(___x_cmd url encode "$2")"; shift 2 ;;
+            --limit)          arg="${arg:+${arg}&}limit=$2";          shift 2 ;;
+            --offset)         arg="${arg:+${arg}&}offset=$2";         shift 2 ;;
+            *)
+                if [ -z "$provider_code" ]; then
+                    provider_code="$1"; shift
+                elif [ -z "$dataset_code" ]; then
+                    dataset_code="$1"; shift
+                elif [ -z "$series_code" ]; then
+                    series_code="$1"; shift
+                else
+                    break
+                fi
+                ;;
+        esac
+    done
+    [ -n "$provider_code" ] || M='Provide a provider code' N=dbnomics log:ret:1
+    [ -n "$dataset_code" ]  || M='Provide a dataset code'  N=dbnomics log:ret:1
+    [ -n "$arg" ] && arg="?${arg}"
+    if [ -n "$series_code" ]; then
+        ___x_cmd_dbnomics_api get "/series/${provider_code}/${dataset_code}/${series_code}${arg}"
+    else
+        ___x_cmd_dbnomics_api get "/series/${provider_code}/${dataset_code}${arg}"
+    fi
+}
+
+___x_cmd_dbnomics_series_ls___json(){
+    ___x_cmd_dbnomics_series_ls___raw "$@" | jq .
+}
+
+___x_cmd_dbnomics_series_ls___csv(){
+    ___x_cmd_dbnomics_series_ls___raw "$@" \
+        | ___x_cmd_dbnomics___json2csv series.docs .provider_code .dataset_code .series_code \
+        | ___x_cmd csv header --add provider_code dataset_code series_code
+}
+
+___x_cmd_dbnomics_series_ls___tsv(){
+    printf "provider_code\tdataset_code\tseries_code\n"
+    ___x_cmd_dbnomics_series_ls___raw "$@" \
+        | ___x_cmd_dbnomics___json2tsv series.docs .provider_code .dataset_code .series_code
+}
+
+___x_cmd_dbnomics_series_ls___app(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_dbnomics_series_ls___csv "$@" | ___x_cmd csv app
+    else
+        ___x_cmd_dbnomics_series_ls___tsv "$@"
+    fi
+}
+
+# GET /series/{provider_code}/{dataset_code}/{series_code}
+___x_cmd_dbnomics_series_get(){
+    local op="--app"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --app|--raw|--json)
+                op="$1"; shift ;;
+            -h|--help)
+                ___x_cmd help -m dbnomics series get "$@"; return ;;
+            *) break ;;
+        esac
+    done
+    case "$op" in
+        --app)        ___x_cmd_dbnomics_series_get___app   "$@" ;;
+        --raw)        ___x_cmd_dbnomics_series_get___raw   "$@" ;;
+        --json)       ___x_cmd_dbnomics_series_get___json  "$@" ;;
+    esac
+}
+
+___x_cmd_dbnomics_series_get___raw(){
+    local provider_code="$1"
+    local dataset_code="$2"
+    local series_code="$3"
+    [ -n "$provider_code" ] || M='Provide a provider code' N=dbnomics log:ret:1
+    [ -n "$dataset_code" ]  || M='Provide a dataset code'  N=dbnomics log:ret:1
+    [ -n "$series_code" ]   || M='Provide a series code'   N=dbnomics log:ret:1
+    shift 3
+    local arg=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --app|--raw|--json|--csv|--tsv) shift ;;
+            --observations)   arg="${arg:+${arg}&}observations=1";   shift ;;
+            --facets)         arg="${arg:+${arg}&}facets=1";          shift ;;
+            --no-metadata)    arg="${arg:+${arg}&}metadata=0";        shift ;;
+            --format)         arg="${arg:+${arg}&}format=$2";         shift 2 ;;
+            --align-periods)  arg="${arg:+${arg}&}align_periods=1";   shift ;;
+            --dimensions)     arg="${arg:+${arg}&}dimensions=$2";     shift 2 ;;
+            --q)              arg="${arg:+${arg}&}q=$(___x_cmd url encode "$2")"; shift 2 ;;
+            --limit)          arg="${arg:+${arg}&}limit=$2";          shift 2 ;;
+            --offset)         arg="${arg:+${arg}&}offset=$2";         shift 2 ;;
+            *)                break ;;
+        esac
+    done
+    [ -n "$arg" ] && arg="?${arg}"
+    ___x_cmd_dbnomics_api get "/series/${provider_code}/${dataset_code}/${series_code}${arg}"
+}
+
+___x_cmd_dbnomics_series_get___json(){
+    ___x_cmd_dbnomics_series_get___raw "$@" | jq .
+}
+
+___x_cmd_dbnomics_series_get___app(){
+    ___x_cmd_dbnomics_series_get___json "$@"
+}
+
+# GET /series?series_ids=...
+___x_cmd_dbnomics_series_ids(){
+    local op="--app"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --app|--raw|--json|--csv|--tsv)
+                op="$1"; shift ;;
+            -h|--help)
+                ___x_cmd help -m dbnomics series ids "$@"; return ;;
+            *) break ;;
+        esac
+    done
+    case "$op" in
+        --app)        ___x_cmd_dbnomics_series_ids___app   "$@" ;;
+        --raw)        ___x_cmd_dbnomics_series_ids___raw   "$@" ;;
+        --json)       ___x_cmd_dbnomics_series_ids___json  "$@" ;;
+        --csv)        ___x_cmd_dbnomics_series_ids___csv   "$@" ;;
+        --tsv)        ___x_cmd_dbnomics_series_ids___tsv   "$@" ;;
+    esac
+}
+
+___x_cmd_dbnomics_series_ids___raw(){
+    local series_ids="$1"
+    [ -n "$series_ids" ] || M='Provide series IDs (comma-separated)' N=dbnomics log:ret:1
+    shift
+    local arg="series_ids=${series_ids}"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --app|--raw|--json|--csv|--tsv) shift ;;
+            --observations)   arg="${arg}&observations=1";   shift ;;
+            --facets)         arg="${arg}&facets=1";          shift ;;
+            --no-metadata)    arg="${arg}&metadata=0";        shift ;;
+            --format)         arg="${arg}&format=$2";         shift 2 ;;
+            --align-periods)  arg="${arg}&align_periods=1";   shift ;;
+            --limit)          arg="${arg}&limit=$2";          shift 2 ;;
+            --offset)         arg="${arg}&offset=$2";         shift 2 ;;
+            *)                break ;;
+        esac
+    done
+    arg="?${arg}"
+    ___x_cmd_dbnomics_api get "/series${arg}"
+}
+
+___x_cmd_dbnomics_series_ids___json(){
+    ___x_cmd_dbnomics_series_ids___raw "$@" | jq .
+}
+
+___x_cmd_dbnomics_series_ids___csv(){
+    ___x_cmd_dbnomics_series_ids___raw "$@" \
+        | ___x_cmd_dbnomics___json2csv series.docs .provider_code .dataset_code .series_code \
+        | ___x_cmd csv header --add provider_code dataset_code series_code
+}
+
+___x_cmd_dbnomics_series_ids___tsv(){
+    printf "provider_code\tdataset_code\tseries_code\n"
+    ___x_cmd_dbnomics_series_ids___raw "$@" \
+        | ___x_cmd_dbnomics___json2tsv series.docs .provider_code .dataset_code .series_code
+}
+
+___x_cmd_dbnomics_series_ids___app(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_dbnomics_series_ids___csv "$@" | ___x_cmd csv app
+    else
+        ___x_cmd_dbnomics_series_ids___tsv "$@"
+    fi
+}
+# EndSection

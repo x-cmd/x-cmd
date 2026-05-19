@@ -1,0 +1,106 @@
+# shellcheck shell=dash
+
+# Section: data
+# Directly fetch single series observations.
+# Uses JSON API (like align) so limit/offset work natively.
+
+___x_cmd_dbnomics_data(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m dbnomics data "$@"; return ;;
+    esac
+    local fmt=app
+    local _id=""
+    local _limit=""
+    local _offset=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --app|--raw|--json|--csv|--tsv)
+                        fmt="${1#--}" ;     shift ;;
+            --limit)    _limit="$2";        arg:2:shift ;;
+            --offset)   _offset="$2";       arg:2:shift ;;
+            *)          _id="$1";           shift ;;
+        esac
+    done
+
+    [ -n "$_id" ] || M='Provide a series ID or alias' N=dbnomics log:ret:1
+    case "$_id" in
+        *,*) M='Multiple series: use "x dbnomics align ID1 ID2 ID3" instead' N=dbnomics log:ret:1 ;;
+    esac
+
+    # Resolve alias
+    case "$_id" in
+        */*) ;;
+        *)
+            local _resolved
+            _resolved="$(___x_cmd_dbnomics_alias___resolve "$_id")"
+            [ -n "$_resolved" ] && _id="$_resolved"
+            ;;
+    esac
+
+    # Parse series_id
+    local provider_code="${_id%%/*}"
+    local rest="${_id#*/}"
+    local dataset_code="${rest%%/*}"
+    local series_code="${rest#*/}"
+    [ -n "$provider_code" ] && [ -n "$dataset_code" ] && [ "$series_code" != "$rest" ] || \
+        M='Series ID must be provider/dataset/series' N=dbnomics log:ret:1
+
+    ___x_cmd_dbnomics_data___"$fmt" "$_limit" "$_offset" "$provider_code" "$dataset_code" "$series_code"
+}
+
+# $1=limit $2=offset $3=provider $4=dataset $5=series
+___x_cmd_dbnomics_data___raw(){
+    local _limit="$1" _offset="$2"
+    local provider_code="$3" dataset_code="$4" series_code="$5"
+    local arg="?observations=1&format=json"
+    [ -n "$_limit" ]  && arg="${arg}&limit=${_limit}"
+    [ -n "$_offset" ] && arg="${arg}&offset=${_offset}"
+
+    ___x_cmd_dbnomics_api get "/series/${provider_code}/${dataset_code}/${series_code}${arg}"
+}
+
+___x_cmd_dbnomics_data___json(){
+    ___x_cmd_dbnomics_data___raw "$@" | jq .
+}
+
+___x_cmd_dbnomics_data___csv(){
+    local _limit="$1" _offset="$2"
+    shift 2
+    ___x_cmd_dbnomics_data___raw "" "" "$@" | jq -r --argjson limit "${_limit:-999999}" --argjson offset "${_offset:-0}" '
+        .series.docs[0] as $s |
+        ($s.period | length) as $total |
+        [$s.period[$offset:$offset+$limit], $s.value[$offset:$offset+$limit]] as $pair |
+        ($pair[0] | length) as $n |
+        if $n == 0 then empty
+        else
+            ["period", $s.series_code],
+            (range($n) | [$pair[0][.], $pair[1][.]])
+            | @csv
+        end
+    '
+}
+
+___x_cmd_dbnomics_data___tsv(){
+    local _limit="$1" _offset="$2"
+    shift 2
+    ___x_cmd_dbnomics_data___raw "" "" "$@" | jq -r --argjson limit "${_limit:-999999}" --argjson offset "${_offset:-0}" '
+        .series.docs[0] as $s |
+        [$s.period[$offset:$offset+$limit], $s.value[$offset:$offset+$limit]] as $pair |
+        ($pair[0] | length) as $n |
+        if $n == 0 then empty
+        else
+            ["period", $s.series_code],
+            (range($n) | [$pair[0][.], $pair[1][.]])
+            | @tsv
+        end
+    '
+}
+
+___x_cmd_dbnomics_data___app(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+        ___x_cmd_dbnomics_data___csv "$@" | ___x_cmd csv app
+    else
+        ___x_cmd_dbnomics_data___tsv "$@"
+    fi
+}
+# EndSection

@@ -1,0 +1,193 @@
+
+___x_cmd_time_stress(){
+    arg:init time
+
+    local count=""
+    local outputmode=""
+    local testmode=auto
+
+    local budget_ms=""    # 5 seconds
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m time --stress "$@" ; return 0 ;;
+            -c)         count="$2";         arg:2:shift ;;
+            --)         shift ; break ;;
+            --avg)      outputmode=avg ; shift ;;
+            --csv)      outputmode=csv ; shift ;;
+            --csv0)     outputmode=csv0 ; shift ;;
+            --tsv)      outputmode=tsv ; shift ;;
+            --tsv0)     outputmode=tsv0 ; shift ;;
+            --tty)      outputmode=tty ; shift ;;
+            --yml)      outputmode=yml ; shift ;;
+
+            -b|--budget)
+                        budget_ms="$(( $2 * 1000 ))" ;    arg:2:shift ;;
+
+            --batch10)  testmode=batch10 ;      shift ;;
+            --normal)   testmode=normal ;       shift ;;
+
+            --*)        N=time M="Unknown options -> $1" log:ret:64 ;;
+
+            *)          break
+        esac
+    done
+
+    # Default: csv app if tty, tsv if pipe
+    if [ -z "$outputmode" ]; then
+        if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+            outputmode=app
+        else
+            outputmode=tsv
+        fi
+    fi
+
+    local x_
+
+    if [ -z "$count" ]; then
+        budget_ms="${budget_ms:-5000}"
+        ___x_cmd_time_getms_ "$@" >/dev/null 2>/dev/null
+        if [ "$x_" -eq 0 ]; then x_=1; fi
+
+        count="$(( budget_ms / x_ ))"
+        if [ "$count" -gt 10 ]; then
+            count="$((count / 10 * 10))"
+        fi
+        time:debug --count "$count" --budge "$(( budget_ms / 1000 ))" "Automatically decide."
+    fi
+
+    local offset_avg0
+    offset_avg0="$( ___x_cmd_time_stress___main_est avg 1000 printf "%s")"
+
+    local offset_avg1
+    offset_avg1="$( ___x_cmd_time_stress___main_noredirect avg 1000 printf "%s")"
+
+    local offset_avg2
+    offset_avg2="$( ___x_cmd_time_stress___main avg 1000 printf "%s")"
+
+    time:debug \
+        --offset0 "$offset_avg0" --offset1 "$offset_avg1" --offset2 "$offset_avg2" \
+        "Calibration"
+
+    local awk_output="$outputmode"
+    if [ "$outputmode" = "app" ]; then
+        awk_output=csv
+    fi
+
+    local result_cmd
+    if [ "$testmode" = batch10 ]; then
+        result_cmd=___x_cmd_time_stress___main1run10
+    else
+        local tryrun_result
+        local tryrun_count=10
+        if [ "$count" -lt "$tryrun_count" ]; then   tryrun_count=$count;    fi
+        tryrun_result="$( ___x_cmd_time_stress___main avg "$tryrun_count" "$@")"
+
+        case "$tryrun_result" in
+            # 0.0*)   result_cmd=___x_cmd_time_stress___main1run100 ;;
+            0.*)    result_cmd=___x_cmd_time_stress___main1run10 ;;
+            *)      result_cmd=___x_cmd_time_stress___main1run ;;
+        esac
+    fi
+
+    if [ "$outputmode" = "app" ]; then
+        "$result_cmd" "$awk_output" "$count" "$@" | ___x_cmd csv app
+    else
+        "$result_cmd" "$awk_output" "$count" "$@"
+    fi
+}
+
+___x_cmd_time_stress___main1run(){
+    local outputmode="$1" ; local count="$2" ;  shift 2
+    ___X_CMD_TIME_OFFSET0="$offset_avg0" \
+    ___X_CMD_TIME_OFFSET1="$offset_avg1" \
+    ___X_CMD_TIME_OFFSET2="$offset_avg2" \
+        ___x_cmd_time_stress___main "$outputmode" "$count" "$@"
+}
+
+___x_cmd_time_stress___main1run10(){
+    local outputmode="$1" ; local count="$2" ;  shift 2
+    ___X_CMD_TIME_OFFSET0="$offset_avg0" \
+    ___X_CMD_TIME_OFFSET1="$offset_avg1" \
+    ___X_CMD_TIME_OFFSET2="$offset_avg2" \
+        ___x_cmd_time_stress___main10 "$outputmode" "$count" "$@"
+}
+
+___x_cmd_time_stress___main(){
+    local outputmode="$1" ; local count="$2" ;  shift 2
+    local x_
+    (
+        ___x_cmd_epoch_real_; printf "%s\n" "$x_"
+
+        local i=1
+        while [ "$i" -le "$count" ]; do
+            "$@" 1>/dev/null 2>/dev/null
+            ___x_cmd_epoch_real_; printf "%s\n" "$x_"
+            i=$((i+1))
+        done
+    ) | {
+        ___x_cmd_cmds awk -v "output=$outputmode" -f "${___X_CMD_ROOT_MOD}/time/lib/report.awk"
+    }
+}
+
+___x_cmd_time_stress___main_est(){
+    local outputmode="$1" ; local count="$2" ;  shift 2
+    local x_
+    (
+        ___x_cmd_epoch_real_; printf "%s\n" "$x_"
+
+        local i=1
+        while [ "$i" -le "$count" ]; do
+            ___x_cmd_epoch_real_; printf "%s\n" "$x_"
+            i=$((i+1))
+        done
+    ) | {
+        ___x_cmd_cmds awk -v "output=$outputmode" -f "${___X_CMD_ROOT_MOD}/time/lib/report.awk"
+    }
+}
+
+___x_cmd_time_stress___main_noredirect(){
+    local outputmode="$1" ; local count="$2" ;  shift 2
+    local x_
+    (
+        ___x_cmd_epoch_real_; printf "%s\n" "$x_"
+
+        local i=1
+        while [ "$i" -le "$count" ]; do
+            "$@"
+            ___x_cmd_epoch_real_; printf "%s\n" "$x_"
+            i=$((i+1))
+        done
+    ) | {
+        ___x_cmd_cmds awk -v "output=$outputmode" -f "${___X_CMD_ROOT_MOD}/time/lib/report.awk"
+    }
+}
+
+
+___x_cmd_time_stress___main10(){
+    local outputmode="$1" ; local count="$2" ;  shift 2
+    local x_
+    (
+        ___x_cmd_epoch_real_; printf "%s\n" "$x_"
+
+        local i=1
+        while [ "$i" -le "$count" ]; do
+            {
+                "$@"
+                "$@"
+                "$@"
+                "$@"
+                "$@"
+                "$@"
+                "$@"
+                "$@"
+                "$@"
+                "$@"
+            } 1>/dev/null 2>/dev/null
+            ___x_cmd_epoch_real_; printf "%s\n" "$x_"
+            i=$((i+1))
+        done
+    ) | {
+        ___x_cmd_cmds awk -v "batch=10" -v "output=$outputmode" -f "${___X_CMD_ROOT_MOD}/time/lib/report.awk"
+    }
+}

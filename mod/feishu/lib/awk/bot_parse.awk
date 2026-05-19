@@ -107,6 +107,56 @@ function parse_item_list( s,         o, basekp, msg_text, msg_image_key, msg_fil
                     msg_file_name = substr(rest, 1, endq - 1)
                 }
             }
+        } else if (msg_type == "post") {
+            # Parse post message: {"post":{"zh_cn":{"title":"...","content":[[{"tag":"text","text":"..."}]]}}}
+            title_str = "\"title\":\""
+            pos = index(inner_json, title_str)
+            if (pos > 0) {
+                rest = substr(inner_json, pos + length(title_str))
+                endq = index(rest, "\"")
+                if (endq > 0) {
+                    msg_text = substr(rest, 1, endq - 1)
+                }
+            }
+            # Extract text content and image_key from content array
+            content_str = "\"content\":"
+            pos = index(inner_json, content_str)
+            if (pos > 0) {
+                rest = substr(inner_json, pos + length(content_str))
+                # Find the array start
+                arr_start = index(rest, "[[")
+                if (arr_start > 0) {
+                    arr_rest = substr(rest, arr_start + 1)
+                    arr_end = index(arr_rest, "]]")
+                    if (arr_end > 0) {
+                        arr_content = substr(arr_rest, 1, arr_end - 1)
+                        # Extract image_key from {"tag":"img","image_key":"..."}
+                        img_key_str = "\"tag\":\"img\",\"image_key\":\""
+                        img_pos = index(arr_content, img_key_str)
+                        if (img_pos > 0) {
+                            img_rest = substr(arr_content, img_pos + length(img_key_str))
+                            img_endq = index(img_rest, "\"")
+                            if (img_endq > 0) {
+                                msg_image_key = substr(img_rest, 1, img_endq - 1)
+                            }
+                        }
+                        # Extract text from each element: {"tag":"text","text":"..."}
+                        while ((tag_pos = index(arr_content, "\"tag\":\"text\"")) > 0) {
+                            arr_content = substr(arr_content, tag_pos + 13)
+                            text_pos = index(arr_content, "\"text\":\"")
+                            if (text_pos > 0) {
+                                text_rest = substr(arr_content, text_pos + 8)
+                                text_end = index(text_rest, "\"")
+                                if (text_end > 0) {
+                                    extracted_text = substr(text_rest, 1, text_end - 1)
+                                    if (msg_text != "") msg_text = msg_text "\n"
+                                    msg_text = msg_text extracted_text
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

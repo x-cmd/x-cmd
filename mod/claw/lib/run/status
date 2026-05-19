@@ -1,0 +1,129 @@
+# shellcheck shell=dash
+
+
+___x_cmd_claw_run_ls(){
+    local imdir="$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity"
+    if [ ! -d "$imdir" ]; then
+        printf "im: []\n"
+        return 0
+    fi
+
+    printf "im:\n"
+    local i im_name chatid active_ts last_active
+    for i in "$imdir"/*; do
+        [ -f "$i" ] || continue
+        im_name="${i##*/}"
+        chatid=""; active_ts=""
+        read -r chatid active_ts < "$i"
+        [ -n "$chatid" ] || continue
+
+        last_active=""
+        if [ -n "$active_ts" ] && [ "$active_ts" -gt 0 ] 2>/dev/null; then
+            last_active="$(___x_cmd date iso "$active_ts" 2>/dev/null)"
+        fi
+
+        printf "  - name: %s\n" "$im_name"
+        printf "    chatid: %s\n" "$chatid"
+        [ -n "$last_active" ] && printf "    last_active: %s\n" "$last_active"
+    done
+}
+
+___x_cmd_claw_run_status(){
+    local runtime_status="inactive"
+    ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-runner && runtime_status="active"
+
+    local heartbeat_runner="dead" heartbeat_worker="idle"
+    ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-runner && heartbeat_runner="alive"
+    ___x_cmd worker isalive --ns x-claw-default-worker --name x-claw-heartbeat && heartbeat_worker="running"
+
+    local idle_count=0
+    local idle_file="$___X_CMD_CLAW_BOT_HEARTBEAT/idle_count"
+    [ ! -f "$idle_file" ] || read -r idle_count < "$idle_file"
+
+    local agent_available="yes"
+    [ ! -f "$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable" ] || agent_available="no"
+
+    local last_tick=""
+    local heartbeat_tsfile="$___X_CMD_CLAW_BOT_HEARTBEAT/lastheartbeat_ts"
+    if [ -f "$heartbeat_tsfile" ]; then
+        local lastheartbeat_ts=0
+        read -r lastheartbeat_ts < "$heartbeat_tsfile"
+        [ "$lastheartbeat_ts" -gt 0 ] 2>/dev/null && {
+            last_tick="$(___x_cmd date iso "$lastheartbeat_ts" 2>/dev/null)"
+        }
+    fi
+
+    printf "runtime: %s\n" "$runtime_status"
+    printf "heartbeat:\n"
+    printf "  runner: %s\n" "$heartbeat_runner"
+    printf "  worker: %s\n" "$heartbeat_worker"
+    printf "  idle_count: %s\n" "$idle_count"
+    printf "  agent_available: %s\n" "$agent_available"
+    [ -n "$last_tick" ] && printf "  last_tick: %s\n" "$last_tick"
+
+    printf "workspace: %s\n" "$___X_CMD_CLAW_BOT_WS"
+    printf "log_dir: %s\n" "$___X_CMD_CLAW_BOT_STDOUT_LOG_DIR"
+
+    local mq_pending=0
+    if [ -d "$___X_CMD_CLAW_BOT_MQ" ]; then
+        local f
+        for f in "$___X_CMD_CLAW_BOT_MQ"/*; do
+            [ -f "$f" ] && mq_pending=$((mq_pending + 1))
+        done
+    fi
+    printf "mq_pending: %s\n" "$mq_pending"
+
+    printf "cron:\n"
+    local cron_list=""
+    cron_list="$(___x_cmd cron ls --ns x-claw-default --tsv 2>/dev/null)" || cron_list=""
+    if [ -n "$cron_list" ]; then
+        printf "%s\n" "$cron_list" | while IFS="$___X_CMD_UNSEENCHAR_HT" read -r name expr desc; do
+            [ -n "$name" ] || continue
+            printf "  - name: %s\n" "$name"
+            printf "    expr: %s\n" "$expr"
+            [ -n "$desc" ] && printf "    desc: %s\n" "$desc"
+        done
+    else
+        printf "  []\n"
+    fi
+
+    local imdir="$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity"
+    printf "im:\n"
+    if [ -d "$imdir" ]; then
+        local i im_name chatid active_ts worker_name worker_status has_unread last_active
+        for i in "$imdir"/*; do
+            [ -f "$i" ] || continue
+            im_name="${i##*/}"
+            chatid=""; active_ts=""
+            read -r chatid active_ts < "$i"
+            [ -n "$chatid" ] || continue
+
+            worker_name="${im_name}-${chatid}"
+            if ___x_cmd worker isalive --ns x-claw-default-worker --name "$worker_name"; then
+                worker_status="processing"
+            elif ___x_cmd claw "$im_name" has-unread "$chatid" 2>/dev/null; then
+                worker_status="has_unread"
+            else
+                worker_status="idle"
+            fi
+
+            if ___x_cmd claw "$im_name" has-unread "$chatid" 2>/dev/null; then
+                has_unread="yes"
+            else
+                has_unread="no"
+            fi
+
+            last_active=""
+            if [ -n "$active_ts" ] && [ "$active_ts" -gt 0 ] 2>/dev/null; then
+                last_active="$(___x_cmd date iso "$active_ts" 2>/dev/null)"
+            fi
+
+            printf "  - name: %s\n" "$im_name"
+            printf "    chatid: %s\n" "$chatid"
+            printf "    worker: %s\n" "$worker_name"
+            printf "    worker_status: %s\n" "$worker_status"
+            printf "    has_unread: %s\n" "$has_unread"
+            [ -n "$last_active" ] && printf "    last_active: %s\n" "$last_active"
+        done
+    fi
+}

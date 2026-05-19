@@ -67,6 +67,7 @@ A
                 ___x_cmd sleep 1s || return $?
                 continue
             else
+                weixin:info "If the problem persists, try re-login: 'x weixin login'"
                 return 1
             fi
         fi
@@ -116,32 +117,42 @@ ___x_cmd_weixin_listen_once___(){
     local sync_buf_file="${___X_CMD_WEIXIN_TMP}/sync_buf"
 
     local sync_buf=""
-    if [ -f "$sync_buf_file" ]; then
-        sync_buf="$(___x_cmd_cmds_cat "$sync_buf_file")"
-    fi
+    [ ! -f "$sync_buf_file" ] || read -r sync_buf <"$sync_buf_file"
 
-    weixin:info "Send a message in WeChat to complete the binding..."
+    local curl_errcode=""
     while true; do
-        local resp; resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
-            weixin:error "Failed to get updates: $resp"
-            ___x_cmd sleep 1s
-            return 1
+        local resp=""
+        resp="$(___x_cmd_weixin_getupdates "$sync_buf" )" || {
+            curl_errcode=$?
+            case "$curl_errcode" in
+                28)
+                    continue ;;
+                130)
+                    weixin:error "Exit because recved Interrupt."
+                    return 1 ;;
+                *)
+                    weixin:error "Failed to binding: $resp"
+                    ___x_cmd sleep 1s || return $?
+                    return 1
+            esac
         }
 
-        local get_updates_buf=; local msgs=; local  context_token=;
+        local get_updates_buf="" msgs="" context_token=""
         ___x_cmd jo env . .get_updates_buf .msgs context_token=.msgs.1.context_token  <<A
 $resp
 A
+
+        # [ "$msgs" = "[]" ] || continue
+
         if [ "$get_updates_buf" != "$sync_buf" ]; then
             printf "%s" "$get_updates_buf" > "$sync_buf_file"
             sync_buf="$get_updates_buf"
-
         fi
 
-        [ "$msgs" = "[]" ] || {
+        if [ -n "$context_token" ]; then
             printf "%s" "$context_token" > "$___X_CMD_WEIXIN_CONTEXT_TOKEN"
             return
-        }
+        fi
     done
 }
 

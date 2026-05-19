@@ -19,10 +19,14 @@ ___x_cmd_hub_file_share(){
 ___x_cmd_hub_file_share_create(){
     local expiresIn=
     local requireLogin=
+    local file_path=
+    local file_space=
     while [ $# -gt 0 ]; do
         case "$1" in
             --expires|-e)       expiresIn="$2";      shift 2 ;;
             --require-login)    requireLogin=true;    shift ;;
+            --path)             file_path="$2";       shift 2 ;;
+            --space)            file_space="$2";      shift 2 ;;
             *)                  break ;;
         esac
     done
@@ -32,7 +36,7 @@ ___x_cmd_hub_file_share_create(){
     remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
 
     local data
-    data="$(___x_cmd jo dict ${expiresIn:+"expiresIn=$expiresIn"} ${requireLogin:+"requireLogin=$requireLogin"})"
+    data="$(___x_cmd jo dict ${file_path:+"path=$file_path"} ${file_space:+"space=$file_space"} ${expiresIn:+"expiresIn=$expiresIn"} ${requireLogin:+"requireLogin=$requireLogin"})"
 
     local resp=
     resp="$(___x_cmd_hub_u_curl post "/api/v0/file/share?res=$(___x_cmd url encode "$remotefp")" data)" || {
@@ -42,10 +46,13 @@ ___x_cmd_hub_file_share_create(){
 
     ___x_cmd_hub_u_handle_resp true "Share created successfully:"
     printf "%s" "$resp" | {
-        local shareId=; local url=;
-        ___x_cmd jo env . .shareId .url
-        printf "  - Share ID: %s\n" "$shareId"
-        printf "  - Share URL: %s\n" "$url"
+        local id=; local spaceId=; local spaceName=; local filePath=; local url=;
+        ___x_cmd jo env . .id .spaceId .spaceName .filePath .url
+        printf "  - ID:         %s\n" "$id"
+        printf "  - Space ID:   %s\n" "$spaceId"
+        printf "  - Space Name: %s\n" "$spaceName"
+        printf "  - File Path:  %s\n" "$filePath"
+        printf "  - Share URL:  %s\n" "$url"
     }
 }
 
@@ -80,9 +87,9 @@ ___x_cmd_hub_file_share_ls(){
         [ "$total" = "0" ] && { printf "No shares found.\n"; return 0; }
         printf "Total: %s\n\n" "$total"
         printf "%s" "$list" | \
-            ___x_cmd jo 2c .shareId .filename .shareType .status .viewCount .expiresAt .createTime | \
-            ___x_cmd csv header --add shareId filename shareType status viewCount expiresAt createTime | \
-            ___x_cmd_hub_u_st_tab 15,20,10,10,10,20,20
+            ___x_cmd jo 2c .id .spaceId .spaceName .filePath .size .viewCount .expiresAt .createTime | \
+            ___x_cmd csv header --add id spaceId spaceName filePath size viewCount expiresAt createTime | \
+            ___x_cmd_hub_u_st_tab 10,15,15,25,10,10,20,20
     }
 }
 
@@ -90,12 +97,12 @@ ___x_cmd_hub_file_share_rm(){
     local X_help_cmd='___x_cmd_hub___help file share rm'
     help:arg:parse
 
-    local shareId="$1"
-    [ -n "$shareId" ] || { ___x_cmd_ui_tf false "Share ID is required"; return 1; }
+    local id="$1"
+    [ -n "$id" ] || { ___x_cmd_ui_tf false "File ID is required"; return 1; }
 
     local resp=
-    resp="$(___x_cmd_hub_u_curl delete "/api/v0/file/share/$(___x_cmd url encode "$shareId")")" || {
-        ___x_cmd_hub_u_handle_resp false "Failed to delete share $shareId"
+    resp="$(___x_cmd_hub_u_curl delete "/api/v0/file/share/$(___x_cmd url encode "$id")")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to delete share $id"
         return 1
     }
 
@@ -105,32 +112,30 @@ ___x_cmd_hub_file_share_rm(){
 ___x_cmd_hub_file_share_update(){
     local X_help_cmd='___x_cmd_hub___help file share update'
     help:arg:parse
-    local shareStatus=
     local requireLogin=
     local expiresIn=
     while [ $# -gt 0 ]; do
         case "$1" in
-            --status|-s)        shareStatus="$2";        shift 2 ;;
             --require-login)    requireLogin=true;   shift ;;
             --expires|-e)       expiresIn="$2";      shift 2 ;;
             *)                  break ;;
         esac
     done
 
-    local shareId="$1"
-    [ -n "$shareId" ] || { ___x_cmd_ui_tf false "Share ID is required"; return 1; }
+    local id="$1"
+    [ -n "$id" ] || { ___x_cmd_ui_tf false "File ID is required"; return 1; }
 
     # Build JSON body
-    [ -n "$shareStatus" ] || [ -n "$requireLogin" ] || [ -n "$expiresIn" ] || {
-        ___x_cmd_ui_tf false "At least one option is required (--status, --require-login, --expires)"
+    [ -n "$requireLogin" ] || [ -n "$expiresIn" ] || {
+        ___x_cmd_ui_tf false "At least one option is required (--require-login, --expires)"
         return 1
     }
     local data
-    data="$(___x_cmd jo dict ${shareStatus:+"status=$shareStatus"} ${requireLogin:+"requireLogin=$requireLogin"} ${expiresIn:+"expiresIn=$expiresIn"})"
+    data="$(___x_cmd jo dict ${requireLogin:+"requireLogin=$requireLogin"} ${expiresIn:+"expiresIn=$expiresIn"})"
 
     local resp=
-    resp="$(___x_cmd_hub_u_curl patch "/api/v0/file/share/$(___x_cmd url encode "$shareId")" data)" || {
-        ___x_cmd_hub_u_handle_resp false "Failed to update share $shareId"
+    resp="$(___x_cmd_hub_u_curl patch "/api/v0/file/share/$(___x_cmd url encode "$id")" data)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to update share $id"
         return 1
     }
 
@@ -144,11 +149,13 @@ ___x_cmd_hub_file_share_zip(){
     local expiresIn=
     local requireLogin=
     local entryPath=
+    local space=
     while [ $# -gt 0 ]; do
         case "$1" in
             --expires|-e)       expiresIn="$2";      shift 2 ;;
             --require-login)    requireLogin=true;   shift   ;;
             --entry)            entryPath="$2";      shift 2 ;;
+            --space)            space="$2";           shift 2 ;;
             *)                  break ;;
         esac
     done
@@ -158,7 +165,7 @@ ___x_cmd_hub_file_share_zip(){
     remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
 
     local data
-    data="$(___x_cmd jo dict ${expiresIn:+"expiresIn=$expiresIn"} ${requireLogin:+"requireLogin=$requireLogin"} ${entryPath:+"entryPath=$entryPath"})"
+    data="$(___x_cmd jo dict ${space:+"space=$space"} ${entryPath:+"entryPath=$entryPath"} ${expiresIn:+"expiresIn=$expiresIn"} ${requireLogin:+"requireLogin=$requireLogin"})"
 
     local resp=
     resp="$(___x_cmd_hub_u_curl post "/api/v0/file/share/zip?res=$(___x_cmd url encode "$remotefp")" data)" || {
@@ -168,11 +175,13 @@ ___x_cmd_hub_file_share_zip(){
 
     ___x_cmd_hub_u_handle_resp true "Zip share created successfully:"
     printf "%s" "$resp" | {
-        local shareId=; local url=; local entryFile=; local totalFiles=;
-        ___x_cmd jo env . .shareId .url .entryFile .totalFiles
-        printf "  - Share ID:    %s\n" "$shareId"
+        local spaceId=; local spaceName=; local url=; local entryFile=; local totalFiles=; local files=
+        ___x_cmd jo env . .spaceId .spaceName .url .entryFile .totalFiles .files
+        printf "  - Space ID:    %s\n" "$spaceId"
+        printf "  - Space Name:  %s\n" "$spaceName"
         printf "  - Share URL:   %s\n" "$url"
         printf "  - Entry file:  %s\n" "$entryFile"
         printf "  - Total files: %s\n" "$totalFiles"
+        [ -z "$files" ] || printf "  - Files:       %s\n" "$files"
     }
 }

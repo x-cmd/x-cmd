@@ -1,0 +1,83 @@
+# shellcheck shell=dash
+
+# default no-check
+# default itermax  3
+
+# TODO: Add --check, --itermax, --itermin options
+# TODO: Add chat --request fallback (refer to is coco mode) for provider selection
+
+___x_cmd log init ask
+___x_cmd_ask___main(){
+    [ "$#" -gt 0 ] ||   set -- --help
+
+    local quick=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m ask "$@";      return 0 ;;
+
+            # --check)      ;;
+            # --itermax)    ;;
+            # --itermin)    ;;
+
+            --quick)        quick=1 ;;
+
+            --)             shift ;     break ;;
+            *)              break ;;
+        esac
+    done
+
+    local IFS=' '
+    local msg="$*";     shift $#
+    [ -n "$msg" ]   ||  return 0
+
+    local x_=""
+    ___x_cmd epoch get_
+    local tmpfile="$___X_CMD_ROOT_TMP/ask/result/${x_}-$$.result"
+    ___x_cmd ensurefp "$tmpfile"
+
+    local prompt="You are a direct response assistant. The user asks you a question or makes a request. Provide a focused answer.
+
+## CRITICAL
+Write your answer to this exact file:
+$tmpfile
+
+The file content MUST be ONLY your answer. Nothing else.
+
+## Absolute Rules
+1. File content = answer ONLY. No preamble, no postamble, no 'Here is', no thinking
+2. Do NOT wrap answer in markdown code blocks (\`\`\`) unless the answer itself is code
+3. Give a direct, focused response. Do not offer alternatives unless explicitly asked.
+4. If you cannot answer the request, write ONLY this to the file:
+___ASK_FAILED___:[brief reason]
+
+## User's Ask
+$msg"
+
+    if [ -n "$quick" ]; then
+        set -- --no-thinking
+    fi
+
+    ___x_cmd agent request "$@" "$prompt" >/dev/null || return $?
+
+    [ -f "$tmpfile" ] || return 1
+
+    local firstline
+    IFS= read -r firstline < "$tmpfile" 2>/dev/null
+
+    case "$firstline" in
+        ___ASK_FAILED___:*)
+            local reason="${firstline#___ASK_FAILED___:}"
+            if [ -n "$reason" ]; then
+                ask:error "$reason"
+            else
+                ask:error "Failed to answer"
+            fi
+            ___x_cmd rmrf "$tmpfile"
+            return 1
+            ;;
+    esac
+
+    ___x_cmd_cmds cat "$tmpfile"
+    ___x_cmd rmrf "$tmpfile"
+}

@@ -1,0 +1,260 @@
+# shellcheck shell=dash
+# align subcommand: fetch multiple series with aligned periods.
+# Internally uses JSON API (align_periods=1) then transforms to CSV/TSV.
+# Unlike `data`, this always returns a single unified table.
+#
+# Usage: x dbnomics align [--csv|--tsv|--json|--raw] [header=series_id...] <id1> <id2> <id3>...
+#
+# Header mapping: gdp=unctad.eu.gdp consumption=unctad.eu.consumption ...
+# The header (before =) becomes the column name, the value (after =) is the series ID.
+
+___x_cmd_dbnomics_align(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m dbnomics align "$@"; return ;;
+    esac
+    local fmt=auto
+    local _ids=""
+    local _id
+    local _limit=""
+    local _offset=""
+    local _headers=""
+    local _header
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --auto|--app|--tsv|--csv|--json|--raw)
+                        fmt="${1#--}" ;     shift ;;
+            --limit)    _limit="$2";        arg:2:shift ;;
+            --offset)   _offset="$2";       arg:2:shift ;;
+            *=*)
+                        _header="${1%%=*}=${1#*=}"
+                        _ids="${_ids:+${_ids},}${1#*=}"
+                        _headers="${_headers:+${_headers},}${_header}"
+                        shift ;;
+            *)          _id="$1"; _ids="${_ids:+${_ids},}${_id}"; shift ;;
+        esac
+    done
+
+    [ -n "$_ids" ] || M='Provide one or more series IDs or aliases' N=dbnomics log:ret:1
+
+    ___x_cmd_dbnomics_align___"$fmt" "$_limit" "$_offset" "$_ids" "$_headers"
+}
+
+# All sub-functions receive: $1=limit  $2=offset  $3=ids  $4=headers
+___x_cmd_dbnomics_align___raw(){
+    local _limit="$1"
+    local _offset="$2"
+    local series_ids="$3"
+    local headers="$4"
+    [ -n "$series_ids" ] || M='Provide one or more series IDs or aliases' N=dbnomics log:ret:1
+    series_ids="$(___x_cmd_dbnomics_align___resolve_ids "$series_ids")"
+
+    local arg="observations=1&align_periods=1&format=json"
+    [ -n "$_limit" ]  && arg="${arg}&limit=${_limit}"
+    [ -n "$_offset" ] && arg="${arg}&offset=${_offset}"
+
+    ___x_cmd_dbnomics_api get "/series?series_ids=${series_ids}&${arg}"
+}
+
+___x_cmd_dbnomics_align___json(){
+    ___x_cmd_dbnomics_align___raw "$@" | jq .
+}
+
+# Build header mapping from "h1=id1,h2=id2" format
+___x_cmd_dbnomics_align___build_header_map(){
+    local headers="$1"
+    local doc
+    # Create mapping: original_code -> header_name
+    # Format: id1->header1,id2->header2
+    printf '%s' "$headers" | tr ',' '\n' | while IFS='=' read -r h v; do
+        printf '%s=%s\n' "$v" "$h"
+    done
+}
+
+___x_cmd_dbnomics_align___csv(){
+    local _limit="$1"
+    local _offset="$2"
+    local series_ids="$3"
+    local headers="${4:-}"
+
+    # Ensure alias resolution is available (triggers lib loading)
+    ___x_cmd_dbnomics_alias___load 2>/dev/null || true
+
+    # Build header mapping JSON: series_code -> short_header
+    # Note: API returns series_code without provider/dataset prefix
+    # So we need to strip that prefix when building the map
+    local header_json="null"
+    if [ -n "$headers" ]; then
+        # Build the JSON by resolving each alias
+        local _first=true
+        local _item
+        local _short _alias _resolved
+        local _rest
+        while [ -n "$headers" ]; do
+            case "$headers" in
+                *,*)
+                    _item="${headers%%,*}"
+                    headers="${headers#*,}"
+                    ;;
+                *)
+                    _item="$headers"
+                    headers=""
+                    ;;
+            esac
+            [ -z "$_item" ] && continue
+            _short="${_item%%=*}"
+            _alias="${_item#*=}"
+            # Try to resolve alias
+            _resolved="$(___x_cmd_dbnomics_alias___resolve "$_alias" 2>/dev/null)" || _resolved="$_alias"
+            _resolved="$(printf '%s' "$_resolved" | tr -d '\n')"
+            # Strip provider/dataset prefix to get series_code
+            # e.g. UNCTAD/GDPGBTOEVBKOEATASA/A.percentage... -> A.percentage...
+            case "$_resolved" in
+                */*/*)
+                    _resolved="${_resolved#*/}"
+                    _resolved="${_resolved#*/}"
+                    ;;
+            esac
+            # If still has a slash but not the full path, try to construct UNCTAD path
+            if [ -z "${_resolved%%*/*}" ] || [ "${_resolved%/*}" = "$_resolved" ]; then
+                # Only process if alias starts with unctad. and we didn't already get A.percentage format
+                case "$_alias" in
+                    unctad.*)
+                        case "$_resolved" in
+                            A.percentage*) ;;  # Already resolved, skip
+                            *)
+                                local cc ind
+                                cc="${_alias#unctad.}"
+                                cc="${cc%.*}"
+                                ind="${_alias##*.}"
+                                # Map cc to country name
+                                case "$cc" in
+                                    us) cc="united-states-of-america" ;;
+                                    eu) cc="europe" ;;
+                                    cn) cc="china" ;;
+                                    jp) cc="japan" ;;
+                                    de) cc="germany" ;;
+                                    fr) cc="france" ;;
+                                    gb) cc="united-kingdom" ;;
+                                    it) cc="italy" ;;
+                                    in) cc="india" ;;
+                                    br) cc="brazil" ;;
+                                    kr) cc="south-korea" ;;
+                                    ca) cc="canada" ;;
+                                    au) cc="australia" ;;
+                                    mx) cc="mexico" ;;
+                                    id) cc="indonesia" ;;
+                                    sa) cc="saudi-arabia" ;;
+                                    tr) cc="turkey" ;;
+                                    ru) cc="russia" ;;
+                                    tw) cc="taiwan" ;;
+                                    hk) cc="hong-kong" ;;
+                                    sg) cc="singapore" ;;
+                                esac
+                                # Map indicator to UNCTAD indicator name
+                                case "$ind" in
+                                    gdp) ind="gross-domestic-product-gdp" ;;
+                                    consumption) ind="household-consumption-expenditure-including-npish" ;;
+                                    gov) ind="general-government-final-consumption-expenditure" ;;
+                                    investment) ind="gross-capital-formation" ;;
+                                    fixed) ind="gross-fixed-capital-formation" ;;
+                                    exports) ind="exports-of-goods-and-services" ;;
+                                    imports) ind="imports-of-goods-and-services" ;;
+                                    agri) ind="agriculture-hunting-forestry-fishing" ;;
+                                    manufacturing) ind="manufacturing" ;;
+                                    services) ind="services" ;;
+                                esac
+                                _resolved="A.percentage-of-gross-domestic-product.${cc}.${ind}"
+                                ;;
+                        esac
+                        ;;
+                esac
+            fi
+            if [ "$_first" = true ]; then
+                _resolved="$(printf '%s' "$_resolved" | tr -d '\n')"
+                _short="$(printf '%s' "$_short" | tr -d '\n')"
+                header_json="{\"$_resolved\":\"$_short\""
+                _first=false
+            else
+                header_json="$header_json,\"$(printf '%s' "$_resolved" | tr -d '\n')\":\"$(printf '%s' "$_short" | tr -d '\n')\""
+            fi
+        done
+        header_json="$header_json}"
+    fi
+
+    ___x_cmd_dbnomics_align___raw "$_limit" "$_offset" "$series_ids" "" | jq -r --argjson header_map "$header_json" '
+        .series.docs as $docs |
+        ($docs | map(.series_code)) as $codes |
+        ($docs | map(.period[]) | unique | sort) as $all_periods |
+
+        # Apply header mapping: replace series_code with short header if available
+        # Note: need to use temporary variable to access object with variable key
+        (if ($header_map | type) == "object" then
+            $codes | map(. as $k | $header_map[$k] // $k)
+        else $codes end) as $output_codes |
+
+        ["period"] + $output_codes,
+        (
+            $all_periods[] as $p |
+            [$p] + (
+                $docs | map(
+                    .period as $ps | .value as $vs |
+                    ($ps | index($p)) as $idx |
+                    if ($idx | type) == "null" then "null" else $vs[$idx] end
+                )
+            )
+        )
+        | @csv
+    '
+}
+
+___x_cmd_dbnomics_align___auto(){
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; then
+        ___x_cmd_dbnomics_align___app "$@"
+    else
+        ___x_cmd_dbnomics_align___tsv "$@"
+    fi
+}
+
+___x_cmd_dbnomics_align___app(){
+    local ___X_CMD_CSV_APP_SHBIN_CODE=
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc dbnomics"   \
+        ___x_cmd csv app --clear  ___x_cmd_dbnomics_align___csv "$@" || return 1
+}
+
+___x_cmd_dbnomics_align___tsv(){
+    ___x_cmd_dbnomics_align___raw "$@" | jq -r '
+        .series.docs as $docs |
+        ($docs | map(.series_code)) as $codes |
+        ($docs | map(.period[]) | unique | sort) as $all_periods |
+        ["period"] + $codes,
+        (
+            $all_periods[] as $p |
+            [$p] + (
+                $docs | map(
+                    .period as $ps | .value as $vs |
+                    ($ps | index($p)) as $idx |
+                    if ($idx | type) == "null" then "null" else $vs[$idx] end
+                )
+            )
+        )
+        | @tsv
+    '
+}
+
+# Resolve aliases in comma-separated IDs
+___x_cmd_dbnomics_align___resolve_ids(){
+    local input="$1"
+    local output=""
+    local id _resolved
+    for id in $(printf '%s' "$input" | tr ',' ' '); do
+        case "$id" in
+            */*) ;;
+            *)
+                _resolved="$(___x_cmd_dbnomics_alias___resolve "$id")"
+                [ -n "$_resolved" ] && id="$_resolved"
+                ;;
+        esac
+        output="${output:+${output},}${id}"
+    done
+    printf '%s' "$output"
+}

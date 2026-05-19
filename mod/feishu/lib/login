@@ -1,0 +1,57 @@
+# shellcheck shell=dash
+___x_cmd_feishu_login(){
+    param:void
+
+    [ $# -gt 0 ] || set -- help
+    local op="$1" ;
+    case "$op" in
+        -h|--help)      ___x_cmd help -m feishu login "$@" ; return 0 ;;
+    esac
+
+    feishu:info "Starting Feishu bot login..."
+    feishu:info "Scan the QR code with Feishu App to login."
+
+    local event_name="" payload="" line=""
+    ___x_cmd curl -s -N "https://hub.x-cmd.net/api/v0/feishu/bot/create?feishu" | while IFS= read -r line; do
+        case "${line}" in
+            event:*)
+                event_name="${line#event: }"
+                ;;
+            data:*)
+                payload="${line#data: }"
+
+                case "${event_name}" in
+                    qr)
+                        local qr_url="" expire=""
+                        ___x_cmd jo env . qr_url=.qrUrl expire=.expireIn <<A
+$payload
+A
+                        [ -n "$qr_url" ] || continue
+                        feishu:info "QR code expires in ${expire} seconds"
+                        ___x_cmd qr run -s 1 -m 0 -t ANSIUTF8i "${qr_url}" || return $?
+                        ;;
+                    success)
+                        local appId="" appSecret=""
+                        ___x_cmd jo env . .appId .appSecret <<A
+$payload
+A
+                        [ -n "$appId" ] || continue
+                        # TODO: save other info
+                        ___x_cmd_feishu_cfg app_id="${appId}" app_secret="${appSecret}"
+                        feishu:info "Login successful"
+                        return
+                        ;;
+                    error)
+                        local status="" message=""
+                        ___x_cmd jo env . .status .message <<A
+$payload
+A
+                        feishu:error "Login failed: ${status}"
+                        [ -n "$message" ] && feishu:error "Message: ${message}"
+                        return 1
+                        ;;
+                esac
+                ;;
+        esac
+    done
+}

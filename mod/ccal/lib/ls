@@ -11,12 +11,12 @@ ___x_cmd_ccal_ls(){
         shift
     done
 
-    # Auto-detect mode
+    # Auto-detect mode for ls
     if [ "$mode" = auto ]; then
         if ___x_cmd_is_stdout2tty; then
             mode=tty
         else
-            mode=yml
+            mode=tsv
         fi
     fi
 
@@ -27,8 +27,9 @@ ___x_cmd_ccal_ls(){
 
     case "$input" in
         t|today)
-            input="$(___x_cmd_cmds date +%Y-%m-%d)"
-            ___x_cmd_ccal_ls___around "$input" "$mode"
+            # Default: show current month
+            input="$(___x_cmd_cmds date +%Y-%m)"
+            ___x_cmd_ccal_ls___month "$input" "$mode"
             ;;
         *-*-*)
             # Specific date -> show info-like for that day
@@ -43,7 +44,8 @@ ___x_cmd_ccal_ls(){
             ___x_cmd_ccal_ls___month "$input" "$mode"
             ;;
         *)
-            ___x_cmd_ccal_ls___year "$input" "$mode"
+            # x ccal ls 2026 -> show all 12 months of 2026
+            ___x_cmd_ccal_ls___year_months "$input" "$mode"
             ;;
     esac
 }
@@ -60,12 +62,12 @@ ___x_cmd_ccal_around(){
         shift
     done
 
-    # Auto-detect mode
+    # Auto-detect mode for ls
     if [ "$mode" = auto ]; then
         if ___x_cmd_is_stdout2tty; then
             mode=tty
         else
-            mode=yml
+            mode=tsv
         fi
     fi
 
@@ -99,9 +101,14 @@ ___x_cmd_ccal_ls___around(){
     m="${m#0}"
     d="${d#0}"
 
+    # Pad day and month to 2 digits
+    [ "$m" -lt 10 ] && m="0$m"
+    [ "$d" -lt 10 ] && d="0$d"
+    ymd="${y}-${m}-${d}"
+
     if [ "$y" -lt 100 ] && [ "$y" -ge 0 ]; then
         y="$(($y+2000))"
-        ymd="$y-${m#0}-$d"
+        ymd="$y-${m}-${d}"
     fi
 
     if [ "$y" -lt 1900 ] || [ "$y" -gt 2099 ]; then
@@ -109,8 +116,56 @@ ___x_cmd_ccal_ls___around(){
         return 1
     fi
 
-    # around uses the same format as ls day view
-    ___x_cmd_ccal_ls___day "$ymd" "$mode"
+    # around shows ±7 days - raw TSV first, then format per mode
+    ___x_cmd_ccal_ls___day_data "$ymd" "$y" "$m" | \
+    ___x_cmd_cmds awk -F'\t' -v "mode=$mode" '
+    function output_tsv() {
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", \
+            $1, $2, $4, $5, ($7=="无"?"-":$7), $10, $12, $13, ($9==""?"-":$9)
+    }
+    function output_csv() {
+        gsub(/"/, "\"\"", $12)
+        gsub(/"/, "\"\"", $13)
+        printf "\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", \
+            $1, $2, $4, $5, ($7=="无"?"-":$7), $10, $12, $13, ($9==""?"-":$9)
+    }
+    function output_yml() {
+        printf "- date: %s\n", $1
+        printf "  lunar_date: %s\n", $2
+        printf "  jianchu: %s\n", $4
+        printf "  weekday: %s\n", $5
+        printf "  jieqi: %s\n", ($7=="无"?"-":$7)
+        printf "  xiuxi: %s\n", ($10==""?"无":$10)
+        printf "  yi: %s\n", $12
+        printf "  ji: %s\n", $13
+        printf "  holiday: %s\n", ($9==""?"无":$9)
+    }
+    function output_tty() {
+        lunar = $2
+        if ($5 != "") lunar = lunar " (闰" $5 ")"
+        xiuxi = $10; if (xiuxi == "") xiuxi = "-"
+        yi = $12; if (yi == "") yi = "-"
+        ji = $13; if (ji == "") ji = "-"
+        holiday = $9; if (holiday == "") holiday = "-"
+        gsub(/[ \t]+/, " ", yi)
+        gsub(/[ \t]+/, " ", ji)
+        if (length(yi) > 20) yi = substr(yi, 1, 17) "..."
+        if (length(ji) > 20) ji = substr(ji, 1, 17) "..."
+        if (length(holiday) > 18) holiday = substr(holiday, 1, 15) "..."
+        style = "\033[0m"
+        if (xiuxi == "休") style = "\033[31m"
+        else if (xiuxi == "工") style = "\033[36m"
+        printf "%s%-12s %-10s %-6s %-10s %-4s %-20s %-20s %-18s\033[0m\n", \
+            style, $1, lunar, $4, ($7=="无"?"-":$7), xiuxi, yi, ji, holiday
+    }
+    BEGIN { if (mode == "tty") printf "%-12s %-10s %-6s %-10s %-4s %-20s %-20s %-18s\n", "Date", "Lunar", "Week", "Jieqi", "Xiuxi", "Yi", "Ji", "Holiday" }
+    {
+        if (mode == "tsv") output_tsv()
+        else if (mode == "csv") output_csv()
+        else if (mode == "yml") output_yml()
+        else if (mode == "tty") output_tty()
+    }
+    '
 }
 
 ___x_cmd_ccal_ls___year(){
@@ -171,6 +226,27 @@ ___x_cmd_ccal_ls___year(){
                 < "$cache_folder/year.tsv"
             ;;
     esac
+}
+
+# x ccal ls year <year> - show all 12 months of the given year
+___x_cmd_ccal_ls___year_months(){
+    local year="$1"
+    local mode="${2:-tsv}"
+
+    if [ "$year" -lt 100 ] && [ "$year" -ge 0 ]; then
+        year="$(($year+2000))"
+    fi
+
+    if [ "$year" -lt 1900 ] || [ "$year" -gt 2099 ]; then
+        ccal:error "Invalid year -> $year"
+        return 1
+    fi
+
+    # Iterate through all 12 months
+    local m
+    for m in $(seq 1 12); do
+        ___x_cmd_ccal_ls___month "${year}-${m}" "$mode"
+    done
 }
 
 ___x_cmd_ccal_ls___month(){
@@ -298,9 +374,14 @@ ___x_cmd_ccal_ls___day(){
     m="${m#0}"
     d="${d#0}"
 
+    # Pad day and month to 2 digits
+    [ "$m" -lt 10 ] && m="0$m"
+    [ "$d" -lt 10 ] && d="0$d"
+    ymd="${y}-${m}-${d}"
+
     if [ "$y" -lt 100 ] && [ "$y" -ge 0 ]; then
         y="$(($y+2000))"
-        ymd="$y-${m#0}-$d"
+        ymd="$y-${m}-${d}"
     fi
 
     if [ "$y" -lt 1900 ] || [ "$y" -gt 2099 ]; then
