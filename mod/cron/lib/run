@@ -23,6 +23,32 @@ ___x_cmd_cron_run(){
     fi
 }
 
+___x_cmd_cron_run___tz_normalize_(){
+    local tz="$1"
+    # If already POSIX format (contains offset digits), use as-is
+    case "$tz" in
+        *[0-9]*) x_="$tz"; return ;;
+    esac
+
+    # If the system has tzdata for this zone, use the original name
+    [ ! -f "/usr/share/zoneinfo/$tz" ] || { x_="$tz"; return; }
+
+    # Fallback: lookup in the bundled POSIX mapping table
+    local name
+    local posix
+    [ -f "$___X_CMD_CRON_TZMAP" ] || { x_="$tz"; return; }
+
+    while read -r name posix; do
+        [ -n "$name" ] || continue
+        case "$name" in
+            \#*) continue ;;
+        esac
+        [ "$name" = "$tz" ] && { x_="$posix"; return; }
+    done < "$___X_CMD_CRON_TZMAP"
+
+    x_="$tz"
+}
+
 ___x_cmd_cron_run___loop(){
     local ns="$1"
     local joblist_dir="$2"
@@ -30,13 +56,15 @@ ___x_cmd_cron_run___loop(){
     local datestr
     local sleepsec
     local tz
+    local x_
 
     # Read TZ for this ns (do not export, only pass to date)
     if [ -f "$___X_CMD_CRON/$ns/tz" ]; then
         read -r tz < "$___X_CMD_CRON/$ns/tz"
+        x_=""; ___x_cmd_cron_run___tz_normalize_ "$tz"
+        tz="$x_"
     fi
 
-    local x_
     while true; do
         ___x_cmd epoch get_     # the epoch seconds stored in x_
 
@@ -73,8 +101,11 @@ ___x_cmd_cron_runonce(){
     fi
 
     local tz
+    local x_
     if [ -f "$___X_CMD_CRON/$ns/tz" ]; then
         read -r tz < "$___X_CMD_CRON/$ns/tz"
+        x_=""; ___x_cmd_cron_run___tz_normalize_ "$tz"
+        tz="$x_"
     fi
 
     local datestr
@@ -141,9 +172,22 @@ ___x_cmd_cron_run___execute_async(){
     ___x_cmd mkdirp "$instance_dir"
 
     (
-        trap ":;" HUP ;
+        trap ":;" HUP
 
-        . "$jobdir/cmd" </dev/null &
+        local state_dir
+        local epoch_dir
+        local x_
+
+        state_dir="$___X_CMD_CRON/$ns/state/$name"
+
+        # Clean old records before creating new one
+        ___x_cmd_cron_history___cleanup "$state_dir" 10
+
+        ___x_cmd epoch get_
+        epoch_dir="$state_dir/$x_"
+        ___x_cmd mkdirp "$epoch_dir"
+
+        . "$jobdir/cmd" >"$epoch_dir/out" 2>"$epoch_dir/err" </dev/null &
 
         pid="$!"
 
@@ -166,13 +210,24 @@ ___x_cmd_cron_run___execute_async(){
             } > "$instance_file"
         fi
 
+        # Wait for completion and record result in background
+        {
+            wait "$pid"
+            local exit_code=$?
+            # Record end time (unix epoch)
+            ___x_cmd epoch get > "$epoch_dir/end_time"
+            printf '%s\n' "$exit_code" > "$epoch_dir/exit_code"
+
+        } &
+
         if [ -f "$jobdir/once" ]; then
             # Wait for job to finish, then auto-delete
             {
                 while kill -0 "$pid" 2>/dev/null; do
                     ___x_cmd_cmds sleep 1
                 done
-                ___x_cmd rmrf "$jobdir"
+                cron:info "Auto-remove once job: $name"
+                ___x_cmd_cron_rm --ns "$ns" --name "$name"
             } &
         fi
     )

@@ -1,64 +1,75 @@
 # shellcheck shell=dash disable=SC2034
 
-
 ___x_cmd_install_ls(){
+    [ $# -gt 0 ]    ||      set --  --auto
 
     local fmt=auto
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)      ___x_cmd help -m install ls "$@"; return ;;
-            --csv|--tsv|--auto|--json|--yml|--name)
+            -h|--help)      ___x_cmd help -m install --ls "$@"; return 0 ;;
+            --csv|--tsv|--name|--auto|--app|--pick)
                             fmt="${1#--}" ; shift ;;
-            *)              N=install M="Unknown option -> $1" log:ret:64 ;;
+            *)              break ;;
         esac
     done
 
     ___x_cmd_install_ls___"$fmt"
 }
 
+___x_cmd_install_ls___tsv(){
+    ___x_cmd_install_update___check || return $?
+    ___x_cmd_cmds cat "$___X_CMD_INSTALL_DATA_ALLTSV"
+}
+
+___x_cmd_install_ls___csv(){
+    ___x_cmd_install_ls___tsv | ___x_cmd tsv tocsv
+}
+
+___x_cmd_install_ls___name(){
+    ___x_cmd_install_update___check || return $?
+    ___x_cmd ta 'NR>1{ print $1; }' <"$___X_CMD_INSTALL_DATA_ALLTSV"
+}
+
 ___x_cmd_install_ls___auto(){
     if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; then
         ___x_cmd_install_ls___app
     else
-        ___x_cmd_install_ls___raw
+        ___x_cmd_install_ls___tsv
     fi
 }
 
-___x_cmd_install_ls___name(){
-    ___x_cmd_install_ls___tsv | ___x_cmd tsv awk 'NR>1{ print $1; }'
-}
-
-___x_cmd_install_ls___raw(){
-    ___x_cmd_install_update___check || return $?
-    ___x_cmd_install_ls___name
-}
-
-# TODO: This is the default raw data.
-# Data converted to tsv ...
-___x_cmd_install_ls___tsv(){
-    ___x_cmd_cmds cat "$___X_CMD_INSTALL_DATA/all.tsv"
-}
-
-___x_cmd_install_ls___csv(){
-    ___x_cmd_install_ls___tsv | ___x_cmd tsv fromcsv
-}
-
 ___x_cmd_install_ls___app(){
+    local ___X_CMD_CSV_APP_SHBIN_CODE=
+
+    install:info "Ctrl-D to exit. Ctrl-C to interrupt."
+    local ___X_CMD_CSV_APP_DATA_name=""
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc install"   \
+    ___x_cmd csv app --clear --return var       \
+            ___x_cmd_install_ls___csv || return 1
+
+    [ -n "$___X_CMD_CSV_APP_DATA_name" ] || return 0
+
+    local id=
+    ___x_cmd ui select id,cmd "What to do next?"   \
+        "x install              $___X_CMD_CSV_APP_DATA_name"   \
+        "x install --printinfo  $___X_CMD_CSV_APP_DATA_name"   \
+        "EXIT" || return 1
+    case "$id" in
+        1)  ___x_cmd install                "$___X_CMD_CSV_APP_DATA_name"  ;;
+        2)  ___x_cmd install --printinfo    "$___X_CMD_CSV_APP_DATA_name"  ;;
+        *)  return 0 ;;
+    esac
+}
+
+___x_cmd_install_ls___pick(){
     local x_=
-    ___X_CMD_PICK_SHBIN_CODE="xrc pkg install" \
-    ___x_cmd storeread_  x pick  --width - --col 10 ___x_cmd_install_ls___raw
+    ___X_CMD_PICK_SHBIN_CODE="xrc install" \
+    ___x_cmd storeread_     ___x_cmd pick  --width - --col 10 ___x_cmd_install_ls___name
     [ -n "$x_" ] || {
         install:info "Exit because no software is selected."
         return 0
     }
 
-    ___x_cmd_install_cat "$x_"
+    ___x_cmd_install_printinfo "$x_"
 }
 
-___x_cmd_install___pickapp(){
-    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; then
-        ___x_cmd pick --col 10 "$@"
-    else
-        "$@"
-    fi
-}

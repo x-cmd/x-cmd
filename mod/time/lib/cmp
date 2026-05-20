@@ -1,0 +1,108 @@
+# x time cmp "find . -iname '*[0-9].jpg'" "fd -HI '.*[0-9]\.jpg$'"
+# x time cmp -c 20 "echo hello" "printf hello"
+___x_cmd_time_cmp(){
+    arg:init time
+
+    local count=""
+    local outputmode=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m time --cmp "$@" ; return 0 ;;
+            -c)         count="$2";         arg:2:shift ;;
+            --csv)      outputmode=csv ; shift ;;
+            --csv0)     outputmode=csv0 ; shift ;;
+            --tsv)      outputmode=tsv ; shift ;;
+            --tsv0)     outputmode=tsv0 ; shift ;;
+            --tty)      outputmode=tty ; shift ;;
+            --yml)      outputmode=yml ; shift ;;
+            --*)        N=time M="Unknown options -> $1" log:ret:64 ;;
+            *)          break
+        esac
+    done
+
+    # Default: csv app if tty, tsv if pipe
+    if [ -z "$outputmode" ]; then
+        if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
+            outputmode=app
+        else
+            outputmode=tsv
+        fi
+    fi
+
+    [ "$#" -ge 1 ] || {
+        time:error "cmp requires at least one command"
+        return 1
+    }
+
+    local all_results=""
+    local cmd result
+    for cmd in "$@"; do
+        if [ -n "$count" ]; then
+            result="$( x time stress -c "$count" --tsv0 -- eval "$cmd" 2>/dev/null )"
+        else
+            result="$( x time stress --tsv0 -- eval "$cmd" 2>/dev/null )"
+        fi
+        # TODO: Consider caching with x ccmd 10m --, but results may vary across directories
+        if [ -n "$result" ]; then
+            all_results="${all_results}${cmd}	${result}
+"
+        fi
+    done
+
+    if [ "$outputmode" = "app" ]; then
+        ___x_cmd_time_cmp___output "csv" "$all_results" | ___x_cmd csv app
+    else
+        ___x_cmd_time_cmp___output "$outputmode" "$all_results"
+    fi
+}
+
+___x_cmd_time_cmp___output(){
+    local outputmode="$1"
+    local data="$2"
+    shift 2
+
+    case "$outputmode" in
+        csv0)
+            printf "%s" "$data" | ___x_cmd_cmds awk -F'\t' '{
+                gsub(/"/, "\"\"", $1)
+                printf "\"%s\",%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+            }'
+            ;;
+        csv)
+            printf "cmd,count,sum,offset,min,max,second,third,avg,median,stddev\n"
+            printf "%s" "$data" | ___x_cmd_cmds awk -F'\t' '{
+                gsub(/"/, "\"\"", $1)
+                printf "\"%s\",%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+            }'
+            ;;
+        tsv0)
+            printf "%s" "$data" | ___x_cmd_cmds awk -F'\t' '{print}'
+            ;;
+        tsv)
+            printf "cmd\tcount\tsum\toffset\tmin\tmax\tsecond\tthird\tavg\tmedian\tstddev\n"
+            printf "%s" "$data"
+            ;;
+        tty)
+            printf "%s" "$data" | ___x_cmd_cmds awk -F'\t' '{
+                printf "# %s\n", $1
+                printf "  avg:    %8.3f ± %.3f ms   median: %8.3f ms   total: %8.3f ms   [%d runs]\n", $9, $11, $10, $3, $2
+            }'
+            ;;
+        yml)
+            printf "%s" "$data" | ___x_cmd_cmds awk -F'\t' '{
+                printf "- cmd: \"%s\"\n", $1
+                printf "  count: %d\n", $2
+                printf "  sum: %.3f\n", $3
+                printf "  offset: %.3f\n", $4
+                printf "  min: %.3f\n", $5
+                printf "  max: %.3f\n", $6
+                printf "  second: %.3f\n", $7
+                printf "  third: %.3f\n", $8
+                printf "  avg: %.3f\n", $9
+                printf "  median: %.3f\n", $10
+                printf "  stddev: %.3f\n", $11
+            }'
+            ;;
+    esac
+}

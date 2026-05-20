@@ -32,76 +32,114 @@ ___x_cmd_claw_run___agentrequest___handlemsg(){
 
     ___x_cmd_claw_run___agentrequest___checkunavailable || return 0
 
-    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/heartbeat_done"
+    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_WS/HEARTBEAT_OK"
     ___x_cmd ensurefp "$___X_CMD_CLAW_BOT_HEARTBEAT/idle_count"
     printf "%s\n" "0" > "$___X_CMD_CLAW_BOT_HEARTBEAT/idle_count"
 
     local workspace_dir="$___X_CMD_CLAW_BOT_WS/${im}-${chatid}"
     local exitcode=0
 
-    claw:info "Processing agent request for $im:$chatid"
+    # Initialize workspace from template if first run
+    if [ ! -d "$workspace_dir" ]; then
+        first_contact_prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/first_contact.md" 2>/dev/null)"
+        ___x_cmd cp -r "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/msg" "$workspace_dir"
+        ___x_cmd mkdirp "$workspace_dir/memory"
+        ___x_cmd mkdirp "$workspace_dir/tmp"
+    else
+        # Ensure missing template files are present without overwriting existing ones
+        local i; for i in "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/msg"/*; do
+            [ -e "$i" ] || continue
+            target="$workspace_dir/${i##*/}"
+            [ -e "$target" ] || ___x_cmd cp -r "$i" "$target"
+        done
+        ___x_cmd mkdirp "$workspace_dir/memory"
+        ___x_cmd mkdirp "$workspace_dir/tmp"
+    fi
+
+    if [ "$workspace_dir/AGENTS.md" -ot "$___X_CMD_ROOT_METADATA/version_sum" ]; then
+        claw:info "Workspace template may have been updated, checking if structure optimization is needed"
+        ___x_cmd_cmds touch "$workspace_dir/AGENTS.md"
+        check_prompt="<workspace_check>
+The workspace template has been updated. Use it as a reference to evaluate whether your current workspace structure needs improvements.
+
+Reference template: $___X_CMD_ROOT_MOD/claw/lib/data/workspace/msg/
+Current workspace:  $workspace_dir
+
+Guidelines:
+- This is a reference only — you decide what to adopt
+- Compare structures and selectively apply beneficial changes
+- Preserve existing user content and customizations
+- Focus on structural gaps or organizational improvements
+</workspace_check>"
+    fi
+
+    local latest_msg
+    case "$im" in
+        weixin)
+            latest_msg="$(___x_cmd claw weixin recent-msg 2>/dev/null)" || {
+                claw:debug "Failed to fetch recent message for weixin"
+                latest_msg="[unavailable]"
+            } ;;
+        *)
+            latest_msg="$(___x_cmd claw "$im" recent-msg "$chatid" 2>/dev/null)" || {
+                claw:debug "Failed to fetch recent message for $im:$chatid"
+                latest_msg="[unavailable]"
+            } ;;
+    esac
+    claw:info --m:latest_msg "$latest_msg" "Processing agent request for $im:$chatid"
     case "$im" in
         weixin)
             ___x_cmd agent request  \
                 --timeout 1800 \
+                --debug \
                 --workspace "$workspace_dir"  \
                 --reference-workspace "$___X_CMD_CLAW_AGENT_REFERENCE_WS" \
-                "You are X-CLAW, the AI assistant integrated with x-cmd. You have received a message from a user via WeChat.
+                "You have received a message from a user via WeChat.
+${first_contact_prompt}
 
 REPLY METHOD:
 Use the command 'x weixin send' to reply:
 - For help:        x weixin send -h
 - For text:        x weixin send --text '<msg>'
+  IMPORTANT: Do NOT use \\n for line breaks. The text \\n will be printed literally (two characters: backslash + n).
+  CORRECT — press Enter for actual line breaks inside the quotes:
+    '<msg>' becomes 'Line 1
+    Line 2
+    Line 3'
+  WRONG — \\n appears as literal text in the output:
+    'Line 1\\nLine 2\\nLine 3'
 - For image/video: x weixin send --image <path>  or  x weixin send --video <path>
 
->>> *** MANDATORY RULE - REPLY IMMEDIATELY (TOP PRIORITY) *** <<<
+FORMAT:
+WeChat has limited formatting support — no tables, no headings, partial markdown. Prefer plain text, bullet lists, and emoji.
 
-The VERY FIRST thing you *MUST* do is send an immediate response using \`x weixin send --text '<your_reply_text>'\`.
->> DO THIS NOW. <<
->> Do NOT wait for deep thinking. <<
->> Do NOT delay for analysis. <<
-Speed matters: reply first, refine later.
+CRON EXAMPLES:
+  In claw context, ONLY \`x claw cron\` is allowed. Do NOT use:
+  - CronCreate/CronDelete (Claude Code built-in, only works in active session)
+  - Any system scheduling tools (cron, at, etc.)
+  - \`x claw cron\` is the ONLY choice — it persists after agent exit.
+- x claw cron --help
+- x claw cron add --name \"<name>\" --desc \"<desc>\" \"<cron_expr>\" \"x claw agentrequest $im $chatid '<msg>'\"
+  Requirements: <msg> is sent to a NEW agent with NO memory. It MUST include Goal, Tools, Steps, Output, and how to deliver results. Use SINGLE quotes.
+  BAD:  'Check HN' (too vague, the agent won't know what to do).
+  GOOD: 'Use x hn top for top 5 posts. Extract title, URL, score. Send: x weixin send --text '<formatted_list>''
 
-CRON TASKS:
-You MUST use the shell command 'x cron' to manage scheduled tasks.
-DO NOT use any other scheduling tool (e.g. CronCreate, internal schedule, reminder API, etc.).
-Other tools depend on an active session and will NOT execute when this agent exits.
-Only 'x cron' persists and runs independently.
-
-- For help:      x cron -h; x cron add -h; x claw agentrequest --help
-- To add:        x cron add --ns \"x-claw-default\" --name \"<name>\" --desc \"<desc>\" \"<cron_expr>\" \"x claw agentrequest $im $chatid '<msg>'\"
-                   CRITICAL: <msg> goes to a NEW agent with ZERO memory. Include: Goal, Tools, Steps, Output, and Delivery command.
-                   TIP: Use SINGLE quotes for the message text (e.g. x weixin send --text '<result>').
-                   BAD:  'Check HN' — too vague, agent won't know what to do.
-                   GOOD: 'Use x hn top for top 5 posts. Extract title, URL, score. Send: x weixin send --text '<formatted_list>''
-- To exec:       x cron exec --ns \"x-claw-default\" --name \"<name>\"    (run command immediately, ignore schedule; useful for testing)
-- To remove:     x cron rm --ns \"x-claw-default\" --name \"<name>\"
-
-Note: --ns MUST be \"x-claw-default\".
-
-OUTPUT RULE (CRITICAL — NEVER VIOLATE):
-- Your stdout is COMPLETELY INVISIBLE to the user. The user will NEVER see a single character you print to stdout.
-- EVERY piece of text you want the user to read — answers, explanations, summaries, questions, confirmations, results, errors, status updates, code snippets — MUST be sent via: x weixin send --text '<msg>'
-- There are NO exceptions. Do NOT write user-facing content to stdout under any circumstance.
-- stdout is reserved solely for your own internal reasoning, tool invocations, and shell commands.
-- All intermediate analysis, memory updates, plans, and detailed records must be written into files under your workspace \"$workspace_dir\".
-
-WORKFLOW:
-1. INSTANT FEEDBACK: Immediately send a quick reply to acknowledge or give a brief initial answer via \`x weixin send --text '<msg>'\`. This is MANDATORY and comes FIRST.
-2. THEN THINK DEEPER: Only AFTER sending the first message, continue analyzing and send follow-up messages with deeper insights, corrections, or final results.
-3. QUESTIONS: If critical information is missing, ask directly in your instant reply and then EXIT immediately.
+Your workspace: \"$workspace_dir\"
 
 Current time: '$(___x_cmd date iso)'
 ---
+${check_prompt}
 $msg
 "
             ;;
         telegram)
             ___x_cmd agent request  \
                 --timeout 1800 \
+                --debug \
                 --workspace "$workspace_dir"  \
                 --reference-workspace "$___X_CMD_CLAW_AGENT_REFERENCE_WS" \
-                "You are X-CLAW, the AI assistant integrated with x-cmd. You have received a message from a user via Telegram.
+                "You have received a message from a user via Telegram.
+${first_contact_prompt}
 
 CURRENT CHAT ID: \"$chatid\" — you MUST include this in every reply command.
 
@@ -109,44 +147,30 @@ REPLY METHOD:
 Use the command 'x telegram send' to reply:
 - For help:        x telegram send -h
 - For text:        \`x telegram send --text --chatid \"$chatid\" '<msg>'\`
+  IMPORTANT: Do NOT use \\n for line breaks. The text \\n will be printed literally (two characters: backslash + n).
+  CORRECT — press Enter for actual line breaks inside the quotes:
+    '<msg>' becomes 'Line 1
+    Line 2
+    Line 3'
+  WRONG — \\n appears as literal text in the output:
+    'Line 1\\nLine 2\\nLine 3'
 - For image/video: x telegram send --image --chatid \"$chatid\" <path>  or  x telegram send --video --chatid \"$chatid\" <path>
 
->>> *** MANDATORY RULE - REPLY IMMEDIATELY (TOP PRIORITY) *** <<<
+FORMAT:
+Telegram supports full markdown including tables and headings. Max 4096 characters per message.
 
-The VERY FIRST thing you *MUST* do is send an immediate response using \`x telegram send --text --chatid \"$chatid\" '<your_reply_text>'\`.
->> DO THIS NOW. <<
->> Do NOT wait for deep thinking. <<
->> Do NOT delay for analysis. <<
-Speed matters: reply first, refine later.
+CRON EXAMPLES:
+  In claw context, ONLY x claw cron is allowed. Do NOT use:
+  - CronCreate/CronDelete (Claude Code built-in, only works in active session)
+  - Any system scheduling tools (cron, at, etc.)
+  - x claw cron is the ONLY choice — it persists after agent exit.
+- x claw cron --help
+- x claw cron add --name \"<name>\" --desc \"<desc>\" \"<cron_expr>\" \"x claw agentrequest $im $chatid '<msg>'\"
+  Requirements: <msg> is sent to a NEW agent with NO memory. It MUST include Goal, Tools, Steps, Output, and how to deliver results. Use SINGLE quotes.
+  BAD:  'Check HN' (too vague, the agent won't know what to do).
+  GOOD: 'Use x hn top for top 5 posts. Extract title, URL, score. Send: x telegram send --text --chatid \"$chatid\" '<formatted_list>''
 
-CRON TASKS:
-You MUST use the shell command 'x cron' to manage scheduled tasks.
-DO NOT use any other scheduling tool (e.g. CronCreate, internal schedule, reminder API, etc.).
-Other tools depend on an active session and will NOT execute when this agent exits.
-Only 'x cron' persists and runs independently.
-
-- For help:      x cron -h; x cron add -h; x claw agentrequest --help
-- To add:        x cron add --ns \"x-claw-default\" --name \"<name>\" --desc \"<desc>\" \"<cron_expr>\" \"x claw agentrequest $im $chatid '<msg>'\"
-                   CRITICAL: <msg> goes to a NEW agent with ZERO memory. Include: Goal, Tools, Steps, Output, and Delivery command.
-                   TIP: Use SINGLE quotes for the message text (e.g. x telegram send --text --chatid \"$chatid\" '<result>').
-                   BAD:  'Check HN' — too vague, agent won't know what to do.
-                   GOOD: 'Use x hn top for top 5 posts. Extract title, URL, score. Send: x telegram send --text --chatid \"$chatid\" '<formatted_list>''
-- To exec:       x cron exec --ns \"x-claw-default\" --name \"<name>\"    (run command immediately, ignore schedule; useful for testing)
-- To remove:     x cron rm --ns \"x-claw-default\" --name \"<name>\"
-
-Note: --ns MUST be \"x-claw-default\".
-
-OUTPUT RULE (CRITICAL — NEVER VIOLATE):
-- Your stdout is COMPLETELY INVISIBLE to the user. The user will NEVER see a single character you print to stdout.
-- EVERY piece of text you want the user to read — answers, explanations, summaries, questions, confirmations, results, errors, status updates, code snippets — MUST be sent via: x telegram send --text --chatid \"$chatid\" '<msg>'
-- There are NO exceptions. Do NOT write user-facing content to stdout under any circumstance.
-- stdout is reserved solely for your own internal reasoning, tool invocations, and shell commands.
-- All intermediate analysis, memory updates, plans, and detailed records must be written into files under your workspace \"$workspace_dir\".
-
-WORKFLOW:
-1. INSTANT FEEDBACK: Immediately send a quick reply to acknowledge or give a brief initial answer via \`x telegram send --text --chatid \"$chatid\" '<msg>'\`. This is MANDATORY and comes FIRST.
-2. THEN THINK DEEPER: Only AFTER sending the first message, continue analyzing and send follow-up messages with deeper insights, corrections, or final results.
-3. QUESTIONS: If critical information is missing, ask directly in your instant reply and then EXIT immediately. A new agent will be triggered automatically when the user replies.
+Your workspace: \"$workspace_dir\"
 
 Current time: '$(___x_cmd date iso)'
 ---
@@ -156,9 +180,11 @@ $msg
         feishu)
             ___x_cmd agent request  \
                 --timeout 1800 \
+                --debug \
                 --workspace "$workspace_dir"  \
                 --reference-workspace "$___X_CMD_CLAW_AGENT_REFERENCE_WS" \
-                "You are X-CLAW, the AI assistant integrated with x-cmd. You have received a message from a user via Feishu.
+                "You have received a message from a user via Feishu.
+${first_contact_prompt}
 
 CURRENT CHAT ID: \"$chatid\" — you MUST include this in every reply command.
 
@@ -166,44 +192,30 @@ REPLY METHOD:
 Use the command 'x feishu abot send' to reply:
 - For help:        x feishu abot send -h
 - For text:        \`x feishu abot send --text --chatid \"$chatid\" '<msg>'\`
+  IMPORTANT: Do NOT use \\n for line breaks. The text \\n will be printed literally (two characters: backslash + n).
+  CORRECT — press Enter for actual line breaks inside the quotes:
+    '<msg>' becomes 'Line 1
+    Line 2
+    Line 3'
+  WRONG — \\n appears as literal text in the output:
+    'Line 1\\nLine 2\\nLine 3'
 - For image/video: x feishu abot send --image --chatid \"$chatid\" <path>  or  x feishu abot send --video --chatid \"$chatid\" <path>
 
->>> *** MANDATORY RULE - REPLY IMMEDIATELY (TOP PRIORITY) *** <<<
+FORMAT:
+Feishu supports full markdown. Card messages need specific JSON; plain markdown works well.
 
-The VERY FIRST thing you *MUST* do is send an immediate response using \`x feishu abot send --text --chatid \"$chatid\" '<your_reply_text>'\`.
->> DO THIS NOW. <<
->> Do NOT wait for deep thinking. <<
->> Do NOT delay for analysis. <<
-Speed matters: reply first, refine later.
+CRON EXAMPLES:
+  In claw context, ONLY x claw cron is allowed. Do NOT use:
+  - CronCreate/CronDelete (Claude Code built-in, only works in active session)
+  - Any system scheduling tools (cron, at, etc.)
+  - x claw cron is the ONLY choice — it persists after agent exit.
+- x claw cron --help
+- x claw cron add --name \"<name>\" --desc \"<desc>\" \"<cron_expr>\" \"x claw agentrequest $im $chatid '<msg>'\"
+  Requirements: <msg> is sent to a NEW agent with NO memory. It MUST include Goal, Tools, Steps, Output, and how to deliver results. Use SINGLE quotes.
+  BAD:  'Check HN' (too vague, the agent won't know what to do).
+  GOOD: 'Use x hn top for top 5 posts. Extract title, URL, score. Send: x feishu abot send --text --chatid \"$chatid\" '<formatted_list>''
 
-CRON TASKS:
-You MUST use the shell command 'x cron' to manage scheduled tasks.
-DO NOT use any other scheduling tool (e.g. CronCreate, internal schedule, reminder API, etc.).
-Other tools depend on an active session and will NOT execute when this agent exits.
-Only 'x cron' persists and runs independently.
-
-- For help:      x cron -h; x cron add -h; x claw agentrequest --help
-- To add:        x cron add --ns \"x-claw-default\" --name \"<name>\" --desc \"<desc>\" \"<cron_expr>\" \"x claw agentrequest $im $chatid '<msg>'\"
-                   CRITICAL: <msg> goes to a NEW agent with ZERO memory. Include: Goal, Tools, Steps, Output, and Delivery command.
-                   TIP: Use SINGLE quotes for the message text (e.g. x feishu abot send --text --chatid \"$chatid\" '<result>').
-                   BAD:  'Check HN' — too vague, agent won't know what to do.
-                   GOOD: 'Use x hn top for top 5 posts. Extract title, URL, score. Send: x feishu abot send --text --chatid \"$chatid\" '<formatted_list>''
-- To exec:       x cron exec --ns \"x-claw-default\" --name \"<name>\"    (run command immediately, ignore schedule; useful for testing)
-- To remove:     x cron rm --ns \"x-claw-default\" --name \"<name>\"
-
-Note: --ns MUST be \"x-claw-default\".
-
-OUTPUT RULE (CRITICAL — NEVER VIOLATE):
-- Your stdout is COMPLETELY INVISIBLE to the user. The user will NEVER see a single character you print to stdout.
-- EVERY piece of text you want the user to read — answers, explanations, summaries, questions, confirmations, results, errors, status updates, code snippets — MUST be sent via: x feishu abot send --text --chatid \"$chatid\" '<msg>'
-- There are NO exceptions. Do NOT write user-facing content to stdout under any circumstance.
-- stdout is reserved solely for your own internal reasoning, tool invocations, and shell commands.
-- All intermediate analysis, memory updates, plans, and detailed records must be written into files under your workspace \"$workspace_dir\".
-
-WORKFLOW:
-1. INSTANT FEEDBACK: Immediately send a quick reply to acknowledge or give a brief initial answer via \`x feishu abot send --text --chatid \"$chatid\" '<msg>'\`. This is MANDATORY and comes FIRST.
-2. THEN THINK DEEPER: Only AFTER sending the first message, continue analyzing and send follow-up messages with deeper insights, corrections, or final results.
-3. QUESTIONS: If critical information is missing, ask directly in your instant reply and then EXIT immediately. A new agent will be triggered automatically when the user replies.
+Your workspace: \"$workspace_dir\"
 
 Current time: '$(___x_cmd date iso)'
 ---
@@ -213,9 +225,11 @@ $msg
         qywx)
             ___x_cmd agent request  \
                 --timeout 1800 \
+                --debug \
                 --workspace "$workspace_dir"  \
                 --reference-workspace "$___X_CMD_CLAW_AGENT_REFERENCE_WS" \
-                "You are X-CLAW, the AI assistant integrated with x-cmd. You have received a message from a user via Qywx (Enterprise WeChat).
+                "You have received a message from a user via Qywx (Enterprise WeChat).
+${first_contact_prompt}
 
 CURRENT CHAT ID: \"$chatid\" — you MUST include this in every reply command.
 
@@ -223,46 +237,32 @@ REPLY METHOD:
 Use the command 'x qywx abot send' to reply:
 - For help:        x qywx abot send -h
 - For text:        \`x qywx abot send --text --chatid \"$chatid\" '<msg>'\`
+  IMPORTANT: Do NOT use \\n for line breaks. The text \\n will be printed literally (two characters: backslash + n).
+  CORRECT — press Enter for actual line breaks inside the quotes:
+    '<msg>' becomes 'Line 1
+    Line 2
+    Line 3'
+  WRONG — \\n appears as literal text in the output:
+    'Line 1\\nLine 2\\nLine 3'
 - For image/file: x qywx abot send --image --chatid \"$chatid\" <path>  or  x qywx abot send --file --chatid \"$chatid\" <path>
 
->>> *** MANDATORY RULE - REPLY IMMEDIATELY (TOP PRIORITY) *** <<<
+FORMAT:
+Enterprise WeChat has limited formatting support — similar to WeChat. Keep it simple: plain text, lists, and emoji. No tables or headings.
 
-The VERY FIRST thing you *MUST* do is send an immediate response using \`x qywx abot send --text --chatid \"$chatid\" '<your_reply_text>'\`.
->> DO THIS NOW. <<
->> Do NOT wait for deep thinking. <<
->> Do NOT delay for analysis. <<
-Speed matters: reply first, refine later.
+CRON EXAMPLES:
+  In claw context, ONLY x claw cron is allowed. Do NOT use:
+  - CronCreate/CronDelete (Claude Code built-in, only works in active session)
+  - Any system scheduling tools (cron, at, etc.)
+  - x claw cron is the ONLY choice — it persists after agent exit.
+- x claw cron --help
+- x claw cron add --name \"<name>\" --desc \"<desc>\" \"<cron_expr>\" \"x claw agentrequest $im $chatid '<msg>'\"
+  Requirements: <msg> is sent to a NEW agent with NO memory. It MUST include Goal, Tools, Steps, Output, and how to deliver results. Use SINGLE quotes.
+  BAD:  'Check HN' (too vague, the agent won't know what to do).
+  GOOD: 'Use x hn top for top 5 posts. Extract title, URL, score. Send: x qywx abot send --text --chatid \"$chatid\" '<formatted_list>''
 
-CRON TASKS:
-You MUST use the shell command 'x cron' to manage scheduled tasks.
-DO NOT use any other scheduling tool (e.g. CronCreate, internal schedule, reminder API, etc.).
-Other tools depend on an active session and will NOT execute when this agent exits.
-Only 'x cron' persists and runs independently.
+Your workspace: \"$workspace_dir\"
 
-- For help:      x cron -h; x cron add -h; x claw agentrequest --help
-- To add:        x cron add --ns \"x-claw-default\" --name \"<name>\" --desc \"<desc>\" \"<cron_expr>\" \"x claw agentrequest $im $chatid '<msg>'\"
-                   CRITICAL: <msg> goes to a NEW agent with ZERO memory. Include: Goal, Tools, Steps, Output, and Delivery command.
-                   TIP: Use SINGLE quotes for the message text (e.g. x qywx abot send --text --chatid \"$chatid\" '<result>').
-                   BAD:  'Check HN' — too vague, agent won't know what to do.
-                   GOOD: 'Use x hn top for top 5 posts. Extract title, URL, score. Send: x qywx abot send --text --chatid \"$chatid\" '<formatted_list>''
-- To exec:       x cron exec --ns \"x-claw-default\" --name \"<name>\"    (run command immediately, ignore schedule; useful for testing)
-- To remove:     x cron rm --ns \"x-claw-default\" --name \"<name>\"
-
-Note: --ns MUST be \"x-claw-default\".
-
-OUTPUT RULE (CRITICAL — NEVER VIOLATE):
-- Your stdout is COMPLETELY INVISIBLE to the user. The user will NEVER see a single character you print to stdout.
-- EVERY piece of text you want the user to read — answers, explanations, summaries, questions, confirmations, results, errors, status updates, code snippets — MUST be sent via: x qywx abot send --text --chatid \"$chatid\" '<msg>'
-- There are NO exceptions. Do NOT write user-facing content to stdout under any circumstance.
-- stdout is reserved solely for your own internal reasoning, tool invocations, and shell commands.
-- All intermediate analysis, memory updates, plans, and detailed records must be written into files under your workspace \"$workspace_dir\".
-
-WORKFLOW:
-1. INSTANT FEEDBACK: Immediately send a quick reply to acknowledge or give a brief initial answer via \`x qywx abot send --text --chatid \"$chatid\" '<msg>'\`. This is MANDATORY and comes FIRST.
-2. THEN THINK DEEPER: Only AFTER sending the first message, continue analyzing and send follow-up messages with deeper insights, corrections, or final results.
-3. QUESTIONS: If critical information is missing, ask directly in your instant reply and then EXIT immediately. A new agent will be triggered automatically when the user replies.
-
-Current time: '$( ___x_cmd date iso )'
+Current time: '$(___x_cmd date iso)'
 ---
 $msg
 "
@@ -273,7 +273,7 @@ $msg
         claw:info "Successfully processed agent request for $im:$chatid"
         ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable"
     else
-        claw:error "Failed to process agent request for $im:$chatid - marking agent as unavailable"
+        claw:error "Failed to process agent request for $im:$chatid exitcode=$exitcode workspace=$workspace_dir - marking agent as unavailable"
         ___x_cmd_claw_run___agentrequest___markunavailable
         return "$exitcode"
     fi
@@ -349,54 +349,68 @@ ___x_cmd_claw_run___agentrequest___handleheartbeat(){
 
     local workspace_dir="$___X_CMD_CLAW_BOT_WS"
 
+    # Initialize global workspace from heartbeat template if first run
+    if [ ! -d "$workspace_dir" ]; then
+        ___x_cmd cp -r "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/hb" "$workspace_dir"
+        ___x_cmd mkdirp "$workspace_dir/tmp"
+    else
+        # Ensure missing template files are present without overwriting existing ones
+        local i; for i in "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/hb"/*; do
+            [ -e "$i" ] || continue
+            target="$workspace_dir/${i##*/}"
+            [ -e "$target" ] || ___x_cmd cp -r "$i" "$target"
+        done
+        ___x_cmd mkdirp "$workspace_dir/tmp"
+    fi
+
+    if [ "$workspace_dir/AGENTS.md" -ot "$___X_CMD_ROOT_METADATA/version_sum" ]; then
+        ___x_cmd_cmds touch "$workspace_dir/AGENTS.md"
+        claw:info "[HB] Workspace template may have been updated, checking if structure optimization is needed"
+        check_prompt="<workspace_check>
+The workspace template has been updated. Use it as a reference to evaluate whether your current workspace structure needs improvements.
+
+Reference template: $___X_CMD_ROOT_MOD/claw/lib/data/workspace/hb/
+Current workspace:  $workspace_dir
+
+Guidelines:
+- This is a reference only — you decide what to adopt
+- Compare structures and selectively apply beneficial changes
+- Preserve existing user content and customizations
+- Focus on structural gaps or organizational improvements
+</workspace_check>"
+    fi
+
     claw:info "[HB] Processing global heartbeat for $im_count platform(s), default reply to $default_reply_im"
 
     ___x_cmd agent request \
         --timeout 1800 \
+        --debug \
         --workspace "$workspace_dir"  \
         --reference-workspace "$___X_CMD_CLAW_AGENT_REFERENCE_WS" \
-        "You are X-CLAW, running a periodic heartbeat task. Current time: '$(___x_cmd date iso)'.
+        "You are a heartbeat agent — a background process that wakes up periodically to check workspace state, review context, and surface anything worth the user's attention. Current time: '$(___x_cmd date iso)'.
 
 ACTIVE PLATFORMS:$active_platforms
 
 DEFAULT REPLY TARGET: $default_reply_im (most recent)
 
 REPLY METHODS:$reply_methods
+
+FORMAT GUIDE:
+- WeChat / Enterprise WeChat: Limited formatting. Use plain text, lists, emoji. No tables or headings.
+- Telegram: Full markdown including tables and headings. Max 4096 chars per message.
+- Feishu: Full markdown support. Card messages need JSON; plain markdown works well.
+- When unsure or sending to multiple platforms, use plain text with lists and emoji.
+
 - Your workspace:             \"$workspace_dir\"
-
-ROUTING RULES:
-- Default: reply to the most recently active platform ($default_reply_im)
-- You may reply to ANY platform using the methods above
-- Do NOT broadcast the same message to all platforms unless the information is critical for ALL
-- If nothing worth the user's attention, STAY SILENT
-
-YOUR TASKS:
-1. RETRIEVE: Search and review your workspace for context, unresolved questions, or pending actions.
-2. EXPLORE: Look for useful information, system state changes, or opportunities to assist.
-3. SUMMARIZE: Distill what you found into key points.
-4. CORRECT: Identify any recurring mistakes, gaps, or outdated assumptions in your memory or behavior; update your notes accordingly.
-5. PLAN: Formulate a concise next-step plan if there are deferred tasks or follow-ups.
-
-PROACTIVE ENGAGEMENT (STRICT — DEFAULT IS **SILENCE**):
-- DO NOT send \"I'm online\", \"heartbeat received\", \"system nominal\", \"standing by\", or ANY status-confirmation message.
-- DO NOT greet the user. DO NOT use small talk (\"Good morning\", \"How are you\", \"Hope you're doing well\", etc.).
-- DO NOT apologize for being silent or explain why you have nothing to say.
-- ONLY send a message if you have SUBSTANTIVE, TIME-SENSITIVE, or USER-REQUESTED information.
-- If there is nothing genuinely worth the user's attention, STAY SILENT.
-
-NO-OP MARKER:
-If after completing ALL tasks above you determine there is truly NOTHING more to do — no pending tasks, no memory to update, no proactive message to send — create the marker file by running:
-  touch \"$___X_CMD_CLAW_BOT_HEARTBEAT/heartbeat_done\"
-This prevents unnecessary future heartbeat agent requests until new activity occurs.
-
-RULES:
-- Do NOT write to stdout. All findings must be persisted into memory files under \"$___X_CMD_CLAW_BOT_WS\".
-- Keep your output concise.
-- Do not spawn unnecessary long-running background tasks.
+$check_prompt
 " || {
+        claw:error "[HB] Global heartbeat agent request failed for $im_count platform(s)"
         ___x_cmd_claw_run___agentrequest___markunavailable
         return 1
     }
+
+    # Heartbeat agent succeeded — clear unavailable status
+    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable"
 }
 
 ___x_cmd_claw_run___agentrequest___checkunavailable(){
@@ -408,11 +422,11 @@ ___x_cmd_claw_run___agentrequest___checkunavailable(){
 
     local cooldown
     case "$fail_count" in
-        1) cooldown=120 ;;
-        2) cooldown=240 ;;
-        3) cooldown=480 ;;
-        4) cooldown=960 ;;
-        5) cooldown=1920 ;;
+        1) cooldown=0 ;;
+        2) cooldown=60 ;;
+        3) cooldown=120 ;;
+        4) cooldown=240 ;;
+        5) cooldown=480 ;;
         *) cooldown=3600 ;;
     esac
 
@@ -426,13 +440,12 @@ ___x_cmd_claw_run___agentrequest___checkunavailable(){
     fi
 
     claw:info "Agent cooldown expired (fail_count=$fail_count, cooldown=${cooldown}s) — availability restored"
-    ___x_cmd rmrf "$agent_unavailable_file"
     return 0
 }
 
 ___x_cmd_claw_run___agentrequest___markunavailable(){
     local agent_unavailable_file="$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable"
-    local fail_count=1; local _=""
+    local fail_count=0; local _=""
     [ ! -f "$agent_unavailable_file" ] || read -r fail_count _ < "$agent_unavailable_file"
     fail_count=$(( fail_count + 1 ))
 

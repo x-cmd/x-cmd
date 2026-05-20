@@ -1,0 +1,306 @@
+# shellcheck shell=dash
+# Alias table: human-readable alias → provider/dataset/series
+# Remote: https://codeberg.org/x-cmd/data/raw/branch/main/alias/dbnomics.alias.tsv
+# Local:  $___X_CMD_ROOT_DATA/data/alias/dbnomics.alias.tsv
+
+___X_CMD_DBNOMICS_ALIAS_URL="https://codeberg.org/x-cmd/data/raw/branch/main/alias/dbnomics.alias.tsv"
+
+___x_cmd_dbnomics_alias___cache(){
+    printf '%s' "${___X_CMD_ROOT_DATA}/data/alias/dbnomics.alias.tsv"
+}
+
+___x_cmd_dbnomics_alias___download(){
+    local cache; cache="$(___x_cmd_dbnomics_alias___cache)"
+    local dir; dir="$(dirname "$cache")"
+    mkdir -p "$dir"
+    ___x_cmd curl -sS -L -f "$___X_CMD_DBNOMICS_ALIAS_URL" > "$cache" 2>/dev/null
+}
+
+___x_cmd_dbnomics_alias___load(){
+    [ -n "${___x_cmd_dbnomics_alias_table:-}" ] && return 0
+    local cache; cache="$(___x_cmd_dbnomics_alias___cache)"
+    if [ ! -f "$cache" ]; then
+        ___x_cmd_dbnomics_alias___download || {
+            M='Failed to download alias table from remote' N=dbnomics log:ret:1
+        }
+    fi
+    [ -s "$cache" ] || { M='Alias cache is empty' N=dbnomics log:ret:1; }
+    ___x_cmd_dbnomics_alias_table="$(cat "$cache")"
+}
+
+# List all aliases (or filter by keyword).
+___x_cmd_dbnomics_alias___list(){
+    local q="${1:-}"
+    ___x_cmd_dbnomics_alias___load || return 1
+    printf '%s' "$___x_cmd_dbnomics_alias_table" \
+        | awk -F'\t' -v q="$q" '
+            NR==1 { next }
+            q == "" || $1 ~ q || $5 ~ q {
+                printf "%s\t%s/%s/%s\t%s\n", $1, $2, $3, $4, $5
+            }
+        '
+}
+
+# Dynamic alias: imf.<cc>.<series> → IMF/WEO:2024-10/<C3>.<WEO_SUBJECT>
+# Falls back to alias table lookup if pattern doesn't match.
+___x_cmd_dbnomics_alias___resolve(){
+    local alias="$1"
+
+    # Try dynamic pattern first
+    local _dynamic
+    _dynamic="$(___x_cmd_dbnomics_alias___resolve_dynamic "$alias")"
+    if [ -n "$_dynamic" ]; then
+        printf '%s' "$_dynamic"
+        return 0
+    fi
+
+    # Fallback to alias table
+    ___x_cmd_dbnomics_alias___load || return 1
+    printf '%s' "$___x_cmd_dbnomics_alias_table" \
+        | awk -F'\t' -v a="$alias" '
+            NR==1 { next }
+            $1 == a { printf "%s/%s/%s", $2, $3, $4; exit 0 }
+        '
+}
+
+# Map group alias to WEOAGG numeric code
+___x_cmd_dbnomics_alias___group_to_weoagg_(){
+    local grp="$1"
+    case "$grp" in
+        world)      x_=001 ;;
+        advanced)   x_=110 ;;
+        g7)         x_=119 ;;
+        euro)       x_=163 ;;
+        eu)         x_=998 ;;
+        emerging)   x_=200 ;;
+        latam)      x_=205 ;;
+        mideast)    x_=400 ;;
+        devasia)    x_=505 ;;
+        asean)      x_=510 ;;
+        africa)     x_=603 ;;
+        deveur)     x_=903 ;;
+        *)          return 1 ;;
+    esac
+}
+
+# Map 2-letter country code to IMF WEO 3-letter code
+___x_cmd_dbnomics_alias___c2toweo_(){
+    local c2="$1"
+    case "$c2" in
+        at) x_=AUT ;; au) x_=AUS ;; be) x_=BEL ;; br) x_=BRA ;;
+        ca) x_=CAN ;; ch) x_=CHE ;; cn) x_=CHN ;; cz) x_=CZE ;;
+        de) x_=DEU ;; dk) x_=DNK ;; es) x_=ESP ;; fi) x_=FIN ;;
+        fr) x_=FRA ;; gr) x_=GRC ;; hu) x_=HUN ;; id) x_=IDN ;;
+        ie) x_=IRL ;; in) x_=IND ;; it) x_=ITA ;; jp) x_=JPN ;;
+        kr) x_=KOR ;; my) x_=MYS ;; nl) x_=NLD ;; no) x_=NOR ;;
+        pl) x_=POL ;; pt) x_=PRT ;; ro) x_=ROU ;; se) x_=SWE ;;
+        sg) x_=SGP ;; sk) x_=SVK ;; uk) x_=GBR ;; us) x_=USA ;;
+        vn) x_=VNM ;; th) x_=THA ;; ph) x_=PHL ;; mx) x_=MEX ;;
+        tr) x_=TUR ;; sa) x_=SAU ;; za) x_=ZAF ;; eg) x_=EGY ;;
+        ng) x_=NGA ;; ru) x_=RUS ;; tw) x_=TWN ;; hk) x_=HKG ;;
+        nz) x_=NZL ;; il) x_=ISR ;; ae) x_=ARE ;; *) return 1 ;;
+    esac
+}
+
+# Map series suffix to WEO subject code
+___x_cmd_dbnomics_alias___series_suffix_(){
+    local suffix="$1"
+    case "$suffix" in
+        cpi)                    x_=PCPI.idx                       ;;
+        inflation)              x_=PCPIPCH.pcent_change            ;;
+        unemployment)           x_=LUR.pcent_total_labor_force     ;;
+        gdp)                    x_=NGDPD.us_dollars                ;;
+        gdp.growth)             x_=NGDP_RPCH.pcent_change          ;;
+        gdp.pc)                 x_=NGDPDPC.us_dollars              ;;
+        population)             x_=LP.persons                      ;;
+        gov.debt)               x_=GGXWDG.national_currency         ;;
+        gov.debt.gdp)           x_=GGXWDG_NGDP.pcent_gdp           ;;
+        gov.revenue)            x_=GGR.national_currency            ;;
+        gov.revenue.gdp)        x_=GGR_NGDP.pcent_gdp             ;;
+        gov.expenditure)        x_=GGX.national_currency           ;;
+        gov.expenditure.gdp)    x_=GGX_NGDP.pcent_gdp         ;;
+        gov.net.lending)        x_=GGSB.national_currency          ;;
+        gov.net.lending.gdp)    x_=GGSB_NPGDP.pcent_potential_gdp ;;
+        savings)                x_=NGSD_NGDP.pcent_gdp             ;;
+        investment)             x_=NID_NGDP.pcent_gdp              ;;
+        exports)                x_=TX_RPCH.pcent_change            ;;
+        imports)                x_=TM_RPCH.pcent_change            ;;
+        ca)                     x_=BCA_NGDPD.pcent_gdp             ;;
+        ppp)                    x_=PPPGDP.purchasing_power_parity_international_dollars ;;
+        ppp.pc)                 x_=PPPPC.purchasing_power_parity_international_dollars ;;
+        core.inflation)         x_=PCPIEPCH.pcent_change           ;;
+        employment)             x_=LE.persons                      ;;
+        output.gap)             x_=NGAP_NPGDP.pcent_potential_gdp  ;;
+        gdp.deflator)           x_=NGDP_D.idx                      ;;
+        ppp.pc.real)            x_=NGDPRPPPPC.purchasing_power_parity_2017_international_dollar ;;
+        ppp.share)              x_=PPPSH.pcent                     ;;
+        gov.net.debt)           x_=GGXWDN.national_currency        ;;
+        gov.net.debt.gdp)       x_=GGXWDN_NGDP.pcent_gdp           ;;
+        gov.balance)            x_=GGXCNL.national_currency        ;;
+        gov.balance.gdp)        x_=GGXCNL_NGDP.pcent_gdp           ;;
+        goods.exports)          x_=TXG_RPCH.pcent_change           ;;
+        goods.imports)          x_=TMG_RPCH.pcent_change           ;;
+        cpi.core)               x_=PCPIE.idx                       ;;
+        *)                      return 1                            ;;
+    esac
+}
+
+# Resolve imf.<cc>.<series> dynamically
+___x_cmd_dbnomics_alias___resolve_dynamic(){
+    local alias="$1"; local x_=""
+    case "$alias" in
+        imf.*.*)
+            local cc="${alias#imf.}"
+            local suffix="${cc#*.}"
+            cc="${cc%%.*}"
+            # Check if cc is a WEOAGG group code first
+            ___x_cmd_dbnomics_alias___group_to_weoagg_ "$cc" && {
+                local grp="$x_"
+                ___x_cmd_dbnomics_alias___series_suffix_ "$suffix" || return 1
+                printf 'IMF/WEOAGG:2024-10/%s.%s' "$grp" "$x_"
+                return 0
+            }
+            # Fallback to country code
+            ___x_cmd_dbnomics_alias___c2toweo_ "$cc" || return 1
+            local weo="$x_"
+            ___x_cmd_dbnomics_alias___series_suffix_ "$suffix" || return 1
+            local subject="$x_"
+            printf 'IMF/WEO:2024-10/%s.%s' "$weo" "$subject"
+            ;;
+        unctad.*)
+            ___x_cmd_dbnomics_alias___resolve_unctad "$alias"
+            ;;
+        bis.rate.*)
+            ___x_cmd_dbnomics_alias___resolve_cbpol "$alias"
+            ;;
+        bis.*)
+            ___x_cmd_dbnomics_alias___resolve_bis "$alias"
+            ;;
+        *)  return 1 ;;
+    esac
+}
+
+# Map currency code (3-letter) to BIS country.currency pair
+___x_cmd_dbnomics_alias___currency_to_bis_(){
+    local cur="$1"
+    case "$cur" in
+        usd) x_=US.USD ;; eur) x_=DE.EUR ;; gbp) x_=GB.GBP ;; jpy) x_=JP.JPY ;;
+        cny) x_=CN.CNY ;; aud) x_=AU.AUD ;; cad) x_=CA.CAD ;; krw) x_=KR.KRW ;;
+        sgd) x_=SG.SGD ;; thb) x_=TH.THB ;; myr) x_=MY.MYR ;; inr) x_=IN.INR ;;
+        hkd) x_=HK.HKD ;; twd) x_=TW.TWD ;; php) x_=PH.PHP ;; mxn) x_=MX.MXN ;;
+        rub) x_=RU.RUB ;; zar) x_=ZA.ZAR ;; try) x_=TR.TRY ;; sek) x_=SE.SEK ;;
+        nok) x_=NO.NOK ;; chf) x_=CH.CHF ;; nzd) x_=NZ.NZD ;; *) return 1 ;;
+    esac
+}
+
+# Resolve bis.<currency3> → BIS/WS_XRU/M.<country>.<currency>.A
+# e.g. bis.eur → EUR/USD → M.DE.EUR.A
+___x_cmd_dbnomics_alias___resolve_bis(){
+    local alias="$1"; local x_=""
+    local cur="${alias#bis.}"
+    [ -n "$cur" ] || return 1
+    ___x_cmd_dbnomics_alias___currency_to_bis_ "$cur" || return 1
+    printf 'BIS/WS_XRU/M.%s.A' "$x_"
+}
+
+# Map 2-letter country code to UNCTAD country name
+___x_cmd_dbnomics_alias___c2tounctad_(){
+    local c2="$1"
+    case "$c2" in
+        us|usa)  x_=united-states-of-america ;;
+        cn|chn)  x_=china ;;
+        jp|jpn)  x_=japan ;;
+        de|deu)  x_=germany-federal-republic-of ;;
+        fr|fra)  x_=france ;;
+        gb|GBR)  x_=united-kingdom ;;
+        it|ita)  x_=italy ;;
+        in|ind)  x_=india ;;
+        br|bra)  x_=brazil ;;
+        ru|rus)  x_=russian-federation ;;
+        kr|kor)  x_=korea-republic-of ;;
+        ca|can)  x_=canada ;;
+        au|aus)  x_=australia ;;
+        mx|mex)  x_=mexico ;;
+        id|idn)  x_=indonesia ;;
+        sa|sau)  x_=saudi-arabia ;;
+        tr|tur)  x_=turkey ;;
+        eu)      x_=europe ;;
+        tw|twn)  x_=taiwan ;;
+        hk|hkg)  x_=hong-kong ;;
+        sg|sgp)  x_=singapore ;;
+        *)       return 1 ;;
+    esac
+}
+
+# Map UNCTAD indicator suffix to indicator name
+___x_cmd_dbnomics_alias___unctad_suffix_(){
+    local suffix="$1"
+    case "$suffix" in
+        # Expenditure approach
+        gdp)              x_=gross-domestic-product-gdp ;;
+        consumption)      x_=household-consumption-expenditure-including-npish ;;
+        gov)              x_=general-government-final-consumption-expenditure ;;
+        investment)       x_=gross-capital-formation ;;
+        fixed)            x_=gross-fixed-capital-formation ;;
+        inventory)        x_=changes-in-inventories ;;
+        exports)          x_=exports-of-goods-and-services ;;
+        imports)          x_=imports-of-goods-and-services ;;
+        # Production approach (value added)
+        agri)             x_=agriculture-hunting-forestry-fishing ;;
+        mining)           x_=mining-manufacturing-utilities ;;
+        manufacturing)    x_=manufacturing ;;
+        construction)     x_=construction ;;
+        trade)            x_=wholesale-retail-trade-restaurants-and-hotels ;;
+        transport)         x_=transport-storage-and-communications ;;
+        services)         x_=services ;;
+        other)            x_=other-activities ;;
+        total-va)         x_=total-value-added ;;
+        *)                return 1 ;;
+    esac
+}
+
+# Resolve unctad.<cc>.<indicator> → UNCTAD/GDPGBTOEVBKOEATASA/A.percentage-of-gross-domestic-product.<country>.<indicator>
+___x_cmd_dbnomics_alias___resolve_unctad(){
+    local alias="$1"; local x_=""
+    local rest="${alias#unctad.}"
+    [ "$rest" = "$alias" ] && return 1
+
+    local cc="${rest%%.*}"
+    local suffix="${rest#*.}"
+
+    ___x_cmd_dbnomics_alias___c2tounctad_ "$cc" || return 1
+    local country="$x_"
+
+    ___x_cmd_dbnomics_alias___unctad_suffix_ "$suffix" || return 1
+    local indicator="$x_"
+
+    printf 'UNCTAD/GDPGBTOEVBKOEATASA/A.percentage-of-gross-domestic-product.%s.%s' "$country" "$indicator"
+}
+
+# Resolve bis.rate.<cc> → BIS/WS_CBPOL/M.<REF_AREA>
+# e.g. bis.rate.us → US federal funds rate
+___x_cmd_dbnomics_alias___resolve_cbpol(){
+    local alias="$1"; local x_=""
+    local cc="${alias#bis.rate.}"
+    [ -n "$cc" ] || return 1
+    ___x_cmd_dbnomics_alias___cc_to_cbpol_ "$cc" || return 1
+    printf 'BIS/WS_CBPOL/M.%s' "$x_"
+}
+
+# Map 2-letter country code to BIS CBPOL REF_AREA
+___x_cmd_dbnomics_alias___cc_to_cbpol_(){
+    local cc="$1"
+    case "$cc" in
+        au) x_=AU ;; br) x_=BR ;; ca) x_=CA ;; ch) x_=CH ;;
+        cn) x_=CN ;; cz) x_=CZ ;; dk) x_=DK ;; gb) x_=GB ;;
+        hk) x_=HK ;; hu) x_=HU ;; id) x_=ID ;; in) x_=IN ;;
+        jp) x_=JP ;; kr) x_=KR ;; mx) x_=MX ;; my) x_=MY ;;
+        no) x_=NO ;; nz) x_=NZ ;; ph) x_=PH ;; pl) x_=PL ;;
+        ru) x_=RU ;; sa) x_=SA ;; se) x_=SE ;; sg) x_=SG ;;
+        th) x_=TH ;; tr) x_=TR ;; tw) x_=TW ;; us) x_=US ;;
+        eu) x_=XM ;; de) x_=DE ;; fr) x_=FR ;; it) x_=IT ;;
+        es) x_=ES ;; nl) x_=NL ;; at) x_=AT ;; be) x_=BE ;;
+        fi) x_=FI ;; pt) x_=PT ;; ie) x_=IE ;; gr) x_=GR ;;
+        il) x_=IL ;; za) x_=ZA ;; kr) x_=KR ;; *) return 1 ;;
+    esac
+}

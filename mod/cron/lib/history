@@ -1,0 +1,99 @@
+
+
+___x_cmd_cron_history___detail(){
+    local exec_dir="$1"
+    local ts="$2"
+    local ts_iso
+
+    ts_iso="$( ___x_cmd date iso "$ts" )"
+    printf 'Execution: %s\n' "$ts_iso"
+
+    local field
+    for field in end_time exit_code out err; do
+        local file="$exec_dir/$field"
+        printf '\n[%s]\n' "$field"
+        if [ -f "$file" ]; then
+            if [ "$field" = "end_time" ]; then
+                local end_ts
+                read -r end_ts < "$file"
+                ___x_cmd date iso "$end_ts"
+            else
+                cat "$file"
+            fi
+        else
+            printf '(not available)\n'
+        fi
+    done
+}
+
+___x_cmd_cron_history___cleanup(){
+    local state_dir="$1"
+    local max_keep="${2:-10}"
+    local x_
+    local dir
+    local count
+
+    [ -d "$state_dir" ] || return 0
+
+    ___x_cmd fsiter --dir_ "$state_dir"
+    [ -n "$x_" ] || return 0
+
+    count=0
+    while read -r dir; do
+        [ -n "$dir" ] || continue
+        count=$(( count + 1 ))
+        if [ "$count" -ge "$max_keep" ]; then
+            ___x_cmd rmrf "$state_dir/$dir"
+        fi
+    done <<A
+$( printf '%s\n' "$x_" | sort )
+A
+}
+
+___x_cmd_cron_history___latest_ts(){
+    local state_dir="$1"
+    local x_
+    ___x_cmd fsiter --dir_ "$state_dir"
+    printf '%s\n' "$x_" | ___x_cmd_cmds sort -r | head -n 1
+}
+
+___x_cmd_cron_history(){
+    local ns="DEFAULT"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m cron history; return 0 ;;
+            --ns)       ns="$2" ; arg:2:shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local name="$1"
+    local ts="$2"
+
+    if [ -z "$name" ]; then
+        cron:error "Usage: x cron history [--ns NS] <name> [timestamp]"
+        return 1
+    fi
+
+    local state_dir="$___X_CMD_CRON/$ns/state/$name"
+
+    if [ ! -d "$state_dir" ]; then
+        cron:warn "No execution history for job: $name"
+        return 1
+    fi
+
+    if [ -z "$ts" ]; then
+        ts="$( ___x_cmd_cron_history___latest_ts "$state_dir" )"
+        if [ -z "$ts" ]; then
+            cron:warn "No execution history for job: $name"
+            return 1
+        fi
+    fi
+
+    local exec_dir="$state_dir/$ts"
+    if [ ! -d "$exec_dir" ]; then
+        cron:error "Execution not found: $ts"
+        return 1
+    fi
+    ___x_cmd_cron_history___detail "$exec_dir" "$ts"
+}

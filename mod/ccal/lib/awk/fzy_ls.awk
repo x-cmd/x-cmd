@@ -31,4 +31,7 @@ BEGIN{
 
     printf( LEADING fmt, "\033[36m" $1, "\033[33m" $2, "\033[37m" $3 " " LUNAR_SX_EMO[$3], run_yue, \
         "\033[31m 🧧 "  $6, "\033[35m 🌸 "$7,  "\033[36m 🚣 " $8, "\033[33m 🥮 " $9)
+
+    # Only print the requested year, exit after
+    if ($1 > year) exit
 }

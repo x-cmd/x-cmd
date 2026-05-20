@@ -1,0 +1,77 @@
+# shellcheck shell=dash disable=2034
+
+xrc:mod:lib     install     run/withtool  run/sys  run/best  run/available-tool
+
+# x install jq yq sys/tq
+
+___x_cmd_install_run(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    local mode=app
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m install --run "$@" ; return 0 ;;
+            --auto)     mode=auto ; shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local i; for i in "$@"; do
+        ___x_cmd_install_run_one___"$mode" "$i" || return $?
+    done
+}
+
+___x_cmd_install_run_one___auto(){
+    case "$1" in
+        skill/*)    ___x_cmd skill   add --global   "${1#*/}"   ;;
+        mcp/*)      ___x_cmd skill   add --global   "${1#*/}"   ;;
+        clawhub/*)  ___x_cmd skill   add --global    "${1}"      ;;
+
+        winget/*|brew/*|apk/*|apt/*|pacman/*|dnf/*|yum/*|nix/*|\
+        pixi/*|pkgx/*|asdf/*|\
+        curl/*|wget/*/eget/*|\
+        bun/*|npm/*|uv/*|pip/*|go/*|cargo/*)
+                    ___x_cmd install    --withtool  "${1%%/*}"  "${1#*/}"   ;;
+        x/*|xpkg/*) ___x_cmd install    --withtool  xpkg        "${1#*/}"   ;;
+        sys/*)      ___x_cmd install    --sys       "${1#*/}"               ;;
+        best/*)     ___x_cmd install    --best      "${1#*/}"               ;;
+
+        */*)        N=install M="Unknown provider=${1%%/*} for software=${1#*/}" log:ret:64 ;;
+        *)          ___x_cmd install    --best      "${1}"                  ;;
+    esac
+}
+
+___x_cmd_install_run_one___app(){
+    local software="$1"
+
+    case "$software" in
+        skill/*)    ___x_cmd skill  add --global    "${1#*/}" ; return $?  ;;
+        mcp/*)      ___x_cmd skill  add --global    "${1#*/}" ; return $?  ;;
+        clawhub/*)  ___x_cmd skill  add --global    "${1}"    ; return $?  ;;
+    esac
+
+    local x_=; ___x_cmd_install_run_one___app_ "$software" || return $?
+    [ "$x_" != "Exit" ] || return 0
+
+    ___x_cmd ui yesno "Whether to execute the following code: ${___X_CMD_UNSEENCHAR_NEWLINE}$( ___x_cmd_ui bold cyan "$x_" )" || return $?
+    install:info --code "$x_" "Running the code"
+
+    eval "$x_" || {
+        local exitcode=$?
+        install:error --cmd "$x_" --exitocd "$exitcode" "Fail to execute command"
+        return 1
+    }
+}
+
+___x_cmd_install_run_one___app_(){
+    [ "$#" -gt 0 ]  ||      N=install M="Please provide software" log:ret:64
+
+    local software="$1" ;   shift 1
+    local data=""; data="$( ___x_cmd_install_printcmd "$software" )" || return $?
+    [ -n "$data" ] || return 1
+    local cmd="";
+    eval ___x_cmd ui select id,cmd "\"Choose the code you want to execute:\"" "$data" || return $?
+    [ -n "$cmd" ] || return 1
+    x_="$cmd"
+}
+

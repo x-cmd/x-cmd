@@ -178,7 +178,41 @@ ___x_cmd_umami_site_pv___app(){
 # https://umami.is/docs/api/website-stats#get-/api/websites/:websiteid/stats
 ___x_cmd_umami_site_stat(){
     [ "$#" -gt 0 ] || set -- --app
-    local op="$1"; shift
+
+    # Check if --app, --raw, or --json is in arguments
+    local op="--app"
+    local has_mode=
+    for _arg in "$@"; do
+        case "$_arg" in
+            --app|--raw|--json) has_mode=1; op="$_arg"; break ;;
+        esac
+    done
+
+    # If no mode flag found, use default (tty gets --app, pipe gets --json)
+    if [ -z "$has_mode" ]; then
+        if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; then
+            op="--app"
+        else
+            op="--json"
+        fi
+    fi
+
+    # Build new args without mode flags
+    local new_args=""
+    for _arg in "$@"; do
+        case "$_arg" in
+            --app|--raw|--json) ;;
+            *) new_args="${new_args}${new_args:+ }$_arg" ;;
+        esac
+    done
+
+    # If no args left after removing mode flags, use website name
+    if [ -z "$new_args" ]; then
+        set -- x-cmd
+    else
+        set -- $new_args
+    fi
+
     case "$op" in
         --app)        ___x_cmd_umami_site_stat___app   "$@" ;;
         --raw)        ___x_cmd_umami_site_stat___raw   "$@" ;;
@@ -191,6 +225,13 @@ ___x_cmd_umami_site_stat(){
 ___x_cmd_umami_site_stat___raw(){
     local arg=;local key=;
     local _start=; local _end=; local _type=
+
+    # Parse website_id first
+    local _website_id="$1";  [ -n "$_website_id" ] || M='Provide a websiteID'   N=umami log:ret:1
+    ___x_cmd_umami___transform_website_id || return
+    shift
+
+    # Re-parse any remaining options that may have come after website_id
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --startAt)
@@ -211,16 +252,13 @@ ___x_cmd_umami_site_stat___raw(){
                 [ -n "$2" ] || M="Provide a $key" N=umami log:ret:1
                 arg="${arg}&${key}=${2}"
                 shift 2;;
-            *)
-                break ;;
+            *)  shift ;;
         esac
     done
+
     [ -n "$_start" ] || arg="startAt=$(___x_cmd_umami___date -15)&${arg}"
     [ -n "$_end" ]   || arg="endAt=$(___x_cmd_umami___date)&${arg}"
     arg="?${arg}"
-
-    local _website_id="$1";  [ -n "$_website_id" ] || M='Provide a websiteID'   N=umami log:ret:1
-    ___x_cmd_umami___transform_website_id || return
 
     ___x_cmd_umami_api get "$___X_CMD_UMAMI___API_ENDPOINT/${_website_id}/stats${arg}"
 }
@@ -303,8 +341,23 @@ ___x_cmd_umami_site_metric___raw(){
     [ -n "$_type" ]  || M="Provide a type" N=umami log:ret:1
     arg="?${arg}"
 
+    # Parse website_id first
     local _website_id="$1";  [ -n "$_website_id" ] || M='Provide a websiteID'   N=umami log:ret:1
     ___x_cmd_umami___transform_website_id || return
+    shift
+
+    # Re-parse any remaining options that may have come after website_id
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --startAt|--endAt|--type|--referrer|--title|--host|--os|--brower|\
+            --device|--country|--region|--city|--query|--language|--event|--limit)
+                key="${1#--}"
+                [ -n "$2" ] || M="Provide a $key" N=umami log:ret:1
+                arg="${arg}&${key}=${2}"
+                shift 2;;
+            *)  shift ;;
+        esac
+    done
 
     ___x_cmd_umami_api get "$___X_CMD_UMAMI___API_ENDPOINT/${_website_id}/metrics${arg}"
 }

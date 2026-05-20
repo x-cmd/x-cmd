@@ -14,6 +14,15 @@
 
 Advise 是 x-cmd 的**命令补全系统**，通过声明式的 YAML 配置文件定义命令的补全规则。
 
+**配套文档**（同目录下，互为参考，同时更新）：
+
+| 文件 | 用途 |
+|------|------|
+| `spec.md`（本文件） | advise 编写规范：字段定义、编写原则、示例、错误模式 |
+| `rule/advise.rule.yml` | `x check` / `x rule` 使用的检查规则集，与 spec.md 中的原则一一对应 |
+
+> 修改 spec.md 中的任何原则时，应同步更新 rule.yml 中对应的规则；反之亦然。
+
 ### 核心特性
 
 - **声明式配置**：使用 YAML 定义补全规则，无需编写 Shell 代码
@@ -97,14 +106,14 @@ Advise 与以下三个操作紧密关联：
 <meta>:
   default-subcmd: <subcmd_name>    # 默认子命令
   trailing-option: true|false      # 是否支持后置选项
-  subcmd-help: disable             # 效率模块标记
+  <subcmd-help>: disable             # 效率模块标记
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `default-subcmd` | string | 当用户只输入模块名时使用的默认子命令 |
 | `trailing-option` | boolean | 是否支持选项出现在位置参数之后 |
-| `subcmd-help` | string | `disable` 表示子命令无 help 支持（效率模块） |
+| `<subcmd-help>` | string | `disable` 表示子命令无 help 支持（效率模块） |
 
 ### 3.3 `<synopsis>` - 命令用法
 
@@ -182,6 +191,13 @@ Advise 与以下三个操作紧密关联：
 - **避免 desc 过于冗长**：详细的说明应该拆到 tip 中，而不是堆在 desc 里
 - **每项只讲一个要点**：tip 是列表，每项聚焦一个点
 - **子命令 tip 放在 subcmd 定义下**：子命令级别的 tip 随 subcmd 定义走
+- **特定行为的提示**：当子命令有非显而易见的行为（如 auto 格式切换）时，应在 tip 中说明。这是模块特定的，不是所有模块都需要：
+  ```yaml
+  # 仅当子命令确实有 auto 格式切换时才写这条 tip
+  <tip>:
+    - cn: "不带格式选项时，交互终端下以 csv app 浏览，管道或重定向则以 TSV 输出。"
+      en: "Without a format flag, interactive terminals open csv app; pipe or redirect outputs TSV."
+  ```
 
 ---
 
@@ -195,9 +211,28 @@ Advise 与以下三个操作紧密关联：
 ```
 
 **核心定位**:
-- TLDR 是 **help 的入口**，人和 AI 共同使用
+- TLDR 是 **help 的入口**，协助 AI agent 和人类用户清晰了解如何使用模块
 - 帮助 AI 快速理解模块能力，建立初步认知
-- 引导 AI 在需要时通过 `x <mod> <subcmd> --help` 获取详细信息
+- 帮助人类用户通过场景化示例快速上手
+- 引导 AI 和人类在需要时通过 `x <mod> <subcmd> --help` 获取详细信息
+
+**目标读者与行文原则**:
+
+> advise 的主要服务对象是**人类专家 + AI agent**（codex、openclaw 等）。
+> 行文追求：**精炼且信息量大**。砍无效词，保留有区分度的信息。
+>
+> 人类新手是次要考虑，通过"逐步深入"的排列梯度降低门槛：
+> - 第一个 tldr/tip — 最简单、最直觉的用法
+> - 中间 — 核心场景，信息密度高
+> - 后面 — 进阶场景、边界情况、脚本集成
+>
+> 当专家信息密度需求与新手友好冲突时，**优先信息密度**。
+> 人类新手可以通过 agent 辅助理解，所以信息密度不会真正排斥新手。
+
+**写作优先级**:
+1. **先把功能和场景用法讲清楚** — 事情说到位，用户能理解、能用起来
+2. **再考虑精简篇幅** — 清晰度永远优先于简洁性；宁可多写两句把场景交代完整，不要为了短而丢信息
+3. **砍无效词** — 删掉不影响理解的词（如上下文已暗示的"格式输出"），保留有区分度的词（如"带表头"、"适合管道"）
 
 ---
 
@@ -219,32 +254,73 @@ Advise 与以下三个操作紧密关联：
 - 每个模块的 help 顶层 tldr 很重要，应该尽量引导 AI 了解常用功能
 - AI 通过 tldr 建立对模块能力的第一印象
 
-### 2. 第一个 tldr：入门代表命令
-- 第一个 tldr 是人和 AI 共同能用的入门代表命令
-- 应该是最常用、最基础的用法，一用即有结果
-- 让 AI 知道"这个模块是做什么的"
+### 2. 第一个 tldr：最常用、最有吸引力的场景
+- 第一个 tldr 面向**最常用、最有吸引力的场景**
+- 应该**尽量简单**：不带多余的选项，用最自然的调用方式
+- 让人一看就知道"这个模块是做什么的"，一用即有结果
 - 对于工具类模块，第一个 tldr 通常是 `x <mod>`（不带参数）或 `x <mod> info`
 
-### 3. 后续 tldr：让 AI 知道能获得什么工具
+**反例**：第一个 tldr 就带 `--csv` 或 `--json`，增加了不必要的认知负担。
+
+### 3. 场景适用原则（优先于"展示最强能力"）
+- **每个 tldr 面向一个具体场景**，不是为了展示参数组合
+- 同类别选项（如 `--csv`/`--tsv`/`--json`）只需各出现一次，除非某场景确实更适合某种格式
+- 格式选项集中在前几条 tldr 展示，后续条目聚焦功能和场景
+- "展示最强能力"是次要原则，当与场景适用冲突时让位
+
+```yaml
+# ✅ 正确 — 格式选项只在前几条展示，后面聚焦场景
+<tldr>:
+  - cmd: x dbnomics align imf.us.cpi imf.de.cpi imf.jp.cpi
+    cn: "对比美/德/日 CPI，交互终端以 csv app 浏览，管道则以 TSV 输出"
+  - cmd: x dbnomics align --csv imf.us.gdp imf.cn.gdp
+    cn: "CSV 格式: 对比美/中 GDP，适合数据库导入、表格软件或脚本处理"
+  - cmd: x dbnomics align --tsv fed.10y fed.2y fed.3m
+    cn: "TSV 格式: 对比美国国债收益率曲线，适合管道和 awk/grep 处理"
+  - cmd: x dbnomics align imf.us.unemployment imf.de.unemployment
+    cn: "对比美/德失业率"                                     # 后续聚焦场景，除非场景需要否则不带格式选项
+
+# ❌ 错误 — 每个 tldr 都带格式选项，且描述不说明场景差异
+<tldr>:
+  - cmd: x dbnomics align --csv imf.us.cpi imf.de.cpi
+  - cmd: x dbnomics align --csv imf.us.gdp imf.cn.gdp
+  - cmd: x dbnomics align --csv imf.us.unemployment imf.de.unemployment
+```
+
+### 4. 后续 tldr：让 AI 知道能获得什么工具
 - 后续 tldr 主要让 AI 知道能获得什么工具/能力
 - 展示模块的核心功能和适用场景
 - AI 可以反推用 `x <mod> <subcmd> --help` 来看更多细节
 
-### 4. 不怕重复，不同角度多场景描述
+### 5. 不怕重复，不同角度多场景描述
 - **不用担心重复**：上层 subcmd 可能会与重要子 subcmd 的 tldr 重合
 - **多角度描述**：同一功能可以从不同使用场景描述
 - **提供更多选择**：AI 可以根据不同场景选择合适的命令
 
-### 5. 描述前缀规范
+### 6. 描述前缀规范
 | 前缀 | 用途 | 示例 |
 |------|------|------|
 | `"示例: xxx"` | 功能模块 | `"示例: 查看主机信息"` |
 | `"测试: xxx"` | 测试模块 | `"测试: 验证整数类型"` |
 | `"警告: xxx"` | 危险操作 | `"警告: 删除不可恢复"` |
 
-### 6. 展示最强能力
+### 7. 展示最强能力（次要原则）
 - 多值、批量、复杂模式 > 单值简单模式
 - 让 AI 知道模块的上限能力
+- **当与场景适用原则冲突时，让位于场景适用**
+
+### 8. 文档中使用 `--help` 而非 `-h`
+- 在 tldr、tip、desc 等所有文档中，引用帮助信息时使用 `--help` 而非 `-h`
+- 前提是命令确实提供 `--help`
+
+```yaml
+# ✅ 正确
+- cn: "详情参见 x dbnomics align --help"
+- cn: "别名和完整 ID 详见 x dbnomics --help"
+
+# ❌ 错误
+- cn: "详情参见 x dbnomics align -h"
+```
 
 ---
 
@@ -254,7 +330,7 @@ Advise 与以下三个操作紧密关联：
 
 ```yaml
 <tldr>:
-  # 第一个：入门代表命令
+  # 第一个：最简单、最自然的调用
   - cmd: x host
     cn: "示例: 交互式查看 hosts 文件"
     en: "Example: interactive view hosts file"
@@ -275,6 +351,34 @@ Advise 与以下三个操作紧密关联：
   - cmd: x host app
     cn: "示例: 交互式模糊查找主机"
     en: "Example: interactive fuzzy search hosts"
+```
+
+**好的 TLDR 结构（场景化、含格式选项）**：
+
+对于支持多种输出格式的子命令，第一条不带格式选项（最自然的调用），格式选项各出现一次，后续聚焦场景。
+
+> **参考示例**：执行 `x dbnomics align --help` 查看完整输出。
+
+```yaml
+<tldr>:
+  # 第一条：不带格式选项，描述说明默认行为
+  - cmd: x dbnomics align imf.us.cpi imf.de.cpi imf.jp.cpi
+    cn: "对比美/德/日 CPI，交互终端以 csv app 浏览，管道则以 TSV 输出"
+    en: "Compare US/Germany/Japan CPI; interactive terminal opens csv app, pipe outputs TSV"
+
+  # 格式选项各出现一次，描述说明适用场景
+  - cmd: x dbnomics align --csv imf.us.gdp imf.cn.gdp
+    cn: "CSV 格式: 对比美/中 GDP，适合数据库导入、表格软件或脚本处理"
+    en: "CSV format: Compare US/China GDP, suitable for database import, spreadsheets, or scripting"
+
+  - cmd: x dbnomics align --tsv fed.10y fed.2y fed.3m
+    cn: "TSV 格式: 对比美国国债收益率曲线，适合管道和 awk/grep 处理"
+    en: "TSV format: Compare US Treasury yield curve, suitable for piping with awk/grep"
+
+  # 后续聚焦场景，除非场景需要否则不带格式选项
+  - cmd: x dbnomics align imf.us.unemployment imf.de.unemployment
+    cn: "对比美/德失业率"
+    en: "Compare US/Germany unemployment"
 ```
 
 ## 3.6.3 子命令级别的 tldr
@@ -453,14 +557,78 @@ get:
 
 ### 4.5 效率模块特殊规则
 
-效率模块（assert、is、str、env、path）为高性能设计，**子命令无 help 支持**。
+#### 什么是效率模块
+
+效率模块是 x-cmd 中少数几个为极致性能设计的底层模块。
+
+**判定标准**：如果一个子函数的主体执行时间**小于参数判断的开销**（如解析 `-h`、显示 help），那么它就是效率函数。整个模块如果绝大部分子命令都是效率函数，才标记为效率模块。
+
+**已确认的效率模块**：`assert`、`is`、`str`（仅此三个）
+
+> **⚠️ 判定效率模块要非常小心**：
+> - 效率模块的数目极少，不要轻易将模块标记为效率模块
+> - `env`、`path` 等模块虽有部分效率函数，但不一定是完整的效率模块
+> - 部分效率模块可能存在非效率函数（即有些子命令的执行时间大于参数判断开销）
+> - 不确定时，**不要标记为效率模块**，让它做普通模块即可
+
+#### 效率函数的继承规则
+
+一个子命令（subcmd）**仅当其上层（父层或祖层）被标记为效率模块**时，才算效率函数。
+
+```
+模块层（root）
+  └── <meta>: <subcmd-help>: disable    ← 标记为效率模块
+        ├── subcmd-a                  ← 效率函数（继承自模块层）
+        ├── subcmd-b                  ← 效率函数（继承自模块层）
+        └── subcmd-c                  ← 效率函数（继承自模块层）
+
+模块层（root）
+  └── <meta>: （无 subcmd-help: disable）  ← 普通模块
+        ├── subcmd-a                  ← 普通函数
+        ├── subcmd-b                  ← 普通函数
+        └── subcmd-c                  ← 普通函数
+```
+
+**关键点**：
+- 效率函数的判定是**自上而下继承**的，不是按单个子命令独立判定
+- 只要模块层标记了 `<subcmd-help>: disable`，该模块下**所有**子命令都是效率函数
+- 如果模块层没有标记，即使某个子命令执行很快，它也不算效率函数
+
+> **⚠️ 显式标定原则**：
+> `<subcmd-help>: disable` **必须由开发者显式标定**。lint、scan 等检查工具**不应主动推断或认定**某个模块为效率模块。
+> - 检查工具只负责：如果已标记，则验证标记后的约束是否满足
+> - 检查工具**不负责**：判断某个模块"应该"标记为效率模块
+> - 没有 `<subcmd-help>: disable` 标记 → 一律视为普通模块，不做任何效率模块相关的检查
+> - 检查工具可以**建议**某些 subcmd 适合标记为效率函数（info 级别），但未经作者许可，不得自动变更
+
+#### AI 迭代的边界
+
+> **经验教训**：AI 在迭代修复 story 时，可能反复建议将未标记的模块认定为效率模块，导致方向越走越偏。
+>
+> 这说明有些决策**必须由人类/设计者做出**，不适合交给 AI 自动迭代。效率模块的判定就是典型的例子 —— 它需要开发者对模块性能特征的深入理解，而非模式匹配。
+>
+> 这也是 Unix 小工具哲学的体现：工具的**结果域越小，越容易收敛**。检查工具应聚焦于"已标记的约束是否满足"这一可验证的小问题，而非"这个模块应不应该标记"这一开放性的大问题。
+
+#### `_` 后缀子命令不需要在 advise 中声明
+
+以 `_` 结尾的子命令（如 `join_`、`split_`、`v4_`）是内部脚本变体，**不需要**在 advise 中作为 subcmd 声明，不需要补全支持。
+
+- 其对应的**无 `_` 版本**（如 `join`、`split`、`v4`）已经在 subcmd 定义中
+- `_` 变体的存在只需在 `<tip>` 中提及即可
+- 详见 [12.6 `_` 后缀子命令](#126-_-后缀子命令内部脚本变体)
+
+#### 效率模块的约束
+
+- 标记 `<meta>: <subcmd-help>: disable`，子命令不支持 `-h`/`--help`
+- 所有 TLDR 必须在根级别
+- 子命令下禁止 `<tldr>` 和复杂选项定义
 
 ```yaml
 <meta>:
-  subcmd-help: disable      # 标记为效率模块
+  <subcmd-help>: disable      # 标记为效率模块
 
 # 所有 TLDR 必须在根级别
-tldr:
+<tldr>:
   - cmd: x assert is-int 1 2 3
     cn: "测试: 批量验证"
 
@@ -794,16 +962,19 @@ export ___X_CMD_LANG=zh
 
 | 特性 | 效率模块 | 普通模块 |
 |------|----------|----------|
-| 示例 | assert, is, str, env, path | host, git, bwh |
-| `<meta>: subcmd-help` | `disable` | 不需要或 `enable` |
+| 已确认 | assert, is, str | host, git, bwh, env, path, ... |
+| 判定标准 | 子函数执行时间 < 参数判断开销 | 不满足效率模块标准 |
+| `<meta>: <subcmd-help>` | `disable` | 不需要或 `enable` |
 | TLDR 位置 | **根级别** | 根级别或子命令下 |
 | 子命令 help | **不支持** | 支持 |
 | `_` 变体 | 通常有 | 可选 |
 
+> **注意**：`env`、`path` 等模块虽有部分效率函数，但整体不是效率模块。不确定时不标记。
+
 ```yaml
 # 效率模块
 <meta>:
-  subcmd-help: disable
+  <subcmd-help>: disable
 
 <tldr>:
   - cmd: x assert is-int 1 2 3
@@ -842,7 +1013,14 @@ git:
 
 ### 6.12 内置子命令 `-h|--help`
 
-> **重要**：`-h|--help` 是**内置子命令**，不需要在 advise 中显式定义。代码中通过 `case "$1" in -h|--help) ...` 处理。
+`-h|--help` 是 x-cmd 各模块/函数的**默认内置子命令**。
+
+- **不需要**在 advise 中声明 `-h|--help` 为子命令
+- **不需要**在子命令分类列表（`<subcmd:xxx>`）中列出
+- **不需要**在 tldr、tip、desc 等 help 文档中提及 `-h|--help`
+- 代码中通过 `case "$1" in -h|--help) ...` 统一处理
+
+> 正因为默认，所以不需要在 advise 和 help 文档中提及。用户自然知道可以用 `--help`。
 
 ---
 
@@ -1011,16 +1189,16 @@ cat:
 ### 9.8 忘记 `<meta>` 标记效率模块
 
 ```yaml
-# ❌ 错误 - 效率模块没有标记 subcmd-help: disable
+# ❌ 错误 - 效率模块没有标记 <subcmd-help>: disable
 <name>:
   str:
   cn: 字符串处理
   en: String manipulation
-# 没有 <meta>: subcmd-help: disable
+# 没有 <meta>: <subcmd-help>: disable
 
 # ✅ 正确
 <meta>:
-  subcmd-help: disable
+  <subcmd-help>: disable
 ```
 
 ---
@@ -1122,7 +1300,7 @@ fz:
 
 ```yaml
 <meta>:
-  subcmd-help: disable
+  <subcmd-help>: disable
 
 <name>:
   assert:
@@ -1203,7 +1381,7 @@ is-set:
 
 ```yaml
 <meta>:
-  subcmd-help: disable
+  <subcmd-help>: disable
 
 <name>:
   str:
@@ -1374,7 +1552,8 @@ git diff HEAD -- adv/index.yml | grep -E "^[-+].*|"
 
 ### 12.4 效率模块检查
 
-- [ ] 效率模块标记 `<meta>: subcmd-help: disable`
+- [ ] 仅 assert、is、str 标记为效率模块（判定标准：子函数执行时间 < 参数判断开销）
+- [ ] 效率模块标记 `<meta>: <subcmd-help>: disable`
 - [ ] 所有 TLDR 在根级别
 - [ ] 子命令下无 `<tldr>`
 
@@ -1420,7 +1599,54 @@ join:
 
 ## 十三、相关文档
 
-### 13.1 AI 学习指南
+### 13.1 规则文件（rule/advise.rule.yml）
+
+`rule/advise.rule.yml` 与本文件（`spec.md`）位于同一目录，**互为参考，同时更新**。
+
+| 文件 | 用途 | 格式 |
+|------|------|------|
+| `spec.md`（本文件） | 编写规范：字段定义、原则、示例、错误模式 | Markdown |
+| `rule/advise.rule.yml` | `x check` / `x rule` 的检查规则 | YAML |
+
+**规则文件结构**：
+
+```yaml
+ADV-<category>-<number>:
+  name: 规则简称
+  apply: adv/index.yml
+  level: error | warn | info
+  desc:
+  - 规则描述
+  tldr:           # 可选：正反示例
+  - wrong: ...
+    right: ...
+```
+
+**level 含义**：
+
+| level | 说明 | 效果 |
+|-------|------|------|
+| `error` | 必须遵守 | lint 失败 |
+| `warn` | 应该遵守 | 警告但不失败 |
+| `info` | 建议性 | 仅供参考，不影响 lint |
+
+**规则分类**：
+
+| 分类前缀 | 范围 |
+|---------|------|
+| `ADV-syntax-` | YAML 语法与结构 |
+| `ADV-field-` | 必需字段 |
+| `ADV-option-` | 选项前置规则 |
+| `ADV-tldr-` | TLDR 编写规则 |
+| `ADV-tip-` | Tip 编写规则 |
+| `ADV-modify-` | 修改规则（顺序、重命名） |
+| `ADV-efficiency-` | 效率模块规则 |
+| `ADV-subcmd-` | 子命令规则（`_` 后缀等） |
+| `ADV-writing-` | 写作优先级 |
+
+> **维护原则**：修改 spec.md 中的任何编写原则时，应在 rule.yml 中添加或更新对应规则；修改 rule.yml 时，应同步更新 spec.md 中的相关章节。
+
+### 13.2 AI 学习指南
 
 **AI 学习 advise 应该执行**：
 ```bash
@@ -1429,7 +1655,7 @@ x advise spec show
 
 这是 advise 的权威文档，包含了所有编写 advise 的规则。
 
-### 13.2 x-cmd-spec 参考文档
+### 13.3 x-cmd-spec 参考文档
 
 x-cmd-spec 中的 advise 相关文档已简化，内容合并到 `x advise spec show`：
 
@@ -1443,7 +1669,7 @@ x-cmd-spec 中的 advise 相关文档已简化，内容合并到 `x advise spec 
 | `706-开发-参数处理.md` | 参考 | 开发者参数处理 |
 | `707-sleep-os-advise-cheatsheet.md` | 参考 | 示例参考 |
 
-### 13.3 标准模块参考
+### 13.4 标准模块参考
 
 参考以下模块的 advise 文件学习最佳实践：
 
@@ -1452,7 +1678,7 @@ x-cmd-spec 中的 advise 相关文档已简化，内容合并到 `x advise spec 
 | **bwh** | `x-bash/bwh/adv/index.yml` | 多段式 advise、`<ref>` 外部引用 |
 | **line** | `x-bash/line/adv/index.yml` | 子命令分类、`<tip>` 模块级别 `_` 变体说明 |
 | **tldr** | `x-bash/tldr/adv/index.yml` | `<web>` 字段、`tlfz` 快捷命令 |
-| **assert** | `x-bash/assert/adv/index.yml` | 效率模块标记（`subcmd-help: disable`） |
+| **assert** | `x-bash/assert/adv/index.yml` | 效率模块标记（`<subcmd-help>: disable`） |
 | **str** | `x-bash/str/adv/index.yml` | 效率模块、TLDR 在根级别 |
 | **timeout** | `x-bash/timeout/adv/index.yml` | 选项模式 |
 | **passwd** | `x-bash/passwd/adv/index.yml` | 纯选项模式 |
@@ -1461,8 +1687,9 @@ x-cmd-spec 中的 advise 相关文档已简化，内容合并到 `x advise spec 
 | **home** | `x-bash/home/adv/index.yml` | 基础模块 |
 | **uuid** | `x-bash/uuid/adv/index.yml` | 清晰的子命令分类 |
 | **tlfz** | `x-bash/tlfz/adv/index.yml` | 独立模块示例 |
+| **dbnomics** | `x-bash/dbnomics/adv/index.yml` | 场景化 tldr、auto 模式、多数据源别名、大量 tip |
 
-### 13.4 标准模块说明文档
+### 13.5 标准模块说明文档
 
 详细的标准模块参考：
 ```bash
@@ -1476,7 +1703,7 @@ x advise spec show --standard-modules
 | 字段 | 类型 | 用途 |
 |------|------|------|
 | `<name>` | object | 模块名称（cn, en） |
-| `<meta>` | object | 元数据（default-subcmd, subcmd-help） |
+| `<meta>` | object | 元数据（default-subcmd, <subcmd-help>） |
 | `<synopsis>` | array | 命令用法示例（仅模块级别） |
 | `<desc>` | object | 描述（cn, en） |
 | `<tip>` | array | 使用提示 |
@@ -1520,4 +1747,4 @@ v1 将引入 `<option>` 字段：
 
 *本文档版本: v0*
 *创建: 2026-05-04*
-*最后更新: 2026-05-04*
+*最后更新: 2026-05-14*

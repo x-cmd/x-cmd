@@ -6,7 +6,9 @@ ___x_cmd_agent_setup_addprompt(){
     local pattern="$3"
     local prompt="$4"
     [ -e "${dir}" ]   ||  {
-        agent:info "Skip adding prompt into [file=$fp] because [dir=$dir] is not existed."
+        local dir_tilde="~${dir#$HOME}"
+        local fp_tilde="~${fp#$HOME}"
+        agent:info "Skip adding prompt into [file=$fp_tilde] because [dir=$dir_tilde] is not existed."
         return 1
     }
 
@@ -44,35 +46,40 @@ ___x_cmd_agent_setup_addprompt_removeline_then_append_(){
 }
 
 ___x_cmd_agent_setup(){
-    local X_help_cmd=; X_help_cmd='___x_cmd help -m agent setup' help:arg:parse
-
-    # local prompt='Load x-cmd with `. ~/.x-cmd.root/X` (required before using `x`), then `x nihao --llmstxt` to explore usage. Docs: https://www.x-cmd.com/llms.txt'
-
-    # local prompt='Load x-cmd first before using `x`: `. ~/.x-cmd.root/X`. Then explore with `x nihao --llmstxt` or discover and use more skills via `x skill`.'
+    local all=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent setup "$@" ; return 0 ;;
+            --all)          all=1; shift ;;
+            *)              break ;;
+        esac
+    done
 
     local prompt='Use x-cmd skill to access 300+ shell utilities, 1000+ packages—all without sudo, and discover various safe, human-vetted skills. Learn more: https://www.x-cmd.com/llms.txt'
 
     local pattern='https://www.x-cmd.com/llms.txt'
 
-    ___x_cmd_agent_setup_addprompt "$HOME/.agents"          "$HOME/.agents/AGENTS.md"               "$pattern" "$prompt"
-    ___x_cmd_agent_setup_addprompt "$HOME/.claude"          "$HOME/CLAUDE.md"                       "$pattern" "$prompt"
-    ___x_cmd_agent_setup_addprompt "$HOME/.codex"           "$HOME/.codex/AGENTS.md"                "$pattern" "$prompt"
-    ___x_cmd_agent_setup_addprompt "$HOME/.gemini"          "$HOME/.gemini/GEMINI.md"               "$pattern" "$prompt"
-    ___x_cmd_agent_setup_addprompt "$HOME/.config/opencode" "$HOME/.config/opencode/AGENTS.md"      "$pattern" "$prompt"
-
-    # ___x_cmd_agent_setup_addprompt "$HOME/.openclaw"        "$HOME/.openclaw/MEMORY.md"             "$pattern" "$prompt"
-
-    # Opencode and kimi will read.
+    local dir fp
+    while read -r dir fp; do
+        [ -n "$all" ] && ___x_cmd mkdirp "$dir"
+        ___x_cmd_agent_setup_addprompt "$dir" "$fp" "$pattern" "$prompt"
+    done <<A
+$HOME/.agents $HOME/.agents/AGENTS.md
+$HOME/.claude $HOME/CLAUDE.md
+$HOME/.codex $HOME/.codex/AGENTS.md
+$HOME/.gemini $HOME/.gemini/GEMINI.md
+$HOME/.config/opencode $HOME/.config/opencode/AGENTS.md
+A
 
     agent:info "Add x-cmd skills to ~/.agents and other agent directories"
 
-    local dir
     while read -r dir; do
-        [ -d "$dir" ]   ||  {
+        [ -d "$dir" ] || [ -n "$all" ] || {
+            local dir_tilde="~${dir#$HOME}"
             agent:info \
                 --tip-1 "If you want to mkdir if directory unexisted -> x agent setup --all" \
-                --tip-1 "Create folder manually, then run the command againt -> x mkdirp $dir && x agent setup" \
-                "Skip skill link for agent directory doesnot exist -> $dir"
+                --tip-1 "Create folder manually, then run the command againt -> x mkdirp $dir_tilde && x agent setup" \
+                "Skip skill link for agent directory doesnot exist -> $dir_tilde"
             continue
         }
         ___x_cmd_agent_setup___addskill_ln "$dir"
@@ -84,11 +91,45 @@ $HOME/.config/opencode
 $HOME/.openclaw
 A
 
-    # Now inject.
+    local unify_list=
+    for fp in "$HOME/CLAUDE.md" "$HOME/.codex/AGENTS.md" "$HOME/.gemini/GEMINI.md" "$HOME/.config/opencode/AGENTS.md"; do
+        [ -e "$fp" ] || continue
+        local fp_tilde="~${fp#$HOME}"
+        unify_list="${unify_list:+$unify_list }$fp_tilde"
+    done
 
-    agent:info                      \
-        --tip   "x agent unify"     \
-        "Consider unifying the ~/CLAUDE.md ~/.codex/AGENTS.md ~/.gemini/GEMINI.md ~/.config/opencode/AGENTS.md into one file."
+    [ -n "$unify_list" ] && agent:info  \
+        --tip   "x agent unify"         \
+        "Consider unifying the $unify_list into one file."
+}
+
+___x_cmd_agent_is_setup(){
+    local pattern='https://www.x-cmd.com/llms.txt'
+    local dir fp
+
+    while read -r dir fp; do
+        [ -d "$dir" ] || continue
+        [ -f "$fp" ] && ___x_cmd_cmds grep -qF "$pattern" "$fp" 2>/dev/null || return 1
+    done <<A
+$HOME/.agents $HOME/.agents/AGENTS.md
+$HOME/.claude $HOME/CLAUDE.md
+$HOME/.codex $HOME/.codex/AGENTS.md
+$HOME/.gemini $HOME/.gemini/GEMINI.md
+$HOME/.config/opencode $HOME/.config/opencode/AGENTS.md
+A
+
+    while read -r dir; do
+        [ -d "$dir" ] || continue
+        [ -e "$dir/skills/x-cmd" ] || return 1
+    done <<A
+$HOME/.agents
+$HOME/.claude
+$HOME/.codex
+$HOME/.config/opencode
+$HOME/.openclaw
+A
+
+    return 0
 }
 
 ___x_cmd_agent_setup___addskill_ln(){

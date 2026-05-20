@@ -3,31 +3,40 @@
 ___x_cmd_feishu_listen(){
     param:void
 
-    local format=;
-    local fp=;
-
+    local chat_type="admin"
+    local format="" fp="" chatid=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)      ___x_cmd help -m feishu listen "$@" ; return 0 ;;
             --fp)           fp=1 ;          shift ;;
             --json)         format="json";  shift ;;
+            --admin)        chat_type="admin"; chatid="$2";    arg:2:shift ;;
+            --group)
+                            if [ -n "$2" ]; then
+                                chat_type="group"; chatid="$2"; shift 2
+                            else
+                                chat_type="group"; shift
+                            fi
+                            ;;
             *)              N=feishu M="Unknown op -> $1" log:ret:64   ;;
         esac
     done
 
+    local chats=
+    if [ -n "$chatid" ]; then
+        chats="$chatid"
+    else
+        chats="$(___x_cmd feishu group ls --json | ___x_cmd jq -r '.data.items[].chat_id' 2>/dev/null)"
+        [ -n "$chats" ] || N=feishu M="Failed to start listener: cannot get group list." log:ret:64
+    fi
+
     local x_
     local cur_token
     ____x_cmd_tenant_token ; cur_token="$x_"
-
-
-    local sync_buf_file="${___X_CMD_FEISHU_TMP}/sync_buf"
-
-    # TODO:
-    local chats=
-    chats="$(___x_cmd feishu group ls --json | ___x_cmd jq -r '.data.items[].chat_id' 2>/dev/null)"
-    [ -n "$chats" ] || N=feishu M="Failed to start listener: cannot get group list." log:ret:64
+    local start_time=; ___x_cmd date timestamp_ ; start_time="$x_"
 
     local date=;
+    local sync_buf_file="${___X_CMD_FEISHU_TMP}/sync_buf"
     ___x_cmd date timestamp_ ; date="$x_"
     printf "%s" "$date" > "$sync_buf_file"
     sleep 1
@@ -36,6 +45,13 @@ ___x_cmd_feishu_listen(){
     local curl_errcode=0
     while true; do
         [ ! -f "$sync_buf_file" ] || read -r date <"$sync_buf_file"
+
+        # Refresh token every 30 minutes
+        local now=; ___x_cmd date timestamp_ ; now="$x_"
+        if [ $((now - start_time)) -ge 1800 ]; then
+            ____x_cmd_tenant_token ; cur_token="$x_"
+            start_time="$now"
+        fi
 
         local chatid
         while IFS= read -r chatid; do
@@ -59,17 +75,17 @@ ___x_cmd_feishu_listen(){
 $resp
 A
 
-            if [ -n "$code" ] && [ "$code" != "0" ]; then
-                fail_count=$((fail_count+1))
-                feishu:error "[fail-count=$fail_count] Failed to start listener: $resp"
-                if [ "$fail_count" -lt 5 ]; then
-                    ___x_cmd sleep 1s || return $?
-                    continue
-                else
-                    return 1
-                fi
-            fi
-            fail_count=0
+            # if [ -n "$code" ] && [ "$code" != "0" ]; then
+            #     fail_count=$((fail_count+1))
+            #     feishu:error "[fail-count=$fail_count] Failed to start listener: $resp"
+            #     if [ "$fail_count" -lt 5 ]; then
+            #         ___x_cmd sleep 1s || return $?
+            #         continue
+            #     else
+            #         return 1
+            #     fi
+            # fi
+            # fail_count=0
 
             [ "$msg" != "[]" ]     || continue
             [ "$sender" = "user" ] || continue
@@ -77,6 +93,10 @@ A
             printf "%s" "$date" > "$sync_buf_file"
 
             if [ -n "$fp" ]; then
+                if [ "$chat_type" = "admin" ]; then
+                    chatid="admin"
+                fi
+
                 [ -n "$chatid" ] || {
                     feishu:error "Failed to get chat id, cannot save data to file"
                     continue
