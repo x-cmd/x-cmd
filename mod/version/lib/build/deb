@@ -1,0 +1,104 @@
+# shellcheck shell=dash disable=SC2016
+
+# Entry point
+___x_cmd_version_build_deb(){
+    local version="$1"
+    local versum="$2"
+    local mode="$3"
+
+    ___x_cmd_version_build_deb_builddir "$version" "$versum" || return "$?"
+
+    if [ "$mode" = "docker" ]; then
+        ___x_cmd_version_build_deb_docker "$version"
+    else
+        ___x_cmd_version_build_deb_local "$version"
+    fi
+}
+
+# Build deb
+___x_cmd_version_build_deb_docker(){
+    local version="$1"
+    printf "%s\n" 'FROM debian:latest
+RUN useradd -m builder
+USER builder
+WORKDIR /home/builder' > ".build/debian-builder.Dockerfile"
+
+    docker build -f ".build/debian-builder.Dockerfile" --tag debian-builder .
+    docker run --rm -v "$PWD/.build/deb:/home/builder/debbuild" debian-builder sh -c '
+    cd /home/builder/debbuild
+    chmod 755 x-cmd/DEBIAN/postinst
+    chmod 755 x-cmd/DEBIAN/postrm
+    dpkg-deb --root-owner-group --build x-cmd || exit 1
+' || return "$?"
+    local distfp="$___X_CMD_VERSION_BUILD_DATA/release/${version}/deb"
+    ___x_cmd mkdirp "$distfp"
+	___x_cmd_cmds cp -rf "$builddir/deb/x-cmd.deb" "$distfp/x-cmd_${version#v}_all.deb"
+
+}
+
+___x_cmd_version_build_deb_local()(
+    local version="$1"
+    cd ".build/deb"
+    chmod 755 x-cmd/DEBIAN/postinst
+    chmod 755 x-cmd/DEBIAN/postrm
+    dpkg-deb --build x-cmd || return "$?"
+)
+
+# Create build directory
+___x_cmd_version_build_deb_builddir(){
+    local version="$1"
+    local versum="$2"
+    local url="$(___x_cmd_version_build_info___ url)"
+    local desc="$(___x_cmd_version_build_info___ desc)"
+
+    local builddir=".build/deb/x-cmd"
+    ___x_cmd rm -rf "$builddir"
+    ___x_cmd mkdirp "$builddir/DEBIAN"
+    cp -rf ".build/x-cmd-${version}.tgz" "$builddir/${versum}.tgz"
+
+    printf "%s\n" 'Package: x-cmd
+Version: '"${version#v}"'
+Architecture: all
+Maintainer: Li Junhao <l@x-cmd.com>
+Description: '"${desc}"'
+Homepage: '"${url}"'' > "$builddir/DEBIAN/control"
+
+    printf "%s\n" '#!/bin/sh
+
+post_install() {
+    local _pkgsum='"$versum"'
+    local _pkgdir="/usr/share/x-cmd/v/$_pkgsum"
+    local _pkgfile="$_pkgsum.tgz"
+    if [ ! -f "$_pkgfile" ]; then
+        printf "%s\n" "- I|x: Not found x-cmd pkg tgz file -> $_pkgfile" >/dev/tty
+        return 1
+    else
+        printf "%s\n" "- I|x: Unpacking $_pkgfile to $_pkgdir" >&2
+        mkdir -p "$_pkgdir"
+        tar -xzf "$_pkgfile" -C "$_pkgdir" || return 1
+
+        printf "%s\n" "- I|x: Linking $_pkgdir to /usr/share/x-cmd/v/latest" >&2
+        rm -rf "/usr/share/x-cmd/v/latest"
+        ln -sf "$_pkgdir" "/usr/share/x-cmd/v/latest" || return 1
+
+        printf "%s\n" "- I|x: Create /usr/bin/x-cmd" >&2
+        install -Dm755 "$_pkgdir/mod/x-cmd/lib/bin/x-cmd" "/usr/bin/x-cmd"
+        chmod +x "/usr/bin/x-cmd"
+    fi
+}
+
+post_install
+' > "$builddir/DEBIAN/postinst"
+
+    printf "%s\n" '#!/bin/sh
+
+post_remove() {
+    [ ! -f /usr/bin/x-cmd ]         || rm -rf /usr/bin/x-cmd
+    [ ! -f /usr/bin/x ]             || rm -rf /usr/bin/x
+}
+
+post_remove
+' > "$builddir/DEBIAN/postrm"
+}
+
+

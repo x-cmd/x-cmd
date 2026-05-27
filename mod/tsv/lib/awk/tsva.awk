@@ -36,7 +36,7 @@ function s( str,    i ){
 
 BEGIN{
     if (TSVA_HAS_HEADER) {
-        readline()
+        getline
         tsva_handle_header()
     }
 }

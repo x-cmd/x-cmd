@@ -1,0 +1,302 @@
+# shellcheck shell=dash disable=2120
+
+___X_CMD_AGENT_SESSION_DIR="$___X_CMD_ROOT_DATA/agent/session"
+
+___x_cmd_agent_session(){
+    [ $# -gt 0 ]    ||      set -- --help
+
+    local op="$1" ;         shift
+    case "$op" in
+        -h|--help)          ___x_cmd help -m agent session ;  return 0  ;;
+        init|run|ask|summary|fork|ls)
+                            ___x_cmd_agent_session_"${op}" "$@" ;;
+        *)                  N=agent M="Unknown session subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+# Create a new session
+___x_cmd_agent_session_init(){
+    local harness=""
+    local workspace=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent session init; return 0 ;;
+            --harness)      harness="$2" ;          arg:2:shift ;;
+            --workspace)    workspace="$2" ;         arg:2:shift ;;
+            --)             shift ; break ;;
+            *)              break ;;
+        esac
+    done
+
+    if [ -z "$harness" ]; then
+        local x_=""; ___x_cmd_agent_harness_
+        harness="$x_"
+    fi
+
+    # Generate session ID
+    local session_id; session_id="$( ___x_cmd uuid )"
+
+    # Create session directory
+    local session_dir="$___X_CMD_AGENT_SESSION_DIR/$session_id"
+    ___x_cmd mkdirp "$session_dir"
+
+    # Resolve workspace
+    if [ -n "$workspace" ]; then
+        local x_=""; ___x_cmd abspath_ "$workspace"
+        workspace="${x_:-"$workspace"}"
+    else
+        workspace="$PWD"
+    fi
+
+    # Write metadata
+    local epoch; ___x_cmd epoch get_
+    printf "session_id: %s\nharness: %s\nworkspace: %s\ncreated_at: %s\nstatus: initialized\n" \
+        "$session_id" "$harness" "$workspace" "$x_" > "$session_dir/metadata.yml"
+
+    agent:info "Session created: $session_id"
+    printf "%s\n" "$session_id"
+}
+
+# Run a request within an existing session
+___x_cmd_agent_session_run(){
+    local session_id=""
+    local harness=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent session run; return 0 ;;
+            -i|--id)        session_id="$2" ;        arg:2:shift ;;
+            --harness)      harness="$2" ;           arg:2:shift ;;
+            --)             shift ; break ;;
+            *)              break ;;
+        esac
+    done
+
+    local prompt="$*"
+    [ -n "$prompt" ] || N=agent M="Please specify the prompt" log:ret:64
+
+    # Resolve session
+    local session_dir; session_dir="$( ___x_cmd_agent_session___resolve "$session_id" )" || return $?
+
+    # Read metadata
+    local stored_harness="" stored_workspace=""
+    ___x_cmd_agent_session___read_meta "$session_dir"
+    harness="${harness:-$stored_harness}"
+
+    if [ -z "$harness" ]; then
+        local x_=""; ___x_cmd_agent_harness_
+        harness="$x_"
+    fi
+
+    # Update status
+    local epoch; ___x_cmd epoch get_
+    ___x_cmd yml set "$session_dir/metadata.yml" status running
+    ___x_cmd yml set "$session_dir/metadata.yml" updated_at "$epoch"
+
+    # Delegate to agent request with session
+    ___x_cmd agent request --harness "$harness" --session "$session_id" --workspace "$stored_workspace" "$prompt"
+    local ret=$?
+
+    # Update status
+    if [ $ret -eq 0 ]; then
+        ___x_cmd yml set "$session_dir/metadata.yml" status ready
+    else
+        ___x_cmd yml set "$session_dir/metadata.yml" status error
+    fi
+    ___x_cmd yml set "$session_dir/metadata.yml" updated_at "$epoch"
+
+    return $ret
+}
+
+# Interactive ask within a session
+___x_cmd_agent_session_ask(){
+    local session_id=""
+    local harness=""
+    local yes_no=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent session ask; return 0 ;;
+            -i|--id)        session_id="$2" ;        arg:2:shift ;;
+            --harness)      harness="$2" ;           arg:2:shift ;;
+            --yes-no)       yes_no=1 ;               shift ;;
+            --)             shift ; break ;;
+            *)              break ;;
+        esac
+    done
+
+    local prompt="$*"
+    [ -n "$prompt" ] || N=agent M="Please specify the question" log:ret:64
+
+    # Resolve session
+    local session_dir; session_dir="$( ___x_cmd_agent_session___resolve "$session_id" )" || return $?
+
+    # Read metadata
+    local stored_harness="" stored_workspace=""
+    ___x_cmd_agent_session___read_meta "$session_dir"
+    harness="${harness:-$stored_harness}"
+
+    if [ -z "$harness" ]; then
+        local x_=""; ___x_cmd_agent_harness_
+        harness="$x_"
+    fi
+
+    if [ -n "$yes_no" ]; then
+        prompt="Answer YES or NO only. $prompt"
+    fi
+
+    ___x_cmd agent request --harness "$harness" --session "$session_id" --workspace "$stored_workspace" "$prompt"
+}
+
+# Show session summary
+___x_cmd_agent_session_summary(){
+    local session_id=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent session summary; return 0 ;;
+            -i|--id)        session_id="$2" ;        arg:2:shift ;;
+            *)              [ -z "$session_id" ] && session_id="$1"; shift ;;
+        esac
+    done
+
+    local session_dir; session_dir="$( ___x_cmd_agent_session___resolve "$session_id" )" || return $?
+
+    if [ -f "$session_dir/metadata.yml" ]; then
+        ___x_cmd_cmds cat "$session_dir/metadata.yml"
+    else
+        agent:info "No metadata found for session"
+    fi
+}
+
+# Fork a session (create a new session from an existing one)
+___x_cmd_agent_session_fork(){
+    local session_id=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent session fork; return 0 ;;
+            -i|--id)        session_id="$2" ;        arg:2:shift ;;
+            *)              [ -z "$session_id" ] && session_id="$1"; shift ;;
+        esac
+    done
+
+    local session_dir; session_dir="$( ___x_cmd_agent_session___resolve "$session_id" )" || return $?
+
+    # Read original metadata
+    local stored_harness="" stored_workspace=""
+    ___x_cmd_agent_session___read_meta "$session_dir"
+
+    # Create new session
+    local new_id; new_id="$( ___x_cmd uuid )"
+    local new_dir="$___X_CMD_AGENT_SESSION_DIR/$new_id"
+    ___x_cmd mkdirp "$new_dir"
+
+    local epoch; ___x_cmd epoch get_
+    printf "session_id: %s\nharness: %s\nworkspace: %s\ncreated_at: %s\nforked_from: %s\nstatus: initialized\n" \
+        "$new_id" "$stored_harness" "$stored_workspace" "$epoch" "$session_id" > "$new_dir/metadata.yml"
+
+    agent:info "Forked session $session_id -> $new_id"
+    printf "%s\n" "$new_id"
+}
+
+# List all sessions
+___x_cmd_agent_session_ls(){
+    local format="text"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent session ls; return 0 ;;
+            --csv)          format="csv" ;    shift ;;
+            --tsv)          format="tsv" ;    shift ;;
+            --)             shift ; break ;;
+            *)              break ;;
+        esac
+    done
+
+    [ -d "$___X_CMD_AGENT_SESSION_DIR" ] || return 0
+
+    case "$format" in
+        csv)
+            printf "session_id,harness,status,workspace,created_at\n"
+            for d in "$___X_CMD_AGENT_SESSION_DIR"/*; do
+                [ -d "$d" ] || continue
+                [ -f "$d/metadata.yml" ] || continue
+                local id="${d##*/}"
+                local h="" s="" w="" c=""
+                ___x_cmd_agent_session___read_meta "$d"
+                printf "%s,%s,%s,%s,%s\n" "$id" "$stored_harness" "$s" "$stored_workspace" "$c"
+            done
+            ;;
+        tsv)
+            printf "session_id\tharness\tstatus\tworkspace\tcreated_at\n"
+            for d in "$___X_CMD_AGENT_SESSION_DIR"/*; do
+                [ -d "$d" ] || continue
+                [ -f "$d/metadata.yml" ] || continue
+                local id="${d##*/}"
+                local h="" s="" w="" c=""
+                ___x_cmd_agent_session___read_meta "$d"
+                printf "%s\t%s\t%s\t%s\t%s\n" "$id" "$stored_harness" "$s" "$stored_workspace" "$c"
+            done
+            ;;
+        *)
+            for d in "$___X_CMD_AGENT_SESSION_DIR"/*; do
+                [ -d "$d" ] || continue
+                [ -f "$d/metadata.yml" ] || continue
+                local id="${d##*/}"
+                local stored_harness="" stored_workspace=""
+                ___x_cmd_agent_session___read_meta "$d"
+                printf "%s  %s  %s\n" "$id" "${stored_harness:--}" "$stored_workspace"
+            done
+            ;;
+    esac
+}
+
+# --- Internal helpers ---
+
+# Resolve session ID to directory
+___x_cmd_agent_session___resolve(){
+    local session_id="$1"
+
+    if [ -z "$session_id" ]; then
+        # Try most recent
+        local last; last="$( ___x_cmd_cmds ls "$___X_CMD_AGENT_SESSION_DIR" 2>/dev/null | ___x_cmd_cmds sort -r | ___x_cmd_cmds head -n 1 )"
+        if [ -n "$last" ] && [ -d "$___X_CMD_AGENT_SESSION_DIR/$last" ]; then
+            printf "%s\n" "$___X_CMD_AGENT_SESSION_DIR/$last"
+            return 0
+        fi
+        N=agent M="No session found. Run 'x agent session init' to create one" log:ret:64
+        return 64
+    fi
+
+    local dir="$___X_CMD_AGENT_SESSION_DIR/$session_id"
+    if [ -d "$dir" ]; then
+        printf "%s\n" "$dir"
+        return 0
+    fi
+
+    N=agent M="Session not found: $session_id" log:ret:1
+}
+
+# Read metadata.yml into variables
+# Sets: stored_harness, stored_workspace
+___x_cmd_agent_session___read_meta(){
+    local session_dir="$1"
+    local meta="$session_dir/metadata.yml"
+
+    stored_harness=""
+    stored_workspace=""
+
+    [ -f "$meta" ] || return 0
+
+    while IFS= read -r line; do
+        case "$line" in
+            "harness:"*)        stored_harness="${line#*: }" ;;
+            "workspace:"*)      stored_workspace="${line#*: }" ;;
+        esac
+    done < "$meta" 2>/dev/null
+}
+
+___x_cmd_agent_session_skillpath(){
+    printf "%s\n" "$___X_CMD_ROOT_MOD/agent/lib/session/SKILL.md"
+}

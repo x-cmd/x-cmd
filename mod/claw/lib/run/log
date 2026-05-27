@@ -1,9 +1,11 @@
 # shellcheck shell=dash disable=2016
 
 ___x_cmd_claw_log(){
+    local ts=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --help|-h)  ___x_cmd help -m claw log "$@" ; return 0 ;;
+            --ts)       ts="$2" ; arg:2:shift ;;
             *)          break ;;
         esac
     done
@@ -14,14 +16,40 @@ ___x_cmd_claw_log(){
         return 1
     }
 
-    local recent_ts=""; read -r recent_ts <<A
+    local CLAW_LOG_COLOR=""
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; then
+        CLAW_LOG_COLOR=1
+    fi
+
+    local target_ts=""
+    if [ -n "$ts" ]; then
+        local d best_ts=""
+        for d in "$dir"/*; do
+            [ -d "$d" ] || continue
+            local dname="${d##*/}"
+            [ "$dname" -eq "$dname" ] 2>/dev/null || continue
+            [ "$dname" -le "$ts" ] 2>/dev/null || continue
+            if [ -z "$best_ts" ]; then
+                best_ts="$dname"
+            elif [ "$dname" -gt "$best_ts" ] 2>/dev/null; then
+                best_ts="$dname"
+            fi
+        done
+        if [ -z "$best_ts" ]; then
+            claw:warn "No logs found for timestamp $ts or earlier."
+            return 1
+        fi
+        target_ts="$best_ts"
+    else
+        read -r target_ts <<A
 $( ___x_cmd fsiter --ls --folder "$dir" | ___x_cmd_cmds sort -r )
 A
+    fi
 
-    [ -n "$recent_ts" ] || return 0
-    local ht; ht="$( ___x_cmd date iso "$recent_ts" )"
+    [ -n "$target_ts" ] || return 0
+    local ht; ht="$( ___x_cmd date iso "$target_ts" )"
     claw:info "Showing logs from $ht"
-    ___x_cmd_claw_log___recent "$dir/$recent_ts"
+    ___x_cmd_claw_log___recent "$dir/$target_ts"
 }
 
 ___x_cmd_claw_log___recent(){
@@ -37,7 +65,7 @@ ___x_cmd_claw_log___recent(){
     done <<A
 $x_
 A
-    ___x_cmd_cmds tail -F -q -n 0 "$@" | ___x_cmd awk0 -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_output_realtime.awk"
+    ___x_cmd_cmds tail -F -q -n 0 "$@" | CLAW_LOG_COLOR="$CLAW_LOG_COLOR" ___x_cmd cawk -i -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_output_realtime.awk"
 }
 
 ___x_cmd_claw_log___watch(){(
@@ -73,7 +101,7 @@ ___x_cmd_claw_log___watch(){(
     local scanner_pid=$!
 
     ___x_cmd_cmds tail -F -q -n 0 "$aggregate" | \
-        ___x_cmd awk0 -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_output_realtime.awk"
+        ___x_cmd cawk -i -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_output_realtime.awk"
 
     ___x_cmd kill tree "$scanner_pid" 2>/dev/null
     wait "$scanner_pid" 2>/dev/null
@@ -95,5 +123,5 @@ ___x_cmd_claw_log___output_all(){
 
     [ -n "$filelist" ] || return 0
 
-    filelist="$filelist" ___x_cmd awk0 -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_merge.awk"
+    filelist="$filelist" CLAW_LOG_COLOR="$CLAW_LOG_COLOR" ___x_cmd awk0 -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_merge.awk"
 }

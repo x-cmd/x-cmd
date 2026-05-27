@@ -111,6 +111,23 @@ function stdout_log_debug_if_enabled(label, msg){
     log_debug( "agent", "[" label "] " msg )
 }
 
+function log_truncate(s,    arr, n, i, r, line) {
+    if (s !~ /\n/) {
+        if (length(s) <= 200) return s
+        return substr(s, 1, 200) " ..."
+    }
+    n = split(s, arr, "\n")
+    r = ""
+    for (i = 1; i <= n && i <= 3; i++) {
+        if (i > 1) r = r "\n"
+        line = arr[i]
+        if (length(line) > 200) line = substr(line, 1, 200) " ..."
+        r = r line
+    }
+    if (n > 3) r = r "\n..."
+    return r
+}
+
 function save_session_id(o,           type, session_id){
     if ( HARNESS == "codex" ){
         type = o[ Q2_1, "\"type\"" ]
@@ -155,32 +172,34 @@ function stdout_content_codex(o,           type, item_type, text, command, outpu
     }
 
     # Debug mode
-    if ( type == "\"item.completed\"" ) {
+    if ( type == "\"thread.started\"" ) {
+        log_debug( "agent", "[codex:init] thread_id=" juq(o[ Q2_1, "\"thread_id\"" ]) )
+    } else if ( type == "\"item.completed\"" ) {
         item_type = o[ Q2_1, "\"item\"", "\"type\"" ]
 
         if ( item_type == "\"agent_message\"" ) {
             text = o[ Q2_1, "\"item\"", "\"text\"" ]
-            printf( "%s", juq(text) )
+            printf( "%s\n", juq(text) )
         } else if ( item_type == "\"reasoning\"" ) {
             text = o[ Q2_1, "\"item\"", "\"text\"" ]
-            log_debug( "agent", "[codex:reasoning] " substr(juq(text), 1, 200) )
+            log_debug( "agent", "[codex:reasoning] " log_truncate(juq(text)) )
         } else if ( item_type == "\"command_execution\"" ) {
             command = juq(o[ Q2_1, "\"item\"", "\"command\"" ])
             status = juq(o[ Q2_1, "\"item\"", "\"status\"" ])
             output = o[ Q2_1, "\"item\"", "\"aggregated_output\"" ]
             if ( output != "" ) output = " -> " substr(juq(output), 1, 80)
-            log_debug( "agent", "[codex:tool_use] " command output " [" status "]" )
+            log_debug( "agent", "[codex:tool_use] " log_truncate(command output) " [" status "]" )
         } else if ( item_type == "\"mcp_tool_call\"" ) {
             tool_name = juq(o[ Q2_1, "\"item\"", "\"tool\"" ])
             tool_args = o[ Q2_1, "\"item\"", "\"arguments\"" ]
             status = juq(o[ Q2_1, "\"item\"", "\"status\"" ])
             if ( tool_args != "" ) tool_args = "(" substr(juq(tool_args), 1, 80) ")"
-            log_debug( "agent", "[codex:tool_use] mcp/" tool_name tool_args " [" status "]" )
+            log_debug( "agent", "[codex:tool_use] mcp/" tool_name log_truncate(tool_args) " [" status "]" )
         } else if ( item_type == "\"collab_tool_call\"" ) {
             tool_name = juq(o[ Q2_1, "\"item\"", "\"tool\"" ])
             log_debug( "agent", "[codex:tool_use] collab/" tool_name )
         } else if ( item_type == "\"file_change\"" ) {
-            log_debug( "agent", "[codex:file_change] " juq(o[ Q2_1, "\"item\"", "\"status\"" ]) )
+            log_debug( "agent", "[codex:file_change] " log_truncate(juq(o[ Q2_1, "\"item\"", "\"status\"" ])) )
         }
     } else if ( type == "\"turn.completed\"" ) {
         log_debug( "agent", "[codex:result] turn completed" )
@@ -200,7 +219,9 @@ function stdout_content_gemini(o,           type, role, text, tool_name, status,
     }
 
     # Debug mode
-    if ( type == "\"message\"" ) {
+    if ( type == "\"init\"" ) {
+        log_debug( "agent", "[gemini-cli:init] session_id=" juq(o[ Q2_1, "\"session_id\"" ]) )
+    } else if ( type == "\"message\"" ) {
         role = o[ Q2_1, "\"role\"" ]
         if ( role == "\"assistant\"" ) {
             text = o[ Q2_1, "\"content\"" ]
@@ -214,7 +235,7 @@ function stdout_content_gemini(o,           type, role, text, tool_name, status,
         status = juq(o[ Q2_1, "\"status\"" ])
         output = o[ Q2_1, "\"output\"" ]
         if ( output != "" ) output = " -> " substr(juq(output), 1, 80)
-        log_debug( "agent", "[gemini-cli:tool_result] " tool_name " [" status "]" output )
+        log_debug( "agent", "[gemini-cli:tool_result] " tool_name " [" status "]" log_truncate(output) )
     } else if ( type == "\"result\"" ) {
         status = juq(o[ Q2_1, "\"status\"" ])
         log_debug( "agent", "[gemini-cli:result] " status )
@@ -242,7 +263,7 @@ function stdout_content_kimi(o,           role, content_type, i, l, text, tool_c
                 printf( "%s\n", juq(text) )
             } else if ( content_type == "\"thinking\"" ) {
                 text = o[ Q2_1, "\"content\"", "\""i"\"", "\"thinking\"" ]
-                log_debug( "agent", "[kimi:thinking] " substr(juq(text), 1, 200) )
+                log_debug( "agent", "[kimi:thinking] " log_truncate(juq(text)) )
             }
         }
         # Check tool_calls
@@ -251,12 +272,12 @@ function stdout_content_kimi(o,           role, content_type, i, l, text, tool_c
             tool_name = juq(o[ Q2_1, "\"tool_calls\"", "\""i"\"", "\"function\"", "\"name\"" ])
             tool_args = o[ Q2_1, "\"tool_calls\"", "\""i"\"", "\"function\"", "\"arguments\"" ]
             if ( tool_args != "" ) tool_args = "(" substr(juq(tool_args), 1, 80) ")"
-            log_debug( "agent", "[kimi:tool_use] " tool_name tool_args )
+            log_debug( "agent", "[kimi:tool_use] " tool_name log_truncate(tool_args) )
         }
     } else if ( role == "\"tool\"" ) {
         text = o[ Q2_1, "\"content\"" ]
         if ( text != "" ) text = " " substr(juq(text), 1, 200)
-        log_debug( "agent", "[kimi:tool_result]" text )
+        log_debug( "agent", "[kimi:tool_result]" log_truncate(text) )
     }
 }
 
@@ -271,7 +292,7 @@ function stdout_content_claude(o,           type, i, l, text, content_item_type,
             content_item_type = o[ Q2_1, "\"message\"", "\"content\"", "\""i"\"", "\"type\"" ]
             if ( content_item_type != "\"text\"" ) return
             text = o[ Q2_1, "\"message\"", "\"content\"", "\""i"\"", "\"text\"" ]
-            printf( "%s\n", juq(text) )
+            printf( "%s", juq(text) )
         }
         return
     }
@@ -287,7 +308,7 @@ function stdout_content_claude(o,           type, i, l, text, content_item_type,
                 printf( "%s\n", juq(text) )
             } else if ( content_item_type == "\"thinking\"" ) {
                 thinking_text = o[ Q2_1, "\"message\"", "\"content\"", "\""i"\"", "\"thinking\"" ]
-                log_debug( "agent", "[claude:thinking] " substr(juq(thinking_text), 1, 200) )
+                log_debug( "agent", "[claude:thinking] " log_truncate(juq(thinking_text)) )
             } else if ( content_item_type == "\"tool_use\"" ) {
                 tool_name = juq(o[ Q2_1, "\"message\"", "\"content\"", "\""i"\"", "\"name\"" ])
                 tool_param = ""
@@ -313,6 +334,10 @@ function stdout_content_claude(o,           type, i, l, text, content_item_type,
                     text = o[ Q2_1, "\"message\"", "\"content\"", "\""i"\"", "\"input\"", "\"path\"" ]
                     if ( text != "" ) tool_param = juq(text)
                 }
+                if ( tool_param == "" ) {
+                    text = o[ Q2_1, "\"message\"", "\"content\"", "\""i"\"", "\"input\"", "\"file_path\"" ]
+                    if ( text != "" ) tool_param = juq(text)
+                }
                 if ( tool_param != "" ) tool_param = "(" tool_param ")"
                 log_debug( "agent", "[claude:tool_use] " tool_name tool_param )
             }
@@ -325,7 +350,7 @@ function stdout_content_claude(o,           type, i, l, text, content_item_type,
             if ( content_item_type == "\"tool_result\"" ) {
                 result_preview = o[ Q2_1, "\"message\"", "\"content\"", "\""i"\"", "\"content\"" ]
                 if ( result_preview != "" ) {
-                    log_debug( "agent", "[claude:tool_result] " substr(juq(result_preview), 1, 200) )
+                    log_debug( "agent", "[claude:tool_result] " log_truncate(juq(result_preview)) )
                 } else {
                     log_debug( "agent", "[claude:tool_result] (empty)" )
                 }
@@ -337,7 +362,9 @@ function stdout_content_claude(o,           type, i, l, text, content_item_type,
         desc = o[ Q2_1, "\"description\"" ]
         if ( desc == "" ) desc = o[ Q2_1, "\"summary\"" ]
         if ( desc != "" ) {
-            log_debug( "agent", "[claude:" subtype "] " juq(desc) )
+            log_debug( "agent", "[claude:" subtype "] " log_truncate(juq(desc)) )
+        } else if ( subtype == "init" ) {
+            log_debug( "agent", "[claude:" subtype "] session_id=" juq(o[ Q2_1, "\"session_id\"" ]) )
         } else {
             log_debug( "agent", "[claude:" subtype "]" )
         }
@@ -371,26 +398,28 @@ function stdout_content_opencode(o,           type, part_type, text, tool_name, 
         part_type = o[ Q2_1, "\"part\"", "\"type\"" ]
         if ( part_type != "\"text\"" ) return
         text = o[ Q2_1, "\"part\"", "\"text\"" ]
-        printf( "%s\n", juq(text) )
+        printf( "%s", juq(text) )
         return
     }
 
     # Debug mode
-    if ( type == "\"text\"" ) {
+    if ( type == "\"step_start\"" ) {
+        log_debug( "agent", "[opencode:init] sessionID=" juq(o[ Q2_1, "\"sessionID\"" ]) )
+    } else if ( type == "\"text\"" ) {
         part_type = o[ Q2_1, "\"part\"", "\"type\"" ]
         if ( part_type == "\"text\"" ) {
             text = o[ Q2_1, "\"part\"", "\"text\"" ]
-            printf( "%s", juq(text) )
+            printf( "%s\n", juq(text) )
         }
     } else if ( type == "\"reasoning\"" ) {
         text = o[ Q2_1, "\"part\"", "\"text\"" ]
-        log_debug( "agent", "[opencode:thinking] " substr(juq(text), 1, 200) )
+        log_debug( "agent", "[opencode:thinking] " log_truncate(juq(text)) )
     } else if ( type == "\"tool_use\"" ) {
         tool_name = juq(o[ Q2_1, "\"part\"", "\"tool\"" ])
         tool_cmd = juq(o[ Q2_1, "\"part\"", "\"state\"", "\"input\"", "\"command\"" ])
         log_debug( "agent", "[opencode:tool_exec] " tool_name "(" tool_cmd ")" )
         tool_output = o[ Q2_1, "\"part\"", "\"state\"", "\"output\"" ]
-        if ( tool_output != "" ) log_debug( "agent", "[opencode:tool_result] " substr(juq(tool_output), 1, 200) )
+        if ( tool_output != "" ) log_debug( "agent", "[opencode:tool_result] " log_truncate(juq(tool_output)) )
     } else if ( type == "\"step_finish\"" ) {
         reason = juq(o[ Q2_1, "\"part\"", "\"reason\"" ])
         log_debug( "agent", "[opencode:result] " reason )

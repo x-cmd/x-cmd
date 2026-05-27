@@ -34,20 +34,20 @@ ___x_cmd_feishu_abot_send_text(){
     fi
 
     local msg="$1"
-    msg="$( ___x_cmd_feishu___jqu "$msg")"
+    # msg="$( ___x_cmd_feishu___jqu "$msg")"
 
     local msg_json
-    msg_json="$(___x_cmd_cmds cat <<A
-{
-    "content": "{\"text\":\"$msg\"}",
-    "msg_type": "text",
-    "receive_id": "$chatid"
-}
-A
-)"
+    msg_json="$(___x_cmd jq -n          \
+            --arg msg "$msg"            \
+            --arg chatid "$chatid"      \
+            '{
+              msg_type: "text",
+              receive_id: $chatid,
+              content: {text: $msg} | tojson
+            }')"
 
     feishu:debug "$(printf "%s" "$msg_json" )"
-    local resp; resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ )"
+    local resp; resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
 
     [ -z "$json_output" ] || {
         printf "%s" "$resp"
@@ -97,7 +97,7 @@ ___x_cmd_feishu_abot_send_image(){
 A
 )"
         feishu:debug "$(printf "%s" "$msg_json")"
-        local send_resp; send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___)"
+        local send_resp; send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
 
         [ -z "$json_output" ] || {
             printf "%s" "$resp"
@@ -153,7 +153,7 @@ A
 )"
         feishu:debug "$(printf "%s" "$msg_json")"
         local send_resp;
-        send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___)"
+        send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
 
         [ -z "$json_output" ] || {
             printf "%s" "$resp"
@@ -175,7 +175,16 @@ ___x_cmd_feishu_appsend___(){
     local x_=; local cur_token
     ____x_cmd_tenant_token ; cur_token="$x_"
 
-    ___x_cmd curl -s -X POST 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id' \
+    local receive_id_type="chat_id"
+    case "$1" in
+        ou_*)   receive_id_type="open_id" ;;
+        oc_*)   receive_id_type="chat_id" ;;
+        un_*)   receive_id_type="union_id" ;;
+        e_*)    receive_id_type="user_id" ;;
+        *@*)    receive_id_type="email" ;;
+    esac
+
+    ___x_cmd curl -s -X POST "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${receive_id_type}" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $cur_token" \
     -d @-
@@ -220,6 +229,7 @@ ___x_cmd_feishu___jqu(){
     text = (text == "") ? $0 : (text "\n" $0)
 }
 END{
+    gsub("\n", "\\\\&", text)
     gsub("\n", "\\n", text)
     gsub("\t", "\\t", text)
     printf("%s", text)

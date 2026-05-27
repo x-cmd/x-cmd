@@ -14,66 +14,36 @@ ___x_cmd_feishu_abot_service(){
     esac
 }
 
-# x feishu start --admin
-# x feishu start --group
-# x feishu start --group <chat_id>
+# x feishu abot service start --admin
+# x feishu abot service start --group
+# x feishu abot service start --group <chat_id>
 
 ___x_cmd_feishu_abot_service_start(){
     local chatid=;
     local chat_type="admin"
+    local sname="x-feishu-admin-listener"
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)      ___x_cmd help -m feishu abot service start "$@" ; return 0 ;;
-            --admin)        chat_type="admin"; shift ;;
+            -h|--help)  ___x_cmd help -m feishu abot service start "$@" ; return 0 ;;
+            --admin)    shift ;;
             --group)
-                            if [ -n "$2" ]; then
-                                chat_type="group"; chatid="$2"; shift 2
-                            else
-                                chat_type="group"; shift
-                            fi
-                            ;;
+                        chat_type="group"
+                        if [ -n "$2" ]; then
+                            chatid="$2"
+                            shift 2
+                            sname="x-feishu-group-${chatid}-listener"
+                            ! ___x_cmd service isalive "x-feishu-group-listener" || {
+                                feishu:info "Service x-feishu-group-listener is already running and listens to all groups, no need to start a separate service for [chat_id=$chatid]"
+                                return 0
+                            }
+                        else
+                            shift
+                            sname="x-feishu-group-listener"
+                        fi
+                        ;;
+            *)          N=feishu M="Unknown op -> $1" log:ret:64   ;;
         esac
     done
-
-    local sname="x-feishu-${chat_type}${chatid:+-${chatid}}-listener"
-
-    ___x_cmd_feishu_ensureinit || return "$?"
-
-    [ "$chat_type" != "admin" ] || {
-        if [ -n "$chatid" ]; then
-            ___x_cmd feishu --cfg chatid="$chatid"
-        else
-            chatid=""
-            ___x_cmd_feishu_cur chatid:= 2>/dev/null
-            [ -n "$chatid" ] || {
-                feishu:info "Please set your default chat id first ==> 'x feishu init'"
-                ___x_cmd feishu init || return $?
-            }
-        fi
-    }
-
-    ___x_cmd service start      "$sname"   --   x-cmd feishu abot service run --"${chat_type}" "$chatid" "$@"
-
-    ___x_cmd_cmds sleep 2
-    ___x_cmd service isalive "$sname" || {
-        feishu:error "Failed to start the feishu bot service."
-        ___x_cmd service log tail "$sname"
-        return 1
-    }
-    printf "%s " "status: "; ___x_cmd_feishu_abot_service_status --"$chat_type"
-}
-
-___x_cmd_feishu_abot_service_ensure(){
-    local chat_type="admin"
-    local chatid=""
-    local op="$1"; shift
-    case "$op" in
-        -h|--help)      ___x_cmd help -m feishu abot service stop "$@" ; return 0 ;;
-        admin)          chat_type="admin"  ;;
-        group)          chat_type="group"; ;;
-        oc_*)           chat_type="group"; chatid="$op"  ;;
-    esac
-    local sname="x-feishu-${chat_type}${chatid:+-${chatid}}-listener"
 
     ___x_cmd_feishu_ensureinit || return "$?"
 
@@ -81,8 +51,58 @@ ___x_cmd_feishu_abot_service_ensure(){
         chatid=""
         ___x_cmd_feishu_cur chatid:= 2>/dev/null
         [ -n "$chatid" ] || {
-            feishu:info "Please set your default chat id first ==> 'x feishu init'"
-            ___x_cmd feishu init || return $?
+            feishu:info "Please set your default chat id first"
+            ___x_cmd_feishu_init_chatid || return $?
+            ___x_cmd_feishu_cur chatid:= 2>/dev/null
+            [ -n "$chatid" ] || N=feishu M="Not found default chat id" log:ret:1
+        }
+    }
+
+    ___x_cmd service start      "$sname"   --   x-cmd feishu abot service run "--${chat_type}" "${chatid:+"$chatid"}" "$@"
+
+    ___x_cmd_cmds sleep 2
+    ___x_cmd service isalive "$sname" || {
+        feishu:error "Failed to start the feishu bot service ==> $sname"
+        ___x_cmd service log tail "$sname"
+        return 1
+    }
+
+    feishu:info "Feishu bot service started successfully ==> $sname"
+}
+
+___x_cmd_feishu_abot_service_ensure(){
+    local chat_type="admin"
+    local sname="x-feishu-admin-listener"
+    local chatid=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m feishu abot service ensure "$@" ; return 0 ;;
+            --admin)    shift ;;
+            --group)
+                        chat_type="group"
+                        if [ -n "$2" ]; then
+                            chatid="$2"
+                            shift 2
+                            sname="x-feishu-group-${chatid}-listener"
+                        else
+                            shift
+                            sname="x-feishu-group-listener"
+                        fi
+                        ;;
+            *)          N=feishu M="Unknown op -> $1" log:ret:64   ;;
+        esac
+    done
+
+    ___x_cmd_feishu_ensureinit || return "$?"
+
+    [ "$chat_type" != "admin" ] || {
+        chatid=""
+        ___x_cmd_feishu_cur chatid:= 2>/dev/null
+        [ -n "$chatid" ] || {
+            feishu:info "Please set your default chat id first"
+            ___x_cmd_feishu_init_chatid || return $?
+            ___x_cmd_feishu_cur chatid:= 2>/dev/null
+            [ -n "$chatid" ] || N=feishu M="Not found default chat id" log:ret:1
         }
     }
 
@@ -93,7 +113,11 @@ ___x_cmd_feishu_abot_service_ensure(){
         if [ "$i" -gt 1 ]; then
             feishu:warn "Failed to start service, retrying"
         fi
-        ___x_cmd_feishu_abot_service_start --"${chat_type}" "$chatid"
+        if [ "$chat_type" = "group" ] && [ -n "$chatid" ]; then
+            ___x_cmd_feishu_abot_service_start "--group" "$chatid"
+        else
+            ___x_cmd_feishu_abot_service_start "--${chat_type}"
+        fi
         ___x_cmd sleep 2
         ! ___x_cmd service isalive "$sname"   || return 0
     done
@@ -104,65 +128,85 @@ ___x_cmd_feishu_abot_service_ensure(){
 }
 
 ___x_cmd_feishu_abot_service_restart(){
-    ___x_cmd_feishu_ensureinit || return "$?"
-    local chatid=;
     local chat_type="admin"
+    local chatid=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)      ___x_cmd help -m feishu abot service restart "$@" ; return 0 ;;
-            --admin)        chat_type="admin"; shift ;;
+            -h|--help)  ___x_cmd help -m feishu abot service restart "$@" ; return 0 ;;
+            --admin)    shift ;;
             --group)
-                            if [ -n "$2" ]; then
-                                chat_type="group"; chatid="$2"; shift 2
-                            else
-                                chat_type="group"; shift
-                            fi
-                            ;;
+                        chat_type="group"
+                        if [ -n "$2" ]; then
+                            chatid="$2"
+                            shift 2
+                            sname="x-feishu-group-${chatid}-listener"
+                        else
+                            shift
+                            sname="x-feishu-group-listener"
+                        fi
+                        ;;
+            *)          N=feishu M="Unknown op -> $1" log:ret:64   ;;
         esac
     done
-    ___x_cmd_feishu_abot_service_stop  --"${chat_type}" "$chatid" || return $?
-    ___x_cmd_feishu_abot_service_start --"${chat_type}" "$chatid"
+
+    ___x_cmd_feishu_ensureinit || return "$?"
+
+    ___x_cmd_feishu_abot_service_stop  --"${chat_type}" "${chatid:+"$chatid"}" || return $?
+    ___x_cmd_feishu_abot_service_start --"${chat_type}" "${chatid:+"$chatid"}"
 }
 
 ___x_cmd_feishu_abot_service_stop(){
-    local chatid=;
     local chat_type="admin"
+    local sname="x-feishu-admin-listener"
+    local chatid=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)      ___x_cmd help -m feishu abot service stop "$@" ; return 0 ;;
-            --admin)        chat_type="admin"; shift ;;
+            -h|--help)  ___x_cmd help -m feishu abot service stop "$@" ; return 0 ;;
+            --admin)    shift ;;
             --group)
-                            if [ -n "$2" ]; then
-                                chat_type="group"; chatid="$2"; shift 2
-                            else
-                                chat_type="group"; shift
-                            fi
-                            ;;
+                        chat_type="group"
+                        if [ -n "$2" ]; then
+                            chatid="$2"
+                            shift 2
+                            sname="x-feishu-group-${chatid}-listener"
+                        else
+                            shift
+                            sname="x-feishu-group-listener"
+                        fi
+                        ;;
+            *)          N=feishu M="Unknown op -> $1" log:ret:64   ;;
         esac
     done
 
-    local sname="x-feishu-${chat_type}${chatid:+-${chatid}}-listener"
     ___x_cmd service stop   "$sname"
 }
 
 ___x_cmd_feishu_abot_service_status(){
-    local chatid=;
     local chat_type="admin"
+    local sname="x-feishu-admin-listener"
+    local chatid=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)      ___x_cmd help -m feishu abot service status "$@" ; return 0 ;;
-            --admin)        chat_type="admin"; shift ;;
+            --admin)        shift ;;
             --group)
+                            chat_type="group"
                             if [ -n "$2" ]; then
-                                chat_type="group"; chatid="$2"; shift 2
+                                chatid="$2"
+                                shift 2
+                                sname="x-feishu-group-${chatid}-listener"
                             else
-                                chat_type="group"; shift
+                                shift
+                                sname="x-feishu-group-listener"
                             fi
                             ;;
+            x-feishu-*)
+                            sname="$1"
+                            shift
+                            ;;
+            *)          N=feishu M="Unknown op -> $1" log:ret:64   ;;
         esac
     done
-
-    local sname="x-feishu-${chat_type}${chatid:+-${chatid}}-listener"
     ___x_cmd service status   "$sname"
 }
 

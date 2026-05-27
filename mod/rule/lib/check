@@ -1,0 +1,92 @@
+
+# quick find out the rule breaking
+# output a tsv.
+
+___x_cmd_rule_check(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local ruleset_dir=""
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m rule check "$@" ;   return 0 ;;
+            -r)         ruleset_dir="$2" ;                  arg:2:shift ;;
+            --)         shift ;     break ;;
+            *)          break ;;
+        esac
+    done
+
+    local IFS=' '
+    local target_root="$1"
+
+    case "$target_root" in
+        :*)
+            [ -n "$ruleset_dir" ] || {
+                x_=""
+                ___x_cmd_rule_preset_resolve_ "$target_root" || N=rule M="Preset '$target_root' not found" log:ret:64
+                ruleset_dir="$x_"
+            }
+            target_root=""
+            ;;
+    esac
+
+    [ -n "$ruleset_dir" ] || {
+        x_=""
+        ___x_cmd_rule_which_ || N=rule M="Fail to locate any ruleset. You can use -r to specify" log:ret:64
+        ruleset_dir="$x_"
+    }
+
+    rule:info "Quick check | ruleset:$ruleset_dir | target:$target_root"
+
+    x_=""; ___x_cmd epoch get_
+    local tmpfile="$___X_CMD_ROOT_TMP/rule/check/${x_}-$$.tsv"
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+
+    local system_prompt="$___X_CMD_RULE_PROMPT_RULE_FMT
+You are a quality checker.
+
+## Task
+
+1. Read all rule files under: $ruleset_dir
+   Each .yml file contains rules in the format shown above.
+2. Read all files under: $target_root
+3. For each rule that is violated, record the target file and a brief hint.
+
+Rules:
+- Only include rows where the rule is violated (score < 81).
+- ruleid: the rule ID (e.g. P06-var-010).
+- target: relative path to the source file.
+- score: integer 0-80.
+- hint: brief explanation of the violation.
+- If all files pass all rules, output just the header row.
+
+## Output
+
+Write the complete TSV result to: $tmpfile
+
+The TSV format is:
+
+# The following are examples for illustration only
+root${TAB}target${TAB}ruleid${TAB}score${TAB}hint
+${target_root}${TAB}src/hello-world.sh${TAB}P06-var-010${TAB}10${TAB}变量命名不规范
+${target_root}${TAB}docs/README.md${TAB}P06-concept-010${TAB}10${TAB}术语使用不当
+
+Where:
+- root: the root directory the target belongs to (use the value from Target path above)
+- target: relative path to the source file under the root
+
+## Paths
+
+- Rules: $ruleset_dir
+- Target root: $target_root
+- Output file: $tmpfile
+"
+
+    ___x_cmd agent request "$system_prompt" || return $?
+
+    [ -s "$tmpfile" ] || return 0
+
+    rule:info "Quick check completed | output:$tmpfile"
+    ___x_cmd_cmds cat "$tmpfile"
+}

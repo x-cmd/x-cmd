@@ -2,7 +2,20 @@
 # x agent job init "Implement user authentication"     # create job id
 # x agent job iter --max-iterations 100 --inrow 10
 
-xrc:mod:lib agent       job/util job/ls job/preview job/prompt
+xrc:mod:lib agent       job/util job/ls job/status job/prompt
+
+
+# x agent job bootstrap -- guiding users creating a job.
+
+# x agent job init      -- create       -- no adjsut
+# x agent job iter      --addition "..."
+# x agent job status    # running , stopped-to-be-continued, stopped-considered-done
+
+# using ajob to offload missions.
+# using
+
+# File Directory structure.
+
 
 ___x_cmd_agent_job(){
     [ $# -gt 0 ]    ||      set -- --help
@@ -11,7 +24,7 @@ ___x_cmd_agent_job(){
     case "$op" in
         init|iter|ls|adjust)
                     shift; ___x_cmd_agent_job_"${op}" "$@"      ;;
-        preview)    shift; ___x_cmd_agent_job_preview "$@"     ;;
+        status)     shift; ___x_cmd_agent_job_status "$@"      ;;
         -h|--help)  ___x_cmd help -m agent job; return 0        ;;
         *)          N=agent M="Unknown operation" log:ret:64    ;;
     esac
@@ -42,7 +55,7 @@ ___x_cmd_agent_job_init(){
     local desc="$*"
     [ -n "$desc" ] || N=agent M="Please specify the job description" log:ret:64
 
-    # Call adjust to create DESC.md, TODO.md and AGENTS.md
+    # Call adjust to create PLAN.md
     ___x_cmd_agent_job_adjust --init --dir "$parent_dir" --harness "$harness" "$desc" || return $?
 }
 
@@ -85,27 +98,18 @@ ___x_cmd_agent_job_adjust(){
         N=agent M="Job directory not found: $jobdir" log:ret:1
     fi
 
-    local todofile=""; local descfile=""; local agentfile=""
-    descfile="$jobdir/DESC.md"
+    local descfile=""; local agentfile=""
+    descfile="$jobdir/PLAN.md"
     if [ "$is_init" = 1 ]; then
         printf "Timestamp: %s\nPwd: %s\nDesc: %s\n---\n" "$vlid" "$PWD" "$desc" > "$descfile"
     else
         printf "Timestamp: %s\nAdjust Desc: %s\n---\n" "$vlid" "$desc" >> "$descfile"
     fi
 
-    todofile="$jobdir/TODO.md"
     agentfile="$jobdir/AGENTS.md"
 
-    local content;
-    todofile="$todofile" agentfile="$agentfile" descfile="$descfile" jobdir="$jobdir" is_init="$is_init" \
-    content="$( ___x_cmd_agent_job___get_prompt job-adjust )"
-
-    ___x_cmd agent chat --harness "$harness" -f "$descfile" -f "$todofile" -f "$agentfile" "$content" || return $?
-
-    [ -r "$todofile" ] || {
-        agent:error "Failed to read TODO.md after adjustment. The AI may not have created the task plan properly"
-        return 1
-    }
+    # TODO: Evaluate whether the user's task description in PLAN.md is clear and actionable.
+    # If the description is vague or incomplete, we may warn the user or prompt for clarification here.
 
     # Remove old DONE.md since the task plan has been adjusted
     if [ -f "$jobdir/DONE.md" ]; then
@@ -118,7 +122,7 @@ ___x_cmd_agent_job_adjust(){
     else
         agent:info "Job adjusted at $jobdir"
     fi
-    agent:info "TODO.md updated. Edit TODO.md file if needed, then run 'x agent job iter' to start iteration"
+    agent:info "PLAN.md updated. Edit PLAN.md file if needed, then run 'x agent job iter' to start iteration"
 
     # Update recent
     ___X_CMD_AGENT_JOB_RECENT="$jobdir"
@@ -154,18 +158,18 @@ ___x_cmd_agent_job_iter(){
     # Resolve job directory
     local jobdir; jobdir="$( ___x_cmd_agent_job___resolve_jobdir "$parent_dir" "$job_id" )" || return $?
 
-    local todofile="$jobdir/TODO.md"
+    local planfile="$jobdir/PLAN.md"
     local agentfile="$jobdir/AGENTS.md"
     local donefile="$jobdir/DONE.md"
 
-    if [ ! -r "$todofile" ]; then
-        N=agent M="TODO.md not found in $jobdir" log:ret:1
+    if [ ! -r "$planfile" ]; then
+        N=agent M="PLAN.md not found in $jobdir" log:ret:1
     fi
 
-    # Display TODO content before starting iterations
+    # Display PLAN content before starting iterations
     ___x_cmd ui sep
-    printf "\033[1mTODO Tasks:\033[0m\n"
-    ___x_cmd_cmds cat "$todofile"
+    printf "\033[1mPlan:\033[0m\n"
+    ___x_cmd_cmds cat "$planfile"
     ___x_cmd ui sep
 
     local iter=0
@@ -182,22 +186,22 @@ ___x_cmd_agent_job_iter(){
         agent:info "Continuous mode enabled, using session: $session_id"
     fi
 
-    while [ "$iter" -lt "$max_iterations" ] && [ -f "$todofile" ] && [ ! -f "$donefile" ]; do
+    while [ "$iter" -lt "$max_iterations" ] && [ ! -f "$donefile" ]; do
         iter="$((iter + 1))"
         agent:info "Starting iteration $iter (max: $max_iterations)"
 
         vlid="$(___x_cmd date vlid)"
         response_file="$jobdir/$vlid.response.md"
 
-        loop_context="$(___x_cmd_agent_job___build_loop_context "$jobdir" "$todofile" "$iter" "$max_iterations" "$no_progress" "$inrow")"
+        loop_context="$(___x_cmd_agent_job___build_loop_context "$jobdir" "$iter" "$max_iterations" "$no_progress" "$inrow")"
 
-        todofile="$todofile" donefile="$donefile" jobdir="$jobdir" iter="$iter" vlid="$vlid" inrow="$inrow" max_iterations="$max_iterations" loop_context="$loop_context" response_file="$response_file" \
+        planfile="$planfile" donefile="$donefile" jobdir="$jobdir" iter="$iter" vlid="$vlid" inrow="$inrow" max_iterations="$max_iterations" loop_context="$loop_context" response_file="$response_file" \
         content="$( ___x_cmd_agent_job___get_prompt job-iter )"
 
         if [ -n "$session_id" ]; then
-            ___x_cmd agent request --harness "$harness" --session "$session_id" --file "$agentfile" --file "$todofile" "$content" || break
+            ___x_cmd agent request --harness "$harness" --session "$session_id" --file "$agentfile" --file "$planfile" "$content" || break
         else
-            ___x_cmd agent request --harness "$harness" --file "$agentfile" --file "$todofile" "$content" || break
+            ___x_cmd agent request --harness "$harness" --file "$agentfile" --file "$planfile" "$content" || break
         fi
 
         ___x_cmd_agent_job_iter___eval_response "$jobdir" "$response_file" "$iter" "$inrow" "$donefile" "$max_iterations" "$vlid" "$harness" || break

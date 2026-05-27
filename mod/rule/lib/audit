@@ -1,0 +1,194 @@
+# shellcheck disable=SC2016
+
+___X_CMD_RULE_DEFAULT_REPORT="$___X_CMD_ROOT_DATA/rule/report"
+
+___x_cmd_rule_audit(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local ruleset_dir=""
+    local output_dir=""
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m rule audit "$@" ; return 0 ;;
+            -r)         ruleset_dir="$2" ;                  arg:2:shift ;;
+            -o)         output_dir="$2" ;                   arg:2:shift ;;
+            :*)         [ -n "$ruleset_dir" ] || {
+                            x_=""
+                            ___x_cmd_rule_preset_resolve_ "$1" || N=rule M="Preset '$1' not found" log:ret:64
+                            ruleset_dir="$x_"
+                        }
+                        shift ;;
+            *)          break ;;
+        esac
+    done
+
+    ___x_cmd epoch get_
+    local timestamp="${x_}"
+    local id="${timestamp}-$$"
+
+    [ -n "$ruleset_dir" ] || {
+        x_=""
+        ___x_cmd_rule_which_ || N=rule M="Fail to locate any ruleset. You can use -r to specify" log:ret:64
+        ruleset_dir="$x_"
+    }
+
+
+    output_dir="${output_dir:-"$___X_CMD_RULE_DEFAULT_REPORT"}"
+
+    ___x_cmd_rule_audit___one "$@"
+}
+
+___X_CMD_RULE_PROMPT_RULE_FMT='
+Rule format (YAML):
+  P06-var-010:            # Example rule ID for illustration only
+    name: <rule-name>
+    desc:
+    - <criteria description>
+    - <criteria description>
+    tldr:                 # optional
+    - wrong: <bad pattern>
+      right: <correct pattern>
+'
+
+___x_cmd_rule_audit___one(){
+    local IFS=' '
+    local target_root="$*"
+
+    rule:info --ruleset "$ruleset_dir" --target "$target_root" --output "$output_dir" "Audit check started"
+
+    rule:info  "Phase 1/2: Generate target.tsv"
+    ___x_cmd_rule_audit___target "$target_root" || return $?
+
+    rule:info  "Phase 2/2: Generate result"
+    ___x_cmd_rule_audit___result "$target_root"
+}
+
+___x_cmd_rule_audit___target(){
+    local target_root="$1"
+
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+    local system_prompt="$___X_CMD_RULE_PROMPT_RULE_FMT
+You are a quality checker.
+
+## Task: Generate target.tsv
+
+1. Read all rule files under: $ruleset_dir
+   Each .yml file contains rules in the format shown above.
+2. Scan all files under: $target_root
+3. For each file, determine which rules are relevant to check against it based on the rule's 'apply' field and content.
+4. Write the result to: $output_dir/$id/target.tsv
+
+## target.tsv format
+
+Space-separated, 3 columns, no header:
+
+root target rule-to-check
+
+Where:
+- root: the root directory the target belongs to
+- target: relative path to the source file under the root
+- rule-to-check: applicable rule IDs (space-separated within this column)
+
+Example:
+${target_root}${TAB}src/hello-world.sh${TAB}P06-var-010 P06-var-020
+${target_root}${TAB}src/config.yml${TAB}P06-concept-010
+${target_root}${TAB}docs/README.md${TAB}P06-concept-010
+
+## Rules
+
+- Only assign a rule to a target if the rule is potentially applicable.
+- Use the rule's 'apply' field to determine which file types or categories it applies to.
+- If a target path is a directory, recurse into it.
+
+## Paths
+
+- Rules: $ruleset_dir
+- Target root: $target_root
+- Output: $output_dir/$id/target.tsv
+
+Create the output directory if needed.
+"
+
+    ___x_cmd agent request "$system_prompt" || {
+        rule:error "Failed to generate target.tsv | target:$target_root"
+        return 1
+    }
+}
+
+___x_cmd_rule_audit___result(){
+    local target_root="$1"
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+
+    local system_prompt="$___X_CMD_RULE_PROMPT_RULE_FMT
+You are a quality checker.
+
+## Task: Score each rule against each target
+
+1. Read: $output_dir/$id/target.tsv
+2. Read all rule files under: $ruleset_dir
+3. For each rule listed in the rule-to-check column, read the corresponding source files and score them.
+4. Write one TSV file per rule to: $output_dir/$id/result/<rule-id>.tsv
+
+## Scoring
+
+- 100: Full compliance, no issues.
+- 81-99: Minor issues, acceptable.
+- 51-80: Marginal compliance, improvement needed.
+- 11-50: Significant violations.
+- 0-10: Complete disregard of the rule.
+
+## Output directory structure
+
+$output_dir/
+  $id/
+    target.tsv          # already generated (input for this step)
+    result/
+      P06-var-010.tsv   # one TSV per rule, filename = rule-id
+      P06-var-020.tsv
+      ...
+
+## result/*.tsv format
+
+Tab-separated, 3 columns:
+
+target${TAB}score${TAB}hint
+
+Where:
+- target: relative path to the source file
+- score: integer 0-100
+- hint: brief explanation (empty string if score is 100)
+
+Example:
+target${TAB}score${TAB}hint
+src/hello-world.sh${TAB}90${TAB}变量命名不规范
+src/config.yml${TAB}100${TAB}
+docs/README.md${TAB}10${TAB}术语使用不当
+
+## Paths
+
+- Report root: $output_dir
+- Run id: $id
+- Result directory: $output_dir/$id/result
+- Rules: $ruleset_dir
+- Target root: $target_root
+- Target list: $output_dir/$id/target.tsv
+
+Create the result directory if it does not exist. Write one .tsv per rule.
+"
+
+    ___x_cmd agent request "$system_prompt" || {
+        rule:error "Failed to generate result | target:$target_root"
+        return 1
+    }
+
+    local result_dir="$output_dir/$id/result"
+    [ -d "$result_dir" ] || {
+        rule:error "Result directory not found | dir:$result_dir"
+        return 1
+    }
+
+    rule:info "Result generated | summary from:$result_dir"
+    ___x_cmd fsiter "$result_dir" | result_dir="$result_dir" ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/rule/lib/awk/summary.awk"
+}

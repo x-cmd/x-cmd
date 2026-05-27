@@ -54,6 +54,17 @@ ___x_cmd_agent_request(){
     done
 
     timeout_secs="${timeout_secs:-3000}"
+
+    ___x_cmd agent isready || {
+        if ___x_cmd_runmode_allow_manual; then
+            agent:info "Agent not initialized -- running 'x agent init' automatically"
+            ___x_cmd agent init || return $?
+        else
+            agent:error "Agent is not ready. Please run 'x agent init' to setup the agent first."
+            return 1
+        fi
+    }
+
     local x_=""
     if [ -z "$harness" ]; then
         x_=""; ___x_cmd_agent_harness_
@@ -358,6 +369,11 @@ ___x_cmd_agent_request___run_exec(){(
                     set -- "$@" resume "$real_session_id"
                 fi
             fi
+
+            if [ -n "$is_no_thinking" ]; then
+                set -- "$@" --config model_reasoning_effort=low
+            fi
+
             {
                 ___x_cmd timeout "$timeout_secs" x-cmd codex -- "$@" --json --full-auto --skip-git-repo-check \
                 ${reference_workspace:+--add-dir "$reference_workspace"} \
@@ -387,6 +403,8 @@ ___x_cmd_agent_request___run_exec(){(
                 fi
             fi
 
+            [ -z "$is_no_thinking" ] || GEMINI_CLI_SYSTEM_SETTINGS_PATH="$___X_CMD_ROOT_MOD/agent/lib/request/data/gemini-no-think.json"
+
             {
                 ___x_cmd timeout "$timeout_secs" x-cmd gemini cli -- --yolo "$@" \
                 ${reference_workspace:+--include-directories "$reference_workspace"} \
@@ -399,6 +417,10 @@ ___x_cmd_agent_request___run_exec(){(
                 if [ "$is_session_first" != "1" ]; then
                     set -- --session "$real_session_id"
                 fi
+            fi
+
+            if [ -n "$is_no_thinking" ]; then
+                set -- "$@" --variant low
             fi
 
             {
@@ -449,7 +471,7 @@ ___x_cmd_agent_request___handle_output(){
     ____X_CMD_AGENT_ERR_AUTHFAILURE="$____X_CMD_AGENT_ERR_AUTHFAILURE" \
     ____X_CMD_AGENT_ERR_NETWORK_TIMEOUT="$____X_CMD_AGENT_ERR_NETWORK_TIMEOUT" \
     harness="$harness" \
-    ___x_cmd awk0 -m j/json -m j/jiter \
+    ___x_cmd cawk -i -m j/json -m j/jiter \
         -f "$___X_CMD_ROOT_MOD/agent/lib/awk/handle_output.awk"
 }
 

@@ -1,0 +1,87 @@
+
+# evolve: adapt ruleset to the project based on code patterns
+
+___x_cmd_rule_evolve(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local ruleset_dir=""
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m rule evolve "$@" ;  return 0 ;;
+            -r)         ruleset_dir="$2" ;                  arg:2:shift ;;
+            --)         shift ;     break ;;
+            *)          break ;;
+        esac
+    done
+
+    local IFS=' '
+    local target_root="$1"
+
+    [ -n "$ruleset_dir" ] || {
+        x_=""
+        ___x_cmd_rule_which_ || N=rule M="Fail to locate any ruleset. You can use -r to specify" log:ret:64
+        ruleset_dir="$x_"
+    }
+
+    [ -n "$target_root" ] || {
+        N=rule M="Need a target directory to analyze for rule adaptation" log:ret:64
+    }
+
+    rule:info "Evolve | ruleset:$ruleset_dir | target:$target_root"
+
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+    local tmpfile=""
+    x_=""; ___x_cmd epoch get_
+    tmpfile="$___X_CMD_ROOT_TMP/rule/evolve/${x_}-$$.tsv"
+
+    local system_prompt="$___X_CMD_RULE_PROMPT_RULE_FMT
+You are a rule evolution specialist.
+
+## Task
+
+1. Read all rule files under: $ruleset_dir (if any exist)
+2. Read all source files under: $target_root
+3. Identify conventions, patterns, and standards used in the project that are NOT covered by existing rules.
+4. Create new rules or adapt existing ones to match the project's actual practices.
+
+## What to look for
+
+- Project-specific naming conventions not in any rule
+- Domain terminology that should be enforced
+- Code patterns unique to this project that deserve a rule
+- Existing rules that don't match the project's style (need adaptation)
+- Gaps where violations would go undetected
+
+## Output
+
+For new rules, create new .yml files in: $ruleset_dir
+For rules that need adaptation, modify the original files.
+For rules that don't apply to this project, leave them unchanged.
+
+Write a summary to: $tmpfile
+
+The TSV format is:
+
+ruleid${TAB}action${TAB}reason
+
+Where:
+- ruleid: the rule ID (new or existing)
+- action: one of: created, adapted, unchanged
+- reason: brief explanation
+
+## Paths
+
+- Rules: $ruleset_dir
+- Target root: $target_root
+- Summary: $tmpfile
+"
+
+    ___x_cmd agent request "$system_prompt" || return $?
+
+    [ -s "$tmpfile" ] || return 0
+
+    rule:info "Evolve completed | summary:$tmpfile"
+    ___x_cmd_cmds cat "$tmpfile"
+}

@@ -15,7 +15,8 @@ ___x_cmd_claw_run___msg_line_count_(){
 
 ___x_cmd_claw_run___detect_im_(){
     x_=""
-    local im; for im in weixin feishu telegram qywx; do
+    local im
+    for im in weixin feishu telegram qywx; do
         ___x_cmd "$im" --isready || continue
         x_="$im"
         return 0
@@ -24,47 +25,54 @@ ___x_cmd_claw_run___detect_im_(){
 }
 
 ___x_cmd_claw_run___activate_im(){
-    local im="${1:-"weixin"}"
-    claw:info "Activating IM platform $im"
+    local im="${1:-""}"
+    local chatid="${2:-""}"
+    [ -n "$im" ] || N=claw M="Please provide IM platform name" log:ret:64
 
-    ___x_cmd_claw_run___ensure "$im" || return $?
-
-    local imfile="$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity/$im"
-    [ -f "$imfile" ] || ___x_cmd touch "$imfile"
-
-    claw:info "IM platform activated $im"
+    if [ -n "$chatid" ]; then
+        local imfile="" x_=""
+        claw:info "Activating IM platform $im:$chatid"
+        imfile="$___X_CMD_CLAW_BOT_CONNECT_DIR/$im/$chatid"
+        ___x_cmd ensurefp "$imfile"
+        x_=""; ___x_cmd epoch get_
+        printf "%s\n" "$x_" > "$imfile"
+    else
+        claw:info "Activating IM platform $im"
+        ___x_cmd mkdirp "$___X_CMD_CLAW_BOT_CONNECT_DIR/$im"
+    fi
 }
 
 ___x_cmd_claw_run___deactivate_im(){
-    local im="${1:-"weixin"}"
-    claw:info "Deactivating IM platform $im"
+    local im="${1:-""}"
+    local chatid="${2:-""}"
+    [ -n "$im" ] || N=claw M="Please provide IM platform name" log:ret:64
 
-    case "$im" in
-        weixin|telegram)
-            ___x_cmd "$im" bot service stop || return $?
-            ;;
-        feishu|qywx)
-            ___x_cmd "$im" abot service stop || return $?
-            ;;
-        *)  claw:error "Unsupported IM platform $im"
-            return 1
-            ;;
-    esac
-    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity/$im"
-
-    claw:info "IM platform deactivated $im — service stopped and activity marker removed"
+    if [ -n "$chatid" ]; then
+        claw:info "Deactivating IM platform $im:$chatid"
+        ___x_cmd rmrf "$___X_CMD_CLAW_BOT_CONNECT_DIR/$im/$chatid"
+    # else
+    #     claw:info "Deactivating IM platform $im"
+    #     ___x_cmd rmrf "$___X_CMD_CLAW_BOT_CONNECT_DIR/$im"
+    fi
 }
 
 ___x_cmd_claw_run___list_activate(){
-    local imdir="$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity"
-    [ -d "$imdir" ] || return 0
-    ___x_cmd fsiter --ls "$imdir"
+    [ -d "$___X_CMD_CLAW_BOT_CONNECT_DIR" ] || return 0
+
+    local imdir="" chatid=""
+    for imdir in "$___X_CMD_CLAW_BOT_CONNECT_DIR"/*; do
+        [ -d "$imdir" ] || continue
+        for chatid in "$imdir"/*; do
+            [ -f "$chatid" ] || continue
+            printf "%s=%s\n" "${imdir##*/}" "${chatid##*/}"
+        done
+    done 2>/dev/null
 }
 
-___x_cmd_claw_run___ensure(){
+___x_cmd_claw_run___ensureagent(){
     ___x_cmd agent isready || {
         if ___x_cmd_runmode_allow_manual; then
-            claw:info "Agent not initialized — running 'x agent init' automatically"
+            claw:info "Agent not initialized -- running 'x agent init' automatically"
             ___x_cmd agent init || return $?
             ___x_cmd agent --is-setup || ___x_cmd agent setup
         else
@@ -72,19 +80,66 @@ ___x_cmd_claw_run___ensure(){
             return 1
         fi
     }
+}
+
+___x_cmd_claw_run___ensure_im_service(){
+    ___x_cmd_claw_run___ensureagent || return $?
 
     local im="${1:-"weixin"}"
+    local chatid="$2"
     case "$im" in
         weixin|telegram)
             ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/$im/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
             ___x_cmd "$im" bot service ensure || return $?
             ;;
-        feishu|qywx)
+        qywx)
             ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/$im/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
-            ___x_cmd "$im" abot service ensure || return $?
+            ___x_cmd qywx abot service ensure || return $?
+            ;;
+
+        feishu)
+            ___x_cmd tailer sub "$___X_CMD_ROOT_DATA/$im/sub" x-claw-default "$___X_CMD_CLAW_BOT_MQ" || return $?
+            case "$chatid" in
+                ou_*)   ___x_cmd feishu abot service ensure --admin             || return $? ;;
+                oc_*)   ___x_cmd feishu abot service ensure --group "$chatid"   || return $? ;;
+                groups) ___x_cmd feishu abot service ensure --group             || return $? ;;
+                "")     ___x_cmd feishu abot service ensure --admin             || return $? ;;
+            esac
             ;;
         *)  claw:error "Unsupported IM platform $im"
             return 1
             ;;
     esac
+}
+
+___x_cmd_claw_run___stop_im_service(){
+    local im="${1:-"weixin"}"
+    local chatid="$2"
+    local imdir="$___X_CMD_CLAW_BOT_CONNECT_DIR/$im"
+    case "$im" in
+        weixin|telegram)
+            ___x_cmd fsiter --dirempty "$imdir" || return 0
+            ___x_cmd "$im" bot service stop || return $?
+            ;;
+        qywx)
+            ___x_cmd fsiter --dirempty "$imdir" || return 0
+            ___x_cmd "$im" abot service stop || return $?
+            ;;
+        feishu)
+            case "$chatid" in
+                ou_*)   ___x_cmd feishu abot service stop --admin           || return $? ;;
+                oc_*)   ___x_cmd feishu abot service stop --group "$chatid" || return $?
+                        if ___x_cmd fsiter --dirempty "$imdir"; then
+                            ___x_cmd feishu abot service stop --group || return $?
+                        fi
+                        ;;
+                groups) ___x_cmd feishu abot service stop --group           || return $? ;;
+            esac
+            ;;
+        *)  claw:error "Unsupported IM platform $im"
+            return 1
+            ;;
+    esac
+
+    claw:info "IM platform service stopped $im (no active chats)"
 }
