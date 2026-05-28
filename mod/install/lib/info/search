@@ -1,0 +1,192 @@
+
+___x_cmd_install_search(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local fmt=tsv
+    local scope=all
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m install --search "$@"; return 0 ;;
+            --tsv|--csv|--json|--app)
+                        fmt="${1#--}" ;   shift ;;
+            --package)  scope=package;    shift ;;
+            --skill)    scope=skill;      shift ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$1" ] || { install:error "Please provide a search keyword"; return 1; }
+
+    ___x_cmd_install_search___"$fmt" "$scope" "$@"
+}
+
+___x_cmd_install_search___csv(){
+    local scope="$1"; shift
+
+    if [ "$scope" = "package" ];then
+        ___x_cmd_install_search___csv_package "$@"
+    elif [ "$scope" = "skill" ];then
+        ___x_cmd_install_search___csv_skill "$@"
+    else
+        printf "%s,%s,%s,%s\n" "name" "desc" "source" "type"
+        ___x_cmd_install_search___csv_package_ "$@"
+        ___x_cmd_install_search___csv_skill_ "$@"
+    fi
+}
+
+___x_cmd_install_search___tsv(){
+    ___x_cmd_install_search___csv "$@" | ___x_cmd csv totsv
+}
+
+___x_cmd_install_search___json(){
+    ___x_cmd_install_search___csv "$@" | ___x_cmd csv tojson
+}
+
+___x_cmd_install_search___app(){
+    local ___X_CMD_CSV_APP_SHBIN_CODE=
+
+    install:info "Ctrl-D to exit. Ctrl-C to interrupt."
+    local ___X_CMD_CSV_APP_DATA_name=""
+    ___X_CMD_CSV_APP_SHBIN_CODE="xrc install"   \
+    ___x_cmd csv app --clear --return var       \
+            ___x_cmd_install_search___csv "$@" || return 1
+}
+
+___x_cmd_install_search___csv_package(){
+    printf "%s,%s,%s,%s\n" "name" "desc" "source" "type"
+    ___x_cmd_install_search___csv_package_ "$@"
+}
+
+___x_cmd_install_search___csv_package_(){
+    local tool
+    while read -r tool; do
+        [ -n "$tool" ] ||      continue
+        case "$tool" in
+            x|xpkg)
+                    ___x_cmd_install_search___xpkg      "$@" ;;
+            brew|apt|npm|cargo)
+                    ___x_cmd_install_search___"$tool"   "$@" ;;
+        esac
+    done <<A
+$( ___x_cmd_install_available_tool___printname --installed )
+A
+}
+
+___x_cmd_install_search___xpkg(){
+    ___x_cmd pkg ll --filter "$@" 2>/dev/null | ___x_cmd_cmds awk '
+        function parse_csv(line,    n, i, c, inquote, field) {
+            n = 0; inquote = 0; field = ""
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (c == "\"") {
+                    if (inquote && substr(line, i+1, 1) == "\"") {
+                        field = field "\""; i++
+                    } else {
+                        inquote = !inquote
+                    }
+                } else if (c == "," && !inquote) {
+                    _csv[++n] = field; field = ""
+                } else {
+                    field = field c
+                }
+            }
+            _csv[++n] = field
+            return n
+        }
+        NR == 1 { next }
+        {
+            nf = parse_csv($0)
+            name = _csv[1]; desc = _csv[2]
+            gsub(/"/, "\"\"", name)
+            gsub(/"/, "\"\"", desc)
+            printf "\"%s\",\"%s\",xpkg,package\n", name, desc
+        }
+    '
+}
+
+___x_cmd_install_search___brew(){
+    ___x_cmd brew search --eval-all --desc "$@" 2>/dev/null \
+        | ___x_cmd_cmds awk -F': ' '
+            /^==> / { next }
+            NF >= 2 {
+                name = $1
+                desc = substr($0, length($1) + 3)
+                gsub(/"/, "\"\"", desc)
+                printf "\"%s\",\"%s\",brew,package\n", name, desc
+            }
+        '
+}
+
+___x_cmd_install_search___apt(){
+    ___x_cmd apt search "$@" 2>/dev/null \
+        | ___x_cmd_cmds awk '
+            /^Sorting|^Full-text|^Listing/ { next }
+            {
+                n = index($0, "/")
+                if (n == 0) next
+                name = substr($0, 1, n - 1)
+
+                d = index($0, " - ")
+                if (d > 0) desc = substr($0, d + 3)
+                else desc = "-"
+
+                gsub(/"/, "\"\"", desc)
+                printf "\"%s\",\"%s\",apt,package\n", name, desc
+            }
+        '
+}
+
+___x_cmd_install_search___npm(){
+    npm search --json --description "$@" 2>/dev/null \
+        | ___x_cmd jo 2c .name .description \
+        | sed 's/$/,npm,package/'
+}
+
+___x_cmd_install_search___cargo(){
+    cargo search "$@" 2>/dev/null | awk '
+        {
+            n = index($0, " = \"")
+            if (n == 0) next
+            name = substr($0, 1, n - 1)
+
+            d = index($0, "# ")
+            if (d > 0) desc = substr($0, d + 2)
+            else desc = "-"
+
+            gsub(/"/, "\"\"", name)
+            gsub(/"/, "\"\"", desc)
+            printf "\"%s\",\"%s\",cargo,package\n", name, desc
+        }
+    '
+}
+
+
+___x_cmd_install_search___csv_skill(){
+    printf "%s,%s,%s,%s\n" "name" "desc" "source" "type"
+    ___x_cmd_install_search___csv_skill_ "$@"
+}
+
+___x_cmd_install_search___csv_skill_(){
+    local keyword="$1"
+
+    ___x_cmd_install_search___skillsh "$keyword"
+    ___x_cmd_install_search___clawhub "$keyword"
+}
+
+___x_cmd_install_search___skillsh(){
+    local keyword="$1"
+
+    ___x_cmd curl -s "https://skills.sh/api/search?q=$keyword" 2>/dev/null \
+        | ___x_cmd jo .skills \
+        | ___x_cmd jo 2c .name .id \
+        | ___x_cmd_cmds sed 's/$/,skills.sh,skill/'
+}
+
+___x_cmd_install_search___clawhub(){
+    local keyword="$1"
+
+    ___x_cmd clawhub search "$keyword" 2>/dev/null \
+        | ___x_cmd jo .results \
+        | ___x_cmd jo 2c .slug .summary \
+        | ___x_cmd_cmds sed 's/$/,clawhub,skill/'
+}

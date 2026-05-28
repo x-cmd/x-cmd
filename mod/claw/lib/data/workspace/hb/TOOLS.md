@@ -6,7 +6,8 @@
 
 > **IMPORTANT**: Before using any `x <mod>` command, you MUST load x-cmd first: `. ~/.x-cmd.root/X`
 
-x-cmd is a portable shell tool framework. `x` is the entry point command that provides access to 600+ tools and modules.
+x-cmd is a portable shell tool framework. `x` is the entry point command (short name for `x-cmd`) that provides access to 600+ tools and modules.
+> If the `x` command is not found, use `x-cmd` instead.
 
 ### Loading
 

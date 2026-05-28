@@ -1,0 +1,86 @@
+
+# refine: make existing rules more precise based on checking results
+
+___x_cmd_rule_refine(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local ruleset_dir=""
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m rule refine "$@" ;  return 0 ;;
+            -r)         ruleset_dir="$2" ;                  arg:2:shift ;;
+            --)         shift ;     break ;;
+            *)          break ;;
+        esac
+    done
+
+    local IFS=' '
+    local report_dir="$1"
+
+    [ -n "$ruleset_dir" ] || {
+        x_=""
+        ___x_cmd_rule_which_ || N=rule M="Fail to locate any ruleset. You can use -r to specify" log:ret:64
+        ruleset_dir="$x_"
+    }
+
+    [ -n "$report_dir" ] || {
+        N=rule M="Need an audit report directory (output from x rule audit)" log:ret:64
+    }
+
+    rule:info "Refine | ruleset:$ruleset_dir | report:$report_dir"
+
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+    local tmpfile=""
+    x_=""; ___x_cmd epoch get_
+    tmpfile="$___X_CMD_ROOT_TMP/rule/refine/${x_}-$$.tsv"
+
+    local system_prompt="$___X_CMD_RULE_PROMPT_RULE_FMT
+You are a rule refinement specialist.
+
+## Task
+
+1. Read all rule files under: $ruleset_dir
+2. Read all result files under: $report_dir
+3. For each rule that shows inconsistent results (high false positives or missed violations), rewrite it to be more precise.
+
+## What to improve
+
+- desc too broad → narrow it with specific criteria
+- desc too narrow → expand to cover intended scope
+- tldr unclear → add clearer wrong/right examples
+- apply field wrong → fix the file type or category matching
+- level inappropriate → adjust severity
+
+## Output
+
+For each rule that needs refinement, write the improved version directly to the original rule file.
+
+If a rule is already precise enough, leave it unchanged.
+
+Write a summary to: $tmpfile
+
+The TSV format is:
+
+ruleid${TAB}action${TAB}reason
+
+Where:
+- ruleid: the rule ID
+- action: one of: rewritten, unchanged, needs-review
+- reason: brief explanation of what changed or why no change was needed
+
+## Paths
+
+- Rules: $ruleset_dir
+- Report: $report_dir
+- Summary: $tmpfile
+"
+
+    ___x_cmd agent request "$system_prompt" || return $?
+
+    [ -s "$tmpfile" ] || return 0
+
+    rule:info "Refine completed | summary:$tmpfile"
+    ___x_cmd_cmds cat "$tmpfile"
+}

@@ -10,7 +10,6 @@ ___x_cmd_skill_add(){
     local skills=""
     local agent=""
     local scope="project"
-    local installed="symlink"
     local nocache=0
 
     while [ "$#" -gt 0 ]; do
@@ -23,7 +22,6 @@ ___x_cmd_skill_add(){
             -g|--global)    scope=global;       shift ;;
             -p|--project)   scope=project;      shift ;;
             --no-cache)     nocache=1;          shift ;;
-            # --copy)         installed="copy";   shift ;;
             --)             shift; break ;;
             -*)             N=skill M="Unknown option: $1" log:ret:1 ;;
             *)
@@ -40,15 +38,32 @@ ___x_cmd_skill_add(){
     done
     skills="${skills%"${___X_CMD_UNSEENCHAR_NEWLINE}"}"
 
-    [ -n "$dir" ] || {
+    ___x_cmd_skill___data_check             || return $?
+
+    if [ -n "$dir" ]; then
+        ___x_cmd_skill_add___dispatch "$dir" "$@"
+    elif [ -n "$agent" ]; then
         case "$agent" in
             claude)         dir=".claude/skills" ;;
             *)              dir=".agents/skills" ;;
         esac
         [ "$scope" = "project" ] || dir="$HOME/$dir"
-    }
+        ___x_cmd_skill_add___dispatch "$dir" "$@"
+    else
+        local _dirbase
+        [ "$scope" = "project" ] && _dirbase="." || _dirbase="$HOME"
+        ___x_cmd_skill_add___dispatch "$_dirbase/.agents/skills" "$@"
+        ___x_cmd_skill_add___dispatch "$_dirbase/.claude/skills" --skip-mcp "$@"
+    fi
+}
 
-    ___x_cmd_skill___data_check             || return $?
+___x_cmd_skill_add___dispatch(){
+    local dir="$1"; shift
+    local skip_mcp=0
+
+    case "$1" in
+        --skip-mcp) skip_mcp=1; shift ;;
+    esac
 
     case "$1" in
         https://github.com/*)
@@ -58,7 +73,10 @@ ___x_cmd_skill_add(){
             local i=
             for i in "$@"; do
                 case "$i" in
-                    mcp/*)      ___x_cmd_skill_add___mcp "$scope" "$i"                  || return $?  ;;
+                    mcp/*)
+                        [ "$skip_mcp" = 1 ] && continue
+                        ___x_cmd_skill_add___mcp "$scope" "$i" || return $?
+                        ;;
                     clawhub/*)  ___x_cmd_skill_add___fromclawhub "$dir" "$i" "$nocache" || return $?  ;;
                     x-mod/*)    ___x_cmd_skill_add___fromxmod   "$dir" "$i"             || return $?  ;;
                     *)          ___x_cmd_skill_add___fromawsome "$dir" "$i"             || return $?  ;;
@@ -114,7 +132,7 @@ ___x_cmd_skill_add___fromawsome(){
     [ -d "$datadir" ] || {
         case "$x_url" in
             x-cmd-skill-data:*)
-                if ! ___x_cmd websrc is cn; then
+                if ___x_cmd websrc is cn; then
                     x_url="https://codeberg.org/x-cmd/skill/releases/download/latest/${x_url##*/}.zip"
                 else
                     x_url="https://github.com/x-cmd/skill/releases/latest/download/${x_url##*/}.zip"

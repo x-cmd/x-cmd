@@ -1,0 +1,112 @@
+# shellcheck shell=dash disable=SC2016
+
+# https://wiki.alpinelinux.org/wiki/Creating_an_Alpine_package
+# https://wiki.alpinelinux.org/wiki/APKBUILD_Reference#Functions
+# apk add --allow-untrusted /path/to/x-cmd.apk
+
+___x_cmd_version_build_apk(){
+    local version="$1"
+    local versum="$2"
+    local mode="$3"
+
+    ___x_cmd_version_build_apk_builddir "$version" "$versum" || return "$?"
+
+    if [ "$mode" = "docker" ]; then
+        ___x_cmd_version_build_apk_docker "$@"
+    else
+        ___x_cmd_version_build_apk_local "$@"
+    fi
+}
+
+___x_cmd_version_build_apk_docker(){
+    local version="${1}"
+    printf "%s\n" "FROM alpine:latest
+
+RUN echo 'http://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories
+RUN apk add --update-cache abuild alpine-sdk atools doas
+" > ".build/alpine-builder.Dockerfile"
+
+    docker build -f ".build/alpine-builder.Dockerfile" --tag alpine-builder .
+	docker run --rm -it -v "$PWD/.build/apk:/apkbuild" alpine-builder sh -c '
+echo "builder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+adduser -D -G abuild builder && chown -R builder /apkbuild
+apk del x-cmd || true
+
+mkdir -p /home/builder/.abuild /home/builder/packages /etc/apk/keys
+chown -R builder:abuild /home/builder
+
+cd /apkbuild
+su -c "abuild-keygen -a -n && apkbuild-lint && abuild checksum" builder || exit 1
+cp /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
+su -c "abuild -r || { abuild clean; exit 1; }" builder || exit 1
+
+cp -rf /home/builder/packages/*/* /apkbuild' || return 1
+
+    local distfp="$___X_CMD_VERSION_BUILD_DATA/release/${version}/apk"
+    ___x_cmd mkdirp "$distfp"
+    ___x_cmd_cmds cp -rf "$builddir/apk/x-cmd-${version#v}-r0.apk" "$distfp/x-cmd_${version#v}_all.apk"
+
+}
+
+___x_cmd_version_build_apk_local()(
+    cd ".build/apk"
+    {
+        abuild-keygen -a -n
+        apkbuild-lint
+        abuild checksum
+        abuild -r
+    } || { abuild clean; return 1; }
+)
+
+___x_cmd_version_build_apk_builddir(){
+    local version="$1"
+    local versum="$2"
+    local url="$(___x_cmd_version_build_info___ url)"
+    local license="$(___x_cmd_version_build_info___ license)"
+    local summary="$(___x_cmd_version_build_info___ summary)"
+    local desc="$(___x_cmd_version_build_info___ desc)"
+    local pkgver="${version#v}"
+
+    local builddir=".build/apk"
+    ___x_cmd rm -rf "$builddir"
+    ___x_cmd mkdirp "$builddir"
+    cp -rf ".build/x-cmd-${version}.tgz" "$builddir/x-cmd-${pkgver}.tgz"
+
+	printf "%s\n" '# Contributor: Li Junhao <l@x-cmd.com>
+# Maintainer: zhengqiakai <zhengqiakai@x-cmd.com>
+pkgname=x-cmd
+pkgver='"$pkgver"'
+_pkgsum='"$versum"'
+pkgrel=0
+pkgdesc="'"$summary"'"
+url="'"$url"'"
+arch="noarch"
+license="'"$license"' AND MIT AND BSD-3-Clause"
+subpackages="$pkgname-doc"
+source="$pkgname-$pkgver.tgz"
+# source="$pkgname-$pkgver.tgz::https://raw.githubusercontent.com/x-cmd/release/main/dist/v$pkgver/allinone.tgz"
+options="!check" # upstream does not provide test
+
+package() {
+	install -Dm644 "$srcdir/$pkgname-$pkgver.tgz" "$pkgdir/usr/share/$pkgname/v/$_pkgsum.tgz"
+
+	local _pkgdir="$pkgdir/usr/share/x-cmd/v/$_pkgsum"
+	local _pkgfile="$pkgdir/usr/share/x-cmd/v/$_pkgsum.tgz"
+	printf "%s\n" "- I|x: Unpacking $_pkgfile to $_pkgdir" >&2
+	mkdir -p "$_pkgdir"
+	tar -xzf "$_pkgfile" -C "$_pkgdir"
+
+	printf "%s\n" "- I|x: Preparing license-files" >&2
+	mkdir -p "$pkgdir/usr/share/licenses/$pkgname"
+	cp -rf "$_pkgdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/"
+
+	printf "%s\n" "- I|x: Creating /usr/bin/x-cmd" >&2
+	install -Dm755 "$_pkgdir/mod/x-cmd/lib/bin/x-cmd" "$pkgdir/usr/bin/x-cmd"
+
+	printf "%s\n" "- I|x: Linking $_pkgsum to /usr/share/x-cmd/v/latest" >&2
+	cd "$pkgdir/usr/share/x-cmd/v"
+	ln -s "$_pkgsum" "$pkgdir/usr/share/x-cmd/v/latest"
+}
+
+' > "$builddir/APKBUILD"
+}

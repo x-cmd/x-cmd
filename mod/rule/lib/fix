@@ -1,0 +1,114 @@
+
+# fix: autonomous iterative loop — scan, fix, rescan until clean
+
+___x_cmd_rule_fix(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local ruleset_dir=""
+    local max_rounds=5
+    local report_file=""
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m rule fix "$@" ;    return 0 ;;
+            -r)             ruleset_dir="$2" ;                  arg:2:shift ;;
+            -n)             max_rounds="$2" ;                   arg:2:shift ;;
+            --report)       report_file="$2" ;                  arg:2:shift ;;
+            --)             shift ;     break ;;
+            *)              break ;;
+        esac
+    done
+
+    local IFS=' '
+    local target_root="$1"
+
+    case "$target_root" in
+        :*)
+            [ -n "$ruleset_dir" ] || {
+                x_=""
+                ___x_cmd_rule_preset_resolve_ "$target_root" || N=rule M="Preset '$target_root' not found" log:ret:64
+                ruleset_dir="$x_"
+            }
+            target_root=""
+            ;;
+    esac
+
+    [ -n "$ruleset_dir" ] || {
+        x_=""
+        ___x_cmd_rule_which_ || N=rule M="Fail to locate any ruleset. You can use -r to specify" log:ret:64
+        ruleset_dir="$x_"
+    }
+
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+    local round=0
+    local tmpfile=""
+    local line_count=""
+    local fix_prompt=""
+
+    local tempfiledir="$___X_CMD_ROOT_TMP/rule/fix"
+    ___x_cmd mkdirp "$tempfiledir"
+
+    while [ "$round" -lt "$max_rounds" ]; do
+        round=$(( round + 1 ))
+        rule:info "Fix round $round/$max_rounds | target:$target_root"
+
+        x_=""; ___x_cmd epoch get_
+        tmpfile="$tempfiledir/${x_}-$$.tsv"
+
+        if [ -n "$report_file" ] && [ "$round" -eq 1 ]; then
+            if [ "$report_file" = "-" ]; then
+                ___x_cmd_cmds cat > "$tmpfile"
+            elif [ -f "$report_file" ]; then
+                ___x_cmd_cmds cp "$report_file" "$tmpfile"
+            else
+                printf "%s\n" "$report_file" > "$tmpfile"
+            fi
+            report_file=""
+        else
+            ___x_cmd_rule_scan -r "$ruleset_dir" -o "$tmpfile" "$target_root" || {
+                rule:error "Fix round $round: scan failed"
+                return 1
+            }
+        fi
+
+        # scan outputs only header row when clean
+        line_count="$( ___x_cmd_cmds wc -l < "$tmpfile" )"
+        [ "$line_count" -le 1 ] && {
+            rule:info "Fix completed: all rules pass after $round round(s)"
+            return 0
+        }
+
+        rule:info "Fix round $round: violations found, fixing..."
+
+        fix_prompt="You are a code fixer who understands the full ruleset.
+
+## Task
+
+1. Read the violation report: $tmpfile
+2. Read the rule files under: $ruleset_dir
+3. Read the target source files under: $target_root
+4. Fix ALL violations directly in the source files.
+
+## Rules
+
+- Fix every violation listed in the report.
+- You understand the full ruleset. While fixing a reported violation, proactively fix any other potential violations you notice in the same code — this reduces total iteration rounds.
+- Do NOT change code that is already compliant unless it helps fix a related violation.
+- Preserve the overall structure and style of the code.
+
+## Paths
+
+- Violation report: $tmpfile
+- Rules: $ruleset_dir
+- Target root: $target_root
+"
+        ___x_cmd agent request "$fix_prompt" || {
+            rule:error "Fix round $round: fix failed"
+            return 1
+        }
+    done
+
+    rule:info "Fix: reached max rounds ($max_rounds), some violations may remain"
+    return 1
+}

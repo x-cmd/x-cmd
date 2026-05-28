@@ -1,0 +1,65 @@
+# shellcheck shell=dash
+
+___x_cmd_slash_ls(){
+    [ "$#" -gt 0 ] ||       set -- --app
+    local op="$1"
+    case "$op" in
+        --tsv|--app|--word)
+                        shift; ___x_cmd_slash_ls_"${op#--}" "$@" ;;
+        -h|--help)      ___x_cmd help -m slash ls ;;
+        "")             ___x_cmd help -m slash ls >&2; return 64 ;;
+        *)              N=slash M="Not support such [subcmd=$op]" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_slash_ls_tsv(){
+    printf "name\ttype\tfp\n"
+    ___x_cmd_slash___filelist | \
+        ___x_cmd cawk -f "$___X_CMD_ROOT_MOD/slash/lib/awk/scan.awk"
+}
+
+___x_cmd_slash_ls_csv(){
+    ___x_cmd_slash_ls_tsv | ___x_cmd tsv tocsv
+}
+
+___x_cmd_slash_ls_word(){
+    ___x_cmd_slash_ls_tsv | {
+        local header_line word
+        # shellcheck disable=SC2034
+        read -r header_line
+        local IFS; IFS="$___X_CMD_UNSEENCHAR_HT"
+        while read -r word _other; do
+            [ -n "$word" ] && [ "$word" != "name" ] && printf "%s\n" "$word"
+        done
+    }
+}
+
+___x_cmd_slash_ls_app(){
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; } || {
+        ___x_cmd_slash_ls_csv | ___x_cmd csv static_tab
+        return
+    }
+
+    local data; data="$(___x_cmd_slash_ls_csv)" || return $?
+    [ -n "$data" ] || N=slash M="Not found slash command data" log:ret:1
+
+    local ___X_CMD_CSV_APP_DATA_name=""
+    local ___X_CMD_CSV_APP_DATA_fp=""
+    ___x_cmd csv app --return var --clear --ctrl-c-clear <<A || return $?
+$data
+A
+
+    [ -n "$___X_CMD_CSV_APP_DATA_name" ] || return 1
+
+    local idx=""; ___x_cmd ui select idx "Select action for slash command '$___X_CMD_CSV_APP_DATA_name':" \
+        "Run /$___X_CMD_CSV_APP_DATA_name" \
+        "View details" \
+        "Return" \
+        || return $?
+
+    case "$idx" in
+        1)  ___x_cmd_slash_run "$___X_CMD_CSV_APP_DATA_fp" ;;
+        2)  ___x_cmd_slash_run "$___X_CMD_CSV_APP_DATA_fp" --info ;;
+        *)  return 0 ;;
+    esac
+}

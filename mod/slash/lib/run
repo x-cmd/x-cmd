@@ -1,0 +1,192 @@
+# shellcheck shell=dash
+
+___x_cmd_slash_run(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m slash run; return ;;
+    esac
+
+    local fp="$1"
+    [ -n "$fp" ] || N=slash M="Please provide slash command file path" log:ret:64
+    [ -f "$fp" ] || N=slash M="Not found slash command file -> $fp" log:ret:1
+    shift
+
+    local is_debug=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m slash run; return ;;
+            --debug)        is_debug=1 ; shift ;;
+            --quick)        is_quick=1 ; shift ;;
+            --info)         ___x_cmd_slash_run___info "$fp"; return ;;
+            --cat)          ___x_cmd_slash_run___cat "$fp"; return ;;
+            *)              break ;;
+        esac
+    done
+
+    local name dir
+    name="${fp##*/}"
+    name="${name%.md}"
+    case "$name" in
+        SKILL)
+            dir="${fp%/*}"
+            name="${dir##*/}"
+            ;;
+    esac
+    local IFS=' '
+    local msg="$*";     shift $#
+
+    if [ -n "$is_debug" ]; then
+        set -- --debug
+    fi
+
+    if [ -n "$is_quick" ]; then
+        set -- --no-thinking
+    fi
+
+    # TDOD: use x service
+    slash:info "Run slash command -> /$name"
+    ___x_cmd agent request --file "$fp" "$@" "
+The file \"$fp\" is the specified skill file or command file. Read and follow its instructions.
+
+## User's message
+$msg"
+}
+
+___x_cmd_slash_runname(){
+    local name="$1"
+    shift
+    local x_
+    ___x_cmd_slash_findfp_ "$name" || {
+        slash:error "Unknown slash command -> $name"
+        return 1
+    }
+    ___x_cmd_slash_run "$x_" "$@"
+}
+
+# Derive command name from file path. Returns via x_ variable.
+___x_cmd_slash_run___name_(){
+    local fp="$1"
+    local name dir
+    name="${fp##*/}"
+    name="${name%.md}"
+    case "$name" in
+        SKILL)
+            dir="${fp%/*}"
+            name="${dir##*/}"
+            ;;
+    esac
+    x_="$name"
+}
+
+# Extract frontmatter content between first and second ---. Returns via x_ variable.
+___x_cmd_slash_run___frontmatter_(){
+    local fp="$1"
+    x_=""
+    local in_fm=0 line
+    local newline="
+"
+    while IFS= read -r line; do
+        case "$line" in
+            ---)
+                case $in_fm in
+                    0) in_fm=1; continue ;;
+                    1) break ;;
+                esac
+                ;;
+        esac
+        [ "$in_fm" -eq 1 ] || continue
+        x_="${x_}${x_:+$newline}${line}"
+    done < "$fp"
+}
+
+# Extract a specific key value from YAML frontmatter. Returns via x_ variable.
+# Supports single-line values and multiline block scalars (|, >, |-, >-).
+___x_cmd_slash_run___frontmatter_value_(){
+    local fp="$1" target_key="$2"
+    x_=""
+    local in_fm=0 line key val is_block=0
+    local newline="
+"
+    while IFS= read -r line; do
+        case "$line" in
+            ---)
+                case $in_fm in
+                    0) in_fm=1; continue ;;
+                    1) break ;;
+                esac
+                ;; 
+        esac
+        [ "$in_fm" -eq 1 ] || continue
+
+        if [ "$is_block" -eq 1 ]; then
+            case "$line" in
+                " "*|	*)
+                    # Indented line - part of block value
+                    val="${line#  }"
+                    val="${val#	}"
+                    x_="${x_}${x_:+$newline}${val}"
+                    ;;
+                *)
+                    # Non-indented - end of block
+                    break
+                    ;;
+            esac
+            continue
+        fi
+
+        key="${line%%:*}"
+        [ "$key" = "$target_key" ] || continue
+
+        val="${line#*:}"
+        # Trim leading space
+        case "$val" in
+            " "*) val="${val# }" ;;
+        esac
+
+        case "$val" in
+            "|"|">"|"|-"|">-")
+                is_block=1
+                continue
+                ;;
+            \"*\") val="${val#\"}"; val="${val%\"}" ;;
+            \'*\') val="${val#\'}"; val="${val%\'}" ;;
+        esac
+        x_="$val"
+        return 0
+    done < "$fp"
+    [ -n "$x_" ] || return 1
+}
+
+# Show metadata info (name, fp, description).
+___x_cmd_slash_run___info(){
+    local fp="$1"
+    local x_ name desc
+    local newline="
+"
+    ___x_cmd_slash_run___name_ "$fp"
+    name="$x_"
+
+    printf "name: %s\n" "$name"
+    printf "fp: %s\n" "$fp"
+
+    ___x_cmd_slash_run___frontmatter_value_ "$fp" "description"
+    desc="$x_"
+    [ -n "$desc" ] || return 0
+
+    case "$desc" in
+        *"$newline"*)
+            # Multiline description - output in YAML block style
+            printf "description: |\n"
+            printf "%s\n" "$desc" | while IFS= read -r line; do
+                printf "  %s\n" "$line"
+            done
+            ;;
+        *)
+            printf "description: %s\n" "$desc"
+            ;;
+    esac
+}
+
+# Show full content of the slash command file.
+___x_cmd_slash_run___cat(){
+    ___x_cmd_cmds cat "$1"
+}

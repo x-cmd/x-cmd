@@ -1,0 +1,109 @@
+# shellcheck shell=dash disable=SC2016
+
+# https://www.redhat.com/en/blog/create-rpm-package
+# dnf install /path/to/x-cmd.rpm
+
+___x_cmd_version_build_rpm(){
+    local version="$1"
+    local versum="$2"
+    local mode="$3"
+
+    ___x_cmd_version_build_rpm_builddir "$version" "$versum" || return "$?"
+
+    if [ "$mode" = "docker" ]; then
+        ___x_cmd_version_build_rpm_docker "$@"
+    else
+        ___x_cmd_version_build_rpm_local "$@"
+    fi
+}
+
+___x_cmd_version_build_rpm_docker(){
+    local version="$1"
+    printf "%s\n" 'FROM fedora:latest
+
+RUN dnf install -y rpmdevtools rpmlint' > ".build/fedora-builder.Dockerfile"
+
+    docker build -f ".build/fedora-builder.Dockerfile" --tag fedora-builder .
+    docker run --rm -v "$PWD/.build/rpm:/home/builder/rpmbuild" --name fedora-builder fedora-builder sh -c '
+    groupadd abuild && useradd -m -G abuild builder && chown -R builder /home/builder/rpmbuild
+    su -c "rpmbuild -ba /home/builder/rpmbuild/SPECS/x-cmd.spec" builder || exit 1
+' || return "$?"
+
+    local distfp="$___X_CMD_VERSION_BUILD_DATA/release/${version}/rpm"
+    ___x_cmd mkdirp "$distfp"
+	___x_cmd_cmds cp -rf "$builddir/rpm/RPMS/noarch/"* "$distfp/x-cmd_${version#v}_all.rpm"
+}
+
+___x_cmd_version_build_rpm_local()(
+    cd ".build/rpm"
+    rpmbuild -ba SPECS/x-cmd.spec || return "$?"
+)
+
+___x_cmd_version_build_rpm_builddir(){
+    local version="$1"
+    local versum="$2"
+    local url="$(___x_cmd_version_build_info___ url)"
+    local license="$(___x_cmd_version_build_info___ license)"
+    local summary="$(___x_cmd_version_build_info___ summary)"
+    local desc="$(___x_cmd_version_build_info___ desc)"
+
+    local builddir=".build/rpm"
+    ___x_cmd rm -rf "$builddir"
+    ___x_cmd mkdirp "$builddir/BUILD"
+    ___x_cmd mkdirp "$builddir/RPMS"
+    ___x_cmd mkdirp "$builddir/SOURCES"
+    ___x_cmd mkdirp "$builddir/SPECS"
+    ___x_cmd mkdirp "$builddir/SRPMS"
+    cp -rf ".build/x-cmd-${version}.tgz" "$builddir/SOURCES/x-cmd-${version}.tgz"
+
+    printf "%s\n" 'Name:           x-cmd
+Version:        '"${version}"'
+Release:        1%{?dist}
+Summary:        '"$summary"'
+BuildArch:      noarch
+
+License:        '"$license"'
+URL:            '"$url"'
+
+Source0:        %{name}-%{version}.tgz
+
+Requires:       curl
+
+%description
+'"$desc"'
+
+
+%define  _pkgsum        '"$versum"'
+%define  _pkgdir        %{_prefix}/share/x-cmd/v/%{_pkgsum}
+
+%prep
+
+%install
+rm -rf $RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT/%{_prefix}/share/x-cmd/v
+cp -rf %{SOURCE0} $RPM_BUILD_ROOT/%{_pkgdir}.tgz
+
+
+%post
+mkdir -p %{_pkgdir}
+tar -zxf %{_pkgdir}.tgz -C %{_pkgdir} >/dev/null 2>&1 || exit 1
+rm -rf %{_prefix}/share/x-cmd/v/latest || exit 1
+ln -sf %{_pkgdir} %{_prefix}/share/x-cmd/v/latest || exit 1
+mkdir -p %{_bindir}
+cp -rf %{_pkgdir}/mod/x-cmd/lib/bin/x-cmd %{_bindir}/x-cmd || exit 1
+
+%postun
+[ ! -f %{_pkgdir}.tgz ]     || rm -rf %{_pkgdir}.tgz
+[ ! -f %{_bindir}/x ]       || rm -rf %{_bindir}/x
+[ ! -f %{_bindir}/x-cmd ]   || rm -rf %{_bindir}/x-cmd
+
+
+%files
+%{_prefix}/share/x-cmd/v/%{_pkgsum}.tgz
+
+%changelog
+* Mon Feb 24 2025 Li Junhao <l@x-cmd.com> - '"${version}"'-1
+- First time packaging x-cmd into an RPM package
+
+' > "$builddir/SPECS/x-cmd.spec"
+}

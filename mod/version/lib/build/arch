@@ -1,0 +1,126 @@
+# shellcheck shell=dash disable=SC2016
+
+# https://wiki.archlinux.org/title/Creating_packages
+# https://man.archlinux.org/man/PKGBUILD.5#OPTIONS_AND_DIRECTIVES
+
+___x_cmd_version_build_arch(){
+    local version="$1"
+    local versum="$2"
+    local mode="$3"
+
+    ___x_cmd_version_build_arch_builddir "$version" "$versum" || return "$?"
+
+    if [ "$mode" = "docker" ]; then
+        ___x_cmd_version_build_arch_docker "$@"
+    else
+        ___x_cmd_version_build_arch_local "$@"
+    fi
+}
+
+___x_cmd_version_build_arch_docker(){
+    local version="$1"
+    printf "%s\n" 'FROM archlinux:latest
+
+RUN echo '\''Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch'\'' > /etc/pacman.d/mirrorlist && \
+    pacman-key --init && \
+    pacman-key --populate archlinux && \
+    pacman -Sy --noconfirm archlinux-keyring && \
+    pacman -Syu --noconfirm --needed base-devel sudo
+RUN useradd -m builder && \
+    echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+USER builder
+WORKDIR /home/builder' > ".build/arch-builder.Dockerfile"
+
+    docker build -f ".build/arch-builder.Dockerfile" --tag arch-builder .
+    docker run --rm -v "$PWD/.build/arch:/home/builder/archlinuxbuild" arch-builder sh -c '
+    cd /home/builder/archlinuxbuild
+    makepkg || exit 1
+' || return "$?"
+
+    local distfp="$___X_CMD_VERSION_BUILD_DATA/release/${version}/arch"
+    ___x_cmd mkdirp "$distfp"
+    ___x_cmd_cmds cp -rf "$builddir/arch/x-cmd-${version}-0-any.pkg.tar.zst" "$distfp/x-cmd_${version#v}_all.pkg.tar.zst"
+
+}
+
+___x_cmd_version_build_arch_local()(
+    cd ".build/arch"
+    makepkg || return "$?"
+)
+
+___x_cmd_version_build_arch_builddir(){
+    local version="$1"
+    local versum="$2"
+    local url="$(___x_cmd_version_build_info___ url)"
+    local license="$(___x_cmd_version_build_info___ license)"
+    local summary="$(___x_cmd_version_build_info___ summary)"
+    local desc="$(___x_cmd_version_build_info___ desc)"
+
+    local builddir=".build/arch"
+    ___x_cmd rm -rf "$builddir"
+    ___x_cmd mkdirp "$builddir"
+    cp -rf ".build/x-cmd-${version}.tgz" "$builddir/x-cmd-${version}.tgz"
+
+    printf "%s\n" '
+# Contributor: Li Junhao <l@x-cmd.com>
+# Maintainer: Li Junhao <l@x-cmd.com>
+pkgname=x-cmd
+pkgver='"${version}"'
+_pkgsum='"$versum"'
+pkgrel=0
+
+pkgdesc="'"$summary"'"
+url="'"$url"'"
+arch=("any")
+license='\("$license"\)'
+
+
+source=("$pkgname-$pkgver.tgz")
+# source="$pkgname-$pkgver.tgz::https://oss.resource.x-cmd.com/x-cmd/release/dist/$pkgver/allinone.tgz"
+# source="$pkgname-$pkgver.tgz::https://raw.githubusercontent.com/x-cmd/release/main/dist/$pkgver/allinone.tgz"
+install="$pkgname.install"
+options=(!debug)
+sha512sums=("SKIP")
+
+package() {
+	mkdir -p "$pkgdir/usr/share/$pkgname/v"
+	cp "$srcdir/$pkgname-$pkgver.tgz" "$pkgdir/usr/share/$pkgname/v/$_pkgsum.tgz"
+}
+
+' > "$builddir/PKGBUILD"
+
+    printf "%s\n" '#!/bin/sh
+
+post_install() {
+    local _pkgsum='"$versum"'
+    local _pkgdir="/usr/share/x-cmd/v/$_pkgsum"
+    local _pkgfile="/usr/share/x-cmd/v/$_pkgsum.tgz"
+    if [ ! -f "$_pkgfile" ]; then
+        printf "%s\n" "- I|x: Not found x-cmd pkg tgz file -> $_pkgfile" >/dev/tty
+        return 1
+    else
+        printf "%s\n" "- I|x: Unpacking $_pkgfile to $_pkgdir" >&2
+        mkdir -p "$_pkgdir"
+        tar -xzf "$_pkgfile" -C "$_pkgdir" || return 1
+
+        printf "%s\n" "- I|x: Linking $_pkgdir to /usr/share/x-cmd/v/latest" >&2
+        rm -rf "/usr/share/x-cmd/v/latest"
+        ln -sf "$_pkgdir" "/usr/share/x-cmd/v/latest" || return 1
+
+        printf "%s\n" "- I|x: Create /usr/bin/x-cmd" >&2
+        install -Dm755 "$_pkgdir/mod/x-cmd/lib/bin/x-cmd" "/usr/bin/x-cmd"
+        chmod +x "/usr/bin/x-cmd"
+    fi
+}
+
+' > "$builddir/x-cmd.install"
+
+    printf "%s\n" '
+
+post_remove() {
+    [ ! -f /usr/bin/x-cmd ]         || rm -rf /usr/bin/x-cmd
+    [ ! -f /usr/bin/x ]             || rm -rf /usr/bin/x
+}
+
+' >> "$builddir/x-cmd.install"
+}

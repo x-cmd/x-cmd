@@ -1,0 +1,88 @@
+
+# lint: programmatically validate rule.yml files using jq
+# No LLM needed — pure static analysis.
+
+___x_cmd_rule_lint(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local output_format="tsv"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m rule lint "$@" ;   return 0 ;;
+            --json)     output_format="json" ;              shift ;;
+            --tsv)      output_format="tsv" ;               shift ;;
+            --)         shift ;     break ;;
+            *)          break ;;
+        esac
+    done
+
+    local IFS=' '
+    local target="$1"
+
+    [ -n "$target" ] || {
+        N=rule M="Need a target file or directory to lint" log:ret:64
+    }
+
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+
+    # Print TSV header
+    [ "$output_format" = "tsv" ] && {
+        printf "%s\n" "file${TAB}rule${TAB}level${TAB}hint"
+    }
+
+    if [ -d "$target" ]; then
+        ___x_cmd_rule_lint___dir "$target"
+    elif [ -f "$target" ]; then
+        ___x_cmd_rule_lint___one "$target"
+    else
+        N=rule M="Target not found: $target" log:ret:64
+    fi
+}
+
+___x_cmd_rule_lint___one(){
+    local file="$1"
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+    local jq_dir="$___X_CMD_ROOT_MOD/rule/lib/jq"
+
+    # Phase 1: YAML → JSON (validates YAML syntax implicitly)
+    local json_data=""
+    json_data="$( ___x_cmd y2j "$file" 2>/dev/null )" || {
+        printf "%s\n" "${file}${TAB}meta-rule-010${TAB}error${TAB}YAML syntax error or parse failure"
+        return 0
+    }
+
+    # Phase 2: jq structural validation via lint_tsv
+    local result=""
+    result="$( printf "%s" "$json_data" | ___x_cmd_cmds jq -r -L "$jq_dir" 'include "lint"; lint_tsv' 2>/dev/null )" || {
+        printf "%s\n" "${file}${TAB}meta-rule-010${TAB}error${TAB}jq lint filter failed — possibly malformed structure"
+        return 0
+    }
+
+    [ -n "$result" ] || return 0
+
+    case "$output_format" in
+        json)
+            printf "%s" "$json_data" | ___x_cmd_cmds jq -L "$jq_dir" 'include "lint"; lint' 2>/dev/null
+            ;;
+        tsv)
+            printf "%s\n" "$result" | while IFS="$TAB" read -r rid rule level hint; do
+                printf "%s\n" "${file}${TAB}${rule}${TAB}${level}${TAB}rule[${rid}]: ${hint}"
+            done
+            ;;
+    esac
+}
+
+___x_cmd_rule_lint___dir(){
+    local dir="$1"
+    local x_=""
+    local f=""
+
+    ___x_cmd fsiter --glob_ "$dir" '*.yml'
+    while read -r f; do
+        [ -f "$f" ] || continue
+        ___x_cmd_rule_lint___one "$f"
+    done <<A
+$x_
+A
+}

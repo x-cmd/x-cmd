@@ -15,7 +15,7 @@ ___x_cmd_claw_agentrequest(){
     local im="$1";      [ -n "$im" ] || N=claw M="Please provide IM platform name (e.g., weixin|telegram)" log:ret:64
     local chatid="$2";  [ -n "$chatid" ] || N=claw M="Please provide chatid" log:ret:64
 
-    ___x_cmd_claw_run___ensure "$im" || return $?
+    ___x_cmd_claw_run___ensure_im_service "$im" "$chatid" || return $?
     ___x_cmd_claw_run___agentrequest___handlemsg "$@"
 }
 
@@ -38,6 +38,13 @@ ___x_cmd_claw_run___agentrequest___handlemsg(){
 
     local workspace_dir="$___X_CMD_CLAW_BOT_WS/${im}-${chatid}"
     local exitcode=0
+    local reply_priority_prompt="### Reply Priority
+
+Quick Q&A (you know the answer immediately): reply directly.
+
+Tasks needing thinking/research/time: send a brief acknowledgement FIRST ('Got it, checking...' / 'On it.'), then continue working and send the real answer when ready.
+
+Do not repeat what you already said. If there is nothing new to add, stay silent."
 
     # Initialize workspace from template if first run
     if [ ! -d "$workspace_dir" ]; then
@@ -47,7 +54,8 @@ ___x_cmd_claw_run___agentrequest___handlemsg(){
         ___x_cmd mkdirp "$workspace_dir/tmp"
     else
         # Ensure missing template files are present without overwriting existing ones
-        local i; for i in "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/msg"/*; do
+        local i
+        for i in "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/msg"/*; do
             [ -e "$i" ] || continue
             target="$workspace_dir/${i##*/}"
             [ -e "$target" ] || ___x_cmd cp -r "$i" "$target"
@@ -86,7 +94,8 @@ Guidelines:
                 latest_msg="[unavailable]"
             } ;;
     esac
-    claw:info --m:latest_msg "$latest_msg" "Processing agent request for $im:$chatid"
+
+    log:sub:init -i "$im:$chatid" claw "Sending request to agent request"
     case "$im" in
         weixin)
             ___x_cmd agent request  \
@@ -96,6 +105,8 @@ Guidelines:
                 --reference-workspace "$___X_CMD_CLAW_AGENT_REFERENCE_WS" \
                 "You have received a message from a user via WeChat.
 ${first_contact_prompt}
+
+IMPORTANT: Before using any \`x <mod>\` command, you MUST load x-cmd first: \`. ~/.x-cmd.root/X\`
 
 REPLY METHOD:
 Use the command 'x weixin send' to reply:
@@ -109,6 +120,8 @@ Use the command 'x weixin send' to reply:
   WRONG — \\n appears as literal text in the output:
     'Line 1\\nLine 2\\nLine 3'
 - For image/video: x weixin send --image <path>  or  x weixin send --video <path>
+
+${reply_priority_prompt}
 
 FORMAT:
 WeChat has limited formatting support — no tables, no headings, partial markdown. Prefer plain text, bullet lists, and emoji.
@@ -143,6 +156,8 @@ ${first_contact_prompt}
 
 CURRENT CHAT ID: \"$chatid\" — you MUST include this in every reply command.
 
+IMPORTANT: Before using any \`x <mod>\` command, you MUST load x-cmd first: \`. ~/.x-cmd.root/X\`
+
 REPLY METHOD:
 Use the command 'x telegram send' to reply:
 - For help:        x telegram send -h
@@ -155,6 +170,8 @@ Use the command 'x telegram send' to reply:
   WRONG — \\n appears as literal text in the output:
     'Line 1\\nLine 2\\nLine 3'
 - For image/video: x telegram send --image --chatid \"$chatid\" <path>  or  x telegram send --video --chatid \"$chatid\" <path>
+
+${reply_priority_prompt}
 
 FORMAT:
 Telegram supports full markdown including tables and headings. Max 4096 characters per message.
@@ -188,6 +205,8 @@ ${first_contact_prompt}
 
 CURRENT CHAT ID: \"$chatid\" — you MUST include this in every reply command.
 
+IMPORTANT: Before using any \`x <mod>\` command, you MUST load x-cmd first: \`. ~/.x-cmd.root/X\`
+
 REPLY METHOD:
 Use the command 'x feishu abot send' to reply:
 - For help:        x feishu abot send -h
@@ -201,8 +220,33 @@ Use the command 'x feishu abot send' to reply:
     'Line 1\\nLine 2\\nLine 3'
 - For image/video: x feishu abot send --image --chatid \"$chatid\" <path>  or  x feishu abot send --video --chatid \"$chatid\" <path>
 
+${reply_priority_prompt}
+
 FORMAT:
 Feishu supports full markdown. Card messages need specific JSON; plain markdown works well.
+
+LARK-CLI (Feishu Official CLI):
+  lark-cli is the official Lark/Feishu CLI tool — 200+ commands covering Docs, Base, Sheets, Calendar, Mail, Tasks, Meetings, and more.
+  When users ask about Feishu features (create documents, manage sheets, calendar, tasks, etc.), use lark-cli instead of x feishu.
+  - Install: x env use lark-cli
+  - Quick examples:
+    * Create a doc:         lark-cli docs document create --title \"<title>\"
+    * Create a sheet:       lark-cli sheets spreadsheet create --title \"<title>\"
+    * Create a bitable:     lark-cli bitable app create --name \"<name>\"
+    * Create calendar:      lark-cli calendar create --title \"<title>\"
+    * Create a task:        lark-cli tasks task create --content \"<content>\"
+  - Run 'lark-cli --help' or 'lark-cli <command> --help' for more options.
+  - After creating, share the result with the user via: x feishu abot send --text --chatid \"$chatid\" '<result>'
+
+CLAW CONNECT — ADD MORE FEISHU GROUP CHATS:
+  Users typically start with a single chat with you, then may ask you to connect more Feishu group chats.
+  When a user asks to connect a group chat in Feishu, run:
+  - Connect a specific group: x claw connect feishu:oc_xxx
+    The user will provide the Group ID (oc_xxx) in the chat message.
+  - Connect all groups: x claw connect feishu:groups
+  - Disconnect a specific group: x claw disconnect feishu:oc_xxx
+  - Disconnect all groups: x claw disconnect feishu:groups
+  Note: Each group chat spawns an independent Agent session. Just run the connect command from this current single chat — no need to enter the group chat itself.
 
 CRON EXAMPLES:
   In claw context, ONLY x claw cron is allowed. Do NOT use:
@@ -233,6 +277,8 @@ ${first_contact_prompt}
 
 CURRENT CHAT ID: \"$chatid\" — you MUST include this in every reply command.
 
+IMPORTANT: Before using any \`x <mod>\` command, you MUST load x-cmd first: \`. ~/.x-cmd.root/X\`
+
 REPLY METHOD:
 Use the command 'x qywx abot send' to reply:
 - For help:        x qywx abot send -h
@@ -245,6 +291,8 @@ Use the command 'x qywx abot send' to reply:
   WRONG — \\n appears as literal text in the output:
     'Line 1\\nLine 2\\nLine 3'
 - For image/file: x qywx abot send --image --chatid \"$chatid\" <path>  or  x qywx abot send --file --chatid \"$chatid\" <path>
+
+${reply_priority_prompt}
 
 FORMAT:
 Enterprise WeChat has limited formatting support — similar to WeChat. Keep it simple: plain text, lists, and emoji. No tables or headings.
@@ -269,6 +317,7 @@ $msg
             ;;
     esac || exitcode="$?"
 
+    log:sub:fini
     if [ "$exitcode" -eq 0 ]; then
         claw:info "Successfully processed agent request for $im:$chatid"
         ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable"
@@ -288,9 +337,9 @@ ___x_cmd_claw_run___agentrequest___handleheartbeat(){
 
     ___x_cmd_claw_run___agentrequest___checkunavailable || return 0
 
-    local imdir="$___X_CMD_CLAW_BOT_HEARTBEAT/im_activity"
+    local imdir="$___X_CMD_CLAW_BOT_CONNECT_DIR"
     [ -d "$imdir" ] || {
-        claw:warn "[HB] No IM activity directory found. Skipping heartbeat."
+        claw:warn "[HB] No connect directory found. Skipping heartbeat."
         return 0
     }
 
@@ -300,46 +349,52 @@ ___x_cmd_claw_run___agentrequest___handleheartbeat(){
     local default_reply_chatid=""
     local max_ts=0
     local im_count=0
+    local exitcode=0
 
-    local i active_im active_chatid active_ts x_
+    local i j active_im active_chatid active_ts x_
     for i in "$imdir"/*; do
-        [ -f "$i" ] || continue
+        [ -d "$i" ] || continue
         active_im="${i##*/}"
-        read -r active_chatid active_ts < "$i"
-        [ -n "$active_chatid" ] || continue
-        [ -n "$active_ts" ] || continue
 
-        im_count=$((im_count + 1))
-
-        x_=""; ___x_cmd epoch minus_ -H "$active_ts"
-        active_platforms="$active_platforms
-  - $active_im (chatid: $active_chatid, last_active: $x_)"
-
-        # Build reply method hints for this platform
+        # Build reply method hints for this platform (once per IM)
         case "$active_im" in
             weixin)
                 reply_methods="$reply_methods
   * weixin:   x weixin send --text '<msg>'" ;;
             telegram)
                 reply_methods="$reply_methods
-  * telegram: x telegram send --text --chatid \"$active_chatid\" '<msg>'" ;;
+  * telegram: x telegram send --text --chatid <CHATID> '<msg>'" ;;
             feishu)
                 reply_methods="$reply_methods
-  * feishu:   x feishu abot send --text --chatid \"$active_chatid\" '<msg>'" ;;
+  * feishu:   x feishu abot send --text --chatid <CHATID> '<msg>'" ;;
             qywx)
                 reply_methods="$reply_methods
-  * qywx:     x qywx abot send --text --chatid \"$active_chatid\" '<msg>'" ;;
+  * qywx:     x qywx abot send --text --chatid <CHATID> '<msg>'" ;;
             *)
                 reply_methods="$reply_methods
-  * $active_im: x $active_im send --text --chat \"$active_chatid\" '<msg>'" ;;
+  * $active_im: x $active_im send --text --chat <CHATID> '<msg>'" ;;
         esac
 
-        # Find the most recently active platform
-        if [ "$active_ts" -gt "$max_ts" ]; then
-            max_ts="$active_ts"
-            default_reply_im="$active_im"
-            default_reply_chatid="$active_chatid"
-        fi
+        for j in "$i"/*; do
+            [ -f "$j" ] || continue
+            active_chatid="${j##*/}"
+            read -r active_ts < "$j"
+            [ -n "$active_chatid" ] || continue
+            [ -n "$active_ts" ] || continue
+
+            im_count=$((im_count + 1))
+
+            x_=""; ___x_cmd epoch minus_ -H "$active_ts"
+            active_platforms="$active_platforms
+  - $active_im (chatid: $active_chatid, last_active: $x_)"
+
+            # Find the most recently active platform
+            if [ "$active_ts" -gt "$max_ts" ]; then
+                max_ts="$active_ts"
+                default_reply_im="$active_im"
+                default_reply_chatid="$active_chatid"
+            fi
+        done
     done
 
     [ "$im_count" -gt 0 ] || {
@@ -355,7 +410,7 @@ ___x_cmd_claw_run___agentrequest___handleheartbeat(){
         ___x_cmd mkdirp "$workspace_dir/tmp"
     else
         # Ensure missing template files are present without overwriting existing ones
-        local i; for i in "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/hb"/*; do
+        for i in "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/hb"/*; do
             [ -e "$i" ] || continue
             target="$workspace_dir/${i##*/}"
             [ -e "$target" ] || ___x_cmd cp -r "$i" "$target"
@@ -380,8 +435,7 @@ Guidelines:
 </workspace_check>"
     fi
 
-    claw:info "[HB] Processing global heartbeat for $im_count platform(s), default reply to $default_reply_im"
-
+    log:sub:init -i "$im_count platform(s)" claw "[HB] Processing global heartbeat, default reply to $default_reply_im"
     ___x_cmd agent request \
         --timeout 1800 \
         --debug \
@@ -403,14 +457,18 @@ FORMAT GUIDE:
 
 - Your workspace:             \"$workspace_dir\"
 $check_prompt
-" || {
+"   || exitcode="$?"
+
+    log:sub:fini
+    if [ "$exitcode" -eq 0 ]; then
+        # Heartbeat agent succeeded — clear unavailable status
+        claw:debug "[HB] Heartbeat agent completed successfully"
+        ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable"
+    else
         claw:error "[HB] Global heartbeat agent request failed for $im_count platform(s)"
         ___x_cmd_claw_run___agentrequest___markunavailable
         return 1
-    }
-
-    # Heartbeat agent succeeded — clear unavailable status
-    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable"
+    fi
 }
 
 ___x_cmd_claw_run___agentrequest___checkunavailable(){
@@ -420,7 +478,7 @@ ___x_cmd_claw_run___agentrequest___checkunavailable(){
     local fail_count=0 fail_ts=0
     read -r fail_count fail_ts < "$agent_unavailable_file"
 
-    local cooldown
+    local cooldown remaining
     case "$fail_count" in
         1) cooldown=0 ;;
         2) cooldown=60 ;;
@@ -434,7 +492,7 @@ ___x_cmd_claw_run___agentrequest___checkunavailable(){
     ___x_cmd date timestamp_
     local elapsed=$(( x_ - fail_ts ))
     if [ "$elapsed" -lt "$cooldown" ]; then
-        local remaining=$(( cooldown - elapsed ))
+        remaining=$(( cooldown - elapsed ))
         claw:info "Agent unavailable (fail_count=$fail_count), ${remaining}s cooldown remaining — skipping request"
         return 1
     fi
@@ -445,7 +503,7 @@ ___x_cmd_claw_run___agentrequest___checkunavailable(){
 
 ___x_cmd_claw_run___agentrequest___markunavailable(){
     local agent_unavailable_file="$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable"
-    local fail_count=0; local _=""
+    local fail_count=0 _=""
     [ ! -f "$agent_unavailable_file" ] || read -r fail_count _ < "$agent_unavailable_file"
     fail_count=$(( fail_count + 1 ))
 

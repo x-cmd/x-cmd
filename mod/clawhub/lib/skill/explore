@@ -1,0 +1,67 @@
+# shellcheck shell=dash
+
+# GET /api/v1/skills?limit=&sort=&cursor=&nonSuspiciousOnly=
+___x_cmd_clawhub_skill_explore(){
+    case "$1" in -h|--help) shift; ___x_cmd help -m clawhub skill explore "$@" ; return 0 ;; esac
+
+    local fmt=auto
+    local limit=25
+    local sort=newest
+    local cursor=
+    local non_suspicious_only=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|--yml)   fmt="${1#--}";                          shift   ;;
+            --limit|-n)     limit="$2";                             shift 2 ;;
+            --sort)         sort="$2";                              shift 2 ;;
+            --cursor)       cursor="$2";                            shift 2 ;;
+            --non-suspicious-only|--non-suspicious) non_suspicious_only="true"; shift ;;
+            -*)             clawhub:error "Unknown option: $1"; return 1 ;;
+            *)              shift ;;
+        esac
+    done
+
+    # Validate limit range
+    case "$limit" in
+        *[!0-9]*)   M="Invalid limit: $limit (must be 1-200)" N=clawhub log:ret:64 ;;
+    esac
+    [ "$limit" -ge 1 ] && [ "$limit" -le 200 ] || M="Limit must be between 1 and 200" N=clawhub log:ret:64
+
+    local sort_field
+    case "$sort" in
+        newest)             sort_field="createdAt"       ;;
+        updated)            sort_field="updated"         ;;
+        downloads)          sort_field="downloads"       ;;
+        rating)             sort_field="stars"           ;;
+        installs)           sort_field="installsCurrent" ;;
+        installsAllTime)    sort_field="installsAllTime" ;;
+        trending)           sort_field="trending"        ;;
+        *)                  M="Invalid sort: $sort (valid: newest|updated|downloads|rating|installs|installsAllTime|trending)" N=clawhub log:ret:64 ;;
+    esac
+
+    local qs="limit=$limit&sort=$sort_field"
+    [ -z "$cursor" ]              || qs="$qs&cursor=$cursor"
+    [ -z "$non_suspicious_only" ] || qs="$qs&nonSuspiciousOnly=$non_suspicious_only"
+
+    local resp=
+    resp="$(___x_cmd_clawhub_u_curl get "/api/v1/skills?$qs" --no-auth)" || {
+        ___x_cmd_clawhub_u_handle_resp false "Failed to explore skills:"
+        return 1
+    }
+    ___x_cmd_clawhub_u_fmt "$fmt" ___x_cmd_clawhub_skill_explore___human
+}
+
+___x_cmd_clawhub_skill_explore___human(){
+    printf "%s\n" "$resp" | ___x_cmd jq -r '
+        .items[] | [
+            .slug,
+            "v" + (try (.latestVersion.version // .latestVersion // "-") catch "-"),
+            (try (.createdAt / 1000 | strftime("%Y-%m-%d")) catch "-"),
+            ((.summary // "") | if length > 50 then .[0:50] + "..." else . end)
+        ] | @tsv' \
+        | ___x_cmd_cmds awk -F'\t' 'BEGIN {
+            printf "\033[1;36m%-30s %-12s %-12s %s\033[0m\n", "SLUG", "VERSION", "CREATED", "SUMMARY"
+        } {
+            printf "\033[36m%-30s\033[0m \033[32m%-12s\033[0m \033[22;90m%-12s %s\033[0m\n", $1, $2, $3, $4
+        }'
+}

@@ -37,7 +37,7 @@ ___x_cmd_claw_service_start(){
         case "$1" in
             -h|--help)
                         shift; ___x_cmd help -m claw start "$@" ; return 0 ;;
-            --feishu|--weixin|--telegram|--qywx)
+            --weixin|--feishu|--feishu=groups|--feishu=*|--telegram|--qywx)
                         imlist="${imlist}${1#--}
 "
                         shift ;;
@@ -48,44 +48,45 @@ ___x_cmd_claw_service_start(){
         esac
     done
 
-    local x_=""
-    [ -n "$imlist" ] || imlist="$( ___x_cmd_claw_run___list_activate )"
-    [ -n "$imlist" ] || {
-        ___x_cmd_claw_run___detect_im_ || {
-            claw:warn "No ready IM platform found, falling back to weixin"
-            x_="weixin"
-        }
-        imlist="$x_"
-    }
+    if ___x_cmd service isalive x-claw-service; then
+        claw:info "claw service is already running. Use 'x claw log' to view logs"
+    else
+        claw:info "Starting claw service"
+        ___x_cmd service start      x-claw-service  --  x-cmd claw service run || return $?
 
-    local im=; while read -r im; do
+        ___x_cmd sleep 2
+
+        if ___x_cmd service isalive x-claw-service; then
+            claw:info "claw service is running. Use 'x claw log' to view logs."
+        else
+            claw:error "Failed to start claw service — check logs for details"
+            ___x_cmd service log tail x-claw-service
+            return 1
+        fi
+    fi
+
+    local x_=""
+    [ -n "$imlist" ] || {
+        imlist="$( ___x_cmd_claw_run___list_activate )"
+        [ -n "$imlist" ] || {
+            ___x_cmd_claw_run___detect_im_ || {
+                claw:warn "No ready IM platform found, falling back to weixin"
+                x_="weixin"
+            }
+            imlist="$x_"
+        }
+    }
+    local im="" chatid=""
+    while read -r im; do
+        chatid=""
+        case "$im" in
+            *=*) chatid="${im#*=}"; im="${im%%=*}" ;;
+        esac
         [ -n "$im"  ] || continue
-        ___x_cmd_claw_run___activate_im "$im" || return $?
+        ___x_cmd_claw_connect "$im${chatid:+":$chatid"}" || return $?
     done <<A
 $imlist
 A
-
-    ! ___x_cmd service isalive x-claw-service || {
-        claw:info "claw service is already running. Use 'x claw log' to view logs"
-        return 0
-    }
-
-    claw:info "Starting claw service"
-    ___x_cmd service start      x-claw-service  --  x-cmd claw service run || return $?
-
-    ___x_cmd sleep 2
-    ___x_cmd service isalive x-claw-service || {
-        claw:error "Failed to start claw service — check logs for details"
-        ___x_cmd service log tail x-claw-service
-        return 1
-    }
-
-    if ___x_cmd service isalive x-claw-service; then
-        claw:info "claw service is running. Use 'x claw log' to view logs."
-    else
-        claw:error "claw service failed to start"
-        return 1
-    fi
 }
 
 ___x_cmd_claw_service_stop(){
@@ -94,7 +95,7 @@ ___x_cmd_claw_service_stop(){
         case "$1" in
             -h|--help)
                         shift; ___x_cmd help -m claw stop "$@" ; return 0 ;;
-            --feishu|--weixin|--telegram|--qywx)
+            --feishu|--feishu=groups|--feishu=*|--weixin|--telegram|--qywx)
                         imlist="${imlist}${1#--}
 "
                         shift ;;
@@ -106,9 +107,14 @@ ___x_cmd_claw_service_stop(){
     done
 
     [ -n "$imlist" ] || imlist="$( ___x_cmd_claw_run___list_activate )"
+    local im="" chatid=""
     while read -r im; do
+        chatid=""
+        case "$im" in
+            *=*) chatid="${im#*=}"; im="${im%%=*}" ;;
+        esac
         [ -n "$im"  ] || continue
-        ___x_cmd_claw_run___deactivate_im "$im" || return $?
+        ___x_cmd_claw_disconnect "$im${chatid:+":$chatid"}" || return $?
     done <<A
 $imlist
 A
@@ -129,7 +135,7 @@ ___x_cmd_claw_service_restart(){
         case "$1" in
             -h|--help)
                         shift; ___x_cmd help -m claw restart "$@" ; return 0 ;;
-            --feishu|--weixin|--telegram|--qywx)
+            --feishu|--feishu=groups|--feishu=*|--weixin|--telegram|--qywx)
                         imlist="${imlist}${1#--}
 "
                         shift ;;
@@ -147,11 +153,10 @@ ___x_cmd_claw_service_restart(){
 ___x_cmd_claw_service_status(){
     if ___x_cmd service isalive x-claw-service; then
         claw:info "x-claw-service is running"
-        ___x_cmd claw run --status
     else
         claw:warn "x-claw-service is not running"
-        ___x_cmd claw run --status
     fi
+    ___x_cmd_claw_run_status
 }
 
 ___x_cmd_claw_service_log(){
