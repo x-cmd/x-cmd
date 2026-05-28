@@ -2,7 +2,7 @@
 
 <p align="center">
     <a target="_blank" href="https://cn.x-cmd.com/">
-        <img src="https://cdn.jsdelivr.net/gh/Zhengqbbb/Zhengqbbb@v1.2.4/x-cmd/x-cmd-lottiefiles.svg" alt="x-cmd-logo" width="400">
+        <img src="https://user-images.githubusercontent.com/40693636/218274071-92a26d84-0550-4b90-a0ba-7d54118c56e1.png" alt="x-cmd-logo" width="140">
     </a>
 </p>
 
