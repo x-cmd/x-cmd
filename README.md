@@ -2,7 +2,7 @@ English | [中文](README.cn.md) | [Source Code](https://github.com/x-cmd/x-cmd/
 
 <p align="center">
     <a target="_blank" href="https://x-cmd.com/">
-        <img src="https://user-images.githubusercontent.com/40693636/218274071-92a26d84-0550-4b90-a0ba-7d54118c56e1.png" alt="x-cmd-logo" width="140">
+        <img src="https://cdn.jsdelivr.net/gh/Zhengqbbb/Zhengqbbb@v1.2.6/x-cmd/x-cmd-lottiefiles.svg" alt="x-cmd-logo" width="400">
     </a>
 </p>
 
