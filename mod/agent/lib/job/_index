@@ -2,12 +2,12 @@
 # x agent job init "Implement user authentication"     # create job id
 # x agent job iter --max-iterations 100 --inrow 10
 
-xrc:mod:lib agent       job/util job/ls job/status job/prompt
+xrc:mod:lib agent       job/util job/ls job/status job/prompt job/run job/stop
 
 
 # x agent job bootstrap -- guiding users creating a job.
 
-# x agent job init      -- create       -- no adjsut
+# x agent job init      -- create       -- no adjust
 # x agent job iter      --addition "..."
 # x agent job status    # running , stopped-to-be-continued, stopped-considered-done
 
@@ -22,9 +22,8 @@ ___x_cmd_agent_job(){
 
     local op="$1"
     case "$op" in
-        init|iter|ls|adjust)
-                    shift; ___x_cmd_agent_job_"${op}" "$@"      ;;
-        status)     shift; ___x_cmd_agent_job_status "$@"      ;;
+        ls|status|run|stop)
+                    shift; ___x_cmd_agent_job_"$op" "$@"        ;;
         -h|--help)  ___x_cmd help -m agent job; return 0        ;;
         *)          N=agent M="Unknown operation" log:ret:64    ;;
     esac
@@ -33,83 +32,99 @@ ___x_cmd_agent_job(){
 ___X_CMD_AGENT_JOB_RECENT=""
 ___X_CMD_AGENT_JOB_DIR="$___X_CMD_ROOT_DATA/agent/job"
 
-# Initialize a new job
-___x_cmd_agent_job_init(){
+# Writes user's description to DESC.md, then calls AI to generate/update PLAN.md and AGENTS.md.
+# Run a complete job: initialize then iterate until completion.
+___x_cmd_agent_job_exec(){
     [ $# -gt 0 ]    ||      set -- --help
 
     local mode="auto"
-    local parent_dir=""
+    local jobdir=""
+    local jobid=""
     local harness=""
+    local debug=""
+    local max_iterations=100
+    local inrow=2
+    local continuous=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)      ___x_cmd help -m agent job init; return 0 ;;
-            --auto)         mode=auto ;     shift ;;
-            -b|--batch)     mode=batch ;    shift ;;
-            --dir)          parent_dir="$2" ; arg:2:shift ;;
-            --harness)      harness="$2" ;  arg:2:shift ;;
-            --)             shift ; break ;;
-            *)              break ;;
+            -h|--help)              ___x_cmd help -m agent job init; return 0 ;;
+            --auto)                 mode=auto ;     shift ;;
+            -b|--batch)             mode=batch ;    shift ;;
+            --job-dir)              jobdir="$2" ;   arg:2:shift ;;
+            --job-id)               jobid="$2" ;    arg:2:shift ;;
+            --harness)              harness="$2" ;  arg:2:shift ;;
+            --debug)                debug=1 ;       shift ;;
+            --max-iterations)       max_iterations="$2" ;       arg:2:int; arg:2:shift ;;
+            --inrow)                inrow="$2" ;                arg:2:int; arg:2:shift ;;
+            --continuous)           continuous=1;               shift ;;
+            --)                     shift ; break ;;
+            *)                      break ;;
         esac
     done
 
     local desc="$*"
     [ -n "$desc" ] || N=agent M="Please specify the job description" log:ret:64
 
-    # Call adjust to create PLAN.md
-    ___x_cmd_agent_job_adjust --init --dir "$parent_dir" --harness "$harness" "$desc" || return $?
+    if [ -z "$jobid" ] && [ -z "$jobdir" ] && [ -n "$___X_CMD_AGENT_JOB_RECENT" ]; then
+        jobdir="$___X_CMD_AGENT_JOB_RECENT"
+    else
+        [ -n "$jobid" ] || jobid="$(___x_cmd date vlid)"
+        if [ -z "$jobdir" ]; then
+            jobdir="$___X_CMD_AGENT_JOB_DIR/$jobid"
+        else
+            jobdir="$jobdir/$jobid" # Remove trailing slash if any
+        fi
+
+        ___X_CMD_AGENT_JOB_RECENT="$jobdir"
+    fi
+
+    local x_=""
+    if [ -z "$harness" ]; then
+        x_=""; ___x_cmd_agent_harness_
+        harness="$x_"
+    fi
+
+    ___x_cmd_agent_job___init "$jobdir" || return $?
+    ___x_cmd_agent_job___iter "$jobdir"
 }
 
-# Adjust the job requirements
-___x_cmd_agent_job_adjust(){
-    local parent_dir=""
-    local job_id=""
-    local harness=""
+# Initialize or re-initialize a job.
+___x_cmd_agent_job___init(){
+    local jobdir="$1"
     local is_init=0
-
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -h|--help)      ___x_cmd help -m agent job adjust; return 0 ;;
-            --harness)      harness="$2" ;             arg:2:shift ;;
-            --init)         is_init=1;                 shift ;;
-            --dir)          parent_dir="$2" ;          arg:2:shift ;;
-            -i|--id)        job_id="$2" ;              arg:2:shift ;;
-            *)              break ;;
-        esac
-    done
-
-    local desc="$*"
-    [ -n "$desc" ] || N=agent M="Please specify the job description to be adjusted" log:ret:64
-    local jobdir=""
     local vlid; vlid="$(___x_cmd date vlid)"
-    [ -n "$parent_dir" ] || parent_dir="$___X_CMD_AGENT_JOB_DIR"
-
-    if [ "$is_init" = 1 ]; then
-        jobdir="$parent_dir/$vlid"
+    if [ -d "$jobdir" ]; then
+        # Re-init existing job: append to DESC.md
+        printf "Timestamp: %s\nAdjust Desc: %s\n---\n" "$vlid" "$desc" >> "$jobdir/DESC.md"
+    else
+        # Init new job
+        is_init=1
         ___x_cmd mkdirp "$jobdir"
-    else
-        jobdir="$( ___x_cmd_agent_job___resolve_jobdir "$parent_dir" "$job_id" )" || return $?
+        printf "Timestamp: %s\nPwd: %s\nDesc: %s\n---\n" "$vlid" "$PWD" "$desc" > "$jobdir/DESC.md"
     fi
 
-    if [ -z "$jobdir" ]; then
-        N=agent M="No job found. Please specify --dir and/or --id, or run 'x agent job init <description>' to create a new job" log:ret:64
-    fi
+    local descfile="$jobdir/DESC.md"
+    local planfile="$jobdir/PLAN.md"
+    local agentfile="$jobdir/AGENTS.md"
 
-    if [ ! -d "$jobdir" ]; then
-        N=agent M="Job directory not found: $jobdir" log:ret:1
-    fi
+    # Call AI to generate/update PLAN.md and AGENTS.md
+    local content;
+    descfile="$descfile" planfile="$planfile" agentfile="$agentfile" jobdir="$jobdir" \
+    content="$( ___x_cmd_agent_job___get_prompt init )"
 
-    local descfile=""; local agentfile=""
-    descfile="$jobdir/PLAN.md"
-    if [ "$is_init" = 1 ]; then
-        printf "Timestamp: %s\nPwd: %s\nDesc: %s\n---\n" "$vlid" "$PWD" "$desc" > "$descfile"
-    else
-        printf "Timestamp: %s\nAdjust Desc: %s\n---\n" "$vlid" "$desc" >> "$descfile"
-    fi
+    [ -n "$content" ] || {
+        agent:error "Failed to load init prompt template"
+        return 1
+    }
 
-    agentfile="$jobdir/AGENTS.md"
+    local debug_opt=""
+    [ -z "$debug" ] || debug_opt="--debug"
+    ___x_cmd agent request --harness "$harness" $debug_opt -f "$descfile" -f "$planfile" -f "$agentfile" "$content" || return $?
 
-    # TODO: Evaluate whether the user's task description in PLAN.md is clear and actionable.
-    # If the description is vague or incomplete, we may warn the user or prompt for clarification here.
+    [ -r "$planfile" ] || {
+        agent:error "Failed to read PLAN.md after init. The AI may not have created the task plan properly"
+        return 1
+    }
 
     # Remove old DONE.md since the task plan has been adjusted
     if [ -f "$jobdir/DONE.md" ]; then
@@ -120,57 +135,42 @@ ___x_cmd_agent_job_adjust(){
     if [ "$is_init" = 1 ]; then
         agent:info "Job created at $jobdir"
     else
-        agent:info "Job adjusted at $jobdir"
+        agent:info "Job re-initialized at $jobdir"
     fi
-    agent:info "PLAN.md updated. Edit PLAN.md file if needed, then run 'x agent job iter' to start iteration"
-
-    # Update recent
-    ___X_CMD_AGENT_JOB_RECENT="$jobdir"
+    agent:info "PLAN.md and AGENTS.md updated"
 }
 
 # Continue job iterations
-___x_cmd_agent_job_iter(){
-    local parent_dir=""
-    local job_id=""
-    local inrow=2
-    local max_iterations=100
-    local harness=""
-    local continuous=""
-
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -h|--help)              ___x_cmd help -m agent job iter; return 0 ;;
-            --dir)                  parent_dir="$2" ;           arg:2:shift ;;
-            -i|--id)                job_id="$2" ;               arg:2:shift ;;
-            --max-iterations)       max_iterations="$2" ;       arg:2:int; arg:2:shift ;;
-            --inrow)                inrow="$2" ;                arg:2:int; arg:2:shift ;;
-            --harness)              harness="$2" ;              arg:2:shift ;;
-            --continuous)           continuous=1;               shift ;;
-            *)                      break ;;
-        esac
-    done
-
-    if [ -z "$harness" ]; then
-        local x_=""; ___x_cmd_agent_harness_
-        harness="$x_"
+___x_cmd_agent_job___iter(){
+    local jobdir="$1"
+    if [ -z "$jobdir" ]; then
+        N=agent M="No job directory found" log:ret:64
     fi
 
-    # Resolve job directory
-    local jobdir; jobdir="$( ___x_cmd_agent_job___resolve_jobdir "$parent_dir" "$job_id" )" || return $?
+    if [ ! -d "$jobdir" ]; then
+        N=agent M="Job directory not found: $jobdir" log:ret:1
+    fi
 
+    local descfile="$jobdir/DESC.md"
     local planfile="$jobdir/PLAN.md"
     local agentfile="$jobdir/AGENTS.md"
     local donefile="$jobdir/DONE.md"
+
+    if [ ! -r "$agentfile" ]; then
+        N=agent M="AGENTS.md not found in $jobdir" log:ret:1
+    fi
 
     if [ ! -r "$planfile" ]; then
         N=agent M="PLAN.md not found in $jobdir" log:ret:1
     fi
 
-    # Display PLAN content before starting iterations
-    ___x_cmd ui sep
-    printf "\033[1mPlan:\033[0m\n"
-    ___x_cmd_cmds cat "$planfile"
-    ___x_cmd ui sep
+    if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; then
+        # Display PLAN content before starting iterations
+        ___x_cmd ui sep
+        printf "\033[1mPlan:\033[0m\n"
+        ___x_cmd_cmds cat "$planfile"
+        ___x_cmd ui sep
+    fi
 
     local iter=0
     local no_progress=0
@@ -195,13 +195,20 @@ ___x_cmd_agent_job_iter(){
 
         loop_context="$(___x_cmd_agent_job___build_loop_context "$jobdir" "$iter" "$max_iterations" "$no_progress" "$inrow")"
 
-        planfile="$planfile" donefile="$donefile" jobdir="$jobdir" iter="$iter" vlid="$vlid" inrow="$inrow" max_iterations="$max_iterations" loop_context="$loop_context" response_file="$response_file" \
-        content="$( ___x_cmd_agent_job___get_prompt job-iter )"
+        descfile="$descfile" planfile="$planfile" agentfile="$agentfile" donefile="$donefile" jobdir="$jobdir" iter="$iter" vlid="$vlid" inrow="$inrow" max_iterations="$max_iterations" loop_context="$loop_context" response_file="$response_file" \
+        content="$( ___x_cmd_agent_job___get_prompt iter )"
 
+        [ -n "$content" ] || {
+            agent:error "Failed to load iter prompt template"
+            break
+        }
+
+        local debug_opt=""
+        [ -z "$debug" ] || debug_opt="--debug"
         if [ -n "$session_id" ]; then
-            ___x_cmd agent request --harness "$harness" --session "$session_id" --file "$agentfile" --file "$planfile" "$content" || break
+            ___x_cmd agent request --harness "$harness" $debug_opt --session "$session_id" --file "$agentfile" --file "$planfile" "$content" || break
         else
-            ___x_cmd agent request --harness "$harness" --file "$agentfile" --file "$planfile" "$content" || break
+            ___x_cmd agent request --harness "$harness" $debug_opt --file "$agentfile" --file "$planfile" "$content" || break
         fi
 
         ___x_cmd_agent_job_iter___eval_response "$jobdir" "$response_file" "$iter" "$inrow" "$donefile" "$max_iterations" "$vlid" "$harness" || break
@@ -214,9 +221,6 @@ ___x_cmd_agent_job_iter(){
     if [ -f "$donefile" ]; then
         agent:info "Job completed successfully. Final report: $donefile"
     else
-        agent:info \
-            --"To continue" "x agent job iter --dir '$parent_dir' --id '${jobdir##*/}'" \
-            --"To adjust" "  x agent job adjust --dir '$parent_dir' --id '${jobdir##*/}' <new requirement>" \
-            "Job stopped (incomplete). Iteration responses saved in $jobdir/*.response.md"
+        agent:info "Job stopped (incomplete). Iteration responses saved in $jobdir/*.response.md"
     fi
 }

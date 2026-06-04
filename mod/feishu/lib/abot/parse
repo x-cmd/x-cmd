@@ -39,10 +39,10 @@ ___x_cmd_feishu_parse(){
     end_line="${end_line}"   \
     ___x_cmd awk0 -m j/json -m j/jiter \
             -f "$___X_CMD_ROOT_MOD/feishu/lib/awk/bot_parse.awk" < "$botdata" | {
-        local is_ref="" msg_time="" msg_type="" msg_text="" msg_image_key="" msg_file_key="" msg_file_name="" msg_chat_id="" msg_message_id="" msg_parent_id=""
-        local last_ref_str=""
+        local is_ref="" msg_time="" msg_sender_id="" msg_type="" msg_text="" msg_image_key="" msg_file_key="" msg_file_name="" msg_chat_id="" msg_message_id="" msg_parent_id=""
         while   read -r is_ref && \
                 read -r msg_time && \
+                read -r msg_sender_id && \
                 read -r msg_type && \
                 read -r msg_text && \
                 read -r msg_image_key && \
@@ -51,12 +51,7 @@ ___x_cmd_feishu_parse(){
                 read -r msg_chat_id && \
                 read -r msg_message_id && \
                 read -r msg_parent_id; do
-            if [ "$is_ref" = "1" ]; then
-                last_ref_str="$( ___x_cmd_feishu_parse_item___ "$is_ref" "$last_ref_str" "$msg_time" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id" "$msg_parent_id" ) "
-            else
-                ___x_cmd_feishu_parse_item___ "$is_ref" "$last_ref_str" "$msg_time" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id" "$msg_parent_id"
-                last_ref_str=""
-            fi
+            ___x_cmd_feishu_parse_item___ "$is_ref" "" "$msg_time" "$msg_sender_id" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id" "$msg_parent_id"
         done
     }
 }
@@ -73,45 +68,81 @@ ___x_cmd_feishu_get_ref_message(){
 
 ___x_cmd_feishu_parse_ref_content(){
     local ref_json="$1"
-    local ref_type ref_content ref_text ref_image_key ref_file_key ref_file_name
+    local ref_msg_id="$2"
 
-    ref_type="$(printf "%s" "$ref_json" | ___x_cmd jo .data.items[0].msg_type 2>/dev/null)"
-    ref_content="$(printf "%s" "$ref_json" | ___x_cmd jo .data.items[0].body.content 2>/dev/null)"
+    # Determine start index and ref type display
+    local start_index=0
+    local ref_type_display=""
+    local first_msg_type
+    first_msg_type="$(printf "%s" "$ref_json" | ___x_cmd jq -r '.data.items[0].msg_type // empty' 2>/dev/null)"
+    if [ "$first_msg_type" = "merge_forward" ]; then
+        start_index=1
+        ref_type_display="MergeForward"
+    fi
 
-    [ -z "$ref_content" ] && return 1
+    # Extract items as individual JSON lines, starting from start_index
+    local items_jsonl
+    items_jsonl="$(printf "%s" "$ref_json" | ___x_cmd jq -c ".data.items[${start_index}:][]" 2>/dev/null)"
 
-    case "$ref_type" in
-        text)
-            ref_text="$(printf "%s" "$ref_content" | ___x_cmd jo .text 2>/dev/null)"
-            printf "%s" "$ref_text"
-            ;;
-        image)
-            ref_image_key="$(printf "%s" "$ref_content" | ___x_cmd jo .image_key 2>/dev/null)"
-            printf "[Image:%s]" "$ref_image_key"
-            ;;
-        file)
-            ref_file_key="$(printf "%s" "$ref_content" | ___x_cmd jo .file_key 2>/dev/null)"
-            ref_file_name="$(printf "%s" "$ref_content" | ___x_cmd jo .file_name 2>/dev/null)"
-            printf "[File:%s:%s]" "$ref_file_key" "$ref_file_name"
-            ;;
-        *)
-            printf "[%s]" "$ref_type"
-            ;;
-    esac
+    [ -n "$items_jsonl" ] || return 1
+
+    # Pass all items to awk for parsing, write to temp file to avoid subshell
+    local tmp_ref="${___X_CMD_FEISHU_TMP}/ref_parse_$$"
+    printf "%s\n" "$items_jsonl" | ___x_cmd awk0 -m j/json -m j/jiter \
+        -f "$___X_CMD_ROOT_MOD/feishu/lib/awk/bot_parse.awk" > "$tmp_ref"
+
+    # Read parsed output and call ___x_cmd_feishu_parse_item___ for each message
+    # Use temp file to avoid subshell (dash doesn't support here-strings)
+    local ref_content="" item_body="" item_output=""
+    while   read -r is_ref && \
+            read -r msg_time && \
+            read -r msg_sender_id && \
+            read -r msg_type && \
+            read -r msg_text && \
+            read -r msg_image_key && \
+            read -r msg_file_key && \
+            read -r msg_file_name && \
+            read -r msg_chat_id && \
+            read -r msg_message_id && \
+            read -r msg_parent_id; do
+        # Get display type from the first item (if not already set by merge_forward)
+        if [ -z "$ref_type_display" ]; then
+            case "$msg_type" in
+                text)           ref_type_display="Text" ;;
+                image)          ref_type_display="Image" ;;
+                file)           ref_type_display="File" ;;
+                post)           ref_type_display="Post" ;;
+                *)              ref_type_display="$msg_type" ;;
+            esac
+        fi
+        # Call ___x_cmd_feishu_parse_item___ with is_ref="" to get formatted output
+        item_output="$(___x_cmd_feishu_parse_item___ "" "" "$msg_time" "$msg_sender_id" "$msg_type" "$msg_text" "$msg_image_key" "$msg_file_key" "$msg_file_name" "$msg_chat_id" "$msg_message_id" "")"
+        # Extract bodystr (4th tab-separated field)
+        item_body="$(printf "%s" "$item_output" | cut -f4)"
+        if [ -n "$ref_content" ]; then
+            ref_content="${ref_content} ${item_body}"
+        else
+            ref_content="${item_body}"
+        fi
+    done < "$tmp_ref"
+    rm -f "$tmp_ref"
+
+    printf "%s\t%s" "$ref_type_display" "$ref_content"
 }
 
 ___x_cmd_feishu_parse_item___(){
     local is_ref="$1"
     local bodystr="$2"
     local msg_time="$3"
-    local msg_type="$4"
-    local msg_text="$5"
-    local msg_image_key="$6"
-    local msg_file_key="$7"
-    local msg_file_name="$8"
-    local msg_chat_id="$9"
-    local msg_message_id="${10}"
-    local msg_parent_id="${11}"
+    local msg_sender_id="$4"
+    local msg_type="$5"
+    local msg_text="$6"
+    local msg_image_key="$7"
+    local msg_file_key="$8"
+    local msg_file_name="$9"
+    local msg_chat_id="${10}"
+    local msg_message_id="${11}"
+    local msg_parent_id="${12}"
 
     local typename="Text" file_key="" default_ext="" download_type=""
     case "$msg_type" in
@@ -142,6 +173,15 @@ ___x_cmd_feishu_parse_item___(){
                 download_type="image"
                 default_ext=".jpg"
             fi
+            ;;
+        merge_forward)
+            typename="MergeForward"
+            # Fetch forwarded messages via API and parse them
+            local fwd_json fwd_result fwd_content
+            fwd_json="$(___x_cmd ccmd 1w -- ___x_cmd_feishu_get_ref_message "$msg_message_id")"
+            fwd_result="$(___x_cmd_feishu_parse_ref_content "$fwd_json" "$msg_message_id")"
+            fwd_content="${fwd_result#*	}"
+            bodystr="${bodystr}${fwd_content}"
             ;;
         *)
             typename="Unknown"
@@ -179,15 +219,13 @@ ___x_cmd_feishu_parse_item___(){
     fi
 
     if [ "$is_ref" = "1" ] && [ -n "$msg_parent_id" ]; then
-        local ref_json ref_content
-        ref_json="$(___x_cmd_feishu_get_ref_message "$msg_parent_id")"
-        ref_content="$(___x_cmd_feishu_parse_ref_content "$ref_json")"
-        bodystr="${ref_content}${bodystr}"
-    fi
-
-    if [ "$is_ref" = "1" ]; then
-        printf "[REF:%s:%s] \n" "$typename" "$bodystr"
+        local ref_json ref_result ref_type_display ref_content
+        ref_json="$(___x_cmd ccmd 1w -- ___x_cmd_feishu_get_ref_message "$msg_parent_id")"
+        ref_result="$(___x_cmd_feishu_parse_ref_content "$ref_json" "$msg_parent_id")"
+        ref_type_display="${ref_result%%	*}"
+        ref_content="${ref_result#*	}"
+        printf "%s\t%s\t%s\t[REF:%s:%s] %s\n" "$msg_time" "$msg_sender_id" "$typename" "$ref_type_display" "$ref_content" "$bodystr"
     else
-        printf "%s\t%s\t%s\n" "$msg_time" "$typename" "$bodystr"
+        printf "%s\t%s\t%s\t%s\n" "$msg_time" "$msg_sender_id" "$typename" "$bodystr"
     fi
 }

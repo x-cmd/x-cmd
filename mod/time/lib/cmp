@@ -1,3 +1,4 @@
+# shellcheck disable=SC2016
 # x time cmp "find . -iname '*[0-9].jpg'" "fd -HI '.*[0-9]\.jpg$'"
 # x time cmp -c 20 "echo hello" "printf hello"
 ___x_cmd_time_cmp(){
@@ -5,18 +6,21 @@ ___x_cmd_time_cmp(){
 
     local count=""
     local outputmode=""
+    local budget=5          # budget default is two second.
 
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)  ___x_cmd help -m time --cmp "$@" ; return 0 ;;
+            -h|--help)  ___x_cmd help -m time cmp "$@" ; return 0 ;;
             -c)         count="$2";         arg:2:shift ;;
-            --csv)      outputmode=csv ; shift ;;
-            --csv0)     outputmode=csv0 ; shift ;;
-            --tsv)      outputmode=tsv ; shift ;;
-            --tsv0)     outputmode=tsv0 ; shift ;;
-            --tty)      outputmode=tty ; shift ;;
-            --yml)      outputmode=yml ; shift ;;
-            --*)        N=time M="Unknown options -> $1" log:ret:64 ;;
+            -b)         budget="$2" ;       arg:2:shift ;;
+
+            --csv)      outputmode=csv ;    shift ;;
+            --csv0)     outputmode=csv0 ;   shift ;;
+            --tsv)      outputmode=tsv ;    shift ;;
+            --tsv0)     outputmode=tsv0 ;   shift ;;
+            --tty)      outputmode=tty ;    shift ;;
+            --yml)      outputmode=yml ;    shift ;;
+            --*|-*)     N=time M="Unknown options -> $1" log:ret:64 ;;
             *)          break
         esac
     done
@@ -37,11 +41,12 @@ ___x_cmd_time_cmp(){
 
     local all_results=""
     local cmd result
+
     for cmd in "$@"; do
         if [ -n "$count" ]; then
-            result="$( x time stress -c "$count" --tsv0 -- eval "$cmd" 2>/dev/null )"
+            result="$( x time stress -b "$budget" -c "$count" --tsv0 -- eval "$cmd" 2>/dev/null )"
         else
-            result="$( x time stress --tsv0 -- eval "$cmd" 2>/dev/null )"
+            result="$( x time stress -b "$budget" --tsv0 -- eval "$cmd" 2>/dev/null )"
         fi
         # TODO: Consider caching with x ccmd 10m --, but results may vary across directories
         if [ -n "$result" ]; then
@@ -66,27 +71,29 @@ ___x_cmd_time_cmp___output(){
         csv0)
             printf "%s" "$data" | ___x_cmd_cmds awk -F'\t' '{
                 gsub(/"/, "\"\"", $1)
-                printf "\"%s\",%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+                printf "\"%s\",%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
             }'
             ;;
         csv)
-            printf "cmd,count,sum,offset,min,max,second,third,avg,median,stddev\n"
+            printf "cmd,count,sum,offset,min,max,second,third,avg,median,stddev,child_user,child_sys,shell_user,shell_sys,user,sys\n"
             printf "%s" "$data" | ___x_cmd_cmds awk -F'\t' '{
                 gsub(/"/, "\"\"", $1)
-                printf "\"%s\",%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+                printf "\"%s\",%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
             }'
             ;;
         tsv0)
             printf "%s" "$data" | ___x_cmd_cmds awk -F'\t' '{print}'
             ;;
         tsv)
-            printf "cmd\tcount\tsum\toffset\tmin\tmax\tsecond\tthird\tavg\tmedian\tstddev\n"
+            printf "cmd\tcount\tsum\toffset\tmin\tmax\tsecond\tthird\tavg\tmedian\tstddev\tchild_user\tchild_sys\tshell_user\tshell_sys\tuser\tsys\n"
             printf "%s" "$data"
             ;;
         tty)
             printf "%s" "$data" | ___x_cmd_cmds awk -F'\t' '{
                 printf "# %s\n", $1
                 printf "  avg:    %8.3f ± %.3f ms   median: %8.3f ms   total: %8.3f ms   [%d runs]\n", $9, $11, $10, $3, $2
+                printf "  user:   %.3f ms (shell: %.3f + child: %.3f)\n", $16, $14, $12
+                printf "  sys:    %.3f ms (shell: %.3f + child: %.3f)\n", $17, $15, $13
             }'
             ;;
         yml)
@@ -102,6 +109,12 @@ ___x_cmd_time_cmp___output(){
                 printf "  avg: %.3f\n", $9
                 printf "  median: %.3f\n", $10
                 printf "  stddev: %.3f\n", $11
+                printf "  child_user: %.3f\n", $12
+                printf "  child_sys: %.3f\n", $13
+                printf "  shell_user: %.3f\n", $14
+                printf "  shell_sys: %.3f\n", $15
+                printf "  user: %.3f\n", $16
+                printf "  sys: %.3f\n", $17
             }'
             ;;
     esac

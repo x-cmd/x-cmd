@@ -2,7 +2,7 @@
 
 ___x_cmd log init slash
 
-xrc:mod:lib     slash   ls run compile init cat get preset/_index
+xrc:mod:lib     slash   ls run compile init cat get preset/_index enable disable
 
 ___X_CMD_SLASH_CONFIG="$___X_CMD_ROOT_CFG/slash/config.yml"
 
@@ -12,10 +12,53 @@ ___x_cmd_slash___main(){
     local op="$1";      shift
     case "$op" in
         -h|--help)      ___x_cmd help -m slash      "$@" ;      return 0 ;;
-        init|ls|run|compile|runname|ensure|cat|get)
+        init|ls|run|compile|runname|ensure|cat|get|enable|disable)
                         ___x_cmd_slash_"$op"        "$@" ;;
         *)              ___x_cmd_slash_runname "$op" "$@" ;;
     esac
+}
+
+___x_cmd_slash___set_status(){
+    local name="$1" new_status="$2"
+    local cfgfp="$___X_CMD_SLASH_CONFIG"
+    local tmpfp="${cfgfp}.tmp.$$"
+    local cur_name="" found=0 item_status=""
+
+    while IFS= read -r line; do
+        case "$line" in
+            [!\ ]*:*)
+                cur_name="${line%:}"
+                item_status=""
+                ;;
+            "  status:"*)
+                item_status="${line#  status: }"
+                [ "$cur_name" = "$name" ] && {
+                    if [ "$item_status" = "$new_status" ]; then
+                        found=2
+                    else
+                        printf "  status: %s\n" "$new_status" >> "$tmpfp"
+                        found=1
+                        continue
+                    fi
+                }
+                ;;
+        esac
+        printf "%s\n" "$line" >> "$tmpfp"
+    done < "$cfgfp"
+
+    if [ "$found" -eq 0 ]; then
+        rm -f "$tmpfp"
+        slash:warn "Slash command not found: $name"
+        return 1
+    elif [ "$found" -eq 2 ]; then
+        rm -f "$tmpfp"
+        slash:info "Already $new_status: $name"
+        return 1
+    fi
+
+    mv "$tmpfp" "$cfgfp"
+    slash:info "$new_status: $name"
+    return 0
 }
 
 ___x_cmd_slash_ensure(){

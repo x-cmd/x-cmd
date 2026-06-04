@@ -6,9 +6,11 @@ BEGIN{
     USER_SESSION_CWD = ENVIRON[ "user_session_cwd" ]
     SAVE_SESSION_ID_FILE = ENVIRON[ "save_session_id_file" ]
     IS_DEBUG = ENVIRON[ "is_debug" ]
+    SESSION_OUTPUT_DIR = ENVIRON[ "session_output_dir" ]
 
     ____X_CMD_AGENT_ERR_AUTHFAILURE = ENVIRON[ "____X_CMD_AGENT_ERR_AUTHFAILURE" ]
     ____X_CMD_AGENT_ERR_NETWORK_TIMEOUT = ENVIRON[ "____X_CMD_AGENT_ERR_NETWORK_TIMEOUT" ]
+    ____X_CMD_AGENT_ERR_RATE_LIMIT = ENVIRON[ "____X_CMD_AGENT_ERR_RATE_LIMIT" ]
     if ( HARNESS == "" ) HARNESS = "UNKNOWN"
     Q2_1 = SUBSEP "\"1\""
     SAVE_SESSION_ID_VAL = ""
@@ -17,10 +19,28 @@ BEGIN{
 ($0 != ""){ handle_response_stream_json($0); }
 # END{ printf( "%s", "\n" ); }
 
+function record_and_exit( code, stderr_msg,    fp ){
+    if ( stderr_msg != "" ) {
+        log_error( "agent", stderr_msg )
+    }
+    if ( SESSION_OUTPUT_DIR != "" ) {
+        mkdirp( SESSION_OUTPUT_DIR "/metadata" )
+        fp = SESSION_OUTPUT_DIR "/metadata/status"
+        printf( "%s\n", code ) > fp
+        close( fp )
+        if ( stderr_msg != "" ) {
+            fp = SESSION_OUTPUT_DIR "/metadata/stderr.txt"
+            printf( "%s\n", stderr_msg ) > fp
+            close( fp )
+        }
+    }
+    exit( code )
+}
+
 function handle_response_stream_json( s,           o ){
     if ( s ~ "^\\[EXITCODE\\] ([0-9]+) *$" ) {
         stdout_log_debug_if_enabled("EXITCODE", substr(s, 12))
-        exit( int(substr(s, 12)) )
+        record_and_exit( int(substr(s, 12)), "" )
     } else if ( OUTPUT_FORMAT == "json" ) {
         print s
         handle_error_text(s, o)
@@ -31,7 +51,7 @@ function handle_response_stream_json( s,           o ){
     } else {
         if (s ~ "^ *\\[DONE\\]$") {
             stdout_log_debug_if_enabled("DONE", "stream finished")
-            exit(0)
+            record_and_exit( 0, "" )
         }
 
         handle_error_text(s, o)
@@ -44,12 +64,15 @@ function handle_response_stream_json( s,           o ){
     }
 }
 
-function handle_error_text(s, obj,                  result){
+function is_rate_limit_signal(s) {
+    return s ~ /rate.?limit|too.?many.?requests|throttl|quota.?exceeded|resource.?exhausted|usage.?limit|tokens.?per|model_cooldown|请求过于频繁|调用频率|频率限制|配额不足|配额已用尽|额度不足|额度已用尽|429\b|rate_limit|RATE_LIMIT|THROTTLED|RESOURCE_EXHAUSTED/
+}
+
+function handle_error_text(s, obj,                  result, err_text){
     if (s ~ "^ *\\{"){
         jiparse_after_tokenize(obj, s)
         if ( JITER_LEVEL != 0 ){
-            log_error( "agent", "Malformed JSON response from " HARNESS )
-            exit(1)
+            record_and_exit( 1, "Malformed JSON response from " HARNESS )
         }
 
         JITER_LEVEL = JITER_CURLEN = 0
@@ -57,36 +80,40 @@ function handle_error_text(s, obj,                  result){
         if (( obj[ Q2_1, "\"type\"" ] == "\"result\"" ) && ( obj[ Q2_1, "\"is_error\"" ] == "true" )) {
             # claude
             result = juq( obj[ Q2_1, "\"result\"" ] )
-            log_error( "agent", result )
+            if ( is_rate_limit_signal(result) ) record_and_exit( ____X_CMD_AGENT_ERR_RATE_LIMIT, result )
             # if ( result ~ "^API Error" ){
-            exit( 1 )
+            record_and_exit( 1, result )
         } else if ( obj[ Q2_1, "\"type\"" ] == "\"turn.failed\"" ){
             # codex
-            log_error( "agent", juq(obj[ Q2_1, "\"error\"", "\"message\"" ] ))
-            exit( 1 )
+            result = juq(obj[ Q2_1, "\"error\"", "\"message\"" ])
+            if ( is_rate_limit_signal(result) ) record_and_exit( ____X_CMD_AGENT_ERR_RATE_LIMIT, result )
+            record_and_exit( 1, result )
+        } else if ( obj[ Q2_1, "\"type\"" ] == "\"rate_limit_error\"" ){
+            result = juq(obj[ Q2_1, "\"error\"", "\"message\"" ])
+            record_and_exit( ____X_CMD_AGENT_ERR_RATE_LIMIT, result )
         } else if ( obj[ Q2_1, "\"type\"" ] == "\"error\"" ){
-            log_error( "agent", jstr(obj, Q2_1))
-            exit( 1 )
+            err_text = jstr(obj, Q2_1)
+            if ( is_rate_limit_signal(err_text) ) record_and_exit( ____X_CMD_AGENT_ERR_RATE_LIMIT, err_text )
+            record_and_exit( 1, err_text )
         } else if ( obj[ Q2_1, "\"error\"" ] == "{" ){
-            log_error( "agent", jstr(obj, Q2_1 SUBSEP "\"error\""))
-            exit( 1 )
+            err_text = jstr(obj, Q2_1 SUBSEP "\"error\"")
+            if ( is_rate_limit_signal(err_text) ) record_and_exit( ____X_CMD_AGENT_ERR_RATE_LIMIT, err_text )
+            record_and_exit( 1, err_text )
         }
 
     } else {
         stdout_log_debug_if_enabled("TEXT", s)
         if ( s ~ "LLM not set" ) {
-            log_error( "agent", s )
-            exit( ____X_CMD_AGENT_ERR_AUTHFAILURE )
+            record_and_exit( ____X_CMD_AGENT_ERR_AUTHFAILURE, s )
         } else if ( s ~ "Connection error" ) {
-            log_error( "agent", s )
-            exit( ____X_CMD_AGENT_ERR_NETWORK_TIMEOUT )
+            record_and_exit( ____X_CMD_AGENT_ERR_NETWORK_TIMEOUT, s )
+        } else if ( is_rate_limit_signal(s) ) {
+            record_and_exit( ____X_CMD_AGENT_ERR_RATE_LIMIT, s )
         } else if ( s ~ "Not logged in · Please run /login" ) {
-            log_error( "agent", s )
-            exit( ____X_CMD_AGENT_ERR_AUTHFAILURE )
+            record_and_exit( ____X_CMD_AGENT_ERR_AUTHFAILURE, s )
         }
 
-        log_error( "agent", s )
-        exit(1)
+        record_and_exit( 1, s )
     }
 }
 

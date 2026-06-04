@@ -2,50 +2,48 @@
 # Preview single job details in YAML format with colors.
 
 # Main status function
-# Usage: x agent job status [options] [job_id]
+# Usage: x agent job status [options] [job_dir]
 # Options:
-#   --dir <path>    Parent directory for jobs (default: $___X_CMD_AGENT_JOB_DIR)
-#   job_id:         Job ID/subdirectory name (e.g., 260402_034114)
-#   (none):         Use most recent job
+#   --job-dir <path>    Job directory path (default: most recent job)
+#   job_dir:            Job directory path (positional argument)
+#   (none):             Use most recent job
 ___x_cmd_agent_job_status(){
-    local parent_dir=""
-    local job_id=""
+    local jobdir=""
+    local jobid=""
+    local format=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)      ___x_cmd help -m agent job status; return 0 ;;
-            --dir)          parent_dir="$2" ; shift 2 ;;
+            --job-dir)      jobdir="$2" ; shift 2 ;;
+            --job-id)       jobid="$2" ; shift 2 ;;
+            --yml)          format="yml" ; shift ;;
+            --llms)         format="llms" ; shift ;;
             --)             shift; break ;;
             -*)             N=agent M="Unknown option: $1" log:ret:64 ;;
-            *)              [ -z "$job_id" ] && job_id="$1"; shift ;;
+            *)              [ -z "$jobdir" ] && jobdir="$1"; shift ;;
         esac
     done
 
-    # Default parent directory
-    [ -n "$parent_dir" ] || parent_dir="$___X_CMD_AGENT_JOB_DIR"
 
-    local job_path=""
+    if ! ___x_cmd_is_stdout2tty || ! ___x_cmd_runmode_allow_manual ; then
+        [ "$format" = "llms" ] || format="yml"
+    fi
 
-    if [ -n "$job_id" ]; then
-        # Try to resolve job_id to a directory
-        job_path="$(___x_cmd_agent_job_status___resolve_job "$parent_dir" "$job_id")" || return $?
-    else
-        # Try to use most recent job
-        job_path="$___X_CMD_AGENT_JOB_RECENT"
-        if [ -z "$job_path" ] || [ ! -d "$job_path" ]; then
-            # Find latest in parent_dir
-            job_path="$(___x_cmd_agent_job___get_lastdir "$parent_dir")"
-        fi
-        if [ -z "$job_path" ]; then
-            N=agent M="No recent job found. Please specify a job_id or run 'x agent job init' to create one" log:ret:64
+    if [ -n "$jobid" ]; then
+        jobdir="$___X_CMD_AGENT_JOB_DIR/$jobid"
+    elif [ -z "$jobdir" ]; then
+        jobdir="$___X_CMD_AGENT_JOB_RECENT"
+        if [ -z "$jobdir" ]; then
+            N=agent M="No recent job found. Please specify --job-dir or --job-id" log:ret:64
         fi
     fi
 
-    if [ ! -d "$job_path" ]; then
-        N=agent M="Not a directory: $job_path" log:ret:1
+    if [ ! -d "$jobdir" ]; then
+        N=agent M="Not a directory: $jobdir" log:ret:1
     fi
 
-    ___x_cmd_agent_job_status___render "$job_path"
+    ___x_cmd_agent_job_status___render "$jobdir" "$format"
 }
 
 # Resolve job argument to full path
@@ -95,10 +93,21 @@ ___x_cmd_agent_job_status___resolve_job(){
 # Render job status in YAML format
 ___x_cmd_agent_job_status___render(){
     local job_path="$1"
+    local format="${2:-}"
     local job_id="${job_path##*/}"
 
     # Parse all job data
     ___x_cmd_agent_job_status___parse_job "$job_path"
+
+    if [ "$format" = "yml" ]; then
+        ___x_cmd_agent_job_status___render_yml "$job_path" "$job_id"
+        return
+    fi
+
+    if [ "$format" = "llms" ]; then
+        ___x_cmd_agent_job_status___render_llms "$job_path" "$job_id"
+        return
+    fi
 
     # Determine status color code
     local status_clr="33"    # Yellow (active)
@@ -119,10 +128,17 @@ ___x_cmd_agent_job_status___render(){
     local progress_bar=""
     ___x_cmd_agent_job_status___build_progress_bar "$p_progress"
 
+    # Check if worker is still running
+    local running_clr="31" running_text="false"
+    if ___x_cmd worker isalive --ns 'x-agent-job' --name "$job_id" >/dev/null 2>&1; then
+        running_clr="32"; running_text="true"
+    fi
+
     # Print YAML format output with ANSI colors
     printf '\n'
     printf '\033[90mjob\033[0m: \033[36m%s\033[0m\n' "$job_id"
     printf '\033[90mstatus\033[0m: \033[%sm%s\033[0m\n' "$status_clr" "$p_status"
+    printf '\033[90mrunning\033[0m: \033[%sm%s\033[0m\n' "$running_clr" "$running_text"
 
     # Progress section
     printf '\033[90m  progress:\033[0m\n'
@@ -174,6 +190,191 @@ ___x_cmd_agent_job_status___render(){
     ___x_cmd_agent_job_status___print_files "$job_path"
 
     printf '\n'
+}
+
+# Render job status in plain YAML format (no colors, AI-friendly)
+___x_cmd_agent_job_status___render_yml(){
+    local job_path="$1"
+    local job_id="$2"
+
+    printf 'job: "%s"\n' "$job_id"
+    printf 'jobdir: "%s"\n' "$job_path"
+    printf 'status: "%s"\n' "$p_status"
+    if ___x_cmd worker isalive --ns 'x-agent-job' --name "$job_id" >/dev/null 2>&1; then
+        printf 'running: true\n'
+    else
+        printf 'running: false\n'
+    fi
+
+    printf 'progress:\n'
+    printf '  percent: %d\n' "$p_progress"
+    if [ "$p_todo_done" != "0" ] || [ "$p_todo_remaining" != "0" ]; then
+        local total=$((p_todo_done + p_todo_remaining))
+        printf '  todo: "%d/%d done (%d remaining)"\n' "$p_todo_done" "$total" "$p_todo_remaining"
+    fi
+
+    printf 'iteration: "%s/%s"\n' "$p_iter" "$p_max_iter"
+    printf 'harness: "%s"\n' "$p_harness"
+
+    if [ -n "$p_ai_status" ]; then
+        printf 'ai:\n'
+        printf '  status: "%s"\n' "$p_ai_status"
+        if [ -n "$p_work_type" ]; then
+            printf '  work_type: "%s"\n' "$p_work_type"
+        fi
+        printf '  exit_signal: "%s"\n' "$p_exit_signal"
+        if [ -n "$p_recommendation" ]; then
+            printf '  recommendation: "%s"\n' "$p_recommendation"
+        fi
+    fi
+
+    printf 'stats:\n'
+    printf '  files_modified: %d\n' "$p_files_modified"
+    printf '  tests_status: "%s"\n' "$p_tests_status"
+    printf '  response_count: %d\n' "$p_response_count"
+
+    printf 'time:\n'
+    printf '  created: "%s"\n' "$p_time_formatted"
+    if [ -n "$p_updated_at" ]; then
+        local rel_time=""
+        rel_time="$(___x_cmd_agent_job_status___relative_time "$p_updated_at")"
+        printf '  updated: "%s"\n' "$rel_time"
+    fi
+
+    printf 'description: "%s"\n' "$p_desc"
+
+    printf 'core_files:\n'
+    local has_file=0
+    for f in AGENTS.md DESC.md PLAN.md DONE.md status.yml; do
+        if [ -f "$job_path/$f" ]; then
+            printf '  - "%s"\n' "$f"
+            has_file=1
+        fi
+    done
+    if [ "$has_file" -eq 0 ]; then
+        printf '  - "(none)"\n'
+    fi
+
+    printf 'response_files:\n'
+    local resp_count=0
+    for f in "$job_path"/*.response.md; do
+        [ -f "$f" ] || continue
+        printf '  - "%s"\n' "${f##*/}"
+        resp_count=$((resp_count + 1))
+    done 2>/dev/null
+    if [ "$resp_count" -eq 0 ]; then
+        printf '  - "(none)"\n'
+    fi
+}
+
+# Render job status in LLM-optimized format
+# Preamble reading guide + YAML data + DONE.md content (if completed)
+___x_cmd_agent_job_status___render_llms(){
+    local job_path="$1"
+    local job_id="$2"
+
+    # --- Preamble: LLM Reading Guide ---
+    printf '# LLM Job Status Report: %s\n\n' "$job_id"
+    printf 'You are analyzing an x-cmd agent job status log.\n'
+    printf 'Read this report in the following priority order:\n\n'
+    printf '1. status + running      -> Is the job alive, completed, or interrupted?\n'
+    printf '2. ai.exit_signal        -> Did the AI explicitly signal stop/continue?\n'
+    printf '3. ai.recommendation     -> The AI assessment of next steps\n'
+    printf '4. progress + todo       -> Quantitative remaining work\n'
+    printf '5. If status=completed:  -> Read the "done_content" section below for final results\n'
+    printf '6. If status=active:     -> Check the "latest_response" file for current context\n'
+    printf '7. response_files        -> Chronological execution history\n\n'
+    printf 'Decision hints:\n'
+    printf -- '- active + running=true  -> Job is executing, monitor or wait\n'
+    printf -- '- active + running=false -> Job interrupted, consider resume\n'
+    printf -- '- completed              -> Review done_content, no further action needed\n'
+    printf -- '- ai.exit_signal != false-> AI signaled completion, check recommendation\n'
+    printf '\n---\n\n'
+
+    # --- YAML Structured Data ---
+    printf 'job: "%s"\n' "$job_id"
+    printf 'jobdir: "%s"\n' "$job_path"
+    printf 'status: "%s"\n' "$p_status"
+
+    local running_text="false"
+    if ___x_cmd worker isalive --ns 'x-agent-job' --name "$job_id" >/dev/null 2>&1; then
+        running_text="true"
+    fi
+    printf 'running: %s\n' "$running_text"
+
+    printf 'progress:\n'
+    printf '  percent: %d\n' "$p_progress"
+    if [ "$p_todo_done" != "0" ] || [ "$p_todo_remaining" != "0" ]; then
+        local total=$((p_todo_done + p_todo_remaining))
+        printf '  todo: "%d/%d done (%d remaining)"\n' "$p_todo_done" "$total" "$p_todo_remaining"
+    fi
+
+    printf 'iteration: "%s/%s"\n' "$p_iter" "$p_max_iter"
+    printf 'harness: "%s"\n' "$p_harness"
+
+    if [ -n "$p_ai_status" ]; then
+        printf 'ai:\n'
+        printf '  status: "%s"\n' "$p_ai_status"
+        if [ -n "$p_work_type" ]; then
+            printf '  work_type: "%s"\n' "$p_work_type"
+        fi
+        printf '  exit_signal: "%s"\n' "$p_exit_signal"
+        if [ -n "$p_recommendation" ]; then
+            printf '  recommendation: "%s"\n' "$p_recommendation"
+        fi
+    fi
+
+    printf 'stats:\n'
+    printf '  files_modified: %d\n' "$p_files_modified"
+    printf '  tests_status: "%s"\n' "$p_tests_status"
+    printf '  response_count: %d\n' "$p_response_count"
+
+    printf 'time:\n'
+    printf '  created: "%s"\n' "$p_time_formatted"
+    if [ -n "$p_updated_at" ]; then
+        local rel_time=""
+        rel_time="$(___x_cmd_agent_job_status___relative_time "$p_updated_at")"
+        printf '  updated: "%s"\n' "$rel_time"
+    fi
+
+    printf 'description: "%s"\n' "$p_desc"
+
+    printf 'core_files:\n'
+    local has_file=0
+    for f in AGENTS.md DESC.md PLAN.md DONE.md status.yml; do
+        if [ -f "$job_path/$f" ]; then
+            printf '  - "%s"\n' "$f"
+            has_file=1
+        fi
+    done
+    if [ "$has_file" -eq 0 ]; then
+        printf '  - "(none)"\n'
+    fi
+
+    printf 'response_files:\n'
+    local resp_count=0
+    local latest_response=""
+    for f in "$job_path"/*.response.md; do
+        [ -f "$f" ] || continue
+        printf '  - "%s"\n' "${f##*/}"
+        latest_response="${f##*/}"
+        resp_count=$((resp_count + 1))
+    done 2>/dev/null
+    if [ "$resp_count" -eq 0 ]; then
+        printf '  - "(none)"\n'
+    fi
+
+    if [ -n "$latest_response" ]; then
+        printf 'latest_response: "%s"\n' "$latest_response"
+    fi
+
+    # --- DONE.md Content (if completed) ---
+    if [ "$p_status" = "completed" ] && [ -f "$job_path/DONE.md" ]; then
+        printf '\n---\n\n'
+        printf '## done_content\n\n'
+        ___x_cmd_cmds cat "$job_path/DONE.md"
+        printf '\n'
+    fi
 }
 
 # Build ASCII progress bar
@@ -232,7 +433,7 @@ ___x_cmd_agent_job_status___print_files(){
     printf '\033[90m  files:\033[0m\n'
 
     local has_file=0
-    for f in AGENTS.md PLAN.md DONE.md status.yml; do
+    for f in AGENTS.md DESC.md PLAN.md DONE.md status.yml; do
         if [ -f "$job_path/$f" ]; then
             printf '\033[90m    - \033[34m%s\033[0m\n' "$f"
             has_file=1
@@ -297,10 +498,10 @@ ___x_cmd_agent_job_status___parse_job(){
         fi
     fi
 
-    # Get description from PLAN.md
-    if [ -f "$job_path/PLAN.md" ]; then
+    # Get description from DESC.md
+    if [ -f "$job_path/DESC.md" ]; then
         local desc_line=""
-        desc_line="$(___x_cmd_cmds grep "^Desc: " "$job_path/PLAN.md" 2>/dev/null | ___x_cmd_cmds head -n 1)" || desc_line=""
+        desc_line="$(___x_cmd_cmds grep "^Desc: " "$job_path/DESC.md" 2>/dev/null | ___x_cmd_cmds head -n 1)" || desc_line=""
         if [ -n "$desc_line" ]; then
             p_desc="${desc_line#Desc: }"
         fi

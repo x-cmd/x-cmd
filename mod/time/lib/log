@@ -1,0 +1,80 @@
+# shellcheck shell=dash
+___x_cmd_time_log(){
+    arg:init time
+
+    local count=1
+    local quiet=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m time log "$@" ; return 0 ;;
+            -c)                 count="$2" ;    arg:2:shift ;;
+            -q)                 quiet=1 ; shift ;;
+            -*)                 N=time M="Unknown options -> $1" log:ret:64 ;;
+            *)                  break
+        esac
+    done
+
+    # Use temp files to capture times (avoids subshell variable capture issues)
+    local times_before_file="${TMPDIR:-/tmp}/time_log_before.$$"
+    local times_after_file="${TMPDIR:-/tmp}/time_log_after.$$"
+    local x_="" begin end wall ret vals wall_s cu cs su ss user_s sys_s begin_s end_s IFS=' '
+    local i=1
+
+    while [ "$i" -le "$count" ]; do
+        if [ -n "$quiet" ]; then
+            x_=""; ___x_cmd_epoch_ms_; begin="$x_"
+            times > "$times_before_file"
+            "$@" 1>/dev/null 2>/dev/null; ret=$?
+            times > "$times_after_file"
+            ___x_cmd_epoch_ms_; end="$x_"
+        else
+            x_=""; ___x_cmd_epoch_ms_; begin="$x_"
+            times > "$times_before_file"
+            "$@"; ret=$?
+            times > "$times_after_file"
+            ___x_cmd_epoch_ms_; end="$x_"
+        fi
+        wall=$(( end - begin ))
+
+        # Parse times, compute wall_s and CPU deltas in one awk
+        vals=""
+        if [ -f "$times_before_file" ] && [ -f "$times_after_file" ]; then
+            vals="$(cat "$times_before_file" "$times_after_file" | ___x_cmd_cmds awk -v wall="$wall" -v bs="$begin" -v es="$end" '{
+                for(i=1;i<=2;i++){
+                    split($i, a, "m")
+                    gsub(/s/, "", a[2])
+                    split(a[2], b, ".")
+                    dec_len = length(b[2])
+                    dec_part = b[2] + 0
+                    if(dec_len < 6) dec_part = dec_part * (10^(6 - dec_len))
+                    else if(dec_len > 6) dec_part = substr(b[2], 1, 6) + 0
+                    val = a[1] * 60 + b[1] + dec_part / 1000000
+                    if(NR==1){ if(i==1) bsu=val; else bss=val }
+                    if(NR==2){ if(i==1) bcu=val; else bcs=val }
+                    if(NR==3){ if(i==1) asu=val; else ass=val }
+                    if(NR==4){ if(i==1) acu=val; else acs=val }
+                }
+            }
+            END{
+                cu = acu - bcu; cs = acs - bcs
+                su = asu - bsu; ss = ass - bss
+                printf "%.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f", wall/1000, cu, cs, su, ss, cu+su, cs+ss, bs/1000, es/1000
+            }')"
+        fi
+        : "${vals:=0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000}"
+
+        read -r wall_s cu cs su ss user_s sys_s begin_s end_s <<EOF
+$vals
+EOF
+        time:info --real "${wall_s} s = ${end_s} - ${begin_s}" \
+            --user "${user_s} s = ${su} s (shell) + ${cu} s (child)" \
+            --sys "${sys_s} s = ${ss} s (shell) + ${cs} s (child)" \
+            "$*"
+
+        i=$((i+1))
+    done
+
+    rm -f "$times_before_file" "$times_after_file"
+    return $ret
+}

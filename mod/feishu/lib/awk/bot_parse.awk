@@ -162,6 +162,7 @@ function parse_item_list( s,         o, basekp, msg_text, msg_image_key, msg_fil
 
     print is_ref
     print msg_timestamp
+    print msg_sender_id
     print msg_type
     print msg_text
     print msg_image_key

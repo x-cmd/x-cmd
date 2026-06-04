@@ -1,0 +1,172 @@
+# shellcheck shell=dash
+
+# Smart asset detection with scoring algorithm
+#
+# Standard naming convention (recommended):
+#   {name}_{version}_{os}_{arch}.tar.gz
+#   e.g., rg_14.1.0_darwin_arm64.tar.gz
+#
+# Assets matching the standard convention get highest priority.
+# Otherwise, falls back to scoring-based heuristic matching.
+
+___x_cmd_eget_detect(){
+    local assets="$1" system="$2" asset_filters="$3" repo_name="$4"
+
+    local os="${system%%/*}"
+    local arch="${system#*/}"
+
+    # Normalize arch to match common patterns
+    local arch_norm
+    case "$arch" in
+        x64|amd64|x86_64)   arch_norm="amd64" ;;
+        x86|i386|i686)      arch_norm="386" ;;
+        arm64|aarch64)      arch_norm="arm64" ;;
+        arm|armv7l)          arch_norm="arm" ;;
+        *)                   arch_norm="$arch" ;;
+    esac
+
+    local best_score=-1 best_line=""
+    local name="" url="" size="" score=0 lname="" lrepo="" line=""
+
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        name="$( printf "%s" "$line" | cut -f1 )"
+        url="$( printf "%s" "$line" | cut -f2 )"
+        size="$( printf "%s" "$line" | cut -f3 )"
+
+        # Skip non-binary assets (checksums, signatures, docs)
+        case "$name" in
+            *.sha256|*.sha256sum|*.sig|*.asc|*.pem|*.txt|*.md|*.json) continue ;;
+        esac
+
+        score=0
+
+        # Score: standard naming convention match (highest priority)
+        # Pattern: {name}_{version}_{os}_{arch}.{ext}
+        lname="$( printf "%s" "$name" | tr '[:upper:]' '[:lower:]' )"
+        if ___x_cmd_eget_detect_stdname "$lname" "$os" "$arch_norm" "$repo_name"; then
+            score=$(( score + 100 ))
+        fi
+
+        # Score: OS match
+        score="$(( score + $( ___x_cmd_eget_detect_os "$lname" "$os" ) ))"
+
+        # Score: Arch match
+        score="$(( score + $( ___x_cmd_eget_detect_arch "$lname" "$arch_norm" ) ))"
+
+        # Score: prefer compressed archives over raw binaries for reliability
+        case "$lname" in
+            *.tar.gz|*.tgz|*.tar.bz2|*.tar.xz|*.tar|*.zip) score=$(( score + 5 )) ;;
+        esac
+
+        # Score: asset filter matching
+        if [ -n "$asset_filters" ]; then
+            local filter_match=1 old_ifs="$IFS" excl=""
+            IFS='|'
+            for f in $asset_filters; do
+                if [ "${f#\^}" != "$f" ]; then
+                    # Anti-match (exclude)
+                    excl="${f#\^}"
+                    case "$lname" in
+                        *"$excl"*) filter_match=0; break ;;
+                    esac
+                else
+                    # Positive match (must contain)
+                    case "$lname" in
+                        *"$f"*) ;;
+                        *) filter_match=0; break ;;
+                    esac
+                fi
+            done
+            IFS="$old_ifs"
+            [ "$filter_match" = "0" ] && continue
+            score=$(( score + 10 ))
+        fi
+
+        # Score: prefer smaller files (likely just the binary, not a bundle)
+        if [ -n "$size" ] && [ "$size" -gt 0 ] 2>/dev/null; then
+            if [ "$size" -lt 50000000 ]; then
+                score=$(( score + 2 ))
+            fi
+        fi
+
+        # Score: repo name in filename
+        lrepo="$( printf "%s" "$repo_name" | tr '[:upper:]' '[:lower:]' )"
+        case "$lname" in
+            *"$lrepo"*) score=$(( score + 3 )) ;;
+        esac
+
+        if [ "$score" -gt "$best_score" ]; then
+            best_score="$score"
+            best_line="$line"
+        fi
+    done <<AIOEOF
+$assets
+AIOEOF
+
+    if [ "$best_score" -lt 5 ]; then
+        return 1
+    fi
+
+    printf "%s\n" "$best_line"
+}
+
+___x_cmd_eget_detect_stdname(){
+    local lname="$1" os="$2" arch="$3" repo="$4"
+    local lrepo="$( printf "%s" "$repo" | tr '[:upper:]' '[:lower:]' )"
+
+    # Standard pattern: {name}_{version}_{os}_{arch}.{ext}
+    # e.g., rg_14.1.0_darwin_arm64.tar.gz
+    case "$lname" in
+        ${lrepo}_*_${os}_${arch}.*|${lrepo}_${os}_${arch}.*)
+            return 0 ;;
+    esac
+
+    # Also accept hyphen separators
+    case "$lname" in
+        ${lrepo}-*-${os}-${arch}.*|${lrepo}-${os}-${arch}.*)
+            return 0 ;;
+    esac
+
+    return 1
+}
+
+___x_cmd_eget_detect_os(){
+    local lname="$1" os="$2"
+    local score=0
+
+    case "$lname" in
+        *darwin*|*macos*|*mac-os*|*osx*)
+            [ "$os" = "darwin" ] && score=20 || score=-50 ;;
+        *linux*)
+            [ "$os" = "linux" ] && score=20 || score=-50 ;;
+        *windows*|*win32*|*win64*|*mingw*|*.exe)
+            [ "$os" = "win" ] && score=20 || score=-50 ;;
+        *freebsd*)
+            [ "$os" = "freebsd" ] && score=20 || score=-50 ;;
+        *openbsd*)
+            [ "$os" = "openbsd" ] && score=20 || score=-50 ;;
+        *netbsd*)
+            [ "$os" = "netbsd" ] && score=20 || score=-50 ;;
+    esac
+
+    printf "%d" "$score"
+}
+
+___x_cmd_eget_detect_arch(){
+    local lname="$1" arch="$2"
+    local score=0
+
+    case "$lname" in
+        *amd64*|*x86_64*|*x64*)
+            [ "$arch" = "amd64" ] && score=15 || score=-50 ;;
+        *arm64*|*aarch64*|*armv8*)
+            [ "$arch" = "arm64" ] && score=15 || score=-50 ;;
+        *386*|*i386*|*x86*|*i686*)
+            [ "$arch" = "386" ] && score=15 || score=-50 ;;
+        *armv7*|*armv6*|*armhf*)
+            [ "$arch" = "arm" ] && score=15 || score=-50 ;;
+    esac
+
+    printf "%d" "$score"
+}

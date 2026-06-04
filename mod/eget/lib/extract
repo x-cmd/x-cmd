@@ -1,0 +1,180 @@
+# shellcheck shell=dash
+
+# Archive extraction and binary installation
+
+___x_cmd_eget_extract(){
+    local archive="$1" file_glob="$2" all="$3" to="$4" repo_name="$5"
+
+    ___x_cmd mkdirp "$to" 2>/dev/null
+
+    if ! [ -w "$to" ] 2>/dev/null; then
+        if [ "$___X_CMD_EGET_SUDO" = "1" ]; then
+            x sudo mkdirp "$to" 2>/dev/null
+        else
+            N=eget M="No write permission for $to — use --sudo or choose a different --to directory" log:ret:1
+            return
+        fi
+    fi
+    local tmpdir="$___X_CMD_EGET_TMP/extract_$$"
+    ___x_cmd mkdirp "$tmpdir"
+
+    case "$archive" in
+        *.tar.gz|*.tgz)
+            ___x_cmd_cmds tar -xzf "$archive" -C "$tmpdir" 2>/dev/null || {
+                N=eget M="Failed to extract tar.gz: $archive" log:ret:1; return;
+            }
+            ;;
+        *.tar.bz2)
+            ___x_cmd_cmds tar -xjf "$archive" -C "$tmpdir" 2>/dev/null || {
+                N=eget M="Failed to extract tar.bz2: $archive" log:ret:1; return;
+            }
+            ;;
+        *.tar.xz)
+            ___x_cmd_cmds tar -xJf "$archive" -C "$tmpdir" 2>/dev/null || {
+                N=eget M="Failed to extract tar.xz: $archive" log:ret:1; return;
+            }
+            ;;
+        *.tar)
+            ___x_cmd_cmds tar -xf "$archive" -C "$tmpdir" 2>/dev/null || {
+                N=eget M="Failed to extract tar: $archive" log:ret:1; return;
+            }
+            ;;
+        *.zip)
+            ___x_cmd_cmds unzip -o -q "$archive" -d "$tmpdir" 2>/dev/null || {
+                N=eget M="Failed to extract zip: $archive" log:ret:1; return;
+            }
+            ;;
+        *.gz)
+            ___x_cmd_cmds gunzip -c "$archive" > "$tmpdir/${archive%.gz}" 2>/dev/null || {
+                N=eget M="Failed to decompress gz: $archive" log:ret:1; return;
+            }
+            ;;
+        *.bz2)
+            ___x_cmd_cmds bunzip2 -c "$archive" > "$tmpdir/${archive%.bz2}" 2>/dev/null || {
+                N=eget M="Failed to decompress bz2: $archive" log:ret:1; return;
+            }
+            ;;
+        *.xz)
+            ___x_cmd_cmds unxz -c "$archive" > "$tmpdir/${archive%.xz}" 2>/dev/null || {
+                N=eget M="Failed to decompress xz: $archive" log:ret:1; return;
+            }
+            ;;
+        *)
+            # Raw binary — just copy directly
+            cp "$archive" "$tmpdir/$repo_name" 2>/dev/null
+            chmod +x "$tmpdir/$repo_name" 2>/dev/null
+            ___x_cmd_eget_install "$tmpdir" "$file_glob" "$all" "$to" "$repo_name"
+            ___x_cmd rmrf "$tmpdir"
+            return
+            ;;
+    esac
+
+    ___x_cmd_eget_install "$tmpdir" "$file_glob" "$all" "$to" "$repo_name"
+    ___x_cmd rmrf "$tmpdir"
+}
+
+___x_cmd_eget_install_bin(){
+    local src="$1" dest="$2"
+    if [ "$___X_CMD_EGET_SUDO" = "1" ] && ! [ -w "$(dirname "$dest")" ]; then
+        x sudo cp "$src" "$dest" && x sudo chmod +x "$dest"
+    else
+        cp "$src" "$dest" && chmod +x "$dest"
+    fi
+}
+
+___x_cmd_eget_install(){
+    local srcdir="$1" file_glob="$2" all="$3" to="$4" repo_name="$5"
+
+    if [ -n "$file_glob" ]; then
+        local matched
+        matched="$( find "$srcdir" -name "$file_glob" -type f 2>/dev/null )"
+        [ -z "$matched" ] && { N=eget M="No files matched glob: $file_glob" log:ret:1; return; }
+        printf "%s\n" "$matched" | while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            local bname
+            bname="$( basename "$f" )"
+            ___x_cmd_eget_install_bin "$f" "$to/$bname"
+            [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$bname"
+        done
+        return
+    fi
+
+    # Find executable files
+    local candidates=""
+    local count=0
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        candidates="${candidates}${candidates:+$NL}$f"
+        count=$(( count + 1 ))
+    done <<FINDEX
+$( find "$srcdir" -type f \( -perm -u=x -o -perm -g=x -o -perm -o=x -o -name "*.exe" \) 2>/dev/null )
+FINDEX
+
+    if [ "$count" = "0" ]; then
+        # No executables found — check for any file with repo name
+        local fallback
+        fallback="$( find "$srcdir" -type f -name "${repo_name}*" 2>/dev/null | head -1 )"
+        if [ -n "$fallback" ]; then
+            ___x_cmd_eget_install_bin "$fallback" "$to/$( basename "$fallback" )"
+            [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$( basename "$fallback" )"
+            return
+        fi
+        N=eget M="No executable files found in archive" log:ret:1
+        return
+    fi
+
+    if [ "$all" = "1" ]; then
+        # Install all executables
+        printf "%s\n" "$candidates" | while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            local basename
+            basename="$( basename "$f" )"
+            ___x_cmd_eget_install_bin "$f" "$to/$basename"
+            [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$basename"
+        done
+        return
+    fi
+
+    if [ "$count" = "1" ]; then
+        local f
+        f="$( printf "%s" "$candidates" | head -1 )"
+        local basename
+        basename="$( basename "$f" )"
+        ___x_cmd_eget_install_bin "$f" "$to/$basename"
+        [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$basename"
+        return
+    fi
+
+    # Multiple executables — prefer the one matching repo name
+    local best=""
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        case "$( basename "$f" )" in
+            "$repo_name"|"$repo_name".exe)
+                best="$f"
+                break
+                ;;
+        esac
+    done <<CANDIDATES
+$candidates
+CANDIDATES
+
+    if [ -n "$best" ]; then
+        local bname
+        bname="$( basename "$best" )"
+        ___x_cmd_eget_install_bin "$best" "$to/$bname"
+        [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$bname"
+        return
+    fi
+
+    # Multiple candidates, no clear winner — list and let user choose
+    log:info "Multiple executables found:"
+    local i=1
+    printf "%s\n" "$candidates" | while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        printf "  %d) %s\n" "$i" "$( basename "$f" )"
+        i=$(( i + 1 ))
+    done
+    printf "Install all with --all, or select with --file\n"
+    return 1
+}

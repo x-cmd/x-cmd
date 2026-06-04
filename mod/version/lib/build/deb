@@ -20,14 +20,11 @@ ___x_cmd_version_build_deb_docker(){
     local version="$1"
     printf "%s\n" 'FROM debian:latest
 RUN useradd -m builder
-USER builder
 WORKDIR /home/builder' > ".build/debian-builder.Dockerfile"
 
     docker build -f ".build/debian-builder.Dockerfile" --tag debian-builder .
     docker run --rm -v "$PWD/.build/deb:/home/builder/debbuild" debian-builder sh -c '
     cd /home/builder/debbuild
-    chmod 755 x-cmd/DEBIAN/postinst
-    chmod 755 x-cmd/DEBIAN/postrm
     dpkg-deb --root-owner-group --build x-cmd || exit 1
 ' || return "$?"
     local distfp="$___X_CMD_VERSION_BUILD_DATA/release/${version}/deb"
@@ -39,8 +36,6 @@ WORKDIR /home/builder' > ".build/debian-builder.Dockerfile"
 ___x_cmd_version_build_deb_local()(
     local version="$1"
     cd ".build/deb"
-    chmod 755 x-cmd/DEBIAN/postinst
-    chmod 755 x-cmd/DEBIAN/postrm
     dpkg-deb --build x-cmd || return "$?"
 )
 
@@ -49,23 +44,65 @@ ___x_cmd_version_build_deb_builddir(){
     local version="$1"
     local versum="$2"
     local url="$(___x_cmd_version_build_info___ url)"
-    local desc="$(___x_cmd_version_build_info___ desc)"
 
     local builddir=".build/deb/x-cmd"
+    local docdir="$builddir/usr/share/doc/x-cmd"
     ___x_cmd rm -rf "$builddir"
     ___x_cmd mkdirp "$builddir/DEBIAN"
+    ___x_cmd mkdirp "$docdir"
     cp -rf ".build/x-cmd-${version}.tgz" "$builddir/${versum}.tgz"
 
     printf "%s\n" 'Package: x-cmd
 Version: '"${version#v}"'
+Section: utils
+Priority: optional
 Architecture: all
 Maintainer: Li Junhao <l@x-cmd.com>
-Description: '"${desc}"'
+Description: Shell Superpowers for AI Agents
+ X-CMD is a modern toolkit for POSIX shell (bash, zsh, ash, dash) — designed
+ to make shell as powerful as Python'\''s standard library.
 Homepage: '"${url}"'' > "$builddir/DEBIAN/control"
 
-    printf "%s\n" '#!/bin/sh
+    printf "%s\n" '
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: x-cmd
+Source: https://github.com/x-cmd/x-cmd
 
+Files: *
+Copyright: Copyright (c) 2026 Li Junhao
+License: Expat
+
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+'  > "$docdir/copyright"
+    ___x_cmd_cmds chmod 644 "$docdir/copyright"
+
+    {
+        printf "x-cmd (%s) unstable; urgency=low\n\n" "${version#v}"
+        printf "  * Initial release %s.\n\n" "${version#v}"
+        printf " -- Li Junhao <l@x-cmd.com>  %s\n" "$(date -Ru)"
+    } > "$docdir/changelog"
+    ___x_cmd_cmds chmod 644 "$docdir/changelog"
+    if command -v gzip >/dev/null 2>&1; then
+        gzip -9nf "$docdir/changelog"
+    fi
+
+    printf "%s\n" '#!/bin/sh
 post_install() {
+    set -e
     local _pkgsum='"$versum"'
     local _pkgdir="/usr/share/x-cmd/v/$_pkgsum"
     local _pkgfile="$_pkgsum.tgz"
@@ -87,18 +124,24 @@ post_install() {
     fi
 }
 
+
 post_install
 ' > "$builddir/DEBIAN/postinst"
 
     printf "%s\n" '#!/bin/sh
 
 post_remove() {
+    set -e
     [ ! -f /usr/bin/x-cmd ]         || rm -rf /usr/bin/x-cmd
     [ ! -f /usr/bin/x ]             || rm -rf /usr/bin/x
+    [ ! -f ~/.x-cmd.root ]          || rm -rf ~/.x-cmd.root
 }
 
 post_remove
 ' > "$builddir/DEBIAN/postrm"
+
+    ___x_cmd_cmds chmod 755 "$builddir/DEBIAN/postinst"
+    ___x_cmd_cmds chmod 755 "$builddir/DEBIAN/postrm"
 }
 
 

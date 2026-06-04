@@ -8,9 +8,20 @@
 
 ## In Progress
 
+> One-time follow-ups and background jobs. The heartbeat agent executes and removes them when done.
+
+-
+
+## Recurring
+
+> Periodic checks. The heartbeat agent executes based on Frequency and records the last run in its own memory.
+> These items are NOT removed after execution.
+
 -
 
 ## Completed
+
+> History of finished one-time tasks. Recurring tasks do not appear here.
 
 -
 

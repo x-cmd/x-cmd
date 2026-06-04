@@ -1,0 +1,63 @@
+
+___x_cmd_rule_info(){
+    [ $# -gt 0 ]  ||  set -- --help
+
+    local ruleset_dir=""
+    local output_fmt=""
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m rule info "$@" ;   return 0 ;;
+            -r)         ruleset_dir="$2" ;                  arg:2:shift ;;
+            --json)     output_fmt="json" ;                 shift ;;
+            --yml)      output_fmt="yml" ;                  shift ;;
+            --)         shift ;     break ;;
+            *)          break ;;
+        esac
+    done
+
+    local rule_id="$1"
+
+    [ -n "$rule_id" ] || N=rule M="Missing rule-id argument" log:ret:64
+
+    [ -n "$ruleset_dir" ] || {
+        x_=""
+        ___x_cmd_rule_which_ || N=rule M="Fail to locate any ruleset. You can use -r to specify" log:ret:64
+        ruleset_dir="$x_"
+    }
+
+    local rule_file=""
+    x_=""
+    ___x_cmd_rule_find_ "$rule_id" "$ruleset_dir" || {
+        N=rule M="Rule '$rule_id' not found in ruleset" log:ret:64
+    }
+    rule_file="$x_"
+
+    case "$output_fmt" in
+        json)
+            local json=""
+            json="$( ___x_cmd y2j < "$rule_file" )" || return 1
+            printf "%s" "$json" | ___x_cmd_cmds jq --arg id "$rule_id" '.[$id]'
+            ;;
+        yml)
+            ___x_cmd_cmds awk -v id="$rule_id" '
+                $0 ~ "^" id ":" { found=1 }
+                found && /^[^ \t]/ && NR > 1 && $0 !~ "^" id ":" { exit }
+                found { print }
+            ' "$rule_file"
+            ;;
+        *)
+            ___x_cmd_rule_info_ "$rule_id" "$ruleset_dir" || return 1
+            printf "id:   %s\n" "$rule_id"
+            printf "file: %s\n" "$rule_file"
+            printf "%s" "$x_" | ___x_cmd_cmds jq -r '
+                if .name  then "name:  \(.name)"  else empty end,
+                if .apply then "apply: \(.apply)" else empty end,
+                if .level then "level: \(.level)" else empty end,
+                if .desc  then "desc:", (.desc | map("  - \(.)")[]) else empty end,
+                if .tldr  then "tldr:", (.tldr | map("  - wrong: \(.wrong)\n    right: \(.right)")[]) else empty end
+            '
+            ;;
+    esac
+}

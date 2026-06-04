@@ -6,12 +6,14 @@ ___x_cmd_rule_check(){
     [ $# -gt 0 ]    ||  set -- --help
 
     local ruleset_dir=""
+    local rule_id=""
     local x_=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)  ___x_cmd help -m rule check "$@" ;   return 0 ;;
             -r)         ruleset_dir="$2" ;                  arg:2:shift ;;
+            --rule)     rule_id="$2" ;                      arg:2:shift ;;
             --)         shift ;     break ;;
             *)          break ;;
         esac
@@ -36,6 +38,79 @@ ___x_cmd_rule_check(){
         ___x_cmd_rule_which_ || N=rule M="Fail to locate any ruleset. You can use -r to specify" log:ret:64
         ruleset_dir="$x_"
     }
+
+    if [ -n "$rule_id" ]; then
+        ___x_cmd_rule_check___one_rule "$ruleset_dir" "$rule_id" "$target_root"
+    else
+        ___x_cmd_rule_check___all "$ruleset_dir" "$target_root"
+    fi
+}
+
+___x_cmd_rule_check___one_rule(){
+    local ruleset_dir="$1"
+    local rule_id="$2"
+    local target_root="$3"
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+
+    local x_=""
+    ___x_cmd_rule_info_ "$rule_id" "$ruleset_dir" || {
+        N=rule M="Rule '$rule_id' not found in ruleset" log:ret:64
+    }
+    local rule_body="$x_"
+
+    rule:info "Check single rule | rule:$rule_id | target:$target_root"
+
+    x_=""; ___x_cmd epoch get_
+    local tmpfile="$___X_CMD_ROOT_TMP/rule/check/${x_}-$$.tsv"
+
+    local system_prompt="$___X_CMD_RULE_PROMPT_RULE_FMT
+You are a quality checker. You are evaluating ONE specific rule.
+
+## Rule
+
+ID: $rule_id
+
+$rule_body
+
+## Task
+
+1. Read the target: $target_root
+2. Evaluate ONLY the rule above against the target.
+3. Output the result — include BOTH pass and violate rows (do not filter by score).
+
+## Output
+
+Write the complete TSV result to: $tmpfile
+
+The TSV format is:
+
+# The following are examples for illustration only
+root${TAB}target${TAB}ruleid${TAB}score${TAB}hint
+${target_root}${TAB}src/hello-world.sh${TAB}${rule_id}${TAB}10${TAB}变量命名不规范
+
+Where:
+- root: the root directory the target belongs to
+- target: relative path to the source file under the root
+- score: integer 0-100
+- hint: brief explanation (empty string if score is 100)
+
+## Paths
+
+- Target root: $target_root
+- Output file: $tmpfile
+"
+
+    ___x_cmd agent request "$system_prompt" || return $?
+
+    [ -s "$tmpfile" ] || return 0
+
+    rule:info "Check completed | rule:$rule_id | output:$tmpfile"
+    ___x_cmd_cmds cat "$tmpfile"
+}
+
+___x_cmd_rule_check___all(){
+    local ruleset_dir="$1"
+    local target_root="$2"
 
     rule:info "Quick check | ruleset:$ruleset_dir | target:$target_root"
 

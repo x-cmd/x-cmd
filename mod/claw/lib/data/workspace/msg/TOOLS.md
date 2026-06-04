@@ -4,31 +4,7 @@
 
 ## x-cmd
 
-> **IMPORTANT**: Before using any `x <mod>` command, you MUST load x-cmd first: `. ~/.x-cmd.root/X`
-
-x-cmd is a portable shell tool framework. `x` is the entry point command (short name for `x-cmd`) that provides access to 600+ tools and modules.
-> If the `x` command is not found, use `x-cmd` instead.
-
-### Loading
-
-```bash
-. ~/.x-cmd.root/X
-```
-
-After loading, `x <mod>` commands become available automatically.
-
-### Common Commands
-
-| Command | Purpose |
-|---------|---------|
-| `x nihao --llmstxt` | View llms.txt for AI agents |
-| `x skill` | Discover available skills |
-| `x env la` | List 600+ available software |
-| `x env use <pkg>` | Install and use a package |
-
-### Browse More
-
-- https://www.x-cmd.com/llms.txt
+Use x-cmd skill to access 300+ shell utilities, 1000+ packages—all without sudo, and discover various safe, human-vetted skills. Learn more: https://www.x-cmd.com/llms.txt
 
 ## Scheduled Tasks
 
@@ -42,6 +18,27 @@ After loading, `x <mod>` commands become available automatically.
 - Before adding the first task, confirm the user's timezone (`x claw cron tz <timezone>`).
 - When using `x claw agentrequest` as a cron command, `<msg>` is sent to a **zero-memory** new agent. The message must include: goal, tools, steps, output, how to deliver results.
 - Use single quotes for `<msg>`. Bad: `'Check HN'`. Good: `'Use x hn top for top 5 posts. Extract title, URL, score. Send: x weixin send --text <result>'`.
+
+## Background Jobs
+
+> Use `x agent run` for complex or long-running tasks that would block the chat.
+
+**Rule of thumb**: Multi-step tasks, data analysis, research, or anything estimated >2 minutes.
+
+- `x agent run --job-id "<id>" --max-iterations <n> "<task>"`: Create and start an async job. The AI auto-generates a PLAN.md and iterates until done or max iterations reached.
+- `x agent job status --job-id "<id>" --llms`: Check progress, iteration count, and whether the job is active/completed (YAML output for parsing).
+- `x agent job ls --active --llms`: List all active jobs.
+- `x agent job stop --job-id "<id>"`: Stop the background process.
+
+**Job ID convention**: Use `<im>-<chatid>-<brief>` for traceability, e.g., `weixin-user123-loganalysis`.
+
+**CRITICAL constraints**:
+- `x agent run` executes in a **fresh environment with NO chat memory**. The `<task>` must be self-contained: clear goal, required tools, expected output.
+- The job does NOT notify the user automatically. Claw checks status via heartbeat and uses `x claw agentrequest` to report results.
+
+**When NOT to use**:
+- Quick Q&A or simple commands (reply directly)
+- Tasks needing back-and-forth clarification (stay in chat)
 
 ## Heartbeat vs Scheduled Tasks
 

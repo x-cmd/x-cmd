@@ -76,7 +76,7 @@ ___x_cmd_feishu_listen(){
             # If poll_start_time < start_time, it means last_msg_time was corrupted, reset to last_poll_time
             # to avoid skipping messages between last_poll_time and current_time
             local poll_start_time="${last_msg_time}"
-            if [ -z "$poll_start_time" ] || [ "$poll_start_time" -lt "$start_time" ]; then
+            if [ "$poll_start_time" -lt "$start_time" ]; then
                 poll_start_time="${last_poll_time:-"$current_time"}"
             fi
 
@@ -95,8 +95,8 @@ ___x_cmd_feishu_listen(){
                 esac
             }
 
-            local msg="" sender_id=""  code=""
-            ___x_cmd jo env . msg=.data.items sender_id=.data.items.1.sender.id code=.code <<A
+            local msg="" code=""
+            ___x_cmd jo env . msg=.data.items code=.code <<A
 $resp
 A
 
@@ -111,24 +111,27 @@ A
             #     fi
             # fi
             # fail_count=0
-
-            [ "$msg" != "[]" ]     || continue
+            msg="$(printf "%s\n" "$msg" | ___x_cmd jq -c '.[] | select(.sender.sender_type == "user")')"
+            [ "$msg" != "" ]    || continue
 
             local oldest_msg_time
-            oldest_msg_time="$(printf "%s" "$resp" | ___x_cmd jq -r '.data.items[-1].create_time')"
+            oldest_msg_time="$(printf "%s" "$msg" | ___x_cmd jq -rs '.[-1].create_time // empty')"
             local new_msg_time=$(( (oldest_msg_time / 1000) + 1 ))
             # Only update if new_msg_time > poll_start_time (guards against empty or wrong-unit values)
             if [ "$new_msg_time" -gt "$poll_start_time" ]; then
                 printf "%s" "$new_msg_time" > "$msg_time_file"
             fi
 
-            msg="$(printf "%s\n" "$msg" | ___x_cmd jq -c '.[] | select(.sender.sender_type == "user")')"
             if [ -n "$fp" ]; then
                 [ -n "$chatid" ] || {
                     feishu:error "Failed to get chat id, cannot save data to file"
                     continue
                 }
-                [ "$chat_type" = "group" ] || chatid="$sender_id"
+
+                [ "$chat_type" = "group" ] || {
+                    chatid="$(printf "%s\n" "$msg" | ___x_cmd jq -rs '.[0].sender.id')"
+                }
+
                 ___X_CMD_FEISHU_BOT_DATA="${___X_CMD_FEISHU_BOT_PATH}/data_${chatid}.tsv"
                 ___x_cmd ensurefp "$___X_CMD_FEISHU_BOT_DATA"
                 printf "%s\n" "$msg"  >> "$___X_CMD_FEISHU_BOT_DATA"
@@ -162,7 +165,7 @@ ___x_cmd_feishu_poll_interval(){
 ___x_cmd_feishu_getmessages(){
     local chatid="$1"
     local start_time="$2"
-    ___x_cmd curl -s "https://open.feishu.cn/open-apis/im/v1/messages?container_id=$chatid&container_id_type=chat&page_size=20&sort_type=ByCreateTimeDesc&start_time=$start_time" \
+    ___x_cmd curl -s "https://open.feishu.cn/open-apis/im/v1/messages?container_id=$chatid&container_id_type=chat&page_size=20&sort_type=ByCreateTimeAsc&start_time=$start_time" \
                   -H "Authorization: Bearer $cur_token"
 }
 

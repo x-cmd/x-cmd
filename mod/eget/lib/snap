@@ -1,0 +1,131 @@
+# shellcheck shell=dash
+
+# snap: download to cache and run directly
+# Similar to npx — run a tool without installing it to PATH
+#
+# Cache layout:
+#   $___X_CMD_EGET_DATA/eget/snap/<owner>--<repo>/<version>/bin/<binary>
+#
+# On cache hit: no subshells, no external processes — just for loop + run
+
+___x_cmd_eget_snap(){
+    local _tag="" _system="" _asset_filters="" _forge="github" _quiet=0 _disable_ssl=0 _no_cache=0
+    local target=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -t|--tag)       shift; _tag="$1" ;;
+            -s|--system)    shift; _system="$1" ;;
+            -a|--asset)     shift; _asset_filters="${_asset_filters}${_asset_filters:+|}$1" ;;
+            --forge)        shift; _forge="$1" ;;
+            -q|--quiet)     _quiet=1 ;;
+            -k|--disable-ssl) _disable_ssl=1 ;;
+            --no-cache)     _no_cache=1 ;;
+            --)             shift; break ;;
+            *)              target="$1"; shift; break ;;
+        esac
+        shift
+    done
+
+    [ -z "$target" ] && { N=eget M="snap: missing target (user/repo)" log:ret:64; return; }
+
+    [ $# -gt 0 ] && [ "$1" = "--" ] && shift
+    local bin_args="$*"
+
+    # Normalize target
+    ___x_cmd_eget_normalize_ "$target" "$_forge" "$_tag"
+    local _norm="$x_"
+    target="${_norm%%
+*}"; local _rest="${_norm#*
+}"
+    _forge="${_rest%%
+*}"; _tag="${_rest#*
+}"
+
+    local owner="${target%%/*}"
+    local repo="${target#*/}"
+    [ -n "$owner" ] && [ -n "$repo" ] || {
+        N=eget M="Invalid target: $target (expected user/repo)" log:ret:64; return;
+    }
+
+    if [ -z "$_system" ]; then
+        local x_=""
+        ___x_cmd_os_name_;  local osname="$x_"
+        ___x_cmd_os_arch_;  local osarch="$x_"
+        _system="${osname}/${osarch}"
+    fi
+
+    ___X_CMD_EGET_QUIET="$_quiet"
+    ___X_CMD_EGET_DISABLE_SSL="$_disable_ssl"
+
+    # Cache lookup — zero overhead
+    local snap_base="$___X_CMD_EGET_DATA/snap/${owner}--${repo}"
+    local cached_bin=""
+    if [ "$_no_cache" = "0" ] && [ -d "$snap_base" ]; then
+        if [ -n "$_tag" ] && [ -d "$snap_base/$_tag/bin" ]; then
+            for f in "$snap_base/$_tag/bin/"*; do
+                [ -f "$f" ] && [ -x "$f" ] && { cached_bin="$f"; break; }
+            done
+        elif [ -z "$_tag" ]; then
+            local _first_dir=""
+            ___x_cmd_fsiter___dir1_ "$snap_base" 2>/dev/null || _first_dir=""
+            [ -n "$x_" ] && [ -d "$x_/bin" ] && _first_dir="$x_/bin"
+            if [ -n "$_first_dir" ]; then
+                for f in "$_first_dir/"*; do
+                    [ -f "$f" ] && [ -x "$f" ] && { cached_bin="$f"; break; }
+                done
+            fi
+        fi
+    fi
+
+    if [ -n "$cached_bin" ]; then
+        [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Using cached $owner/$repo"
+        ___x_cmd_eget_snap_run "$cached_bin" $bin_args
+        return
+    fi
+
+    # Cache miss — fetch (shared: query + select + download)
+    ___x_cmd_eget___fetch "$_forge" "$owner" "$repo" "$_tag" "$_system" "$_asset_filters" "0" "0" || return
+    local _fetch="$x_"
+    local tmpfile="${_fetch%%
+*}"
+    local version="${_fetch#*
+}"
+
+    # Extract to tmp, move binary to snap_dir/bin/
+    local snap_dir="$snap_base/${version}"
+    local tmpdir="$___X_CMD_EGET_TMP/snap_$$"
+    ___x_cmd mkdirp "$tmpdir"
+    ___x_cmd_eget_extract "$tmpfile" "" "0" "$tmpdir" "$repo" || {
+        N=eget M="Extraction failed" log:ret:1; return;
+    }
+
+    # Find the binary
+    local found_bin=""
+    ___x_cmd_fsiter___file1_ "$tmpdir" 2>/dev/null && [ -n "$x_" ] && [ -x "$tmpdir/$x_" ] && found_bin="$tmpdir/$x_"
+    if [ -z "$found_bin" ]; then
+        local _subdir=""
+        ___x_cmd_fsiter___dir1_ "$tmpdir" 2>/dev/null && _subdir="$x_"
+        if [ -n "$_subdir" ]; then
+            ___x_cmd_fsiter___file1_ "$tmpdir/$_subdir" 2>/dev/null && [ -n "$x_" ] && [ -x "$tmpdir/$_subdir/$x_" ] && found_bin="$tmpdir/$_subdir/$x_"
+        fi
+    fi
+
+    [ -z "$found_bin" ] && {
+        N=eget M="No executable found after extraction" log:ret:1; return;
+    }
+
+    # Move to cache: snap_dir/bin/<name>
+    ___x_cmd mkdirp "$snap_dir/bin"
+    local bin_name; bin_name="$( basename "$found_bin" )"
+    cp "$found_bin" "$snap_dir/bin/$bin_name" && chmod +x "$snap_dir/bin/$bin_name"
+    ___x_cmd rmrf "$tmpdir"
+
+    # Run
+    ___x_cmd_eget_snap_run "$snap_dir/bin/$bin_name" $bin_args
+}
+
+___x_cmd_eget_snap_run(){
+    local bin="$1"; shift
+    "$bin" "$@"
+}

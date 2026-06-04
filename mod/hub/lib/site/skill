@@ -1,0 +1,81 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_site_skill(){
+    local X_help_cmd='___x_cmd_hub___help site skill'
+    help:arg-null:parse
+
+    local op="$1"; shift
+    case "$op" in
+        info)           ___x_cmd_hub_site_skill_info "$@" ;;
+        ls|list)     ___x_cmd_hub_site_skill_ls "$@"   ;;
+        *)              ___x_cmd_hub_u_subcmd_invalid site skill "$op" "$@" ;;
+    esac
+}
+
+___x_cmd_hub_site_skill_ls(){
+    local X_help_cmd='___x_cmd_hub___help site skill ls'
+    help:arg:parse
+
+    local json=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|-j)  json=true;  shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl get "/api/v0/site/skills")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to list skills"
+        return 1
+    }
+
+    [ -z "$json" ] || { printf "%s\n" "$resp"; return 0; }
+
+    printf "%s" "$resp" | {
+        local skills=
+        ___x_cmd jo env . .skills
+        [ -n "$skills" ] || { printf "No skills found.\n"; return 0; }
+        printf "%s" "$skills" | \
+            ___x_cmd jo 2c .skillId .name .description .category | \
+            ___x_cmd csv header --add skillId name description category | \
+            ___x_cmd_hub_u_st_tab 15,20,40,15
+    }
+}
+
+___x_cmd_hub_site_skill_info(){
+    local X_help_cmd='___x_cmd_hub___help site skill info'
+    help:arg:parse
+
+    [ $# -gt 0 ] || { ___x_cmd help -m hub site skill info; return; }
+
+    local json=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|-j)  json=true;  shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local skillId="$1"
+    [ -n "$skillId" ] || { ___x_cmd_ui_tf false "Skill ID is required"; return 1; }
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl get "/api/v0/site/skills/$(___x_cmd url encode "$skillId")")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to get skill $skillId"
+        return 1
+    }
+
+    [ -z "$json" ] || { printf "%s\n" "$resp"; return 0; }
+
+    printf "%s" "$resp" | {
+        local skillId=; local name=; local description=; local content=; local schema=; local exampleHtmlUrl=
+        ___x_cmd jo env . .skillId .name .description .content .schema .exampleHtmlUrl
+        printf "  Skill ID:    %s\n" "$skillId"
+        printf "  Name:        %s\n" "$name"
+        printf "  Description: %s\n" "$description"
+        [ -z "$exampleHtmlUrl" ] || printf "  Example:     %s\n" "$exampleHtmlUrl"
+        [ -z "$schema" ] || printf "  Schema:      %s\n" "$schema"
+        [ -z "$content" ] || printf "\n--- Prompt ---\n%s\n" "$content"
+    }
+}
