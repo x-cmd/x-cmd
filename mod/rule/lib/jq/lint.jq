@@ -7,7 +7,7 @@
 
 def valid_levels: ["error", "must", "warn", "info", "debug"];
 
-def known_fields: ["name", "apply", "level", "desc", "tldr", "memo", "x-test", "x-skill-test"];
+def known_fields: ["name", "apply", "level", "desc", "test-coverage", "tldr", "memo", "testcase", "setup", "teardown"];
 
 def nonempty_string: type == "string" and length > 0;
 
@@ -84,6 +84,32 @@ def check_090($id; $rule):
     else empty end
   end;
 
+# test-coverage must be integer 0-100
+def check_120($id; $rule):
+  if ($rule | type) != "object" then empty
+  elif ($rule | has("test-coverage") | not) then empty
+  elif ($rule["test-coverage"] | type) != "number" then
+    {id: $id, rule: "meta-rule-120", level: "error", hint: "test-coverage must be a number, got: \($rule["test-coverage"] | type)"}
+  elif ($rule["test-coverage"] | . < 0 or . > 100 or (. != floor)) then
+    {id: $id, rule: "meta-rule-120", level: "error", hint: "test-coverage must be integer 0-100, got: \($rule["test-coverage"])"}
+  else empty end;
+
+# if testcase exists, test-coverage applies (default 100); warn if explicitly 0
+def check_130($id; $rule):
+  if ($rule | type) != "object" then empty
+  elif ($rule | has("testcase") | not) then empty
+  elif ($rule | has("test-coverage")) and ($rule["test-coverage"] == 0) then
+    {id: $id, rule: "meta-rule-130", level: "warn", hint: "testcase exists but test-coverage is 0 — consider removing testcase or raising the value"}
+  else empty end;
+
+# testcase must be an object (mapping of named cases)
+def check_140($id; $rule):
+  if ($rule | type) != "object" then empty
+  elif ($rule | has("testcase") | not) then empty
+  elif ($rule.testcase | type) != "object" then
+    {id: $id, rule: "meta-rule-140", level: "warn", hint: "testcase should be a mapping of named test cases, got \($rule.testcase | type)"}
+  else empty end;
+
 def lint:
   [ to_entries[] |
     .key as $id |
@@ -97,7 +123,10 @@ def lint:
     check_060($id; $rule),
     check_070($id; $rule),
     check_080($id; $rule),
-    check_090($id; $rule)
+    check_090($id; $rule),
+    check_120($id; $rule),
+    check_130($id; $rule),
+    check_140($id; $rule)
   ];
 
 def lint_tsv:

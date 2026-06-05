@@ -1,0 +1,310 @@
+# shellcheck shell=dash
+
+# Default download mode - option parsing, dispatch, and core download logic
+
+# Normalize target: URL, short prefix (gh:/gl:/cb:), or plain user/repo
+# Pure shell — no subshells, no external processes
+# Sets x_ = "target\nforge\ntag" (newline-separated)
+___x_cmd_eget_normalize_(){
+    local target="${1:-}" forge="${2:-github}" tag="${3:-}"
+
+    # Forge short names
+    case "$forge" in
+        gh)  forge="github" ;;
+        gl)  forge="gitlab" ;;
+        cb)  forge="codeberg" ;;
+    esac
+
+    # Short prefix: gh:owner/repo, gl:owner/repo, cb:owner/repo
+    case "$target" in
+        gh:*|GH:*)   target="${target#*:}" ; forge="github" ;;
+        gl:*|GL:*)   target="${target#*:}" ; forge="gitlab" ;;
+        cb:*|CB:*)   target="${target#*:}" ; forge="codeberg" ;;
+        https://github.com/*|http://github.com/*)
+            target="${target#*github.com/}" ; target="${target%/}" ; forge="github" ;;
+        https://codeberg.org/*|http://codeberg.org/*)
+            target="${target#*codeberg.org/}" ; target="${target%/}" ; forge="codeberg" ;;
+        https://gitlab.com/*|http://gitlab.com/*)
+            target="${target#*gitlab.com/}" ; target="${target%/}" ; forge="gitlab" ;;
+    esac
+
+    # Extract tag from URL path
+    case "$target" in
+        */releases/tag/*)
+            [ -z "$tag" ] && tag="${target##*/releases/tag/}"
+            target="${target%%/releases/*}" ;;
+        */releases/download/*)
+            [ -z "$tag" ] && tag="${target#*/releases/download/}"; tag="${tag%%/*}"
+            target="${target%%/releases/*}" ;;
+        */releases/*)
+            target="${target%%/releases/*}" ;;
+        */-/releases/*)
+            [ -z "$tag" ] && tag="${target##*/-/releases/}"
+            target="${target%%/-/releases/*}" ;;
+        */tree/*)
+            [ -z "$tag" ] && tag="${target##*/tree/}"
+            target="${target%%/tree/*}" ;;
+        */-/tree/*)
+            [ -z "$tag" ] && tag="${target##*/-/tree/}"
+            target="${target%%/-/tree/*}" ;;
+        */-/tags/*)
+            [ -z "$tag" ] && tag="${target##*/-/tags/}"
+            target="${target%%/-/tags/*}" ;;
+    esac
+
+    x_="$target
+$forge
+$tag"
+}
+
+# Core: query release, select best matching asset (no download)
+# Sets x_ = "asset_name\ndownload_url\nversion"
+___x_cmd_eget___select_(){
+    local forge="$1" owner="$2" repo="$3" tag="$4" system="$5"
+    local asset_filters="$6" pre_release="$7" source="$8"
+
+    [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Querying $forge release for $owner/$repo ..."
+    local release_json
+    release_json="$( ___x_cmd_eget_api_release "$forge" "$owner" "$repo" "$tag" "$pre_release" "$source" )" || {
+        N=eget M="Failed to fetch release info for $owner/$repo" log:ret:1; return;
+    }
+
+    local version
+    version="$( printf "%s" "$release_json" | ___x_cmd_cmds jq -r '.tag_name // "unknown"' )"
+
+    # Select asset: manifest first, then smart detect
+    local selected_asset download_url asset_name
+    selected_asset="$( ___x_cmd_eget_manifest_match "$release_json" "$system" "$forge" "$owner" "$repo" )" || true
+
+    if [ -n "$selected_asset" ]; then
+        download_url="$selected_asset"
+        asset_name="$( basename "$download_url" )"
+        [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Matched via manifest"
+    else
+        local assets_json
+        assets_json="$( printf "%s" "$release_json" | ___x_cmd_cmds jq -r '.assets[] | "\(.name)\t\(.browser_download_url)\t\(.size)"' )" || {
+            N=eget M="No assets found in release" log:ret:1; return;
+        }
+        [ -z "$assets_json" ] && {
+            N=eget M="No assets found in release" log:ret:1; return;
+        }
+        selected_asset="$( ___x_cmd_eget_detect "$assets_json" "$system" "$asset_filters" "$repo" )" || {
+            N=eget M="No matching asset found for $system" log:ret:1; return;
+        }
+        download_url="$( printf "%s" "$selected_asset" | cut -f2 )"
+        asset_name="$( printf "%s" "$selected_asset" | cut -f1 )"
+    fi
+
+    [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Selected: ${asset_name:-$(basename "$download_url")}"
+
+    x_="$asset_name
+$download_url
+$version"
+}
+
+# Convenience: normalize target + select asset
+# Sets x_ = "asset_name\ndownload_url\nversion"
+___x_cmd_eget_resolve_(){
+    local target="${1:-}" forge="${2:-github}" tag="${3:-}"
+    local system="${4:-}" asset_filters="${5:-}" pre_release="${6:-0}" source="${7:-0}"
+    local _osname="" _osarch=""
+
+    ___x_cmd_eget_normalize_ "$target" "$forge" "$tag"
+    local _norm="$x_"
+    target="${_norm%%
+*}"; local _rest="${_norm#*
+}"
+    forge="${_rest%%
+*}"; tag="${_rest#*
+}"
+
+    local owner="${target%%/*}"
+    local repo="${target#*/}"
+
+    if [ -z "$system" ]; then
+        ___x_cmd_os_name_;  _osname="$x_"
+        ___x_cmd_os_arch_;  _osarch="$x_"
+        system="${_osname}/${_osarch}"
+    fi
+
+    ___x_cmd_eget___select_ "$forge" "$owner" "$repo" "$tag" "$system" "$asset_filters" "$pre_release" "$source"
+}
+
+# Shared: resolve_ + download
+# Sets x_ = "tmpfile\nversion" (newline-separated)
+___x_cmd_eget___fetch(){
+    ___x_cmd_eget___select_ "$@" || return
+
+    local _pick="$x_"
+    local asset_name="${_pick%%
+*}"; local _rest="${_pick#*
+}"
+    local download_url="${_rest%%
+*}"; local version="${_rest#*
+}"
+
+    local tmpfile="$___X_CMD_EGET_TMP/$asset_name"
+    ___x_cmd_eget_api_download "$download_url" "$tmpfile" || {
+        N=eget M="Download failed: $download_url" log:ret:1; return;
+    }
+
+    x_="$tmpfile
+$version"
+}
+
+___x_cmd_eget_download(){
+    local _target="" _tag="" _system="" _to="" _file_glob="" _download_only=0
+    local _quiet=0 _all=0 _source=0 _pre_release=0 _upgrade_only=0
+    local _sha256=0 _verify_sha256="" _disable_ssl=0
+    local _asset_filters=""
+    local _forge="github"
+    local _sudo=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -t|--tag)            shift; _tag="$1" ;;
+            -s|--system)         shift; _system="$1" ;;
+            --to)                shift; _to="$1" ;;
+            -f|--file)           shift; _file_glob="$1" ;;
+            -a|--asset)          shift; _asset_filters="${_asset_filters}${_asset_filters:+|}$1" ;;
+            -q|--quiet)          _quiet=1 ;;
+            -d|--download-only)  _download_only=1 ;;
+            --all)               _all=1 ;;
+            --source)            _source=1 ;;
+            --pre-release)       _pre_release=1 ;;
+            --upgrade-only)      _upgrade_only=1 ;;
+            --sha256)            _sha256=1 ;;
+            --verify-sha256)     shift; _verify_sha256="$1" ;;
+            -k|--disable-ssl)    _disable_ssl=1 ;;
+            --forge)             shift; _forge="$1" ;;
+            --sudo)              _sudo=1 ;;
+            -*)                  N=eget M="Unknown option: $1" log:ret:64; return ;;
+            *)                   _target="$1" ;;
+        esac
+        shift
+    done
+
+    [ -z "$_target" ] && { N=eget M="Missing target (user/repo, URL, or local file)" log:ret:64; return; }
+
+    # Normalize target
+    ___x_cmd_eget_normalize_ "$_target" "$_forge" "$_tag"
+    local _norm="$x_"
+    _target="${_norm%%
+*}"; local _rest="${_norm#*
+}"
+    _forge="${_rest%%
+*}"; _tag="${_rest#*
+}"
+
+    # Default install directory
+    : "${_to:="${EGET_BIN:-.}"}"
+
+    # Default system detection
+    if [ -z "$_system" ]; then
+        local x_=""
+        ___x_cmd_os_name_;  local osname="$x_"
+        ___x_cmd_os_arch_;  local osarch="$x_"
+        _system="${osname}/${osarch}"
+    fi
+
+    ___X_CMD_EGET_QUIET="$_quiet"
+    ___X_CMD_EGET_DISABLE_SSL="$_disable_ssl"
+    ___X_CMD_EGET_SUDO="$_sudo"
+
+    # Determine target type: local file first, then URL, then user/repo
+    if [ -f "$_target" ]; then
+        ___x_cmd_eget___run_local "$_target" "$_file_glob" "$_all" "$_to"
+    else
+        case "$_target" in
+            http://*|https://*)
+                ___x_cmd_eget___run_url "$_target" "$_download_only" "$_to" "$_sha256" "$_verify_sha256" ;;
+            */*)
+                ___x_cmd_eget___run_repo "$_target" "$_forge" "$_tag" "$_system" "$_pre_release" "$_source" "$_asset_filters" "$_download_only" "$_upgrade_only" "$_file_glob" "$_all" "$_to" "$_sha256" "$_verify_sha256" ;;
+            *)
+                N=eget M="Invalid target: $_target (expected user/repo, URL, or local file)" log:ret:64
+                ;;
+        esac
+    fi
+}
+
+___x_cmd_eget___run_repo(){
+    local target="$1" forge="$2" tag="$3" system="$4" pre_release="$5" source="$6"
+    local asset_filters="$7" download_only="$8" upgrade_only="$9"
+    local file_glob="${10}" all="${11}" to="${12}" sha256="${13}" verify_sha256="${14}"
+
+    local owner="${target%%/*}"
+    local repo="${target#*/}"
+    [ -n "$owner" ] && [ -n "$repo" ] || {
+        N=eget M="Invalid target format: $target (expected user/repo)" log:ret:64; return;
+    }
+
+    # Check upgrade-only
+    if [ "$upgrade_only" = "1" ]; then
+        local bin_path="$to/$repo"
+        [ -f "$bin_path" ] || bin_path="$to/${repo}.exe"
+        if [ -f "$bin_path" ]; then
+            # TODO: compare versions with release tag
+            :
+        else
+            log:info "Binary not found locally, proceeding with download"
+        fi
+    fi
+
+    # Fetch (shared: query + select + download)
+    ___x_cmd_eget___fetch "$forge" "$owner" "$repo" "$tag" "$system" "$asset_filters" "$pre_release" "$source" || return
+    local _fetch="$x_"
+    local tmpfile="${_fetch%%
+*}"
+    local version="${_fetch#*
+}"
+
+    # Verify checksum
+    if [ -n "$verify_sha256" ]; then
+        ___x_cmd_eget_verify "$tmpfile" "$verify_sha256" || return
+    fi
+    if [ "$sha256" = "1" ]; then
+        local hash
+        hash="$( ___x_cmd_eget_hash "256" "$tmpfile" )" || true
+        printf "SHA-256: %s\n" "$hash"
+    fi
+
+    # Extract or download-only
+    if [ "$download_only" = "1" ]; then
+        printf "%s\n" "$tmpfile"
+    else
+        ___x_cmd_eget_extract "$tmpfile" "$file_glob" "$all" "$to" "$repo"
+    fi
+}
+
+___x_cmd_eget___run_local(){
+    local filepath="$1" file_glob="$2" all="$3" to="$4"
+    local name
+    name="$( basename "$filepath" )"
+    name="${name%%.*}"
+    ___x_cmd_eget_extract "$filepath" "$file_glob" "$all" "$to" "$name"
+}
+
+___x_cmd_eget___run_url(){
+    local url="$1" download_only="$2" to="$3" sha256="$4" verify_sha256="$5"
+    local asset_name
+    asset_name="$( basename "$url" )"
+    local tmpfile="$___X_CMD_EGET_TMP/$asset_name"
+    ___x_cmd_eget_api_download "$url" "$tmpfile" || {
+        N=eget M="Download failed: $url" log:ret:1; return;
+    }
+
+    [ -n "$verify_sha256" ] && { ___x_cmd_eget_verify "$tmpfile" "$verify_sha256" || return; }
+    [ "$sha256" = "1" ] && {
+        local hash
+        hash="$( ___x_cmd_eget_hash "256" "$tmpfile" )" || true
+        printf "SHA-256: %s\n" "$hash"
+    }
+
+    if [ "$download_only" = "1" ]; then
+        printf "%s\n" "$tmpfile"
+    else
+        : "${to:="${EGET_BIN:-.}"}"
+        local name="${asset_name%%.*}"
+        ___x_cmd_eget_extract "$tmpfile" "" "0" "$to" "$name"
+    fi
+}

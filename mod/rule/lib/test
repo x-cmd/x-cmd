@@ -1,0 +1,222 @@
+
+# test — deterministic testcase runner
+# Executes sh: blocks from testcase sections in .rule.yml files.
+# Three-level setup/teardown: folder → rule → testcase.
+
+___x_cmd_rule_test(){
+    [ $# -gt 0 ]  ||  set -- --help
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)  ___x_cmd help -m rule test "$@" ; return 0 ;;
+        ls|run)     ___x_cmd_rule_test_"$op" "$@" ;;
+        *)          set -- "$op" "$@" ; ___x_cmd_rule_test_run "$@" ;;
+    esac
+}
+
+___x_cmd_rule_test_ls(){
+    [ $# -gt 0 ]  ||  set -- --help
+
+    local ruleset_dir=""
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m rule test ls "$@" ; return 0 ;;
+            -r)         ruleset_dir="$2" ; arg:2:shift ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$ruleset_dir" ] || {
+        x_=""
+        ___x_cmd_rule_which_ || N=rule M="Fail to locate any ruleset. Use -r to specify" log:ret:64
+        ruleset_dir="$x_"
+    }
+
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+    printf "rule_id${TAB}testcase${TAB}file\n"
+
+    local f=""
+    ___x_cmd_cmds find "$ruleset_dir" -name '*.rule.yml' -type f 2>/dev/null | while read -r f; do
+        local json=""
+        json="$( ___x_cmd y2j < "$f" )" || continue
+        printf "%s" "$json" | ___x_cmd_cmds jq -r --arg file "$f" '
+            to_entries[] | select(.value.testcase) |
+            .key as $id | .value.testcase | keys[] |
+            "\($id)\t\(.)\t\($file)"
+        '
+    done
+}
+
+___x_cmd_rule_test_run(){
+    [ $# -gt 0 ]  ||  set -- --help
+
+    local ruleset_dir=""
+    local rule_id=""
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m rule test run "$@" ; return 0 ;;
+            -r)         ruleset_dir="$2" ; arg:2:shift ;;
+            --rule)     rule_id="$2" ; arg:2:shift ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$ruleset_dir" ] || {
+        x_=""
+        ___x_cmd_rule_which_ || N=rule M="Fail to locate any ruleset. Use -r to specify" log:ret:64
+        ruleset_dir="$x_"
+    }
+
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+    printf "rule_id${TAB}testcase${TAB}result${TAB}detail\n"
+
+    # Folder-level setup (save/restore CWD)
+    if [ -f "$ruleset_dir/_setup" ]; then
+        local _saved_cwd="$(pwd)"
+        . "$ruleset_dir/_setup" >/dev/null 2>&1 || {
+            cd "$_saved_cwd"
+            printf "----\t----\tsetup-fail\tfolder setup exit=$?\n"
+            return 1
+        }
+        cd "$_saved_cwd"
+    fi
+
+    if [ -n "$rule_id" ]; then
+        ___x_cmd_rule_test___run_one "$ruleset_dir" "$rule_id"
+    else
+        ___x_cmd_rule_test___run_all "$ruleset_dir"
+    fi
+    local result=$?
+
+    # Folder-level teardown
+    if [ -f "$ruleset_dir/_teardown" ]; then
+        . "$ruleset_dir/_teardown" >/dev/null 2>&1
+    fi
+
+    return $result
+}
+
+___x_cmd_rule_test___run_one(){
+    local ruleset_dir="$1"
+    local rule_id="$2"
+    local x_=""
+
+    ___x_cmd_rule_find_ "$rule_id" "$ruleset_dir" || {
+        N=rule M="Rule '$rule_id' not found" log:ret:64
+    }
+    local rule_file="$x_"
+
+    local json=""
+    json="$( ___x_cmd y2j < "$rule_file" )" || return 1
+
+    local testcase_json=""
+    testcase_json="$( printf "%s" "$json" | ___x_cmd_cmds jq --arg id "$rule_id" '.[$id].testcase' )"
+    [ "$testcase_json" != "null" ] || {
+        N=rule M="Rule '$rule_id' has no testcase" log:ret:64
+    }
+
+    # Rule-level setup
+    local rule_setup=""
+    rule_setup="$( printf "%s" "$json" | ___x_cmd_cmds jq -r --arg id "$rule_id" '.[$id].setup.sh // empty' )"
+    if [ -n "$rule_setup" ]; then
+        eval "$rule_setup" >/dev/null 2>&1 || {
+            printf "%s${TAB}----${TAB}setup-fail${TAB}rule setup exit=$?\n" "$rule_id"
+            local rule_teardown=""
+            rule_teardown="$( printf "%s" "$json" | ___x_cmd_cmds jq -r --arg id "$rule_id" '.[$id].teardown.sh // empty' )"
+            [ -n "$rule_teardown" ] && eval "$rule_teardown" >/dev/null 2>&1
+            return 0
+        }
+    fi
+
+    ___x_cmd_rule_test___run_testcases "$rule_id" "$testcase_json"
+
+    # Rule-level teardown
+    local rule_teardown=""
+    rule_teardown="$( printf "%s" "$json" | ___x_cmd_cmds jq -r --arg id "$rule_id" '.[$id].teardown.sh // empty' )"
+    [ -n "$rule_teardown" ] && eval "$rule_teardown" >/dev/null 2>&1
+}
+
+___x_cmd_rule_test___run_all(){
+    local ruleset_dir="$1"
+
+    local f=""
+    ___x_cmd_cmds find "$ruleset_dir" -name '*.rule.yml' -type f 2>/dev/null | while read -r f; do
+        local json=""
+        json="$( ___x_cmd y2j < "$f" )" || continue
+
+        printf "%s" "$json" | ___x_cmd_cmds jq -r 'to_entries[] | select(.value.testcase) | .key' | while read -r rule_id; do
+            local testcase_json=""
+            testcase_json="$( printf "%s" "$json" | ___x_cmd_cmds jq --arg id "$rule_id" '.[$id].testcase' )"
+
+            # Rule-level setup
+            local rule_setup=""
+            rule_setup="$( printf "%s" "$json" | ___x_cmd_cmds jq -r --arg id "$rule_id" '.[$id].setup.sh // empty' )"
+            if [ -n "$rule_setup" ]; then
+                eval "$rule_setup" >/dev/null 2>&1 || {
+                    printf "%s${TAB}----${TAB}setup-fail${TAB}rule setup exit=$?\n" "$rule_id"
+                    local rule_teardown=""
+                    rule_teardown="$( printf "%s" "$json" | ___x_cmd_cmds jq -r --arg id "$rule_id" '.[$id].teardown.sh // empty' )"
+                    [ -n "$rule_teardown" ] && eval "$rule_teardown" >/dev/null 2>&1
+                    continue
+                }
+            fi
+
+            ___x_cmd_rule_test___run_testcases "$rule_id" "$testcase_json"
+
+            # Rule-level teardown
+            local rule_teardown=""
+            rule_teardown="$( printf "%s" "$json" | ___x_cmd_cmds jq -r --arg id "$rule_id" '.[$id].teardown.sh // empty' )"
+            [ -n "$rule_teardown" ] && eval "$rule_teardown" >/dev/null 2>&1
+        done
+    done
+}
+
+___x_cmd_rule_test___run_testcases(){
+    local rule_id="$1"
+    local testcase_json="$2"
+    local TAB="$___X_CMD_UNSEENCHAR_HT"
+
+    printf "%s" "$testcase_json" | ___x_cmd_cmds jq -r 'keys[]' | while read -r tc_name; do
+        local sh_script=""
+        sh_script="$( printf "%s" "$testcase_json" | ___x_cmd_cmds jq -r --arg name "$tc_name" '.[$name].sh' )"
+
+        if [ "$sh_script" = "null" ] || [ -z "$sh_script" ]; then
+            printf "%s${TAB}%s${TAB}skip${TAB}no sh script\n" "$rule_id" "$tc_name"
+            continue
+        fi
+
+        # Testcase-level setup
+        local tc_setup=""
+        tc_setup="$( printf "%s" "$testcase_json" | ___x_cmd_cmds jq -r --arg name "$tc_name" '.[$name].setup.sh // empty' )"
+        if [ -n "$tc_setup" ]; then
+            eval "$tc_setup" >/dev/null 2>&1 || {
+                printf "%s${TAB}%s${TAB}setup-fail${TAB}testcase setup exit=$?\n" "$rule_id" "$tc_name"
+                local tc_teardown=""
+                tc_teardown="$( printf "%s" "$testcase_json" | ___x_cmd_cmds jq -r --arg name "$tc_name" '.[$name].teardown.sh // empty' )"
+                [ -n "$tc_teardown" ] && eval "$tc_teardown" >/dev/null 2>&1
+                continue
+            }
+        fi
+
+        # Run testcase in subshell so 'exit' doesn't kill the runner
+        ( eval "$sh_script" ) >/dev/null 2>&1
+        local exit_code=$?
+
+        # Testcase-level teardown
+        local tc_teardown=""
+        tc_teardown="$( printf "%s" "$testcase_json" | ___x_cmd_cmds jq -r --arg name "$tc_name" '.[$name].teardown.sh // empty' )"
+        [ -n "$tc_teardown" ] && ( eval "$tc_teardown" ) >/dev/null 2>&1
+
+        if [ "$exit_code" -eq 0 ]; then
+            printf "%s${TAB}%s${TAB}pass${TAB}\n" "$rule_id" "$tc_name"
+        else
+            printf "%s${TAB}%s${TAB}fail${TAB}exit=$exit_code\n" "$rule_id" "$tc_name"
+        fi
+    done
+}

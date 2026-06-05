@@ -1,0 +1,52 @@
+# shellcheck shell=dash
+
+# Standardized release naming convention support
+#
+# Recommended naming convention for assets:
+#   {name}_{version}_{os}_{arch}.tar.gz
+#   e.g., rg_14.1.0_darwin_arm64.tar.gz
+#
+# This enables zero-guess matching. Assets that follow the convention
+# get highest priority in the scoring algorithm (see lib/detect).
+#
+# We strongly encourage reproducible builds. Tool authors should:
+# 1. Use deterministic build environments
+# 2. Publish SHA-256 checksums alongside binaries
+# 3. Follow the naming convention above
+
+___x_cmd_eget_manifest_match(){
+    local release_json="$1" system="$2" forge="$3" owner="$4" repo="$5"
+
+    local os="${system%%/*}"
+    local arch="${system#*/}"
+
+    # Normalize arch
+    case "$arch" in
+        x64|amd64|x86_64)   arch="amd64" ;;
+        x86|i386|i686)      arch="386" ;;
+        arm64|aarch64)      arch="arm64" ;;
+        arm|armv7l)          arch="arm" ;;
+    esac
+
+    local lrepo
+    lrepo="$( printf "%s" "$repo" | tr '[:upper:]' '[:lower:]' )"
+    local los
+    los="$( printf "%s" "$os" | tr '[:upper:]' '[:lower:]' )"
+
+    # Try to find an asset matching the standard naming convention
+    local url
+    url="$( printf "%s" "$release_json" | \
+        ___x_cmd_cmds jq -r --arg repo "$lrepo" --arg os "$los" --arg arch "$arch" '
+            .assets[] | select(
+                (.name | ascii_downcase) |
+                test($repo + ".*" + $os + ".*" + $arch)
+            ) | .browser_download_url
+        ' 2>/dev/null | head -1 )"
+
+    if [ -n "$url" ]; then
+        printf "%s\n" "$url"
+        return 0
+    fi
+
+    return 1
+}

@@ -1,0 +1,51 @@
+
+# init — copy preset(s) to workspace .x-cmd/rule/ (copy-on-write)
+# Supports multiple presets: x rule init :ror :os :ssh
+# Merges into existing .x-cmd/rule/ if present.
+
+___x_cmd_rule_init(){
+    [ $# -gt 0 ]  ||  set -- --help
+
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m rule init "$@" ; return 0 ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ $# -gt 0 ] || N=rule M="Need at least one preset name (e.g. :ror)" log:ret:64
+
+    # Find workspace root
+    x_=""
+    ___x_cmd wsroot_ || N=rule M="Not in a workspace. Run from a project directory." log:ret:64
+    local rule_dir="$x_/.x-cmd/rule"
+
+    ___x_cmd_cmds mkdir -p "$rule_dir" || N=rule M="Failed to create $rule_dir" log:ret:64
+
+    local total_copied=0
+    local preset_name=""
+    for preset_name in "$@"; do
+        local preset_dir=""
+        x_=""
+        ___x_cmd_rule_preset_resolve_ "$preset_name" || N=rule M="Preset '$preset_name' not found" log:ret:64
+        preset_dir="$x_"
+
+        local f=""
+        local copied=0
+        for f in "$preset_dir"/*; do
+            [ -f "$f" ] || continue
+            local basename="${f##*/}"
+            # Skip if file already exists (don't overwrite)
+            [ -f "$rule_dir/$basename" ] && continue
+            ___x_cmd_cmds cp "$f" "$rule_dir/"
+            copied=$((copied + 1))
+        done
+        total_copied=$((total_copied + copied))
+        printf "+ %s (%d new files)\n" "$preset_name" "$copied"
+    done
+
+    printf "Done → %s (%d total rule files)\n" "$rule_dir" "$(ls "$rule_dir"/*.rule.yml 2>/dev/null | wc -l | tr -d ' ')"
+}

@@ -9,26 +9,46 @@
 
 # subagent 应该是一种可以观测和控制的底层行为
 
-
-___x_cmd_agent_run(){
+___x_cmd_agent_job_run(){
     local yolo=""
     local skill_list=""
-    local jobfp=""
+    local jobdir=""
+    local goal=""
+    local prompt=""
+    local experience=""
+    local debug=""
+    local mode="auto"
+    local harness=""
+    local max_iterations=""
+    local inrow=""
+    local continuous=""
+    local jobid=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
+            -h|--help)  ___x_cmd help -m agent run; return 0 ;;
             --yolo)     yolo=1 ;    shift ;;    # -9
             --skill)    skill_list="${skill_list} $2" ; arg:2:shift ;;
 
-            --jobfp)    jobfp="$2" ; arg:2:shift ;;
+            --job-dir)  jobdir="$2" ; arg:2:shift ;;
+            --job-id)   jobid="$2" ; arg:2:shift ;;
 
             --goal)     goal="$2" ; arg:2:shift ;;
 
-            --prompt)   prompt="$3" ; arg:2:shift ;;
+            --prompt)   prompt="$2" ; arg:2:shift ;;
 
             # gaining experience
             # pass to the job list.
             --exp)      experience="$2" ; arg:2:shift ;;
+
+            --debug)    debug=1;     shift ;;
+
+            --auto)                 mode=auto ;     shift ;;
+            -b|--batch)             mode=batch ;    shift ;;
+            --harness)              harness="$2" ;  arg:2:shift ;;
+            --max-iterations)       max_iterations="$2" ;       arg:2:int; arg:2:shift ;;
+            --inrow)                inrow="$2" ;                arg:2:int; arg:2:shift ;;
+            --continuous)           continuous=1;               shift ;;
 
                         # Search the home folder, or search the x-cmd registry, or just
             # --agent)    agent_list="${agent_list} $2" ; arg:2:shift ;;
@@ -37,55 +57,146 @@ ___x_cmd_agent_run(){
         esac
     done
 
-    [ $# -gt 0 ]    ||  N=agent M="Please provide agent folder to exec." log:ret:64
+    [ $# -gt 0 ]    ||  N=agent M="Please provide agent folder or the job description to exec" log:ret:64
 
-    local targetfp="$1" ; shfit
-
-    local argument_desc="$1"
-
-    [ $# -eq 0 ]    ||  {
-        # argument capture.
-        :
-        # Consider replace the ARGUMENT in the SKILL.md
-    }
-
+    local targetfp="$1"
+    local argument_desc=""
     local entrancefp=""
+    if [ -e "$targetfp" ]; then
+        shift
+        argument_desc="$*"
 
-    if [ -d "$targetfp" ]; then
-        ___x_cmd_agent_run___locate_ "$targetfp"    ||  N=agent M="Cannot locate agent.md in the folder." log:ret:64
-        entrancefp="$x_"
-    elif [ -f "$targetfp" ]; then
-        entrancefp="$targetfp"
+        if [ -d "$targetfp" ]; then
+            ___x_cmd_agent_job_run___locate_ "$targetfp"    ||  N=agent M="Cannot locate agent.md in the folder." log:ret:64
+            entrancefp="$x_"
+        elif [ -f "$targetfp" ]; then
+            entrancefp="$targetfp"
+        fi
+    else
+        argument_desc="$*"
     fi
 
-    # create a job like job module.
-    # it could iterate .
+    ___x_cmd_agent_job_run___build_content_ "$entrancefp" "$goal" "$prompt" "$skill_list" "$experience" "$argument_desc"
+    local content="$x_"
 
+    [ -n "$content" ] || N=agent M="No content to run. Please provide agent config file or description." log:ret:64
+
+    set --
+    [ "$mode" = "batch" ] && set -- "$@" "--batch"
+    [ -n "$jobdir" ] && set -- "$@" "--job-dir" "$jobdir"
+    [ -n "$harness" ] && set -- "$@" "--harness" "$harness"
+    [ -n "$debug" ] && set -- "$@" "--debug"
+    [ -n "$max_iterations" ] && set -- "$@" "--max-iterations" "$max_iterations"
+    [ -n "$inrow" ] && set -- "$@" "--inrow" "$inrow"
+    [ -n "$continuous" ] && set -- "$@" "--continuous"
+    set -- "$@" "$content"
+
+
+    [ -n "$jobid" ] || jobid="$(___x_cmd date vlid)"
+
+    agent:info "Starting agent job id => $jobid"
+    agent:info "To check status: x agent job status --job-id '$jobid'"
+
+    ___x_cmd worker run --ns  'x-agent-job' --name "$jobid" -- \
+        ___x_cmd_agent_job_exec --job-id "$jobid" "$@"
 }
 
 # if have rule/
 
-___x_cmd_agent_run___locate_(){
+___x_cmd_agent_job_run___locate_(){
     local targetfp="$1"
-
-    x_="$targetfp/GOAL.md"
-    [ ! -f "$x_" ]    ||    return 0
-    x_="$targetfp/agent.md"
-    [ ! -f "$x_" ]    ||    return 0
-    x_="$targetfp/agent.md"
-    [ ! -f "$x_" ]    ||    return 0
-    x_="$targetfp/skill.md"
-    [ ! -f "$x_" ]    ||    return 0
-    x_="$targetfp/SKILL.md"
-    [ ! -f "$x_" ]    ||    return 0
-    x_="$targetfp/AGENT.md"
-    [ ! -f "$x_" ]    ||    return 0
-    x_="$targetfp/CLAUDE.md"
-    [ ! -f "$x_" ]    ||    return 0
-    x_="$targetfp/CODEX.md"
-    [ ! -f "$x_" ]    ||    return 0
-    x_="$targetfp/GEMINI.md"
-    [ ! -f "$x_" ]    ||    return 0
+    local i="";
+    for i in GOAL.md AGENTS.md AGENT.md agent.md SKILL.md skill.md CLAUDE.md CODEX.md GEMINI.md; do
+        x_="$targetfp/$i"
+        [ ! -f "$x_" ] || return 0
+    done
 
     return 1
+}
+
+
+# Build structured prompt content from agent config, options, and user arguments.
+# Sets the aggregated content to the global variable x_.
+___x_cmd_agent_job_run___build_content_(){
+    local entrancefp="$1"
+    local goal="$2"
+    local prompt="$3"
+    local skill_list="$4"
+    local experience="$5"
+    local argument_desc="$6"
+    local content=""
+
+    if [ -n "$entrancefp" ] && [ -f "$entrancefp" ]; then
+        content="## Agent Configuration
+
+The following configuration defines the agent's role, rules, and context for this task. It was loaded from: $entrancefp
+
+$(___x_cmd_cmds cat "$entrancefp")"
+    fi
+
+    if [ -n "$goal" ]; then
+        [ -z "$content" ] || content="$content
+
+---
+
+"
+        content="${content}## Task Goal
+
+The primary objective of this task is:
+
+$goal"
+    fi
+
+    if [ -n "$prompt" ]; then
+        [ -z "$content" ] || content="$content
+
+---
+
+"
+        content="${content}## System Prompt Override
+
+Additional instructions to guide the agent's behavior:
+
+$prompt"
+    fi
+
+    if [ -n "$skill_list" ]; then
+        [ -z "$content" ] || content="$content
+
+---
+
+"
+        content="${content}## Available Skills
+
+The following skills have been made available for this task and should be used when appropriate:
+$skill_list"
+    fi
+
+    if [ -n "$experience" ]; then
+        [ -z "$content" ] || content="$content
+
+---
+
+"
+        content="${content}## Historical Experience
+
+Lessons and patterns learned from previous similar tasks:
+
+$experience"
+    fi
+
+    if [ -n "$argument_desc" ]; then
+        [ -z "$content" ] || content="$content
+
+---
+
+"
+        content="${content}## User Arguments
+
+Additional arguments and parameters provided by the user:
+
+$argument_desc"
+    fi
+
+    x_="$content"
 }

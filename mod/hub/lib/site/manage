@@ -1,0 +1,213 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_site_create(){
+    local X_help_cmd='___x_cmd_hub___help site create'
+    help:arg:parse
+
+    [ $# -gt 0 ] || { ___x_cmd help -m hub site create; return; }
+
+    local skillId=
+    local title=
+    local data=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --skill|-s)   skillId="$2";  shift 2 ;;
+            --title|-t)   title="$2";    shift 2 ;;
+            --data|-d)    data="$2";     shift 2 ;;
+            *)            break ;;
+        esac
+    done
+
+    local file="$1"
+    [ -n "$skillId" ]   || { ___x_cmd_ui_tf false "Skill ID is required (--skill)"; return 1; }
+    [ -n "$title" ]     || { ___x_cmd_ui_tf false "Title is required (--title)"; return 1; }
+    [ -f "$file" ]      || { ___x_cmd_ui_tf false "File not found: $file"; return 1; }
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl post "/api/v0/file/share/site" \
+        -F "file=@${file}" \
+        "skillId=$skillId" "title=$title" ${data:+"data=$data"})" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to create site"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Site created successfully:"
+    printf "%s" "$resp" | {
+        local id=; local versionId=; local shareUrl=; local createdAt=
+        ___x_cmd jo env . .id .versionId .shareUrl .createdAt
+        printf "  - ID:         %s\n" "$id"
+        printf "  - Version:    %s\n" "$versionId"
+        printf "  - Share URL:  %s\n" "$shareUrl"
+        [ -z "$createdAt" ] || printf "  - Created:    %s\n" "$createdAt"
+    }
+}
+
+___x_cmd_hub_site_ls(){
+    local X_help_cmd='___x_cmd_hub___help site ls'
+    help:arg:parse
+
+    local json=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|-j)  json=true;  shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl get "/api/v0/file/share/site")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to list sites"
+        return 1
+    }
+
+    [ -z "$json" ] || { printf "%s\n" "$resp"; return 0; }
+
+    printf "%s" "$resp" | {
+        local list=
+        ___x_cmd jo env . .list
+        [ -n "$list" ] || { printf "No sites found.\n"; return 0; }
+        printf "%s" "$list" | \
+            ___x_cmd jo 2c .id .title .skillId .shareUrl .versionCount .updatedAt | \
+            ___x_cmd csv header --add id title skillId shareUrl versionCount updatedAt | \
+            ___x_cmd_hub_u_st_tab 15,20,12,40,10,20
+    }
+}
+
+___x_cmd_hub_site_info(){
+    local X_help_cmd='___x_cmd_hub___help site info'
+    help:arg:parse
+
+    [ $# -gt 0 ] || { ___x_cmd help -m hub site info; return; }
+
+    local json=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|-j)  json=true;  shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local id="$1"
+    [ -n "$id" ] || { ___x_cmd_ui_tf false "Site ID is required"; return 1; }
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl get "/api/v0/file/share/site/$(___x_cmd url encode "$id")")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to get site info for $id"
+        return 1
+    }
+
+    [ -z "$json" ] || { printf "%s\n" "$resp"; return 0; }
+
+    printf "%s" "$resp" | {
+        local id=; local title=; local skillId=; local shareUrl=; local currentData=; local versions=; local createdAt=; local updatedAt=
+        ___x_cmd jo env . .id .title .skillId .shareUrl .currentData .versions .createdAt .updatedAt
+        printf "  ID:          %s\n" "$id"
+        printf "  Title:       %s\n" "$title"
+        printf "  Skill:       %s\n" "$skillId"
+        printf "  Share URL:   %s\n" "$shareUrl"
+        [ -z "$currentData" ] || printf "  Data:        %s\n" "$currentData"
+        [ -z "$createdAt" ] || printf "  Created:     %s\n" "$createdAt"
+        [ -z "$updatedAt" ] || printf "  Updated:     %s\n" "$updatedAt"
+        if [ -n "$versions" ]; then
+            printf "\n  Versions:\n"
+            printf "%s" "$versions" | \
+                ___x_cmd jo 2c .versionId .createdAt | \
+                ___x_cmd csv header --add versionId createdAt | \
+                ___x_cmd_hub_u_st_tab 20,25
+        fi
+    }
+}
+
+___x_cmd_hub_site_update(){
+    local X_help_cmd='___x_cmd_hub___help site update'
+    help:arg:parse
+
+    [ $# -gt 0 ] || { ___x_cmd help -m hub site update; return; }
+
+    local data=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --data|-d)  data="$2";  shift 2 ;;
+            *)          break ;;
+        esac
+    done
+
+    local id="$1"; shift
+    [ -n "$id" ] || { ___x_cmd_ui_tf false "Site ID is required"; return 1; }
+
+    local file="$1"
+    [ -f "$file" ] || { ___x_cmd_ui_tf false "File not found: $file"; return 1; }
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl post "/api/v0/file/share/site/$(___x_cmd url encode "$id")/versions" \
+        -F "file=@${file}" \
+        ${data:+"data=$data"})" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to update site $id"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Site updated successfully:"
+    printf "%s" "$resp" | {
+        local id=; local versionId=; local shareUrl=; local createdAt=
+        ___x_cmd jo env . .id .versionId .shareUrl .createdAt
+        printf "  - ID:         %s\n" "$id"
+        printf "  - Version:    %s\n" "$versionId"
+        printf "  - Share URL:  %s\n" "$shareUrl"
+        [ -z "$createdAt" ] || printf "  - Created:    %s\n" "$createdAt"
+    }
+}
+
+___x_cmd_hub_site_rollback(){
+    local X_help_cmd='___x_cmd_hub___help site rollback'
+    help:arg:parse
+
+    [ $# -gt 0 ] || { ___x_cmd help -m hub site rollback; return; }
+
+    local versionId=
+    local id=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --version|-v)  versionId="$2";  shift 2 ;;
+            *)             id="$1";         shift;   break ;;
+        esac
+    done
+
+    [ -n "$id" ] || { ___x_cmd_ui_tf false "Site ID is required"; return 1; }
+    [ -n "$versionId" ] || { ___x_cmd_ui_tf false "Version ID is required (--version)"; return 1; }
+
+    local data
+    data="$(___x_cmd jo dict "versionId=$versionId")"
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl post "/api/v0/file/share/site/$(___x_cmd url encode "$id")/rollback" data)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to rollback site $id to $versionId"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Site rolled back successfully:"
+    printf "%s" "$resp" | {
+        local id=; local versionId=; local shareUrl=
+        ___x_cmd jo env . .id .versionId .shareUrl
+        printf "  - ID:         %s\n" "$id"
+        printf "  - Version:    %s\n" "$versionId"
+        printf "  - Share URL:  %s\n" "$shareUrl"
+    }
+}
+
+___x_cmd_hub_site_rm(){
+    local X_help_cmd='___x_cmd_hub___help site rm'
+    help:arg:parse
+
+    [ $# -gt 0 ] || { ___x_cmd help -m hub site rm; return; }
+
+    local id="$1"
+    [ -n "$id" ] || { ___x_cmd_ui_tf false "Site ID is required"; return 1; }
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl delete "/api/v0/file/share/site/$(___x_cmd url encode "$id")")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to delete site $id"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Site deleted successfully"
+}

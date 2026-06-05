@@ -1,0 +1,114 @@
+# shellcheck shell=dash
+
+# ls: list releases or artifacts for a repository
+
+___x_cmd_eget_ls(){
+    local _forge="github" _tag="" _quiet=0 _limit=20 _no_ccmd=0
+    local target="" release=""
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m eget ls "$@"; return ;;
+            --forge)        shift; _forge="$1" ;;
+            -q|--quiet)     _quiet=1 ;;
+            -n|--limit)     shift; _limit="$1" ;;
+            --no-ccmd)      _no_ccmd=1 ;;
+            -*)             N=eget M="Unknown option: $1" log:ret:64; return ;;
+            *)
+                if [ -z "$target" ]; then
+                    target="$1"
+                elif [ -z "$release" ]; then
+                    release="$1"
+                fi
+                ;;
+        esac
+        shift
+    done
+
+    [ -z "$target" ] && { N=eget M="ls: missing target (user/repo)" log:ret:64; return; }
+
+    ___x_cmd_eget_normalize_ "$target" "$_forge" ""
+    local _norm="$x_"
+    target="${_norm%%
+*}"; local _rest="${_norm#*
+}"
+    _forge="${_rest%%
+*}"
+
+    local owner="${target%%/*}"
+    local repo="${target#*/}"
+    [ -n "$owner" ] && [ -n "$repo" ] || {
+        N=eget M="Invalid target: $target (expected user/repo)" log:ret:64; return;
+    }
+
+    ___X_CMD_EGET_QUIET="$_quiet"
+
+    if [ "$_no_ccmd" = "1" ]; then
+        ___X_CMD_EGET_LS_CCMD=""
+    else
+        ___X_CMD_EGET_LS_CCMD="1"
+    fi
+
+    if [ -z "$release" ]; then
+        ___x_cmd_eget_ls_releases "$_forge" "$owner" "$repo" "$_limit"
+    else
+        ___x_cmd_eget_ls_assets "$_forge" "$owner" "$repo" "$release"
+    fi
+}
+
+___x_cmd_eget_ls_releases(){
+    local forge="$1" owner="$2" repo="$3" limit="$4"
+
+    log:info "Listing releases for $owner/$repo ..."
+    local releases_json
+    if [ -n "$___X_CMD_EGET_LS_CCMD" ]; then
+        releases_json="$( ___x_cmd ccmd 10m -- ___x_cmd_eget_api_list_releases "$forge" "$owner" "$repo" "$limit" )" || {
+            N=eget M="Failed to fetch releases for $owner/$repo" log:ret:1; return;
+        }
+    else
+        releases_json="$( ___x_cmd_eget_api_list_releases "$forge" "$owner" "$repo" "$limit" )" || {
+            N=eget M="Failed to fetch releases for $owner/$repo" log:ret:1; return;
+        }
+    fi
+
+    printf "%s" "$releases_json" | ___x_cmd_cmds jq -r '.[] | "\(.tag_name)\t\(.published_at // .created_at)\t\((.assets // []) | length)\t\(.name // "")"' 2>/dev/null | \
+    while IFS='	' read -r tag date asset_count name; do
+        [ -z "$tag" ] && continue
+        printf "%s\t%s\t%s assets\t%s\n" "$tag" "${date%%T*}" "$asset_count" "$name"
+    done
+}
+
+___x_cmd_eget_ls_assets(){
+    local forge="$1" owner="$2" repo="$3" tag="$4"
+
+    log:info "Listing assets for $owner/$repo $tag ..."
+    local release_json
+    if [ -n "$___X_CMD_EGET_LS_CCMD" ]; then
+        release_json="$( ___x_cmd ccmd 10m -- ___x_cmd_eget_api_release "$forge" "$owner" "$repo" "$tag" "0" "0" )" || {
+            N=eget M="Failed to fetch release $tag for $owner/$repo" log:ret:1; return;
+        }
+    else
+        release_json="$( ___x_cmd_eget_api_release "$forge" "$owner" "$repo" "$tag" "0" "0" )" || {
+            N=eget M="Failed to fetch release $tag for $owner/$repo" log:ret:1; return;
+        }
+    fi
+
+    local tag_name
+    tag_name="$( printf "%s" "$release_json" | ___x_cmd_cmds jq -r '.tag_name // "unknown"' )"
+    printf "Release: %s\n\n" "$tag_name"
+
+    printf "%s" "$release_json" | ___x_cmd_cmds jq -r '(.assets // [])[] | "\(.name)\t\(.size)\t\(.browser_download_url)"' 2>/dev/null | \
+    while IFS='	' read -r name size url; do
+        [ -z "$name" ] && continue
+        local size_hr=""
+        if [ "$size" -ge 1048576 ] 2>/dev/null; then
+            size_hr="$(( size / 1048576 ))MB"
+        elif [ "$size" -ge 1024 ] 2>/dev/null; then
+            size_hr="$(( size / 1024 ))KB"
+        else
+            size_hr="${size}B"
+        fi
+        printf "%-50s %8s  %s\n" "$name" "$size_hr" "$url"
+    done
+}

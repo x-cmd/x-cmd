@@ -14,6 +14,7 @@
 
 - [ ] **Memory cleanup** — Review chat workspace `memory/` files, suggest archiving old logs
 - [ ] **Temp file cleanup** — Clean up old files in the `tmp/` directory
+- [ ] **Heartbeat memory cleanup** — Archive or delete `memory/*.md` files older than 30 days; keep `state.yml`
 
 ## When to Proactively Reach Out
 

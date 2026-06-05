@@ -1,7 +1,7 @@
 # shellcheck shell=dash
 
 ___x_cmd log init rule
-xrc:mod:lib     rule   ls refine audit check scan fix evolve preset lint
+xrc:mod:lib     rule   ls refine audit check scan fix evolve preset lint info test trial init
 
 ___x_cmd_rule___main(){
     [ "$#" -gt 0 ]  ||      set -- --help
@@ -9,7 +9,7 @@ ___x_cmd_rule___main(){
     local op="$1";          shift
     case "$op" in
         -h|--help)          ___x_cmd help -m rule       "$@";    return 0 ;;
-        audit|ls|which|check|scan|fix|refine|evolve|preset|lint) ___x_cmd_rule_"$op"       "$@" ;;
+        audit|ls|which|check|scan|fix|refine|evolve|preset|lint|info|test|trial|init) ___x_cmd_rule_"$op"       "$@" ;;
         *)                  ___x_cmd_rule_ls "$op"     "$@" ;;
     esac
 }
@@ -25,4 +25,50 @@ ___x_cmd_rule_which(){
     local x_=""
     ___x_cmd_rule_which_ "$@" || return $?
     printf "%s\n" "$x_"
+}
+
+# ___x_cmd_rule_find_ <rule-id> [ruleset-dir]
+# Find the .rule.yml file containing the given rule ID.
+# Sets x_ to the file path. Returns 0 if found, 1 if not.
+___x_cmd_rule_find_(){
+    local rule_id="$1"
+    local ruleset_dir="${2:-}"
+    local f=""
+
+    [ -n "$rule_id" ] || { x_=""; return 1; }
+
+    if [ -z "$ruleset_dir" ]; then
+        x_=""
+        ___x_cmd_rule_which_ || { x_=""; return 1; }
+        ruleset_dir="$x_"
+    fi
+
+    local result=""
+    result="$( ___x_cmd_cmds find "$ruleset_dir" -name '*.rule.yml' -type f 2>/dev/null | while read -r f; do
+        ___x_cmd_cmds grep -q "^${rule_id}:" "$f" && printf "%s\n" "$f"
+    done | ___x_cmd_cmds head -1 )"
+
+    if [ -n "$result" ] && [ -f "$result" ]; then
+        x_="$result"
+        return 0
+    fi
+    x_=""
+    return 1
+}
+
+# ___x_cmd_rule_info_ <rule-id> [ruleset-dir]
+# Extract the full rule content for the given rule ID.
+# Sets x_ to the rule fields as JSON. Returns 0 if found, 1 if not.
+___x_cmd_rule_info_(){
+    local rule_id="$1"
+    local ruleset_dir="${2:-}"
+
+    ___x_cmd_rule_find_ "$rule_id" "$ruleset_dir" || return 1
+    local rule_file="$x_"
+
+    local json=""
+    json="$( ___x_cmd y2j < "$rule_file" )" || { x_=""; return 1; }
+
+    x_="$( printf "%s" "$json" | ___x_cmd_cmds jq -r --arg id "$rule_id" '.[$id]' )" || { x_=""; return 1; }
+    [ "$x_" != "null" ] || { x_=""; return 1; }
 }

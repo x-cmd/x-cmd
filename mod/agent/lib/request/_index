@@ -158,7 +158,9 @@ Output your response wrapped with:
 
 ____X_CMD_AGENT_ERR_AUTHFAILURE=77
 ____X_CMD_AGENT_ERR_SESSION_INVALID=78
+____X_CMD_AGENT_ERR_RATE_LIMIT=79
 ____X_CMD_AGENT_ERR_NETWORK_TIMEOUT=124
+____X_CMD_AGENT_ERR_SIGINT=130
 
 ___x_cmd_agent_request___run(){
     agent:info "Sending request to harness '$harness'"
@@ -235,25 +237,11 @@ ___x_cmd_agent_request___run_attempt(){
         return 0
     fi
 
-    if [ "$ret" = 124 ]; then
+    if [ "$ret" = "$____X_CMD_AGENT_ERR_NETWORK_TIMEOUT" ]; then
+        agent:error "Agent request timed out after ${timeout_secs}s, aborting"
         ___X_CMD_RETRY_ABORT=1
-        agent:error "Agent request timed out after ${timeout_secs}s"
-        return 124
-    fi
-
-    if [ -n "$user_session_id" ]; then
-        session_id_map_file="$session_output_dir/metadata/session_id_map/$user_session_id"
-        [ ! -f "$session_id_map_file" ] || {
-            agent:debug "Cleaning up session map file"
-            local real_session_id="" user_session_cwd=""
-            { read -r real_session_id && read -r user_session_cwd; } < "$session_id_map_file"
-            local x_=""; ___x_cmd date timestamp_
-            printf "timestamp: %s\nuser_session_cwd: %s\nuser_session_id: %s\nreal_session_id: %s\n" "$x_" "$user_session_cwd" "$user_session_id" "$real_session_id" >> "$session_output_dir/metadata/session_id_map/breakage_session"
-            ___x_cmd rmrf "$session_id_map_file"
-        }
-    fi
-
-    if [ $ret -eq $____X_CMD_AGENT_ERR_AUTHFAILURE ]; then
+        return "$____X_CMD_AGENT_ERR_NETWORK_TIMEOUT"
+    elif [ "$ret" = "$____X_CMD_AGENT_ERR_AUTHFAILURE" ]; then
         case "$harness" in
             kimi-cli)
                 agent:info "Authentication failed, trying auto-login..."
@@ -272,11 +260,34 @@ ___x_cmd_agent_request___run_attempt(){
                 ___x_cmd_agent_request___run_exec "$harness" "$content" "$output_format" "$user_session_id" "$workspace" "$is_no_thinking" "$stdoutfile" "$stderrfile" "$reference_workspace"
                 ret=$?
                 ;;
+            *)
+                agent:warn "Authentication failed for harness '$harness', aborting"
+                ___X_CMD_RETRY_ABORT=1
+                return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
+                ;;
         esac
-    elif [ $ret -eq 130 ]; then
+    elif [ "$ret" = "$____X_CMD_AGENT_ERR_RATE_LIMIT" ]; then
+        agent:warn "Agent request hit rate limit, aborting"
         ___X_CMD_RETRY_ABORT=1
+        return "$____X_CMD_AGENT_ERR_RATE_LIMIT"
+    elif [ "$ret" = "$____X_CMD_AGENT_ERR_SIGINT" ]; then
         agent:warn "Agent request interrupted by user (SIGINT)"
+        ___X_CMD_RETRY_ABORT=1
+        return "$____X_CMD_AGENT_ERR_SIGINT"
     fi
+
+    if [ -n "$user_session_id" ]; then
+        session_id_map_file="$session_output_dir/metadata/session_id_map/$user_session_id"
+        [ ! -f "$session_id_map_file" ] || {
+            agent:debug "Cleaning up session map file"
+            local real_session_id="" user_session_cwd=""
+            { read -r real_session_id && read -r user_session_cwd; } < "$session_id_map_file"
+            local x_=""; ___x_cmd date timestamp_
+            printf "timestamp: %s\nuser_session_cwd: %s\nuser_session_id: %s\nreal_session_id: %s\n" "$x_" "$user_session_cwd" "$user_session_id" "$real_session_id" >> "$session_output_dir/metadata/session_id_map/breakage_session"
+            ___x_cmd rmrf "$session_id_map_file"
+        }
+    fi
+
     return $ret
 }
 
@@ -300,6 +311,10 @@ ___x_cmd_agent_request___run_exec(){(
 
     [ -z "$stdoutfile" ] || exec >> "$stdoutfile"
     [ -z "$stderrfile" ] || exec 2>> "$stderrfile"
+
+    if [ -n "$session_output_dir" ]; then
+        ___x_cmd rmrf "$session_output_dir/metadata/status" "$session_output_dir/metadata/stderr.txt"
+    fi
 
     if [ -n "$user_session_id" ]; then
         session_id_map_file="$session_output_dir/metadata/session_id_map/$user_session_id"
@@ -352,13 +367,11 @@ ___x_cmd_agent_request___run_exec(){(
                 ${reference_workspace:+--add-dir "$reference_workspace"} \
                 --print "$content" < /dev/null
                 printf "%s\n" "[EXITCODE] $?"
-            } | ___x_cmd_agent_request___handle_output claude "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file"
+            } | ___x_cmd_agent_request___handle_output claude "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file" "$session_output_dir"
             ret=$?
 
             if [ -n "$real_session_id" ]; then
                 ___x_cmd claude session extract --session "$real_session_id" --output "$session_output_dir"
-                ___x_cmd mkdirp "$session_output_dir/metadata"
-                printf "%s\n" "$ret" > "$session_output_dir/metadata/status"
             fi
             return $ret
             ;;
@@ -379,7 +392,7 @@ ___x_cmd_agent_request___run_exec(){(
                 ${reference_workspace:+--add-dir "$reference_workspace"} \
                 "$content" < /dev/null
                 printf "%s\n" "[EXITCODE] $?"
-            } | ___x_cmd_agent_request___handle_output codex "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file"
+            } | ___x_cmd_agent_request___handle_output codex "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file" "$session_output_dir"
             ;;
         cursor)
             if [ -n "$user_session_id" ]; then
@@ -410,7 +423,7 @@ ___x_cmd_agent_request___run_exec(){(
                 ${reference_workspace:+--include-directories "$reference_workspace"} \
                 --output-format stream-json --prompt "$content" < /dev/null
                 printf "%s\n" "[EXITCODE] $?"
-            } | ___x_cmd_agent_request___handle_output gemini-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file"
+            } | ___x_cmd_agent_request___handle_output gemini-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file" "$session_output_dir"
             ;;
         opencode)
             if [ -n "$user_session_id" ]; then
@@ -426,7 +439,7 @@ ___x_cmd_agent_request___run_exec(){(
             {
                 OPENCODE_PERMISSION='{"*":"allow"}' ___x_cmd timeout "$timeout_secs" x-cmd opencode run "$@" --format json "$content" < /dev/null
                 printf "%s\n" "[EXITCODE] $?"
-            } | ___x_cmd_agent_request___handle_output opencode "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file"
+            } | ___x_cmd_agent_request___handle_output opencode "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file" "$session_output_dir"
             ;;
         kimi-cli)
             if [ -n "$user_session_id" ]; then
@@ -451,7 +464,7 @@ ___x_cmd_agent_request___run_exec(){(
                 ${reference_workspace:+--add-dir "$reference_workspace"} \
                 --prompt "$content" < /dev/null
                 printf "%s\n" "[EXITCODE] $?"
-            } | ___x_cmd_agent_request___handle_output kimi-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file"
+            } | ___x_cmd_agent_request___handle_output kimi-cli "$output_format" "$is_session_first" "$user_session_cwd" "$session_id_map_file" "$session_output_dir"
             ;;
     esac
 )}
@@ -462,16 +475,20 @@ ___x_cmd_agent_request___handle_output(){
     local is_session_first="$3"
     local user_session_cwd="$4"
     local save_session_id_file="$5"
+    local session_output_dir="$6"
 
     is_debug="$is_debug" \
     output_format="$output_format" \
     is_session_first="$is_session_first" \
     user_session_cwd="$user_session_cwd" \
     save_session_id_file="$save_session_id_file" \
+    session_output_dir="$session_output_dir" \
     ____X_CMD_AGENT_ERR_AUTHFAILURE="$____X_CMD_AGENT_ERR_AUTHFAILURE" \
     ____X_CMD_AGENT_ERR_NETWORK_TIMEOUT="$____X_CMD_AGENT_ERR_NETWORK_TIMEOUT" \
+    ____X_CMD_AGENT_ERR_RATE_LIMIT="$____X_CMD_AGENT_ERR_RATE_LIMIT" \
+    ____X_CMD_AGENT_ERR_SIGINT="$____X_CMD_AGENT_ERR_SIGINT" \
     harness="$harness" \
-    ___x_cmd cawk -i -m j/json -m j/jiter \
+    ___x_cmd awk0 -m j/json -m j/jiter \
         -f "$___X_CMD_ROOT_MOD/agent/lib/awk/handle_output.awk"
 }
 

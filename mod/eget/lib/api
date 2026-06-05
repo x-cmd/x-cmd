@@ -1,0 +1,164 @@
+# shellcheck shell=dash
+
+# GitHub / GitLab / Codeberg Release API client
+
+___x_cmd_eget_api_release(){
+    local forge="$1" owner="$2" repo="$3" tag="$4" pre_release="$5" source="$6"
+
+    local base_url
+    case "$forge" in
+        codeberg)   base_url="https://codeberg.org/api/v1" ;;
+        gitlab)     base_url="https://gitlab.com/api/v4" ;;
+        github|*)   base_url="https://api.github.com" ;;
+    esac
+
+    local token=""
+    case "$forge" in
+        codeberg)   token="${EGET_CODEBERG_TOKEN:-${EGET_FORGE_TOKEN:-}}" ;;
+        gitlab)     token="${EGET_GITLAB_TOKEN:-${EGET_FORGE_TOKEN:-}}" ;;
+        github|*)   token="${EGET_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}" ;;
+    esac
+
+    if [ "$source" = "1" ]; then
+        ___x_cmd_eget_api_source "$base_url" "$owner" "$repo" "$tag" "$token" "$forge"
+        return
+    fi
+
+    if [ "$forge" = "gitlab" ]; then
+        local project_id
+        project_id="$( printf "%s/%s" "$owner" "$repo" | ___x_cmd_cmds jq -sRr @uri )"
+        if [ -n "$tag" ]; then
+            ___x_cmd_eget_api_curl "$base_url/projects/$project_id/releases/$tag" "$token"
+        else
+            local releases_json
+            releases_json="$( ___x_cmd_eget_api_curl "$base_url/projects/$project_id/releases?per_page=10" "$token" )" || return
+            printf "%s" "$releases_json" | ___x_cmd_cmds jq -r '.[0]'
+        fi
+    else
+        if [ -n "$tag" ]; then
+            ___x_cmd_eget_api_curl "$base_url/repos/$owner/$repo/releases/tags/$tag" "$token"
+        else
+            local releases_json
+            releases_json="$( ___x_cmd_eget_api_curl "$base_url/repos/$owner/$repo/releases?per_page=10" "$token" )" || return
+            if [ "$pre_release" = "1" ]; then
+                printf "%s" "$releases_json" | ___x_cmd_cmds jq -r '.[0]'
+            else
+                printf "%s" "$releases_json" | ___x_cmd_cmds jq -r '[ .[] | select(.prerelease != true) ][0]'
+            fi
+        fi
+    fi
+}
+
+___x_cmd_eget_api_source(){
+    local base_url="$1" owner="$2" repo="$3" tag="$4" token="$5"
+
+    if [ -n "$tag" ]; then
+        local ref="tags/$tag"
+    else
+        local ref="latest"
+    fi
+
+    case "$base_url" in
+        *github*)
+            printf '{"tag_name":"%s","assets":[{"name":"source.tar.gz","browser_download_url":"%s/repos/%s/%s/tarball/%s"}]}' \
+                "${tag:-latest}" "$base_url" "$owner" "$repo" "$ref" | ___x_cmd_cmds jq .
+            ;;
+        *codeberg*)
+            printf '{"tag_name":"%s","assets":[{"name":"source.tar.gz","browser_download_url":"%s/repos/%s/%s/archive/%s.tar.gz"}]}' \
+                "${tag:-latest}" "$base_url" "$owner" "$repo" "$ref" | ___x_cmd_cmds jq .
+            ;;
+        *gitlab*)
+            printf '{"tag_name":"%s","assets":[{"name":"source.tar.gz","browser_download_url":"https://gitlab.com/%s/%s/-/archive/%s/%s-%s.tar.gz"}]}' \
+                "${tag:-latest}" "$owner" "$repo" "$ref" "$repo" "${tag:-latest}" | ___x_cmd_cmds jq .
+            ;;
+    esac
+}
+
+___x_cmd_eget_api_curl(){
+    local url="$1" token="$2"
+    local ssl_opts=""
+    [ "$___X_CMD_EGET_DISABLE_SSL" = "1" ] && ssl_opts="-k"
+
+    local auth_opts=""
+    if [ -n "$token" ]; then
+        auth_opts="-H \"Authorization: Bearer $token\""
+    fi
+
+    eval "___x_cmd_cmds curl -sS -L -f $ssl_opts $auth_opts \"$url\""
+}
+
+___x_cmd_eget_api_download(){
+    local url="$1" outfile="$2"
+    local ssl_opts=""
+    [ "$___X_CMD_EGET_DISABLE_SSL" = "1" ] && ssl_opts="-k"
+
+    local token=""
+    case "$url" in
+        *github*)   token="${EGET_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}" ;;
+        *codeberg*) token="${EGET_CODEBERG_TOKEN:-${EGET_FORGE_TOKEN:-}}" ;;
+        *gitlab*)   token="${EGET_GITLAB_TOKEN:-${EGET_FORGE_TOKEN:-}}" ;;
+    esac
+
+    local auth_opts=""
+    if [ -n "$token" ]; then
+        auth_opts="-H \"Authorization: Bearer $token\""
+    fi
+
+    ___x_cmd mkdirp "$(dirname "$outfile")"
+    [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Downloading $(basename "$outfile") ..."
+    eval "___x_cmd_cmds curl -sS -L -f $ssl_opts -o \"$outfile\" $auth_opts \"$url\""
+}
+
+___x_cmd_eget_api_list_releases(){
+    local forge="$1" owner="$2" repo="$3" limit="${4:-20}"
+
+    local base_url token
+    case "$forge" in
+        codeberg)   base_url="https://codeberg.org/api/v1" ;;
+        gitlab)     base_url="https://gitlab.com/api/v4" ;;
+        github|*)   base_url="https://api.github.com" ;;
+    esac
+    case "$forge" in
+        codeberg)   token="${EGET_CODEBERG_TOKEN:-${EGET_FORGE_TOKEN:-}}" ;;
+        gitlab)     token="${EGET_GITLAB_TOKEN:-${EGET_FORGE_TOKEN:-}}" ;;
+        github|*)   token="${EGET_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}" ;;
+    esac
+
+    if [ "$forge" = "gitlab" ]; then
+        local project_id
+        project_id="$( printf "%s/%s" "$owner" "$repo" | ___x_cmd_cmds jq -sRr @uri )"
+        ___x_cmd_eget_api_curl "$base_url/projects/$project_id/releases?per_page=$limit" "$token"
+    else
+        ___x_cmd_eget_api_curl "$base_url/repos/$owner/$repo/releases?per_page=$limit" "$token"
+    fi
+}
+
+___x_cmd_eget_api_rate(){
+    local forge="${1:-github}"
+    # Normalize short names
+    case "$forge" in
+        gh)  forge="github" ;;
+        gl)  forge="gitlab" ;;
+        cb)  forge="codeberg" ;;
+    esac
+    local base_url
+    case "$forge" in
+        codeberg)   base_url="https://codeberg.org/api/v1" ;;
+        gitlab)     base_url="https://gitlab.com/api/v4" ;;
+        github|*)   base_url="https://api.github.com" ;;
+    esac
+
+    local token=""
+    case "$forge" in
+        github)     token="${EGET_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}" ;;
+        gitlab)     token="${EGET_GITLAB_TOKEN:-${EGET_FORGE_TOKEN:-}}" ;;
+        codeberg)   token="${EGET_CODEBERG_TOKEN:-${EGET_FORGE_TOKEN:-}}" ;;
+    esac
+
+    local auth_opts=""
+    [ -n "$token" ] && auth_opts="-H \"Authorization: Bearer $token\""
+
+    eval "___x_cmd_cmds curl -sS -L -f $auth_opts \"$base_url/rate_limit\"" 2>/dev/null | \
+        ___x_cmd_cmds jq -r '.resources.core | "Rate limit: \(.remaining)/\(.limit) (resets at \(.reset | todate))"' 2>/dev/null || \
+        printf "Unable to fetch rate limit info\n"
+}
