@@ -672,7 +672,7 @@ def _format_text(turns: List[Dict[str, Any]], file_path: str, show_all: bool = F
 
     if costs_by_model or unknown_count > 0:
         lines.append("")
-        lines.append("成本估算 (人民币, 公开价格快照, 可能过期)")
+        lines.append("成本估算 (人民币, 公开价格快照)")
         if costs_by_model:
             name_width = max(_visual_len(_short_model(m)) for m in costs_by_model)
             name_width = max(name_width, _visual_len("总计"))
