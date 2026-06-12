@@ -1,0 +1,178 @@
+# shellcheck shell=dash
+
+___x_cmd_column___main(){
+    if [ "$#" -eq 0 ] && [ ! -t 0 ]; then
+        set -- -
+    fi
+
+    case "$1" in
+        -h|--help)  ___x_cmd help -m column ; return 0 ;;
+    esac
+
+    local table=0
+    local delim=""
+    local outsep="  "
+    local squeeze=1
+    local width=""
+    local force_color=""
+    local no_color=0
+    local color_per_col=""
+    local underline_every=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -t)             table=1 ; shift ;;
+
+            -s)             [ $# -ge 2 ] || N=column M="Missing arg for -s" log:ret:64
+                            delim="$2" ; shift 2 ;;
+
+            -o)             [ $# -ge 2 ] || N=column M="Missing arg for -o" log:ret:64
+                            outsep="$2" ; shift 2 ;;
+
+            -n)             squeeze=0 ; shift ;;
+
+            -c)             [ $# -ge 2 ] || N=column M="Missing arg for -c" log:ret:64
+                            width="$2" ; shift 2 ;;
+
+            --color)        force_color=1 ; shift ;;
+            --no-color)     no_color=1 ; shift ;;
+
+            --color-per-column)
+                            [ $# -ge 2 ] || N=column M="Missing arg for --color-per-column" log:ret:64
+                            color_per_col="$2" ; shift 2 ;;
+
+            --underline-every)
+                            [ $# -ge 2 ] || N=column M="Missing arg for --underline-every" log:ret:64
+                            underline_every="$2" ; shift 2 ;;
+
+            --)             shift ; break ;;
+
+            -)              break ;;
+
+            -*)             N=column M="Unknown option -> $1" log:ret:64 ;;
+
+            *)              break ;;
+        esac
+    done
+
+    [ "$#" -gt 0 ] || set -- -
+
+    if [ "$table" = 1 ]; then
+        ___x_cmd_column___table "$delim" "$outsep" "$squeeze" \
+                               "$force_color" "$no_color" \
+                               "$color_per_col" "$underline_every" "$@"
+    else
+        ___x_cmd_column___fill "$outsep" "$squeeze" "$width" \
+                               "$force_color" "$no_color" "$@"
+    fi
+}
+
+___x_cmd_column___table(){
+    local delim="$1";    local outsep="$2";  local squeeze="$3"
+    local force_color="$4"; local no_color="$5"
+    local color_per_col="$6"; local underline_every="$7"
+    shift 7
+
+    local delim_re delim_was_set
+    if [ -z "$delim" ]; then
+        delim_re=""
+        delim_was_set=0
+    else
+        local escaped
+        escaped=$(printf '%s' "$delim" | sed 's/[\]\\^]/\\&/g')
+        delim_re="[$escaped]"
+        delim_was_set=1
+    fi
+
+    # color decision (3-way: --no-color / --color / --auto = tty-on-pipe-off)
+    #   --no-color   force off (also wins over NO_COLOR ... actually NO_COLOR
+    #                 is just a hint, --no-color is explicit)
+    #   --color      force on
+    #   default      on if stdout is a tty AND NO_COLOR is unset
+    # NO_COLOR (per https://no-color.org) only affects default, not --color.
+    local color=0
+    if [ "$no_color" = 1 ]; then
+        color=0
+    elif [ "$force_color" = 1 ]; then
+        color=1
+    elif [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+        color=1
+    fi
+
+    # per-column color: explicit > auto
+    #   --color-per-column "31:32:33"  use that (unless --no-color)
+    #   else if color=1                 use a default cycle
+    #   else                            empty (no per-col color)
+    local colcolors=""
+    if [ "$color" = 1 ]; then
+        if [ -n "$color_per_col" ]; then
+            colcolors="$color_per_col"
+        else
+            colcolors="36:33:35:32:31:34"
+        fi
+    fi
+
+    # underline every Nth line: independent of --color; --no-color
+    # still suppresses as master switch (consistent with the rule
+    # "no decoration flags survive --no-color").
+    local every_n=0
+    if [ "$no_color" = 0 ] && [ -n "$underline_every" ]; then
+        every_n="$underline_every"
+    fi
+
+    # CSI column jumps only when we're emitting colors / decorations that
+    # would otherwise overflow pure mode. In pure (no-color, no-underline)
+    # mode we stick to space-padding so downstream grep/awk/cut sees a
+    # clean byte stream.
+    local use_csi=0
+    if [ "$color" = 1 ] || [ "$every_n" != "0" ] || [ -n "$colcolors" ]; then
+        use_csi=1
+    fi
+
+    ___x_cmd_cmds_awk \
+        -v delim_re="$delim_re" \
+        -v outsep="$outsep" \
+        -v squeeze="$squeeze" \
+        -v delim_was_set="$delim_was_set" \
+        -v color="$color" \
+        -v colcolors="$colcolors" \
+        -v every_n="$every_n" \
+        -v use_csi="$use_csi" \
+        -f "$___X_CMD_ROOT_MOD/column/lib/awk/table.awk" \
+        "$@"
+}
+
+___x_cmd_column___fill(){
+    local outsep="$1"; local squeeze="$2"; local width="$3"
+    local force_color="$4"; local no_color="$5"
+    shift 5
+
+    if [ -z "$width" ]; then
+        ___x_cmd tty update 2>/dev/null || true
+        width="${COLUMNS:-80}"
+    fi
+
+    # fill mode design: reasonable display of information. In tty we
+    # default to per-column color so side-by-side columns are easy
+    # to tell apart. --no-color / NO_COLOR disables; --color forces
+    # on (useful for testing / piping into less -R). NO_COLOR takes
+    # precedence over --color (per https://no-color.org).
+    local color=0
+    local colcolors=""
+    if [ "$no_color" = 1 ] || [ -n "${NO_COLOR:-}" ]; then
+        : # stay off
+    elif [ "$force_color" = 1 ]; then
+        color=1
+        colcolors="36:33:35:32:31:34"
+    elif [ -t 1 ]; then
+        color=1
+        colcolors="36:33:35:32:31:34"
+    fi
+
+    ___x_cmd_cmds_awk \
+        -v width="$width" \
+        -v color="$color" \
+        -v colcolors="$colcolors" \
+        -f "$___X_CMD_ROOT_MOD/column/lib/awk/fill.awk" \
+        "$@"
+}

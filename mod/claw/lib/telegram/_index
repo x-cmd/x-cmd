@@ -1,4 +1,16 @@
 # ___x_cmd_claw_telegram -h
+# x claw weixin send --text <xxxxxx>
+# x claw weixin send --image <path>
+# x claw weixin send --file <path>
+# x claw weixin send --video <path>
+# x claw feishu send --text --chatid <chatid> <xxxxxx>
+# x claw feishu send --image --chatid <chatid> <path>
+# x claw feishu send --file --chatid <chatid> <path>
+# x claw telegram send --text --chatid <chatid> <xxxxxx>
+# x claw telegram send --image --chatid <chatid> <path>
+# x claw telegram send --file --chatid <chatid> <path>
+# x claw telegram send --video --chatid <chatid> <path>
+# x claw telegram get-sent --chatid <chatid>
 
 ___x_cmd_claw_telegram(){
     [ $# -gt 0 ]    ||  set -- --help
@@ -8,7 +20,9 @@ ___x_cmd_claw_telegram(){
         --help|-h)
             ___x_cmd help -m claw telegram ; return 0 ;;
         send)
-            ___x_cmd telegram send "$@" ;;
+            ___x_cmd_claw_telegram_send "$@" ;;
+        get-sent)
+            ___x_cmd_claw_telegram_get_sent "$@" ;;
         get-msg)
             ___x_cmd_claw_telegram_get_msg "$@" ;;
         get-unread)
@@ -24,6 +38,57 @@ ___x_cmd_claw_telegram(){
         *)  N=claw M="Unknown subcmd -> $op" log:ret:64 ;;
     esac
 }
+
+___x_cmd_claw_telegram_send(){
+    local chatid=""
+    local msg_type=""
+    local content=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m claw telegram "$@"; return 0 ;;
+            --chatid)   shift; chatid="$1"; shift; continue ;;
+            --text)     shift; msg_type="text";  content="$*"; break ;;
+            --image)    shift; msg_type="image"; content="$1"; shift; break ;;
+            --file)     shift; msg_type="file";  content="$1"; shift; break ;;
+            --video)    shift; msg_type="video"; content="$1"; shift; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$chatid" ]    || N=claw M="send: must specify --chatid" log:ret:64
+    [ -n "$msg_type" ]  || N=claw M="send: must specify --text, --image, --file, or --video" log:ret:64
+    [ -n "$content" ]   || N=claw M="send: missing ${msg_type} content" log:ret:64
+
+    case "$msg_type" in
+        text)  ___x_cmd telegram bot send --text --chatid "$chatid" "$content" ;;
+        *)     ___x_cmd telegram bot send "--${msg_type}" --chatid "$chatid" --file_path "$content" ;;
+    esac
+
+    local x_; ___x_cmd date timestamp_
+    local send_time="$x_"
+
+    local sent_data_path="$___X_CMD_ROOT_DATA/telegram/bot/sent/data_${chatid}.tsv"
+
+    case "$msg_type" in
+        image|file|video)
+            local asset_dir="$___X_CMD_ROOT_DATA/telegram/bot/sent/asset"
+            ___x_cmd mkdirp "$asset_dir"
+            local target_path="${asset_dir}/${send_time}_${content##*/}"
+
+            cp "$content" "$target_path" || {
+                telegram:warn "Failed to copy $msg_type to $target_path"
+            }
+            content="$target_path"
+            ;;
+    esac
+
+    ___x_cmd ensurefp "$sent_data_path"
+    printf '%s\t%s\t%s\n' "$send_time" "$msg_type" "$content" >> "$sent_data_path" || {
+        telegram:warn "Failed to save sent message to $sent_data_path"
+    }
+}
+
 
 ___x_cmd_claw_telegram_get_unread(){
     local chatid="$1"

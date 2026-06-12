@@ -386,6 +386,7 @@ function stdout_content_claude(o,           type, i, l, text, content_item_type,
 
     } else if ( type == "\"system\"" ) {
         subtype = juq(o[ Q2_1, "\"subtype\"" ])
+        if ( subtype == "thinking_tokens" || subtype == "api_retry" ) return
         desc = o[ Q2_1, "\"description\"" ]
         if ( desc == "" ) desc = o[ Q2_1, "\"summary\"" ]
         if ( desc != "" ) {

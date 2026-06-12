@@ -1,0 +1,87 @@
+# shellcheck shell=dash
+# x qr webdec - read/decode a QR code from an image via api.qrserver.com
+#
+# API: https://api.qrserver.com/v1/read-qr-code/
+# Docs: https://goqr.me/api/doc/read-qr-code/
+
+___x_cmd_qr_webdec(){
+    [ "$#" -gt 0 ] || set -- --help
+
+    local fileurl=""
+    local output_json=""
+    local file=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m qr webdec; return 0 ;;
+            --fileurl)              fileurl="$2"; arg:2:shift ;;
+            -j|--json)              output_json=1; shift ;;
+            --)                     shift; break ;;
+            -)                      break ;;
+            -*)                     N=qr M="Unknown option: $1" log:ret:64 ;;
+            *)                      break ;;
+        esac
+    done
+
+    # Positional argument: local image file path
+    if [ $# -gt 0 ]; then
+        file="$1"
+        shift
+    fi
+
+    # Validate input: exactly one source required
+    if [ -n "$fileurl" ] && [ -n "$file" ]; then
+        N=qr M="Use either --fileurl or a positional file, not both" log:ret:64
+    fi
+    if [ -z "$fileurl" ] && [ -z "$file" ]; then
+        N=qr M="Provide an image file or --fileurl URL" log:ret:64
+    fi
+    if [ $# -gt 0 ]; then
+        N=qr M="Too many arguments" log:ret:64
+    fi
+
+    printf '%s\n' "[privacy] webdec sends the image to a 3rd-party service. Do not send sensitive data." >&2
+
+    local resp
+    if [ -n "$fileurl" ]; then
+        # GET with fileurl - server fetches the image
+        resp="$(___x_cmd curl --fail -sS "https://api.qrserver.com/v1/read-qr-code/?fileurl=$(___x_cmd url encode "$fileurl")")" \
+            || N=qr M="webdec request failed (network error or invalid URL)" log:ret:1
+    elif [ "$file" = "-" ]; then
+        # Stdin -> temp file -> multipart upload
+        local tmpfile
+        tmpfile="$(mktemp)" || N=qr M="Failed to create temp file" log:ret:1
+        trap 'rm -f "$tmpfile"' EXIT INT TERM
+        if ! cat > "$tmpfile"; then
+            N=qr M="Failed to read stdin" log:ret:1
+        fi
+        resp="$(___x_cmd curl --fail -sS -F "file=@$tmpfile" "https://api.qrserver.com/v1/read-qr-code/")" \
+            || N=qr M="webdec request failed (network error or unreadable image)" log:ret:1
+        rm -f "$tmpfile"
+        trap - EXIT INT TERM
+    else
+        # Local file path -> multipart upload
+        [ -f "$file" ] || N=qr M="File not found: $file" log:ret:64
+        resp="$(___x_cmd curl --fail -sS -F "file=@$file" "https://api.qrserver.com/v1/read-qr-code/")" \
+            || N=qr M="webdec request failed (network error or unreadable image)" log:ret:1
+    fi
+
+    if [ -n "$output_json" ]; then
+        printf '%s\n' "$resp"
+        return 0
+    fi
+
+    # Extract .[0].symbol[0].data
+    local data
+    data="$(printf '%s' "$resp" | x jq -r '.[0].symbol[0].data // empty')"
+    local err
+    err="$(printf '%s' "$resp" | x jq -r '.[0].symbol[0].error // empty')"
+
+    if [ -n "$err" ] && [ "$err" != "null" ]; then
+        N=qr M="webdec failed: $err" log:ret:1
+    fi
+    if [ -z "$data" ] || [ "$data" = "null" ]; then
+        N=qr M="No QR code found in image" log:ret:1
+    fi
+    printf '%s\n' "$data"
+}

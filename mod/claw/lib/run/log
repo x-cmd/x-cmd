@@ -6,6 +6,8 @@ ___x_cmd_claw_log(){
         case "$1" in
             --help|-h)  ___x_cmd help -m claw log "$@" ; return 0 ;;
             --ts)       ts="$2" ; arg:2:shift ;;
+            --get-recent-ts_)
+                        ___x_cmd_claw_log___get_recent_ts_; return ;;
             *)          break ;;
         esac
     done
@@ -41,9 +43,8 @@ ___x_cmd_claw_log(){
         fi
         target_ts="$best_ts"
     else
-        read -r target_ts <<A
-$( ___x_cmd fsiter --ls --folder "$dir" | ___x_cmd_cmds sort -r )
-A
+        local x_=""; ___x_cmd_claw_log___get_recent_ts_ || return $?
+        target_ts="$x_"
     fi
 
     [ -n "$target_ts" ] || return 0
@@ -52,10 +53,21 @@ A
     ___x_cmd_claw_log___recent "$dir/$target_ts"
 }
 
+___x_cmd_claw_log___get_recent_ts_(){
+    local dir="$___X_CMD_CLAW_BOT_STDOUT_LOG_DIR"
+    [ -d "$dir" ] || return 1
+    read -r x_ <<A
+$( ___x_cmd fsiter --ls --folder "$dir" | ___x_cmd_cmds sort -r )
+A
+    [ -n "$x_" ]
+}
+
 ___x_cmd_claw_log___recent(){
     local dir="$1"
     [ -d "$dir" ] || return 0
     ___x_cmd_claw_log___output_all "$dir"
+
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; } || return 0
 
     shift $#
     local x_="" l=""
@@ -67,46 +79,6 @@ $x_
 A
     ___x_cmd_cmds tail -F -q -n 0 "$@" | CLAW_LOG_COLOR="$CLAW_LOG_COLOR" ___x_cmd cawk -i -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_output_realtime.awk"
 }
-
-___x_cmd_claw_log___watch(){(
-    local dir="$1"
-    [ -d "$dir" ] || return 0
-    ___x_cmd_claw_log___output_all "$dir"
-
-    local aggregate="$dir/.log_aggregate"
-    local tracked="$dir/.log_tracked"
-    local pids="$dir/.log_pids"
-    : > "$aggregate"
-    : > "$tracked"
-    : > "$pids"
-
-    (
-        trap 'while read -r p; do [ -n "$p" ] && ___x_cmd kill tree "$p" 2>/dev/null; done < "$pids"; ___x_cmd rmrf  "$aggregate" "$tracked" "$pids"; exit' INT TERM
-
-        while true; do
-            for f in "$dir"/*; do
-                [ -f "$f" ] || continue
-                case "$f" in
-                    "$aggregate"|"$tracked"|"$pids") continue ;;
-                esac
-                ___x_cmd_cmds grep -Fxq "$f" "$tracked" 2>/dev/null && continue
-
-                printf '%s\n' "$f" >> "$tracked"
-                ___x_cmd_cmds tail -F -q -n 0 "$f" >> "$aggregate" 2>/dev/null &
-                printf '%s\n' "$!" >> "$pids"
-            done
-            sleep 2
-        done
-    ) &
-    local scanner_pid=$!
-
-    ___x_cmd_cmds tail -F -q -n 0 "$aggregate" | \
-        ___x_cmd cawk -i -m date -f "$___X_CMD_ROOT_MOD/claw/lib/awk/log_output_realtime.awk"
-
-    ___x_cmd kill tree "$scanner_pid" 2>/dev/null
-    wait "$scanner_pid" 2>/dev/null
-    ___x_cmd rmrf "$aggregate" "$tracked" "$pids"
-)}
 
 ___x_cmd_claw_log___output_all(){
     local dir="$1"

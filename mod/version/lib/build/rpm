@@ -25,8 +25,21 @@ RUN dnf install -y rpmdevtools rpmlint' > ".build/fedora-builder.Dockerfile"
 
     docker build -f ".build/fedora-builder.Dockerfile" --tag fedora-builder .
     docker run --rm -v "$PWD/.build/rpm:/home/builder/rpmbuild" --name fedora-builder fedora-builder sh -c '
+    cd /home/builder/rpmbuild
     groupadd abuild && useradd -m -G abuild builder && chown -R builder /home/builder/rpmbuild
+
+    # Lint SPEC file before building
+    echo "===== rpmlint SPECS/x-cmd.spec ====="
+    rpmlint SPECS/x-cmd.spec 2>&1 | tee rpmlint.spec.log || true
+
     su -c "rpmbuild -ba /home/builder/rpmbuild/SPECS/x-cmd.spec" builder || exit 1
+
+    # Lint the built RPM
+    echo "===== rpmlint RPMS/noarch/x-cmd-*.rpm ====="
+    for rpm in RPMS/noarch/x-cmd-*.rpm; do
+        [ -f "$rpm" ] || continue
+        rpmlint "$rpm" 2>&1 | tee "rpmlint.$(basename "$rpm").log" || true
+    done
 ' || return "$?"
 
     local distfp="$___X_CMD_VERSION_BUILD_DATA/release/${version}/rpm"
@@ -45,7 +58,6 @@ ___x_cmd_version_build_rpm_builddir(){
     local url="$(___x_cmd_version_build_info___ url)"
     local license="$(___x_cmd_version_build_info___ license)"
     local summary="$(___x_cmd_version_build_info___ summary)"
-    local desc="$(___x_cmd_version_build_info___ desc)"
 
     local builddir=".build/rpm"
     ___x_cmd rm -rf "$builddir"
@@ -68,38 +80,44 @@ URL:            '"$url"'
 Source0:        %{name}-%{version}.tgz
 
 Requires:       curl
+Requires:       /usr/bin/bash
+
+%global _pkgsum  '"$versum"'
+%global _pkgdir  %{_prefix}/share/x-cmd/v/%{_pkgsum}
 
 %description
-'"$desc"'
+ X-CMD is a modern toolkit for POSIX shell (bash, zsh, ash, dash) — designed
+ to make shell as powerful as Python'\''s standard library.
 
+%build
 
-%define  _pkgsum        '"$versum"'
-%define  _pkgdir        %{_prefix}/share/x-cmd/v/%{_pkgsum}
+%check
 
 %prep
 
 %install
-rm -rf $RPM_BUILD_ROOT
-mkdir -p $RPM_BUILD_ROOT/%{_prefix}/share/x-cmd/v
-cp -rf %{SOURCE0} $RPM_BUILD_ROOT/%{_pkgdir}.tgz
+rm -rf %{buildroot}
+mkdir -p %{buildroot}%{_pkgdir}
+tar -xzf %{SOURCE0} -C %{buildroot}%{_pkgdir}
 
+mkdir -p %{buildroot}%{_prefix}/share/x-cmd/v
+ln -sf %{_pkgsum} %{buildroot}%{_prefix}/share/x-cmd/v/latest
 
-%post
-mkdir -p %{_pkgdir}
-tar -zxf %{_pkgdir}.tgz -C %{_pkgdir} >/dev/null 2>&1 || exit 1
-rm -rf %{_prefix}/share/x-cmd/v/latest || exit 1
-ln -sf %{_pkgdir} %{_prefix}/share/x-cmd/v/latest || exit 1
-mkdir -p %{_bindir}
-cp -rf %{_pkgdir}/mod/x-cmd/lib/bin/x-cmd %{_bindir}/x-cmd || exit 1
+mkdir -p %{buildroot}%{_bindir}
+install -m755 %{buildroot}%{_pkgdir}/mod/x-cmd/lib/bin/x-cmd \
+              %{buildroot}%{_bindir}/x-cmd
 
-%postun
-[ ! -f %{_pkgdir}.tgz ]     || rm -rf %{_pkgdir}.tgz
-[ ! -f %{_bindir}/x ]       || rm -rf %{_bindir}/x
-[ ! -f %{_bindir}/x-cmd ]   || rm -rf %{_bindir}/x-cmd
-
+mkdir -p %{buildroot}%{_defaultdocdir}/x-cmd
+if [ -f %{buildroot}%{_pkgdir}/LICENSE.txt ]; then
+    cp %{buildroot}%{_pkgdir}/LICENSE.txt \
+       %{buildroot}%{_defaultdocdir}/x-cmd/LICENSE.txt
+fi
 
 %files
-%{_prefix}/share/x-cmd/v/%{_pkgsum}.tgz
+%license %{_defaultdocdir}/x-cmd/LICENSE.txt
+%{_prefix}/share/x-cmd/v/%{_pkgsum}/
+%{_prefix}/share/x-cmd/v/latest
+%{_bindir}/x-cmd
 
 %changelog
 * Mon Feb 24 2025 Li Junhao <l@x-cmd.com> - '"${version}"'-1

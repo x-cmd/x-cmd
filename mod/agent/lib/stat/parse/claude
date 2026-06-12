@@ -1,0 +1,69 @@
+# shellcheck shell=dash disable=2120
+
+# `x agent stat parse claude (<file> | --session-id <uuid>) [--offset <n>] [--format text|tsv|json|brief]`
+#
+# Parse a Claude Code session JSONL file and extract per-turn statistics.
+# See plan.md for the full field semantics.
+#
+# Source selection (mutually exclusive, exactly one required):
+#   <file>              -- path to a JSONL session file
+#   --session-id <uuid> -- locate the session under ~/.claude/projects/
+#                          (searches the cwd-derived project first,
+#                          then every project)
+#
+# Output formats:
+#   text (default)  -- human-readable summary + model-usage bar + per-turn
+#                      table + anomalies + highlights
+#   brief           -- compact one-screen summary for AI-agent consumption:
+#                      session header + pre-labelled anomalies + trend buckets
+#   tsv             -- machine-friendly tab-separated values with header
+#   json            -- machine-friendly JSON array of turn objects
+
+___x_cmd_agent_stat_parse_claude(){
+    local file=""
+    local session_id=""
+    local offset=0
+    local format="text"
+    local show_all=0
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m agent stat parse claude; return 0 ;;
+            --offset)           offset="$2" ;   arg:2:int ;  arg:2:shift ;;
+            --format)           format="$2" ;                   arg:2:shift ;;
+            --session-id)       session_id="$2" ;               arg:2:shift ;;
+            --all)              show_all=1 ;                    shift ;;
+            --)                 shift; break ;;
+            -*)                 N=agent M="Unknown flag -> $1" log:ret:64 ;;
+            *)
+                if [ -z "$file" ]; then
+                    file="$1"; shift
+                else
+                    N=agent M="Only one file argument is supported" log:ret:64
+                fi
+                ;;
+        esac
+    done
+
+    if [ -n "$file" ] && [ -n "$session_id" ]; then
+        N=agent M="--session-id and <file> are mutually exclusive" log:ret:64
+    fi
+    if [ -z "$file" ] && [ -z "$session_id" ]; then
+        N=agent M="Usage: x agent stat parse claude (<file> | --session-id <uuid>) [--offset <n>] [--format text|tsv|json|brief] [--all]" log:ret:64
+    fi
+    if [ -n "$file" ]; then
+        [ -f "$file" ] || N=agent M="File not found -> $file" log:ret:1
+    fi
+
+    local script="$___X_CMD_ROOT_MOD/agent/lib/stat/parse/claude.py"
+    [ -f "$script" ] || N=agent M="Parser script not found -> $script" log:ret:1
+
+    local all_flag=""
+    [ "$show_all" = "1" ] && all_flag="--all"
+
+    if [ -n "$session_id" ]; then
+        ___x_cmd python "$script" --session-id "$session_id" --offset "$offset" --format "$format" $all_flag
+    else
+        ___x_cmd python "$script" --file "$file" --offset "$offset" --format "$format" $all_flag
+    fi
+}

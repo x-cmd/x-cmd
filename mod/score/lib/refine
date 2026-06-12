@@ -1,0 +1,84 @@
+# shellcheck shell=dash
+
+# x score refine <score.yml> --prompt "<feedback>"
+# x score refine <score.yml> --prompt "<feedback>" -t score.yml
+
+___x_cmd_score_refine(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local file="" prompt="" template=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m score refine "$@"; return 0 ;;
+            -t)         template="$2" ;  arg:2:shift ;;
+            --prompt)   prompt="$2" ;   arg:2:shift ;;
+            --)         shift ; break ;;
+            *)          file="$1" ; shift ;;
+        esac
+    done
+
+    [ -n "$file" ] || { N=score M="Usage: x score refine <score.yml> --prompt <feedback>" log:ret:64; }
+    [ -f "$file" ] || { N=score M="File not found: $file" log:ret:64; }
+    [ -n "$prompt" ] || { N=score M="Usage: x score refine <score.yml> --prompt <feedback>" log:ret:64; }
+
+    local skill_dir=""
+    ___x_cmd_score_skill_dir_ || { N=score M="Unable to locate skill directory" log:ret:64; }
+    skill_dir="$x_"
+
+    # Template reference: specific template or all available
+    local template_ref=""
+    if [ -n "$template" ]; then
+        local tf="$skill_dir/template/$template"
+        [ -f "$tf" ] || { N=score M="Template not found: $template" log:ret:64; }
+        template_ref="$(printf '\n--- %s ---\n' "$template")$(___x_cmd_cmds cat "$tf")"
+    else
+        local f=""
+        for f in "$skill_dir/template"/*.yml; do
+            [ -f "$f" ] || continue
+            template_ref="$template_ref$(printf '\n--- %s ---\n' "$(basename "$f")")$(___x_cmd_cmds cat "$f")"
+        done
+    fi
+
+    x_=""; ___x_cmd epoch get_
+    local tmpfile="$___X_CMD_ROOT_TMP/score/refine/${x_}-$$.yml"
+
+    local system_prompt="\
+You are a scoring standard designer using the skill0/score framework.
+
+## Current score.yml
+
+$(___x_cmd_cmds cat "$file")
+
+## Refinement request
+
+$prompt
+
+## Available templates (for reference)
+
+You can use 'x score ls' to list template names, or refer to the templates below:
+$template_ref
+
+## Task
+
+1. Read SKILL.md for the full scoring framework: $skill_dir/SKILL.md
+2. Review the current score.yml and the refinement request.
+3. Edit dimensions, factors, descriptions, or add/remove dimensions as needed.
+4. Optionally reference the available templates for format inspiration.
+5. Write the updated score.yml to: $tmpfile
+
+Keep the same YAML format. Output only the complete updated file.
+
+## Output path
+
+- Output file: $tmpfile
+"
+
+    ___x_cmd agent request "$system_prompt" || return $?
+
+    [ -s "$tmpfile" ] || { N=score M="AI returned empty result" log:ret:64; }
+
+    cp "$file" "${file}.bak" || true
+    cp "$tmpfile" "$file" || { N=score M="Failed to write $file" log:ret:64; }
+    printf "Updated: %s (backup: %s.bak)\n" "$file" "$file"
+}

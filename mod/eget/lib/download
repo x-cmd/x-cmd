@@ -2,6 +2,44 @@
 
 # Default download mode - option parsing, dispatch, and core download logic
 
+# Resolve bare name to owner/repo via x install --ls --tsv
+___x_cmd_eget_resolve_bare(){
+    local name="$1"
+    local tsv_data
+    tsv_data="$( x install --ls --tsv 2>/dev/null )" || return 1
+    [ -z "$tsv_data" ] && return 1
+
+    # TSV columns: name \t category \t lang \t source \t ...
+    # Find row where name matches and source contains github.com or gitlab.com
+    local line
+    line="$( printf "%s" "$tsv_data" | awk -F'\t' -v n="$name" '
+        $1 == n && $4 ~ /github\.com\/|gitlab\.com\/|codeberg\.org\// { print $4; exit }
+    ' )" || return 1
+
+    # Fallback: match repo name in URL (e.g. "ripgrep" → BurntSushi/ripgrep)
+    if [ -z "$line" ]; then
+        line="$( printf "%s" "$tsv_data" | awk -F'\t' -v n="$name" '
+            $4 ~ /github\.com\/|gitlab\.com\/|codeberg\.org\// {
+                split($4, a, "/"); repo=a[length(a)]; gsub(/[\?].*/, "", repo);
+                if (repo == n) { print $4; exit }
+            }
+        ' )" || return 1
+    fi
+
+    [ -z "$line" ] && return 1
+
+    # Extract owner/repo from URL
+    local target
+    target="$( printf "%s" "$line" | sed -e 's|.*github.com/||' -e 's|.*gitlab.com/||' -e 's|.*codeberg.org/||' -e 's|/$||' -e 's|[?].*||' )"
+    [ -z "$target" ] && return 1
+
+    # Must contain a slash (owner/repo)
+    case "$target" in
+        */*) printf "%s" "$target" ;;
+        *) return 1 ;;
+    esac
+}
+
 # Normalize target: URL, short prefix (gh:/gl:/cb:), or plain user/repo
 # Pure shell — no subshells, no external processes
 # Sets x_ = "target\nforge\ntag" (newline-separated)
@@ -58,12 +96,13 @@ $tag"
 }
 
 # Core: query release, select best matching asset (no download)
-# Sets x_ = "asset_name\ndownload_url\nversion"
+# Sets x_ = "asset_name\ndownload_url\nversion\ndigest"
 ___x_cmd_eget___select_(){
     local forge="$1" owner="$2" repo="$3" tag="$4" system="$5"
     local asset_filters="$6" pre_release="$7" source="$8"
+    local asset_digest=""
 
-    [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Querying $forge release for $owner/$repo ..."
+    [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Querying $forge release for $owner/$repo ..."
     local release_json
     release_json="$( ___x_cmd_eget_api_release "$forge" "$owner" "$repo" "$tag" "$pre_release" "$source" )" || {
         N=eget M="Failed to fetch release info for $owner/$repo" log:ret:1; return;
@@ -79,10 +118,12 @@ ___x_cmd_eget___select_(){
     if [ -n "$selected_asset" ]; then
         download_url="$selected_asset"
         asset_name="$( basename "$download_url" )"
-        [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Matched via manifest"
+        # Try to get digest for manifest-matched asset
+        asset_digest="$( printf "%s" "$release_json" | ___x_cmd_cmds jq -r --arg name "$asset_name" '.assets[] | select(.name == $name) | .digest // ""' )"
+        [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Matched via manifest"
     else
         local assets_json
-        assets_json="$( printf "%s" "$release_json" | ___x_cmd_cmds jq -r '.assets[] | "\(.name)\t\(.browser_download_url)\t\(.size)"' )" || {
+        assets_json="$( printf "%s" "$release_json" | ___x_cmd_cmds jq -r '.assets[] | "\(.name)\t\(.browser_download_url)\t\(.size)\t\(.digest // "")"' )" || {
             N=eget M="No assets found in release" log:ret:1; return;
         }
         [ -z "$assets_json" ] && {
@@ -93,13 +134,15 @@ ___x_cmd_eget___select_(){
         }
         download_url="$( printf "%s" "$selected_asset" | cut -f2 )"
         asset_name="$( printf "%s" "$selected_asset" | cut -f1 )"
+        asset_digest="$( printf "%s" "$selected_asset" | cut -f4 )"
     fi
 
-    [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Selected: ${asset_name:-$(basename "$download_url")}"
+    [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Selected: ${asset_name:-$(basename "$download_url")}"
 
     x_="$asset_name
 $download_url
-$version"
+$version
+$asset_digest"
 }
 
 # Convenience: normalize target + select asset
@@ -130,23 +173,94 @@ ___x_cmd_eget_resolve_(){
     ___x_cmd_eget___select_ "$forge" "$owner" "$repo" "$tag" "$system" "$asset_filters" "$pre_release" "$source"
 }
 
-# Shared: resolve_ + download
+# Shared: resolve_ + download (with cache + digest verify)
 # Sets x_ = "tmpfile\nversion" (newline-separated)
+#
+# --auto-check-update <dur>: skip GitHub API if cached version is fresh (<dur>)
+# --update:                 force API check regardless of auto-check TTL
 ___x_cmd_eget___fetch(){
-    ___x_cmd_eget___select_ "$@" || return
+    local forge="$1" owner="$2" repo="$3" tag="$4" system="$5"
+    local asset_filters="$6" pre_release="$7" source="$8"
+
+    local cache_base="$___X_CMD_EGET_DATA/cache/${owner}--${repo}"
+
+    # Auto-check-update: skip API if cached version is still fresh
+    if [ "$___X_CMD_EGET_UPDATE" != "1" ] && [ -n "$___X_CMD_EGET_AUTO_CHECK" ] && [ -z "$tag" ]; then
+        if [ -f "$cache_base/.autocheck" ] && x epoch now --le "$___X_CMD_EGET_AUTO_CHECK" -f "$cache_base/.autocheck" 2>/dev/null; then
+            # Find latest cached version
+            local _ac_file="" _ac_ver=""
+            for vdir in "$cache_base"/*/; do
+                [ -d "$vdir" ] || continue
+                for f in "$vdir"*; do
+                    [ -f "$f" ] && [ "$(basename "$f")" != ".autocheck" ] && [ "$(basename "$f")" != ".timestamp" ] && {
+                        _ac_file="$f"; _ac_ver="$(basename "$vdir")"; _ac_ver="${_ac_ver%/}"; break 2;
+                    }
+                done
+            done
+            if [ -n "$_ac_file" ]; then
+                [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Using cached $owner/$repo ($_ac_ver, auto-check within $___X_CMD_EGET_AUTO_CHECK)"
+                x_="$_ac_file
+$_ac_ver"
+                return
+            fi
+        fi
+    fi
+
+    # Query API (ccmd caches API responses for 10min)
+    ___x_cmd_eget___select_ "$forge" "$owner" "$repo" "$tag" "$system" "$asset_filters" "$pre_release" "$source" || return
 
     local _pick="$x_"
     local asset_name="${_pick%%
 *}"; local _rest="${_pick#*
 }"
     local download_url="${_rest%%
-*}"; local version="${_rest#*
+*}"; _rest="${_rest#*
 }"
+    local version="${_rest%%
+*}"; local digest="${_rest#*
+}"
+
+    # Same-version cache hit — skip download
+    if [ "$___X_CMD_EGET_UPDATE" != "1" ]; then
+        local cache_file="$cache_base/${version}/${asset_name}"
+        if [ -f "$cache_file" ]; then
+            [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Version $version already cached"
+            # Refresh autocheck timestamp
+            [ -n "$___X_CMD_EGET_AUTO_CHECK" ] && x epoch get > "$cache_base/.autocheck" 2>/dev/null
+            x_="$cache_file
+$version"
+            return
+        fi
+    fi
 
     local tmpfile="$___X_CMD_EGET_TMP/$asset_name"
     ___x_cmd_eget_api_download "$download_url" "$tmpfile" || {
         N=eget M="Download failed: $download_url" log:ret:1; return;
     }
+
+    # Verify digest from API (sha256:<hex>)
+    if [ "$___X_CMD_EGET_NO_VERIFY" != "1" ] && [ -n "$digest" ]; then
+        local expected="${digest#sha256:}"
+        [ "$expected" = "$digest" ] && { digest=""; expected=""; }
+        if [ -n "$expected" ]; then
+            local actual
+            actual="$( x hash sha256 "$tmpfile" 2>/dev/null )" || actual=""
+            if [ -n "$actual" ] && [ "$actual" != "$expected" ]; then
+                rm -f "$tmpfile"
+                N=eget M="SHA-256 mismatch: expected $expected, got $actual" log:ret:1; return
+            fi
+            [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "SHA-256 verified"
+        fi
+    fi
+
+    # Store to cache
+    if [ "$___X_CMD_EGET_UPDATE" != "1" ]; then
+        local cache_dir="$cache_base/${version}"
+        ___x_cmd mkdirp "$cache_dir" 2>/dev/null
+        cp "$tmpfile" "$cache_dir/$asset_name" 2>/dev/null
+        # Refresh autocheck timestamp
+        [ -n "$___X_CMD_EGET_AUTO_CHECK" ] && x epoch get > "$cache_base/.autocheck" 2>/dev/null
+    fi
 
     x_="$tmpfile
 $version"
@@ -154,20 +268,25 @@ $version"
 
 ___x_cmd_eget_download(){
     local _target="" _tag="" _system="" _to="" _file_glob="" _download_only=0
-    local _quiet=0 _all=0 _source=0 _pre_release=0 _upgrade_only=0
+    local _quiet=0 _verbose=0 _all=0 _source=0 _pre_release=0 _upgrade_only=0
     local _sha256=0 _verify_sha256="" _disable_ssl=0
     local _asset_filters=""
     local _forge="github"
     local _sudo=0
+    local _update=0
+    local _no_ccmd=0
+    local _force=0
+    local _no_verify=0
 
     while [ $# -gt 0 ]; do
         case "$1" in
             -t|--tag)            shift; _tag="$1" ;;
             -s|--system)         shift; _system="$1" ;;
             --to)                shift; _to="$1" ;;
-            -f|--file)           shift; _file_glob="$1" ;;
+            -f|--file|--name)    shift; _file_glob="$1" ;;
             -a|--asset)          shift; _asset_filters="${_asset_filters}${_asset_filters:+|}$1" ;;
             -q|--quiet)          _quiet=1 ;;
+            -v|--verbose)        _verbose=1 ;;
             -d|--download-only)  _download_only=1 ;;
             --all)               _all=1 ;;
             --source)            _source=1 ;;
@@ -178,6 +297,10 @@ ___x_cmd_eget_download(){
             -k|--disable-ssl)    _disable_ssl=1 ;;
             --forge)             shift; _forge="$1" ;;
             --sudo)              _sudo=1 ;;
+            --update)             _update=1 ;;
+            --force)              _force=1 ;;
+            --no-verify)          _no_verify=1 ;;
+            --no-ccmd)           _no_ccmd=1 ;;
             -*)                  N=eget M="Unknown option: $1" log:ret:64; return ;;
             *)                   _target="$1" ;;
         esac
@@ -208,8 +331,13 @@ ___x_cmd_eget_download(){
     fi
 
     ___X_CMD_EGET_QUIET="$_quiet"
+    ___X_CMD_EGET_VERBOSE="$_verbose"
+    ___X_CMD_EGET_UPDATE="$_update"
+    ___X_CMD_EGET_NO_CCMD="$_no_ccmd"
     ___X_CMD_EGET_DISABLE_SSL="$_disable_ssl"
     ___X_CMD_EGET_SUDO="$_sudo"
+    ___X_CMD_EGET_FORCE="$_force"
+    ___X_CMD_EGET_NO_VERIFY="$_no_verify"
 
     # Determine target type: local file first, then URL, then user/repo
     if [ -f "$_target" ]; then
@@ -221,6 +349,13 @@ ___x_cmd_eget_download(){
             */*)
                 ___x_cmd_eget___run_repo "$_target" "$_forge" "$_tag" "$_system" "$_pre_release" "$_source" "$_asset_filters" "$_download_only" "$_upgrade_only" "$_file_glob" "$_all" "$_to" "$_sha256" "$_verify_sha256" ;;
             *)
+                # Bare name — try resolving via x install database
+                local _resolved
+                _resolved="$( ___x_cmd_eget_resolve_bare "$_target" )" && [ -n "$_resolved" ] && {
+                    [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Resolved $_target → $_resolved"
+                    ___x_cmd_eget___run_repo "$_resolved" "$_forge" "$_tag" "$_system" "$_pre_release" "$_source" "$_asset_filters" "$_download_only" "$_upgrade_only" "$_file_glob" "$_all" "$_to" "$_sha256" "$_verify_sha256"
+                    return
+                }
                 N=eget M="Invalid target: $_target (expected user/repo, URL, or local file)" log:ret:64
                 ;;
         esac
@@ -246,7 +381,7 @@ ___x_cmd_eget___run_repo(){
             # TODO: compare versions with release tag
             :
         else
-            log:info "Binary not found locally, proceeding with download"
+            eget:info "Binary not found locally, proceeding with download"
         fi
     fi
 

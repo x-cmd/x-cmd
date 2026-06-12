@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """macOS display stat: brightness, Night Shift via CoreDisplay/CoreBrightness."""
 import ctypes
 import ctypes.util

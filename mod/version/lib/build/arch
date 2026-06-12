@@ -2,6 +2,7 @@
 
 # https://wiki.archlinux.org/title/Creating_packages
 # https://man.archlinux.org/man/PKGBUILD.5#OPTIONS_AND_DIRECTIVES
+# pacman -U ./x-cmd.pkg.tar.zst
 
 ___x_cmd_version_build_arch(){
     local version="$1"
@@ -25,7 +26,7 @@ RUN echo '\''Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$a
     pacman-key --init && \
     pacman-key --populate archlinux && \
     pacman -Sy --noconfirm archlinux-keyring && \
-    pacman -Syu --noconfirm --needed base-devel sudo
+    pacman -Syu --noconfirm --needed base-devel sudo namcap
 RUN useradd -m builder && \
     echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 USER builder
@@ -35,7 +36,20 @@ WORKDIR /home/builder' > ".build/arch-builder.Dockerfile"
     docker run --rm -v "$PWD/.build/arch:/home/builder/archlinuxbuild" arch-builder sh -c '
     cd /home/builder/archlinuxbuild
     sudo chown -R builder:builder .
+
+    # Lint PKGBUILD before building
+    echo "===== namcap PKGBUILD ====="
+    namcap PKGBUILD 2>&1 | tee namcap.PKGBUILD.log || true
+
+    # Build the package
     makepkg || exit 1
+
+    # Lint the built package
+    echo "===== namcap x-cmd-*.pkg.tar.zst ====="
+    for pkg in x-cmd-*.pkg.tar.zst; do
+        [ -f "$pkg" ] || continue
+        namcap "$pkg" 2>&1 | tee "namcap.${pkg}.log" || true
+    done
 ' || return "$?"
 
     local distfp="$___X_CMD_VERSION_BUILD_DATA/release/${version}/arch"
@@ -90,7 +104,7 @@ package() {
 
 ' > "$builddir/PKGBUILD"
 
-    printf "%s\n" '#!/bin/sh
+    printf "%s\n" '
 
 post_install() {
     local _pkgsum='"$versum"'

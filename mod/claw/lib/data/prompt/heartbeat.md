@@ -21,6 +21,9 @@ DEFAULT REPLY TARGET: <DEFAULT_REPLY_IM> (most recent)
 
 REPLY METHODS:<REPLY_METHODS>
 
+NOTIFICATION RECORDING:
+When you send a message to any chat, you MUST also append a record to that chat's `./<im>-<chatid>/memory/YYYY-MM-DD.md` file. This ensures the msg agent knows what you said when the user replies. Follow the memory index format described in your AGENTS.md.
+
 FORMAT GUIDE:
 - WeChat / Enterprise WeChat: Limited formatting. Use plain text, lists, emoji. No tables or headings.
 - Telegram: Full markdown including tables and headings. Max 4096 chars per message.

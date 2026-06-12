@@ -1,0 +1,121 @@
+# shellcheck shell=dash
+
+# x score init [-t template] [-o file] [file]
+# x score init --prompt "<goal>" [-o file]
+
+# Ensure a template name resolves to <name>.score.yml
+___x_cmd_score_tmplpath_(){
+    local skill_dir="$1"
+    local name="$2"
+    case "$name" in
+        *.score.yml)  x_="$skill_dir/template/$name" ;;
+        *.yml)        x_="$skill_dir/template/${name%.yml}.score.yml" ;;
+        *)            x_="$skill_dir/template/${name}.score.yml" ;;
+    esac
+}
+
+___x_cmd_score_init(){
+    local template="score"
+    local output_file=""
+    local prompt=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m score init "$@"; return 0 ;;
+            -t)             template="$2" ;  arg:2:shift ;;
+            -o)             output_file="$2" ;  arg:2:shift ;;
+            --)             shift ; break ;;
+            --prompt)       prompt="$2" ;   arg:2:shift ;;
+            *)              output_file="$1" ; shift ;;
+        esac
+    done
+
+    [ -n "$output_file" ] || output_file="${template}.score.yml"
+
+    local skill_dir=""
+    ___x_cmd_score_skill_dir_ || { N=score M="Unable to locate skill directory" log:ret:64; }
+    skill_dir="$x_"
+
+    local x_=""
+    ___x_cmd_score_tmplpath_ "$skill_dir" "$template"
+    local template_file="$x_"
+
+    if [ -n "$prompt" ]; then
+        # AI-driven: generate from empty framework or from template
+        [ -f "$output_file" ] && { N=score M="File already exists: $output_file" log:ret:64; }
+
+        local template_ref=""
+        if [ -f "$template_file" ]; then
+            template_ref="$(___x_cmd_cmds cat "$template_file")"
+        fi
+
+        ___x_cmd_score_generate_ "$output_file" "$prompt" "$skill_dir" "$template_ref"
+    else
+        # Static template copy
+        [ -f "$output_file" ] && { N=score M="File already exists: $output_file" log:ret:64; }
+
+        [ -f "$template_file" ] || { N=score M="Template not found: $template" log:ret:64; }
+        cp "$template_file" "$output_file" || { N=score M="Failed to copy template" log:ret:64; }
+        printf "Created: %s (from %s)\n" "$output_file" "$template"
+    fi
+}
+
+# ___x_cmd_score_generate_ <output_file> <prompt> <skill_dir> <template_ref>
+# AI generates a new score.yml. template_ref is optional (empty = no template).
+___x_cmd_score_generate_(){
+    local output_file="$1"
+    local prompt="$2"
+    local skill_dir="$3"
+    local template_ref="$4"
+
+    x_=""; ___x_cmd epoch get_
+    local tmpfile="$___X_CMD_ROOT_TMP/score/init/${x_}-$$.yml"
+
+    local template_section=""
+    if [ -n "$template_ref" ]; then
+        template_section="\
+## Template reference
+
+$template_ref"
+    fi
+
+    local system_prompt="\
+You are a scoring standard designer using the skill0/score framework.
+
+## User goal
+
+$prompt
+$template_section
+
+## Task
+
+1. Read SKILL.md for the full scoring framework: $skill_dir/SKILL.md
+2. Design a scoring standard (dimensions, factors, descriptions) based on the user goal.
+3. Write the score.yml to: $tmpfile
+
+The YAML must follow the exact format:
+title: \"<title>\"
+dimensions:
+  - name: D1
+    label: \"<label>\"
+    factor: <1-10>
+    desc: \"<description>\"
+
+## Requirements
+
+- At least 2 dimensions, at most 7.
+- Factor 1-10, higher = more important. Justify factor by the goal context.
+- desc must clearly describe what gets a high/low score.
+
+## Output path
+
+- Output file: $tmpfile
+"
+
+    ___x_cmd agent request "$system_prompt" || return $?
+
+    [ -s "$tmpfile" ] || { N=score M="AI returned empty result" log:ret:64; }
+
+    cp "$tmpfile" "$output_file" || { N=score M="Failed to write $output_file" log:ret:64; }
+    printf "Created: %s (AI-generated)\n" "$output_file"
+}

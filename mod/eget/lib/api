@@ -84,7 +84,43 @@ ___x_cmd_eget_api_curl(){
         auth_opts="-H \"Authorization: Bearer $token\""
     fi
 
+    # Cache API responses for 10 minutes
+    if [ "$___X_CMD_EGET_UPDATE" != "1" ] && [ "$___X_CMD_EGET_NO_CCMD" != "1" ]; then
+        eval "x ccmd 10m -- curl -sS -L -f $ssl_opts $auth_opts \"$url\"" 2>/dev/null && return
+    fi
+
     eval "___x_cmd_cmds curl -sS -L -f $ssl_opts $auth_opts \"$url\""
+}
+
+# Apply ___X_CMD_GHPROXY_ENDPOINT to a github.com download URL.
+# Auto-detects two endpoint shapes:
+#   - prefix mode:  ENDPOINT="https://ghproxy.com"        -> https://ghproxy.com/https://github.com/...
+#   - replace mode: ENDPOINT="https://gh-proxy.com/github.com" -> https://gh-proxy.com/github.com/...
+# Non-github URLs and unset endpoints are returned unchanged. Sets x_.
+___x_cmd_eget_api___ghproxy_(){
+    local url="$1"
+    local endpoint="${___X_CMD_GHPROXY_ENDPOINT:-}"
+    x_="$url"
+
+    [ -z "$endpoint" ] && return
+    case "$url" in
+        https://github.com/*|http://github.com/*) ;;
+        *) return ;;
+    esac
+
+    local ep="${endpoint%/}"
+    [ -z "$ep" ] && return
+
+    case "$ep" in
+        */github.com)
+            local path="${url#https://github.com}"
+            path="${path#http://github.com}"
+            x_="${ep}${path}"
+            ;;
+        *)
+            x_="${ep}/${url}"
+            ;;
+    esac
 }
 
 ___x_cmd_eget_api_download(){
@@ -104,9 +140,16 @@ ___x_cmd_eget_api_download(){
         auth_opts="-H \"Authorization: Bearer $token\""
     fi
 
+    local fetch_url="$url"
+    ___x_cmd_eget_api___ghproxy_ "$url"
+    if [ "$x_" != "$url" ]; then
+        fetch_url="$x_"
+        [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Using GHPROXY: $fetch_url"
+    fi
+
     ___x_cmd mkdirp "$(dirname "$outfile")"
-    [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Downloading $(basename "$outfile") ..."
-    eval "___x_cmd_cmds curl -sS -L -f $ssl_opts -o \"$outfile\" $auth_opts \"$url\""
+    [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info --url "$fetch_url" "Downloading $(basename "$outfile")"
+    eval "___x_cmd_cmds curl -sS -L -f $ssl_opts -o \"$outfile\" $auth_opts \"$fetch_url\""
 }
 
 ___x_cmd_eget_api_list_releases(){

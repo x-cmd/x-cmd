@@ -60,6 +60,18 @@ ___x_cmd_eget_extract(){
             }
             ;;
         *)
+            local _abn; _abn="$( basename "$archive" )"
+            case "$_abn" in
+                *.deb|*.rpm|*.dmg|*.msi|*.msix|*.pkg|*.flatpak)
+                    # Package format — copy directly, no binary search
+                    cp "$archive" "$to/$_abn" 2>/dev/null || {
+                        N=eget M="Failed to copy $archive to $to" log:ret:1; return;
+                    }
+                    ___x_cmd rmrf "$tmpdir"
+                    [ "$___X_CMD_EGET_QUIET" = "0" ] && ___x_cmd_eget_install_hint "$to/$_abn"
+                    return
+                    ;;
+            esac
             # Raw binary — just copy directly
             cp "$archive" "$tmpdir/$repo_name" 2>/dev/null
             chmod +x "$tmpdir/$repo_name" 2>/dev/null
@@ -73,13 +85,54 @@ ___x_cmd_eget_extract(){
     ___x_cmd rmrf "$tmpdir"
 }
 
+___x_cmd_eget_install_hint(){
+    local dest="$1"
+    local bn; bn="$( basename "$dest" )"
+    case "$bn" in
+        *.AppImage)   eget:info "AppImage ready. Run: ./$bn" ;;
+        *.dmg)        eget:info "Open: open $bn (or double-click in Finder)" ;;
+        *.pkg)        eget:info "Install: open $bn (macOS installer)" ;;
+        *.deb)        eget:info "Install with: sudo dpkg -i $bn" ;;
+        *.rpm)        eget:info "Install with: sudo rpm -i $bn" ;;
+        *.apk)        eget:info "Install with: sudo apk add $bn" ;;
+        *.flatpak)    eget:info "Install with: flatpak install $bn" ;;
+        *.msi|*.msix) eget:info "Install by double-clicking $bn on Windows" ;;
+    esac
+}
+
 ___x_cmd_eget_install_bin(){
     local src="$1" dest="$2"
+    if [ -f "$dest" ] && [ "$___X_CMD_EGET_FORCE" != "1" ]; then
+        N=eget M="File already exists: $dest — use --force to overwrite" log:ret:1; return
+    fi
     if [ "$___X_CMD_EGET_SUDO" = "1" ] && ! [ -w "$(dirname "$dest")" ]; then
         x sudo cp "$src" "$dest" && x sudo chmod +x "$dest"
     else
         cp "$src" "$dest" && chmod +x "$dest"
     fi
+
+    [ "$___X_CMD_EGET_QUIET" = "0" ] && ___x_cmd_eget_install_hint "$dest"
+}
+
+___x_cmd_eget_is_binary_candidate(){
+    local f="$1"
+    local bn
+    bn="$( basename "$f" )"
+    case "$bn" in
+        *.sh|*.py|*.pl|*.rb|*.js|*.zsh|*.bash|*.bat|*.cmd|*.ps1|*.fish) return 1 ;;
+        *.dylib|*.so|*.so.*|*.a|*.la|*.lo|*.dll|*.dll.a) return 1 ;;
+        *.txt|*.md|*.json|*.toml|*.yaml|*.yml|*.xml|*.html|*.css) return 1 ;;
+        *.conf|*.cfg|*.sample|*.in|*.m4|*.am|*.ac|*.po|*.pot|*.mo|*.gmo) return 1 ;;
+        *.h|*.hpp|*.c|*.cpp|*.cc|*.go|*.rs|*.java|*.class|*.pyc) return 1 ;;
+        *.png|*.jpg|*.jpeg|*.gif|*.svg|*.ico|*.icns|*.pdf) return 1 ;;
+        *.deb|*.rpm|*.apk|*.pkg|*.dmg|*.msi|*.msix|*.nupkg) return 1 ;;
+        configure|config.sub|config.guess|install-sh|libtool|ltmain.sh) return 1 ;;
+        Makefile*|CMakeLists*|README*|LICENSE*|COPYING*|CHANGELOG*) return 1 ;;
+        autogen.sh|bootstrap.sh|build.sh|setup.py|setup.cfg) return 1 ;;
+        Cargo.toml|go.mod|go.sum|package.json|Gemfile|Rakefile) return 1 ;;
+        test-driver|compile|depcomp|missing|mkinstalldirs|lt~obsolete.m4) return 1 ;;
+    esac
+    return 0
 }
 
 ___x_cmd_eget_install(){
@@ -93,10 +146,10 @@ ___x_cmd_eget_install(){
             [ -z "$f" ] && continue
             local bname
             bname="$( basename "$f" )"
-            ___x_cmd_eget_install_bin "$f" "$to/$bname"
-            [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$bname"
+            ___x_cmd_eget_install_bin "$f" "$to/$bname" || return
+            [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Installed $to/$bname"
         done
-        return
+        return 0
     fi
 
     # Find executable files
@@ -104,6 +157,7 @@ ___x_cmd_eget_install(){
     local count=0
     while IFS= read -r f; do
         [ -z "$f" ] && continue
+        ___x_cmd_eget_is_binary_candidate "$f" || continue
         candidates="${candidates}${candidates:+$NL}$f"
         count=$(( count + 1 ))
     done <<FINDEX
@@ -111,13 +165,34 @@ $( find "$srcdir" -type f \( -perm -u=x -o -perm -g=x -o -perm -o=x -o -name "*.
 FINDEX
 
     if [ "$count" = "0" ]; then
-        # No executables found — check for any file with repo name
-        local fallback
-        fallback="$( find "$srcdir" -type f -name "${repo_name}*" 2>/dev/null | head -1 )"
-        if [ -n "$fallback" ]; then
-            ___x_cmd_eget_install_bin "$fallback" "$to/$( basename "$fallback" )"
-            [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$( basename "$fallback" )"
-            return
+        # No executables with perm — try all files without perm check, apply filter
+        local found=""
+        # Tier 1: exact match repo_name
+        found="$( find "$srcdir" -type f -name "$repo_name" 2>/dev/null )"
+        if [ -n "$found" ]; then
+            while IFS= read -r f; do
+                [ -z "$f" ] && continue
+                ___x_cmd_eget_is_binary_candidate "$f" || continue
+                ___x_cmd_eget_install_bin "$f" "$to/$repo_name" || return
+                [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Installed $to/$repo_name"
+                return 0
+            done <<EOF
+$found
+EOF
+        fi
+        # Tier 2: prefix match repo_name*
+        found="$( find "$srcdir" -type f -name "${repo_name}*" 2>/dev/null )"
+        if [ -n "$found" ]; then
+            while IFS= read -r f; do
+                [ -z "$f" ] && continue
+                ___x_cmd_eget_is_binary_candidate "$f" || continue
+                local bname; bname="$( basename "$f" )"
+                ___x_cmd_eget_install_bin "$f" "$to/$bname" || return
+                [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Installed $to/$bname"
+                return 0
+            done <<EOF
+$found
+EOF
         fi
         N=eget M="No executable files found in archive" log:ret:1
         return
@@ -129,10 +204,10 @@ FINDEX
             [ -z "$f" ] && continue
             local basename
             basename="$( basename "$f" )"
-            ___x_cmd_eget_install_bin "$f" "$to/$basename"
-            [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$basename"
+            ___x_cmd_eget_install_bin "$f" "$to/$basename" || return
+            [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Installed $to/$basename"
         done
-        return
+        return 0
     fi
 
     if [ "$count" = "1" ]; then
@@ -140,21 +215,37 @@ FINDEX
         f="$( printf "%s" "$candidates" | head -1 )"
         local basename
         basename="$( basename "$f" )"
-        ___x_cmd_eget_install_bin "$f" "$to/$basename"
-        [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$basename"
-        return
+        ___x_cmd_eget_install_bin "$f" "$to/$basename" || return
+        [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Installed $to/$basename"
+        return 0
     fi
 
-    # Multiple executables — prefer the one matching repo name
-    local best=""
+    # Multiple executables — tiered matching
+    local best="" best_tier=99
+    local lrn="$( printf "%s" "$repo_name" | tr '[:upper:]' '[:lower:]' )"
     while IFS= read -r f; do
         [ -z "$f" ] && continue
-        case "$( basename "$f" )" in
+        local bn
+        bn="$( basename "$f" )"
+
+        # Tier 1: Exact match
+        case "$bn" in
             "$repo_name"|"$repo_name".exe)
-                best="$f"
-                break
-                ;;
+                best="$f"; best_tier=1; break ;;
         esac
+
+        local lbn="$( printf "%s" "$bn" | tr '[:upper:]' '[:lower:]' )"
+
+        # Tier 2: Prefix match — binary starts with repo_name (osquery→osqueryctl)
+        case "$lbn" in
+            "$lrn"*) [ "$best_tier" -gt 2 ] && { best="$f"; best_tier=2; } ;;
+        esac
+
+        # Tier 3: Substring match — either direction (mongo↔mongocli, tw↔tabiew)
+        if [ "$best_tier" -gt 3 ]; then
+            case "$lbn" in *"$lrn"*) best="$f"; best_tier=3 ;; esac
+            case "$lrn" in *"$lbn"*) [ "$best_tier" -gt 3 ] && { best="$f"; best_tier=3; } ;; esac
+        fi
     done <<CANDIDATES
 $candidates
 CANDIDATES
@@ -162,19 +253,18 @@ CANDIDATES
     if [ -n "$best" ]; then
         local bname
         bname="$( basename "$best" )"
-        ___x_cmd_eget_install_bin "$best" "$to/$bname"
-        [ "$___X_CMD_EGET_QUIET" = "0" ] && log:info "Installed $to/$bname"
-        return
+        [ "$___X_CMD_EGET_VERBOSE" = "1" ] && printf "pick: selected %s (tier=%d)\n" "$bname" "$best_tier" >&2
+        ___x_cmd_eget_install_bin "$best" "$to/$bname" || return
+        [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info "Installed $to/$bname"
+        return 0
     fi
 
-    # Multiple candidates, no clear winner — list and let user choose
-    log:info "Multiple executables found:"
-    local i=1
+    # No match — log candidates, suggest --file
+    eget:warn "Multiple executables found, none matching '$repo_name':"
     printf "%s\n" "$candidates" | while IFS= read -r f; do
         [ -z "$f" ] && continue
-        printf "  %d) %s\n" "$i" "$( basename "$f" )"
-        i=$(( i + 1 ))
+        printf "  - %s\n" "$( basename "$f" )"
     done
-    printf "Install all with --all, or select with --file\n"
+    eget:info "Specify with: x eget <target> --file '<pattern>'"
     return 1
 }
