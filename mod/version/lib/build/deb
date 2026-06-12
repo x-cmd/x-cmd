@@ -19,13 +19,20 @@ ___x_cmd_version_build_deb(){
 ___x_cmd_version_build_deb_docker(){
     local version="$1"
     printf "%s\n" 'FROM debian:latest
-RUN useradd -m builder
+RUN sed -i "s/deb.debian.org/mirrors.aliyun.com/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+sed -i "s/deb.debian.org/mirrors.aliyun.com/g" /etc/apt/sources.list 2>/dev/null; \
+apt-get update && apt-get install -y --no-install-recommends lintian && \
+useradd -m builder
 WORKDIR /home/builder' > ".build/debian-builder.Dockerfile"
 
     docker build -f ".build/debian-builder.Dockerfile" --tag debian-builder .
     docker run --rm -v "$PWD/.build/deb:/home/builder/debbuild" debian-builder sh -c '
     cd /home/builder/debbuild
     dpkg-deb --root-owner-group --build x-cmd || exit 1
+
+    # Lint the built deb
+    echo "===== lintian x-cmd.deb ====="
+    lintian x-cmd.deb 2>&1 | tee lintian.x-cmd.deb.log || true
 ' || return "$?"
     local distfp="$___X_CMD_VERSION_BUILD_DATA/release/${version}/deb"
     ___x_cmd mkdirp "$distfp"
@@ -50,7 +57,8 @@ ___x_cmd_version_build_deb_builddir(){
     ___x_cmd rm -rf "$builddir"
     ___x_cmd mkdirp "$builddir/DEBIAN"
     ___x_cmd mkdirp "$docdir"
-    cp -rf ".build/x-cmd-${version}.tgz" "$builddir/${versum}.tgz"
+    ___x_cmd mkdirp "$builddir/usr/share/x-cmd"
+    cp -rf ".build/x-cmd-${version}.tgz" "$builddir/usr/share/x-cmd/${versum}.tgz"
 
     printf "%s\n" 'Package: x-cmd
 Version: '"${version#v}"'
@@ -105,7 +113,7 @@ post_install() {
     set -e
     local _pkgsum='"$versum"'
     local _pkgdir="/usr/share/x-cmd/v/$_pkgsum"
-    local _pkgfile="$_pkgsum.tgz"
+    local _pkgfile="/usr/share/x-cmd/$_pkgsum.tgz"
     if [ ! -f "$_pkgfile" ]; then
         printf "%s\n" "- I|x: Not found x-cmd pkg tgz file -> $_pkgfile" >/dev/tty
         return 1

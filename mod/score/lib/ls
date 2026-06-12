@@ -1,0 +1,95 @@
+# shellcheck shell=dash
+
+___x_cmd_score_ls(){
+    local format="tsv"
+    local x_=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m score ls "$@" ; return 0 ;;
+            --yml)      format="yml" ;      shift ;;
+            --json)     format="json" ;     shift ;;
+            --tsv)      format="tsv" ;      shift ;;
+            --csv)      format="csv" ;      shift ;;
+            *)          break ;;
+        esac
+    done
+
+    local skill_dir=""
+    ___x_cmd_score_skill_dir_ || { N=score M="Unable to locate skill directory" log:ret:64; }
+    skill_dir="$x_"
+
+    ___x_cmd_score_ls___"$format" "$skill_dir/template"
+}
+
+___x_cmd_score_ls___yml(){
+    local template_dir="$1"
+    local f=""
+
+    if [ -d "$template_dir" ]; then
+        for f in "$template_dir"/*.score.yml; do
+            [ -f "$f" ] || continue
+            printf "## %s\n" "$f"
+            ___x_cmd_cmds cat "$f"
+        done
+    fi
+}
+
+# Extract title: "..." from a score.yml file
+___x_cmd_score_title_(){
+    ___x_cmd_cmds grep -m1 '^title:' "$1" 2>/dev/null | \
+        ___x_cmd_cmds sed 's/^title: *"\(.*\)"$/\1/; s/^title: *'"'"'\(.*\)'"'"'$/\1/; s/^title: *//'
+}
+
+# Extract desc from first comment line: `# file.yml — desc text`
+___x_cmd_score_desc_(){
+    ___x_cmd_cmds grep -m1 '^#' "$1" 2>/dev/null | \
+        ___x_cmd_cmds sed 's/^# *[^ ]* *— *//; s/^# *//'
+}
+
+___x_cmd_score_ls___json(){
+    local template_dir="$1"
+    local f=""
+
+    printf "["
+    local first=1
+    if [ -d "$template_dir" ]; then
+        for f in "$template_dir"/*.score.yml; do
+            [ -f "$f" ] || continue
+            local name=""; name="$(basename "$f" .score.yml)"
+            local desc=""; desc="$(___x_cmd_score_desc_ "$f")"
+            [ $first -eq 1 ] && first=0 || printf ","
+            printf '\n  {"name":"%s","desc":"%s","filepath":"%s"}' "$name" "$desc" "$f"
+        done
+    fi
+    printf "\n]\n"
+}
+
+___x_cmd_score_ls___tsv(){
+    ___x_cmd_score_ls___flat tsv "$@"
+}
+
+___x_cmd_score_ls___csv(){
+    ___x_cmd_score_ls___flat csv "$@"
+}
+
+___x_cmd_score_ls___flat(){
+    local sep="$1"
+    local delim="$___X_CMD_UNSEENCHAR_HT"
+    [ "$sep" = "csv" ] && delim=","
+
+    local template_dir="$2"
+
+    printf "name${delim}desc${delim}filepath\n"
+
+    if [ -d "$template_dir" ]; then
+        local f=""
+        for f in "$template_dir"/*.score.yml; do
+            [ -f "$f" ] || continue
+            local name=""; name="$(basename "$f" .score.yml)"
+            local desc=""; desc="$(___x_cmd_score_desc_ "$f")"
+            local filepath="$f"
+            printf "%s${delim}%s${delim}%s\n" "$name" "$desc" "$filepath"
+        done
+    fi
+}

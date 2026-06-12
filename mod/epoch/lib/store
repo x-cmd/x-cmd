@@ -1,0 +1,170 @@
+
+___x_cmd_epoch_store(){
+    [ $# -gt 0 ]    ||  set -- --help
+    local op="${1}" ;   shift
+    case "$op" in
+        -h|--help)  ___x_cmd help -m epoch store ; return 0 ;;
+
+        write|read|read_|is|rm|which)
+                    case "${1:-}" in
+                        -h|--help)  ___x_cmd help -m epoch store "$op" ; return 0 ;;
+                    esac
+                    ___x_cmd_epoch_store_"$op" "$@" ;;
+
+        # bare key (or any unknown) → is <store>/<key> (freshness check)
+        *)          ___x_cmd_epoch_store_is "$op" "$@" ;;
+    esac
+}
+
+___x_cmd_epoch_store_default_dir_(){
+    x_="$___X_CMD_ROOT_DATA/epoch/store"
+}
+
+___x_cmd_epoch_store_which(){
+    local x_
+    ___x_cmd_epoch_store_which_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_epoch_store_which_(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local store="" fp=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m epoch store which "$@" ; return 0 ;;
+            --store)    store="$2" ; arg:2:shift ;;
+            --fp)       fp="$2" ; arg:2:shift ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
+
+    local key=""
+    [ $# -eq 0 ] || key="$1"
+    ___x_cmd_epoch_store_resolve_ "$key" "$store" "$fp"
+}
+
+___x_cmd_epoch_store_resolve_(){
+    local key="$1"
+    local store="$2"
+    local fp="$3"
+    if [ -n "$fp" ]; then
+        x_="$fp"
+    else
+        if [ -z "$store" ]; then
+            ___x_cmd_epoch_store_default_dir_
+            store="$x_"
+        fi
+        if [ -n "$key" ]; then
+            x_="$store/$key"
+        else
+            x_="$store"
+        fi
+    fi
+}
+
+___x_cmd_epoch_store_write(){
+    local real=0
+    local store="" fp=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --real)   real=1 ; shift ;;
+            --store)  store="$2" ; arg:2:shift ;;
+            --fp)     fp="$2" ; arg:2:shift ;;
+            --)       shift ; break ;;
+            *)        break ;;
+        esac
+    done
+
+    [ -n "$fp" ] || [ $# -gt 0 ] || N=epoch M="Please provide <key> (or --fp <path>)" log:ret:64
+    local key=""
+    local x_
+    [ $# -eq 0 ] || key="$1" && shift
+    ___x_cmd_epoch_store_resolve_ "$key" "$store" "$fp"
+    local fp="$x_"
+    ___x_cmd ensurefp "$fp"
+
+    if [ "$real" = 1 ]; then
+        ___x_cmd_epoch_real3_ || return $?
+    else
+        ___x_cmd_epoch_get_ || return $?
+    fi
+    {
+        printf "%s\n" "$x_"
+        [ $# -eq 0 ] || printf "%s\n" "$@"
+    } > "$fp" || N=epoch M="Cannot write to file -> $fp" log:ret:1
+}
+
+___x_cmd_epoch_store_read(){
+    local x_
+    ___x_cmd_epoch_store_read_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_epoch_store_read_(){
+    local store="" fp=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --store)  store="$2" ; arg:2:shift ;;
+            --fp)     fp="$2" ; arg:2:shift ;;
+            --)       shift ; break ;;
+            *)        break ;;
+        esac
+    done
+
+    [ -n "$fp" ] || [ $# -gt 0 ] || N=epoch M="Please provide <key> (or --fp <path>)" log:ret:64
+    local key=""
+    [ $# -eq 0 ] || key="$1"
+    ___x_cmd_epoch_store_resolve_ "$key" "$store" "$fp"
+    local fp="$x_"
+
+    [ -r "$fp" ] || N=epoch M="File is not readable -> $fp" log:ret:64
+    builtin read -r x_ <"$fp"
+    [ -n "$x_" ] || N=epoch M="File is empty -> $fp" log:ret:64
+}
+
+___x_cmd_epoch_store_is(){
+    local le="" ge=""
+    local store="" fp=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --le|--in)  le="$2" ;   arg:2:shift ;;
+            --ge)       ge="$2" ;   arg:2:shift ;;
+            --store)    store="$2" ; arg:2:shift ;;
+            --fp)       fp="$2" ; arg:2:shift ;;
+            --)         shift ; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$le$ge" ] || N=epoch M="Must specify --le and/or --ge" log:ret:64
+    local key=""
+    local x_
+    [ $# -eq 0 ] || key="$1"
+    ___x_cmd_epoch_store_resolve_ "$key" "$store" "$fp"
+
+    # store `is` auto-detects integer vs fractional — must match the format `write` produced.
+    ___x_cmd_epoch_now -f "$x_" --le "$le" --ge "$ge"
+}
+
+___x_cmd_epoch_store_rm(){
+    local store="" fp=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --store)  store="$2" ; arg:2:shift ;;
+            --fp)     fp="$2" ; arg:2:shift ;;
+            --)       shift ; break ;;
+            *)        break ;;
+        esac
+    done
+
+    [ -n "$fp" ] || [ $# -gt 0 ] || N=epoch M="Please provide <key> (or --fp <path>)" log:ret:64
+    local key=""
+    local x_
+    [ $# -eq 0 ] || key="$1"
+    ___x_cmd_epoch_store_resolve_ "$key" "$store" "$fp"
+    local fp="$x_"
+
+    rm -f -- "$fp" || N=epoch M="Cannot remove file -> $fp" log:ret:1
+}

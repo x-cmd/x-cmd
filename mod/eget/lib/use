@@ -1,0 +1,218 @@
+# shellcheck shell=dash
+
+# use: install binary to ~/.local/bin (auto-downloads if not cached)
+# unuse: remove a use-installed binary
+# usels: list all use-tracked installations
+#
+# TSV format:  https://github.com/owner/repo<TAB>binname  (no header)
+
+___X_CMD_EGET_USE_TSV="${HOME}/.local/data/x-eget/use.list.tsv"
+___X_CMD_EGET_USE_BIN_DIR="${HOME}/.local/bin"
+
+# Build full URL from forge + target
+# e.g. github + sinelaw/fresh → https://github.com/sinelaw/fresh
+___x_cmd_eget_use_fullname_(){
+    local _target="$1" _forge="$2"
+    case "$_forge" in
+        github|gh)   x_="https://github.com/${_target}" ;;
+        gitlab|gl)   x_="https://gitlab.com/${_target}" ;;
+        codeberg|cb) x_="https://codeberg.org/${_target}" ;;
+        *)           x_="https://github.com/${_target}" ;;
+    esac
+}
+
+___x_cmd_eget_use(){
+    case "${1:-}" in -h|--help) ___x_cmd help -m eget use; return 0 ;; esac
+
+    local target="${1:-}"
+    [ -n "$target" ] || { N=eget M="use: missing target (user/repo)" log:ret:64; return; }
+    shift
+
+    local _to="${HOME}/.local/bin"
+    local _force=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --to)    shift; _to="$1" ;;
+            --force) _force=1 ;;
+            *)       N=eget M="use: unknown option: $1" log:ret:64; return ;;
+        esac
+        shift
+    done
+
+    # Normalize to full name and extract parts
+    ___x_cmd_eget_normalize_ "$target" "github" ""
+    local _norm="$x_"
+    target="${_norm%%
+*}"; local _rest="${_norm#*
+}"
+    local _forge="${_rest%%
+*}"; local _tag="${_rest#*
+}"
+
+    local owner="${target%%/*}"
+    local repo="${target#*/}"
+    [ -n "$owner" ] && [ -n "$repo" ] || {
+        N=eget M="Invalid target: $target (expected user/repo)" log:ret:64; return;
+    }
+
+    # Get full name for TSV
+    local _full_name
+    ___x_cmd_eget_use_fullname_ "$target" "$_forge"
+    _full_name="$x_"
+
+    # Try cache first, then ensure snap cache
+    local cached_bin=""
+    ___x_cmd_eget_which_ "$target" "$_forge" "$_tag" && cached_bin="$x_"
+
+    if [ -z "$cached_bin" ]; then
+        eget:info "No cache for $_full_name, downloading..."
+        ___X_CMD_EGET_QUIET="0"
+        ___X_CMD_EGET_UPDATE="0"
+        local x_=""
+        ___x_cmd_os_name_;  local osname="$x_"
+        ___x_cmd_os_arch_;  local osarch="$x_"
+        local _system="${osname}/${osarch}"
+
+        ___x_cmd_eget_snap_cache_ "$owner" "$repo" "$_tag" "$_system" "" "$_forge" "" || {
+            N=eget M="Failed to download $_full_name" log:ret:1; return;
+        }
+        cached_bin="$x_"
+    fi
+
+    [ -f "$cached_bin" ] && [ -x "$cached_bin" ] || {
+        N=eget M="Cached binary not executable: $cached_bin" log:ret:1; return;
+    }
+
+    local bin_name; bin_name="$( basename "$cached_bin" )"
+    local dest="$_to/$bin_name"
+
+    # Check existing — if from a different repo, warn
+    if [ -f "$dest" ] && [ "$_force" != "1" ]; then
+        # Check if this binary is tracked from a different target
+        local _existing_target=""
+        if [ -f "$___X_CMD_EGET_USE_TSV" ]; then
+            while IFS="$(printf '\t')" read -r _t _b; do
+                [ "$_b" = "$bin_name" ] && { _existing_target="$_t"; break; }
+            done < "$___X_CMD_EGET_USE_TSV"
+        fi
+        if [ -n "$_existing_target" ] && [ "$_existing_target" != "$_full_name" ]; then
+            N=eget M="$dest already installed from $_existing_target — use --force to overwrite" log:ret:1; return
+        fi
+        N=eget M="$dest already exists — use --force to overwrite" log:ret:1; return
+    fi
+
+    # Ensure target dir exists
+    ___x_cmd mkdirp "$_to" 2>/dev/null || {
+        N=eget M="Cannot create directory: $_to" log:ret:1; return;
+    }
+
+    cp "$cached_bin" "$dest" && chmod +x "$dest" || {
+        N=eget M="Failed to install $bin_name to $_to" log:ret:1; return;
+    }
+
+    # Record to use.list.tsv (remove old entry for same target or same binname first)
+    local _tsv_dir="${HOME}/.local/data/x-eget"
+    ___x_cmd mkdirp "$_tsv_dir" 2>/dev/null
+    local _tsv="$_tsv_dir/use.list.tsv"
+    if [ -f "$_tsv" ]; then
+        local _tmp; _tmp="$(mktemp)"
+        while IFS="$(printf '\t')" read -r _t _b; do
+            [ "$_t" = "$_full_name" ] || [ "$_b" = "$bin_name" ] || printf "%s\t%s\n" "$_t" "$_b"
+        done < "$_tsv" > "$_tmp"
+        cat "$_tmp" > "$_tsv"
+        rm -f "$_tmp"
+    fi
+    printf "%s\t%s\n" "$_full_name" "$bin_name" >> "$_tsv"
+
+    eget:info "Installed $bin_name → $_to/$bin_name"
+}
+
+___x_cmd_eget_unuse(){
+    case "${1:-}" in -h|--help) ___x_cmd help -m eget unuse; return 0 ;; esac
+
+    local _tsv="$___X_CMD_EGET_USE_TSV"
+    [ -f "$_tsv" ] || { N=eget M="No use.list.tsv found — nothing to unuse" log:ret:1; return; }
+
+    if [ "${1:-}" = "--all" ]; then
+        ___x_cmd_eget_unuse_all "$_tsv"
+        return
+    fi
+
+    local query="${1:-}"
+    [ -n "$query" ] || { N=eget M="unuse: missing name (binname, owner/repo, or full name)" log:ret:64; return; }
+
+    # Try to normalize to full URL
+    local _full_query=""
+    case "$query" in
+        https://*|http://*)
+            # Already a full URL
+            _full_query="$query" ;;
+        */*)
+            # owner/repo — normalize then build URL
+            ___x_cmd_eget_normalize_ "$query" "github" ""
+            local _n="$x_"
+            local _t="${_n%%
+*}"; local _f="${_n#*
+}"; _f="${_f%%
+*}"
+            ___x_cmd_eget_use_fullname_ "$_t" "$_f"
+            _full_query="$x_" ;;
+    esac
+
+    # Find entry: match by full name, binname, or partial target
+    local _found="" _target="" _binname=""
+    while IFS="$(printf '\t')" read -r _t _b; do
+        if [ -n "$_full_query" ] && [ "$_t" = "$_full_query" ]; then
+            _found=1; _target="$_t"; _binname="$_b"; break
+        fi
+        if [ "$_b" = "$query" ]; then
+            _found=1; _target="$_t"; _binname="$_b"; break
+        fi
+    done < "$_tsv"
+    [ -n "$_found" ] || { N=eget M="$query not found in use list" log:ret:1; return; }
+
+    # Remove binary
+    local _bin_path="$___X_CMD_EGET_USE_BIN_DIR/$_binname"
+    if [ -f "$_bin_path" ]; then
+        ___x_cmd rmrf "$_bin_path" || { N=eget M="Failed to remove $_bin_path" log:ret:1; return; }
+        eget:info "Removed $_bin_path"
+    else
+        eget:info "$_bin_path not found (already removed)"
+    fi
+
+    # Remove entry from TSV
+    local _tmp; _tmp="$(mktemp)"
+    while IFS="$(printf '\t')" read -r _t _b; do
+        [ "$_b" = "$_binname" ] || printf "%s\t%s\n" "$_t" "$_b"
+    done < "$_tsv" > "$_tmp"
+    cat "$_tmp" > "$_tsv"
+    rm -f "$_tmp"
+
+    eget:info "Unused $_binname (from $_target)"
+}
+
+___x_cmd_eget_unuse_all(){
+    local _tsv="$1"
+    local _count=0
+    while IFS="$(printf '\t')" read -r _t _b; do
+        local _bin_path="$___X_CMD_EGET_USE_BIN_DIR/$_b"
+        if [ -f "$_bin_path" ]; then
+            ___x_cmd rmrf "$_bin_path" 2>/dev/null
+        fi
+        _count=$((_count + 1))
+    done < "$_tsv"
+    : > "$_tsv"
+    eget:info "Unused all ($_count entries)"
+}
+
+___x_cmd_eget_usels(){
+    case "${1:-}" in -h|--help) ___x_cmd help -m eget usels; return 0 ;; esac
+
+    local _tsv="$___X_CMD_EGET_USE_TSV"
+    [ -f "$_tsv" ] || { N=eget M="No use.list.tsv found — no tracked installations" log:ret:1; return; }
+
+    printf "%s\t%s\n" "TARGET" "BINARY"
+    while IFS="$(printf '\t')" read -r _t _b; do
+        printf "%s\t%s\n" "$_t" "$_b"
+    done < "$_tsv"
+}

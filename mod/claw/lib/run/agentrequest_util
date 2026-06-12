@@ -1,0 +1,388 @@
+# shellcheck shell=dash
+
+___x_cmd_claw_run___agentrequest___syncworkspace(){
+    local workspace_dir="$1"
+    local source_dir="$2"
+    local harness="$3"
+
+    if [ ! -d "$workspace_dir" ]; then
+        ___x_cmd mkdirp "$workspace_dir"
+    fi
+
+    # Ensure missing template files are present without overwriting existing ones
+    local targetfp="" i=""
+    for i in "$source_dir"/*; do
+        [ -e "$i" ] || continue
+        fpname="${i#"$source_dir"/}"
+        case "$fpname" in
+            AGENTS.md|skills)   continue ;;
+        esac
+        targetfp="$workspace_dir/$fpname"
+        [ -e "$targetfp" ] || ___x_cmd cp -r "$i" "$targetfp"
+    done
+
+    # Handle AGENTS.md / CLAUDE.md based on harness
+    # Copy harness-specific skills directory from template to workspace
+    local agents_file="AGENTS.md"
+    local skills_dir=".agents/skills"
+    case "$harness" in
+        claude*)    agents_file="CLAUDE.md"; skills_dir=".claude/skills" ;;
+        codex*)     skills_dir=".codex/skills" ;;
+    esac
+
+    if [ -e "$source_dir/AGENTS.md" ] && [ ! -e "$workspace_dir/$agents_file" ]; then
+        ___x_cmd cp "$source_dir/AGENTS.md" "$workspace_dir/$agents_file"
+    fi
+
+    if [ -d "$source_dir/skills" ] && [ ! -e "$workspace_dir/$skills_dir" ]; then
+        ___x_cmd mkdirp "$workspace_dir/${skills_dir%/*}"
+        ___x_cmd cp -r "$source_dir/skills" "$workspace_dir/$skills_dir"
+    fi
+
+    # Ensure standard subdirectories exist
+    ___x_cmd mkdirp "$workspace_dir/memory"
+    ___x_cmd mkdirp "$workspace_dir/tmp"
+}
+
+___x_cmd_claw_run___agentrequest___workspaceupdateprompt_(){
+    local workspace_dir="$1"
+    local source_dir="$2"
+    local harness="$3"
+
+    local agents_file="AGENTS.md"
+    case "$harness" in
+        claude*)    agents_file="CLAUDE.md" ;;
+    esac
+
+    x_=""
+    if [ "$workspace_dir/$agents_file" -ot "$___X_CMD_ROOT_METADATA/version_sum" ]; then
+        claw:info "Workspace template may have been updated, checking if structure optimization is needed"
+        ___x_cmd_cmds touch "$workspace_dir/$agents_file"
+        x_="<workspace_check>
+The workspace template has been updated. Offload this evaluation to a background job via \`x agent run\` — do NOT evaluate or apply changes in the current session.
+
+Reference template: $source_dir/
+Current workspace:  $workspace_dir
+
+Guidelines for the background job:
+- Compare structures and selectively apply beneficial changes
+- Preserve existing user content and customizations
+- Focus on structural gaps or organizational improvements
+- After starting the background job, STOP immediately. Heartbeat will monitor progress.
+</workspace_check>"
+    fi
+}
+
+___x_cmd_claw_run___agentrequest___prepareworkspace(){
+    local im="$1";      [ -n "$im" ] || N=claw M="Please provide IM platform name (e.g., weixin|telegram)" log:ret:64
+    local chatid="$2";  [ -n "$chatid" ] || N=claw M="Please provide chatid" log:ret:64
+    local msg="${3:-}"
+
+    ___x_cmd rmrf "$___X_CMD_CLAW_BOT_WS/HEARTBEAT_OK"
+    ___x_cmd ensurefp "$___X_CMD_CLAW_BOT_HEARTBEAT/idle_count"
+    printf "%s\n" "0" > "$___X_CMD_CLAW_BOT_HEARTBEAT/idle_count"
+
+    local workspace_dir="$___X_CMD_CLAW_BOT_WS/${im}-${chatid}"
+
+    local x_=""; ___x_cmd agent default_harness_ || {
+        claw:error "Failed to get default agent harness"
+        return 1
+    }
+    local harness="$x_"
+
+    local agents_file="AGENTS.md"
+    case "$harness" in
+        claude*)    agents_file="CLAUDE.md" ;;
+    esac
+
+    # Determine workspace template directory based on IM type
+    local template_dir="$___X_CMD_ROOT_MOD/claw/lib/data/workspace/msg"
+    case "$im" in
+        manager)    template_dir="$___X_CMD_ROOT_MOD/claw/lib/data/workspace/manager" ;;
+    esac
+    ___x_cmd_claw_run___agentrequest___syncworkspace "$workspace_dir" "$template_dir" "$harness"
+}
+
+___x_cmd_claw_run___agentrequest___buildprompt_(){
+    local im="$1";      [ -n "$im" ] || N=claw M="Please provide IM platform name (e.g., weixin|telegram)" log:ret:64
+    local chatid="$2";  [ -n "$chatid" ] || N=claw M="Please provide chatid" log:ret:64
+    local msg="$3";     [ -n "$msg" ] || N=claw M="Please provide message" log:ret:64
+
+    local workspace_dir="$___X_CMD_CLAW_BOT_WS/${im}-${chatid}"
+    local is_first_contact=0
+    [ ! -d "$workspace_dir" ] && is_first_contact=1
+
+    ___x_cmd_claw_run___agentrequest___prepareworkspace "$im" "$chatid" "$msg" || return $?
+
+    x_=""; ___x_cmd agent default_harness_ || {
+        claw:error "Failed to get default agent harness"
+        return 1
+    }
+    local harness="$x_"
+
+    local agents_file="AGENTS.md"
+    case "$harness" in
+        claude*)    agents_file="CLAUDE.md" ;;
+    esac
+
+    local template_dir="$___X_CMD_ROOT_MOD/claw/lib/data/workspace/msg"
+    case "$im" in
+        manager)    template_dir="$___X_CMD_ROOT_MOD/claw/lib/data/workspace/manager" ;;
+    esac
+
+    local first_contact_prompt=""
+    if [ "$is_first_contact" -eq 1 ]; then
+        case "$im" in
+            manager)
+                first_contact_prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/first_contact_manager.md" 2>/dev/null)"
+                ;;
+            *)
+                first_contact_prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/first_contact.md" 2>/dev/null)"
+                ;;
+        esac
+    fi
+
+    x_=""; ___x_cmd_claw_run___agentrequest___workspaceupdateprompt_ "$workspace_dir" "$template_dir" "$harness" || return $?
+    local check_prompt="$x_"
+
+    local prompt=""
+    case "$im" in
+        manager)
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_manager.md" 2>/dev/null)" || {
+                claw:error "Failed to read msg prompt template for manager"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd date iso)
+</variable>
+<variable name='CHECK_PROMPT'>${check_prompt}
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+        weixin)
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_weixin.md" 2>/dev/null)" || {
+                claw:error "Failed to read msg prompt template for weixin"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd date iso)
+</variable>
+<variable name='CHECK_PROMPT'>${check_prompt}
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+        telegram)
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_telegram.md" 2>/dev/null)" || {
+                claw:error "Failed to read msg prompt template for telegram"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd date iso)
+</variable>
+<variable name='CHECK_PROMPT'>${check_prompt}
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+        feishu)
+            local feishu_connect_prompt=""
+            case "$chatid" in
+                ou_*)
+                    feishu_connect_prompt="
+CLAW CONNECT — ADD MORE FEISHU GROUP CHATS:
+  Users typically start with a single chat with you, then may ask you to connect more Feishu group chats.
+  When a user asks to connect a group chat in Feishu, run:
+  - Connect a specific group: x claw connect feishu:oc_xxx
+    The user will provide the Group ID (oc_xxx) in the chat message.
+    List available groups and their IDs: x feishu group ls
+  - Connect all groups: x claw connect feishu:groups
+  - Disconnect a specific group: x claw disconnect feishu:oc_xxx
+  - Disconnect all groups: x claw disconnect feishu:groups
+  Note: Each group chat spawns an independent Agent session. Just run the connect command from this current single chat — no need to enter the group chat itself." ;;
+                oc_*)
+                    feishu_group_notice="
+GROUP CHAT GUIDELINES:
+  You are in a Feishu group chat. All members can see your replies.
+  - Privacy: Do not reveal sensitive information (API keys, tokens, passwords, internal URLs).
+  - Relevance: Only reply to messages that are relevant to your purpose. Ignore off-topic chatter.
+  - Mention-aware: If a user @mentions you, prioritize responding to them.
+  - Conciseness: Keep replies brief and to the point in group settings.
+  - No spam: Do not reply to every single message; only engage when useful."
+                    ;;
+            esac
+
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_feishu.md" 2>/dev/null)" || {
+                claw:error "Failed to read msg prompt template for feishu"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='FEISHU_CONNECT_PROMPT'>${feishu_connect_prompt}
+</variable>
+<variable name='FEISHU_GROUP_NOTICE'>${feishu_group_notice}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd date iso)
+</variable>
+<variable name='CHECK_PROMPT'>${check_prompt}
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+        qywx)
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_qywx.md" 2>/dev/null)" || {
+                claw:error "Failed to read msg prompt template for qywx"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd date iso)
+</variable>
+<variable name='CHECK_PROMPT'>${check_prompt}
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+    esac
+
+    x_="$prompt"
+}
+
+___x_cmd_claw_run___agentrequest___notifyerror(){
+    local im="$1"; local chatid="$2"; local exitcode="$3"; local stderr_file="$4"
+    local errmsg=""
+
+    if [ -n "$stderr_file" ] && [ -f "$stderr_file" ]; then
+        local stderr_content
+        stderr_content="$(___x_cmd_cmds cat "$stderr_file" 2>/dev/null)" || {
+            stderr_content="[Failed to read stderr content]"
+        }
+
+        if [ -n "$stderr_content" ]; then
+            # Truncate then mask sensitive values
+            local filtered_stderr
+            filtered_stderr="$(printf "%.500s" "$stderr_content" | ___x_cmd_cmds sed -E \
+                -e 's/(token|secret|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+/\1=[REDACTED]/gi' \
+                -e 's/Authorization:[[:space:]]*[^[:space:]]+/Authorization: [REDACTED]/gi' \
+                2>/dev/null || true)"
+
+            if [ -n "$filtered_stderr" ]; then
+                errmsg="⚠️ Agent error details:${___X_CMD_UNSEENCHAR_NEWLINE}${filtered_stderr}"
+                [ "${#stderr_content}" -gt 500 ] && errmsg="${errmsg}..."
+            fi
+        fi
+    fi
+
+    if [ -z "$errmsg" ]; then
+        errmsg="⚠️ Agent request failed with exitcode=$exitcode."
+    fi
+
+    errmsg="${errmsg}${___X_CMD_UNSEENCHAR_NEWLINE}Logs: x claw log"
+
+    case "$im" in
+        feishu)
+            ___x_cmd feishu abot send --text --chatid "$chatid" "$errmsg" 2>/dev/null || true
+            ;;
+        qywx)
+            ___x_cmd qywx abot send --text --chatid "$chatid" "$errmsg" 2>/dev/null || true
+            ;;
+        telegram)
+            ___x_cmd telegram send --text --chatid "$chatid" "$errmsg" 2>/dev/null || true
+            ;;
+        weixin)
+            ___x_cmd weixin send --text "$errmsg" 2>/dev/null || true
+            ;;
+    esac
+}
+
+___x_cmd_claw_run___agentrequest___checkunavailable(){
+    local agent_unavailable_file="$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable"
+    [ -f "$agent_unavailable_file" ] || return 0
+
+    local fail_count=0 fail_ts=0
+    read -r fail_count fail_ts < "$agent_unavailable_file"
+
+    local cooldown remaining
+    case "$fail_count" in
+        1) cooldown=0 ;;
+        2) cooldown=60 ;;
+        3) cooldown=120 ;;
+        4) cooldown=240 ;;
+        5) cooldown=480 ;;
+        *) cooldown=3600 ;;
+    esac
+
+    local x_
+    ___x_cmd date timestamp_
+    local elapsed=$(( x_ - fail_ts ))
+    if [ "$elapsed" -lt "$cooldown" ]; then
+        remaining=$(( cooldown - elapsed ))
+        claw:info "Agent unavailable (fail_count=$fail_count), ${remaining}s cooldown remaining — skipping request"
+        return 1
+    fi
+
+    claw:info "Agent cooldown expired (fail_count=$fail_count, cooldown=${cooldown}s) — availability restored"
+    return 0
+}
+
+___x_cmd_claw_run___agentrequest___markunavailable(){
+    local agent_unavailable_file="$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable"
+    local fail_count=0 _=""
+    [ ! -f "$agent_unavailable_file" ] || read -r fail_count _ < "$agent_unavailable_file"
+    fail_count=$(( fail_count + 1 ))
+
+    local x_
+    ___x_cmd date timestamp_
+    ___x_cmd ensurefp "$agent_unavailable_file"
+    printf "%s %s\n" "$fail_count" "$x_" > "$agent_unavailable_file"
+    claw:error "Agent marked unavailable (fail_count=$fail_count) — cooldown starts"
+}

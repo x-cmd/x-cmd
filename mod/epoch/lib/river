@@ -1,0 +1,73 @@
+
+# shellcheck shell=dash
+
+___x_cmd_epoch_river(){
+    [ $# -gt 0 ] || set -- --app
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)  ___x_cmd help -m epoch river >&2; return 1 ;;
+        --app)      ___x_cmd_epoch_river___app "$@" ;;
+        --tsv)      ___x_cmd_epoch_river___tsv "$@" ;;
+        --raw)      ___x_cmd_epoch_river___raw "$@" ;;
+        *)          ___x_cmd_epoch_river___app "$op" ;;
+    esac
+}
+
+# dash lacks ${var:0:4} indexing — use POSIX % / # chops instead.
+___x_cmd_epoch_river___to_epoch(){
+    local d="$1" y m day rest
+    case "${#d}" in
+        4) d="${d}-01-01" ;;
+        8) y="${d%????}"  rest="${d#????}"  m="${rest%??}"  day="${rest#??}"
+           d="${y}-${m}-${day}" ;;
+        *) N=epoch M="Bad date token (need YYYY or YYYYMMDD) -> $1" log:ret:64 ;;
+    esac
+    # Cross-platform: BSD date (-j -f) on macOS, GNU date (-d) on Linux.
+    printf "%s\n" "$(date -u -j -f '%Y-%m-%d %H:%M:%S' "${d} 00:00:00" '+%s' 2>/dev/null || date -u -d "${d} 00:00:00 UTC" +%s 2>/dev/null)"
+}
+
+___x_cmd_epoch_river___to_iso(){
+    local d="$1" y m day rest
+    case "${#d}" in
+        4) printf "%s-01-01" "$d" ;;
+        8) y="${d%????}"  rest="${d#????}"  m="${rest%??}"  day="${rest#??}"
+           printf "%s-%s-%s" "$y" "$m" "$day" ;;
+    esac
+}
+
+___x_cmd_epoch_river___dates(){
+    printf "%s\n" "1970:POSIX time origin"
+    printf "%s\n" "19700102:1 day after Unix epoch (86400 sec)"
+    printf "%s\n" "19700201:1 month after Unix epoch (31 days)"
+    printf "%s\n" "1971:Email invented (Ray Tomlinson)"
+    printf "%s\n" "1980:TCP/IP standardized (RFC 793)"
+    printf "%s\n" "1990:World Wide Web proposed (1989)"
+    printf "%s\n" "2000:Y2K era"
+    printf "%s\n" "2010:Cloud computing / Bitcoin genesis (2009)"
+    printf "%s\n" "2020:GPT-3 (transformer scale-up)"
+    printf "%s\n" "2022:ChatGPT (LLM consumer era)"
+    printf "%s\n" "2025:AI agents (LLM mainstream)"
+    printf "%s\n" "2030:AGI era"
+}
+
+___x_cmd_epoch_river___raw(){
+    local d
+    ___x_cmd_epoch_river___dates | while IFS=: read -r d desc; do
+        ___x_cmd_epoch_river___to_epoch "$d"
+    done
+}
+
+___x_cmd_epoch_river___tsv(){
+    printf "utc-0-date\t%6s\t%10s\tdesc\n" "day" "second"
+    # day is 1-based ordinal (Day 1 = 1970-01-01); second is 0-based epoch.
+    local d ep day
+    ___x_cmd_epoch_river___dates | while IFS=: read -r d desc; do
+        ep="$(___x_cmd_epoch_river___to_epoch "$d")"
+        day="$(awk -v s="$ep" 'BEGIN { printf "%d", s/86400 + 1 }')"
+        printf "%s\t%6s\t%10s\t%s\n" "$(___x_cmd_epoch_river___to_iso "$d")" "$day" "$ep" "$desc"
+    done
+}
+
+___x_cmd_epoch_river___app(){
+    ___x_cmd_epoch_river___tsv "$@" | ___x_cmd_cmds column -t -s "$(printf '\t')"
+}

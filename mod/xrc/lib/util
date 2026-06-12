@@ -268,35 +268,62 @@ ___x_cmd_is_suitable_advise_repl(){
 
 # Section: functions that must be loaded: ___x_cmd_abspath_   ___x_cmd_shq1_
 ___x_cmd_abspath_(){
-    local target_path="${1:?Please provide path}"
+    x_=""
 
-    case "$target_path" in
-        \~/*)        target_path="$HOME/${target_path#*/}" ;;
+    local p="${1:?Please provide path}"
+    case "$p" in
+        '~')            p="$HOME" ;;
+        '~'/*)          p="${HOME}/${p#'~/'}" ;;
     esac
 
-    case "$target_path" in
-        /)          x_=/ ;;
-        .)          x_="$PWD" ;;
-        \~)         x_="$HOME" ;;
-        *)
-                    target_path="${target_path%/}"
-                    local basename="${target_path##*/}"
-                    if [ "$basename" = "$target_path" ]; then
-                        x_="$PWD/$target_path"
-                    else
-                        local x___ORIGIN_PWD="$PWD"
-                        ___x_cmd_cd0 "${target_path%"$basename"}" || return $?
-                        case "$basename" in
-                            \.)     x_="$PWD" ;;
-                            \.\.)   ___x_cmd_cd0 .. || return 1
-                                    x_="$PWD" ;;
-                            *)      x_="${PWD%/}/$basename"
+    local abspath_unc_prefix=""
+
+    # If not absolute, prepend current directory
+    case "$p" in
+        //*/*/*)        local tmp="${p#//*/*/}"
+                        abspath_unc_prefix="${p%"$tmp"}"
+                        abspath_unc_prefix="${abspath_unc_prefix%/}"
+                        # UNC form requires //<X>/<Y> with non-empty X and Y;
+                        # 3+ slashes with empty server/share (e.g. ///) is POSIX, not UNC
+                        case "$abspath_unc_prefix" in
+                            //?*/?*)  p="${p#"$abspath_unc_prefix"}" ;;
+                            *)        abspath_unc_prefix="" ;;
                         esac
-                        x_="$x_"
-                        ___x_cmd_cd0 "$x___ORIGIN_PWD" || return $?
-                    fi
+                        ;;
+        //?*/?*)        x_="$p" ; return 0 ;;
+        /*)             ;;
+        *)              p="$PWD/$p" ;;
     esac
+
+    case "$p" in
+        */.|*/..)       p="$p/" ;;
+    esac
+
+    local h=""
+    while true; do
+        case "$p" in
+            ../*)       return 1                        ;;
+            ./*)        return 1                        ;;
+            /../*)      return 1                        ;;
+
+            *//*)       p="${p%%//*}/${p#*//}"          ;;
+            */./*)      p="${p%%'/./'*}/${p#*'/./'}"    ;;
+            */../*)
+                        h="${p%%/../*}"
+                        h="${h%/*}"
+                        p="${h}/${p#*/../}"
+                        ;;
+            *)          break                           ;;
+        esac
+    done
+
+    if [ -n "$abspath_unc_prefix" ]; then
+        x_="${abspath_unc_prefix}${p%/}"
+    else
+        x_="${p%/}"; x_="${x_:-/}"
+    fi
 }
+
 
 ___x_cmd_shq1_(){
     local i="$1"

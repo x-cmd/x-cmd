@@ -1,4 +1,9 @@
 # ___x_cmd_claw_feishu -h
+# x claw feishu send --text --chatid <chatid> <xxxxxx>
+# x claw feishu send --image --chatid <chatid> <path>
+# x claw feishu send --file --chatid <chatid> <path>
+# x claw feishu get-sent --chatid <chatid>
+
 
 ___x_cmd_claw_feishu(){
     [ $# -gt 0 ]    ||  set -- --help
@@ -8,7 +13,9 @@ ___x_cmd_claw_feishu(){
         --help|-h)
             ___x_cmd help -m claw feishu ; return 0 ;;
         send)
-            ___x_cmd feishu abot send "$@" ;;
+            ___x_cmd_claw_feishu_send "$@" ;;
+        get-sent)
+            ___x_cmd_claw_feishu_get_sent "$@" ;;
         get-msg)
             ___x_cmd_claw_feishu_get_msg "$@" ;;
         get-unread)
@@ -23,6 +30,52 @@ ___x_cmd_claw_feishu(){
             ___x_cmd_claw_feishu_update_offset "$@" ;;
         *)  N=claw M="Unknown subcmd -> $op" log:ret:64 ;;
     esac
+}
+
+
+___x_cmd_claw_feishu_send(){
+    local chatid=""
+    local msg_type=""
+    local content=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m claw feishu "$@"; return 0 ;;
+            --chatid)   shift; chatid="$1"; shift; continue ;;
+            --text)     shift; msg_type="text";  content="$*"; break ;;
+            --image)    shift; msg_type="image"; content="$1"; shift; break ;;
+            --file)     shift; msg_type="file";  content="$1"; shift; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$chatid" ]    || N=claw M="send: must specify --chatid" log:ret:64
+    [ -n "$msg_type" ]  || N=claw M="send: must specify --text, --image, or --file" log:ret:64
+    [ -n "$content" ]   || N=claw M="send: missing ${msg_type} content" log:ret:64
+
+    ___x_cmd feishu abot send "--${msg_type}" --chatid "$chatid" "$content"
+
+    local x_; ___x_cmd date timestamp_
+    local send_time="$x_"
+
+    local sent_data_path="$___X_CMD_ROOT_DATA/feishu/abot/sent/data_${chatid}.tsv"
+    case "$msg_type" in
+        image|file)
+            local asset_dir="$___X_CMD_ROOT_DATA/feishu/abot/sent/asset"
+            ___x_cmd mkdirp "$asset_dir"
+            local target_path="${asset_dir}/${send_time}_${content##*/}"
+
+            ___x_cmd_cmds cp "$content" "$target_path" || {
+                feishu:warn "Failed to copy $msg_type to $target_path"
+            }
+            content="$target_path"
+            ;;
+    esac
+
+    ___x_cmd ensurefp "$sent_data_path"
+    printf '%s\t%s\t%s\n' "$send_time" "$msg_type" "$content" >> "$sent_data_path" || {
+        feishu:warn "Failed to save sent message to $sent_data_path"
+    }
 }
 
 ___x_cmd_claw_feishu_get_unread(){

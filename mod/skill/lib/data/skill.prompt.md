@@ -37,7 +37,7 @@ anthropics/algorithmic-art	Creating algorithmic art using p5.js with seeded rand
 At the start of a reasoning session, if the current skill list is **unknown or empty**, fetch it automatically by running:
 
 ```
-x-cmd skill ls --all --agent %{SKILL_AGENT}%
+x-cmd skill ls --agent %{SKILL_AGENT}%
 ```
 
 Do not re-fetch the skill list frequently.

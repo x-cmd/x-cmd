@@ -8,7 +8,9 @@
 ___x_cmd_gt_repo_release_attachment(){
     param:subcmd ___x_cmd_gt_repo_release_attachment            \
         ls              "List release's attachment"             \
-        create          "Upload attachment"                     \
+        info            "Get attachment"                        \
+        upload          "Upload attachment"                     \
+        download        "Download attachment"                   \
         rm              "Remove attachment"
     param:subcmd:try
     param:run
@@ -17,40 +19,180 @@ ___x_cmd_gt_repo_release_attachment(){
     return 1
 }
 
-# Section: main
+# shellcheck disable=SC2154
+# https://gitee.com/api/v8/swagger#/getV8ReposOwnerRepoReleasesReleaseIdAttachments
 ___x_cmd_gt_repo_release_attachment_ls(){
     param:scope     ___x_cmd_gt
     param:dsl    '
 options:
-    #1|--release        "Release ID"                <>:NatureNumber
+    --repo|-r           "<owner_path>/<repo_path>"                                          <>:RepoPath
+    --release_id        "Release ID"                                                        <>:Number
+    --direction         "direction(asc,desc)"                                               <>:Direction="asc"
+
+    --per_page          "Results per page"                                                  <>="30"
+    --page              "Page number of the results to fetch."                              <>="1"
+
+    --json|-j           "output origin json data"
+    --csv               "output csv data"
+    --yml               "output yml data"
 '
     param:run
-
-    ______x_cmd_gt_repo_release_init_owner_repo_and_release
+    ___x_cmd_gt_param_init_owner_repo
+    [ -n "$owner_repo" ] || M='Please provide --repo <owner/repo>' arg:ret:64
+    if ___x_cmd_gx_output_is_format; then
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/releases/${release_id}/attach_files" direction | ___x_cmd_gx_output_format
+    else
+        ___x_cmd_gt_get_multi "/repos/${owner_repo}/releases/${release_id}/attach_files" direction | \
+            ___x_cmd jo 2c             .id   .name   .size   .browser_download_url  .created_at | \
+            ___x_cmd csv header --add   Id    Name    Size    Download_URL           Created_At | \
+            if [ -n "$csv" ]; then  ___x_cmd_cmds cat
+            else                    ___x_cmd csv static_tab
+            fi
+    fi
 }
 
-# Provide multiple files
-___x_cmd_gt_repo_release_attachment_create(){
+# https://gitee.com/api/v8/swagger#/getV8ReposOwnerRepoReleasesReleaseIdAttachmentsAttachmentId
+___x_cmd_gt_repo_release_attachment_info(){
     param:scope     ___x_cmd_gt
     param:dsl    '
 options:
-    #1|--release        "Release ID"                <>:NatureNumber
+    #1                  "Release Attachment ID"                     <>:Number
+    --repo|-r           "<owner_path>/<repo_path>"                  <>:RepoPath
+    --release_id        "Release ID"                                <>:Number
+    --json|-j           "output json data"
 '
     param:run
+    [ -n "$1" ] || M='accepts 1 arg(Release Attachment ID), received empty' arg:ret:64
+    local attachment_id="$1"
+    ___x_cmd_gt_param_init_owner_repo
 
-    ______x_cmd_gt_repo_release_init_owner_repo_and_release
+    ___x_cmd_gt_curl get "/repos/${owner_repo}/releases/${release_id}/attach_files/${attachment_id}" | \
+        ___x_cmd_gt_repo_release_attachment____ui_handler Info
 }
 
-# Delete the file in attachment list
+# https://gitee.com/api/v8/swagger#/postV8ReposOwnerRepoReleasesReleaseIdAttachments
+___x_cmd_gt_repo_release_attachment_upload(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                  "target upload attachment file path"                            <>
+    --repo|-r           "<owner_path>/<repo_path>"                                      <>:RepoPath
+    --release_id        "Release ID"                                                    <>:Number
+    --json|-j           "output json data"
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg (target upload attachment file path), received empty' arg:ret:64
+    local _file_path="$1"
+    [ "$_file_path" != '-' ] || _file_path="$(___x_cmd_cmds_cat)"
+
+    ___x_cmd_gt_param_init_owner_repo
+
+    ___x_cmd_gt_curl upload "/repos/${owner_repo}/releases/${release_id}/attach_files" "$_file_path" | \
+        ___x_cmd_gt_repo_release_attachment____ui_handler Upload
+}
+
+# https://gitee.com/api/v8/swagger#/getV8ReposOwnerRepoReleasesReleaseIdAttachFilesAttachFileIdDownload
+___x_cmd_gt_repo_release_attachment_download(){
+    param:scope     ___x_cmd_gt
+    param:dsl    '
+options:
+    #1                  "Release Attachment ID"                     <>:Number
+    --repo|-r           "<owner_path>/<repo_path>"                  <>:RepoPath
+    --release_id        "Release ID"                                <>:Number
+    --dir|-d            "directory to save the downloaded file"    <>=""
+'
+    param:run
+    [ -n "$1" ] || M='accepts 1 arg(Release Attachment ID), received empty' arg:ret:64
+    local attachment_id="$1"
+    ___x_cmd_gt_param_init_owner_repo
+
+    # Look up the attachment name so the local file has a sensible basename
+    local name=
+    local resp
+    resp="$(___x_cmd_gt_curl get "/repos/${owner_repo}/releases/${release_id}/attach_files/${attachment_id}")"
+    ___x_cmd jo env . .name <<A
+$resp
+A
+    if [ -z "$name" ]; then
+        gt:error "Download failure: could not resolve attachment name for ${release_id}/${attachment_id} on ${owner_repo}"
+        return 1
+    fi
+
+    local targetfp
+    if [ -n "$dir" ]; then
+        targetfp="$dir/$name"
+        ___x_cmd mkdirp "$dir" 2>/dev/null
+    else
+        targetfp="./$name"
+    fi
+
+    gt:info "Downloading [attachment=$name] to [save_path=$targetfp]..."
+    if ! ___x_cmd_gt_curl download "/repos/${owner_repo}/releases/${release_id}/attach_files/${attachment_id}/download" "$targetfp"; then
+        gt:error "Download failure: failed to save ${targetfp}"
+        return 1
+    fi
+    gt:info "Downloaded to $targetfp"
+}
+
+# shellcheck disable=SC2154,SC2034
+# https://gitee.com/api/v8/swagger#/deleteV8ReposOwnerRepoReleasesReleaseIdAttachmentsAttachmentId
 ___x_cmd_gt_repo_release_attachment_rm(){
     param:scope     ___x_cmd_gt
     param:dsl    '
 options:
-    #1|--release        "Release ID"                <>:NatureNumber
+    #1                  "Release Attachment ID"                     <>:Number
+    --repo|-r           "<owner_path>/<repo_path>"                  <>:RepoPath
+    --release_id        "Release ID"                                <>:Number
+    --yes|-y            "Ignore remove prompt interception"
 '
     param:run
+    [ -n "$1" ] || M='accepts 1 arg(Release Attachment ID), received empty' arg:ret:64
+    local attachment_id="$1"
+    ___x_cmd_gt_param_init_owner_repo
+    [ "$yes" = "true" ] || ___x_cmd_ui_yesno "Are you sure you want to remove release attachment $(___x_cmd_ui bold red "$attachment_id") on $owner_repo release $release_id ?" || return
 
-    ______x_cmd_gt_repo_release_init_owner_repo_and_release
+    ___x_cmd_gt_curl del "/repos/${owner_repo}/releases/${release_id}/attach_files/${attachment_id}" | (
+            [ -z "$___X_CMD_GT_IN_TEST" ] || { ___x_cmd_cmds_cat; return; }
+            ___x_cmd jo env . gt_resp_err=.message gt_resp_err=.error
+            if ___x_cmd_gt_http_error; then
+                ___x_cmd_ui_tf true  "[Success]: Remove ${owner_repo} ${release_id}/${attachment_id} release attachment successfully"
+            else
+                ___x_cmd_ui_tf false "Remove ${owner_repo} ${release_id}/${attachment_id} release attachment failure" >&2
+                ___x_cmd_gt____handle_resp
+                return 1
+            fi
+        )
 }
 
-# EndSection
+
+___x_cmd_gt_repo_release_attachment____ui_handler(){
+    if [ -n "$ENFORCE_JSON" ] || [ -n "$json" ]; then
+        ___x_cmd_cmds_cat
+        ___x_cmd_gt_http_error
+        return
+    fi
+    (
+        case "$1" in
+            Upload)
+                _inf_msg="$1 repo release attachment successfully"
+                _err_msg="$1 repo release attachment failure"
+                ;;
+            Info)
+                _inf_msg="Get repo release attachment info successfully"
+                _err_msg="Get repo release attachment info failure"
+                ;;
+        esac
+
+        local _id=""
+        ___x_cmd jo env . _id=.id gt_resp_err=.message gt_resp_err=.error \
+            name=.name size=.size down_url=.browser_download_url created_at=.created_at
+        if [ -n "$_id" ]; then
+            ___x_cmd_ui_tf  true "${_inf_msg}:" "Release_Attachment_Id: $_id" ${name:+"Name: $name"} ${size:+"Size: $size"} \
+                ${down_url:+"Download_URL: $down_url"} ${created_at:+"Created_At: $created_at"}
+        else
+            ___x_cmd_ui_tf false "${_err_msg}:" >&2
+            ___x_cmd_gt____handle_resp
+            return 1
+        fi
+    )
+}

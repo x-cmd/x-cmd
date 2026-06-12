@@ -1,4 +1,3 @@
-#!/usr/bin/env gawk
 # Generate precomputed bitwise tables as literal array assignments
 
 BEGIN {

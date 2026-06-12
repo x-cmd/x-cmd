@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Pure Python QR Encoder - Standard 0x11D GF(256) implementation
 Uses correct polynomial arithmetic for QR code encoding.

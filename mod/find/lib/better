@@ -1,0 +1,121 @@
+
+# x find [<ignore argumetns>] -- [<find ... arguments>]
+
+___x_cmd_find_better(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local ___X_CMD_FIND_IGNORE="${___X_CMD_FIND_IGNORE}"
+    local ___X_CMD_FIND_HOMEIGNORE="${___X_CMD_FIND_HOMEIGNORE}"
+    local ___X_CMD_FIND_WHITELIST="${___X_CMD_FIND_WHITELIST}"
+
+    local homeignore=1
+    local hint=""
+    local prune_hidden=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m find better "$@" ;     return 0    ;;
+
+            --no-ignore)        ___X_CMD_FIND_IGNORE=""
+                                ___X_CMD_FIND_HOMEIGNORE=""
+                                ___X_CMD_FIND_WHITELIST=""
+                                shift ;;
+            -i|--ignore)        ___x_cmd_find_ignore_add_ "$2" ;        arg:2:shift ;;
+
+            -I|--include)       ___x_cmd_find_whitelist_add_ "$2" ;     arg:2:shift ;;
+
+            --no-homeignore)    homeignore="" ; shift ;;
+            --verbose|-v)       hint=1 ; shift ;;
+
+            --prune-hidden)     prune_hidden=1 ; shift ;;
+
+            --)                 shift ; break ;;
+            *)                  break ;;
+        esac
+    done
+
+    [ $# -gt 0 ]    ||          N=find M="No find expression provided. Run 'x find --help' for usage." log:ret:64
+
+    local rootfp="$1" ;
+    case "$rootfp" in
+        -*)     rootfp="." ;;
+        *)      shift ;;
+    esac
+
+    [ -z "$prune_hidden" ]  || ___x_cmd_find_ignore_strip_hidden_ ___X_CMD_FIND_IGNORE
+    [ -z "$homeignore" ]    || ___x_cmd_find_ignore_home "$rootfp" "$prune_hidden"
+    ___x_cmd_find_whitelist_filter_
+
+    if [ -z "${___X_CMD_FIND_IGNORE}${___X_CMD_FIND_HOMEIGNORE}" ]; then
+        ___x_cmd_find___cmd "$rootfp" "$@"
+        return $?
+    fi
+
+    local x_
+    ___x_cmd_find_ignore_prune_ "$rootfp" "$prune_hidden"
+    [ -n "$x_" ] || {
+        ___x_cmd_find___cmd "$rootfp" "$@"
+        return $?
+    }
+
+    eval "set -- ${x_} \"\$@\""
+
+    if [ -n "$hint" ]; then
+        if [ -n "$___X_CMD_FIND_IGNORE" ]; then
+            ___x_cmd pipevar ___X_CMD_FIND_IGNORE   ___x_cmd line join_ ' '
+            find:info "Default ignore patterns -> $x_"
+        fi
+
+        if [ -n "$___X_CMD_FIND_HOMEIGNORE" ]; then
+            ___x_cmd pipevar ___X_CMD_FIND_HOMEIGNORE   ___x_cmd line join_ ' '
+            find:info "Home ignore directories -> $x_"
+        fi
+    fi
+
+    ___x_cmd_find___cmd "$rootfp" "$@"
+}
+
+___x_cmd_find_ignore_prune_(){
+    local rootfp="$1"
+    local prune_hidden="$2"
+
+    x_=""
+    local prune=""
+    local sep=""
+
+    local rootfp_q
+    ___x_cmd_shq1_ "$rootfp"
+    rootfp_q="$x_"
+
+    if [ -n "$___X_CMD_FIND_IGNORE" ]; then
+        while read -r ignore_name; do
+            [ -n "$ignore_name" ] || continue
+            ___x_cmd_shq1_ "${ignore_name}"
+            prune="${prune}${sep}! -path ${rootfp_q} -name ${x_} -prune"
+            sep=" -o "
+        done <<A
+$___X_CMD_FIND_IGNORE
+A
+    fi
+
+    if [ -n "$___X_CMD_FIND_HOMEIGNORE" ]; then
+        while read -r ignore_name; do
+            [ -n "$ignore_name" ] || continue
+            ___x_cmd_shq1_ "${rootfp%/}/${ignore_name}"
+            prune="${prune}${sep}! -path ${rootfp_q} -path ${x_} -prune"
+            sep=" -o "
+        done <<A
+$___X_CMD_FIND_HOMEIGNORE
+A
+    fi
+
+    if [ -n "$prune_hidden" ]; then
+        prune="${prune}${sep}! -path ${rootfp_q} \\( -name \".?*\" ! -name \"..\" \\) -prune"
+    fi
+
+    if [ -n "$prune" ]; then
+        x_="! '(' ${prune} ')' -a"
+    else
+        x_=""
+    fi
+}

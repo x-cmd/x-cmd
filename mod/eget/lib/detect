@@ -10,6 +10,15 @@
 # Otherwise, falls back to scoring-based heuristic matching.
 
 ___x_cmd_eget_detect(){
+    local mode="${___X_CMD_EGET_DETECT_MODE:-scoring}"
+    case "$mode" in
+        scoring)   ___x_cmd_eget_detect_scoring "$@" ;;
+        original)  ___x_cmd_eget_detect_original "$@" ;;
+        *)         ___x_cmd_eget_detect_scoring "$@" ;;
+    esac
+}
+
+___x_cmd_eget_detect_scoring(){
     local assets="$1" system="$2" asset_filters="$3" repo_name="$4"
 
     local os="${system%%/*}"
@@ -26,7 +35,8 @@ ___x_cmd_eget_detect(){
     esac
 
     local best_score=-1 best_line=""
-    local name="" url="" size="" score=0 lname="" lrepo="" line=""
+    local name="" url="" size="" score=0 lname="" line=""
+    lrepo="$( printf "%s" "$repo_name" | tr '[:upper:]' '[:lower:]' )"
 
     while IFS= read -r line; do
         [ -z "$line" ] && continue
@@ -36,7 +46,8 @@ ___x_cmd_eget_detect(){
 
         # Skip non-binary assets (checksums, signatures, docs)
         case "$name" in
-            *.sha256|*.sha256sum|*.sig|*.asc|*.pem|*.txt|*.md|*.json) continue ;;
+            *.sha256|*.sha256sum|*.sig|*.asc|*.pem|*.txt|*.md|*.json|*.jsonl) continue ;;
+            *.sbom|*.bundle|*.bsdiff|*.provenance|*.intoto.*) continue ;;
         esac
 
         score=0
@@ -57,30 +68,30 @@ ___x_cmd_eget_detect(){
         # Score: prefer compressed archives over raw binaries for reliability
         case "$lname" in
             *.tar.gz|*.tgz|*.tar.bz2|*.tar.xz|*.tar|*.zip) score=$(( score + 5 )) ;;
+            *.pyz) score=$(( score + 3 )) ;;
+            *.deb|*.rpm) score=$(( score - 5 )) ;;
         esac
 
-        # Score: asset filter matching
+        # Score: asset filter matching (case-insensitive)
         if [ -n "$asset_filters" ]; then
-            local filter_match=1 old_ifs="$IFS" excl=""
+            local filter_match=1 old_ifs="$IFS" excl="" lf=""
             IFS='|'
             for f in $asset_filters; do
-                if [ "${f#\^}" != "$f" ]; then
-                    # Anti-match (exclude)
-                    excl="${f#\^}"
+                lf="$( printf "%s" "$f" | tr '[:upper:]' '[:lower:]' )"
+                if [ "${lf#\^}" != "$lf" ]; then
+                    excl="${lf#\^}"
                     case "$lname" in
                         *"$excl"*) filter_match=0; break ;;
                     esac
                 else
-                    # Positive match (must contain)
                     case "$lname" in
-                        *"$f"*) ;;
+                        *"$lf"*) ;;
                         *) filter_match=0; break ;;
                     esac
                 fi
             done
             IFS="$old_ifs"
             [ "$filter_match" = "0" ] && continue
-            score=$(( score + 10 ))
         fi
 
         # Score: prefer smaller files (likely just the binary, not a bundle)
@@ -91,7 +102,6 @@ ___x_cmd_eget_detect(){
         fi
 
         # Score: repo name in filename
-        lrepo="$( printf "%s" "$repo_name" | tr '[:upper:]' '[:lower:]' )"
         case "$lname" in
             *"$lrepo"*) score=$(( score + 3 )) ;;
         esac
@@ -100,14 +110,18 @@ ___x_cmd_eget_detect(){
             best_score="$score"
             best_line="$line"
         fi
+
+        [ "$___X_CMD_EGET_VERBOSE" = "1" ] && printf "  %-55s score=%d\n" "$name" "$score" >&2
     done <<AIOEOF
 $assets
 AIOEOF
 
     if [ "$best_score" -lt 5 ]; then
+        [ "$___X_CMD_EGET_VERBOSE" = "1" ] && printf "detect: no asset above threshold (best=%d)\n" "$best_score" >&2
         return 1
     fi
 
+    [ "$___X_CMD_EGET_VERBOSE" = "1" ] && printf "detect: selected %s (score=%d)\n" "$(printf "%s" "$best_line" | cut -f1)" "$best_score" >&2
     printf "%s\n" "$best_line"
 }
 
@@ -136,18 +150,20 @@ ___x_cmd_eget_detect_os(){
     local score=0
 
     case "$lname" in
-        *darwin*|*macos*|*mac-os*|*osx*)
-            [ "$os" = "darwin" ] && score=20 || score=-50 ;;
-        *linux*)
-            [ "$os" = "linux" ] && score=20 || score=-50 ;;
+        *darwin*|*macos*|*mac-os*|*osx*|*sonoma*|*ventura*|*monterey*|*catalina*|*mojave*|*sequoia*|*tahoe*)
+            [ "$os" = "darwin" ] && score=20 || score=-20 ;;
+        *linux*|*ubuntu*|*debian*|*fedora*|*centos*|*rhel*|*alpine*|*amzn*|*archlinux*|*manjaro*|*suse*|*opensuse*|*gentoo*|*nixos*)
+            [ "$os" = "linux" ] && score=20 || score=-20 ;;
+        *linux*gnu*|*linux*musl*)
+            [ "$os" = "linux" ] && score=20 || score=-20 ;;
         *windows*|*win32*|*win64*|*mingw*|*.exe)
-            [ "$os" = "win" ] && score=20 || score=-50 ;;
+            [ "$os" = "win" ] && score=20 || score=-20 ;;
         *freebsd*)
-            [ "$os" = "freebsd" ] && score=20 || score=-50 ;;
+            [ "$os" = "freebsd" ] && score=20 || score=-20 ;;
         *openbsd*)
-            [ "$os" = "openbsd" ] && score=20 || score=-50 ;;
+            [ "$os" = "openbsd" ] && score=20 || score=-20 ;;
         *netbsd*)
-            [ "$os" = "netbsd" ] && score=20 || score=-50 ;;
+            [ "$os" = "netbsd" ] && score=20 || score=-20 ;;
     esac
 
     printf "%d" "$score"
@@ -159,14 +175,156 @@ ___x_cmd_eget_detect_arch(){
 
     case "$lname" in
         *amd64*|*x86_64*|*x64*)
-            [ "$arch" = "amd64" ] && score=15 || score=-50 ;;
+            [ "$arch" = "amd64" ] && score=15 || score=-15 ;;
         *arm64*|*aarch64*|*armv8*)
-            [ "$arch" = "arm64" ] && score=15 || score=-50 ;;
+            [ "$arch" = "arm64" ] && score=15 || score=-15 ;;
         *386*|*i386*|*x86*|*i686*)
-            [ "$arch" = "386" ] && score=15 || score=-50 ;;
+            [ "$arch" = "386" ] && score=15 || score=-15 ;;
         *armv7*|*armv6*|*armhf*)
-            [ "$arch" = "arm" ] && score=15 || score=-50 ;;
+            [ "$arch" = "arm" ] && score=15 || score=-15 ;;
     esac
 
     printf "%d" "$score"
+}
+
+# --- Original eget algorithm (categorical tier matching) ---
+# Mirrors zyedidia/eget's detect.go: SystemDetector.Detect()
+# Assets are categorized into tiers, not scored:
+#   T1: OS+Arch both match → "matches"
+#   T2: OS match only       → "candidates"
+#   T3: Fallback (all)      → "all"
+# If a tier has exactly 1 result → auto-select
+# If multiple → return all for caller to handle
+
+___x_cmd_eget_detect_original(){
+    local assets="$1" system="$2" asset_filters="$3" repo_name="$4"
+
+    local os="${system%%/*}"
+    local arch="${system#*/}"
+
+    # Normalize arch
+    local arch_norm
+    case "$arch" in
+        x64|amd64|x86_64)   arch_norm="amd64" ;;
+        x86|i386|i686)      arch_norm="386" ;;
+        arm64|aarch64)      arch_norm="arm64" ;;
+        arm|armv7l)          arch_norm="arm" ;;
+        *)                   arch_norm="$arch" ;;
+    esac
+
+    local matches="" candidates="" all_list=""
+    local mcount=0 ccount=0 acount=0
+    local name="" lname="" line=""
+
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        name="$( printf "%s" "$line" | cut -f1 )"
+
+        case "$name" in
+            *.sha256|*.sha256sum|*.sig|*.asc|*.pem|*.txt|*.md|*.json|*.jsonl) continue ;;
+            *.sbom|*.bundle|*.bsdiff|*.provenance|*.intoto.*) continue ;;
+        esac
+
+        lname="$( printf "%s" "$name" | tr '[:upper:]' '[:lower:]' )"
+
+        # Apply asset filters (case-insensitive)
+        if [ -n "$asset_filters" ]; then
+            local filter_ok=1 old_ifs="$IFS" lf=""
+            IFS='|'
+            for f in $asset_filters; do
+                lf="$( printf "%s" "$f" | tr '[:upper:]' '[:lower:]' )"
+                if [ "${lf#\^}" != "$lf" ]; then
+                    case "$lname" in *"${lf#\^}"*) filter_ok=0; break ;; esac
+                else
+                    case "$lname" in *"$lf"*) ;; *) filter_ok=0; break ;; esac
+                fi
+            done
+            IFS="$old_ifs"
+            [ "$filter_ok" = "0" ] && continue
+        fi
+
+        local os_match=0 arch_match=0
+
+        # Check OS
+        case "$lname" in
+            *darwin*|*macos*|*mac-os*|*osx*|*sonoma*|*ventura*|*monterey*|*catalina*|*mojave*|*sequoia*|*tahoe*)
+                [ "$os" = "darwin" ] && os_match=1 ;;
+            *linux*|*ubuntu*|*debian*|*fedora*|*centos*|*rhel*|*alpine*|*amzn*|*archlinux*|*manjaro*|*suse*|*opensuse*|*gentoo*|*nixos*)
+                [ "$os" = "linux" ] && os_match=1 ;;
+            *linux*gnu*|*linux*musl*)
+                [ "$os" = "linux" ] && os_match=1 ;;
+            *windows*|*win32*|*win64*|*mingw*) [ "$os" = "win" ] && os_match=1 ;;
+            *freebsd*)                        [ "$os" = "freebsd" ] && os_match=1 ;;
+            *openbsd*)                        [ "$os" = "openbsd" ] && os_match=1 ;;
+            *netbsd*)                         [ "$os" = "netbsd" ] && os_match=1 ;;
+        esac
+
+        # Check Arch
+        case "$lname" in
+            *amd64*|*x86_64*|*x64*)   [ "$arch_norm" = "amd64" ] && arch_match=1 ;;
+            *arm64*|*aarch64*|*armv8*) [ "$arch_norm" = "arm64" ] && arch_match=1 ;;
+            *386*|*i386*|*x86*|*i686*) [ "$arch_norm" = "386" ] && arch_match=1 ;;
+            *armv7*|*armv6*|*armhf*)   [ "$arch_norm" = "arm" ] && arch_match=1 ;;
+        esac
+
+        # Categorize into tiers
+        all_list="${all_list}${all_list:+$NL}$line"
+        acount=$(( acount + 1 ))
+
+        if [ "$os_match" = "1" ]; then
+            candidates="${candidates}${candidates:+$NL}$line"
+            ccount=$(( ccount + 1 ))
+            if [ "$arch_match" = "1" ]; then
+                matches="${matches}${matches:+$NL}$line"
+                mcount=$(( mcount + 1 ))
+            fi
+        fi
+
+    done <<ORIGEOF
+$assets
+ORIGEOF
+
+    [ "$___X_CMD_EGET_VERBOSE" = "1" ] && {
+        printf "original: matches=%d candidates=%d all=%d\n" "$mcount" "$ccount" "$acount" >&2
+    } >&2
+
+    # Select from narrowest tier with results
+    if [ "$mcount" -eq 1 ]; then
+        printf "%s\n" "$matches"
+        return 0
+    elif [ "$mcount" -gt 1 ]; then
+        # Multiple OS+Arch matches — prefer one with repo name
+        local lrepo="$( printf "%s" "$repo_name" | tr '[:upper:]' '[:lower:]' )"
+        local best="" found=0
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            local n
+            n="$( printf "%s" "$line" | cut -f1 | tr '[:upper:]' '[:lower:]' )"
+            case "$n" in
+                *"$lrepo"*) best="$line"; found=1; break ;;
+            esac
+        done <<MATCHES
+$matches
+MATCHES
+        if [ "$found" = "1" ]; then
+            printf "%s\n" "$best"
+            return 0
+        fi
+        # Pick first match
+        printf "%s\n" "$matches" | head -1
+        return 0
+    elif [ "$ccount" -eq 1 ]; then
+        printf "%s\n" "$candidates"
+        return 0
+    elif [ "$ccount" -gt 1 ]; then
+        # Multiple OS-only matches — pick first
+        printf "%s\n" "$candidates" | head -1
+        return 0
+    elif [ "$acount" -ge 1 ]; then
+        # Fallback — pick first
+        printf "%s\n" "$all_list" | head -1
+        return 0
+    fi
+
+    return 1
 }

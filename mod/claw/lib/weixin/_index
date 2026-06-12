@@ -1,4 +1,7 @@
 # ___x_cmd_claw_weixin -h
+# x claw weixin send --text <xxxxxx>
+# x claw weixin send --image <path>
+# x claw weixin get-sent
 
 ___x_cmd_claw_weixin(){
     [ $# -gt 0 ]    ||  set -- --help
@@ -8,7 +11,9 @@ ___x_cmd_claw_weixin(){
         --help|-h)
             ___x_cmd help -m claw weixin ; return 0 ;;
         send)
-            ___x_cmd weixin send "$@" ;;
+            ___x_cmd_claw_weixin_send "$@" ;;
+        get-sent)
+            ___x_cmd_claw_weixin_get_sent "$@" ;;
         get-msg)
             ___x_cmd_claw_weixin_get_msg "$@" ;;
         get-unread)
@@ -23,6 +28,49 @@ ___x_cmd_claw_weixin(){
             ___x_cmd_claw_weixin_update_offset "$@" ;;
         *)  N=claw M="Unknown subcmd -> $op" log:ret:64 ;;
     esac
+}
+
+___x_cmd_claw_weixin_send(){
+    local msg_type=""
+    local content=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m claw weixin "$@"; return 0 ;;
+            --text)     msg_type="text";  shift; content="$*"; break ;;
+            --image)    msg_type="image"; shift; content="$1"; shift; break ;;
+            --file)     msg_type="file";  shift; content="$1"; shift; break ;;
+            --video)    msg_type="video"; shift; content="$1"; shift; break ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$msg_type" ]   || N=claw M="send: must specify --text, --image, --file, or --video" log:ret:64
+    [ -n "$content" ]    || N=claw M="send: missing ${msg_type} content" log:ret:64
+
+    local x_; ___x_cmd date timestamp_
+    local send_time="$x_"
+
+    ___x_cmd weixin bot send "--${msg_type}"  "$content" || return "$?"
+
+    local sent_data_path="$___X_CMD_ROOT_DATA/weixin/bot/sent/data.tsv"
+    case "$msg_type" in
+        image|file|video)
+            local asset_dir="$___X_CMD_ROOT_DATA/weixin/bot/sent/asset"
+            ___x_cmd mkdirp "$asset_dir"
+            local target_path="${asset_dir}/${send_time}_${content##*/}"
+
+            ___x_cmd_cmds cp "$content" "$target_path" || {
+                weixin:warn "Failed to copy $msg_type to $target_path"
+            }
+            content="$target_path"
+            ;;
+    esac
+
+    ___x_cmd ensurefp "$sent_data_path"
+    printf '%s\t%s\t%s\n' "$send_time" "$msg_type" "$content" >> "$sent_data_path" || {
+        weixin:warn "Failed to save sent message to $sent_data_path"
+    }
 }
 
 ___x_cmd_claw_weixin_get_unread(){

@@ -1,4 +1,3 @@
-#!/usr/bin/env gawk
 # Generator script for precomputed bitwise tables
 # Run once to generate bitwise tables for POSIX awk
 

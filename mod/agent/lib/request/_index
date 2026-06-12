@@ -21,8 +21,10 @@ ___x_cmd_agent_request(){
     local reference_workspace=""
     local reference_name=""
     local is_no_thinking=""
+    local is_no_workspace_session=""
     local is_debug=""
     local timeout_secs="3000"
+    local skill_dirlist=""
 
     [ "$#" -gt 0 ] || set -- --help
     while [ $# -gt 0 ]; do
@@ -38,6 +40,8 @@ ___x_cmd_agent_request(){
             --json)         output_format=json;                 shift ;;
             --session)      user_session_id="$2";               arg:2:shift ;;
             --workspace)    workspace="$2";                     arg:2:shift ;;
+            --no-workspace-session)
+                            is_no_workspace_session=1;          shift ;;
             --reference-workspace)
                             reference_workspace="$2";           arg:2:shift ;;
             --stdout-file)  stdoutfile="$2";                    arg:2:shift ; ___x_cmd ensurefp "$stdoutfile";;
@@ -47,6 +51,8 @@ ___x_cmd_agent_request(){
             --no-thinking)  is_no_thinking=1 ;                  shift ;;
             --debug)        is_debug=1 ;                        shift ;;
             # --retry)        retry="$2" ; arg:2:shift ;;
+            --skill-dir)    skill_dirlist="${skill_dirlist}${NL}${2}" ;
+                            arg:2:shift ;;
 
             --)             shift; break ;;
             *)              break ;;
@@ -101,12 +107,14 @@ A
         session_output_dir="$workspace/.x-cmd/agent/request/session"
         x_=""; ___x_cmd_agent_request___workspace_prompt_ "$workspace" || return $?
         content="${content}${x_}"
-        local workspace_user_session_file="$session_output_dir/metadata/user_session_id"
-        if [ ! -f "$workspace_user_session_file" ]; then
-            ___x_cmd ensurefp "$workspace_user_session_file"
-            ___x_cmd uuid > "$workspace_user_session_file"
+        if [ "$is_no_workspace_session" != "1" ]; then
+            local workspace_user_session_file="$session_output_dir/metadata/user_session_id"
+            if [ ! -f "$workspace_user_session_file" ]; then
+                ___x_cmd ensurefp "$workspace_user_session_file"
+                ___x_cmd uuid > "$workspace_user_session_file"
+            fi
+            read -r user_session_id < "$workspace_user_session_file"
         fi
-        read -r user_session_id < "$workspace_user_session_file"
     fi
 
     if [ -n "$reference_workspace" ]; then
@@ -123,7 +131,17 @@ A
         fi
     fi
 
-    local IFS=" " ; content="${content}${NL}${*}${NL}"
+    x_=""; ___x_cmd_agent___skill_prompt_ "$skill_dirlist"
+    content="${content}${x_}"
+
+    local IFS=" " ; local msg="$*"
+    [ -z "$msg" ] || {
+        content="${content}
+<USERMSG>
+${msg}
+</USERMSG>
+"
+    }
 
     if [ -z "$output_file" ]; then
         ___x_cmd_agent_request___run

@@ -1,4 +1,4 @@
-# AGENTS.md — Workspace Guide
+# Workspace Guide
 
 This directory is your workspace. It persists across sessions, helping you maintain context, personality, and long-term memory.
 
@@ -7,7 +7,7 @@ This directory is your workspace. It persists across sessions, helping you maint
 ## ⚡ Quick Action Card（Read this EVERY time）
 
 ```
-⚠️ AGENTS.md alone is NOT enough. You MUST follow Startup Reading Order to read ALL listed files.
+⚠️ This file alone is NOT enough. You MUST follow Startup Reading Order to read ALL listed files.
 
 Standard flow after receiving a user message:
 
@@ -20,7 +20,11 @@ Standard flow after receiving a user message:
 2. SEND RULE:
    stdout is completely invisible. Every reply MUST use the platform's send command.
 
-3. LANGUAGE:
+3. CHECK CONTEXT (before replying):
+   ALWAYS scan today's `memory/YYYY-MM-DD.md` for recent `Sent` entries — including system notifications from the heartbeat agent.
+   If the user's message is brief ("ok", "好的", "thanks", "why", etc.) or references something not in their current message, they may be responding to a previous notification. Acknowledge the context explicitly.
+
+4. LANGUAGE:
    Always match the user's message language.
 ```
 
@@ -263,6 +267,7 @@ Before starting work, read bootstrap files in this order. Do NOT skip any — ea
 5. **Silent writing** — Write memory as part of tool calls. Do not mention logging in your text replies to the user.
 6. **Log every reply** — Every memory entry must include a `Sent` field summarizing what you sent to the user. If you sent nothing, write `"No reply"`.
 7. **Check before sending** — Before replying, scan today's `memory/` entries for the `Sent` field. If you already answered this question, do not repeat it.
+8. **Check context on short/ambiguous replies** — If the user's message is brief or seems to reference something not in their message (e.g., "ok", "好的", "why", "next time"), ALWAYS check the most recent `Sent` entry in `memory/YYYY-MM-DD.md`. The user may be responding to a heartbeat notification. If so, acknowledge the notification context in your reply.
 
 ## Memory Index Entry Format
 
@@ -277,7 +282,7 @@ Append entries to `memory/YYYY-MM-DD.md`. Keep them short — this is for quick 
 - **Changes**: [List of files touched]
 - **Status**: [Complete / Partial / Blocked / Needs review]
 - **Sent**: [Brief summary of what you sent to the user, e.g., "Explained heartbeat mechanism" or "No reply"]
-- **Next step**: [Suggested next step, or empty if complete]
+- **Next step**: [Suggested next step, or empty if complete. If you sent a message to the user and expect a reply, write: "If user replies, they are likely responding to: <summary of what you sent>". This helps the next agent session understand the context when the user replies.]
 ```
 
 Do not output these logs in your text replies. Write them directly to files.

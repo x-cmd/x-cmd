@@ -15,7 +15,7 @@ Your workspace root contains global files and individual chat workspaces:
 │   ├── state.yml          # Latest task run timestamps (machine-readable)
 │   └── YYYY-MM-DD.md      # Daily log of actions taken (human-readable)
 ├── HEARTBEAT_OK           # Marker: create this when there is nothing to report
-├── AGENTS.md              # Your operational manual
+├── Your operational manual  # This file
 ├── PLAN.md                # Global checklist
 ├── TOOLS.md               # Tool reference
 ├── weixin-xxx/            # WeChat chat workspace
@@ -33,11 +33,11 @@ Your workspace root contains global files and individual chat workspaces:
 
 Each `<im>-<chatid>` directory is an independent chat workspace. Access them directly: `./weixin-xxx/HEARTBEAT.md`, `./telegram-yyy/HEARTBEAT.md`, etc.
 
-> **Note**: Your workspace is the **parent directory** of these chat workspaces, not one of them. Your global files (`AGENTS.md`, `PLAN.md`, `TOOLS.md`) live at the root; per-chat context lives in subdirectories.
+> **Note**: Your workspace is the **parent directory** of these chat workspaces, not one of them. Your global files (your operational manual, `PLAN.md`, `TOOLS.md`) live at the root; per-chat context lives in subdirectories.
 
 ## Startup Reading Order
 
-1. **AGENTS.md** — This file (your workflow).
+1. **Your operational manual** — This file (your workflow).
 2. **PLAN.md** — Your global proactive checklist.
 3. **memory/state.yml** — Latest execution state for quick decision-making.
 4. **TOOLS.md** — Tool reference, consult as needed.
@@ -46,7 +46,7 @@ When processing a chat's `HEARTBEAT.md`, read only what you need:
 - **Primary target**: `HEARTBEAT.md` (follow-up items)
 - **For context only**: `SOUL.md`, `USER.md`, `MEMORY.md`, `memory/YYYY-MM-DD.md` inside that chat workspace — read these only when the follow-up item requires understanding user preferences, personality, or recent conversation history.
 
-Do not modify per-chat `SOUL.md`, `USER.md`, `MEMORY.md`, or `memory/` files. These are owned by the msg agent.
+You may **append** to per-chat `memory/YYYY-MM-DD.md` files when you send a notification to that chat — this lets the msg agent see your message context when the user replies. Use the same format as the msg agent's memory index (see below). Do not modify per-chat `SOUL.md`, `USER.md`, `MEMORY.md`, or any other files in chat workspaces.
 
 ## Workflow
 
@@ -87,6 +87,17 @@ Use the same decision logic: check `memory/state.yml` for `last_run`, execute if
 Reply to the **most recently active platform** (provided in your task prompt), unless the matter concerns a specific platform.
 
 Keep it concise. The user did not ask for this message — you are interrupting their quiet time. Make it worth it.
+
+**After sending a message**, append a record to `./<im>-<chatid>/memory/YYYY-MM-DD.md` (today's date) so the msg agent knows what you said. Format:
+
+```markdown
+## HH:MM:SS — System Notification
+
+- **Trigger**: [What triggered this notification, e.g., "HEARTBEAT.md follow-up", "Recurring check alert"]
+- **Sent**: [Full content of what you sent to the user]
+- **Method**: [Send command used, e.g., "x weixin send --text '...'"]
+- **Next step**: [What the user might reply to, or empty if none]
+```
 
 ### 5. Mark — If There Is Nothing to Do
 

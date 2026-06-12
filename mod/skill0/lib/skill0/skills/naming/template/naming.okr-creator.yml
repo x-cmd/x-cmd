@@ -1,0 +1,230 @@
+# naming.okr-creator.yml
+# Meta-rule: audits whether a `naming.<user-task>.yml` contains all
+# the necessary information for an auditable naming session.
+#
+# Run:  x rule check -r <dir-containing-this-rule> naming.<user-task>.yml
+#
+# What this rule audits (with shell testcases):
+#   - has at least one goal-* rule
+#   - has at least one keyresult-* rule
+#   - has at least one task-specific rule
+#   - has a session record on the goal rule
+#   - prefer answers all 5 init-004 questions
+#   - init_verdicts records gate decisions with reason
+#   - scores have D1-D7 anchors (no bare numbers)
+#   - all scores >= 6.0
+#   - final declares pick + backup
+#   - pick-backup gap <= 1.0
+#
+# Note: $___X_CMD_RULE_FILE is the target file (naming.<user-task>.yml)
+# set by x rule check. yq / y2j converts YAML to JSON for inspection.
+
+# ============================================================
+# Structural checks — has the right shape
+# ============================================================
+
+okr-creator-001:
+  name: has-goal-rule
+  level: error
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "The file MUST contain at least one rule with ID prefixed `goal-`."
+  - "The goal rule defines what the naming task is."
+  - "Goal IS a rule — checked by x rule, not just metadata."
+  tldr:
+  - wrong: "no goal-* rule in file"
+  - right: "goal-trial-run-naming: { name: ..., level: error, desc: [...] }"
+  testcase:
+    has_goal_prefix:
+      sh: |
+        yq 'keys | map(select(test("^goal-"))) | length > 0' "$___X_CMD_RULE_FILE" | grep -q true
+
+okr-creator-002:
+  name: has-keyresult-rules
+  level: error
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "The file MUST contain at least one rule with ID prefixed `keyresult-`."
+  - "Key results are verifiable outcomes."
+  - "Keyresults ARE rules — checked by x rule, not just metadata."
+  tldr:
+  - wrong: "no keyresult-* rules"
+  - right: "keyresult-kr1-top-pick-committed: { ..., desc: ['verifiable outcome'] }"
+  testcase:
+    has_keyresult_prefix:
+      sh: |
+        yq 'keys | map(select(test("^keyresult-"))) | length > 0' "$___X_CMD_RULE_FILE" | grep -q true
+
+okr-creator-003:
+  name: has-task-specific-rules
+  level: error
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "The file MUST contain at least one task-specific rule (not goal-*/keyresult-*)."
+  - "Task rules define what candidates must satisfy (must-be-TRIAL, must-be-RUN, etc.)."
+  - "If every rule is goal/keyresult, the task has no actual constraints to evaluate."
+  tldr:
+  - wrong: "only goal-*/keyresult-*, no task rules"
+  - right: "trial-run-001: { ... }, trial-run-002: { ... } (≥1 task rule)"
+  testcase:
+    has_task_rule:
+      sh: |
+        yq 'keys | map(select(test("^(goal|keyresult)-") | not)) | length > 0' "$___X_CMD_RULE_FILE" | grep -q true
+
+# ============================================================
+# Session record checks — prefer, init_verdicts, scores, final
+# ============================================================
+
+okr-creator-010:
+  name: has-session-record
+  level: error
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "The goal rule MUST have a `session:` field containing the audit trail."
+  - "Required sub-fields: prefer, init_verdicts, scores, final."
+  - "Without the session record, the naming session is un-auditable."
+  tldr:
+  - wrong: "goal-* rule has no session field"
+  - right: "goal-trial-run-naming: { ..., session: { prefer, init_verdicts, scores, final } }"
+  testcase:
+    has_session_on_goal:
+      sh: |
+        goal_key=$(yq 'keys | map(select(test("^goal-"))) | .[0]' "$___X_CMD_RULE_FILE")
+        yq ".\"$goal_key\".session != null" "$___X_CMD_RULE_FILE" | grep -q true
+
+okr-creator-011:
+  name: prefer-answers-all-five
+  level: error
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "The `session.prefer` section MUST answer all 5 init-004 questions:"
+  - "  vivid (yes / no / weak)"
+  - "  domain_acceptable (list, e.g. [naval])"
+  - "  length_priority (shorter | self_explanatory)"
+  - "  origin (english | chinese | coined)"
+  - "  trade_off (single_prior_ok | hit_every_dim)"
+  - "Missing answer = subjective preference is implicit, breaks tie-break."
+  tldr:
+  - wrong: "prefer: { vivid: yes }   # only 1 of 5"
+  - right: "prefer: { vivid: yes, domain_acceptable: [naval], length_priority: self_explanatory, origin: english, trade_off: single_prior_ok }"
+  testcase:
+    prefer_complete:
+      sh: |
+        goal_key=$(yq 'keys | map(select(test("^goal-"))) | .[0]' "$___X_CMD_RULE_FILE")
+        for k in vivid domain_acceptable length_priority origin trade_off; do
+          yq ".\"$goal_key\".session.prefer.\"$k\" != null" "$___X_CMD_RULE_FILE" | grep -q true || { echo "missing prefer.$k"; exit 1; }
+        done
+
+okr-creator-012:
+  name: init-verdicts-recorded
+  level: error
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "The `session.init_verdicts` section MUST list every candidate considered."
+  - "Format: list of { name, gate, reason }."
+  - "gate ∈ { init-005, init-006, init-007, pass }."
+  - "Missing = audit trail broken."
+  tldr:
+  - wrong: "init_verdicts: []   # no record"
+  - right: "init_verdicts: [{ name: fieldtest, gate: init-007, reason: '9 letters' }, ...]"
+  testcase:
+    init_verdicts_nonempty:
+      sh: |
+        goal_key=$(yq 'keys | map(select(test("^goal-"))) | .[0]' "$___X_CMD_RULE_FILE")
+        yq ".\"$goal_key\".session.init_verdicts | length > 0" "$___X_CMD_RULE_FILE" | grep -q true
+
+okr-creator-013:
+  name: scores-have-anchors
+  level: error
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "Every entry in `session.scores` MUST have a non-empty `anchors:` list."
+  - "anchors: is the D1-D7 evidence trail (e.g. 'D1: 8 letters', 'D2: sea trial')."
+  - "Bare score without anchors = invalid score (init-008)."
+  tldr:
+  - wrong: "{ name: seatrial, score: 8.5 }   # no anchors"
+  - right: "{ name: seatrial, score: 8.5, anchors: ['D1: 8 letters', 'D2: sea trial=海上试航', ...] }"
+  testcase:
+    all_scores_have_anchors:
+      sh: |
+        goal_key=$(yq 'keys | map(select(test("^goal-"))) | .[0]' "$___X_CMD_RULE_FILE")
+        n_scores=$(yq ".\"$goal_key\".session.scores | length" "$___X_CMD_RULE_FILE")
+        n_anchored=$(yq ".\"$goal_key\".session.scores | map(select(.anchors | length > 0)) | length" "$___X_CMD_RULE_FILE")
+        [ "$n_scores" = "$n_anchored" ] || { echo "$((n_scores - n_anchored)) scores lack anchors"; exit 1; }
+
+okr-creator-014:
+  name: scores-no-below-6
+  level: error
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "All entries in `session.scores` MUST have score >= 6.0."
+  - "score < 6 = prior conflict / concept mismatch — should be rejected at init, not in final short-list."
+  - "If a candidate scored < 6, it belongs in init_verdicts (rejected), not in scores."
+  tldr:
+  - wrong: "scores: [{ name: shakedown, score: 5.0 }]   # rejected at init-006, not in scores"
+  - right: "scores: [{ name: seatrial, score: 8.5 }, { name: trialrun, score: 7.5 }]"
+  testcase:
+    all_scores_at_least_6:
+      sh: |
+        goal_key=$(yq 'keys | map(select(test("^goal-"))) | .[0]' "$___X_CMD_RULE_FILE")
+        min_score=$(yq ".\"$goal_key\".session.scores | map(.score) | min" "$___X_CMD_RULE_FILE")
+        awk -v m="$min_score" 'BEGIN{exit !(m >= 6.0)}' || { echo "min score $min_score < 6.0"; exit 1; }
+
+okr-creator-015:
+  name: final-section-present
+  level: error
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "The `session.final` section MUST declare pick + backup (or null backup if not applicable)."
+  - "Missing final = session incomplete."
+  tldr:
+  - wrong: "no final section in session"
+  - right: "final: { pick: seatrial, backup: trialrun }"
+  testcase:
+    final_has_pick:
+      sh: |
+        goal_key=$(yq 'keys | map(select(test("^goal-"))) | .[0]' "$___X_CMD_RULE_FILE")
+        yq ".\"$goal_key\".session.final.pick != null" "$___X_CMD_RULE_FILE" | grep -q true
+
+# ============================================================
+# Supplementary scoring checks
+# ============================================================
+
+okr-creator-020:
+  name: pick-backup-gap-le-1
+  level: warn
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "score(pick) - score(backup) should be <= 1.0."
+  - "Gap > 1.0 means either pick is dominant (backup redundant) or pick is bad (backup should win)."
+  - "Either way, the trade-off deserves a comment."
+  tldr:
+  - wrong: "pick=8.5, backup=6.0   # gap 2.5 — surprising"
+  - right: "pick=8.5, backup=7.5   # gap 1.0"
+  testcase:
+    pick_backup_gap:
+      sh: |
+        goal_key=$(yq 'keys | map(select(test("^goal-"))) | .[0]' "$___X_CMD_RULE_FILE")
+        pick=$(yq ".\"$goal_key\".session.final.pick" "$___X_CMD_RULE_FILE")
+        backup=$(yq ".\"$goal_key\".session.final.backup" "$___X_CMD_RULE_FILE")
+        pick_score=$(yq ".\"$goal_key\".session.scores | map(select(.name == \"$pick\")) | .[0].score" "$___X_CMD_RULE_FILE")
+        backup_score=$(yq ".\"$goal_key\".session.scores | map(select(.name == \"$backup\")) | .[0].score" "$___X_CMD_RULE_FILE")
+        awk -v p="$pick_score" -v b="$backup_score" 'BEGIN{exit !((p - b) <= 1.0)}' || { echo "pick-backup gap > 1.0 ($pick_score - $backup_score)"; exit 1; }
+
+okr-creator-021:
+  name: top-pick-at-least-7
+  level: warn
+  apply: "naming.<user-task>.yml"
+  desc:
+  - "Top pick (final.pick) should score >= 7.0."
+  - "Below 7 = core dimensions missed; reconsider or reframe."
+  tldr:
+  - wrong: "pick=6.0   # core dims missed"
+  - right: "pick=8.5   # all dims hit"
+  testcase:
+    top_pick_score:
+      sh: |
+        goal_key=$(yq 'keys | map(select(test("^goal-"))) | .[0]' "$___X_CMD_RULE_FILE")
+        pick=$(yq ".\"$goal_key\".session.final.pick" "$___X_CMD_RULE_FILE")
+        pick_score=$(yq ".\"$goal_key\".session.scores | map(select(.name == \"$pick\")) | .[0].score" "$___X_CMD_RULE_FILE")
+        awk -v p="$pick_score" 'BEGIN{exit !(p >= 7.0)}' || { echo "top pick $pick scores $pick_score, < 7.0"; exit 1; }

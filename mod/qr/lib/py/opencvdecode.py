@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 QR Code Decoder using OpenCV QRCodeDetector
 Tests QR code scannability and compares with reference implementations.

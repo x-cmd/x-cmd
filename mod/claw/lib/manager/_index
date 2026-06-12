@@ -1,0 +1,81 @@
+
+___x_cmd_claw_manager(){
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m claw manager "$@" ; return 0 ;;
+            *)          break ;;
+        esac
+    done
+
+    local IFS=" "
+    local msg="$*"
+
+    ___x_cmd_claw_run___ensureagent || return $?
+
+
+    if [ -z "$msg" ]; then
+        ___x_cmd_claw_manager___chat
+    else
+        ___x_cmd_claw_manager___handle "$msg"
+    fi
+
+}
+
+___x_cmd_claw_manager___chat(){
+    { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; } || {
+        claw:warn "Non-interactive mode detected. Skipping manager chat."
+        ___x_cmd help -m claw manager
+        return 0
+    }
+
+    if [ "$(___x_cmd lang get)" = zh ]; then
+        claw:info \
+            --tip-1 "已加载 claw 核心管理技能，可按需扩展" \
+            --tip-2 "可管理所有 IM 连接、服务、定时任务、日志等" \
+            --tip-3 "可访问所有聊天记录与记忆" \
+            "欢迎与 claw 核心管理者交流"
+        claw:info "你可以通过 'x claw -h' 查找帮助。"
+    else
+        claw:info \
+            --tip-1 "Core management skills loaded — extend as needed" \
+            --tip-2 "Full control over IM connections, services, cron, logs, etc." \
+            --tip-3 "Access to all chat histories and memories" \
+            "Welcome to the Claw Manager"
+        claw:info "You can find help via 'x claw -h'."
+    fi
+
+    local im='manager' chatid='clawbot'
+    local workspace_dir="$___X_CMD_CLAW_BOT_WS/${im}-${chatid}"
+
+    # Ensure workspace exists and template files are synced
+    ___x_cmd_claw_run___agentrequest___prepareworkspace "$im" "$chatid" || return $?
+
+    # Check if workspace template was updated — only then supply a prompt
+    local x_=""
+    ___x_cmd agent default_harness_ || {
+        claw:error "Failed to get default agent harness"
+        return 1
+    }
+    local harness="$x_"
+    local template_dir="$___X_CMD_ROOT_MOD/claw/lib/data/workspace/manager"
+
+    x_=""
+    ___x_cmd_claw_run___agentrequest___workspaceupdateprompt_ "$workspace_dir" "$template_dir" "$harness"
+    local prompt="$x_"
+
+    ___x_cmd agent chat \
+        --workspace "$workspace_dir" \
+        --reference-workspace "$___X_CMD_CLAW_AGENT_REFERENCE_WS" \
+        "$prompt"
+}
+
+___x_cmd_claw_manager___handle(){
+    local IFS=" "
+    local msg="$*"
+    [ -n "$msg" ] || return 0
+    msg="You have unread messages:
+<user_messages>
+$msg
+</user_messages>"
+    ___x_cmd_claw_run___agentrequest___handlemsg "manager" "clawbot" "$msg" "without_debug_log"
+}
