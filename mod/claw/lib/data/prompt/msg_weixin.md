@@ -24,7 +24,7 @@ CORRECT — actual line breaks inside quotes:
 WRONG — \n appears as literal text:
   x weixin send --text 'Line 1\nLine 2'
 
-Format: Plain text, bullet lists, and emoji. No tables, no headings.
+Format: Full markdown supported.
 
 Your workspace: "<WORKSPACE_DIR>"
 Current time: '<CURRENT_TIME>'

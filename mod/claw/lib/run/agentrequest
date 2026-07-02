@@ -17,10 +17,10 @@ ___x_cmd_claw_agentrequest(){
     local msg="$3";     [ -n "$msg" ] || N=claw M="Please provide message" log:ret:64
 
     ___x_cmd_claw_run___ensure_im_service "$im" "$chatid" || return $?
-    ___x_cmd_claw_run___agentrequest___handlemsg "$im" "$chatid" "$msg"
+    ___x_cmd_claw_run___agent___exec_chat "$im" "$chatid" "$msg"
 }
 
-___x_cmd_claw_run___agentrequest___handlemsg(){
+___x_cmd_claw_run___agent___exec_chat(){
     local im="$1";      [ -n "$im" ] || N=claw M="Please provide IM platform name (e.g., weixin|telegram)" log:ret:64
     local chatid="$2";  [ -n "$chatid" ] || N=claw M="Please provide chatid" log:ret:64
     local msg="$3";     [ -n "$msg" ] || N=claw M="Please provide message" log:ret:64
@@ -34,13 +34,16 @@ ___x_cmd_claw_run___agentrequest___handlemsg(){
     fi
 
     if [ -n "$reset_failure" ]; then
-        ___x_cmd_claw_run___agentrequest___resetunavailable "$im" "$chatid"
+        ___x_cmd_claw_run___state___reset_unavailable "$im" "$chatid"
     else
-        ___x_cmd_claw_run___agentrequest___checkunavailable "$im" "$chatid" "msg" || return 0
+        ___x_cmd_claw_run___state___check_unavailable "$im" "$chatid" "msg" || return 0
     fi
 
+    # Genuine user activity: reset idle state so heartbeat keeps probing.
+    ___x_cmd_claw_run___session___mark_active
+
     local workspace_dir="$___X_CMD_CLAW_BOT_WS/${im}-${chatid}"
-    local x_=""; ___x_cmd_claw_run___agentrequest___buildprompt_ "$im" "$chatid" "$msg" || return $?
+    local x_=""; ___x_cmd_claw_run___prompt___build_chat_ "$im" "$chatid" "$msg" || return $?
     local prompt="$x_"
 
     local exitcode=0
@@ -59,26 +62,26 @@ ___x_cmd_claw_run___agentrequest___handlemsg(){
     if [ "$exitcode" -eq 0 ]; then
         claw:info "[AGENT] Successfully processed agent request for $im:$chatid"
         x_=""
-        ___x_cmd_claw_run___agentrequest___statefile_ "$im" "$chatid" "msg"
+        ___x_cmd_claw_run___state___file_ "$im" "$chatid" "msg"
         ___x_cmd rmrf "$x_"
     else
         local agent_request_stderr_file="$workspace_dir/.x-cmd/agent/request/session/metadata/stderr.txt"
-        ___x_cmd_claw_run___agentrequest___notifyerror "$im" "$chatid" "$exitcode" "$agent_request_stderr_file" "msg"
+        ___x_cmd_claw_run___notify___error "$im" "$chatid" "$exitcode" "$agent_request_stderr_file" "msg"
 
         claw:error "[AGENT] Failed to process agent request for $im:$chatid exitcode=$exitcode - marking agent as unavailable"
-        ___x_cmd_claw_run___agentrequest___markunavailable "$im" "$chatid" "msg"
+        ___x_cmd_claw_run___state___mark_unavailable "$im" "$chatid" "msg"
         return "$exitcode"
     fi
 }
 
-___x_cmd_claw_run___agentrequest___handleheartbeat(){
+___x_cmd_claw_run___agent___exec_heartbeat(){
     if [ -n "$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR" ]; then
         local logfp="$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR/heartbeat.log"
         ___x_cmd ensurefp "$logfp"
         exec >>"$logfp" 2>&1
     fi
 
-    ___x_cmd_claw_run___agentrequest___checkunavailable "hb" "global" "hb" || return 0
+    ___x_cmd_claw_run___state___check_unavailable "hb" "global" "hb" || return 0
 
     local imdir="$___X_CMD_CLAW_BOT_CONNECT_DIR"
     [ -d "$imdir" ] || {
@@ -172,8 +175,8 @@ The marker expires automatically after $heartbeat_ok_ttl (default 4 hours), afte
     esac
 
     # Initialize global workspace from heartbeat template if first run
-    ___x_cmd_claw_run___agentrequest___syncworkspace "$workspace_dir" "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/hb" "$harness"
-    ___x_cmd_claw_run___agentrequest___checkworkspaceupdate "$workspace_dir" "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/hb" "$harness"
+    ___x_cmd_claw_run___workspace___sync "$workspace_dir" "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/hb" "$harness"
+    ___x_cmd_claw_run___workspace___check_update "$workspace_dir" "$___X_CMD_ROOT_MOD/claw/lib/data/workspace/hb" "$harness"
 
     local prompt
     prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/heartbeat.md" 2>/dev/null)" || {
@@ -197,7 +200,7 @@ The marker expires automatically after $heartbeat_ok_ttl (default 4 hours), afte
 <variable name='WORKSPACE_DIR'>${workspace_dir}
 </variable>
 
-<variable name='CURRENT_TIME'>$(___x_cmd_claw_run___agentrequest___current_time)
+<variable name='CURRENT_TIME'>$(___x_cmd_claw_run___util___current_time)
 </variable>
 <variable name='HEARTBEAT_IDLE_PROMPT'>${heartbeat_idle_prompt}
 </variable>
@@ -218,11 +221,19 @@ The marker expires automatically after $heartbeat_ok_ttl (default 4 hours), afte
         # Heartbeat agent succeeded — clear unavailable status
         claw:debug "[HB] Heartbeat agent completed successfully"
         x_=""
-        ___x_cmd_claw_run___agentrequest___statefile_ "hb" "global" "hb"
+        ___x_cmd_claw_run___state___file_ "hb" "global" "hb"
         ___x_cmd rmrf "$x_"
     else
         claw:error "[HB] Global heartbeat agent request failed for $im_count platform(s)"
-        ___x_cmd_claw_run___agentrequest___markunavailable "hb" "global" "hb"
+
+        # Route heartbeat failures through the same notification pipeline as message failures.
+        # Notifications are suppressed by default unless ___X_CMD_CLAW_NOTIFY_HB_ERROR=1.
+        if [ -n "$default_reply_im" ] && [ -n "$default_reply_chatid" ]; then
+            local agent_request_stderr_file="$workspace_dir/.x-cmd/agent/request/session/metadata/stderr.txt"
+            ___x_cmd_claw_run___notify___error "$default_reply_im" "$default_reply_chatid" "$exitcode" "$agent_request_stderr_file" "hb"
+        fi
+
+        ___x_cmd_claw_run___state___mark_unavailable "hb" "global" "hb"
         return 1
     fi
 }

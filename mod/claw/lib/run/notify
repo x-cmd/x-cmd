@@ -1,0 +1,193 @@
+# shellcheck shell=dash
+
+# ---------------------------------------------------------------------------
+# Error notification deduplication and rate limiting
+# ---------------------------------------------------------------------------
+
+___x_cmd_claw_run___notify___error(){
+    local im="$1"; local chatid="$2"; local exitcode="$3"; local stderr_file="$4"; local source="${5:-msg}"
+    local errmsg=""
+    local raw_stderr=""
+
+    if [ -n "$stderr_file" ] && [ -f "$stderr_file" ]; then
+        raw_stderr="$(___x_cmd_cmds cat "$stderr_file" 2>/dev/null)" || {
+            raw_stderr="[Failed to read stderr content]"
+        }
+
+        if [ -n "$raw_stderr" ]; then
+            # Truncate then mask sensitive values
+            local filtered_stderr
+            filtered_stderr="$(printf "%.500s" "$raw_stderr" | ___x_cmd_cmds sed -E \
+                -e 's/(token|secret|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+/\1=[REDACTED]/gi' \
+                -e 's/Authorization:[[:space:]]*[^[:space:]]+/Authorization: [REDACTED]/gi' \
+                2>/dev/null || true)"
+
+            if [ -n "$filtered_stderr" ]; then
+                errmsg="⚠️ Agent error details:${___X_CMD_UNSEENCHAR_NEWLINE}${filtered_stderr}"
+                [ "${#raw_stderr}" -gt 500 ] && errmsg="${errmsg}..."
+            fi
+        fi
+    fi
+
+    if [ -z "$errmsg" ]; then
+        case "$exitcode" in
+            "${____X_CMD_AGENT_ERR_AUTHFAILURE:-77}")
+                errmsg="⚠️ Agent authentication failed (exitcode=$exitcode). Please run the login command for your harness (e.g., x claw init)." ;;
+            "${____X_CMD_AGENT_ERR_SESSION_INVALID:-78}")
+                errmsg="⚠️ Agent session invalid (exitcode=$exitcode). The session may have expired; try again or re-authenticate." ;;
+            "${____X_CMD_AGENT_ERR_RATE_LIMIT:-79}")
+                errmsg="⚠️ Agent rate limit hit (exitcode=$exitcode). Please wait a moment before retrying." ;;
+            "${____X_CMD_AGENT_ERR_NETWORK_TIMEOUT:-124}")
+                errmsg="⚠️ Agent network timeout (exitcode=$exitcode). Please check your network connection and try again." ;;
+            "${____X_CMD_AGENT_ERR_SIGINT:-130}")
+                errmsg="⚠️ Agent interrupted by user (exitcode=$exitcode)." ;;
+            *)
+                errmsg="⚠️ Agent request failed with exitcode=$exitcode." ;;
+        esac
+    fi
+
+    errmsg="${errmsg}${___X_CMD_UNSEENCHAR_NEWLINE}Logs: x claw log"
+
+    local x_=""
+    ___x_cmd_claw_run___notify___fingerprint_ "${raw_stderr:-$errmsg}"
+    local fingerprint="$x_"
+    local fingerprint_short
+    fingerprint_short="$(printf "%.8s" "$fingerprint")"
+
+    if ! ___x_cmd_claw_run___notify___is_allowed "$im" "$chatid" "$fingerprint" "$source"; then
+        claw:debug "[AGENT] [$source] Error notification suppressed for $im:$chatid (fingerprint=${fingerprint_short}...) — already notified or rate limited"
+        return 0
+    fi
+
+    local send_ok=0
+    case "$im" in
+        feishu)
+            if ___x_cmd feishu abot send --text --chatid "$chatid" "$errmsg"; then
+                send_ok=1
+            fi
+            ;;
+        qywx)
+            if ___x_cmd qywx abot send --text --chatid "$chatid" "$errmsg"; then
+                send_ok=1
+            fi
+            ;;
+        telegram)
+            if ___x_cmd telegram send --text --chatid "$chatid" "$errmsg"; then
+                send_ok=1
+            fi
+            ;;
+        weixin)
+            if ___x_cmd weixin send --text "$errmsg"; then
+                send_ok=1
+            fi
+            ;;
+        *)
+            claw:warn "[AGENT] [$source] Unknown IM '$im' for error notification to $chatid — skipping"
+            ;;
+    esac
+
+    if [ "$send_ok" -eq 1 ]; then
+        ___x_cmd_claw_run___notify___record "$im" "$chatid" "$fingerprint" "exitcode=${exitcode}"
+    else
+        claw:warn "[AGENT] [$source] Failed to deliver error notification to $im:$chatid (exitcode=${exitcode}) — fingerprint=${fingerprint_short}... not recorded"
+    fi
+}
+
+# Compute a fingerprint for an error message and store it in x_.
+# Strips common variable tokens (timestamps, paths, ids) before hashing.
+___x_cmd_claw_run___notify___fingerprint_(){
+    local text="$1"
+    x_="$(printf "%s" "$text" \
+    | ___x_cmd_cmds sed -E \
+        -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}//g' \
+        -e 's/[0-9]{10,}//g' \
+        -e 's/\b[a-f0-9]{16,}\b//g' \
+        -e 's/[[:space:]]+/ /g' \
+    | ___x_cmd hash sha512)"
+}
+
+# Check whether a notification should be sent, respecting:
+#   - global enable switch: ___X_CMD_CLAW_NOTIFY_ERROR
+#   - per-fingerprint dedup window: ___X_CMD_CLAW_NOTIFY_ERROR_DEDUP_SEC
+#   - per-chat daily cap: ___X_CMD_CLAW_NOTIFY_ERROR_DAILY_CAP
+# Returns 0 if sending is allowed, 1 otherwise.
+___x_cmd_claw_run___notify___is_allowed(){
+    local im="$1"; local chatid="$2"; local fingerprint="$3"; local source="$4"
+
+    if [ "${___X_CMD_CLAW_NOTIFY_ERROR:-1}" = "0" ]; then
+        return 1
+    fi
+
+    # Heartbeat failures are suppressed by default unless explicitly enabled.
+    if [ "$source" = "hb" ] && [ "${___X_CMD_CLAW_NOTIFY_HB_ERROR:-0}" != "1" ]; then
+        claw:debug "[AGENT] [$source] Heartbeat error notification suppressed (set ___X_CMD_CLAW_NOTIFY_HB_ERROR=1 to enable)"
+        return 1
+    fi
+
+    local x_=""
+    ___x_cmd date timestamp_
+    local now="$x_"
+
+    x_=""
+    ___x_cmd_claw_run___state___notifylog_ "$im" "$chatid"
+    local log_file="$x_"
+
+    local dedup_window="${___X_CMD_CLAW_NOTIFY_ERROR_DEDUP_SEC:-86400}"
+    local daily_cap="${___X_CMD_CLAW_NOTIFY_ERROR_DAILY_CAP:-3}"
+    local window_start=$(( now - dedup_window ))
+
+    local line_ts="" line_fp="" line_sum=""
+    local same_fp_count=0 total_count=0
+
+    if [ -f "$log_file" ]; then
+        while IFS=' ' read -r line_ts line_fp line_sum _; do
+            [ -n "$line_ts" ] || continue
+            case "$line_ts" in *[!0-9]*) continue ;; esac
+            [ "$line_ts" -ge "$window_start" ] || continue
+            total_count=$(( total_count + 1 ))
+            [ "$line_fp" = "$fingerprint" ] && same_fp_count=$(( same_fp_count + 1 ))
+        done < "$log_file"
+    fi
+
+    if [ "$same_fp_count" -ge 1 ]; then
+        return 1
+    fi
+
+    if [ "$total_count" -ge "$daily_cap" ]; then
+        return 1
+    fi
+
+    return 0
+}
+
+# Record that a notification was sent.
+___x_cmd_claw_run___notify___record(){
+    local im="$1"; local chatid="$2"; local fingerprint="$3"; local summary="$4"
+    local x_=""
+    ___x_cmd_claw_run___state___notifylog_ "$im" "$chatid"
+    local log_file="$x_"
+
+    x_=""
+    ___x_cmd date timestamp_
+    local now="$x_"
+
+    ___x_cmd ensurefp "$log_file"
+    printf "%s %s %s\n" "$now" "$fingerprint" "$summary" >> "$log_file"
+
+    # Trim entries older than the dedup window to prevent unbounded growth.
+    local dedup_window="${___X_CMD_CLAW_NOTIFY_ERROR_DEDUP_SEC:-86400}"
+    local window_start=$(( now - dedup_window ))
+    local tmp_file="${log_file}.tmp"
+
+    : > "$tmp_file"
+    if [ -s "$log_file" ]; then
+        local line_ts="" line_fp="" line_sum=""
+        while IFS=' ' read -r line_ts line_fp line_sum _; do
+            [ -n "$line_ts" ] || continue
+            case "$line_ts" in *[!0-9]*) continue ;; esac
+            [ "$line_ts" -ge "$window_start" ] || continue
+            printf "%s %s %s\n" "$line_ts" "$line_fp" "$line_sum" >> "$tmp_file"
+        done < "$log_file"
+    fi
+    ___x_cmd mv "$tmp_file" "$log_file"
+}

@@ -46,7 +46,7 @@ function colorize( text, _comment ){
     # gsub(/(^|\s+|[^\033])\[/, BRACKET "&" UI_END, text)
     # gsub(/\{|\}|\]|\(|\)/, BRACKET "&" UI_END, text)
 
-    gsub(/\"([^"]|\\")+\"/, KEYWORD "&" UI_END, text)
+    gsub(/"([^"]|\\")+"/, KEYWORD "&" UI_END, text)
 
     return text _comment
 }

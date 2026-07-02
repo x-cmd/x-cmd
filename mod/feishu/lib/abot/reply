@@ -1,0 +1,60 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_feishu_abot_reply(){
+    param:void
+
+    local msgid="" thread="" json_output=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --msgid)    msgid="$2" ; arg:2:shift ;;
+            --thread)   thread=1; shift ;;
+            -j|--json)  json_output=1; shift ;;
+            -h|--help)  ___x_cmd help -m feishu abot reply; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    [ -n "$msgid" ] || N=feishu M="Please specify the message id to reply ==> '--msgid <message_id>'" log:ret:1
+
+    local msg="$1"
+
+    local thread_val="false";
+    [ -z "$thread" ] || thread_val="true"
+
+    local msg_json
+    msg_json="$(___x_cmd jq -n          \
+            --arg msg "$msg"            \
+            --argjson thread "$thread_val" \
+            '{
+              msg_type: "post",
+              reply_in_thread: $thread,
+              content: {zh_cn: {content: [[{tag: "md", text: $msg}]]}} | tojson
+            }')"
+
+    feishu:debug "$(printf "%s" "$msg_json" )"
+    local resp; resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appreply___ "$msgid")"
+
+    [ -z "$json_output" ] || {
+        printf "%s" "$resp"
+        return
+    }
+
+    local statu ; statu="$(printf "%s" "$resp" | {  ___x_cmd jo env .msg ; echo "$msg" ; })"
+    if [ "$statu" = "success" ]; then
+        ___x_cmd_ui_tf true "Replied message successfully"
+    else
+        ___x_cmd_ui_tf false "Failed to reply message:" "ErrorMsg:$resp"
+    fi
+}
+
+___x_cmd_feishu_appreply___(){
+    local x_=; local cur_token
+    ____x_cmd_tenant_token ; cur_token="$x_"
+
+    local message_id="$1"
+
+    ___x_cmd curl -s -X POST "https://open.feishu.cn/open-apis/im/v1/messages/${message_id}/reply" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $cur_token" \
+    -d @-
+}

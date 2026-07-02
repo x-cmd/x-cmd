@@ -17,10 +17,11 @@ ___x_cmd_feishu_abot_send(){
 }
 
 ___x_cmd_feishu_abot_send_text(){
-    local chatid="" json_output="" fp=""
+    local chatid="" json_output="" fp="" messageid=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --chatid)   chatid="$2" ; arg:2:shift ;;
+            --chatid)       chatid="$2" ; arg:2:shift ;;
+            --messageid)    messageid="$2" ; arg:2:shift ;;
             -j|--json)  json_output=1; shift ;;
             --fp)       fp=1; shift ;;
             -h|--help)  ___x_cmd help -m feishu abot send --text; return 0 ;;
@@ -28,27 +29,35 @@ ___x_cmd_feishu_abot_send_text(){
         esac
     done
 
-    if [ -z "$chatid" ] || [ "$chatid" = "admin" ]; then
-        chatid=""
-        ___x_cmd_feishu_cur chatid:= 2>/dev/null
-        [ -n "$chatid" ] || N=feishu M="Please set your default chat id first ==> 'x feishu --cfg chatid=<chatid>'" log:ret:1
-    fi
 
     local msg="$1"
-    # msg="$( ___x_cmd_feishu___jqu "$msg")"
 
-    local msg_json
-    msg_json="$(___x_cmd jq -n          \
-            --arg msg "$msg"            \
-            --arg chatid "$chatid"      \
-            '{
-              msg_type: "post",
-              receive_id: $chatid,
-              content: {zh_cn: {content: [[{tag: "md", text: $msg}]]}} | tojson
-            }')"
-
-    feishu:debug "$(printf "%s" "$msg_json" )"
-    local resp; resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
+    local msg_json resp
+    if [ -n "$messageid" ]; then
+        msg_json="$(___x_cmd jq -n          \
+                --arg msg "$msg"            \
+                '{
+                  msg_type: "post",
+                  reply_in_thread: false,
+                  content: {zh_cn: {content: [[{tag: "md", text: $msg}]]}} | tojson
+                }')"
+        feishu:debug "$(printf "%s" "$msg_json" )"
+        resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appreply___ "$messageid")"
+    elif [ -n "$chatid" ]; then
+        msg_json="$(___x_cmd jq -n          \
+                --arg msg "$msg"            \
+                --arg chatid "$chatid"      \
+                '{
+                  msg_type: "post",
+                  receive_id: $chatid,
+                  content: {zh_cn: {content: [[{tag: "md", text: $msg}]]}} | tojson
+                }')"
+        feishu:debug "$(printf "%s" "$msg_json" )"
+        resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
+    else
+        feishu:error "Please provide the chat id ==> '--chatid <chatid>'"
+        return 1
+    fi
 
     [ -z "$json_output" ] || {
         printf "%s" "$resp"
@@ -62,7 +71,7 @@ ___x_cmd_feishu_abot_send_text(){
     if [ "$statu" = "success" ]; then
         ___x_cmd_ui_tf true "Sent text message successfully"
 
-        if [ -n "$fp" ]; then
+        if [ -n "$fp" ] && [ -n "$chatid" ]; then
             local sent_data_path="$___X_CMD_ROOT_DATA/feishu/abot/sent/data_${chatid}.tsv"
             ___x_cmd ensurefp "$sent_data_path"
             printf '%s\t%s\t%s\n' "$send_time" "text" "$msg" >> "$sent_data_path"
@@ -77,9 +86,11 @@ ___x_cmd_feishu_abot_send_image(){
     local image_path
     local json_output=
     local fp=""
+    local messageid=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --chatid)   chatid="$2" ; arg:2:shift ;;
+            --chatid)       chatid="$2" ; arg:2:shift ;;
+            --messageid)    messageid="$2" ; arg:2:shift ;;
             -j|--json)  json_output=1; shift ;;
             --fp)       fp=1; shift ;;
             -h|--help)  ___x_cmd help -m feishu abot send --image; return 0 ;;
@@ -87,20 +98,27 @@ ___x_cmd_feishu_abot_send_image(){
         esac
     done
 
-    if [ -z "$chatid" ] || [ "$chatid" = "admin" ]; then
-        chatid=""
-        ___x_cmd_feishu_cur chatid:= 2>/dev/null
-        [ -n "$chatid" ] || N=feishu M="Please set your default chat id first ==> 'x feishu --cfg chatid=<chatid>'" log:ret:1
-    fi
-
     image_path="$1"
-    [ -f "$image_path" ] || N=feishu M="File not found: $file_path" log:ret:1
+    [ -f "$image_path" ] || N=feishu M="File not found: $image_path" log:ret:1
     local resp; resp="$(___x_cmd_feishu_appupload_image_ "$image_path")"
 
 
     local image_key; image_key="$(printf "%s" "$resp" | { ___x_cmd jq -r .data.image_key ; })"
     if [ -n "$image_key" ]; then
-        local msg_json; msg_json="$(___x_cmd_cmds cat <<A
+        local msg_json send_resp
+        if [ -n "$messageid" ]; then
+            msg_json="$(___x_cmd_cmds cat <<A
+{
+    "content": "{\"image_key\":\"$image_key\"}",
+    "msg_type": "image",
+    "reply_in_thread": false
+}
+A
+)"
+            feishu:debug "$(printf "%s" "$msg_json")"
+            send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appreply___ "$messageid")"
+        elif [ -n "$chatid" ]; then
+            msg_json="$(___x_cmd_cmds cat <<A
 {
     "content": "{\"image_key\":\"$image_key\"}",
     "msg_type": "image",
@@ -108,8 +126,12 @@ ___x_cmd_feishu_abot_send_image(){
 }
 A
 )"
-        feishu:debug "$(printf "%s" "$msg_json")"
-        local send_resp; send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
+            feishu:debug "$(printf "%s" "$msg_json")"
+            send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
+        else
+            feishu:error "Please provide the chat id ==> '--chatid <chatid>'"
+            return 1
+        fi
 
         [ -z "$json_output" ] || {
             printf "%s" "$resp"
@@ -123,7 +145,7 @@ A
         if [ "$statu" = "success" ]; then
             ___x_cmd_ui_tf true "Sent image successfully"
 
-            if [ -n "$fp" ]; then
+            if [ -n "$fp" ] && [ -n "$chatid" ]; then
                 local asset_dir="$___X_CMD_ROOT_DATA/feishu/abot/sent/asset"
                 ___x_cmd mkdirp "$asset_dir"
                 local target_path="${asset_dir}/${send_time}_${image_path##*/}"
@@ -152,22 +174,18 @@ ___x_cmd_feishu_abot_send_file(){
     local file_path
     local json_output=
     local fp=""
+    local messageid=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)  ___x_cmd help -m feishu abot send --file; return 0 ;;
             --chatid)   chatid="$2" ;  arg:2:shift ;;
+            --messageid)    messageid="$2" ; arg:2:shift ;;
             --name)     name="$2" ;     arg:2:shift ;;
             -j|--json)  json_output=1;  shift ;;
             --fp)       fp=1; shift ;;
             *) break ;;
         esac
     done
-
-    if [ -z "$chatid" ] || [ "$chatid" = "admin" ]; then
-        chatid=""
-        ___x_cmd_feishu_cur chatid:= 2>/dev/null
-        [ -n "$chatid" ] || N=feishu M="Please set your default chat id first ==> 'x feishu --cfg chatid=<chatid>'" log:ret:1
-    fi
 
     file_path="$1"
     [ -f "$file_path" ] || N=feishu M="File not found: $file_path" log:ret:1
@@ -176,7 +194,20 @@ ___x_cmd_feishu_abot_send_file(){
     local file_key;
     file_key="$(printf "%s" "$resp" | ___x_cmd jq -r .data.file_key)"
     if [ -n "$file_key" ]; then
-        local msg_json; msg_json="$(___x_cmd_cmds cat <<A
+        local msg_json send_resp
+        if [ -n "$messageid" ]; then
+            msg_json="$(___x_cmd_cmds cat <<A
+{
+    "content": "{\"file_key\":\"$file_key\"}",
+    "msg_type": "file",
+    "reply_in_thread": false
+}
+A
+)"
+            feishu:debug "$(printf "%s" "$msg_json")"
+            send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appreply___ "$messageid")"
+        elif [ -n "$chatid" ]; then
+            msg_json="$(___x_cmd_cmds cat <<A
 {
     "content": "{\"file_key\":\"$file_key\"}",
     "msg_type": "file",
@@ -184,9 +215,12 @@ ___x_cmd_feishu_abot_send_file(){
 }
 A
 )"
-        feishu:debug "$(printf "%s" "$msg_json")"
-        local send_resp;
-        send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
+            feishu:debug "$(printf "%s" "$msg_json")"
+            send_resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
+        else
+            feishu:error "Please provide the chat id ==> '--chatid <chatid>'"
+            return 1
+        fi
 
         [ -z "$json_output" ] || {
             printf "%s" "$resp"
@@ -200,7 +234,7 @@ A
         if [ "$statu" = "success" ]; then
             ___x_cmd_ui_tf true "Sent file successfully"
 
-            if [ -n "$fp" ]; then
+            if [ -n "$fp" ] && [ -n "$chatid" ]; then
                 local asset_dir="$___X_CMD_ROOT_DATA/feishu/abot/sent/asset"
                 ___x_cmd mkdirp "$asset_dir"
                 local target_path="${asset_dir}/${send_time}_${file_path##*/}"
@@ -223,10 +257,11 @@ A
 }
 
 ___x_cmd_feishu_abot_send_card(){
-    local chatid="" json_output="" fp="" file_input=""
+    local chatid="" json_output="" fp="" file_input="" messageid=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --chatid)   chatid="$2" ; arg:2:shift ;;
+            --messageid)    messageid="$2" ; arg:2:shift ;;
             -f|--file)  file_input="$2"; arg:2:shift ;;
             -j|--json)  json_output=1; shift ;;
             --fp)       fp=1; shift ;;
@@ -234,12 +269,6 @@ ___x_cmd_feishu_abot_send_card(){
             *) break ;;
         esac
     done
-
-    if [ -z "$chatid" ] || [ "$chatid" = "admin" ]; then
-        chatid=""
-        ___x_cmd_feishu_cur chatid:= 2>/dev/null
-        [ -n "$chatid" ] || N=feishu M="Please set your default chat id first ==> 'x feishu --cfg chatid=<chatid>'" log:ret:1
-    fi
 
     local content
     if [ -n "$file_input" ]; then
@@ -255,26 +284,48 @@ ___x_cmd_feishu_abot_send_card(){
     # Build the Schema 2.0 interactive card inline and embed it as the
     # `content` string in one jq pass (Feishu requires `content` to be a string).
     # ref: https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-structure
-    local msg_json
-    msg_json="$(___x_cmd jq -n                      \
-        --arg content "$content"                    \
-        --arg chatid "$chatid"                      \
-        '{
-            msg_type: "interactive",
-            receive_id: $chatid,
-            content: {
-                schema: "2.0",
-                config: { width_mode: "fill" },
-                body: {
-                    elements: [
-                        { tag: "markdown", content: $content }
-                    ]
-                }
-            } | tojson
-        }')"
-
-    feishu:debug "$(printf "%s" "$msg_json" )"
-    local resp; resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
+    local msg_json resp
+    if [ -n "$messageid" ]; then
+        msg_json="$(___x_cmd jq -n                      \
+            --arg content "$content"                    \
+            '{
+                msg_type: "interactive",
+                reply_in_thread: false,
+                content: {
+                    schema: "2.0",
+                    config: { width_mode: "fill" },
+                    body: {
+                        elements: [
+                            { tag: "markdown", content: $content }
+                        ]
+                    }
+                } | tojson
+            }')"
+        feishu:debug "$(printf "%s" "$msg_json" )"
+        resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appreply___ "$messageid")"
+    elif [ -n "$chatid" ]; then
+        msg_json="$(___x_cmd jq -n                      \
+            --arg content "$content"                    \
+            --arg chatid "$chatid"                      \
+            '{
+                msg_type: "interactive",
+                receive_id: $chatid,
+                content: {
+                    schema: "2.0",
+                    config: { width_mode: "fill" },
+                    body: {
+                        elements: [
+                            { tag: "markdown", content: $content }
+                        ]
+                    }
+                } | tojson
+            }')"
+        feishu:debug "$(printf "%s" "$msg_json" )"
+        resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appsend___ "$chatid")"
+    else
+        feishu:error "Please provide the chat id ==> '--chatid <chatid>'"
+        return 1
+    fi
 
     [ -z "$json_output" ] || {
         printf "%s" "$resp"
@@ -285,7 +336,7 @@ ___x_cmd_feishu_abot_send_card(){
     if [ "$statu" = "success" ]; then
         ___x_cmd_ui_tf true "Sent card message successfully"
 
-        if [ -n "$fp" ]; then
+        if [ -n "$fp" ] && [ -n "$chatid" ]; then
             local x_; ___x_cmd date timestamp_
             local send_time="$x_"
             local sent_data_path="$___X_CMD_ROOT_DATA/feishu/abot/sent/data_${chatid}.tsv"

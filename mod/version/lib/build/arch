@@ -93,51 +93,34 @@ license='\("$license"\)'
 source=("$pkgname-$pkgver.tgz")
 # source="$pkgname-$pkgver.tgz::https://oss.resource.x-cmd.com/x-cmd/release/dist/$pkgver/allinone.tgz"
 # source="$pkgname-$pkgver.tgz::https://raw.githubusercontent.com/x-cmd/release/main/dist/$pkgver/allinone.tgz"
-install="$pkgname.install"
 options=(!debug)
 sha512sums=("SKIP")
 
 package() {
-	mkdir -p "$pkgdir/usr/share/$pkgname/v"
-	cp "$srcdir/$pkgname-$pkgver.tgz" "$pkgdir/usr/share/$pkgname/v/$_pkgsum.tgz"
+    install -Dm644 "$srcdir/$pkgname-$pkgver.tgz" "$pkgdir/usr/share/$pkgname/v/$_pkgsum.tgz"
+
+    local _pkgdir="$pkgdir/usr/share/x-cmd/v/$_pkgsum"
+    # Stage in $srcdir then cp -R --no-preserve=ownership into $pkgdir.
+    # The upstream tgz was built on GH Actions as uid 1001 (runner/runner);
+    # a plain `cp -a` would faithfully preserve that, and pacman refuses
+    # to install non-root-owned files. --no-preserve=ownership forces cp
+    # to chown every new file to the calling (fakeroot) user = root.
+    local _stage="$srcdir/staged"
+    install -dm755 "$_stage"
+    install -dm755 "$_pkgdir"
+    printf "%s\n" "- I|x: Unpacking and copying to $_pkgdir" >&2
+    tar -xzf "$pkgdir/usr/share/x-cmd/v/$_pkgsum.tgz" -C "$_stage"
+    cp -R --no-preserve=ownership "$_stage/." "$_pkgdir/"
+
+    printf "%s\n" "- I|x: Preparing license-files" >&2
+    install -Dm644 "$_pkgdir/LICENSE.txt" "$pkgdir/usr/share/licenses/$pkgname/LICENSE.txt"
+
+    printf "%s\n" "- I|x: Creating /usr/bin/x-cmd" >&2
+    install -Dm755 "$_pkgdir/mod/x-cmd/lib/bin/x-cmd" "$pkgdir/usr/bin/x-cmd"
+
+    printf "%s\n" "- I|x: Linking $_pkgsum to /usr/share/x-cmd/v/latest" >&2
+    ln -s "$_pkgsum" "$pkgdir/usr/share/x-cmd/v/latest"
 }
 
 ' > "$builddir/PKGBUILD"
-
-    printf "%s\n" '
-
-post_install() {
-    local _pkgsum='"$versum"'
-    local _pkgdir="/usr/share/x-cmd/v/$_pkgsum"
-    local _pkgfile="/usr/share/x-cmd/v/$_pkgsum.tgz"
-    if [ ! -f "$_pkgfile" ]; then
-        printf "%s\n" "- I|x: Not found x-cmd pkg tgz file -> $_pkgfile" >/dev/tty
-        return 1
-    else
-        printf "%s\n" "- I|x: Unpacking $_pkgfile to $_pkgdir" >&2
-        mkdir -p "$_pkgdir"
-        tar -xzf "$_pkgfile" -C "$_pkgdir" || return 1
-
-        printf "%s\n" "- I|x: Linking $_pkgdir to /usr/share/x-cmd/v/latest" >&2
-        rm -rf "/usr/share/x-cmd/v/latest"
-        ln -sf "$_pkgdir" "/usr/share/x-cmd/v/latest" || return 1
-
-        printf "%s\n" "- I|x: Create /usr/bin/x-cmd" >&2
-        install -Dm755 "$_pkgdir/mod/x-cmd/lib/bin/x-cmd" "/usr/bin/x-cmd"
-        install -Dm644 "$_pkgdir/LICENSE.txt" "${pkgdir}/usr/share/licenses/x-cmd/LICENSE.txt"
-        chmod +x "/usr/bin/x-cmd"
-    fi
-}
-
-' > "$builddir/x-cmd.install"
-
-    printf "%s\n" '
-
-post_remove() {
-    [ ! -f /usr/bin/x-cmd ]         || rm -rf /usr/bin/x-cmd
-    [ ! -f /usr/bin/x ]             || rm -rf /usr/bin/x
-    [ ! -f ~/.x-cmd.root ]          || rm -rf ~/.x-cmd.root
-}
-
-' >> "$builddir/x-cmd.install"
 }
