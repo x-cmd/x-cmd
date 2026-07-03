@@ -250,7 +250,7 @@ ___x_cmd_agent_request___run_attempt(){
     local ret=$?
 
     if [ $ret -eq 0 ]; then
-        agent:debug "Request completed successfully"
+        agent:info "Request to harness '$harness' completed successfully"
         return 0
     fi
 
@@ -291,6 +291,13 @@ ___x_cmd_agent_request___run_attempt(){
         agent:warn "Agent request interrupted by user (SIGINT)"
         ___X_CMD_RETRY_ABORT=1
         return "$____X_CMD_AGENT_ERR_SIGINT"
+    fi
+
+    # Any other failure: back up the current workspace session id so that the
+    # next retry will create a brand-new persistent session.
+    if [ -n "$workspace" ] && [ "$is_new_workspace_session" != "1" ]; then
+        agent:warn "Request failed (exit $ret), backing up current workspace session for retry with a new one"
+        ___x_cmd_agent_request___invalidate_current_session_
     fi
 
     return $ret
@@ -555,6 +562,23 @@ ___x_cmd_agent_request___handle_output(){
     harness="$harness" \
     ___x_cmd awk0 -m j/json -m j/jiter \
         -f "$___X_CMD_ROOT_MOD/agent/lib/awk/handle_output.awk"
+}
+
+___x_cmd_agent_request___invalidate_current_session_(){
+    local current_file="$session_metadata_dir/current"
+    [ -f "$current_file" ] || return 0
+
+    local invalid_session_id=""
+    read -r invalid_session_id < "$current_file"
+    [ -n "$invalid_session_id" ] || return 0
+
+    local ts=""
+    x_=""; ___x_cmd epoch get_; ts="$x_"
+
+    local invalid_dir="$session_metadata_dir/invalid"
+    ___x_cmd mkdirp "$invalid_dir"
+
+    ___x_cmd mv "$current_file" "$invalid_dir/$invalid_session_id.$ts"
 }
 
 ___x_cmd_agent_request___cursor_runcmd(){

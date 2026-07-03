@@ -1,5 +1,120 @@
 # shellcheck shell=dash
 
+___x_cmd_claw_run___workspace___sync(){
+    local workspace_dir="$1"
+    local source_dir="$2"
+    local harness="$3"
+
+    if [ ! -d "$workspace_dir" ]; then
+        ___x_cmd mkdirp "$workspace_dir"
+    fi
+
+    # Ensure missing template files are present without overwriting existing ones
+    local targetfp="" i=""
+    for i in "$source_dir"/*; do
+        [ -e "$i" ] || continue
+        fpname="${i#"$source_dir"/}"
+        case "$fpname" in
+            AGENTS.md|skills)   continue ;;
+        esac
+        targetfp="$workspace_dir/$fpname"
+        [ -e "$targetfp" ] || ___x_cmd cp -r "$i" "$targetfp"
+    done
+
+    # Handle AGENTS.md / CLAUDE.md based on harness
+    # Copy harness-specific skills directory from template to workspace
+    local agents_file="AGENTS.md"
+    local skills_dir=".agents/skills"
+    case "$harness" in
+        claude*)    agents_file="CLAUDE.md"; skills_dir=".claude/skills" ;;
+        codex*)     skills_dir=".codex/skills" ;;
+    esac
+
+    if [ -e "$source_dir/AGENTS.md" ] && [ ! -e "$workspace_dir/$agents_file" ]; then
+        ___x_cmd cp "$source_dir/AGENTS.md" "$workspace_dir/$agents_file"
+    fi
+
+    if [ -d "$source_dir/skills" ] && [ ! -e "$workspace_dir/$skills_dir" ]; then
+        ___x_cmd mkdirp "$workspace_dir/${skills_dir%/*}"
+        ___x_cmd cp -r "$source_dir/skills" "$workspace_dir/$skills_dir"
+    fi
+
+    # Ensure standard subdirectories exist
+    ___x_cmd mkdirp "$workspace_dir/memory"
+    ___x_cmd mkdirp "$workspace_dir/tmp"
+}
+
+___x_cmd_claw_run___workspace___create_runonce(){
+    local workspace_dir="$1"
+    local source_dir="$2"
+    local harness="$3"
+
+    local runonce_template="$___X_CMD_ROOT_MOD/claw/lib/data/prompt/runonce_workspace_check.md"
+    local current_time
+    current_time="$(___x_cmd_claw_run___util___current_time)"
+
+    {
+        ___x_cmd_cmds cat "$runonce_template"
+        printf "\n<variables>\n<variable name='SOURCE'>%s\n</variable>\n<variable name='TARGET'>%s\n</variable>\n<variable name='HARNESS'>%s\n</variable>\n<variable name='CREATED_AT'>%s\n</variable>\n</variables>\n" \
+            "$source_dir" "$workspace_dir" "$harness" "$current_time"
+    } > "$workspace_dir/RUNONCE.md"
+}
+
+___x_cmd_claw_run___workspace___check_update(){
+    local workspace_dir="$1"
+    local source_dir="$2"
+    local harness="$3"
+
+    local agents_file="AGENTS.md"
+    case "$harness" in
+        claude*)    agents_file="CLAUDE.md" ;;
+    esac
+
+    [ "$workspace_dir/$agents_file" -ot "$___X_CMD_ROOT_METADATA/version_sum" ] || return 0
+
+    claw:debug "[AGENT] Workspace template may have been updated: $workspace_dir"
+    ___x_cmd_cmds touch "$workspace_dir/$agents_file"
+
+    ___x_cmd_claw_run___workspace___create_runonce "$workspace_dir" "$source_dir" "$harness"
+    ! ___x_cmd_cmds grep -q "RUNONCE.md" "$workspace_dir/$agents_file" 2>/dev/null || return 0
+
+    claw:debug "[AGENT] Appending RUNONCE.md rule to $workspace_dir/$agents_file"
+    {
+        printf "\n\n"
+        printf "## System One-Time Tasks (RUNONCE.md)\n\n"
+        printf "Immediately after reading this file, check whether \`RUNONCE.md\` exists in the workspace root.\n\n"
+        printf "%s\n" "- If it exists: read it, follow its instructions, then delete it."
+        printf "%s\n" "- If it does not exist: proceed with the normal startup reading order."
+    } >> "$workspace_dir/$agents_file"
+}
+
+___x_cmd_claw_run___workspace___prepare(){
+    local im="$1";      [ -n "$im" ] || N=claw M="Please provide IM platform name (e.g., weixin|telegram)" log:ret:64
+    local chatid="$2";  [ -n "$chatid" ] || N=claw M="Please provide chatid" log:ret:64
+    local msg="${3:-}"
+
+    local workspace_dir="$___X_CMD_CLAW_BOT_WS/${im}-${chatid}"
+
+    local x_=""; ___x_cmd agent default_harness_ || {
+        claw:error "[AGENT] Failed to get default agent harness"
+        return 1
+    }
+    local harness="$x_"
+
+    local agents_file="AGENTS.md"
+    case "$harness" in
+        claude*)    agents_file="CLAUDE.md" ;;
+    esac
+
+    # Determine workspace template directory based on IM type
+    local template_dir="$___X_CMD_ROOT_MOD/claw/lib/data/workspace/msg"
+    case "$im" in
+        manager)    template_dir="$___X_CMD_ROOT_MOD/claw/lib/data/workspace/manager" ;;
+    esac
+    ___x_cmd_claw_run___workspace___sync "$workspace_dir" "$template_dir" "$harness"
+    ___x_cmd_claw_run___workspace___check_update "$workspace_dir" "$template_dir" "$harness"
+}
+
 ___x_cmd_claw_run___workspace___check(){
     local report=""
     local workspace_dir im_chatid im template_dir agents_file

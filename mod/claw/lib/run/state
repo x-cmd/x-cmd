@@ -1,0 +1,107 @@
+# shellcheck shell=dash
+
+# ---------------------------------------------------------------------------
+# Session-scoped agent failure state management
+# ---------------------------------------------------------------------------
+
+# Set x_ to the state file path for a given (im, chatid, source) tuple.
+# source is "msg" for message agents or "hb" for heartbeat agents.
+___x_cmd_claw_run___state___file_(){
+    local im="${1:-}"; local chatid="${2:-}"; local source="${3:-}"
+    x_="$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable/${source}.${im}-${chatid}"
+}
+
+# Set x_ to the cooldown period (seconds) for a given fail_count.
+___x_cmd_claw_run___state___cooldown_(){
+    local fail_count="${1:-0}"
+    case "$fail_count" in
+        0|1)    x_="0"    ;;
+        2)      x_="60"   ;;
+        3)      x_="120"  ;;
+        4)      x_="240"  ;;
+        5)      x_="480"  ;;
+        6)      x_="900"  ;;
+        *)      x_="3600" ;;
+    esac
+}
+
+___x_cmd_claw_run___state___check_unavailable(){
+    local im="${1:-}"; local chatid="${2:-}"; local source="${3:-msg}"
+    [ -n "$im" ] || { N=claw M="check_unavailable: im is required" log:ret:64; }
+    [ -n "$chatid" ] || { N=claw M="check_unavailable: chatid is required" log:ret:64; }
+
+    local x_=""
+    ___x_cmd_claw_run___state___file_ "$im" "$chatid" "$source"
+    local state_file="$x_"
+
+    [ -f "$state_file" ] || return 0
+
+    local fail_count=0 fail_ts=0
+    read -r fail_count fail_ts < "$state_file"
+    fail_count="${fail_count:-0}"
+    fail_ts="${fail_ts:-0}"
+
+    x_=""
+    ___x_cmd_claw_run___state___cooldown_ "$fail_count"
+    local cooldown="$x_" remaining
+
+    ___x_cmd date timestamp_
+    local elapsed=$(( x_ - fail_ts ))
+    if [ "$elapsed" -lt "$cooldown" ]; then
+        remaining=$(( cooldown - elapsed ))
+        claw:debug "[AGENT] [$source] Agent unavailable for $im:$chatid (fail_count=$fail_count), ${remaining}s cooldown remaining — skipping request"
+        return 1
+    fi
+
+    claw:info "[AGENT] [$source] Agent cooldown expired for $im:$chatid (fail_count=$fail_count, cooldown=${cooldown}s) — availability restored"
+    return 0
+}
+
+___x_cmd_claw_run___state___mark_unavailable(){
+    local im="${1:-}"; local chatid="${2:-}"; local source="${3:-msg}"
+    [ -n "$im" ] || { N=claw M="mark_unavailable: im is required" log:ret:64; }
+    [ -n "$chatid" ] || { N=claw M="mark_unavailable: chatid is required" log:ret:64; }
+
+    local x_=""
+    ___x_cmd_claw_run___state___file_ "$im" "$chatid" "$source"
+    local state_file="$x_"
+
+    local fail_count=0 fail_ts=0
+    if [ -f "$state_file" ]; then
+        read -r fail_count fail_ts < "$state_file"
+    fi
+    fail_count="${fail_count:-0}"
+    fail_count=$(( fail_count + 1 ))
+
+    ___x_cmd date timestamp_
+    ___x_cmd ensurefp "$state_file"
+    printf "%s %s\n" "$fail_count" "$x_" > "$state_file"
+
+    x_=""
+    ___x_cmd_claw_run___state___cooldown_ "$fail_count"
+    local cooldown="$x_"
+    claw:error "[AGENT] [$source] Agent marked unavailable for $im:$chatid (fail_count=$fail_count, cooldown=${cooldown}s)"
+}
+
+# Reset unavailable state for a specific session.
+# Called when user activity is detected for the given chat, or on explicit reset.
+___x_cmd_claw_run___state___reset_unavailable(){
+    local im="${1:-}"; local chatid="${2:-}"
+    [ -n "$im" ] && [ -n "$chatid" ] || return 0
+
+    local x_="" source
+    for source in msg hb; do
+        x_=""
+        ___x_cmd_claw_run___state___file_ "$im" "$chatid" "$source"
+        ___x_cmd rmrf "$x_"
+    done
+    x_=""
+    ___x_cmd_claw_run___state___notifylog_ "$im" "$chatid"
+    ___x_cmd rmrf "$x_"
+}
+
+# Set x_ to the notification log path for a chat.
+___x_cmd_claw_run___state___notifylog_(){
+    local im="$1"; local chatid="$2"
+    x_="$___X_CMD_CLAW_BOT_HEARTBEAT/error_notify/${im}-${chatid}"
+}

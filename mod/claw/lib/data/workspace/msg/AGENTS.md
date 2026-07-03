@@ -159,7 +159,7 @@ Treat `PLAN.md` as your checkpoint file — write it before starting anything th
 - Text: `x weixin send --text '<msg>'`
 - Image: `x weixin send --image <path>`
 - Video: `x weixin send --video <path>`
-- Format: Plain text, bullet lists, and emoji. No tables, no headings, partial markdown.
+- Format: Full markdown supported.
 
 > **Line breaks**: Do NOT use `\n` for line breaks inside quotes. The text `\n` will be printed literally. Use actual Enter key for real line breaks inside the quoted message.
 

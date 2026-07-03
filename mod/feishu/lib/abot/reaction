@@ -1,0 +1,110 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_feishu_abot_reaction(){
+    param:void
+
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local op="$1" ;     shift
+    case "$op" in
+        -h|--help)
+                ___x_cmd help -m feishu abot reaction ; return 0 ;;
+        add|rm)
+                ___x_cmd_feishu_abot_reaction_"$op" "$@" ;;
+        *)      N=feishu M="Unknown op -> $op" log:ret:64   ;;
+    esac
+}
+
+___x_cmd_feishu_abot_reaction_add(){
+    local msgid="" json_output=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --msgid)    msgid="$2" ; arg:2:shift ;;
+            -j|--json)  json_output=1; shift ;;
+            -h|--help)  ___x_cmd help -m feishu abot reaction add; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    [ -n "$msgid" ] || N=feishu M="Please specify the message id ==> '--msgid <message_id>'" log:ret:1
+
+    local emoji_type="$1"
+    [ -n "$emoji_type" ] || N=feishu M="Please specify the emoji type, e.g. SMILE / THUMBSUP / DONE." log:ret:1
+
+    local msg_json
+    msg_json="$(___x_cmd jq -n  \
+                    --arg emoji "$emoji_type" \
+                    '{reaction_type: {emoji_type: $emoji}
+                    }')"
+
+    feishu:debug "$(printf "%s" "$msg_json")"
+    local resp; resp="$(printf "%s" "$msg_json" | ___x_cmd_feishu_appreaction_add___ "$msgid")"
+
+    [ -z "$json_output" ] || {
+        printf "%s" "$resp"
+        return
+    }
+
+    local statu ; statu="$(printf "%s" "$resp" | {  ___x_cmd jo env .msg ; echo "$msg" ; })"
+    if [ "$statu" = "success" ]; then
+        local reaction_id; reaction_id="$(printf "%s" "$resp" | ___x_cmd jq -r '.data.reaction_id // empty')"
+        ___x_cmd_ui_tf true "Added emoji reaction successfully" "reaction_id:$reaction_id"
+    else
+        ___x_cmd_ui_tf false "Failed to add emoji reaction:" "ErrorMsg:$resp"
+    fi
+}
+
+___x_cmd_feishu_abot_reaction_rm(){
+    local msgid="" json_output=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --msgid)    msgid="$2" ; arg:2:shift ;;
+            -j|--json)  json_output=1; shift ;;
+            -h|--help)  ___x_cmd help -m feishu abot reaction rm; return 0 ;;
+            *) break ;;
+        esac
+    done
+
+    [ -n "$msgid" ] || N=feishu M="Please specify the message id ==> '--msgid <message_id>'" log:ret:1
+
+    local reaction_id="$1"
+    [ -n "$reaction_id" ] || N=feishu M="Please specify the reaction id to delete (obtained from 'x feishu abot reaction add')" log:ret:1
+
+    local resp; resp="$(___x_cmd_feishu_appreaction_del___ "$msgid" "$reaction_id")"
+
+    [ -z "$json_output" ] || {
+        printf "%s" "$resp"
+        return
+    }
+
+    local statu ; statu="$(printf "%s" "$resp" | {  ___x_cmd jo env .msg ; echo "$msg" ; })"
+    if [ "$statu" = "success" ]; then
+        ___x_cmd_ui_tf true "Removed emoji reaction successfully"
+    else
+        ___x_cmd_ui_tf false "Failed to remove emoji reaction:" "ErrorMsg:$resp"
+    fi
+}
+
+___x_cmd_feishu_appreaction_add___(){
+    local x_=; local cur_token
+    ____x_cmd_tenant_token ; cur_token="$x_"
+
+    local message_id="$1"
+
+    ___x_cmd curl -s -X POST "https://open.feishu.cn/open-apis/im/v1/messages/${message_id}/reactions" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $cur_token" \
+    -d @-
+}
+
+___x_cmd_feishu_appreaction_del___(){
+    local x_=; local cur_token
+    ____x_cmd_tenant_token ; cur_token="$x_"
+
+    local message_id="$1"
+    local reaction_id="$2"
+
+    ___x_cmd curl -s -X DELETE "https://open.feishu.cn/open-apis/im/v1/messages/${message_id}/reactions/${reaction_id}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $cur_token"
+}

@@ -4,7 +4,7 @@
 
 # x cron add --ns "x-claw/default" ""
 
-___x_cmd_claw_run___agentwork___heartbeat(){
+___x_cmd_claw_run___mq___dispatch_heartbeat(){
     if [ -n "$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR" ]; then
         local logfp="$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR/heartbeat.log"
         ___x_cmd ensurefp "$logfp"
@@ -24,15 +24,15 @@ ___x_cmd_claw_run___agentwork___heartbeat(){
     ___x_cmd_claw_run___heartbeat___weixin_session_check
 
     # Skip if previous heartbeat worker is still running
-    if ___x_cmd worker isalive --ns x-claw-default-worker --name x-claw-heartbeat; then
-        claw:debug "[HB] Global heartbeat worker (x-claw-heartbeat) still running — skipping this cycle"
+    if ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-orchestrator; then
+        claw:debug "[HB] Global heartbeat worker (heartbeat-orchestrator) still running — skipping this cycle"
         return 0
     fi
 
-    ___x_cmd worker run --ns x-claw-default-worker --name x-claw-heartbeat -- ___x_cmd_claw_run___heartbeat___orchestrate
+    ___x_cmd worker run --ns x-claw-default-worker --name heartbeat-orchestrator -- ___x_cmd_claw_run___heartbeat___tick
 }
 
-___x_cmd_claw_run___heartbeat___orchestrate(){
+___x_cmd_claw_run___heartbeat___tick(){
     if [ -n "$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR" ]; then
         local logfp="$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR/heartbeat.log"
         ___x_cmd ensurefp "$logfp"
@@ -68,7 +68,7 @@ ___x_cmd_claw_run___heartbeat___orchestrate(){
                 continue
             }
 
-            if ! ___x_cmd_claw_run___agentrequest___checkunavailable "$active_im" "$active_chatid" "msg"; then
+            if ! ___x_cmd_claw_run___state___check_unavailable "$active_im" "$active_chatid" "msg"; then
                 continue
             fi
 
@@ -103,7 +103,7 @@ ___x_cmd_claw_run___heartbeat___orchestrate(){
     [ ! -f "$idle_file" ] || read -r idle_count < "$idle_file"
     [ "$idle_count" -ge 3 ] || return 0
     claw:debug "[HB] Global idle counter = $idle_count — launching global heartbeat agent"
-    ___x_cmd_claw_run___agentrequest___handleheartbeat
+    ___x_cmd_claw_run___agent___exec_heartbeat
 }
 
 ___x_cmd_claw_run___heartbeat___probe(){
@@ -112,15 +112,15 @@ ___x_cmd_claw_run___heartbeat___probe(){
     local heartbeat_ok_file="$___X_CMD_CLAW_BOT_WS/HEARTBEAT_OK"
 
     # Activity: unread message pending to be processed — launch agent if not already handling
-    if ___x_cmd claw "$current_im" has-unread "$current_chatid" && ! ___x_cmd worker isalive --ns x-claw-default-worker --name "${current_im}-${current_chatid}"; then
+    if ___x_cmd claw "$current_im" has-unread "$current_chatid" && ! ___x_cmd worker isalive --ns x-claw-default-worker --name "chat-${current_im}-${current_chatid}"; then
         ___x_cmd rmrf "$heartbeat_ok_file"
         claw:info "[HB] [$current_im:$current_chatid] Unread messages detected — launching message handler"
-        ___x_cmd_claw_run___agentwork___handlemsg "${current_im}:${current_chatid}"
+        ___x_cmd_claw_run___mq___dispatch_chat "${current_im}:${current_chatid}"
         return 0
     fi
 
     # Activity: message worker still running
-    if ___x_cmd worker isalive --ns x-claw-default-worker --name "${current_im}-${current_chatid}"; then
+    if ___x_cmd worker isalive --ns x-claw-default-worker --name "chat-${current_im}-${current_chatid}"; then
         claw:debug "[HB] [$current_im:$current_chatid] Message handler still active"
         ___x_cmd rmrf "$heartbeat_ok_file"
         return 0
@@ -183,7 +183,7 @@ ___x_cmd_claw_run___heartbeat___heartbeat_ok_check_(){
     return 1
 }
 
-___x_cmd_claw_run_hearbeatgenerator(){
+___x_cmd_claw_run___heartbeat_generator(){
     local mqdir="$1"
     local x_
 

@@ -16,6 +16,14 @@ ___X_CMD_EGET_TMP="$___X_CMD_ROOT_TMP/eget"
 ___X_CMD_EGET_DATA="$___X_CMD_ROOT_DATA/eget"
 ___x_cmd mkdirp "${___X_CMD_EGET_DATA}" "${___X_CMD_EGET_TMP}"
 
+# Newline constant for list accumulators in detect/extract. $NL is NOT a
+# shell builtin (dash has no such variable); left unset, expressions like
+# ${list:+$NL} join entries with NO separator, so multi-entry candidate
+# lists collapse into one mangled line whose basename is the last file —
+# breaking Tier-1 name matching on multi-binary archives.
+NL='
+'
+
 ___x_cmd_eget___main(){
     [ "$#" -gt 0 ] || set -- --help
 
@@ -37,6 +45,7 @@ ___x_cmd_eget___main(){
         extract)            ___x_cmd_eget_subcmd_extract "$@"; return ;;
         verify)             ___x_cmd_eget_subcmd_verify "$@"; return ;;
         rate)               ___x_cmd_eget_api_rate "$@"; return ;;
+        html)               ___x_cmd_eget_subcmd_html "$@"; return ;;
         remove)             ___x_cmd_eget___remove "$@"; return ;;
         download|run|get)   ___x_cmd_eget_download "$@"; return ;;
         *)                  ___x_cmd_eget_download "$op" "$@" ;;
@@ -119,6 +128,39 @@ ___x_cmd_eget___remove(){
 }
 
 # --- Subcommands ---
+
+# html — scrape the GitHub releases page for release info. The diagnostic
+# counterpart of the API path: when api.github.com is rate-limited or
+# otherwise unreachable, the release page and its expanded_assets view are
+# much more leniently throttled. Exposed as a subcmd so the parser is
+# directly testable (and so the user can see what the HTML fallback sees).
+# Mirrors the grep approach in edwinjhlee's comment on issue #33.
+___x_cmd_eget_subcmd_html(){
+    case "${1:-}" in -h|--help) ___x_cmd help -m eget html; return 0 ;; esac
+
+    local target="" _tag=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -t|--tag) shift; _tag="$1" ;;
+            -*)       N=eget M="html: unknown option: $1" log:ret:64; return ;;
+            *)        [ -z "$target" ] && target="$1" || { N=eget M="html: unexpected argument: $1" log:ret:64; return; } ;;
+        esac
+        shift
+    done
+
+    [ -n "$target" ] || { N=eget M="html: missing target (user/repo)" log:ret:64; return; }
+    case "$target" in
+        */*) ;;
+        *)    N=eget M="html: invalid target format: $target (expected user/repo)" log:ret:64; return ;;
+    esac
+
+    local owner="${target%%/*}" repo="${target#*/}"
+    local json
+    json="$( ___x_cmd_eget_api_release_html "github" "$owner" "$repo" "$_tag" )" || {
+        N=eget M="html: failed to fetch release info for $target" log:ret:1; return
+    }
+    printf "%s" "$json" | ___x_cmd jq .
+}
 
 ___x_cmd_eget_subcmd_extract(){
     case "${1:-}" in -h|--help) ___x_cmd help -m eget extract; return 0 ;; esac

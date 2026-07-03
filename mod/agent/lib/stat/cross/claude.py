@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# shellcheck shell=python
 """
 cross_claude.py -- cross-session (multi-session) turn-level statistics.
 

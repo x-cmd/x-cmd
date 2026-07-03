@@ -30,7 +30,7 @@ RUN dnf install -y rpmdevtools rpmlint' > ".build/fedora-builder.Dockerfile"
 
     # Lint SPEC file before building
     echo "===== rpmlint SPECS/x-cmd.spec ====="
-    rpmlint SPECS/x-cmd.spec 2>&1 | tee rpmlint.spec.log || true
+    rpmlint -r SPECS/x-cmd.rpmlintrc --ignore-unused-rpmlintrc SPECS/x-cmd.spec 2>&1 | tee rpmlint.spec.log || true
 
     su -c "rpmbuild -ba /home/builder/rpmbuild/SPECS/x-cmd.spec" builder || exit 1
 
@@ -38,7 +38,7 @@ RUN dnf install -y rpmdevtools rpmlint' > ".build/fedora-builder.Dockerfile"
     echo "===== rpmlint RPMS/noarch/x-cmd-*.rpm ====="
     for rpm in RPMS/noarch/x-cmd-*.rpm; do
         [ -f "$rpm" ] || continue
-        rpmlint "$rpm" 2>&1 | tee "rpmlint.$(basename "$rpm").log" || true
+        rpmlint -r SPECS/x-cmd.rpmlintrc --ignore-unused-rpmlintrc "$rpm" 2>&1 | tee "rpmlint.$(basename "$rpm").log" || true
     done
 ' || return "$?"
 
@@ -66,10 +66,11 @@ ___x_cmd_version_build_rpm_builddir(){
     ___x_cmd mkdirp "$builddir/SOURCES"
     ___x_cmd mkdirp "$builddir/SPECS"
     ___x_cmd mkdirp "$builddir/SRPMS"
-    cp -rf ".build/x-cmd-${version}.tgz" "$builddir/SOURCES/x-cmd-${version}.tgz"
+    cp -rf ".build/x-cmd-${version}.tgz" "$builddir/SOURCES/x-cmd-${version#v}.tgz"
 
-    printf "%s\n" 'Name:           x-cmd
-Version:        '"${version}"'
+    printf "%s\n" '%global __requires_exclude ^/data/data/com.termux/.*$
+Name:           x-cmd
+Version:        '"${version#v}"'
 Release:        1%{?dist}
 Summary:        '"$summary"'
 BuildArch:      noarch
@@ -86,7 +87,7 @@ Requires:       /usr/bin/bash
 %global _pkgdir  %{_prefix}/share/x-cmd/v/%{_pkgsum}
 
 %description
- X-CMD is a modern toolkit for POSIX shell (bash, zsh, ash, dash) — designed
+ A modern toolkit for POSIX shell (bash, zsh, ash, dash) — designed
  to make shell as powerful as Python'\''s standard library.
 
 %build
@@ -120,8 +121,17 @@ fi
 %{_bindir}/x-cmd
 
 %changelog
-* Mon Feb 24 2025 Li Junhao <l@x-cmd.com> - '"${version}"'-1
+* Mon Feb 24 2025 Li Junhao <l@x-cmd.com> - '"${version#v}"'-1
 - First time packaging x-cmd into an RPM package
 
 ' > "$builddir/SPECS/x-cmd.spec"
+
+
+    printf "%s\n" '# rpmlint config for x-cmd
+# Filter known x-cmd packaging false positives.
+# Format: legacy rpmlint INI. addFilter() takes a regex matched against
+# the full "level: checkname path" string.
+addFilter("W: hidden-file-or-dir /usr/share/x-cmd/v/[^/]+.*")
+addFilter("W: no-manual-page-for-binary x-cmd")
+' > "$builddir/SPECS/x-cmd.rpmlintrc"
 }

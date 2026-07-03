@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# shellcheck shell=python
 """
 Output the built-in model pricing table in TSV format for AI Agent consumption.
 

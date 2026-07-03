@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# shellcheck shell=python
 """
 parse_claude.py -- extract per-turn statistics from a Claude Code session JSONL.
 

@@ -1,8 +1,10 @@
+# shellcheck shell=dash
 
 ___x_cmd_worker_ls(){
 
     local fmt=tsv
     local ns="x-worker-default"
+    local x_=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -14,9 +16,15 @@ ___x_cmd_worker_ls(){
         esac
     done
 
+    ___x_cmd_worker_id_ "$ns"; ns="$x_"
     local dir="$___X_CMD_ROOT_DATA/worker/$ns"
     [ -d "$dir" ] || return 0
     ___x_cmd_worker_ls_"$fmt"
+}
+
+___x_cmd_worker_json_str_(){
+    x_="$1"
+    x_=$(printf '%s' "$x_" | sed 's/\\/\\\\/g; s/"/\\"/g')
 }
 
 ___x_cmd_worker_ls_tsv(){
@@ -48,4 +56,52 @@ ___x_cmd_worker_ls_tsv(){
     done <<A
 $x_
 A
+}
+
+___x_cmd_worker_ls_json(){
+    local x_
+    ___x_cmd fsiter --dir_ "$dir"
+
+    local runnerfile_pid
+    local name process_id fingerprint stime state
+    local name_json pid_json fingerprint_json stime_json state_json
+    local first=1
+
+    printf "[\n"
+    while read -r name; do
+        runnerfile_pid="$dir/$name/_PIDFILE"
+        [ -f "$runnerfile_pid" ] || continue
+
+        {
+            read -r process_id
+            read -r fingerprint
+            read -r stime
+        } < "$runnerfile_pid"
+
+        state="ongoing"
+        ___x_cmd ps fingerprint check "$process_id" "$fingerprint" || state="done"
+
+        [ "$first" -eq 1 ] || printf ",\n"
+        first=0
+
+        ___x_cmd_worker_json_str_ "${name#runner.}"; name_json="$x_"
+        ___x_cmd_worker_json_str_ "$process_id"; pid_json="$x_"
+        ___x_cmd_worker_json_str_ "$fingerprint"; fingerprint_json="$x_"
+        ___x_cmd_worker_json_str_ "$stime"; stime_json="$x_"
+        ___x_cmd_worker_json_str_ "$state"; state_json="$x_"
+
+        printf "  {\"name\": \"%s\", \"pid\": \"%s\", \"fingerprint\": \"%s\", \"stime\": \"%s\", \"state\": \"%s\"}" \
+            "$name_json" "$pid_json" "$fingerprint_json" "$stime_json" "$state_json"
+    done <<A
+$x_
+A
+    if [ "$first" -eq 1 ]; then
+        printf "]\n"
+    else
+        printf "\n]\n"
+    fi
+}
+
+___x_cmd_worker_ls_yml(){
+    ___x_cmd_worker_ls_json | ___x_cmd yml j2y
 }

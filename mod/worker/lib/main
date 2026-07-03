@@ -1,5 +1,20 @@
 # shellcheck shell=dash
 
+___x_cmd_worker_id_(){
+    x_="$1"
+    if [ "$___X_CMD_SHELL" != dash ]; then
+        # shellcheck disable=SC3060
+        x_="${x_//\//_}"
+    else
+        local part=
+        while [ -n "$x_" ]; do
+            part="${x_%%/*}"
+            [ "$part" != "$x_" ] || break
+            x_="${part}_${x_#*/}"
+        done
+    fi
+}
+
 xrc:mod:lib     worker   ls
 
 ___x_cmd_worker___main(){
@@ -10,13 +25,14 @@ ___x_cmd_worker___main(){
         -h|--help)          ___x_cmd help -m worker "$@" ; return 0 ;;
         isalive|info|run|stop|ls)
                             ___x_cmd_worker_"$op"  "$@" ;;
-        *)                  N=claw M="Unknown subcmd -> $op" log:ret:64
+        *)                  N=worker M="Unknown subcmd -> $op" log:ret:64
     esac
 }
 
 ___x_cmd_worker_isalive(){
     local ns="x-worker-default"
     local name=""
+    local x_=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -28,7 +44,9 @@ ___x_cmd_worker_isalive(){
         esac
     done
 
-    [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
+    [ -n "$name" ] || N=worker M="Please provide runner name" log:ret:64
+    ___x_cmd_worker_id_ "$ns"; ns="$x_"
+    ___x_cmd_worker_id_ "$name"; name="$x_"
     local dir="$___X_CMD_ROOT_DATA/worker/$ns"
     local runnerfile_pid="$dir/runner.$name/_PIDFILE"
     [ -f "$runnerfile_pid" ] || return 1
@@ -47,6 +65,7 @@ ___x_cmd_worker_isalive(){
 ___x_cmd_worker_info(){
     local ns="x-worker-default"
     local name=""
+    local x_=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -58,7 +77,9 @@ ___x_cmd_worker_info(){
         esac
     done
 
-    [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
+    [ -n "$name" ] || N=worker M="Please provide runner name" log:ret:64
+    ___x_cmd_worker_id_ "$ns"; ns="$x_"
+    ___x_cmd_worker_id_ "$name"; name="$x_"
     local dir="$___X_CMD_ROOT_DATA/worker/$ns"
     local runnerfile_pid="$dir/runner.$name/_PIDFILE"
     [ -f "$runnerfile_pid" ] || return 1
@@ -82,6 +103,7 @@ ___x_cmd_worker_info(){
 ___x_cmd_worker_run(){
     local ns="x-worker-default"
     local name=""
+    local x_=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -93,20 +115,27 @@ ___x_cmd_worker_run(){
         esac
     done
 
-    [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
+    [ -n "$name" ] || N=worker M="Please provide runner name" log:ret:64
+
+    ___x_cmd_worker_id_ "$ns"; ns="$x_"
+    ___x_cmd_worker_id_ "$name"; name="$x_"
+
+    ___x_cmd fslock run "x-cmd-worker-pid-file-lock-$ns-$name" ___x_cmd_worker_run___locked "$@"
+}
+
+___x_cmd_worker_run___locked(){
+    if ___x_cmd_worker_isalive --ns "$ns" --name "$name" 2>/dev/null; then
+        ___x_cmd log :worker warn "Worker already running -> $ns/$name, stopping it first"
+        ___x_cmd_worker_stop___locked || return $?
+    fi
+
     local dir="$___X_CMD_ROOT_DATA/worker/$ns"
     local runnerfile_dir="$dir/runner.$name"
     local runnerfile_pid="$runnerfile_dir/_PIDFILE"
 
-    if ___x_cmd_worker_isalive --ns "$ns" --name "$name" 2>/dev/null; then
-        ___x_cmd log :worker warn "Worker already running -> $ns/$name, stopping it first"
-        ___x_cmd_worker_stop --ns "$ns" --name "$name" || return $?
-    fi
-
     ___x_cmd mkdirp "$runnerfile_dir"
 
     local process_id
-    local x_
 
     (
         trap ":;" HUP ;
@@ -125,7 +154,6 @@ ___x_cmd_worker_run(){
         local stime="$x_"
 
         printf "%s\n" "$process_id" "$fingerprint" "$stime">"$runnerfile_pid"
-        ___x_cmd_cmds sleep 0.1     # TODO: in the future. we will have a creator lock.
     )
 
 }
@@ -134,6 +162,7 @@ ___x_cmd_worker_stop(){
     local ns="x-worker-default"
     local name=""
     local timeout=3
+    local x_=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -146,7 +175,14 @@ ___x_cmd_worker_stop(){
         esac
     done
 
-    [ -n "$name" ] || N=claw M="Please provide runner name" log:ret:64
+    [ -n "$name" ] || N=worker M="Please provide runner name" log:ret:64
+    ___x_cmd_worker_id_ "$ns"; ns="$x_"
+    ___x_cmd_worker_id_ "$name"; name="$x_"
+
+    ___x_cmd fslock run "x-cmd-worker-pid-file-lock-$ns-$name" ___x_cmd_worker_stop___locked
+}
+
+___x_cmd_worker_stop___locked(){
     local dir="$___X_CMD_ROOT_DATA/worker/$ns"
     local runnerfile_dir="$dir/runner.$name"
     local runnerfile_pid="$runnerfile_dir/_PIDFILE"

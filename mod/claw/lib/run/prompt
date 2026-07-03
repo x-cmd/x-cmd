@@ -1,0 +1,189 @@
+# shellcheck shell=dash
+
+___x_cmd_claw_run___prompt___build_chat_(){
+    local im="$1";      [ -n "$im" ] || N=claw M="Please provide IM platform name (e.g., weixin|telegram)" log:ret:64
+    local chatid="$2";  [ -n "$chatid" ] || N=claw M="Please provide chatid" log:ret:64
+    local msg="$3";     [ -n "$msg" ] || N=claw M="Please provide message" log:ret:64
+
+    local workspace_dir="$___X_CMD_CLAW_BOT_WS/${im}-${chatid}"
+    local is_first_contact=0
+    [ ! -d "$workspace_dir" ] && is_first_contact=1
+
+    ___x_cmd_claw_run___workspace___prepare "$im" "$chatid" "$msg" || return $?
+
+    x_=""; ___x_cmd agent default_harness_ || {
+        claw:error "[AGENT] Failed to get default agent harness"
+        return 1
+    }
+    local harness="$x_"
+
+    local agents_file="AGENTS.md"
+    case "$harness" in
+        claude*)    agents_file="CLAUDE.md" ;;
+    esac
+
+    local template_dir="$___X_CMD_ROOT_MOD/claw/lib/data/workspace/msg"
+    case "$im" in
+        manager)    template_dir="$___X_CMD_ROOT_MOD/claw/lib/data/workspace/manager" ;;
+    esac
+
+    local first_contact_prompt=""
+    if [ "$is_first_contact" -eq 1 ]; then
+        case "$im" in
+            manager)
+                first_contact_prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/first_contact_manager.md" 2>/dev/null)"
+                ;;
+            *)
+                first_contact_prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/first_contact.md" 2>/dev/null)"
+                ;;
+        esac
+    fi
+
+    local prompt=""
+    case "$im" in
+        manager)
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_manager.md" 2>/dev/null)" || {
+                claw:error "[AGENT] Failed to read msg prompt template for manager"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd_claw_run___util___current_time)
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+        weixin)
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_weixin.md" 2>/dev/null)" || {
+                claw:error "[AGENT] Failed to read msg prompt template for weixin"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd_claw_run___util___current_time)
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+        telegram)
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_telegram.md" 2>/dev/null)" || {
+                claw:error "[AGENT] Failed to read msg prompt template for telegram"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd_claw_run___util___current_time)
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+        feishu)
+            local feishu_connect_prompt=""
+            case "$chatid" in
+                ou_*)
+                    feishu_connect_prompt="
+CLAW CONNECT — ADD MORE FEISHU GROUP CHATS:
+  Users typically start with a single chat with you, then may ask you to connect more Feishu group chats.
+  When a user asks to connect a group chat in Feishu, run:
+  - Connect a specific group: x claw connect feishu:oc_xxx
+    The user will provide the Group ID (oc_xxx) in the chat message.
+    List available groups and their IDs: x feishu group ls
+  - Connect all groups: x claw connect feishu:groups
+  - Disconnect a specific group: x claw disconnect feishu:oc_xxx
+  - Disconnect all groups: x claw disconnect feishu:groups
+  Note: Each group chat spawns an independent Agent session. Just run the connect command from this current single chat — no need to enter the group chat itself." ;;
+                oc_*)
+                    feishu_group_notice="
+GROUP CHAT GUIDELINES:
+  You are in a Feishu group chat. All members can see your replies.
+  - Privacy: Do not reveal sensitive information (API keys, tokens, passwords, internal URLs).
+  - Relevance: Only reply to messages that are relevant to your purpose. Ignore off-topic chatter.
+  - Mention-aware: If a user @mentions you, prioritize responding to them.
+  - Conciseness: Keep replies brief and to the point in group settings.
+  - No spam: Do not reply to every single message; only engage when useful.
+
+=== GROUP CHAT AWARENESS (silent, do NOT tell user) ===
+If \`<WORKSPACE_DIR>/feishu_group_members.md\` does not exist, run:
+  . ~/.x-cmd.root/X && x feishu group member \"<CHATID>\" --json
+Build a private mapping of member display_name ↔ open_id (ou_*), and identify the owner/manager(s).
+Save it to \`<WORKSPACE_DIR>/feishu_group_members.md\`.
+Use this mapping to recognize speakers in the group, but never expose the full member list or IDs in chat replies."
+                    ;;
+            esac
+
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_feishu.md" 2>/dev/null)" || {
+                claw:error "[AGENT] Failed to read msg prompt template for feishu"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='FEISHU_CONNECT_PROMPT'>${feishu_connect_prompt}
+</variable>
+<variable name='FEISHU_GROUP_NOTICE'>${feishu_group_notice}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd_claw_run___util___current_time)
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+        qywx)
+            prompt="$(___x_cmd_cmds cat "$___X_CMD_ROOT_MOD/claw/lib/data/prompt/msg_qywx.md" 2>/dev/null)" || {
+                claw:error "[AGENT] Failed to read msg prompt template for qywx"
+                return 1
+            }
+            prompt="$prompt
+<variables>
+<variable name='AGENTS_FILE'>${agents_file}
+</variable>
+<variable name='FIRST_CONTACT_PROMPT'>${first_contact_prompt}
+</variable>
+<variable name='CHATID'>${chatid}
+</variable>
+<variable name='WORKSPACE_DIR'>${workspace_dir}
+</variable>
+<variable name='CURRENT_TIME'>$(___x_cmd_claw_run___util___current_time)
+</variable>
+<variable name='MSG'>${msg}
+</variable>
+</variables>"
+            ;;
+    esac
+
+    x_="$prompt"
+}

@@ -1,0 +1,191 @@
+
+___x_cmd_version_build_test(){
+    local version="" name="" file=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --version)      version="$2";  arg:2:shift        ;;
+            --file)         file="$2";     arg:2:shift        ;;
+            deb|apk|rpm|arch)
+                            name="$1";       shift  ;;
+            --help|-h)      ___x_cmd help -m version build; return   ;;
+            *)              ___x_cmd help -m version build >&2 ; return 64    ;;
+        esac
+    done
+
+    # --- --file mode: stage local file, derive test env, skip downloads ---
+    if [ -n "$file" ]; then
+        [ -f "$file" ] || N=version M="--file not found [path=$file]" log:ret:1
+
+        local basename; basename="$(basename -- "$file")"
+
+        local file_type=""
+        case "$basename" in
+            *.rpm)                  file_type="rpm"  ;;
+            *.deb)                  file_type="deb"  ;;
+            *.apk)                  file_type="apk"  ;;
+            *.pkg.tar.zst|*.pkg.tar.gz|*.pkg.tar.xz|*.pkg.tar)
+                                    file_type="arch" ;;
+            *) N=version M="Unsupported package format [file=$basename]. Expected: .rpm .deb .apk .pkg.tar.*" log:ret:1 ;;
+        esac
+
+        if [ -n "$name" ] && [ "$name" != "$file_type" ]; then
+            N=version M="Extension/Type mismatch [ext=$file_type] [type=$name]" log:ret:1
+        fi
+        name="$file_type"
+
+        ___x_cmd mkdirp .test
+        cp -f -- "$file" ".test/$basename"
+
+        ___x_cmd_version_build_test_"${name}"_docker
+        return $?
+    fi
+
+    # --- original flow: download from GitHub release ---
+    (
+        ___x_cmd mkdirp .test
+        cd .test
+        [ -f "x-cmd_${version#v}_all.apk" ]         || ___x_cmd gh repo file download --repo "x-cmd/release" "dist/$version/x-cmd_${version#v}_all.apk"
+        [ -f "x-cmd_${version#v}_all.deb" ]         || ___x_cmd gh repo file download --repo "x-cmd/release" "dist/$version/x-cmd_${version#v}_all.deb"
+        [ -f "x-cmd_${version#v}_all.rpm" ]         || ___x_cmd gh repo file download --repo "x-cmd/release" "dist/$version/x-cmd_${version#v}_all.rpm"
+        [ -f "x-cmd_${version#v}_all.pkg.tar.zst" ] || ___x_cmd gh repo file download --repo "x-cmd/release" "dist/$version/x-cmd_${version#v}_all.pkg.tar.zst"
+    )
+
+    [ -n "$name" ] || {
+        ___x_cmd_version_build_test_apk_docker || return 1
+        ___x_cmd_version_build_test_deb_docker || return 1
+        ___x_cmd_version_build_test_rpm_docker || return 1
+        ___x_cmd_version_build_test_arch_docker
+        return
+    }
+
+    ___x_cmd_version_build_test_"${name}"_docker
+}
+
+___x_cmd_version_build_test_apk_docker(){
+    docker run --rm -v "$PWD/.test:/home/tester" alpine sh -c '
+        apk add sudo
+        echo "tester ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+        adduser -D tester
+        chown -R tester:tester /home/tester
+
+        su - tester -c "
+            cd /home/tester
+            pkgname=\$(ls -1 *.apk 2>/dev/null | head -n 1)
+            if [ -z \"\$pkgname\" ]; then
+                echo \"错误: 未找到 .apk 文件\"
+                exit 1
+            fi
+
+            echo \"=== 开始安装 ===\"
+            sudo apk add --allow-untrusted \"./\$pkgname\"
+
+            echo \"=== 开始测试 ===\"
+            x-cmd
+
+            echo \"=== 卸载清理 ===\"
+            sudo apk del x-cmd
+        "
+    ' || return 1
+}
+
+___x_cmd_version_build_test_deb_docker(){
+    docker run -it -v "$PWD/.test:/home/tester" ubuntu bash -c '
+        sed -i "s/archive.ubuntu.com/mirrors.aliyun.com/g" /etc/apt/sources.list
+        sed -i "s/security.ubuntu.com/mirrors.aliyun.com/g" /etc/apt/sources.list
+
+        apt-get update && apt-get install -y sudo
+        useradd -m -s /bin/bash tester
+        echo "tester ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+        chown -R tester:tester /home/tester
+
+        su - tester -c "
+            cd /home/tester
+            pkgname=\$(ls -1 *.deb 2>/dev/null | head -n 1)
+            if [ -z \"\$pkgname\" ]; then
+                echo \"错误: 未找到 .deb 文件\"
+                exit 1
+            fi
+
+            echo \"=== 开始安装 ===\"
+            sudo apt-get install -y \"./\$pkgname\"
+
+            echo \"=== 开始测试 ===\"
+            x-cmd
+        "
+    ' || return 1
+}
+
+___x_cmd_version_build_test_rpm_docker(){
+    docker run --rm -v "$PWD/.test:/home/tester" fedora bash -c '
+        # 最小 fedora 镜像不带 util-linux（提供 su）和 sudo，先装上
+        dnf install -y -q util-linux sudo
+        useradd -m -s /bin/bash tester
+        echo "tester ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+        chown -R tester:tester /home/tester
+
+        # 2. 切换到 tester 用户执行
+        su - tester -c "
+            cd /home/tester
+            pkgname=\$(ls -1 *.rpm 2>/dev/null | head -n 1)
+            if [ -z \"\$pkgname\" ]; then
+                echo \"错误: 未找到 .rpm 文件\"
+                exit 1
+            fi
+
+            echo \"=== 开始安装 ===\"
+            # dnf 可以直接指定本地路径安装
+            sudo dnf install -y \"./\$pkgname\"
+
+            echo \"=== 开始测试 ===\"
+            x-cmd
+
+            echo \"=== 再次验证 ===\"
+            x-cmd id
+            x id
+
+            echo \"=== 卸载清理 ===\"
+            sudo dnf remove -y x-cmd
+            "
+    ' || return 1
+}
+
+
+___x_cmd_version_build_test_arch_docker(){
+    docker run --rm -v "$PWD/.test:/home/tester" archlinux bash -c '
+    echo '\''Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch'\'' > /etc/pacman.d/mirrorlist && \
+        pacman-key --init && \
+        pacman-key --populate archlinux && \
+        pacman -Sy --noconfirm archlinux-keyring && \
+        pacman -Syu --noconfirm --needed sudo
+
+        # 2. 配置用户
+        useradd -m -s /bin/bash tester
+        echo "tester ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+        chown -R tester:tester /home/tester
+
+        # 3. 切换到 tester 用户执行
+        su - tester -c "
+            cd /home/tester
+            # 匹配 .pkg.tar.zst 后缀
+            pkgname=\$(ls -1 *.pkg.tar.zst 2>/dev/null | head -n 1)
+            if [ -z \"\$pkgname\" ]; then
+                echo \"错误: 未找到 Arch 包 (.pkg.tar.zst)\"
+                exit 1
+            fi
+
+            echo \"=== 开始安装 ===\"
+            # pacman -U 用于安装本地或远程文件包
+            sudo pacman -U --noconfirm \"./\$pkgname\"
+
+            echo \"=== 开始测试 ===\"
+            x-cmd
+
+            echo \"=== 再次验证 ===\"
+            x-cmd id
+            x id
+
+            echo \"=== 卸载清理 ===\"
+            sudo pacman -Rns --noconfirm x-cmd
+            "
+    ' || return 1
+}
