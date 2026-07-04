@@ -1,0 +1,130 @@
+# shellcheck shell=dash disable=SC2016
+
+# Pending acknowledgement mechanism for x claw.
+# When an agent request takes longer than expected without sending any message,
+# a short random acknowledgement is sent to reassure the user that claw is
+# still processing their request. This only applies to single chats.
+
+___x_cmd_claw_run___pending_ack___is_single_chat(){
+    local im="$1"
+    local chatid="$2"
+
+    case "$im" in
+        feishu)
+            case "$chatid" in
+                oc_*|groups)    return 1 ;;
+                *)              return 0 ;;
+            esac
+            ;;
+        *)
+            # All other platforms are treated as single chat for now.
+            return 0
+            ;;
+    esac
+}
+
+___x_cmd_claw_run___pending_ack___pick_random(){
+    local file="$___X_CMD_ROOT_MOD/claw/lib/data/pending_ack_messages.txt"
+    [ -f "$file" ] || {
+        printf "%s\n" "Working..."
+        return 0
+    }
+
+    ___x_cmd_cmds awk -v seed="$$" '
+        BEGIN { srand(seed) }
+        /^#/ || /^$/ { next }
+        { lines[n++] = $0 }
+        END {
+            if (n == 0) {
+                print "Working..."
+                exit 0
+            }
+            print lines[int(rand() * n)]
+        }
+    ' "$file"
+}
+
+___x_cmd_claw_run___pending_ack___send(){
+    local im="$1"
+    local chatid="$2"
+
+    local msg
+    msg="$(___x_cmd_claw_run___pending_ack___pick_random)" || return 1
+
+    case "$im" in
+        weixin)     ___x_cmd_claw_weixin_send --chatid "$chatid" --text "$msg" ;;
+        telegram)   ___x_cmd_claw_telegram_send --chatid "$chatid" --text "$msg" ;;
+        feishu)     ___x_cmd_claw_feishu_send --chatid "$chatid" --text "$msg" ;;
+        qywx)       ___x_cmd_claw_qywx_send --chatid "$chatid" --text "$msg" ;;
+        *)          claw:warn "[PENDING_ACK] Unsupported IM platform: $im"; return 1 ;;
+    esac
+}
+
+___x_cmd_claw_run___pending_ack___sent_after_(){
+    local im="$1"
+    local chatid="$2"
+    local start_ts="$3"
+
+    local sent_data_path
+    case "$im" in
+        weixin)     sent_data_path="$___X_CMD_ROOT_DATA/weixin/bot/sent/data_${chatid}.tsv" ;;
+        telegram)   sent_data_path="$___X_CMD_ROOT_DATA/telegram/bot/sent/data_${chatid}.tsv" ;;
+        feishu)     sent_data_path="$___X_CMD_ROOT_DATA/feishu/abot/sent/data_${chatid}.tsv" ;;
+        qywx)       sent_data_path="$___X_CMD_ROOT_DATA/qywx/abot/sent/data_${chatid}.tsv" ;;
+        *)          return 1 ;;
+    esac
+
+    [ -f "$sent_data_path" ] || return 1
+
+    ___x_cmd_cmds awk -F "\t" -v start_ts="$start_ts" '
+        $1 > start_ts { found = 1; exit }
+        END { exit !found }
+    ' "$sent_data_path"
+}
+
+___x_cmd_claw_run___pending_ack___background(){
+    local im="$1"
+    local chatid="$2"
+    local start_ts="$3"
+    local worker_name="$4"
+    local delay="${5:-120}"
+
+    sleep "$delay"
+
+    if ! ___x_cmd worker isalive --ns x-claw-default-worker --name "$worker_name"; then
+        claw:debug "[PENDING_ACK] Worker $worker_name is no longer alive, skipping"
+        return 0
+    fi
+
+    if ___x_cmd_claw_run___pending_ack___sent_after_ "$im" "$chatid" "$start_ts"; then
+        claw:debug "[PENDING_ACK] Agent already sent a message, skipping"
+        return 0
+    fi
+
+    claw:info "[PENDING_ACK] Sending pending ack to $im:$chatid after ${delay}s"
+    ___x_cmd_claw_run___pending_ack___send "$im" "$chatid"
+}
+
+___x_cmd_claw_run___pending_ack___start(){
+    local im="$1"
+    local chatid="$2"
+    local start_ts="$3"
+    local worker_name="$4"
+
+    if ! ___x_cmd_claw_run___pending_ack___is_single_chat "$im" "$chatid"; then
+        claw:debug "[PENDING_ACK] $im:$chatid is not a single chat, skipping"
+        return 0
+    fi
+
+    local delay="${___X_CMD_CLAW_PENDING_ACK_DELAY:-60}"
+    case "$delay" in
+        ''|*[!0-9]*)
+            claw:warn "[PENDING_ACK] Invalid delay \"$delay\", using default 60"
+            delay=60
+            ;;
+    esac
+
+    (
+        ___x_cmd_claw_run___pending_ack___background "$im" "$chatid" "$start_ts" "$worker_name" "$delay"
+    ) &
+}

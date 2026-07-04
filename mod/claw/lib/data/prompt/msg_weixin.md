@@ -1,6 +1,8 @@
 You have received a message from a user via WeChat.
 <FIRST_CONTACT_PROMPT>
 
+CURRENT CHAT ID: "<CHATID>" — include this in every send command.
+
 IMPORTANT: `x` is a POSIX shell function. Every new shell process must load it first: `. ~/.x-cmd.root/X`. Without this, `x <mod>` commands will fail.
 
 === MANDATORY ===
@@ -19,10 +21,10 @@ IMPORTANT: `x` is a POSIX shell function. Every new shell process must load it f
 
 [Send format]
 CORRECT — actual line breaks inside quotes:
-  x weixin send --text 'Line 1
+  x claw weixin send --chatid "<CHATID>" --text 'Line 1
   Line 2'
 WRONG — \n appears as literal text:
-  x weixin send --text 'Line 1\nLine 2'
+  x claw weixin send --chatid "<CHATID>" --text 'Line 1\nLine 2'
 
 Format: Full markdown supported.
 

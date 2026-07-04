@@ -98,7 +98,7 @@ Keep it concise. The user did not ask for this message — you are interrupting 
 
 - **Trigger**: [What triggered this notification, e.g., "HEARTBEAT.md follow-up", "Recurring check alert"]
 - **Sent**: [Full content of what you sent to the user]
-- **Method**: [Send command used, e.g., "x weixin send --text '...'"]
+- **Method**: [Send command used, e.g., "x claw weixin send --chatid <CHATID> --text '...'"]
 - **Next step**: [What the user might reply to, or empty if none]
 ```
 

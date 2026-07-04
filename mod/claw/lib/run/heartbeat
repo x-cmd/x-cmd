@@ -131,22 +131,8 @@ ___x_cmd_claw_run___heartbeat___probe(){
 }
 
 ___x_cmd_claw_run___heartbeat___weixin_session_check(){
-    local connect_fp="$___X_CMD_CLAW_BOT_CONNECT_DIR/weixin/clawbot"
-    [ -f "$connect_fp" ] || return 0
-    [ ! -f "$___X_CMD_CLAW_WEIXIN_REMIND_MARKER" ] || return 0
-
-    local last_ts=""
-    read -r last_ts < "$connect_fp"
-    [ -n "$last_ts" ] || return 0
-    case "$last_ts" in *[!0-9]*) return 0 ;; esac
-
-    local elapsed=""
-    local x_=""
-    ___x_cmd epoch minus_ "$last_ts"
-    elapsed="$x_"
-    [ -n "$elapsed" ] || return 0
-    local remind_threshold=$(( ___X_CMD_CLAW_WEIXIN_SESSION_TIMEOUT - ___X_CMD_CLAW_WEIXIN_REMIND_BEFORE ))
-    [ "$elapsed" -ge "$remind_threshold" ] || return 0
+    local weixin_connect_dir="$___X_CMD_CLAW_BOT_CONNECT_DIR/weixin"
+    [ -d "$weixin_connect_dir" ] || return 0
 
     local has_task=""
     has_task="$(___x_cmd cron ls --ns "x-claw-default" --tsv 2>/dev/null | ___x_cmd_cmds head -n 1)"
@@ -155,15 +141,39 @@ ___x_cmd_claw_run___heartbeat___weixin_session_check(){
         return 0
     }
 
-    claw:info "[HB] Weixin session expiring soon (elapsed=${elapsed}s) and cron tasks exist, sending reminder"
-
+    local remind_threshold=$(( ___X_CMD_CLAW_WEIXIN_SESSION_TIMEOUT - ___X_CMD_CLAW_WEIXIN_REMIND_BEFORE ))
     local reminder_text="⏰ 连接提醒：微信 24 小时互动窗口快到期了。超过 24h 没回复，ClawBot 的主动消息（如定时任务）会收不到。请回复任意内容刷新一下~"
-    if ___x_cmd_claw_weixin_send --text "$reminder_text"; then
-        ___x_cmd ensurefp "$___X_CMD_CLAW_WEIXIN_REMIND_MARKER"
-        claw:info "[HB] Weixin session reminder sent and marked"
-    else
-        claw:warn "[HB] Failed to send weixin session reminder, will retry next heartbeat"
-    fi
+
+    local chatid_file="" chatid="" last_ts="" elapsed="" x_="" marker=""
+    for chatid_file in "$weixin_connect_dir"/*; do
+        [ -f "$chatid_file" ] || continue
+        chatid="${chatid_file##*/}"
+        [ -n "$chatid" ] || continue
+
+        marker="$___X_CMD_CLAW_WEIXIN_REMIND_MARKER/$chatid"
+        [ ! -f "$marker" ] || continue
+
+        last_ts=""
+        read -r last_ts < "$chatid_file"
+        [ -n "$last_ts" ] || continue
+        case "$last_ts" in *[!0-9]*) continue ;; esac
+
+        elapsed=""
+        x_=""
+        ___x_cmd epoch minus_ "$last_ts"
+        elapsed="$x_"
+        [ -n "$elapsed" ] || continue
+        [ "$elapsed" -ge "$remind_threshold" ] || continue
+
+        claw:info "[HB] [weixin:$chatid] Session expiring soon (elapsed=${elapsed}s) and cron tasks exist, sending reminder"
+
+        if ___x_cmd_claw_weixin_send --chatid "$chatid" --text "$reminder_text"; then
+            ___x_cmd ensurefp "$marker"
+            claw:info "[HB] [weixin:$chatid] Session reminder sent and marked"
+        else
+            claw:warn "[HB] [weixin:$chatid] Failed to send session reminder, will retry next heartbeat"
+        fi
+    done
 }
 
 ___x_cmd_claw_run___heartbeat___heartbeat_ok_check_(){

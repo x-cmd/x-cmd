@@ -16,8 +16,9 @@ ___x_cmd_claw_run___mq___dispatch_chat(){
     local chatid
     case "$msg" in
         weixin:*)
-                if ! ___x_cmd worker isalive --ns x-claw-default-worker --name chat-weixin-clawbot; then
-                    ___x_cmd worker run --ns x-claw-default-worker --name chat-weixin-clawbot -- ___x_cmd_claw_run___chat_worker___weixin "$reset_failure"
+                chatid="${msg#*:}"
+                if ! ___x_cmd worker isalive --ns x-claw-default-worker --name "chat-weixin-${chatid}"; then
+                    ___x_cmd worker run --ns x-claw-default-worker --name "chat-weixin-${chatid}" -- ___x_cmd_claw_run___chat_worker___weixin "${chatid}" "$reset_failure"
                 fi
                 ;;
         telegram:*)
@@ -41,22 +42,6 @@ ___x_cmd_claw_run___mq___dispatch_chat(){
     esac
 }
 
-
-# ___x_cmd_claw_run___chat_worker___weixin(){
-#     local mq_fp="$1"
-#     local msg_list=""
-
-#     local last_handler_timestamp=""
-
-#     while ___x_cmd tailer msg waitunread "$mq_fp"; do
-#         msg_list="$( ___x_cmd tailer msg recent )"
-#         ___x_cmd tailer msg commit
-#         ___x_cmd agent request ""
-#         ___x_cmd epoch get_
-#         last_handler_timestamp="$x_"
-#     done
-# }
-
 ___x_cmd_claw_run___chat_worker___weixin(){
     if [ -n "$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR" ]; then
         local logfp="$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR/chat_worker.log"
@@ -64,20 +49,25 @@ ___x_cmd_claw_run___chat_worker___weixin(){
         exec >>"$logfp" 2>&1
     fi
 
-    local reset_failure="${1:-}"
-    local chatid="clawbot"
+    local chatid="${1:-}"
+    local reset_failure="${2:-}"
+    [ -n "$chatid" ] || {
+        claw:error "[MSG] [weixin] No chatid provided for weixin chat worker. Exiting."
+        return 1
+    }
+
     ___x_cmd_claw_run___activate_im "weixin" "$chatid" || return $?
 
     # Only clear the session-reminder marker on a genuine user message
     # (reset_failure=1). Heartbeat-driven polls should not reset it, otherwise
     # the reminder could be suppressed repeatedly while the agent is in cooldown.
     if [ -n "$reset_failure" ]; then
-        ___x_cmd rmrf "$___X_CMD_CLAW_WEIXIN_REMIND_MARKER" 2>/dev/null || true
+        ___x_cmd rmrf "$___X_CMD_CLAW_WEIXIN_REMIND_MARKER/$chatid" 2>/dev/null || true
     fi
 
-    ___x_cmd_claw_weixin_has_unread || return 0
+    ___x_cmd_claw_weixin_has_unread "$chatid" || return 0
     claw:info "[MSG] [weixin:$chatid] Unread messages detected, launching agent request"
-    ___x_cmd_claw_run___agent___exec_chat "weixin" "$chatid" "$( ___x_cmd_claw_weixin_get_unread )" "" "$reset_failure"
+    ___x_cmd_claw_run___agent___exec_chat "weixin" "$chatid" "$( ___x_cmd_claw_weixin_get_unread "$chatid" )" "" "$reset_failure"
 }
 
 ___x_cmd_claw_run___chat_worker___telegram(){
@@ -89,7 +79,10 @@ ___x_cmd_claw_run___chat_worker___telegram(){
 
     local chatid="$1"
     local reset_failure="${2:-}"
-    [ -n "$chatid" ] || return 0
+    [ -n "$chatid" ] || {
+        claw:error "[MSG] [telegram] No chatid provided for telegram chat worker. Exiting."
+        return 1
+    }
 
     ___x_cmd_claw_run___activate_im "telegram" "$chatid" || return $?
 
@@ -107,7 +100,10 @@ ___x_cmd_claw_run___chat_worker___feishu(){
 
     local chatid="$1"
     local reset_failure="${2:-}"
-    [ -n "$chatid" ] || return 0
+    [ -n "$chatid" ] || {
+        claw:error "[MSG] [feishu] No chatid provided for feishu chat worker. Exiting."
+        return 1
+    }
 
     ___x_cmd_claw_run___activate_im "feishu" "$chatid" || return $?
 
@@ -125,7 +121,10 @@ ___x_cmd_claw_run___chat_worker___qywx(){
 
     local chatid="$1"
     local reset_failure="${2:-}"
-    [ -n "$chatid" ] || return 0
+    [ -n "$chatid" ] || {
+        claw:error "[MSG] [qywx] No chatid provided for qywx chat worker. Exiting."
+        return 1
+    }
 
     ___x_cmd_claw_run___activate_im "qywx" "$chatid" || return $?
 

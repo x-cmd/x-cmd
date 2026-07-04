@@ -17,7 +17,7 @@ Use x-cmd skill to access 300+ shell utilities, 1000+ packages—all without sud
 - Run `x claw cron --help` first to see all subcommands and examples.
 - Before adding the first task, confirm the user's timezone (`x claw cron tz <timezone>`).
 - When using `x claw agentrequest` as a cron command, `<msg>` is sent to a **zero-memory** new agent. The message must include: goal, tools, steps, output, how to deliver results.
-- Use single quotes for `<msg>`. Bad: `'Check HN'`. Good: `'Use x hn top for top 5 posts. Extract title, URL, score. Send: x weixin send --text <result>'`.
+- Use single quotes for `<msg>`. Bad: `'Check HN'`. Good: `'Use x hn top for top 5 posts. Extract title, URL, score. Send: x claw weixin send --chatid "<CHATID>" --text <result>'`.
 
 ## Background Jobs
 

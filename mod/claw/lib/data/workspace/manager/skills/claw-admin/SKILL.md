@@ -110,10 +110,10 @@ Refer to `x agent --help` for available options.
 
 As Manager, you can send messages to any connected platform:
 
-- **WeChat**: `x weixin send --text '<msg>'`
-- **Telegram**: `x telegram send --text --chatid <CHATID> '<msg>'`
-- **Feishu**: `x feishu abot send --text --chatid <CHATID> '<msg>'`
-- **Qywx**: `x qywx abot send --text --chatid <CHATID> '<msg>'`
+- **WeChat**: `x claw weixin send --chatid <CHATID> --text '<msg>'`
+- **Telegram**: `x claw telegram send --text --chatid <CHATID> '<msg>'`
+- **Feishu**: `x claw feishu send --text --chatid <CHATID> '<msg>'`
+- **Qywx**: `x claw qywx send --text --chatid <CHATID> '<msg>'`
 
 ## Safety Checklist
 
