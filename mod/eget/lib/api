@@ -2,9 +2,9 @@
 
 # GitHub / GitLab / Codeberg Release API client
 
-# Resolve a GitHub auth token from the standard chain:
-#   EGET_GITHUB_TOKEN → GITHUB_TOKEN → GH_TOKEN → `gh auth token`
-# The first three are env-var overrides; `gh auth token` lets users with a
+# Resolve a GitHub auth token from the chain:
+#   GITHUB_TOKEN → GH_TOKEN → `gh auth token`
+# The first two are env-var overrides; `gh auth token` lets users with a
 # stored `gh` CLI login use it without exporting a separate variable. Fails
 # silently at each step (unset vars expand empty; gh may not be installed).
 #
@@ -13,7 +13,7 @@
 # only see explicitly-configured credentials.
 # Issue #33.
 ___x_cmd_eget_api_github_token_(){
-    local _t="${EGET_GITHUB_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}}"
+    local _t="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
     if [ -z "$_t" ] && [ -z "${EGET_NO_GH_AUTH_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
         _t="$( gh auth token 2>/dev/null )" || _t=""
     fi
@@ -152,6 +152,18 @@ ___x_cmd_eget_api_source(){
     esac
 }
 
+# Safely embed a string into an eval'd command. Uses ___x_cmd_shq1_ (xrc's
+# private single-quote shell-quote utility) instead of the dangerously loose
+# `\"$var\"`, which would let any `$(...)` or backtick in the input execute
+# when the outer eval re-parses the string. Issue #37.
+#
+# Runs ___x_cmd_shq1_ in a subshell so its assignment to the global x_
+# does not leak into the caller's scope (callers may legitimately have
+# their own x_ for a different purpose — common in x-cmd code).
+___x_cmd_eget_api_shq_(){
+    ( ___x_cmd_shq1_ "$1"; printf '%s' "$x_" )
+}
+
 ___x_cmd_eget_api_curl(){
     local url="$1" token="$2"
     local ssl_opts=""
@@ -164,10 +176,10 @@ ___x_cmd_eget_api_curl(){
 
     # Cache API responses for 10 minutes
     if [ "$___X_CMD_EGET_UPDATE" != "1" ] && [ "$___X_CMD_EGET_NO_CCMD" != "1" ]; then
-        eval "x ccmd 10m -- curl -sS -L -f $ssl_opts $auth_opts \"$url\"" 2>/dev/null && return $?
+        eval "x ccmd 10m -- curl -sS -L -f $ssl_opts $auth_opts $(___x_cmd_eget_api_shq_ "$url")" 2>/dev/null && return $?
     fi
 
-    eval "___x_cmd_cmds curl -sS -L -f $ssl_opts $auth_opts \"$url\""
+    eval "___x_cmd_cmds curl -sS -L -f $ssl_opts $auth_opts $(___x_cmd_eget_api_shq_ "$url")"
 }
 
 # Detect GitHub unauthenticated rate-limiting and report when it resets.
@@ -282,7 +294,7 @@ ___x_cmd_eget_api_download(){
 
     ___x_cmd mkdirp "$(dirname "$outfile")"
     [ "$___X_CMD_EGET_QUIET" = "0" ] && eget:info --url "$fetch_url" "Downloading $(basename "$outfile")"
-    eval "___x_cmd_cmds curl -sS -L -f $ssl_opts --speed-limit $speed_limit --speed-time $speed_time -o \"$outfile\" $auth_opts \"$fetch_url\""
+    eval "___x_cmd_cmds curl -sS -L -f $ssl_opts --speed-limit $speed_limit --speed-time $speed_time -o $(___x_cmd_eget_api_shq_ "$outfile") $auth_opts $(___x_cmd_eget_api_shq_ "$fetch_url")"
 }
 
 ___x_cmd_eget_api_list_releases(){
@@ -331,7 +343,7 @@ ___x_cmd_eget_api_rate(){
     [ -n "$token" ] && auth_opts="-H \"Authorization: Bearer $token\""
 
     local resp
-    resp="$( eval "___x_cmd_cmds curl -sS -L -f $auth_opts \"https://api.github.com/rate_limit\"" )" || {
+    resp="$( eval "___x_cmd_cmds curl -sS -L -f $auth_opts $(___x_cmd_eget_api_shq_ 'https://api.github.com/rate_limit')" )" || {
         N=eget M="rate: failed to fetch from api.github.com" log:ret:1
         return
     }

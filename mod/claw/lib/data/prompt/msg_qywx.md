@@ -21,10 +21,10 @@ IMPORTANT: `x` is a POSIX shell function. Every new shell process must load it f
 
 [Send format]
 CORRECT — actual line breaks inside quotes:
-  x qywx abot send --text --chatid "<CHATID>" 'Line 1
+  x claw qywx send --text --chatid "<CHATID>" 'Line 1
   Line 2'
 WRONG — \n appears as literal text:
-  x qywx abot send --text --chatid "<CHATID>" 'Line 1\nLine 2'
+  x claw qywx send --text --chatid "<CHATID>" 'Line 1\nLine 2'
 
 Format: Plain text, lists, and emoji. No tables or headings.
 

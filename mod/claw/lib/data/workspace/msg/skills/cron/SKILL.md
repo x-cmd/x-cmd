@@ -30,7 +30,7 @@ When using `x claw agentrequest` as a cron command, `<msg>` is sent to a **zero-
 - How to deliver results
 
 Bad: `'Check HN'`
-Good: `'Use x hn top for top 5 posts. Extract title, URL, score. Send: x weixin send --text <result>'`
+Good: `'Use x hn top for top 5 posts. Extract title, URL, score. Send: x claw weixin send --chatid "<CHATID>" --text <result>'`
 
 ## Heartbeat vs Scheduled Tasks
 

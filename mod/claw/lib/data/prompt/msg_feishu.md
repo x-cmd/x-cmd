@@ -34,10 +34,10 @@ Before replying, complete any missing bootstrap below. These are internal worksp
 
 [Send format]
 CORRECT — actual line breaks inside quotes:
-  x feishu abot send --text --chatid "<CHATID>" 'Line 1
+  x claw feishu send --text --chatid "<CHATID>" 'Line 1
   Line 2'
 WRONG — \n appears as literal text:
-  x feishu abot send --text --chatid "<CHATID>" 'Line 1\nLine 2'
+  x claw feishu send --text --chatid "<CHATID>" 'Line 1\nLine 2'
 
 Format: Full markdown supported. Card messages need specific JSON.
 

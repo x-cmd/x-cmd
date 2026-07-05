@@ -21,10 +21,10 @@ IMPORTANT: `x` is a POSIX shell function. Every new shell process must load it f
 
 [Send format]
 CORRECT — actual line breaks inside quotes:
-  x telegram send --text --chatid "<CHATID>" 'Line 1
+  x claw telegram send --text --chatid "<CHATID>" 'Line 1
   Line 2'
 WRONG — \n appears as literal text:
-  x telegram send --text --chatid "<CHATID>" 'Line 1\nLine 2'
+  x claw telegram send --text --chatid "<CHATID>" 'Line 1\nLine 2'
 
 Format: Full markdown including tables and headings. Max 4096 chars.
 

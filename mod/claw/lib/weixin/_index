@@ -1,7 +1,8 @@
 # ___x_cmd_claw_weixin -h
-# x claw weixin send --text <xxxxxx>
-# x claw weixin send --image <path>
-# x claw weixin get-sent
+# x claw weixin send --chatid <chatid> --text <xxxxxx>
+# x claw weixin send --chatid <chatid> --image <path>
+# x claw weixin send --chatid <chatid> --file <path>
+# x claw weixin get-sent --chatid <chatid>
 
 ___x_cmd_claw_weixin(){
     [ $# -gt 0 ]    ||  set -- --help
@@ -31,32 +32,37 @@ ___x_cmd_claw_weixin(){
 }
 
 ___x_cmd_claw_weixin_send(){
+    local chatid=""
     local msg_type=""
     local content=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
             --help|-h)  ___x_cmd help -m claw weixin "$@"; return 0 ;;
-            --text)     msg_type="text";  shift; content="$*"; break ;;
-            --image)    msg_type="image"; shift; content="$1"; shift; break ;;
-            --file)     msg_type="file";  shift; content="$1"; shift; break ;;
-            --video)    msg_type="video"; shift; content="$1"; shift; break ;;
+            --chatid)   chatid="$2"; arg:2:shift; continue ;;
+            --text)     shift; msg_type="text";  content="$*"; break ;;
+            --image)    msg_type="image"; content="$2"; arg:2:shift; break ;;
+            --file)     msg_type="file";  content="$2"; arg:2:shift; break ;;
+            --video)    msg_type="video"; content="$2"; arg:2:shift; break ;;
             *)          break ;;
         esac
     done
 
+    [ -n "$chatid" ]     || N=claw M="send: must specify --chatid" log:ret:64
     [ -n "$msg_type" ]   || N=claw M="send: must specify --text, --image, --file, or --video" log:ret:64
     [ -n "$content" ]    || N=claw M="send: missing ${msg_type} content" log:ret:64
 
     local x_; ___x_cmd date timestamp_
     local send_time="$x_"
 
+    # NOTE: underlying x weixin bot send does not yet support --chatid.
+    # chatid is used by claw for per-chat state tracking only.
     ___x_cmd weixin bot send "--${msg_type}"  "$content" || return "$?"
 
-    local sent_data_path="$___X_CMD_ROOT_DATA/weixin/bot/sent/data.tsv"
+    local sent_data_path="$___X_CMD_ROOT_DATA/weixin/bot/sent/data_${chatid}.tsv"
     case "$msg_type" in
         image|file|video)
-            local asset_dir="$___X_CMD_ROOT_DATA/weixin/bot/sent/asset"
+            local asset_dir="$___X_CMD_ROOT_DATA/weixin/bot/sent/asset_${chatid}"
             ___x_cmd mkdirp "$asset_dir"
             local target_path="${asset_dir}/${send_time}_${content##*/}"
 
@@ -67,14 +73,38 @@ ___x_cmd_claw_weixin_send(){
             ;;
     esac
 
+    ___x_cmd_claw_run___tsv_escape_ "$content"
+    local escaped_content="$x_"
+
     ___x_cmd ensurefp "$sent_data_path"
-    printf '%s\t%s\t%s\n' "$send_time" "$msg_type" "$content" >> "$sent_data_path" || {
+    printf '%s\t%s\t%s\n' "$send_time" "$msg_type" "$escaped_content" >> "$sent_data_path" || {
         weixin:warn "Failed to save sent message to $sent_data_path"
     }
 }
 
+___x_cmd_claw_weixin_get_sent(){
+    local chatid=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)  ___x_cmd help -m claw weixin "$@"; return 0 ;;
+            --chatid)   chatid="$2"; arg:2:shift; continue ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$chatid" ] || N=claw M="get-sent: must specify --chatid" log:ret:64
+
+    local sent_data_path="$___X_CMD_ROOT_DATA/weixin/bot/sent/data_${chatid}.tsv"
+    [ -f "$sent_data_path" ] || return 0
+    ___x_cmd_cmds cat "$sent_data_path"
+}
+
 ___x_cmd_claw_weixin_get_unread(){
-    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/weixin-clawbot"
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide weixin chatid" log:ret:64
+
+    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/weixin-${chatid}"
 
     local offset=0
     [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
@@ -106,7 +136,7 @@ ___x_cmd_claw_weixin_get_unread(){
         fi
         printf "%s\n" "$msgprompt"
         printf "%s\n" "<user_messages>"
-        ___x_cmd_claw_weixin_get_msg "$start_line" "$end_line"
+        ___x_cmd_claw_weixin_get_msg "$chatid" "$start_line" "$end_line"
         printf "%s\n" "</user_messages>"
         printf "%s\n" "---"
     else
@@ -118,10 +148,10 @@ ___x_cmd_claw_weixin_get_unread(){
         "" \
         "After processing the above messages, you MUST do these TWO actions in EXACT order:" \
         "" \
-        "1. FIRST: Run \`x claw weixin recent-msg\` to check for any newer unread messages." \
+        "1. FIRST: Run \`x claw weixin recent-msg \"$chatid\"\` to check for any newer unread messages." \
         "   If new messages appear, process them immediately before proceeding." \
         "" \
-        "2. SECOND: Immediately run \`x claw weixin update-offset $end_line\`." \
+        "2. SECOND: Immediately run \`x claw weixin update-offset \"$chatid\" $end_line\`." \
         "" \
         "Do NOT skip the recent-msg check." \
         "If you fail to update the offset, the same messages will be re-processed repeatedly." \
@@ -130,20 +160,29 @@ ___x_cmd_claw_weixin_get_unread(){
 }
 
 ___x_cmd_claw_weixin_get_msg(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide weixin chatid" log:ret:64
+    shift
     ___x_cmd weixin parse "$@"
 }
 
 ___x_cmd_claw_weixin_recent_msg(){
-    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/weixin-clawbot"
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide weixin chatid" log:ret:64
+
+    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/weixin-${chatid}"
 
     local offset=0
     [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
-    ___x_cmd_claw_weixin_get_msg "$((offset+1))"
+    ___x_cmd_claw_weixin_get_msg "$chatid" "$((offset+1))"
 }
 
 ___x_cmd_claw_weixin_update_offset(){
-    local end_line="${1:-}"
-    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/weixin-clawbot"
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide weixin chatid" log:ret:64
+
+    local end_line="${2:-}"
+    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/weixin-${chatid}"
 
     local x_=""
     ___x_cmd weixin bot data which_
@@ -177,12 +216,17 @@ ___x_cmd_claw_weixin_update_offset(){
 }
 
 ___x_cmd_claw_weixin_has_unread(){
-    local x_=""; ___x_cmd_claw_weixin_unread_count_ || return $?
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide weixin chatid" log:ret:64
+    local x_=""; ___x_cmd_claw_weixin_unread_count_ "$chatid" || return $?
     [ "$x_" -gt 0 ]
 }
 
 ___x_cmd_claw_weixin_unread_count_(){
-    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/weixin-clawbot"
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide weixin chatid" log:ret:64
+
+    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/weixin-${chatid}"
 
     local offset=0
     [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
@@ -203,6 +247,8 @@ ___x_cmd_claw_weixin_unread_count_(){
 }
 
 ___x_cmd_claw_weixin_unread_count(){
-    local x_=""; ___x_cmd_claw_weixin_unread_count_ || return $?
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide weixin chatid" log:ret:64
+    local x_=""; ___x_cmd_claw_weixin_unread_count_ "$chatid" || return $?
     printf "%s\n" "$x_"
 }

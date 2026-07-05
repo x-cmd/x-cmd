@@ -106,16 +106,34 @@ ___x_cmd_eget_upgrade(){
         local _current=""
         [ -f "$_snap_base/.default-version" ] && _current="$( cat "$_snap_base/.default-version" 2>/dev/null )"
 
-        local _release_json _latest
+        local _release_json _latest _api_err
         _release_json="$( ___x_cmd_eget_api_release "$_forge" "$_owner" "$_repo" "" "0" "0" 2>/dev/null )"
         if [ -z "$_release_json" ]; then
-            eget:info "Failed to fetch latest release for $_owner/$_repo"
-            _failed=$((_failed + 1))
-            continue
+            # API returned empty. Capture the actual error (re-run, ccmd-cached
+            # so cheap) so the log says *why* — not just "failed". Only the
+            # first line of stderr is kept; the rest is curl's --version
+            # banner / progress noise.
+            _api_err="$( ___x_cmd_eget_api_release "$_forge" "$_owner" "$_repo" "" "0" "0" 2>&1 1>/dev/null | head -1 )"
+            if [ "$_forge" = "github" ]; then
+                eget:info "API failed for $_owner/$_repo${_api_err:+ — $_api_err}; trying HTML fallback (expanded_assets)"
+                _release_json="$( ___x_cmd_eget_api_release_html "$_forge" "$_owner" "$_repo" "" )" || {
+                    eget:info "HTML fallback also failed for $_owner/$_repo"
+                    if ___x_cmd_eget_api_is_ratelimited "$_forge"; then
+                        eget:info "GitHub API rate-limited${___X_CMD_EGET_RATE_WAIT}. Set GITHUB_TOKEN for 5000/hr."
+                    fi
+                    _failed=$((_failed + 1))
+                    continue
+                }
+                eget:info "HTML fallback OK for $_owner/$_repo"
+            else
+                eget:info "Failed to fetch latest release for $_owner/$_repo (no HTML fallback for $_forge)${_api_err:+ — $_api_err}"
+                _failed=$((_failed + 1))
+                continue
+            fi
         fi
         _latest="$( printf "%s" "$_release_json" | ___x_cmd jq -r '.tag_name // empty' 2>/dev/null )"
         if [ -z "$_latest" ]; then
-            eget:info "No tag_name in release JSON for $_owner/$_repo"
+            eget:info "Release JSON for $_owner/$_repo has no tag_name (API or HTML fallback returned empty/invalid JSON)"
             _failed=$((_failed + 1))
             continue
         fi
