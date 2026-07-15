@@ -31,40 +31,149 @@ ___x_cmd_claw_run_ls(){
     done 2>/dev/null
 }
 
-___x_cmd_claw_run_status(){
-    local runtime_status="inactive"
+___x_cmd_claw_run_status___usage(){
+    ___x_cmd help -m claw status
+}
+
+___x_cmd_claw_run_status___collect(){
+    if ___x_cmd service isalive x-claw-service; then
+        service_status="running"
+    else
+        service_status="stopped"
+    fi
+
+    runtime_status="inactive"
     ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-generator && runtime_status="active"
 
-    local heartbeat_runner="dead" heartbeat_worker="idle"
+    heartbeat_runner="dead"
+    heartbeat_worker="idle"
     ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-generator && heartbeat_runner="alive"
     ___x_cmd worker isalive --ns x-claw-default-worker --name heartbeat-orchestrator && heartbeat_worker="running"
 
-    local idle_count=0
+    idle_count=0
     local idle_file="$___X_CMD_CLAW_BOT_HEARTBEAT/idle_count"
     [ ! -f "$idle_file" ] || read -r idle_count < "$idle_file"
 
-    local agent_unavailable_count=0
+    agent_unavailable_count=0
+    agent_unavailable_list=""
     local status_statefile
     if [ -d "$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable" ]; then
         for status_statefile in "$___X_CMD_CLAW_BOT_HEARTBEAT"/agent_unavailable/*; do
             [ -e "$status_statefile" ] || continue
             agent_unavailable_count=$(( agent_unavailable_count + 1 ))
+            local unavail_entry="${status_statefile##*/}"
+            unavail_entry="${unavail_entry#*.}"
+            agent_unavailable_list="${agent_unavailable_list:+, }$unavail_entry"
         done
     fi
 
-    local last_tick="" lastheartbeat_ts=0
+    current_ts=0
+    x_=""
+    ___x_cmd epoch get_ && current_ts="$x_"
+
+    last_tick=""
+    last_tick_ts=0
+    local lastheartbeat_ts=0
     local heartbeat_tsfile="$___X_CMD_CLAW_BOT_HEARTBEAT/lastheartbeat_ts"
     if [ -f "$heartbeat_tsfile" ]; then
         read -r lastheartbeat_ts < "$heartbeat_tsfile"
         [ "$lastheartbeat_ts" -gt 0 ] 2>/dev/null && {
+            last_tick_ts="$lastheartbeat_ts"
             last_tick="$(___x_cmd date iso "$lastheartbeat_ts" 2>/dev/null)"
         }
     fi
 
-    printf "runtime: %s\n" "$runtime_status"
+    harness=""
+    x_=""
+    ___x_cmd agent default_harness_ 2>/dev/null && harness="$x_"
 
-    local harness=""
-    x_=""; ___x_cmd agent default_harness_ 2>/dev/null && harness="$x_"
+    mq_pending=0
+    if [ -d "$___X_CMD_CLAW_BOT_MQ" ]; then
+        mq_pending="$(___x_cmd tailer pending "$___X_CMD_CLAW_BOT_MQ" 2>/dev/null)" || mq_pending=0
+        [ -n "$mq_pending" ] && [ "$mq_pending" -ge 0 ] 2>/dev/null || mq_pending=0
+    fi
+
+    ___x_cmd_claw_run_status___collect_im
+
+    cron_tz=""
+    cron_tz="$(___x_cmd_claw_cron tz 2>/dev/null)" || cron_tz=""
+    cron_list=""
+    cron_list="$(___x_cmd_claw_cron_ls --tsv 2>/dev/null)" || cron_list=""
+}
+
+___x_cmd_claw_run_status___collect_im(){
+    im_list=""
+    local imdir="$___X_CMD_CLAW_BOT_CONNECT_DIR"
+    [ -d "$imdir" ] || return 0
+
+    local i j im_name chatid active_ts worker_name worker_status service_status unread_count last_active last_active_ts chat_type app_name group_name line
+    for i in "$imdir"/*; do
+        [ -d "$i" ] || continue
+        im_name="${i##*/}"
+        service_status="$(___x_cmd_claw_run___im_service_status "$im_name" 2>/dev/null)"
+        [ -n "$service_status" ] || service_status="unknown"
+
+        if ___x_cmd fsiter --dirempty "$i"; then
+            line="${im_name}${___X_CMD_UNSEENCHAR_HT}—${___X_CMD_UNSEENCHAR_HT}—${___X_CMD_UNSEENCHAR_HT}${service_status}${___X_CMD_UNSEENCHAR_HT}—${___X_CMD_UNSEENCHAR_HT}0${___X_CMD_UNSEENCHAR_HT}—"
+            im_list="${im_list:+$im_list
+}$line"
+        else
+            for j in "$i"/*; do
+                [ -f "$j" ] || continue
+                chatid="${j##*/}"
+                active_ts=""
+                read -r active_ts < "$j"
+
+                worker_name="chat-${im_name}-${chatid}"
+                if ___x_cmd worker isalive --ns x-claw-default-worker --name "$worker_name"; then
+                    worker_status="processing"
+                else
+                    worker_status="idle"
+                fi
+
+                service_status="$(___x_cmd_claw_run___im_service_status "$im_name" "$chatid" 2>/dev/null)"
+                [ -n "$service_status" ] || service_status="unknown"
+
+                unread_count=""
+                case "$im_name" in
+                    weixin|telegram|qywx|feishu)
+                        unread_count="$(___x_cmd claw "$im_name" unread-count "$chatid" 2>/dev/null)" ;;
+                esac
+                [ -n "$unread_count" ] && [ "$unread_count" -ge 0 ] 2>/dev/null || unread_count=0
+
+                last_active=""
+                last_active_ts=0
+                if [ -n "$active_ts" ] && [ "$active_ts" -gt 0 ] 2>/dev/null; then
+                    last_active_ts="$active_ts"
+                    last_active="$(___x_cmd date iso "$active_ts" 2>/dev/null)"
+                fi
+
+                chat_type=""
+                app_name=""
+                group_name=""
+                case "$im_name" in
+                    feishu)
+                        case "$chatid" in
+                            oc_*)
+                                chat_type="group"
+                                group_name="$( ___x_cmd feishu group info --json --chatid "$chatid" 2>/dev/null | ___x_cmd jo .data.name )" ;;
+                            *)
+                                chat_type="single"
+                                app_name="$( ___x_cmd feishu abot info --appid me 2>/dev/null | ___x_cmd jo .data.app.app_name )" ;;
+                        esac
+                        ;;
+                esac
+
+                line="${im_name}${___X_CMD_UNSEENCHAR_HT}${chatid}${___X_CMD_UNSEENCHAR_HT}${chat_type:-—}${___X_CMD_UNSEENCHAR_HT}${service_status}${___X_CMD_UNSEENCHAR_HT}${worker_status}${___X_CMD_UNSEENCHAR_HT}${unread_count}${___X_CMD_UNSEENCHAR_HT}${last_active:-—}${___X_CMD_UNSEENCHAR_HT}${last_active_ts:-0}${___X_CMD_UNSEENCHAR_HT}${app_name:-—}${___X_CMD_UNSEENCHAR_HT}${group_name:-—}"
+                im_list="${im_list:+$im_list
+}$line"
+            done 2>/dev/null
+        fi
+    done 2>/dev/null
+}
+
+___x_cmd_claw_run_status___yaml(){
+    printf "runtime: %s\n" "$runtime_status"
     [ -n "$harness" ] && printf "agent_harness: %s\n" "$harness"
 
     printf "heartbeat:\n"
@@ -77,125 +186,466 @@ ___x_cmd_claw_run_status(){
 
     printf "workspace: %s\n" "$___X_CMD_CLAW_BOT_WS"
     printf "log_dir: %s\n" "$___X_CMD_CLAW_BOT_STDOUT_LOG_DIR"
-
-    local mq_pending=0 f
-    if [ -d "$___X_CMD_CLAW_BOT_MQ" ]; then
-        for f in "$___X_CMD_CLAW_BOT_MQ"/*; do
-            [ -f "$f" ] && mq_pending=$((mq_pending + 1))
-        done 2>/dev/null
-    fi
     printf "mq_pending: %s\n" "$mq_pending"
 
-    local imdir="$___X_CMD_CLAW_BOT_CONNECT_DIR"
-    local i j im_name chatid active_ts worker_name worker_status service_status unread_count last_active chat_type app_name group_name
     printf "im:\n"
-    if [ -d "$imdir" ]; then
-        for i in "$imdir"/*; do
-            [ -d "$i" ] || continue
-            im_name="${i##*/}"
-            service_status="$(___x_cmd_claw_run___im_service_status "$im_name" 2>/dev/null)"
-            [ -n "$service_status" ] || service_status="unknown"
-            if ___x_cmd fsiter --dirempty "$i"; then
+    if [ -n "$im_list" ]; then
+        printf "%s\n" "$im_list" | while IFS="$___X_CMD_UNSEENCHAR_HT" read -r im_name chatid chat_type service_status worker_status unread_count last_active last_active_ts app_name group_name; do
+            if [ "$chatid" = "—" ]; then
                 printf "  - name: %s\n" "$im_name"
                 printf "    service_status: %s\n" "$service_status"
                 printf "    status: no_active_chat\n"
             else
-                for j in "$i"/*; do
-                    [ -f "$j" ] || continue
-                    chatid="${j##*/}"
-                    active_ts=""
-                    read -r active_ts < "$j"
-
-                    worker_name="chat-${im_name}-${chatid}"
-                    if ___x_cmd worker isalive --ns x-claw-default-worker --name "$worker_name"; then
-                        worker_status="processing"
-                    else
-                        worker_status="idle"
-                    fi
-
-                    service_status="$(___x_cmd_claw_run___im_service_status "$im_name" "$chatid" 2>/dev/null)"
-                    [ -n "$service_status" ] || service_status="unknown"
-
-                    unread_count=""
-                    case "$im_name" in
-                        weixin|telegram|qywx|feishu)
-                                    unread_count="$(___x_cmd claw "$im_name" unread-count "$chatid" 2>/dev/null)" ;;
-                    esac
-                    [ -n "$unread_count" ] && [ "$unread_count" -ge 0 ] 2>/dev/null || unread_count=0
-
-                    last_active=""
-                    if [ -n "$active_ts" ] && [ "$active_ts" -gt 0 ] 2>/dev/null; then
-                        last_active="$(___x_cmd date iso "$active_ts" 2>/dev/null)"
-                    fi
-
-                    printf "  - name: %s\n" "$im_name"
-                    printf "    chatid: %s\n" "$chatid"
-
-                    chat_type=""; app_name=""; group_name=""
-                    case "$im_name" in
-                        feishu)
-                            case "$chatid" in
-                                oc_*)   chat_type="group"
-                                        group_name="$( ___x_cmd feishu group info --json --chatid "$chatid" 2>/dev/null | ___x_cmd jo .data.name )"
-                                        printf "    group_name: %s\n" "$group_name" ;;
-
-                                *)      chat_type="single"
-                                        app_name="$( ___x_cmd feishu abot info --appid me 2>/dev/null | ___x_cmd jo .data.app.app_name )"
-                                        printf "    app_name: %s\n" "$app_name" ;;
-                            esac
-                            ;;
-                    esac
-                    printf "    type: %s\n" "$chat_type"
-                    printf "    worker: %s\n" "$worker_name"
-                    printf "    worker_status: %s\n" "$worker_status"
-                    printf "    service_status: %s\n" "$service_status"
-                    printf "    unread_count: %s\n" "$unread_count"
-                    [ -n "$last_active" ] && printf "    last_active: %s\n" "$last_active"
-                done 2>/dev/null
+                printf "  - name: %s\n" "$im_name"
+                printf "    chatid: %s\n" "$chatid"
+                [ -n "$group_name" ] && [ "$group_name" != "—" ] && printf "    group_name: %s\n" "$group_name"
+                [ -n "$app_name" ] && [ "$app_name" != "—" ] && printf "    app_name: %s\n" "$app_name"
+                printf "    type: %s\n" "${chat_type#—}"
+                printf "    worker: chat-%s-%s\n" "$im_name" "$chatid"
+                printf "    worker_status: %s\n" "$worker_status"
+                printf "    service_status: %s\n" "$service_status"
+                printf "    unread_count: %s\n" "$unread_count"
+                [ -n "$last_active" ] && [ "$last_active" != "—" ] && printf "    last_active: %s\n" "$last_active"
             fi
-        done 2>/dev/null
+        done
     fi
 
     printf "cron:\n"
-
-    local cron_tz=""
-    cron_tz="$(___x_cmd_claw_cron tz 2>/dev/null)" || cron_tz=""
     [ -n "$cron_tz" ] && printf "  tz: %s\n" "$cron_tz"
-
-    local cron_list=""
-    cron_list="$(___x_cmd_claw_cron_ls --tsv 2>/dev/null)" || cron_list=""
     if [ -n "$cron_list" ]; then
-        printf "%s" "$cron_list" | ___x_cmd awk0 -m date -v FS="$___X_CMD_UNSEENCHAR_HT" '
-BEGIN { first = 1 }
-{
-    if (first) { first = 0; next }
-    name = $1
-    if (name == "") next
-
-    print "  - name: " name
-    print "    expr: " $2
-    if ($3 != "") print "    desc: " $3
-    if ($4 != "") print "    once: " $4
-
-    last_start = $5
-    if (last_start != "" && last_start > 0) {
-        last_start_iso = date_timestamp_to_iso(last_start)
-        if (last_start_iso != "") {
-            print "    last_start: " last_start_iso
-
-            last_end = $6
-            if (last_end != "" && last_end > 0) {
-                last_end_iso = date_timestamp_to_iso(last_end)
-                if (last_end_iso != "") print "    last_end: " last_end_iso
-            }
-
-            if ($7 != "") print "    last_status: " $7
-            if ($8 != "") print "    last_exit_code: " $8
-        }
-    }
-}
-'
+        printf "%s\n" "$cron_list" | ___x_cmd awk0 -m date -v FS="$___X_CMD_UNSEENCHAR_HT" -f "$___X_CMD_ROOT_MOD/claw/lib/awk/status_cron_yaml.awk"
     else
         printf "  []\n"
     fi
+}
+
+___x_cmd_claw_run_status___fmt_service_text(){
+    case "$1" in
+        alive|running)  printf "running" ;;
+        stop|stopped|dead) printf "stopped" ;;
+        *)              printf "%s" "${1:-unknown}" ;;
+    esac
+}
+
+___x_cmd_claw_run_status___fmt_state(){
+    local kind="$1" state="$2"
+    case "$kind" in
+        service)
+            case "$state" in
+                alive|running)  printf "%s●%s" "$c_green" "$c_end" ;;
+                stop|stopped|dead) printf "%s✗%s" "$c_red" "$c_end" ;;
+                *)              printf "%s?%s" "$c_yellow" "$c_end" ;;
+            esac
+            ;;
+        worker)
+            case "$state" in
+                processing|running) printf "%s●%s" "$c_green" "$c_end" ;;
+                idle)           printf "%s○%s" "$c_yellow" "$c_end" ;;
+                dead|stopped)   printf "%s✗%s" "$c_red" "$c_end" ;;
+                *)              printf "%s?%s" "$c_yellow" "$c_end" ;;
+            esac
+            ;;
+        runner)
+            case "$state" in
+                alive|running)  printf "%s●%s" "$c_green" "$c_end" ;;
+                dead|stopped)   printf "%s✗%s" "$c_red" "$c_end" ;;
+                *)              printf "%s?%s" "$c_yellow" "$c_end" ;;
+            esac
+            ;;
+        cron)
+            case "$state" in
+                success)        printf "%s✓%s" "$c_green" "$c_end" ;;
+                failed)         printf "%s✗%s" "$c_red" "$c_end" ;;
+                *)              printf "%s—%s" "$c_dim" "$c_end" ;;
+            esac
+            ;;
+    esac
+}
+
+___x_cmd_claw_run_status___fmt_heartbeat_health(){
+    local ts="$1"
+    if [ -z "$ts" ] || [ "$ts" -le 0 ] 2>/dev/null; then
+        printf "%s" "$dash"
+        return 0
+    fi
+    local diff=$(( current_ts - ts ))
+    [ "$diff" -lt 0 ] && diff=$(( -diff ))
+    if [ "$diff" -le 300 ]; then
+        printf "%s✓%s healthy" "$c_green" "$c_end"
+    else
+        printf "%s✗%s stale" "$c_red" "$c_end"
+    fi
+}
+
+___x_cmd_claw_run_status___fmt_reltime(){
+    local ts="$1"
+    [ -n "$ts" ] || return 0
+    [ "$ts" -gt 0 ] 2>/dev/null || return 0
+
+    local diff=$(( current_ts - ts ))
+    [ "$diff" -lt 0 ] && diff=$(( -diff ))
+
+    local n unit
+    if [ "$diff" -lt 60 ]; then
+        printf "just now"
+    elif [ "$diff" -lt 3600 ]; then
+        n=$(( diff / 60 ))
+        unit="min"; [ "$n" -ne 1 ] && unit="mins"
+        printf "%d %s ago" "$n" "$unit"
+    elif [ "$diff" -lt 86400 ]; then
+        n=$(( diff / 3600 ))
+        unit="hour"; [ "$n" -ne 1 ] && unit="hours"
+        printf "%d %s ago" "$n" "$unit"
+    elif [ "$diff" -lt 604800 ]; then
+        n=$(( diff / 86400 ))
+        unit="day"; [ "$n" -ne 1 ] && unit="days"
+        printf "%d %s ago" "$n" "$unit"
+    else
+        n=$(( diff / 604800 ))
+        unit="week"; [ "$n" -ne 1 ] && unit="weeks"
+        printf "%d %s ago" "$n" "$unit"
+    fi
+}
+
+# Chat-friendly status summary for a single IM/chatid.
+# Prints a short, localized (Chinese) report focused on "how is my current
+# chat doing and is there any problem?".
+___x_cmd_claw_run_status___chat(){
+    local im="$1"
+    local chatid="$2"
+
+    local service_status="" runtime_status="" harness=""
+    local heartbeat_worker="" heartbeat_runner=""
+    local idle_count=0 agent_unavailable_count=0 agent_unavailable_list="" last_tick="" last_tick_ts=0
+    local mq_pending=0
+    local im_list=""
+    local cron_tz="" cron_list=""
+
+    ___x_cmd_claw_run_status___collect
+
+    # Locate the record for the current chatid in im_list.
+    local chat_service="" chat_worker="unknown" chat_unread=0 chat_last_active="—" chat_last_active_ts=0
+    if [ -n "$im_list" ]; then
+        while IFS="$___X_CMD_UNSEENCHAR_HT" read -r _im_name _chatid _ _service_status _worker_status _unread_count _last_active _last_active_ts _ _; do
+            [ "$_im_name" = "$im" ] || continue
+            [ "$_chatid" = "$chatid" ] || continue
+            chat_service="$(___x_cmd_claw_run_status___fmt_service_text "$_service_status")"
+            chat_worker="$_worker_status"
+            chat_unread="$_unread_count"
+            chat_last_active="$_last_active"
+            chat_last_active_ts="$_last_active_ts"
+            break
+        done <<EOF
+$im_list
+EOF
+    fi
+    [ -n "$chat_unread" ] && [ "$chat_unread" -ge 0 ] 2>/dev/null || chat_unread=0
+
+    # Check whether this specific chat is in agent cooldown.
+    local chat_unavailable=0 chat_cooldown_remaining=0
+    local chat_state_file="$___X_CMD_CLAW_BOT_HEARTBEAT/agent_unavailable/msg.${im}-${chatid}"
+    if [ -f "$chat_state_file" ]; then
+        local fail_count=0 fail_ts=0
+        read -r fail_count fail_ts < "$chat_state_file"
+        fail_count="${fail_count:-0}"
+        fail_ts="${fail_ts:-0}"
+
+        local x_=""
+        ___x_cmd_claw_run___state___cooldown_ "$fail_count"
+        local cooldown="${x_:-0}"
+
+        if [ "$current_ts" -gt 0 ] && [ "$fail_ts" -gt 0 ] && [ "$cooldown" -gt 0 ]; then
+            local elapsed=$(( current_ts - fail_ts ))
+            [ "$elapsed" -lt 0 ] && elapsed=$(( -elapsed ))
+            if [ "$elapsed" -lt "$cooldown" ]; then
+                chat_unavailable=1
+                chat_cooldown_remaining=$(( cooldown - elapsed ))
+            fi
+        fi
+    fi
+
+    # Overall health check.
+    local overall_issue=""
+    if [ "$service_status" != "running" ]; then
+        overall_issue="service stopped"
+    elif [ "$runtime_status" != "active" ]; then
+        overall_issue="runtime inactive"
+    elif [ "$heartbeat_runner" != "alive" ]; then
+        overall_issue="heartbeat service abnormal"
+    fi
+
+    # Current chat status description.
+    local chat_status_desc="" chat_issue=""
+    if [ -z "$chat_service" ]; then
+        chat_status_desc="not connected"
+        chat_issue="chat not registered"
+    elif [ "$chat_service" != "running" ]; then
+        chat_status_desc="service not started"
+        chat_issue="service for this chat is not running"
+    elif [ "$chat_unavailable" -eq 1 ]; then
+        chat_status_desc="agent cooling down"
+    elif [ "$chat_worker" = "processing" ]; then
+        chat_status_desc="processing"
+    elif [ "$chat_unread" -gt 0 ]; then
+        chat_status_desc="${chat_unread} message(s) pending"
+    else
+        chat_status_desc="OK"
+    fi
+
+    # Chat status icon
+    local chat_icon="❓"
+    case "$chat_status_desc" in
+        "OK")                        chat_icon="✅" ;;
+        "processing")                chat_icon="⚡" ;;
+        *"message(s) pending")       chat_icon="📬" ;;
+        "agent cooling down")        chat_icon="❄️" ;;
+        "service not started")       chat_icon="⛔" ;;
+        "not connected")             chat_icon="🔌" ;;
+    esac
+
+    printf '%s\n' "## 📱 Chat Status"
+    printf '- %s %s %s\n' "**Current:**" "$chat_icon" "$chat_status_desc"
+
+    # Agent status
+    if [ -n "$chat_service" ] && [ "$chat_service" = "running" ]; then
+        case "$chat_worker" in
+            processing)
+                printf '- %s\n' "**Agent:** ⚡ processing" ;;
+            idle)
+                if [ "$chat_unread" -gt 0 ] && [ "$chat_unavailable" -eq 0 ]; then
+                    printf '- %s %d %s\n' "**Agent:** 💤 idle (" "$chat_unread" "unread)"
+                fi ;;
+        esac
+    fi
+
+    # Last active
+    if [ -n "$chat_last_active" ] && [ "$chat_last_active" != "—" ] && [ "$chat_last_active_ts" -gt 0 ] 2>/dev/null; then
+        printf '- %s %s\n' "**Last active:**" "$(___x_cmd_claw_run_status___chat_reltime "$chat_last_active_ts")"
+    fi
+
+    printf '\n---\n'
+
+    # System status
+    printf '%s\n\n' "### 🖥️ System"
+
+    # Overall status
+    if [ -n "$overall_issue" ]; then
+        printf '%s %s %s\n' "- **Status:** ❌" "$overall_issue"
+    else
+        printf '%s\n' "- **Status:** ✅ running"
+    fi
+
+    # AI engine
+    if [ -n "$harness" ]; then
+        local ai_icon="✅"
+        local ai_status="available"
+        if [ "$chat_unavailable" -eq 1 ]; then
+            ai_icon="❄️"
+            ai_status="cooling down for this chat"
+        elif [ "$agent_unavailable_count" -gt 0 ] 2>/dev/null; then
+            ai_icon="⚠️"
+            ai_status="some chats cooling down"
+        fi
+        printf '%s %s %s %s\n' "- **AI Engine:**" "$ai_icon" "$harness" "($ai_status)"
+    fi
+
+    # Issues
+    if [ -n "$chat_issue" ] && [ -z "$overall_issue" ]; then
+        printf '\n%s\n\n' "### ⚠️ Issues"
+        printf '- %s\n' "$chat_issue"
+    fi
+
+    # Cooldown
+    if [ -n "$chat_service" ] && [ "$chat_service" = "running" ] && [ "$chat_unavailable" -eq 1 ] && [ "$chat_cooldown_remaining" -gt 0 ]; then
+        printf '\n%s\n\n' "### ⏳ Cooldown"
+        if [ "$chat_cooldown_remaining" -lt 60 ]; then
+            printf '%s %d %s\n' "- Please try again in **" "$chat_cooldown_remaining" "** seconds"
+        else
+            local cooldown_min=$(( chat_cooldown_remaining / 60 ))
+            printf '%s %d %s\n' "- Please try again in **" "$cooldown_min" "** minute(s)"
+        fi
+    fi
+
+    # Queue
+    if [ "$mq_pending" -gt 0 ] 2>/dev/null; then
+        printf '\n%s\n\n' "### 📊 Queue"
+        printf '%s %d %s\n' "- **Pending:**" "$mq_pending" "message(s)"
+    fi
+
+    # Agent cooldown note
+    if [ "$agent_unavailable_count" -gt 0 ] 2>/dev/null && [ "$chat_unavailable" -eq 0 ]; then
+        printf '\n%s\n\n' "### 🔄 Agent Cooldown"
+        printf '%s %d %s\n' "- " "$agent_unavailable_count" "session(s) cooling down"
+    fi
+}
+
+___x_cmd_claw_run_status___chat_reltime(){
+    local ts="$1"
+    [ -n "$ts" ] || return 0
+    [ "$ts" -gt 0 ] 2>/dev/null || return 0
+
+    local diff=$(( current_ts - ts ))
+    [ "$diff" -lt 0 ] && diff=$(( -diff ))
+
+    local n unit
+    if [ "$diff" -lt 60 ]; then
+        printf "just now"
+    elif [ "$diff" -lt 3600 ]; then
+        n=$(( diff / 60 ))
+        unit="min"; [ "$n" -ne 1 ] && unit="mins"
+        printf "%d %s ago" "$n" "$unit"
+    elif [ "$diff" -lt 86400 ]; then
+        n=$(( diff / 3600 ))
+        unit="hour"; [ "$n" -ne 1 ] && unit="hours"
+        printf "%d %s ago" "$n" "$unit"
+    elif [ "$diff" -lt 604800 ]; then
+        n=$(( diff / 86400 ))
+        unit="day"; [ "$n" -ne 1 ] && unit="days"
+        printf "%d %s ago" "$n" "$unit"
+    else
+        n=$(( diff / 604800 ))
+        unit="week"; [ "$n" -ne 1 ] && unit="weeks"
+        printf "%d %s ago" "$n" "$unit"
+    fi
+}
+
+___x_cmd_claw_run_status___human(){
+    local use_color=1
+    [ -t 1 ] || use_color=0
+
+    local c_title="" c_section="" c_key="" c_value="" c_green="" c_red="" c_yellow="" c_dim="" c_cyan="" c_end=""
+    if [ "$use_color" -eq 1 ]; then
+        c_title="$(___x_cmd ui style bold)$(___x_cmd ui style cyan)"
+        c_section="$(___x_cmd ui style bold)$(___x_cmd ui style yellow)"
+        c_key="$(___x_cmd ui style dim)"
+        c_value="$(___x_cmd ui style bold)"
+        c_green="$(___x_cmd ui style green)"
+        c_red="$(___x_cmd ui style red)"
+        c_yellow="$(___x_cmd ui style yellow)"
+        c_dim="$(___x_cmd ui style dim)"
+        c_cyan="$(___x_cmd ui style cyan)"
+        c_end="$(___x_cmd ui style end)"
+    fi
+
+    local dash="${c_dim}—${c_end}"
+    local runtime_color="$c_yellow"
+    [ "$runtime_status" = "active" ] && runtime_color="$c_green"
+
+    printf "%sx-claw status%s\n\n" "$c_title" "$c_end"
+
+    printf "%s◆ Overview%s\n" "$c_section" "$c_end"
+    printf "  %s%-14s%s %s %s\n" "$c_key" "Service:" "$c_end" "$(___x_cmd_claw_run_status___fmt_state service "$service_status")" "$(___x_cmd_claw_run_status___fmt_service_text "$service_status")"
+    printf "  %s%-14s%s %s%s%s\n" "$c_key" "Runtime:" "$c_end" "$runtime_color" "$runtime_status" "$c_end"
+    printf "  %s%-14s%s %s\n" "$c_key" "Agent harness:" "$c_end" "${harness:-$dash}"
+    printf "  %s%-14s%s %s\n" "$c_key" "MQ pending:" "$c_end" "$mq_pending"
+    printf "  %s%-14s%s %s\n" "$c_key" "Workspace:" "$c_end" "$___X_CMD_CLAW_BOT_WS"
+    printf "  %s%-14s%s %s\n" "$c_key" "Log dir:" "$c_end" "$___X_CMD_CLAW_BOT_STDOUT_LOG_DIR"
+
+    printf "\n%s◆ Heartbeat%s\n" "$c_section" "$c_end"
+    printf "  %s%-14s%s %s\n" "$c_key" "Health:" "$c_end" "$(___x_cmd_claw_run_status___fmt_heartbeat_health "$last_tick_ts")"
+    printf "  %s%-14s%s %s\n" "$c_key" "Worker:" "$c_end" "heartbeat-orchestrator"
+    printf "  %s%-14s%s %s %s\n" "$c_key" "Worker status:" "$c_end" "$(___x_cmd_claw_run_status___fmt_state worker "$heartbeat_worker")" "$heartbeat_worker"
+    printf "  %s%-14s%s %s %s\n" "$c_key" "Runner:" "$c_end" "$(___x_cmd_claw_run_status___fmt_state runner "$heartbeat_runner")" "$heartbeat_runner"
+    if [ "$idle_count" -eq 1 ]; then
+        printf "  %s%-14s%s %d min\n" "$c_key" "Idle for:" "$c_end" "$idle_count"
+    else
+        printf "  %s%-14s%s %d mins\n" "$c_key" "Idle for:" "$c_end" "$idle_count"
+    fi
+    local session_unit="session"
+    [ "$agent_unavailable_count" -ne 1 ] && session_unit="sessions"
+    if [ -n "$agent_unavailable_list" ]; then
+        printf "  %s%-14s%s %d %s (%s)\n" "$c_key" "Agent cooldown:" "$c_end" "$agent_unavailable_count" "$session_unit" "$agent_unavailable_list"
+    else
+        printf "  %s%-14s%s %d %s\n" "$c_key" "Agent cooldown:" "$c_end" "$agent_unavailable_count" "$session_unit"
+    fi
+    if [ -n "$last_tick" ] && [ "$last_tick_ts" -gt 0 ] 2>/dev/null; then
+        printf "  %s%-14s%s %s (%s)\n" "$c_key" "Last tick:" "$c_end" "$last_tick" "$(___x_cmd_claw_run_status___fmt_reltime "$last_tick_ts")"
+    else
+        printf "  %s%-14s%s %s\n" "$c_key" "Last tick:" "$c_end" "$dash"
+    fi
+
+    printf "\n%s◆ IM Connections%s\n" "$c_section" "$c_end"
+    if [ -z "$im_list" ]; then
+        printf "  %s(none)%s\n" "$c_dim" "$c_end"
+    else
+        printf "%s\n" "$im_list" | while IFS="$___X_CMD_UNSEENCHAR_HT" read -r im_name chatid chat_type service_status worker_status unread_count last_active last_active_ts app_name group_name; do
+            printf "  ● %s%s%s\n" "$c_value" "$im_name" "$c_end"
+            local last_active_fmt="$last_active"
+            if [ -n "$last_active" ] && [ "$last_active" != "—" ]; then
+                last_active_fmt="$(printf "%s" "$last_active" | cut -c1-16)"
+            fi
+            local last_active_rel=""
+            if [ -n "$last_active_ts" ] && [ "$last_active_ts" -gt 0 ] 2>/dev/null; then
+                last_active_rel="$(___x_cmd_claw_run_status___fmt_reltime "$last_active_ts")"
+            fi
+            printf "      %s%-11s%s %s\n" "$c_key" "Chat:" "$c_end" "${chatid:-$dash}"
+            local im_name_disp="$group_name"
+            [ -z "$im_name_disp" ] || [ "$im_name_disp" = "—" ] && im_name_disp="$app_name"
+            [ -z "$im_name_disp" ] || [ "$im_name_disp" = "—" ] && im_name_disp="$dash"
+            printf "      %s%-11s%s %s\n" "$c_key" "Name:" "$c_end" "$im_name_disp"
+            printf "      %s%-11s%s %s\n" "$c_key" "Type:" "$c_end" "${chat_type:-$dash}"
+            printf "      %s%-11s%s %s %s\n" "$c_key" "Service:" "$c_end" "$(___x_cmd_claw_run_status___fmt_state service "$service_status")" "$(___x_cmd_claw_run_status___fmt_service_text "$service_status")"
+            printf "      %s%-11s%s %s %s\n" "$c_key" "Worker:" "$c_end" "$(___x_cmd_claw_run_status___fmt_state worker "$worker_status")" "$worker_status"
+            printf "      %s%-11s%s %s\n" "$c_key" "Unread:" "$c_end" "$unread_count"
+            if [ -n "$last_active_fmt" ] && [ "$last_active_fmt" != "—" ]; then
+                printf "      %s%-11s%s %s (%s)\n" "$c_key" "Last active:" "$c_end" "$last_active_fmt" "$last_active_rel"
+            else
+                printf "      %s%-11s%s %s\n" "$c_key" "Last active:" "$c_end" "$dash"
+            fi
+            printf "\n"
+        done
+    fi
+
+    printf "\n%s◆ Cron Jobs%s\n" "$c_section" "$c_end"
+    if [ -z "$cron_list" ]; then
+        printf "  %s(none)%s\n" "$c_dim" "$c_end"
+    else
+        local cron_total=0 cron_failed=0
+        cron_total="$(printf "%s\n" "$cron_list" | ___x_cmd awk0 -v FS="$___X_CMD_UNSEENCHAR_HT" 'NR>1 && $1!="" {total++} END {print total+0}')"
+        cron_failed="$(printf "%s\n" "$cron_list" | ___x_cmd awk0 -v FS="$___X_CMD_UNSEENCHAR_HT" 'NR>1 && $1!="" {if ($7=="failed") failed++} END {print failed+0}')"
+        printf "  %s%-11s%s %d total" "$c_key" "Summary:" "$c_end" "$cron_total"
+        if [ "$cron_failed" -gt 0 ]; then
+            printf ", %s%d failed%s" "$c_red" "$cron_failed" "$c_end"
+        fi
+        printf "\n\n"
+        printf "%s\n" "$cron_list" | ___x_cmd awk0 -m date -v FS="$___X_CMD_UNSEENCHAR_HT" \
+            -v c_section="$c_section" -v c_key="$c_key" -v c_value="$c_value" \
+            -v c_green="$c_green" -v c_red="$c_red" -v c_yellow="$c_yellow" \
+            -v c_dim="$c_dim" -v c_end="$c_end" \
+            -f "$___X_CMD_ROOT_MOD/claw/lib/awk/status_cron_human.awk"
+    fi
+
+    printf "%sTip:%s Use %sx claw status --yaml%s for machine-readable output.\n" "$c_dim" "$c_end" "$c_cyan" "$c_end"
+    printf "     Run %sx claw log%s to view real-time logs.\n" "$c_cyan" "$c_end"
+    if [ "$service_status" != "running" ]; then
+        printf "     Run %sx claw service start%s to start the background service.\n" "$c_cyan" "$c_end"
+    fi
+    printf "     Run %sx claw connect <weixin|qywx|feishu|telegram>%s to add an IM channel.\n" "$c_cyan" "$c_end"
+}
+
+___x_cmd_claw_run_status(){
+    local output_format=human
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --yaml)     output_format=yaml; shift ;;
+            -h|--help)  ___x_cmd help -m claw status "$@"; return 0 ;;
+            *)          ___x_cmd_claw_run_status___usage; return 64 ;;
+        esac
+    done
+
+    local service_status="" runtime_status="" harness=""
+    local heartbeat_worker="" heartbeat_runner=""
+    local idle_count=0 agent_unavailable_count=0 agent_unavailable_list="" last_tick="" last_tick_ts=0
+    local current_ts=0
+    local mq_pending=0
+    local im_list=""
+    local cron_tz="" cron_list=""
+
+    ___x_cmd_claw_run_status___collect
+
+    case "$output_format" in
+        yaml)   ___x_cmd_claw_run_status___yaml ;;
+        human)  ___x_cmd_claw_run_status___human ;;
+        *)      ___x_cmd_claw_run_status___usage; return 64 ;;
+    esac
 }

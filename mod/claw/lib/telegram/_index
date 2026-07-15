@@ -1,15 +1,15 @@
 # ___x_cmd_claw_telegram -h
-# x claw telegram send --text --chatid <CHATID> <xxxxxx>
-# x claw telegram send --image --chatid <CHATID> <path>
-# x claw telegram send --file --chatid <CHATID> <path>
-# x claw telegram send --video --chatid <CHATID> <path>
-# x claw feishu send --text --chatid <chatid> <xxxxxx>
-# x claw feishu send --image --chatid <chatid> <path>
-# x claw feishu send --file --chatid <chatid> <path>
-# x claw telegram send --text --chatid <chatid> <xxxxxx>
-# x claw telegram send --image --chatid <chatid> <path>
-# x claw telegram send --file --chatid <chatid> <path>
-# x claw telegram send --video --chatid <chatid> <path>
+# x claw telegram send --chatid <CHATID> --text <xxxxxx>
+# x claw telegram send --chatid <CHATID> --image <path>
+# x claw telegram send --chatid <CHATID> --file <path>
+# x claw telegram send --chatid <CHATID> --video <path>
+# x claw feishu send --chatid <chatid> --text <xxxxxx>
+# x claw feishu send --chatid <chatid> --image <path>
+# x claw feishu send --chatid <chatid> --file <path>
+# x claw telegram send --chatid <chatid> --text <xxxxxx>
+# x claw telegram send --chatid <chatid> --image <path>
+# x claw telegram send --chatid <chatid> --file <path>
+# x claw telegram send --chatid <chatid> --video <path>
 # x claw telegram get-sent --chatid <chatid>
 
 ___x_cmd_claw_telegram(){
@@ -33,6 +33,8 @@ ___x_cmd_claw_telegram(){
             ___x_cmd_claw_telegram_unread_count "$@" ;;
         recent-msg)
             ___x_cmd_claw_telegram_recent_msg "$@" ;;
+        get-offset)
+            ___x_cmd_claw_telegram_get_offset "$@" ;;
         update-offset)
             ___x_cmd_claw_telegram_update_offset "$@" ;;
         *)  N=claw M="Unknown subcmd -> $op" log:ret:64 ;;
@@ -46,7 +48,7 @@ ___x_cmd_claw_telegram_send(){
 
     while [ $# -gt 0 ]; do
         case "$1" in
-            --help|-h)  ___x_cmd help -m claw telegram "$@"; return 0 ;;
+            --help|-h)  ___x_cmd help -m claw telegram send; return 0 ;;
             --chatid)   shift; chatid="$1"; shift; continue ;;
             --text)     shift; msg_type="text";  content="$*"; break ;;
             --image)    shift; msg_type="image"; content="$1"; shift; break ;;
@@ -76,7 +78,7 @@ ___x_cmd_claw_telegram_send(){
             ___x_cmd mkdirp "$asset_dir"
             local target_path="${asset_dir}/${send_time}_${content##*/}"
 
-            cp "$content" "$target_path" || {
+            ___x_cmd_cmds cp "$content" "$target_path" || {
                 telegram:warn "Failed to copy $msg_type to $target_path"
             }
             content="$target_path"
@@ -93,13 +95,31 @@ ___x_cmd_claw_telegram_send(){
 }
 
 
+___x_cmd_claw_telegram_get_offset_(){
+    local chatid="$1"
+    [ -n "$chatid" ] || return 1
+
+    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/telegram-${chatid}"
+    x_=0
+    [ ! -f "$datadir_offset" ] || read -r x_ <"$datadir_offset"
+    x_="${x_:-0}"
+}
+
+___x_cmd_claw_telegram_get_offset(){
+    local chatid="$1"
+    [ -n "$chatid" ] || N=claw M="Please provide telegram chatid" log:ret:64
+
+    local x_=""
+    ___x_cmd_claw_telegram_get_offset_ "$chatid" || return $?
+    printf "%s\n" "$x_"
+}
+
 ___x_cmd_claw_telegram_get_unread(){
     local chatid="$1"
     [ -n "$chatid" ] || N=claw M="Please provide telegram chatid" log:ret:64
-    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/telegram-${chatid}"
 
-    local offset=0
-    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+    local x_=""; ___x_cmd_claw_telegram_get_offset_ "$chatid" || return $?
+    local offset="$x_"
 
     local x_=""
     ___x_cmd telegram bot data which_ "$chatid"
@@ -158,10 +178,9 @@ ___x_cmd_claw_telegram_get_msg(){
 ___x_cmd_claw_telegram_recent_msg(){
     local chatid="$1"
     [ -n "$chatid" ] || N=claw M="Please provide telegram chatid" log:ret:64
-    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/telegram-${chatid}"
 
-    local offset=0
-    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+    local x_=""; ___x_cmd_claw_telegram_get_offset_ "$chatid" || return $?
+    local offset="$x_"
     ___x_cmd_claw_telegram_get_msg "$chatid" "$((offset+1))"
 }
 
@@ -169,7 +188,6 @@ ___x_cmd_claw_telegram_update_offset(){
     local chatid="$1"
     [ -n "$chatid" ] || N=claw M="Please provide telegram chatid" log:ret:64
     local end_line="$2"
-    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/telegram-${chatid}"
 
     local x_=""
     ___x_cmd telegram bot data which_ "$chatid"
@@ -195,9 +213,10 @@ ___x_cmd_claw_telegram_update_offset(){
         end_line="$total_line"
     fi
 
-    local offset=0
-    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
+    local x_=""; ___x_cmd_claw_telegram_get_offset_ "$chatid" || return $?
+    local offset="$x_"
 
+    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/telegram-${chatid}"
     ___x_cmd ensurefp "$datadir_offset"
     [ "$end_line" -le "$offset" ] || printf "%s\n" "$end_line" > "$datadir_offset"
 }
@@ -212,11 +231,9 @@ ___x_cmd_claw_telegram_has_unread(){
 ___x_cmd_claw_telegram_unread_count_(){
     local chatid="$1"
     [ -n "$chatid" ] || N=claw M="Please provide telegram chatid" log:ret:64
-    local datadir_offset="$___X_CMD_CLAW_BOT_DATA/DATA_OFFSET/telegram-${chatid}"
 
-    local offset=0
-    [ ! -f "$datadir_offset" ] || read -r offset <"$datadir_offset"
-    offset="${offset:-0}"
+    x_=""; ___x_cmd_claw_telegram_get_offset_ "$chatid" || return $?
+    local offset="$x_"
 
     x_=""; ___x_cmd telegram bot data which_ "$chatid"
     local botdata="$x_"

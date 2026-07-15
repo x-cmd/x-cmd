@@ -12,7 +12,7 @@ BEGIN{
     parse_item($0, Qresult, 0)
 }
 
-function parse_item( s, kp, is_ref,        o, ref_kp, msg_text, msg_photo_id, msg_document_id, msg_video_id, msg_voice_id, msg_audio_id, msg_from_id, msg_chat_id, msg_message_id, msg_date){
+function parse_item( s, kp, is_ref,        o, ref_kp, msg_text, msg_photo_id, msg_document_id, msg_video_id, msg_voice_id, msg_audio_id, msg_from_id, msg_from_user, msg_chat_id, msg_message_id, msg_date){
     jiparse_after_tokenize(o, s)
     JITER_LEVEL = JITER_CURLEN = 0
 
@@ -24,6 +24,8 @@ function parse_item( s, kp, is_ref,        o, ref_kp, msg_text, msg_photo_id, ms
     msg_voice_id = juq( o[ kp SUBSEP "\"voice\"" SUBSEP "\"file_id\"" ] )
     msg_audio_id = juq( o[ kp SUBSEP "\"audio\"" SUBSEP "\"file_id\"" ] )
     msg_from_id = o[ kp SUBSEP "\"from\"" SUBSEP "\"id\"" ]
+    msg_from_user = juq( o[ kp SUBSEP "\"from\"" SUBSEP "\"username\"" ] )
+    if ( msg_from_user == "" ) msg_from_user = juq( o[ kp SUBSEP "\"from\"" SUBSEP "\"first_name\"" ] )
     msg_chat_id = o[ kp SUBSEP "\"chat\"" SUBSEP "\"id\"" ]
     msg_message_id = o[ kp SUBSEP "\"message_id\"" ]
 
@@ -35,18 +37,22 @@ function parse_item( s, kp, is_ref,        o, ref_kp, msg_text, msg_photo_id, ms
     if ( msg_text != "" ){
         msg_text = parse_tsv_esc( msg_text )
     }
+    if ( msg_from_user != "" ){
+        msg_from_user = parse_tsv_esc( msg_from_user )
+    }
 
     print is_ref
     print msg_date
+    print msg_from_id
+    print msg_from_user
+    print msg_message_id
     print msg_text
     print msg_photo_id
     print msg_document_id
     print msg_video_id
     print msg_voice_id
     print msg_audio_id
-    print msg_from_id
     print msg_chat_id
-    print msg_message_id
 }
 
 function parse_tsv_esc( v ){

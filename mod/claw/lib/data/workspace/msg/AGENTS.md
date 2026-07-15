@@ -61,7 +61,7 @@ Speed matters: reply first, then refine.
 
 **Language**: Always reply in the same language as the user's message. Do not switch languages unless the user explicitly asks you to.
 
-**Tool Call Verification**: After every reply, verify that you have actually executed the platform send command (e.g., `x claw feishu send --text --chatid <CHATID>`, `x claw weixin send --chatid <CHATID>`, etc.). Do not just write the command in your reasoning — execute it. Record the exact command you ran in your memory entry under `Method`.
+**Tool Call Verification**: After every reply, verify that you have actually executed the platform send command (e.g., `x claw feishu send --chatid <CHATID> --text '<msg>'`, `x claw weixin send --chatid <CHATID> --text '<msg>'`, etc.). Do not just write the command in your reasoning — execute it. Record the exact command you ran in your memory entry under `Method`.
 
 ### Workflow
 
@@ -138,21 +138,21 @@ Treat `PLAN.md` as your checkpoint file — write it before starting anything th
 ### Reply Methods
 
 **Feishu:**
-- Text: `x claw feishu send --text --chatid "<CHATID>" '<msg>'`
-- Image: `x claw feishu send --image --chatid "<CHATID>" <path>`
-- Video: `x claw feishu send --video --chatid "<CHATID>" <path>`
+- Text: `x claw feishu send --chatid "<CHATID>" --text '<msg>'`
+- Image: `x claw feishu send --chatid "<CHATID>" --image <path>`
+- Video: `x claw feishu send --chatid "<CHATID>" --video <path>`
 - Format: Full markdown supported. Card messages need specific JSON.
 
 **Qywx (Enterprise WeChat):**
-- Text: `x claw qywx send --text --chatid "<CHATID>" '<msg>'`
-- Image: `x claw qywx send --image --chatid "<CHATID>" <path>`
-- File: `x claw qywx send --file --chatid "<CHATID>" <path>`
+- Text: `x claw qywx send --chatid "<CHATID>" --text '<msg>'`
+- Image: `x claw qywx send --chatid "<CHATID>" --image <path>`
+- File: `x claw qywx send --chatid "<CHATID>" --file <path>`
 - Format: Plain text, lists, and emoji. No tables or headings.
 
 **Telegram:**
-- Text: `x claw telegram send --text --chatid "<CHATID>" '<msg>'`
-- Image: `x claw telegram send --image --chatid "<CHATID>" <path>`
-- Video: `x claw telegram send --video --chatid "<CHATID>" <path>`
+- Text: `x claw telegram send --chatid "<CHATID>" --text '<msg>'`
+- Image: `x claw telegram send --chatid "<CHATID>" --image <path>`
+- Video: `x claw telegram send --chatid "<CHATID>" --video <path>`
 - Format: Full markdown including tables and headings. Max 4096 characters per message.
 
 **WeChat:**
@@ -177,7 +177,7 @@ In claw context, ONLY `x claw cron` is allowed. Do NOT use:
 Requirements: `<msg>` is sent to a NEW agent with NO memory. It MUST include Goal, Tools, Steps, Output, and how to deliver results. Use SINGLE quotes.
 
 BAD:  `'Check HN'` (too vague, the agent won't know what to do).
-GOOD: `'Use x hn top for top 5 posts. Extract title, URL, score. Send: x claw feishu send --text --chatid "<CHATID>" '<formatted_list>'`'
+GOOD: `'Use x hn top for top 5 posts. Extract title, URL, score. Send: x claw feishu send --chatid "<CHATID>" --text '<formatted_list>'`'
 
 ### Background Jobs
 

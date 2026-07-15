@@ -17,15 +17,14 @@ ___x_cmd_claw_agentrequest(){
     local msg="$3";     [ -n "$msg" ] || N=claw M="Please provide message" log:ret:64
 
     ___x_cmd_claw_run___ensure_im_service "$im" "$chatid" || return $?
-    ___x_cmd_claw_run___agent___exec_chat "$im" "$chatid" "$msg"
+    ___x_cmd_claw_run___agent___exec_chat "$im" "$chatid" "$msg" "agentrequest"
 }
 
 ___x_cmd_claw_run___agent___exec_chat(){
     local im="$1";      [ -n "$im" ] || N=claw M="Please provide IM platform name (e.g., weixin|telegram)" log:ret:64
     local chatid="$2";  [ -n "$chatid" ] || N=claw M="Please provide chatid" log:ret:64
     local msg="$3";     [ -n "$msg" ] || N=claw M="Please provide message" log:ret:64
-    local without_debug_log="${4:-}"
-    local reset_failure="${5:-}"
+    local source="${4:-agentrequest}"
 
     if [ -n "$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR" ]; then
         local logfp="$___X_CMD_CLAW_BOT_RECENT_STDOUT_LOG_DIR/${im}-${chatid}.log"
@@ -33,11 +32,18 @@ ___x_cmd_claw_run___agent___exec_chat(){
         exec >>"$logfp" 2>&1
     fi
 
-    if [ -n "$reset_failure" ]; then
-        ___x_cmd_claw_run___state___reset_unavailable "$im" "$chatid"
-    else
-        ___x_cmd_claw_run___state___check_unavailable "$im" "$chatid" "msg" || return 0
-    fi
+    case "$source" in
+        user|agentrequest|manager)
+            ___x_cmd_claw_run___state___reset_unavailable "$im" "$chatid"
+            ;;
+        hb)
+            ___x_cmd_claw_run___state___check_unavailable "$im" "$chatid" "msg" || return 0
+            ;;
+        *)
+            claw:warn "[AGENT] Unknown agent exec source '$source' for $im:$chatid, defaulting to reset failure state"
+            ___x_cmd_claw_run___state___reset_unavailable "$im" "$chatid"
+            ;;
+    esac
 
     # Genuine user activity: reset idle state so heartbeat keeps probing.
     ___x_cmd_claw_run___session___mark_active
@@ -53,10 +59,24 @@ ___x_cmd_claw_run___agent___exec_chat(){
     ___x_cmd date timestamp_
     local agent_start_ts="$x_"
     local worker_name="chat-${im}-${chatid}"
-    ___x_cmd_claw_run___pending_ack___start "$im" "$chatid" "$agent_start_ts" "$worker_name"
+
+    # Pending ack is only meaningful for user-driven chat requests.
+    case "$source" in
+        user|agentrequest)
+            ___x_cmd_claw_run___pending_ack___start "$im" "$chatid" "$agent_start_ts" "$worker_name" "user"
+            ;;
+        hb)
+            ___x_cmd_claw_run___pending_ack___start "$im" "$chatid" "$agent_start_ts" "$worker_name" "hb"
+            ;;
+        manager)
+            # Manager is not an IM chat; pending ack does not apply.
+            ;;
+    esac
 
     local debug_flag="--debug"
-    [ -n "$without_debug_log" ] && debug_flag=""
+    case "$source" in
+        manager)    debug_flag="" ;;
+    esac
     ___x_cmd agent request  \
         --timeout 1800 \
         ${debug_flag:+$debug_flag} \
@@ -115,13 +135,13 @@ ___x_cmd_claw_run___agent___exec_heartbeat(){
   * weixin:   x claw weixin send --chatid <CHATID> --text '<msg>'" ;;
             telegram)
                 reply_methods="$reply_methods
-  * telegram: x claw telegram send --text --chatid <CHATID> '<msg>'" ;;
+  * telegram: x claw telegram send --chatid <CHATID> --text '<msg>'" ;;
             feishu)
                 reply_methods="$reply_methods
-  * feishu:   x claw feishu send --text --chatid <CHATID> '<msg>'" ;;
+  * feishu:   x claw feishu send --chatid <CHATID> --text '<msg>'" ;;
             qywx)
                 reply_methods="$reply_methods
-  * qywx:     x claw qywx send --text --chatid <CHATID> '<msg>'" ;;
+  * qywx:     x claw qywx send --chatid <CHATID> --text '<msg>'" ;;
             *)  continue ;;
         esac
 

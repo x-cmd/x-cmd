@@ -105,6 +105,19 @@ ___x_cmd_claw_run___pending_ack___background(){
     ___x_cmd_claw_run___pending_ack___send "$im" "$chatid"
 }
 
+# Return 0 if the chat has a recorded agent failure (fail_count > 0).
+___x_cmd_claw_run___pending_ack___has_previous_failure_(){
+    local im="$1"; local chatid="$2"; local source="${3:-msg}"
+    local x_=""
+    ___x_cmd_claw_run___state___file_ "$im" "$chatid" "$source"
+    local state_file="$x_"
+    [ -f "$state_file" ] || return 1
+
+    local fail_count=0
+    read -r fail_count _ < "$state_file" 2>/dev/null || true
+    [ "${fail_count:-0}" -gt 0 ] || return 1
+}
+
 ___x_cmd_claw_run___pending_ack___start(){
     local im="$1"
     local chatid="$2"
@@ -113,6 +126,24 @@ ___x_cmd_claw_run___pending_ack___start(){
 
     if ! ___x_cmd_claw_run___pending_ack___is_single_chat "$im" "$chatid"; then
         claw:debug "[PENDING_ACK] $im:$chatid is not a single chat, skipping"
+        return 0
+    fi
+
+    # Heartbeat-triggered requests should skip the reassurance message only when
+    # the agent has previously failed for this chat. In that case the user may
+    # have already received an error notification, and a follow-up "still working"
+    # message is confusing. Healthy agent responses can still benefit from it.
+    local trigger="${5:-hb}"
+    if [ "$trigger" = "hb" ] && ___x_cmd_claw_run___pending_ack___has_previous_failure_ "$im" "$chatid"; then
+        claw:debug "[PENDING_ACK] hb-triggered request with previous failure for $im:$chatid, skipping"
+        return 0
+    fi
+
+    # Skip if previous agent requests have marked this chat as unavailable.
+    # Sending a "still working" message right before (or while) the agent is
+    # known to be broken feels confusing to users.
+    if ! ___x_cmd_claw_run___state___check_unavailable "$im" "$chatid" "msg"; then
+        claw:debug "[PENDING_ACK] Agent is currently unavailable for $im:$chatid, skipping"
         return 0
     fi
 

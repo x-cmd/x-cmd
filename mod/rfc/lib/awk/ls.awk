@@ -2,7 +2,7 @@ BEGIN {
     skip = 1
 }
 
-$0 ~ /^0001/ {
+$0 ~ /^[[:space:]]*1[[:space:]]/ {
     skip = 0
 }
 
@@ -19,12 +19,13 @@ function handle( o ){
     printf "%s,%s,%s,%s,", "id" , "title" , "author" , "date"
     printf "%s,%s,%s,", "format" , "status" , "doi"
     printf "%s,%s,%s,%s,%s\n", "obsoletes" , "obsoleted_by" , "updates" , "updated_by" , "also"
-    while (1) {
+    do {
+        if ($0 == "") continue
         o[ L ] = l  = o[ L ] + 1
         o[ l ] = id = $1
 
         if ($0 ~ /Not[ ]Issued/) {
-            getline
+            # do-while's getline advances past this
         } else {
             line = $0
             while (getline) {
@@ -70,8 +71,7 @@ function handle( o ){
             o[ l , "also" ]  = substr(line, RSTART + 6, RLENGTH - 7)
             printf "%s,%s,%s,%s,%s\n", csv_quote_ifmust(o[l, "obsoletes"]) , csv_quote_ifmust(o[l, "obsoleted_by"]), csv_quote_ifmust(o[l, "updates"]), csv_quote_ifmust(o[l, "updated_by"]), csv_quote_ifmust(o[l, "also"])
         }
-        if (! getline) return
-    }
+    } while (getline)
 }
 
 !skip {
