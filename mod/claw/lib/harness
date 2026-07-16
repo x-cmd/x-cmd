@@ -1,0 +1,109 @@
+# shellcheck shell=dash
+
+# x claw harness — manage the default agent harness for claw.
+#
+# Normal usage (terminal / agent tool call):
+#   x claw harness              show current harness
+#   x claw harness <name>       switch to the named harness
+#
+# IM / slash usage:
+#   x claw harness <name> --im <im> --chatid <chatid>
+#       switch harness and notify the originating chat of the result.
+
+___x_cmd_claw_harness(){
+    local harness="" im="" chatid=""
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                ___x_cmd help -m claw harness "$@"
+                return 0
+                ;;
+            --im)
+                im="${2:-}"
+                shift 2
+                ;;
+            --chatid)
+                chatid="${2:-}"
+                shift 2
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                ___x_cmd_claw_harness___message error "$im" "$chatid" "Unknown option: $1"
+                return 1
+                ;;
+            *)
+                if [ -z "$harness" ]; then
+                    harness="$1"
+                    shift
+                else
+                    break
+                fi
+                ;;
+        esac
+    done
+
+    if [ -z "$harness" ]; then
+        ___x_cmd_claw_harness___show_current "$im" "$chatid"
+        return 0
+    fi
+
+    ___x_cmd_claw_harness___set "$harness" "$im" "$chatid"
+}
+
+___x_cmd_claw_harness___show_current(){
+    local im="$1"; local chatid="$2"
+    local current=""
+    local x_=""
+
+    if ___x_cmd agent default_harness_ 2>/dev/null; then
+        current="$x_"
+    fi
+
+    if [ -n "$current" ]; then
+        ___x_cmd_claw_harness___message info "$im" "$chatid" "Current agent harness: $current"
+    else
+        ___x_cmd_claw_harness___message warn "$im" "$chatid" "No agent harness is configured. Run 'x claw init' to set one up."
+    fi
+}
+
+___x_cmd_claw_harness___set(){
+    local harness="$1"; local im="$2"; local chatid="$3"
+
+    # Trim leading/trailing whitespace.
+    harness="$(printf "%s\n" "$harness" | ___x_cmd_cmds awk '{ gsub(/^[ \t]+|[ \t]+$/, ""); print }')"
+
+    if ! ___x_cmd_agent_harness_validate "$harness" 2>/dev/null; then
+        ___x_cmd_claw_harness___message error "$im" "$chatid" \
+            "Unsupported harness: $harness. Supported: claude, claude-*, codex, cursor, gemini-cli, kimi-cli, opencode."
+        return 1
+    fi
+
+    claw:info "[HARNESS] Switching agent harness to: $harness"
+    if ___x_cmd agent --cfg "zero_harness=$harness" >/dev/null 2>&1; then
+        if ___x_cmd_agent_init___harness_isready "$harness" 2>/dev/null; then
+            ___x_cmd_claw_harness___message info "$im" "$chatid" "Switched agent harness to: $harness"
+        else
+            ___x_cmd_claw_harness___message warn "$im" "$chatid" \
+                "Switched to $harness, but it is not ready. Run 'x agent init' to configure it."
+        fi
+    else
+        ___x_cmd_claw_harness___message error "$im" "$chatid" "Failed to switch agent harness to: $harness"
+        return 1
+    fi
+}
+
+# Emit a user-facing message.  In IM mode (--im/--chatid provided) the message is
+# sent back to the chat; otherwise it is logged at the specified level.
+___x_cmd_claw_harness___message(){
+    local level="$1"; local im="$2"; local chatid="$3"; local msg="$4"
+
+    if [ -n "$im" ] && [ -n "$chatid" ]; then
+        ___x_cmd_claw_run___notify "$im" "$chatid" "$msg"
+    else
+        ___x_cmd log :claw "$level" "$msg"
+    fi
+}

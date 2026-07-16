@@ -1,0 +1,226 @@
+# shellcheck shell=dash disable=SC2016
+
+# Slash command dispatcher for x claw.
+# First-version scope:
+#   - Only intercept the FIRST unread message of a chat worker cycle.
+#   - Only handle single chats (DM); group chats are rejected by default.
+#   - Supported commands: /help, /status, /harness <name>, /model (alias of /harness).
+
+___x_cmd_claw_run___slash___im_valid(){
+    case "$1" in
+        weixin|telegram|feishu|qywx) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+___x_cmd_claw_run___slash___get_offset_(){
+    local im="$1"
+    local chatid="$2"
+    ___x_cmd_claw_run___slash___im_valid "$im" || return 1
+    case "$im" in
+        weixin)     ___x_cmd_claw_weixin_get_offset_   "$chatid" ;;
+        telegram)   ___x_cmd_claw_telegram_get_offset_ "$chatid" ;;
+        feishu)     ___x_cmd_claw_feishu_get_offset_   "$chatid" ;;
+        qywx)       ___x_cmd_claw_qywx_get_offset_     "$chatid" ;;
+    esac
+}
+
+___x_cmd_claw_run___slash___first_text_(){
+    local im="$1"
+    local chatid="$2"
+
+    local x_=""
+    ___x_cmd_claw_run___slash___get_offset_ "$im" "$chatid" || return 1
+    local offset="$x_"
+
+    local parsed
+    # Capture get-msg output in a variable instead of piping directly to awk.
+    # In POSIX shell a pipeline returns the exit code of the last command, so
+    # a failure in get-msg would be hidden if we wrote "get-msg | awk".
+    parsed="$(___x_cmd_claw "$im" get-msg "$chatid" "$((offset + 1))" 2>/dev/null)" || return 1
+
+    [ -n "$parsed" ] || return 1
+
+    # Parse the first unread message and print it only if it is a valid slash
+    # command (/command or /command args).  offset is the last line already
+    # consumed, so the newest unread message is at line offset+1 (matching
+    # get-unread).  If no such message exists, awk exits non-zero and this
+    # function fails without printing anything.
+    printf "%s\n" "$parsed" | ___x_cmd_cmds awk -F '\t' '
+        NR == 1 {
+            for (i = 1; i <= NF; i++) {
+                if ($i == "Type")      type_idx = i
+                if ($i == "Content")   content_idx = i
+            }
+            next
+        }
+        type_idx > 0 && content_idx > 0 && NF >= content_idx {
+            type = $type_idx
+            body = $content_idx
+            # Strip carriage returns.
+            gsub(/\r/, "", body)
+            # Trim leading whitespace.
+            gsub(/^[ \t]+/, "", body)
+            if (type == "Text" && body ~ /^\/[A-Za-z][A-Za-z0-9_-]*( |$)/) {
+                print body
+                found = 1
+                exit 0
+            }
+        }
+        END {
+            if (!found) exit 1
+        }
+    '
+}
+
+___x_cmd_claw_run___slash___is_single_chat(){
+    local im="$1"
+    local chatid="$2"
+    case "$im" in
+        feishu)
+            case "$chatid" in
+                oc_*|groups)    return 1 ;;
+                *)              return 0 ;;
+            esac
+            ;;
+        *)  return 0 ;;
+    esac
+}
+
+___x_cmd_claw_run___slash___can_run_here(){
+    local im="$1"
+    local chatid="$2"
+    if ! ___x_cmd_claw_run___slash___is_single_chat "$im" "$chatid"; then
+        claw:debug "[SLASH] $im:$chatid is not a single chat, skipping"
+        return 1
+    fi
+    return 0
+}
+
+___x_cmd_claw_run___slash___send(){
+    local im="$1"
+    local chatid="$2"
+    local text="$3"
+    ___x_cmd_claw_run___notify "$im" "$chatid" "$text"
+}
+
+___x_cmd_claw_run___slash___update_offset(){
+    local im="$1"
+    local chatid="$2"
+    local end_line="$3"
+    ___x_cmd_claw_run___slash___im_valid "$im" || return 1
+    ___x_cmd_claw "$im" update-offset "$chatid" "$end_line"
+}
+
+___x_cmd_claw_run___slash___handle_help(){
+    local im="$1"
+    local chatid="$2"
+    local msg="Available slash commands:
+/help - show this message
+/status - show status of this chat and the agent
+/harness <harness-name> - switch the default agent harness (e.g., claude, codex)
+/model <harness-name> - alias of /harness"
+    ___x_cmd_claw_run___slash___send "$im" "$chatid" "$msg"
+}
+
+___x_cmd_claw_run___slash___handle_status(){
+    local im="$1"
+    local chatid="$2"
+
+    local status_text
+    status_text="$(___x_cmd_claw_run_status___chat "$im" "$chatid")" || {
+        ___x_cmd_claw_run___slash___send "$im" "$chatid" "Unable to collect status."
+        return 1
+    }
+
+    ___x_cmd_claw_run___slash___send "$im" "$chatid" "$status_text"
+}
+
+___x_cmd_claw_run___slash___handle_harness(){
+    local im="$1"; shift
+    local chatid="$1"; shift
+
+    if [ "$#" -le 0 ]; then
+        ___x_cmd_claw_run___slash___send "$im" "$chatid" "Usage: /harness <harness-name>. Send /help for more info."
+        return 0
+    fi
+
+    # Delegate to the external harness command; it will notify the user when
+    # --im/--chatid are provided.  Slash only needs to consume the message.
+    ___x_cmd_claw harness --im "$im" --chatid "$chatid" "$@"
+}
+
+___x_cmd_claw_run___slash___handle_unknown(){
+    local im="$1"
+    local chatid="$2"
+    local cmd="$3"
+    ___x_cmd_claw_run___slash___send "$im" "$chatid" "Unknown command: $cmd. Send /help for available commands."
+}
+
+___x_cmd_claw_run___slash___dispatch(){
+    local im="$1"
+    local chatid="$2"
+    local text="$3"
+
+    # Strip the leading slash and split command / args.
+    local without_slash="${text#/}"
+    local cmd="${without_slash%% *}"
+    local args="${without_slash#* }"
+    [ "$args" = "$without_slash" ] && args=""
+
+    case "$cmd" in
+        help|commands)
+            ___x_cmd_claw_run___slash___handle_help "$im" "$chatid" ;;
+        status)
+            ___x_cmd_claw_run___slash___handle_status "$im" "$chatid" ;;
+        harness|model)
+            ___x_cmd_claw_run___slash___handle_harness "$im" "$chatid" "$args" ;;
+        *)
+            ___x_cmd_claw_run___slash___handle_unknown "$im" "$chatid" "$cmd" ;;
+    esac
+}
+
+# Public entry point called from lib/run/msg chat workers.
+# Returns 0 if a slash command was handled (caller should skip agent request).
+# Returns 1 if no slash command was detected (caller should proceed normally).
+___x_cmd_claw_run___slash___try_handle(){
+    local im="$1"
+    local chatid="$2"
+    local source="${3:-user}"
+
+    if [ "$source" != "user" ]; then
+        claw:debug "[SLASH] Skipping slash handling for non-user source '$source' on $im:$chatid"
+        return 1
+    fi
+
+    if [ "$___X_CMD_CLAW_SLASH_ENABLED" != "1" ]; then
+        claw:debug "[SLASH] Slash commands are disabled (set ___X_CMD_CLAW_SLASH_ENABLED=1 to enable)"
+        return 1
+    fi
+
+    if ! ___x_cmd_claw_run___slash___can_run_here "$im" "$chatid"; then
+        return 1
+    fi
+
+    local first_text
+    first_text="$(___x_cmd_claw_run___slash___first_text_ "$im" "$chatid")" || {
+        claw:debug "[SLASH] No slash command in first unread message for $im:$chatid"
+        return 1
+    }
+
+    claw:info "[SLASH] Handling slash command for $im:$chatid: $first_text"
+    ___x_cmd_claw_run___slash___dispatch "$im" "$chatid" "$first_text"
+    local dispatch_exitcode=$?
+
+    # Advance offset by exactly one message so the slash command is consumed.
+    local x_=""
+    ___x_cmd_claw_run___slash___get_offset_ "$im" "$chatid" || {
+        claw:warn "[SLASH] Failed to get offset for $im:$chatid"
+        return 1
+    }
+    local offset="${x_:-0}"
+    local end_line=$((offset + 1))
+    ___x_cmd_claw_run___slash___update_offset "$im" "$chatid" "$end_line"
+
+    return $dispatch_exitcode
+}

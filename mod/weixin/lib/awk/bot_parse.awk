@@ -11,22 +11,23 @@ BEGIN{
     parse_item_list($0)
 }
 
-function parse_item_list( s,        o, kp, l, i, j, jl){
+function parse_item_list( s,        o, kp, l, i, j, jl, msg_id){
     jiparse_after_tokenize(o, s)
     JITER_LEVEL = JITER_CURLEN = 0
 
     l = o[ Q2_1 L ]
     for (i=1; i<=l; ++i){
+        msg_id = o[ Q2_1 SUBSEP "\""i"\"" SUBSEP "\"message_id\"" ]
         kp = Q2_1 SUBSEP "\""i"\"" SUBSEP "\"item_list\""
         jl = o[ kp L ]
         for (j=1; j<=jl; ++j){
-            parse_item(o, kp SUBSEP "\""j"\"")
+            parse_item(o, kp SUBSEP "\""j"\"", msg_id)
         }
     }
 
 }
 
-function parse_item(o, kp, is_ref,          msg_type, msg_text, msg_img_media_fullurl, msg_img_media_aeskey, msg_img_media_aeskey_64,
+function parse_item(o, kp, msg_id, is_ref,          msg_type, msg_text, msg_img_media_fullurl, msg_img_media_aeskey, msg_img_media_aeskey_64,
            msg_video_media_fullurl, msg_video_media_aeskey_64, msg_file_media_fullurl, msg_file_media_aeskey_64, msg_file_media_aeskey_name,
            msg_voice_media_fullurl, msg_voice_media_aeskey_64, ref_msg_kp){
     msg_type = o[ kp SUBSEP "\"type\"" ]
@@ -53,6 +54,7 @@ function parse_item(o, kp, is_ref,          msg_type, msg_text, msg_img_media_fu
     }
 
     print is_ref
+    print msg_id
     print msg_time
     print msg_type
     print msg_text

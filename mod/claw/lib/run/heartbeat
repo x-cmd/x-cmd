@@ -12,6 +12,13 @@ ___x_cmd_claw_run___mq___dispatch_heartbeat(){
     fi
 
     local current_ts="$1"
+    case "$current_ts" in
+        ''|*[!0-9]*)
+            claw:error "[HB] Invalid heartbeat timestamp: '$current_ts'. Expected a Unix timestamp."
+            return 1
+            ;;
+    esac
+
     local heartbeat_tsfile="$___X_CMD_CLAW_BOT_HEARTBEAT/lastheartbeat_ts"
     local lastheartbeat_ts=0;
     [ ! -f "$heartbeat_tsfile" ] || read -r lastheartbeat_ts < "$heartbeat_tsfile"
@@ -115,7 +122,7 @@ ___x_cmd_claw_run___heartbeat___probe(){
     if ___x_cmd claw "$current_im" has-unread "$current_chatid" && ! ___x_cmd worker isalive --ns x-claw-default-worker --name "chat-${current_im}-${current_chatid}"; then
         ___x_cmd rmrf "$heartbeat_ok_file"
         claw:info "[HB] [$current_im:$current_chatid] Unread messages detected — launching message handler"
-        ___x_cmd_claw_run___mq___dispatch_chat "${current_im}:${current_chatid}"
+        ___x_cmd_claw_run___mq___dispatch_chat "${current_im}:${current_chatid}" "hb"
         return 0
     fi
 
@@ -165,10 +172,15 @@ ___x_cmd_claw_run___heartbeat___weixin_session_check(){
         [ -n "$elapsed" ] || continue
         [ "$elapsed" -ge "$remind_threshold" ] || continue
 
-        claw:info "[HB] [weixin:$chatid] Session expiring soon (elapsed=${elapsed}s) and cron tasks exist, sending reminder"
+        if [ "$elapsed" -ge "$___X_CMD_CLAW_WEIXIN_SESSION_TIMEOUT" ]; then
+            claw:warn "[HB] [weixin:$chatid] Session already expired (elapsed=${elapsed}s, >=24h), skipping reminder because wechat active session is required to send messages"
+            continue
+        fi
+
+        claw:info "[HB] [weixin:$chatid] Session expiring soon (elapsed=${elapsed}s, will reach 24h limit soon) and cron tasks exist, sending reminder"
 
         if ___x_cmd_claw_weixin_send --chatid "$chatid" --text "$reminder_text"; then
-            ___x_cmd ensurefp "$marker"
+            ___x_cmd touch "$marker"
             claw:info "[HB] [weixin:$chatid] Session reminder sent and marked"
         else
             claw:warn "[HB] [weixin:$chatid] Failed to send session reminder, will retry next heartbeat"

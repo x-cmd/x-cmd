@@ -9,7 +9,7 @@ NR >= start_line && ( is_recent || (NR <= end_line) ){
     parse_msg($0, 0, SUBSEP "\"1\"" SUBSEP "\"body\"")
 }
 
-function parse_msg( s, is_ref, kp,        o, kp2, msg_type, msg_time, msg_text, msg_from, msg_chatid,
+function parse_msg( s, is_ref, kp,        o, kp2, msg_type, msg_time, msg_text, msg_from, msg_id, msg_chatid,
            img_url, img_aeskey, video_url, video_aeskey,
            file_url, file_aeskey, file_name, voice_url, voice_aeskey,
            mi, arrlen, mixed_kp, mixed_item_type, mixed_item_text, mixed_item_key,
@@ -25,6 +25,8 @@ function parse_msg( s, is_ref, kp,        o, kp2, msg_type, msg_time, msg_text, 
             ref_text = parse_tsv_esc(ref_text)
         }
         print 1
+        print ""
+        print ""
         print ref_msgtype
         print ref_text
         print ""
@@ -43,6 +45,7 @@ function parse_msg( s, is_ref, kp,        o, kp2, msg_type, msg_time, msg_text, 
     msg_type = juq(o[ kp SUBSEP "\"msgtype\"" ])
 
     msg_from = juq(o[ kp SUBSEP "\"from\"" SUBSEP "\"userid\"" ])
+    msg_id = juq(o[ kp SUBSEP "\"msgid\"" ])
     msg_chatid = juq(o[kp SUBSEP "\"chatid\""])
 
     if (index(msg_type, "text") > 0 && index(msg_type, "mixed") == 0){
@@ -92,9 +95,10 @@ function parse_msg( s, is_ref, kp,        o, kp2, msg_type, msg_time, msg_text, 
     }
 
     print is_ref
+    print msg_from
+    print msg_id
     print msg_type
     print msg_text
-    print msg_from
     print msg_chatid
     print img_url
     print img_aeskey

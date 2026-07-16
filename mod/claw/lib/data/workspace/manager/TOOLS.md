@@ -50,9 +50,9 @@ As the Manager, you have full control over the claw system. Always use `--help` 
 You can send messages to any connected platform:
 
 - **WeChat**: `x claw weixin send --chatid <CHATID> --text '<msg>'`
-- **Telegram**: `x claw telegram send --text --chatid <CHATID> '<msg>'`
-- **Feishu**: `x claw feishu send --text --chatid <CHATID> '<msg>'`
-- **Qywx**: `x claw qywx send --text --chatid <CHATID> '<msg>'`
+- **Telegram**: `x claw telegram send --chatid <CHATID> --text '<msg>'`
+- **Feishu**: `x claw feishu send --chatid <CHATID> --text '<msg>'`
+- **Qywx**: `x claw qywx send --chatid <CHATID> --text '<msg>'`
 
 ## AI Engine / Model
 
