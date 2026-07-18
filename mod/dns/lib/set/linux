@@ -1,0 +1,237 @@
+# shellcheck shell=dash
+
+___x_cmd_dns_set___linux_nmcli(){
+    local activated
+    activated="$(___x_cmd cmds nmcli -t -f NAME connection show --active 2>/dev/null \
+        | ___x_cmd_cmds_awk -F: '{ print $1 }')"
+    if [ -z "$activated" ]; then
+        dns:warn "No active NetworkManager connection"
+        return 1
+    fi
+
+    local v4="" v6="" ip
+    for ip in "$@"; do
+        case "$ip" in
+            *:*)
+                if [ -n "$v6" ]; then v6="$v6 $ip"; else v6="$ip"; fi
+                ;;
+            *)
+                if [ -n "$v4" ]; then v4="$v4 $ip"; else v4="$ip"; fi
+                ;;
+        esac
+    done
+    [ "${___X_CMD_DNS_NO_V4:-0}" = 1 ] && v4=""
+    [ "${___X_CMD_DNS_NO_V6:-0}" = 1 ] && v6=""
+
+    if [ -z "$v4" ] && [ -z "$v6" ]; then
+        N=dns M="All IPs filtered out by --no-ipv4 / --no-ipv6" log:ret:64
+    fi
+
+    local conn
+    for conn in $activated; do
+        if [ -n "$v4" ]; then
+            ___x_cmd sudo nmcli con mod "$conn" ipv4.dns "$v4" ipv4.ignore-auto-dns yes ipv4.method manual \
+                2>/dev/null || dns:warn "Failed to set IPv4 for $conn"
+        fi
+        if [ -n "$v6" ]; then
+            ___x_cmd sudo nmcli con mod "$conn" ipv6.dns "$v6" ipv6.ignore-auto-dns yes \
+                2>/dev/null || dns:warn "Failed to set IPv6 for $conn"
+        fi
+        ___x_cmd sudo nmcli connection up "$conn" 2>/dev/null || true
+    done
+
+    dns:info "NetworkManager DNS updated for: $activated"
+    ___x_cmd_dns_reload___run --quiet
+    ___x_cmd_dns_refresh___run --quiet
+}
+
+___x_cmd_dns_set___linux_systemd(){
+    [ $# -gt 0 ] || {
+        N=dns M="Usage: x dns set <ip> [ip ...]" log:ret:64
+    }
+
+    local v4="" v6="" ip
+    for ip in "$@"; do
+        case "$ip" in
+            *:*)  v6="$v6 $ip" ;;
+            *)    v4="$v4 $ip" ;;
+        esac
+    done
+    v4="${v4#"${v4%%[![:space:]]*}"}"
+    v6="${v6#"${v6%%[![:space:]]*}"}"
+
+    [ "${___X_CMD_DNS_NO_V4:-0}" = 1 ] && v4=""
+    [ "${___X_CMD_DNS_NO_V6:-0}" = 1 ] && v6=""
+
+    if [ -z "$v4" ] && [ -z "$v6" ]; then
+        N=dns M="All IPs filtered out by --no-ipv4 / --no-ipv6" log:ret:64
+    fi
+
+    local conf="/etc/systemd/resolved.conf.d/x-cmd-dns.conf"
+    dns:info "Writing $conf"
+    ___x_cmd sudo mkdir -p /etc/systemd/resolved.conf.d \
+        || N=dns M="Failed to create /etc/systemd/resolved.conf.d" log:ret:1
+
+    local tmp
+    tmp="$(mktemp)" || N=dns M="mktemp failed" log:ret:1
+    {
+        printf '[Resolve]\n'
+        [ -n "$v4" ] && printf 'DNS=%s\n' "$v4"
+        [ -n "$v6" ] && printf 'DNS=%s\n' "$v6"
+    } > "$tmp"
+
+    ___x_cmd sudo cp "$tmp" "$conf" \
+        || { rm -f "$tmp"; N=dns M="Failed to write $conf" log:ret:1; }
+    rm -f "$tmp"
+
+    dns:info "Restarting systemd-resolved"
+    ___x_cmd sudo systemctl restart systemd-resolved \
+        || N=dns M="Failed to restart systemd-resolved" log:ret:1
+
+    dns:info "System-wide DNS updated"
+    ___x_cmd sudo systemd-resolve --status 2>/dev/null | ___x_cmd_cmds_awk '
+        /DNS Servers:/ { inblock = 1; next }
+        inblock && /^[[:space:]]/ { print; next }
+        inblock { inblock = 0 }
+    '
+}
+
+___x_cmd_dns_set___linux_target(){
+    local conn="$1"; shift
+    [ -n "$conn" ] || N=dns M="Usage: x dns set <conn> <ip> [ip ...]" log:ret:64
+    [ $# -gt 0 ] || N=dns M="Please provide at least one IP" log:ret:64
+
+    if ! ___x_cmd hascmd nmcli; then
+        N=dns M="nmcli not found" log:ret:64
+    fi
+
+    if ! ___x_cmd sudo nmcli --terse connection show id "$conn" >/dev/null 2>&1; then
+        N=dns M="Connection not found ==> $conn" log:ret:64
+    fi
+
+    local v4="" v6="" ip
+    for ip in "$@"; do
+        case "$ip" in
+            *:*)
+                if [ -n "$v6" ]; then v6="$v6 $ip"; else v6="$ip"; fi
+                ;;
+            *)
+                if [ -n "$v4" ]; then v4="$v4 $ip"; else v4="$ip"; fi
+                ;;
+        esac
+    done
+    [ "${___X_CMD_DNS_NO_V4:-0}" = 1 ] && v4=""
+    [ "${___X_CMD_DNS_NO_V6:-0}" = 1 ] && v6=""
+
+    if [ -z "$v4" ] && [ -z "$v6" ]; then
+        N=dns M="All IPs filtered out by --no-ipv4 / --no-ipv6" log:ret:64
+    fi
+
+    dns:info "Setting DNS for connection: $conn"
+    [ -n "$v4" ] && dns:info "  IPv4 nameservers: $v4"
+    [ -n "$v6" ] && dns:info "  IPv6 nameservers: $v6"
+
+    if [ -n "$v4" ]; then
+        if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+            dns:info "[dry-run] sudo nmcli con mod \"$conn\" ipv4.dns \"$v4\" ipv4.ignore-auto-dns yes ipv4.method manual"
+        else
+            ___x_cmd sudo nmcli con mod "$conn" ipv4.dns "$v4" ipv4.ignore-auto-dns yes ipv4.method manual \
+                || N=dns M="Failed to set IPv4 DNS" log:ret:1
+        fi
+    fi
+
+    if [ -n "$v6" ]; then
+        if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+            dns:info "[dry-run] sudo nmcli con mod \"$conn\" ipv6.dns \"$v6\" ipv6.ignore-auto-dns yes"
+        else
+            ___x_cmd sudo nmcli con mod "$conn" ipv6.dns "$v6" ipv6.ignore-auto-dns yes \
+                || N=dns M="Failed to set IPv6 DNS" log:ret:1
+        fi
+    fi
+
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        dns:info "[dry-run] sudo nmcli connection reload"
+        dns:info "[dry-run] sudo nmcli connection up \"$conn\""
+    else
+        ___x_cmd sudo nmcli connection reload 2>/dev/null || true
+        ___x_cmd sudo nmcli connection up "$conn" \
+            || N=dns M="Failed to bring up connection: $conn" log:ret:1
+    fi
+
+    ___x_cmd_dns_reload___run --quiet
+    ___x_cmd_dns_refresh___run --quiet
+    dns:info "DNS updated for connection: $conn"
+}
+
+___x_cmd_dns_set___linux(){
+    local conn=""
+    if [ $# -gt 0 ] && ! ___x_cmd_dns_set___looks_like_ip "$1"; then
+        conn="$1"; shift
+    fi
+
+    if [ -n "$conn" ]; then
+        ___x_cmd_dns_set___linux_target "$conn" "$@"
+        return
+    fi
+
+    [ $# -gt 0 ] || N=dns M="Please provide at least one IP" log:ret:64
+
+    local x_
+    ___x_cmd_dns_util___linux_pick_backend_
+    ___x_cmd_dns_set___linux_"${x_}" "$@"
+}
+
+___x_cmd_dns_set___linux_file(){
+    [ $# -gt 0 ] || {
+        N=dns M="Usage: x dns set --file <ip> [ip ...]" log:ret:64
+    }
+
+    local ip
+    for ip in "$@"; do
+        case "$ip" in
+            *:*|*.*.*)  ;;
+            *)          N=dns M="Not an IP address ==> $ip" log:ret:64 ;;
+        esac
+    done
+
+    local resolvconf="/etc/resolv.conf"
+
+    if [ ! -e "$resolvconf" ]; then
+        N=dns M="$resolvconf does not exist; cannot write" log:ret:64
+    fi
+
+    if [ -L "$resolvconf" ]; then
+        dns:info "$resolvconf is a symlink -> $(___x_cmd cmds readlink "$resolvconf")"
+        dns:info "Will replace the symlink with a real file (NetworkManager / systemd-resolved will no longer manage it)"
+    fi
+
+    local content="# Generated by: x dns set --file"
+    for ip in "$@"; do
+        content="$content
+nameserver $ip"
+    done
+    content="$content
+options edns0 trust-ad
+"
+
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        [ -L "$resolvconf" ] && dns:info "[dry-run] sudo rm $resolvconf"
+        dns:info "[dry-run] would write $resolvconf:"
+        printf '%s' "$content"
+        return 0
+    fi
+
+    if [ -L "$resolvconf" ]; then
+        dns:info "Removing symlink $resolvconf"
+        ___x_cmd sudo rm "$resolvconf" \
+            || N=dns M="Failed to remove symlink $resolvconf" log:ret:1
+    fi
+
+    dns:info "Writing $resolvconf"
+    printf '%s' "$content" | ___x_cmd sudo tee "$resolvconf" >/dev/null \
+        || N=dns M="Failed to write $resolvconf" log:ret:1
+    ___x_cmd sudo chmod 644 "$resolvconf" 2>/dev/null || true
+
+    dns:info "Wrote $resolvconf"
+    dns:info "Note: NetworkManager / systemd-resolved may overwrite this on next reconnect"
+}

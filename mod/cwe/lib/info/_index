@@ -1,0 +1,71 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cwe lib/info/_index — `x cwe info <CWE-ID>` subcommand.
+#
+# Lookup a single CWE by id. Modes: --yml (default), --json, --raw.
+#
+# Helpers:
+#   info/lookup   — id normalization, row finder, related-CWE extraction
+#   info/render   — yml/json/raw output formatters
+
+xrc:mod:lib     cwe         data/_index info/lookup info/render
+
+# Main dispatcher
+___x_cmd_cwe_info(){
+    local explicit_mode=""
+    local tag=""
+    local ids=""
+    local refresh=1
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m cwe info "$@" ; return 0 ;;
+            --yml|--yaml)           explicit_mode="yml" ;;
+            --json)                 explicit_mode="json" ;;
+            --raw)                  explicit_mode="raw" ;;
+            --no-refresh)           refresh=0 ;;
+            --tag)                  shift; tag="$1" ;;
+            --offline)              X_CMD_CWE_OFFLINE=1 ;;
+            *)                      ids="${ids:+${ids} }$1" ;;
+        esac
+        shift
+    done
+
+    [ -n "$ids" ] || {
+        cwe:error "usage: x cwe info <CWE-ID>...   (e.g. x cwe info CWE-79)"
+        return 64
+    }
+
+    # Normalize ids: accept `CWE-79` or bare `79`.
+    local normalized="" norm raw
+    for raw in $ids; do
+        if norm="$(___x_cmd_cwe_info_normalize "$raw")"; then
+            normalized="${normalized:+${normalized} }${norm}"
+        else
+            cwe:warn "skipping invalid id: $raw"
+        fi
+    done
+    ids="$normalized"
+    [ -n "$ids" ] || return 1
+
+    # Apply --tag if set, otherwise keep default.
+    [ -n "$tag" ] && X_CMD_CWE_TAG="$tag"
+    local mode="${explicit_mode:-yml}"
+
+    # Ensure cache exists unless --offline or --no-refresh.
+    if [ "$refresh" = 1 ] && [ -z "${X_CMD_CWE_OFFLINE:-}" ]; then
+        ___x_cmd_cwe_data_ensure "$X_CMD_CWE_TAG" >/dev/null 2>&1 || true
+    fi
+
+    local id row rendered=0
+    for id in $ids; do
+        row="$(___x_cmd_cwe_info_find_row "$X_CMD_CWE_TAG" "$id")"
+        if [ -z "$row" ]; then
+            cwe:warn "CWE-$id: not found in catalog"
+            continue
+        fi
+        ___x_cmd_cwe_info_render "$mode" "$row"
+        rendered=$((rendered + 1))
+    done
+
+    [ "$rendered" -gt 0 ]
+}

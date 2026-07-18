@@ -1,0 +1,119 @@
+#!/bin/sh
+# x-cmd cve lib/fz/preview — render a single CVE row from the local cache.
+#
+# fzf calls this as `--preview="<path> {1}"` whenever the highlighted
+# row changes. {1} is the first TAB-delimited field of the row, with
+# any ANSI escape codes already stripped (fzf does this for the preview
+# placeholder, unlike {q} etc.).
+#
+# IMPORTANT: this script can be sourced via xrc:mod:lib too, where $1
+# leaks from the calling context (typically `fz/preview`). Detect which
+# case we're in:
+#   - If $1 looks like a CVE id, fzf called us — use it directly.
+#   - Otherwise discard all positional args (xrc:mod:lib leftover).
+case "$1" in
+    CVE-*-*) ;;
+    *) shift "$#" ;;
+esac
+id="${1}"
+case "$id" in
+    CVE-*-*) ;;
+    *) exit 0 ;;
+esac
+
+# Strip the CVE- prefix and split to extract the year.
+year=$(printf '%s\n' "$id" | awk -F- '{ print $2 }')
+[ -n "$year" ] || exit 0
+
+# Resolve the cache root. X_CMD_CVE_TAG overrides the default 'github'.
+# Try several locations in order:
+#   1. X_CMD_CVE_DATA_ROOT (explicit override)
+#   2. x-cmd's runtime data root (often set under fz's subprocess)
+#   3. ~/.x-cmd/data/cve/tsv/<tag>   (typical install layout)
+#   4. ~/.x-cmd.root/local/data/...  (legacy layout)
+tag="${X_CMD_CVE_TAG:-github}"
+case "$tag" in
+    github|ghproxy|'') tag=github ;;
+esac
+
+fp=""
+for root in \
+    "$X_CMD_CVE_DATA_ROOT" \
+    "$___X_CMD_ROOT_DATA/cve/tsv/$tag" \
+    "$HOME/.x-cmd/data/cve/tsv/$tag" \
+    "$HOME/.x-cmd.root/local/data/cve/tsv/$tag"
+do
+    [ -n "$root" ] || continue
+    [ -f "$root/cve-${year}.tsv" ] && { fp="$root/cve-${year}.tsv"; break; }
+done
+
+[ -n "$fp" ] || {
+    printf '(not in local cache — run `x cve update`)\n'
+    exit 0
+}
+
+# ANSI helpers. fzf child processes don't always inherit
+# $___X_CMD_UNSEENCHAR_033, so we materialise the ESC byte ourselves via
+# printf rather than relying on an env var. The bash builtin
+# printf '\033' emits a real 0x1b byte — bash double-quoted "\033"
+# would NOT (it would print the four literal characters).
+ESC=$(printf '\033')
+B="${ESC}[1m"
+R="${ESC}[0m"
+GREY="${ESC}[90m"
+YELLOW="${ESC}[33m"
+BLUE="${ESC}[34m"
+GREEN="${ESC}[32m"
+RED="${ESC}[31m"
+BRED="${ESC}[1;31m"
+
+# Severity colors match lib/fz/_index (no red — see comment there):
+#   unrated (no score)   → dim grey
+#   >= 9.0  CRITICAL     → magenta
+#   >= 7.0  HIGH         → yellow
+#   >= 5.0  MEDIUM       → cyan
+#   <  5.0  LOW          → green
+MAGENTA="${ESC}[35m"
+score_color() {
+    case "$1" in
+        "")     printf '%s' "$GREY" ;;        # unrated → dim grey
+        *)
+            awk -v s="$1" 'BEGIN { exit !(s+0 >= 9.0) }' \
+                && { printf '%s' "$MAGENTA"; return; }
+            awk -v s="$1" 'BEGIN { exit !(s+0 >= 7.0) }' \
+                && { printf '%s' "$YELLOW"; return; }
+            awk -v s="$1" 'BEGIN { exit !(s+0 >= 5.0) }' \
+                && { printf '%s' "$BLUE"; return; }
+            printf '%s' "$GREEN"
+            ;;
+    esac
+}
+
+# TSV layout (matches _cve_index.py, _CVE_COLUMNS = 9):
+#   $1 cve   $2 year  $3 no    $4 vp
+#   $5 ghsa  $6 score $7 patched $8 cwe
+#   $9 desc
+score=$(awk -F '\t' -v target="$id" '$1 == target { print $6; exit }' "$fp")
+c=$(score_color "$score")
+
+awk -F '\t' -v target="$id" \
+    -v score_color="$c" \
+    -v score_reset="$R" \
+    -v grey="$GREY" \
+    -v bold="$B" \
+'
+    $1 == target {
+        printf "cve:      %s\n", $1
+        printf "year:     %s\n", $2
+        printf "no:       %s\n", $3
+        if ($4 != "") printf "vp:       %s\n", $4
+        printf "ghsa:     %s\n", ($5 == "" ? "—" : $5)
+        printf "score:    %s%s%s\n", score_color, ($6 == "" ? "—" : $6), score_reset
+        if ($7 != "" && $7 != "0") printf "patched:  %s\n", $7
+        if ($8 != "") printf "cwe:      %s\n", $8
+        if ($9 != "") printf "\n%s%sdesc:%s   %s\n", grey, bold, score_reset, $9
+        found = 1
+        exit
+    }
+    END { if (!found) print "(id not in this year — may have been moved)" }
+' "$fp"

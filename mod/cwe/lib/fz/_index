@@ -1,0 +1,100 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cwe lib/fz/_index — `x cwe fz` subcommand.
+#
+# Interactive fzf picker over every cached CWE. Modeled after
+# `x cve fz`:
+#   - TAB-delimited columns (so fzf --delimiter='\t' splits cleanly)
+#   - ANSI-colorized rows
+#   - preview pane calls lib/fz/preview directly (no subshell, no x-cmd)
+#   - on selection, prints the chosen id's full info block to stdout
+#
+# Before launching fzf, opportunistically refreshes the cache when it's
+# missing or older than 30 days.
+
+xrc:mod:lib     cwe         data/_index la/stream la/fmt
+
+# Ensure the cache is fresh (≤ 30 days old).
+___x_cmd_cwe_fz_refresh_recent(){
+    ___x_cmd_cwe_la_refresh_recent
+}
+
+# Build the fzf input stream: a tab-delimited header + colored rows.
+___x_cmd_cwe_fz_stream(){
+    local esc="$___X_CMD_UNSEENCHAR_033"
+
+    printf '%sID%s\t%sNAME%s\t%sABSTRACTION%s\t%sSTATUS%s\t%sDESC%s\n' \
+        "${esc}[1m" "${esc}[0m" \
+        "${esc}[1m" "${esc}[0m" \
+        "${esc}[1m" "${esc}[0m" \
+        "${esc}[1m" "${esc}[0m" \
+        "${esc}[1m" "${esc}[0m"
+
+    ___x_cmd_cwe_la_stream_tsv \
+    | ___x_cmd_cmds awk -F '\t' -v esc="$esc" '
+        function sev(s,    n) {
+            # Status buckets: Stable → green; Draft → blue;
+            # Incomplete → yellow; Deprecated → red.
+            if (s == "Stable")      return esc "[32m"
+            if (s == "Draft")       return esc "[34m"
+            if (s == "Incomplete")  return esc "[33m"
+            if (s == "Deprecated")  return esc "[31m"
+            return esc "[0m"
+        }
+        NR == 1 { next }
+        {
+            stat_c = sev($4)
+            printf "%s%s%s\t%s%-50s%s\t%s%s%s\t%s%s%s\t%s%s%s\n",
+                esc "[1;36m",  $1,    esc "[0m",     # bold cyan id
+                esc "[0m",  substr($2, 1, 50), esc "[0m",
+                esc "[35m", $3, esc "[0m",          # magenta abstraction
+                stat_c,   $4, esc "[0m",
+                esc "[2m", $5, esc "[0m"            # dim desc
+        }
+    '
+}
+
+# Top-level dispatcher.
+___x_cmd_cwe_fz(){
+    local refresh=1
+    local query=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m cwe fz "$@" ; return 0 ;;
+            --no-refresh)   refresh=0 ;;
+            --tag)          shift; X_CMD_CWE_TAG="$1" ;;
+            -q|--query)     shift; query="$1" ;;
+            *)              cwe:warn "ignoring arg: $1" ;;
+        esac
+        shift
+    done
+
+    [ "$refresh" = 1 ] && ___x_cmd_cwe_fz_refresh_recent
+
+    local preview_path="$___X_CMD_ROOT_MOD/cwe/lib/fz/preview"
+
+    local selection
+    selection="$(
+        ___x_cmd_cwe_fz_stream \
+        | ___x_cmd fzf \
+            --ansi --reverse --height='80%' \
+            --tabstop=2 \
+            --query="$query" \
+            --header-lines=1 \
+            --header-border=horizontal \
+            --header-label=' x cwe — MITRE CWE catalog (stable green · draft blue · incomplete yellow · deprecated red) ' \
+            --delimiter='\t' \
+            --nth=1,2,3,4,5 \
+            --preview="sh '$preview_path' {1}" \
+            --preview-window='right:60%:wrap' \
+            --bind='ctrl-w:toggle-preview-wrap' \
+    )"
+
+    [ -n "$selection" ] || return 0
+    selection="$( printf '%s\n' "$selection" \
+        | sed $'s/\033\\[[0-9;]*m//g' \
+        | awk -F '\t' '{ gsub(/[ \t]+$/, "", $1); print $1 }' )"
+
+    [ -n "$selection" ] || return 0
+    printf '%s\n' "$selection"
+}

@@ -1,0 +1,53 @@
+# shellcheck shell=dash
+
+# Linux: NetworkManager via `nmcli`.
+# Backup format: `nmcli -t -f NAME,IP4.DNS,IP6.DNS connection show` output,
+# one line per connection, colon-separated.
+___x_cmd_dns_backup___linux(){
+    local name="$1"
+    [ -n "$name" ] || N=dns M="Usage: x dns backup <name>" log:ret:64
+
+    local dir
+    dir="$(___x_cmd_dns_backup___dir)"
+    local file="$dir/$name.json"
+    mkdir -p "$dir" 2>/dev/null || N=dns M="Failed to create $dir" log:ret:1
+
+    if ! ___x_cmd hascmd nmcli; then
+        N=dns M="nmcli not found" log:ret:64
+    fi
+
+    dns:info "Backing up NetworkManager DNS state to $file"
+    ___x_cmd cmds nmcli -t -f NAME,IP4.DNS,IP6.DNS connection show 2>/dev/null > "$file" \
+        || N=dns M="Failed to read nmcli state" log:ret:1
+
+    dns:info "Backup written: $file"
+}
+
+___x_cmd_dns_restore___linux(){
+    local name="$1"
+    [ -n "$name" ] || N=dns M="Usage: x dns restore <name>" log:ret:64
+
+    local dir
+    dir="$(___x_cmd_dns_backup___dir)"
+    local file="$dir/$name.json"
+    [ -f "$file" ] || N=dns M="Backup not found: $file" log:ret:64
+
+    if ! ___x_cmd hascmd nmcli; then
+        N=dns M="nmcli not found" log:ret:64
+    fi
+
+    dns:info "Restoring DNS from $file"
+    while IFS=: read -r conn v4 v6; do
+        [ -n "$conn" ] || continue
+        if [ -n "$v4" ]; then
+            ___x_cmd sudo nmcli con mod "$conn" ipv4.dns "$v4" ipv4.ignore-auto-dns yes ipv4.method manual \
+                2>/dev/null || dns:warn "Failed to set IPv4 for $conn"
+        fi
+        if [ -n "$v6" ]; then
+            ___x_cmd sudo nmcli con mod "$conn" ipv6.dns "$v6" ipv6.ignore-auto-dns yes \
+                2>/dev/null || dns:warn "Failed to set IPv6 for $conn"
+        fi
+        ___x_cmd sudo nmcli connection up "$conn" 2>/dev/null || true
+    done < "$file"
+    dns:info "DNS restored from: $name"
+}

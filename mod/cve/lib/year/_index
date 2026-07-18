@@ -1,0 +1,77 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/year/_index — `x cve year <YYYY> [YYYY...]` subcommand.
+#
+# Stream the per-year TSV. With `--score N` filter to entries whose CVSS
+# score is >= N. With `--grep PATTERN`, filter by case-insensitive match on
+# cve id, ghsa, or description.
+
+xrc:mod:lib     cve         data/_index
+
+___x_cmd_cve_year(){
+    local tag="${X_CMD_CVE_TAG:-}"
+    local explicit_mode="tsv"
+    local score_min=""
+    local grep_pat=""
+    local years=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m cve year "$@" ; return 0 ;;
+            --yml)          explicit_mode="yml" ;;
+            --tsv)          explicit_mode="tsv" ;;
+            --csv)          explicit_mode="csv" ;;
+            --json)         explicit_mode="json" ;;
+            --score)        shift; score_min="$1" ;;
+            --grep)         shift; grep_pat="$1" ;;
+            --ghproxy)      tag="ghproxy" ;;
+            --tag)          shift; tag="$1" ;;
+            --offline)      X_CMD_CVE_OFFLINE=1 ;;
+            [0-9][0-9][0-9][0-9])
+                            years="${years:+${years} }$1" ;;
+            *)              cve:warn "ignoring arg: $1" ;;
+        esac
+        shift
+    done
+
+    [ -n "$years" ] || {
+        cve:error "usage: x cve year <YYYY> [YYYY...]   (e.g. x cve year 2024)"
+        return 64
+    }
+
+    [ -n "$tag" ] || tag="${X_CMD_CVE_TAG:-}"
+
+    if [ -z "${X_CMD_CVE_OFFLINE:-}" ]; then
+        # shellcheck disable=SC2086
+        ___x_cmd_cve_data_ensure_years "$tag" $years
+    fi
+
+    local year fp
+    for year in $years; do
+        fp="$(___x_cmd_cve_data_year_fp "$year" "$tag")"
+        [ -f "$fp" ] || {
+            cve:warn "no cached year file for $year"
+            continue
+        }
+        if [ -z "$score_min" ] && [ -z "$grep_pat" ]; then
+            ___x_cmd_cmds cat "$fp"
+            continue
+        fi
+
+        ___x_cmd_cmds awk -F '\t' -v score_min="$score_min" -v gre="$grep_pat" '
+            function num(s) { return s+0 }
+            function passes_score(s) {
+                if (score_min == "") return 1
+                if (s == "") return 0
+                return num(s) >= num(score_min)
+            }
+            function passes_grep(cve, ghsa, desc) {
+                if (gre == "") return 1
+                lc = tolower(cve "\t" ghsa "\t" desc)
+                return index(lc, tolower(gre)) > 0
+            }
+            {
+                if (passes_score($5) && passes_grep($1, $4, $6)) print
+            }
+        ' "$fp"
+    done
+}

@@ -1,0 +1,82 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/info/_index — `x cve info <CVE-ID>...` subcommand.
+#
+# Lookup a single CVE by id, or several at once. When multiple ids span
+# multiple years, the year files are downloaded in parallel via HTTP/2
+# multiplexing (curl --parallel) so the whole batch lands in roughly the
+# time of a single round-trip.
+#
+# Modes: --yml (default), --tsv, --csv, --json, --raw
+#
+# Helpers:
+#   info/lookup   — id normalization, awk-grep, batch prefetch
+#   info/render   — yml/json/csv/tsv/raw output formatters
+
+xrc:mod:lib     cve         data/_index info/lookup info/render
+
+# Main dispatcher
+___x_cmd_cve_info(){
+    local explicit_mode=""
+    local tag="${X_CMD_CVE_TAG:-}"
+    local ids=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m cve info "$@" ; return 0 ;;
+            --yml|--yaml)           explicit_mode="yml" ;;
+            --tsv)                  explicit_mode="tsv" ;;
+            --csv)                  explicit_mode="csv" ;;
+            --json)                 explicit_mode="json" ;;
+            --raw)                  explicit_mode="raw" ;;
+            --ghproxy)              tag="ghproxy" ;;
+            --tag)                  shift; tag="$1" ;;
+            --offline)              X_CMD_CVE_OFFLINE=1 ;;
+            *)                      ids="${ids:+${ids} }$1" ;;
+        esac
+        shift
+    done
+
+    [ -n "$ids" ] || {
+        cve:error "usage: x cve info <CVE-ID>...   (e.g. x cve info CVE-2024-0001)"
+        return 64
+    }
+
+    # Normalize ids: accept both `CVE-YYYY-NNNN` and bare `YYYY-NNNN`.
+    local normalized="" norm raw
+    for raw in $ids; do
+        if norm="$(___x_cmd_cve_info_normalize "$raw")"; then
+            normalized="${normalized:+${normalized} }${norm}"
+        else
+            cve:warn "skipping invalid id: $raw"
+        fi
+    done
+    ids="$normalized"
+    [ -n "$ids" ] || return 1
+
+    local mode="${explicit_mode:-yml}"
+
+    if [ -z "${X_CMD_CVE_OFFLINE:-}" ]; then
+        # shellcheck disable=SC2086
+        ___x_cmd_cve_info_prefetch "$tag" $ids
+    fi
+
+    local id year fp row rendered=0
+    for id in $ids; do
+        year="$(printf '%s' "$id" | sed -n 's/^CVE-\([0-9]\{4\}\)-.*/\1/p')"
+        [ -n "$year" ] || continue
+        fp="$(___x_cmd_cve_data_year_fp "$year" "$tag")"
+        if [ ! -f "$fp" ]; then
+            cve:warn "no cached year file for $year (offline?)"
+            continue
+        fi
+        row="$(___x_cmd_cve_info_lookup "$fp" "$id")"
+        if [ -z "$row" ]; then
+            cve:warn "$id: not found in $year"
+            continue
+        fi
+        ___x_cmd_cve_info_render "$mode" "$row"
+        rendered=$((rendered + 1))
+    done
+
+    [ "$rendered" -gt 0 ]
+}

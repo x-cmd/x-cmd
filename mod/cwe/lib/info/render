@@ -1,0 +1,299 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263,SC2016
+# x-cmd cwe lib/info/render — output formatters for a single CWE row.
+#
+# All formatters take a single MITRE CSV row and emit the chosen
+# representation. Internally they delegate to a single awk pass that
+# parses the 23 fields and emits the formatted output, so a render
+# costs exactly one child process — no per-field subshells.
+#
+# YML rules per field:
+#   - contains '::' (MITRE marker blocks) → list of mappings, one per
+#     `::...::` record, with each record's KEY:VALUE pairs expanded.
+#   - single-line + no special chars       → plain scalar
+#   - single-line + special chars          → double-quoted
+#   - multi-line (no ::)                   → block scalar `|`
+#
+# When stdout is a TTY (or X_CMD_CWE_FORCE_COLOR=1), keys are wrapped
+# in bold-cyan ANSI for readability. The output stays valid YAML
+# because the ANSI escapes are outside the value — only the key
+# tokens are colored.
+
+# Render a single CSV row in the chosen format.
+# Args: <mode> <csv_row>
+___x_cmd_cwe_info_render(){
+    local mode="$1"; shift
+    local row="$1"
+
+    case "$mode" in
+        raw)
+            ___x_cmd_cmds awk -F',' '
+                { gsub(/^"|"$/, "", $1); printf "CWE-%s\n", $1; exit }
+            ' <<EOF
+$row
+EOF
+            ;;
+        json)
+            ___x_cmd_cmds awk '
+                BEGIN {
+                    line = ARGV[1]
+                    delete F
+                    parse(line)
+                    gsub(/\\/, "\\\\", F[2])
+                    gsub(/"/,  "\\\"", F[2])
+                    gsub(/\n/, "\\n",  F[2])
+                    gsub(/\t/, "\\t",  F[2])
+                    gsub(/\\/, "\\\\", F[5])
+                    gsub(/"/,  "\\\"", F[5])
+                    gsub(/\n/, "\\n",  F[5])
+                    gsub(/\t/, "\\t",  F[5])
+                    printf "{\"id\":\"CWE-%s\",\"name\":\"%s\",\"abstraction\":\"%s\",\"status\":\"%s\",\"desc\":\"%s\"}\n", \
+                           F[1], F[2], F[3], F[4], F[5]
+                }
+                function parse(line,    n, i, c, inq, f, nf) {
+                    n = length(line)
+                    for (i = 1; i <= n; i++) {
+                        c = substr(line, i, 1)
+                        if (inq) {
+                            if (c == "\"") {
+                                if (i < n && substr(line, i+1, 1) == "\"") {
+                                    f = f "\""; i++
+                                } else {
+                                    inq = 0
+                                }
+                            } else f = f c
+                        } else {
+                            if (c == "\"") inq = 1
+                            else if (c == ",") { nf++; F[nf] = f; f = "" }
+                            else f = f c
+                        }
+                    }
+                    nf++; F[nf] = f
+                    for (k = 1; k <= nf; k++) {
+                        if (length(F[k]) > 0) {
+                            if (substr(F[k], 1, 1) == "\"") sub(/^"/, "", F[k])
+                            if (substr(F[k], length(F[k]), 1) == "\"") sub(/"$/, "", F[k])
+                        }
+                    }
+                }
+            ' "$row"
+            ;;
+        yml|*)
+            local ck="" cr=""
+            if [ -t 1 ] || [ "${X_CMD_CWE_FORCE_COLOR:-}" = 1 ]; then
+                ck="${___X_CMD_UNSEENCHAR_033:-$(printf '\033')}[1;36m"
+                cr="${___X_CMD_UNSEENCHAR_033:-$(printf '\033')}[0m"
+            fi
+
+            ___x_cmd_cmds awk -v CK="$ck" -v CR="$cr" '
+                BEGIN {
+                    line = ARGV[1]
+                    parse(line)
+
+                    emit("id",          "CWE-" F[1])
+                    emit("name",        F[2])
+                    emit("abstraction", F[3])
+                    emit("status",      F[4])
+
+                    related = extract_related(F[7])
+                    if (related != "") emit("related", related)
+
+                    emit("description", F[5])
+                    emit("extended", F[6])
+                    emit("relationships", F[7])
+                    emit("ordinality", F[8])
+                    emit("platforms", F[9])
+                    emit("background", F[10])
+                    emit("alternate_terms", F[11])
+                    emit("modes", F[12])
+                    emit("exploit_factors", F[13])
+                    emit("likelihood", F[14])
+                    emit("consequences", F[15])
+                    emit("detection", F[16])
+                    emit("mitigations", F[17])
+                    emit("observed", F[18])
+                    emit("functional_areas", F[19])
+                    emit("resources", F[20])
+                    emit("taxonomy", F[21])
+                    emit("capec", F[22])
+                    emit("notes", F[23])
+                }
+
+                # ---- parser ----
+
+                # CSV-quoted parser: state machine, fills F[1..nf].
+                function parse(line,    n, i, c, inq, f, nf) {
+                    n = length(line)
+                    for (i = 1; i <= n; i++) {
+                        c = substr(line, i, 1)
+                        if (inq) {
+                            if (c == "\"") {
+                                if (i < n && substr(line, i+1, 1) == "\"") {
+                                    f = f "\""; i++
+                                } else inq = 0
+                            } else f = f c
+                        } else {
+                            if (c == "\"") inq = 1
+                            else if (c == ",") { nf++; F[nf] = f; f = "" }
+                            else f = f c
+                        }
+                    }
+                    nf++; F[nf] = f
+                    for (k = 1; k <= nf; k++) {
+                        if (length(F[k]) > 0) {
+                            if (substr(F[k], 1, 1) == "\"") sub(/^"/, "", F[k])
+                            if (substr(F[k], length(F[k]), 1) == "\"") sub(/"$/, "", F[k])
+                        }
+                    }
+                    # Decode MITRE literal "\n" markers back to real newlines.
+                    for (k = 1; k <= nf; k++) {
+                        if (length(F[k]) > 0) gsub(/\\n/, "\n", F[k])
+                    }
+                }
+
+                # ---- emitter ----
+
+                # Emit one YAML key/value:
+                #   contains "::" (MITRE marker block)  → list of mappings
+                #   single-line + no special chars      → plain scalar
+                #   single-line + special chars         → double-quoted
+                #   multi-line (no "::")                → block scalar "|"
+                function emit(label, content,    i, n, lines, q, v) {
+                    if (content == "") return
+                    # Marker block?  Emit as a YAML sequence of mappings,
+                    # one per "::...::" record.
+                    if (index(content, "::") > 0) {
+                        emit_markers(label, content)
+                        return
+                    }
+                    n = split(content, lines, "\n")
+                    if (n > 1) {
+                        printf "%s%s%s: |\n", CK, label, CR
+                        for (i = 1; i <= n; i++) {
+                            printf "  %s\n", lines[i]
+                        }
+                        printf "\n"
+                        return
+                    }
+                    q = needs_quote(content)
+                    if (q == "\"") {
+                        v = content
+                        gsub(/\\/, "\\\\", v)
+                        gsub(/"/, "\\\"", v)
+                        printf "%s%s%s: \"%s\"\n", CK, label, CR, v
+                    } else {
+                        printf "%s%s%s: %s\n", CK, label, CR, content
+                    }
+                }
+
+                # Emit a MITRE marker block as a YAML list of mappings.
+                # Each "::...::" record becomes one list item; within the
+                # record, alternating KEY:VALUE pairs become mapping fields.
+                function emit_markers(label, value,    KNOWN, nr, i, rec, j, lines, nl, line, eq, key, val, v, has_struct) {
+                    # Known MITRE marker keys (longest first so e.g. "CWE ID"
+                    # matches before any hypothetical "CWE").
+                    KNOWN = "CWE ID|VIEW ID|LANGUAGE NAME|LANGUAGE CLASS|LANGUAGE PREVALENCE|TECHNOLOGY NAME|TECHNOLOGY CLASS|TECHNOLOGY PREVALENCE|TAXONOMY NAME|ENTRY NAME|ENTRY ID|MAPPING FIT|EFFECTIVENESS|DESCRIPTION|ORDINALITY|ORDINAL|STRATEGY|NATURE|PHASE|IMPACT|SCOPE|METHOD|REFERENCE|TYPE|TERM|NOTE|CVE|LINK"
+                    printf "%s%s%s:\n", CK, label, CR
+
+                    # Split the value into records on "::".
+                    nr = split(value, records, "::")
+                    for (i = 1; i <= nr; i++) {
+                        rec = records[i]
+                        sub(/^:/, "", rec)
+                        sub(/:$/, "", rec)
+                        if (rec == "") continue
+
+                        # Probe: does this record actually contain any
+                        # known marker key? If not, it is plain text wrapped
+                        # in "::..."::" (background, likelihood, ...) and
+                        # should be emitted as a raw list item.
+                        has_struct = has_known_marker(rec, KNOWN)
+
+                        if (!has_struct) {
+                            printf "  - %s\n", rec
+                            continue
+                        }
+
+                        printf "  -\n"
+
+                        # Insert a newline before every known KEY so the
+                        # record becomes one KEY:VALUE line per pair.
+                        gsub("(" KNOWN "):", "\n&", rec)
+                        sub(/^\n/, "", rec)
+                        sub(/[ \t\n]+$/, "", rec)
+
+                        nl = split(rec, lines, "\n")
+                        for (j = 1; j <= nl; j++) {
+                            line = lines[j]
+                            if (line == "") continue
+                            eq = index(line, ":")
+                            if (eq == 0) continue
+                            key = substr(line, 1, eq - 1)
+                            val = substr(line, eq + 1)
+                            sub(/^[ \t]+/, "", val)
+                            # Strip trailing colon (the separator between
+                            # this value and the next KEY) and whitespace.
+                            sub(/[ \t:]+$/, "", val)
+                            if (val ~ /[":{}\[\],&*!|>%@`]/) {
+                                v = val
+                                gsub(/\\/, "\\\\", v)
+                                gsub(/"/, "\\\"", v)
+                                printf "    %s: \"%s\"\n", key, v
+                            } else {
+                                printf "    %s: %s\n", key, val
+                            }
+                        }
+                    }
+                }
+
+                # Returns 1 if `rec` contains any of the known MITRE marker
+                # keys followed by ":" — i.e. it is a structured record
+                # rather than plain text wrapped in "::...::".
+                function has_known_marker(rec, KNOWN,    nk, karr, ki, klen) {
+                    nk = split(KNOWN, karr, "|")
+                    for (ki = 1; ki <= nk; ki++) {
+                        klen = length(karr[ki])
+                        # Search for the key as a standalone token: it must
+                        # be at start-of-record or preceded by ":" so we
+                        # do not match e.g. "CWE ID" inside a longer phrase.
+                        if (index(rec, ":" karr[ki] ":") > 0) return 1
+                        if (substr(rec, 1, klen+1) == (karr[ki] ":")) return 1
+                    }
+                    return 0
+                }
+
+                # Returns " if the value needs double-quoting for safe
+                # YAML emission as a plain scalar.
+                function needs_quote(s,    i, c, n) {
+                    n = length(s)
+                    if (n == 0) return ""
+                    c = substr(s, 1, 1)
+                    if (index("-?:,[]{}#&*!|>\"%@`", c) > 0) return "\""
+                    for (i = 1; i <= n; i++) {
+                        c = substr(s, i, 1)
+                        if (c == "\"") return "\""
+                        if (c == ":" && i < n && substr(s, i+1, 1) == " ") return "\""
+                    }
+                    return ""
+                }
+
+                # Extract unique sorted CWE-NN ids from the relationships
+                # marker block ("::NATURE:ChildOf:CWE ID:74:...").
+                function extract_related(raw,    i, m, parts, seen, out, n) {
+                    if (raw == "") return ""
+                    n = split(raw, parts, "CWE ID:")
+                    out = ""
+                    delete seen
+                    for (i = 2; i <= n; i++) {
+                        m = parts[i]
+                        sub(/[^0-9].*/, "", m)
+                        if (m != "" && !seen[m]++) {
+                            out = out "CWE-" m " "
+                        }
+                    }
+                    sub(/[ \t]+$/, "", out)
+                    return out
+                }
+            ' "$row"
+            ;;
+    esac
+}

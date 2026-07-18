@@ -1,0 +1,104 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/info/render — output formatters for a single CVE row.
+#
+# All formatters take a single tab-separated row as $1 to
+# ___x_cmd_cve_info_render and emit the chosen representation on stdout.
+#
+# Field layout (matches _cve_index.py, _CVE_COLUMNS = 9):
+#   $1 cve       $2 year      $3 no         $4 vp
+#   $5 ghsa      $6 score     $7 patched    $8 cwe
+#   $9 desc
+#
+# We split fields via awk because POSIX `read` with TAB IFS collapses
+# multiple TABs and drops trailing empty fields — fatal for rows where
+# any column (especially ghsa / patched / cwe) is empty.
+
+# Emit a single tab-separated row's fields as `KEY=value` lines on
+# stdout, one per field, in declaration order. Robust against empty
+# trailing fields.
+___x_cmd_cve_info_split(){
+    awk -F '\t' '
+        NR == 1 {
+            print "CVE|"   $1
+            print "YEAR|"  $2
+            print "NO|"    $3
+            print "VP|"    $4
+            print "GHSA|"  $5
+            print "SCORE|" $6
+            print "PATCH|" $7
+            print "CWE|"   $8
+            print "DESC|"  $9
+        }
+    ' <<EOF
+$1
+EOF
+}
+
+# Render a single tab-separated row in a chosen format.
+# Args: <mode> <tsv_row>
+___x_cmd_cve_info_render(){
+    local mode="$1"; shift
+    local row="$1"
+
+    local f_cve="" f_year="" f_no="" f_vp="" f_ghsa=""
+    local f_score="" f_patched="" f_cwe="" f_desc=""
+
+    local kv
+    while IFS='|' read -r k v; do
+        case "$k" in
+            CVE)   f_cve="$v" ;;
+            YEAR)  f_year="$v" ;;
+            NO)    f_no="$v" ;;
+            VP)    f_vp="$v" ;;
+            GHSA)  f_ghsa="$v" ;;
+            SCORE) f_score="$v" ;;
+            PATCH) f_patched="$v" ;;
+            CWE)   f_cwe="$v" ;;
+            DESC)  f_desc="$v" ;;
+        esac
+    done <<EOF
+$(___x_cmd_cve_info_split "$row")
+EOF
+
+    case "$mode" in
+        tsv)
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$f_cve" "$f_year" "$f_no" "$f_vp" "$f_ghsa" \
+                "$f_score" "$f_patched" "$f_cwe" "$f_desc"
+            ;;
+        csv)
+            printf '%s,%s,%s,%s,%s,%s,%s,%s,"%s"\n' \
+                "$f_cve" "$f_year" "$f_no" "$f_vp" "$f_ghsa" \
+                "$f_score" "$f_patched" "$f_cwe" \
+                "$(printf '%s' "$f_desc" | sed 's/"/""/g')"
+            ;;
+        json)
+            printf '{"cve":"%s","year":"%s","no":"%s","vp":"%s","ghsa":"%s","score":"%s","patched":"%s","cwe":"%s","desc":"%s"}\n' \
+                "$f_cve" "$f_year" "$f_no" "$f_vp" "$f_ghsa" \
+                "$f_score" "$f_patched" "$f_cwe" \
+                "$(printf '%s' "$f_desc" | sed 's/"/\\"/g')"
+            ;;
+        raw)
+            printf '%s\n' "$f_cve"
+            ;;
+        yml|*)
+            printf 'cve:      %s\n'  "$f_cve"
+            printf 'year:     %s\n'  "$f_year"
+            printf 'no:       %s\n'  "$f_no"
+            if [ -n "$f_vp" ]; then
+                printf 'vp:       %s\n' "$f_vp"
+            fi
+            printf 'ghsa:     %s\n'  "${f_ghsa:-—}"
+            printf 'score:    %s\n'  "${f_score:-—}"
+            if [ -n "$f_patched" ] && [ "$f_patched" != "0" ]; then
+                printf 'patched:  yes\n'
+            fi
+            if [ -n "$f_cwe" ]; then
+                printf 'cwe:      %s\n' "$f_cwe"
+            fi
+            if [ -n "$f_desc" ]; then
+                printf 'desc:     %s\n' "$f_desc"
+            fi
+            ;;
+    esac
+}

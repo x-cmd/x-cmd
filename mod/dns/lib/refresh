@@ -1,32 +1,97 @@
 # shellcheck shell=dash
 
-___x_cmd_dns_refresh(){
-    local x_=;
+___x_cmd_dns_refresh___linux(){
+    if ___x_cmd hascmd systemd-resolve; then
+        if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+            dns:info "[dry-run] systemd-resolve --flush-caches"
+        else
+            dns:info "Executing: systemd-resolve --flush-caches"
+            ___x_cmd_cmds systemd-resolve --flush-caches \
+                || dns:warn "systemd-resolve --flush-caches failed"
+        fi
+        return
+    fi
+
+    if ___x_cmd hascmd resolvectl; then
+        if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+            dns:info "[dry-run] resolvectl flush-caches"
+        else
+            dns:info "Executing: resolvectl flush-caches"
+            ___x_cmd_cmds resolvectl flush-caches \
+                || dns:warn "resolvectl flush-caches failed"
+        fi
+        return
+    fi
+
+    if ___x_cmd hascmd nscd; then
+        if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+            dns:info "[dry-run] sudo nscd -i hosts"
+        else
+            dns:info "Executing: sudo nscd -i hosts"
+            ___x_cmd sudo nscd -i hosts \
+                || dns:warn "nscd -i hosts failed"
+        fi
+        return
+    fi
+
+    dns:warn "No DNS cache backend found (expected systemd-resolve, resolvectl, or nscd)"
+}
+
+___x_cmd_dns_refresh___darwin(){
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        dns:info "[dry-run] sudo dscacheutil -flushcache"
+    else
+        dns:info "Executing: sudo dscacheutil -flushcache"
+        ___x_cmd sudo dscacheutil -flushcache \
+            || dns:warn "dscacheutil -flushcache failed"
+    fi
+}
+
+___x_cmd_dns_refresh___win(){
+    if ___x_cmd hascmd powershell || ___x_cmd hascmd pwsh; then
+        if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+            dns:info "[dry-run] sudo powershell -NoProfile -Command Clear-DnsClientCache"
+        else
+            dns:info "Executing: sudo powershell -NoProfile -Command Clear-DnsClientCache"
+            ___x_cmd sudo powershell -NoProfile -Command "Clear-DnsClientCache" \
+                || dns:warn "Clear-DnsClientCache failed"
+        fi
+        return
+    fi
+
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        dns:info "[dry-run] sudo ipconfig /flushdns"
+    else
+        dns:info "Executing: sudo ipconfig /flushdns"
+        ___x_cmd sudo ipconfig /flushdns \
+            || dns:warn "ipconfig /flushdns failed"
+    fi
+}
+
+___x_cmd_dns_refresh___run(){
+    local quiet=0
+    case "$1" in
+        -q|--quiet) quiet=1; shift ;;
+    esac
+
+    [ "$quiet" = 1 ] || dns:info "Flushing DNS cache"
+
+    local x_
     ___x_cmd os name_
     case "$x_" in
-        darwin)
-            dns:info "Executing command ->   x sudo killall -HUP mDNSResponder"
-            ___x_cmd sudo killall -HUP mDNSResponder
-            dns:info "Command executed ->  x sudo killall -HUP mDNSResponder"
-            ;;
-        linux)
-            if ___x_cmd hascmd systemd-resolve; then
-                dns:info "Executing command ->   systemd-resolve --flush-caches"
-                ___x_cmd_cmds systemd-resolve --flush-caches || N="dns" M="DNS refresh failed"  log:ret:1
-            elif ___x_cmd hascmd resolvectl; then
-                dns:info "Executing command ->   resolvectl flush-caches"
-                ___x_cmd_cmds resolvectl flush-caches || N="dns" M="DNS refresh failed"  log:ret:1
-            else
-                dns:warn "command not found -> systemd-resolve, resolvectl"
-                return
-            fi
-            ;;
-        win)
-            xrc pwsh; ___x_cmd_pwsh___exec txt ipconfig /flushdns
-            ;;
-        *)
-            dns:error "Unsupported os ==> $x_"
-            return 1
-            ;;
+        linux)      ___x_cmd_dns_refresh___linux  ;;
+        darwin)     ___x_cmd_dns_refresh___darwin ;;
+        win)        ___x_cmd_dns_refresh___win    ;;
+        *)          dns:warn "Unsupported os for refresh ==> $x_" ;;
     esac
+}
+
+___x_cmd_dns_refresh(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m dns refresh; return 0 ;;
+    esac
+    [ $# -eq 0 ] || {
+        N=dns M="Usage: x dns refresh" log:ret:64
+    }
+    ___x_cmd_dns_refresh___run
 }

@@ -1,0 +1,109 @@
+# shellcheck shell=dash
+
+___x_cmd_dns_set___win_target(){
+    local alias="$1"; shift
+    [ -n "$alias" ] || N=dns M="Usage: x dns set <alias> <ip> [ip ...]" log:ret:64
+    [ $# -gt 0 ] || N=dns M="Please provide at least one IP" log:ret:64
+
+    if ! ___x_cmd hascmd powershell && ! ___x_cmd hascmd pwsh; then
+        N=dns M="PowerShell not found. Install PowerShell or run from an elevated PowerShell prompt." log:ret:64
+    fi
+
+    local v4="" v6="" ip
+    for ip in "$@"; do
+        case "$ip" in
+            *:*)
+                if [ -n "$v6" ]; then v6="$v6,'$ip'"; else v6="'$ip'"; fi
+                ;;
+            *)
+                if [ -n "$v4" ]; then v4="$v4,'$ip'"; else v4="'$ip'"; fi
+                ;;
+        esac
+    done
+    [ "${___X_CMD_DNS_NO_V4:-0}" = 1 ] && v4=""
+    [ "${___X_CMD_DNS_NO_V6:-0}" = 1 ] && v6=""
+
+    if [ -z "$v4" ] && [ -z "$v6" ]; then
+        N=dns M="All IPs filtered out by --no-ipv4 / --no-ipv6" log:ret:64
+    fi
+
+    dns:info "Setting DNS for interface: $alias"
+    [ -n "$v4" ] && dns:info "  IPv4 nameservers: $v4"
+    [ -n "$v6" ] && dns:info "  IPv6 nameservers: $v6"
+
+    local script=""
+    if [ -n "$v4" ]; then
+        script="${script}Set-DnsClientServerAddress -InterfaceAlias '$alias' -ServerAddresses @($v4);"
+    fi
+    if [ -n "$v6" ]; then
+        script="${script}Set-DnsClientServerAddress -InterfaceAlias '$alias' -ServerAddresses @($v6);"
+    fi
+
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        dns:info "[dry-run] sudo powershell -NoProfile -Command \"$script\""
+        dns:info "[dry-run] sudo powershell -NoProfile -Command \"Get-DnsClientServerAddress -InterfaceAlias '$alias' -AddressFamily IPv4,IPv6 | Format-List\""
+    else
+        dns:info "Executing: powershell -NoProfile -Command \"$script\""
+        ___x_cmd sudo powershell -NoProfile -Command "$script" \
+            || N=dns M="Failed to set DNS via PowerShell" log:ret:1
+
+        dns:info "DNS updated for interface: $alias"
+        ___x_cmd sudo powershell -NoProfile -Command "Get-DnsClientServerAddress -InterfaceAlias '$alias' -AddressFamily IPv4,IPv6 | Format-List"
+    fi
+
+    ___x_cmd_dns_refresh___run --quiet
+}
+
+___x_cmd_dns_set___win_global(){
+    [ $# -gt 0 ] || {
+        N=dns M="Usage: x dns set <ip> [ip ...]" log:ret:64
+    }
+
+    dns:info "Setting DNS on all interfaces via PowerShell"
+
+    local v4="" v6="" ip
+    for ip in "$@"; do
+        case "$ip" in
+            *:*)  v6="$v6,'$ip'"; [ -z "$(printf %s "$v6" | tr -d ",'")" ] && v6="'$ip'" ;;
+            *)    v4="$v4,'$ip'"; [ -z "$(printf %s "$v4" | tr -d ",'")" ] && v4="'$ip'" ;;
+        esac
+    done
+    [ "${___X_CMD_DNS_NO_V4:-0}" = 1 ] && v4=""
+    [ "${___X_CMD_DNS_NO_V6:-0}" = 1 ] && v6=""
+
+    if [ -z "$v4" ] && [ -z "$v6" ]; then
+        N=dns M="All IPs filtered out by --no-ipv4 / --no-ipv6" log:ret:64
+    fi
+
+    local script=""
+    if [ -n "$v4" ]; then
+        script="${script}Get-NetAdapter -Physical | Set-DnsClientServerAddress -ServerAddresses @($v4);"
+    fi
+    if [ -n "$v6" ]; then
+        script="${script}Get-NetAdapter -Physical | Set-DnsClientServerAddress -AddressFamily IPv6 -ServerAddresses @($v6);"
+    fi
+
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        dns:info "[dry-run] sudo powershell -NoProfile -Command \"$script\""
+    else
+        dns:info "Executing: powershell -NoProfile -Command \"$script\""
+        ___x_cmd sudo powershell -NoProfile -Command "$script" \
+            || N=dns M="Failed to set DNS via PowerShell" log:ret:1
+    fi
+
+    ___x_cmd_dns_refresh___run --quiet
+    dns:info "System-wide DNS updated"
+}
+
+___x_cmd_dns_set___win(){
+    local alias=""
+    if [ $# -gt 0 ] && ! ___x_cmd_dns_set___looks_like_ip "$1"; then
+        alias="$1"; shift
+    fi
+
+    if [ -n "$alias" ]; then
+        ___x_cmd_dns_set___win_target "$alias" "$@"
+    else
+        ___x_cmd_dns_set___win_global "$@"
+    fi
+}

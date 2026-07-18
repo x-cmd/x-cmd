@@ -1,0 +1,49 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cwe lib/data/fetch — HTTP fetch primitives for the CWE cache.
+#
+# Source of truth: MITRE CWE catalog
+#   https://cwe.mitre.org/data/csv/2000.csv.zip
+# Wraps `x ccmd 30d` so a re-fetch within a month is free.
+
+# Fetch a single URL to a file via ___x_cmd curl, memoized through
+# `x ccmd 30d` so repeat lookups within 30 days are free. Honors
+# HTTP_PROXY env (x ccmd inherits it).
+# Returns 0 on 2xx, non-zero otherwise.
+___x_cmd_cwe_data_fetch_one(){
+    local url="$1"
+    local fp="$2"
+    x ccmd 30d -- ___x_cmd curl --fail --location --silent --show-error \
+        --connect-timeout 15 --max-time 120 \
+        "$url" -o "$fp" || return $?
+}
+
+# Download the CWE catalog zip and unpack the master CSV into $fp.
+# Args: <url> <zip_fp> <csv_fp>
+___x_cmd_cwe_data_fetch_csv(){
+    local url="$1"
+    local zip_fp="$2"
+    local csv_fp="$3"
+
+    ___x_cmd_cwe_data_fetch_one "$url" "$zip_fp" || return $?
+
+    # Unzip just 2000.csv out of the archive.
+    if ! command unzip -p "$zip_fp" 2000.csv > "$csv_fp" 2>/dev/null; then
+        cwe:error "failed to extract 2000.csv from $zip_fp"
+        return 1
+    fi
+
+    # Sanity check: file should be >100 KB and start with the CWE header.
+    if [ ! -s "$csv_fp" ]; then
+        cwe:error "extracted CSV is empty: $csv_fp"
+        return 1
+    fi
+    local first_line
+    first_line="$(command head -n 1 "$csv_fp" 2>/dev/null)"
+    case "$first_line" in
+        CWE-ID,*) ;;
+        *)
+            cwe:error "extracted CSV does not look like a CWE catalog"
+            return 1
+            ;;
+    esac
+}

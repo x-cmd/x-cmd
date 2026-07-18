@@ -1,0 +1,52 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/info/lookup — query helpers for `x cve info`.
+#
+# All functions here are pure: given a year-file path and one or more
+# ids, return the matching rows. No I/O beyond the read.
+
+# Normalize a CVE-id-like argument: accept either `CVE-YYYY-NNNN` or the
+# bare `YYYY-NNNN` shorthand and emit the canonical `CVE-YYYY-NNNN` form.
+# Echoes the normalized id; returns 1 if it doesn't look like one.
+___x_cmd_cve_info_normalize(){
+    case "$1" in
+        CVE-*-*) printf '%s\n' "$1" ;;
+        [0-9][0-9][0-9][0-9]-[0-9]*) printf 'CVE-%s\n' "$1" ;;
+        *) return 1 ;;
+    esac
+}
+
+# Pull the row(s) for one or more CVE ids out of a per-year TSV.
+# Args: <tsv_path> <cve_id1> [cve_id2 ...]
+# Output: one tab-separated row per match (or nothing).
+___x_cmd_cve_info_lookup(){
+    local fp="$1"; shift
+    [ $# -gt 0 ] || return 0
+    local ids=""
+    local id
+    for id in "$@"; do
+        ids="${ids:+${ids}|}^${id}\$|"
+    done
+    ids="${ids#^}"
+    ids="${ids%|}"
+    ___x_cmd_cmds awk -F '\t' -v re="$ids" '
+        $1 ~ re { print }
+    ' "$fp"
+}
+
+# Pre-fetch all distinct year files referenced by the requested ids.
+___x_cmd_cve_info_prefetch(){
+    local tag="$1"; shift
+    local years=""
+    local id year
+    for id in "$@"; do
+        year="$(printf '%s' "$id" | sed -n 's/^CVE-\([0-9]\{4\}\)-.*/\1/p')"
+        [ -n "$year" ] || continue
+        case " $years " in
+            *" $year "*) ;;
+            *) years="${years:+${years} }${year}" ;;
+        esac
+    done
+
+    # shellcheck disable=SC2086
+    ___x_cmd_cve_data_ensure_years "$tag" $years
+}

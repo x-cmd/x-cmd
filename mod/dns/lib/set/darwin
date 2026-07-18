@@ -1,0 +1,100 @@
+# shellcheck shell=dash
+
+___x_cmd_dns_set___darwin_global(){
+    [ $# -gt 0 ] || {
+        N=dns M="Usage: x dns set <ip> [ip ...]" log:ret:64
+    }
+
+    dns:info "Setting system-wide DNS via scutil"
+
+    local IFS=' '
+    local joined="$*"
+
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        dns:info "[dry-run] sudo scutil --set State:/Network/Global/DNS \"$joined\""
+    else
+        dns:info "Executing: sudo scutil --set State:/Network/Global/DNS \"$joined\""
+        ___x_cmd sudo scutil --set "State:/Network/Global/DNS" "$joined" \
+            || N=dns M="Failed to set global DNS via scutil" log:ret:1
+    fi
+
+    ___x_cmd_dns_reload___run --quiet
+
+    dns:info "System-wide DNS updated"
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        dns:info "[dry-run] scutil --get State:/Network/Global/DNS"
+    else
+        ___x_cmd cmds scutil --get "State:/Network/Global/DNS"
+    fi
+}
+
+___x_cmd_dns_set___darwin_target(){
+    local service="$1"; shift
+    [ -n "$service" ] || N=dns M="Usage: x dns set <service> <ip> [ip ...]" log:ret:64
+    [ $# -gt 0 ] || N=dns M="Please provide at least one IP" log:ret:64
+
+    if ! ___x_cmd cmds networksetup -listallnetworkservices >/dev/null 2>&1; then
+        N=dns M="networksetup not available" log:ret:64
+    fi
+
+    if ! ___x_cmd cmds networksetup -listallnetworkservices \
+            | ___x_cmd_cmds_awk -v svc="$service" '$0 == svc { found = 1 } END { exit !found }'; then
+        N=dns M="Network service not found ==> $service. Run 'networksetup -listallnetworkservices' to see available ones." log:ret:64
+    fi
+
+    local v4="" v6="" ip
+    for ip in "$@"; do
+        case "$ip" in
+            *:*)
+                if [ -n "$v6" ]; then v6="$v6 $ip"; else v6="$ip"; fi
+                ;;
+            *)
+                if [ -n "$v4" ]; then v4="$v4 $ip"; else v4="$ip"; fi
+                ;;
+        esac
+    done
+    [ "${___X_CMD_DNS_NO_V4:-0}" = 1 ] && v4=""
+    [ "${___X_CMD_DNS_NO_V6:-0}" = 1 ] && v6=""
+
+    if [ -z "$v4" ] && [ -z "$v6" ]; then
+        N=dns M="All IPs filtered out by --no-ipv4 / --no-ipv6" log:ret:64
+    fi
+
+    dns:info "Setting DNS for service: $service"
+    [ -n "$v4" ] && dns:info "  IPv4 nameservers: $v4"
+    [ -n "$v6" ] && dns:info "  IPv6 nameservers: $v6"
+
+    local IFS=' '
+    local all="$*"
+    all="${all#"${all%%[![:space:]]*}"}"
+
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        dns:info "[dry-run] sudo networksetup -setdnsservers \"$service\" $all"
+    else
+        dns:info "Executing: networksetup -setdnsservers \"$service\" $all"
+        ___x_cmd sudo networksetup -setdnsservers "$service" $all \
+            || N=dns M="Failed to set DNS via networksetup" log:ret:1
+    fi
+
+    ___x_cmd_dns_reload___run --quiet
+
+    dns:info "DNS updated for service: $service"
+    if [ "${___X_CMD_DNS_DRY_RUN:-0}" = 1 ]; then
+        dns:info "[dry-run] networksetup -getdnsservers \"$service\""
+    else
+        ___x_cmd cmds networksetup -getdnsservers "$service"
+    fi
+}
+
+___x_cmd_dns_set___darwin(){
+    local service=""
+    if [ $# -gt 0 ] && ! ___x_cmd_dns_set___looks_like_ip "$1"; then
+        service="$1"; shift
+    fi
+
+    if [ -n "$service" ]; then
+        ___x_cmd_dns_set___darwin_target "$service" "$@"
+    else
+        ___x_cmd_dns_set___darwin_global "$@"
+    fi
+}

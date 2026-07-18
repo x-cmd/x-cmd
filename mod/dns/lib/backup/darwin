@@ -1,0 +1,67 @@
+# shellcheck shell=dash
+
+# macOS: networksetup.
+# Backup format: simple key:value JSON-ish file, one line per service.
+#   "Wi-Fi": "8.8.8.8,8.8.4.4"
+#   "Ethernet": ""
+___x_cmd_dns_backup___darwin(){
+    local name="$1"
+    [ -n "$name" ] || N=dns M="Usage: x dns backup <name>" log:ret:64
+
+    local dir
+    dir="$(___x_cmd_dns_backup___dir)"
+    local file="$dir/$name.json"
+    mkdir -p "$dir" 2>/dev/null || N=dns M="Failed to create $dir" log:ret:1
+
+    dns:info "Backing up networksetup DNS state to $file"
+    local services
+    services="$(___x_cmd cmds networksetup -listallnetworkservices 2>/dev/null | tail -n +2)"
+    {
+        printf '{\n'
+        local first=1
+        printf '%s\n' "$services" | while IFS= read -r svc; do
+            [ -n "$svc" ] || continue
+            case "$svc" in
+                "An asterisk (*) denotes that a network service is disabled.") continue ;;
+            esac
+            local servers
+            servers="$(___x_cmd cmds networksetup -getdnsservers "$svc" 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
+            if [ "$first" -eq 1 ]; then first=0; else printf ',\n'; fi
+            printf '  %s: %s' "$svc" "$servers"
+        done
+        printf '\n}\n'
+    } > "$file" || N=dns M="Failed to write backup" log:ret:1
+
+    dns:info "Backup written: $file"
+}
+
+___x_cmd_dns_restore___darwin(){
+    local name="$1"
+    [ -n "$name" ] || N=dns M="Usage: x dns restore <name>" log:ret:64
+
+    local dir
+    dir="$(___x_cmd_dns_backup___dir)"
+    local file="$dir/$name.json"
+    [ -f "$file" ] || N=dns M="Backup not found: $file" log:ret:64
+
+    dns:info "Restoring DNS from $file"
+    # Lines look like:  Wi-Fi: 8.8.8.8,8.8.4.4
+    while IFS=': ' read -r svc servers; do
+        [ -n "$svc" ] || continue
+        case "$svc" in \{|\}) continue ;; esac
+        if [ -z "$servers" ]; then
+            ___x_cmd sudo networksetup -setdnsservers "$svc" "empty" 2>/dev/null || \
+                dns:warn "Failed to reset $svc"
+        else
+            # Convert comma-separated to space-separated
+            local space_servers
+            space_servers="$(printf '%s' "$servers" | tr ',' ' ')"
+            ___x_cmd sudo networksetup -setdnsservers "$svc" $space_servers 2>/dev/null || \
+                dns:warn "Failed to restore $svc"
+        fi
+    done < "$file"
+
+    # Reload (also flushes mDNSResponder's cache as a side effect)
+    ___x_cmd_dns_reload___run --quiet
+    dns:info "DNS restored from: $name"
+}

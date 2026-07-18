@@ -1,0 +1,180 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/detail/render — output formatters for the full upstream
+# JSON fetched by detail/fetch.
+#
+# All formatters take the raw upstream JSON (as $1) and emit the chosen
+# representation on stdout.
+
+# Pretty-print the full record as YAML.
+___x_cmd_cve_detail_render_yml(){
+    local json="$1"
+    local id="$2"
+
+    local state published updated reserved rejected assigner
+    state=$(___x_cmd_cve_detail_jq -r '.cveMetadata.state // "UNKNOWN"'         "$json")
+    assigner=$(___x_cmd_cve_detail_jq -r '.cveMetadata.assignerShortName // "—"' "$json")
+    reserved=$(___x_cmd_cve_detail_jq -r '.cveMetadata.dateReserved // "—"'      "$json")
+    published=$(___x_cmd_cve_detail_jq -r '.cveMetadata.datePublished // "—"'    "$json")
+    updated=$(___x_cmd_cve_detail_jq -r '.cveMetadata.dateUpdated // "—"'       "$json")
+    rejected=$(___x_cmd_cve_detail_jq -r '.cveMetadata.dateRejected // ""'      "$json")
+
+    printf 'cve:       %s\n'   "$id"
+    printf 'state:     %s\n'   "$state"
+    printf 'assigner:  %s\n'   "$assigner"
+    printf 'reserved:  %s\n'   "$reserved"
+    printf 'published: %s\n'   "$published"
+    printf 'updated:   %s\n'   "$updated"
+    [ -n "$rejected" ] && [ "$rejected" != "null" ] && printf 'rejected:  %s\n' "$rejected"
+    printf '\n'
+
+    printf 'descriptions:\n'
+    ___x_cmd_cve_detail_jq -r '
+        .containers.cna.descriptions[]? |
+        "  - lang: \(.lang)\n    text: \(.value | gsub("\n"; " ") | gsub("  +"; " "))\n"
+    ' "$json"
+    printf '\n'
+
+    printf 'affected:\n'
+    ___x_cmd_cve_detail_jq -r '
+        .containers.cna.affected[]? |
+        (
+            "  - vendor:  \(.vendor // "—")\n" +
+            "    product: \(.product // "—")\n" +
+            (if (.cpes | length) > 0 then
+                "    cpes:\n" + ([.cpes[] | "      - \(.)\n"] | join(""))
+             else "" end) +
+            (if (.versions | length) > 0 then
+                "    versions:\n" + ([.versions[] |
+                    "      - status: \(.status // "affected")\n" +
+                    (if .version      != null then "        version: \(.version)\n"      else "" end) +
+                    (if .lessThan     != null then "        lessThan: \(.lessThan)\n"    else "" end) +
+                    (if .lessThanOrEqual != null then "        lessThanOrEqual: \(.lessThanOrEqual)\n" else "" end)
+                ] | join(""))
+             else "" end)
+        )
+    ' "$json"
+    printf '\n'
+
+    printf 'problemTypes:\n'
+    ___x_cmd_cve_detail_jq -r '
+        .containers.cna.problemTypes[]?.descriptions[]? |
+        (if .cweId != null then
+            "  - cwe: \(.cweId)\n    desc: \(.description // "—")\n"
+         else
+            "  - desc: \(.description // "—")\n"
+         end)
+    ' "$json"
+    printf '\n'
+
+    printf 'metrics:\n'
+    ___x_cmd_cve_detail_jq -r '
+        .containers.cna.metrics[]? |
+        (
+            (if .cvssV4_0 then
+                "  - cvssV4.0:\n" +
+                "      baseScore:    \(.cvssV4_0.baseScore // "—")\n" +
+                "      baseSeverity: \(.cvssV4_0.baseSeverity // "—")\n" +
+                "      vector:       \(.cvssV4_0.vectorString // "—")\n"
+             else "" end) +
+            (if .cvssV3_1 then
+                "  - cvssV3.1:\n" +
+                "      baseScore:    \(.cvssV3_1.baseScore // "—")\n" +
+                "      baseSeverity: \(.cvssV3_1.baseSeverity // "—")\n" +
+                "      vector:       \(.cvssV3_1.vectorString // "—")\n"
+             else "" end) +
+            (if .cvssV3_0 then
+                "  - cvssV3.0:\n" +
+                "      baseScore:    \(.cvssV3_0.baseScore // "—")\n" +
+                "      baseSeverity: \(.cvssV3_0.baseSeverity // "—")\n" +
+                "      vector:       \(.cvssV3_0.vectorString // "—")\n"
+             else "" end) +
+            (if .cvssV2_0 then
+                "  - cvssV2.0:\n" +
+                "      baseScore:    \(.cvssV2_0.baseScore // "—")\n" +
+                "      vector:       \(.cvssV2_0.vectorString // "—")\n"
+             else "" end)
+        )
+    ' "$json"
+    printf '\n'
+
+    if ___x_cmd_cve_detail_jq -e '.containers.cna.impacts' <<<"$json" >/dev/null 2>&1; then
+        printf 'impacts:\n'
+        ___x_cmd_cve_detail_jq -r '
+            .containers.cna.impacts[]? |
+            "  - capec: \(.capecId // "—")\n    desc: \(.descriptions[0].value // "—")\n"
+        ' "$json"
+        printf '\n'
+    fi
+
+    printf 'references:\n'
+    ___x_cmd_cve_detail_jq -r '
+        .containers.cna.references[]? |
+        (
+            "  - url:  \(.url)\n" +
+            (if (.tags | length) > 0 then
+                "    tags: \(.tags | join(", "))\n"
+             else "" end)
+        )
+    ' "$json"
+    printf '\n'
+
+    if ___x_cmd_cve_detail_jq -e '.containers.cna.solutions' <<<"$json" >/dev/null 2>&1; then
+        printf 'solutions:\n'
+        ___x_cmd_cve_detail_jq -r '
+            .containers.cna.solutions[]? |
+            "  - lang: \(.lang)\n    text: \(.value | gsub("\n"; " ") | gsub("  +"; " "))\n"
+        ' "$json"
+        printf '\n'
+    fi
+
+    if ___x_cmd_cve_detail_jq -e '.containers.cna.timeline' <<<"$json" >/dev/null 2>&1; then
+        printf 'timeline:\n'
+        ___x_cmd_cve_detail_jq -r '
+            .containers.cna.timeline[]? |
+            "  - \(.time // "—"): \(.value // "—")\n"
+        ' "$json"
+        printf '\n'
+    fi
+
+    local adp_count
+    adp_count=$(___x_cmd_cve_detail_jq -r '.containers.adp | length // 0' "$json")
+    if [ "$adp_count" -gt 0 ]; then
+        printf 'adp (%s container(s)):\n' "$adp_count"
+        ___x_cmd_cve_detail_jq -r '
+            .containers.adp[]? |
+            "  - title:    \(.title // "—")\n" +
+            "    provider: \(.providerMetadata.shortName // "—")\n"
+        ' "$json"
+        printf '\n'
+    fi
+}
+
+# Pass-through JSON render.
+___x_cmd_cve_detail_render_json(){
+    jq '.' <<<"$1"
+}
+
+# Compact TSV render: id, state, vendor, product, version, cwe, score, vector, desc.
+___x_cmd_cve_detail_render_tsv(){
+    local json="$1"
+    local id="$2"
+
+    jq -r '
+        (.containers.cna.descriptions[]? | select(.lang == "en") | .value) as $desc |
+        (.containers.cna.metrics[]?.cvssV4_0 // .containers.cna.metrics[]?.cvssV3_1 // .containers.cna.metrics[]?.cvssV3_0 // .containers.cna.metrics[]?.cvssV2_0 // {}) as $cvss |
+        (.containers.cna.problemTypes[]?.descriptions[]?.cweId // "") as $cwe |
+        .containers.cna.affected[]? |
+        (.versions[]? | .version // .lessThan // .lessThanOrEqual // "") as $ver |
+        [
+            "'"$id"'",
+            .cveMetadata.state // "",
+            .vendor // "",
+            .product // "",
+            $ver,
+            $cwe,
+            ($cvss.baseScore // "" | tostring),
+            ($cvss.vectorString // ""),
+            ($desc | gsub("[\t\n\r]"; " "))
+        ] | @tsv
+    ' <<<"$json"
+}
