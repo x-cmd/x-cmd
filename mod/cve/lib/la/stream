@@ -1,0 +1,79 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/la/stream — emit every row from every cached year file.
+#
+# Concatenates cve-YYYY.tsv files in year-DESCENDING order so callers
+# (ls, fz) see the newest CVEs first. Within each year, TSV rows are
+# already sorted lexicographically by cve id, so 2024-9999 lands
+# after 2024-0001 — which is correct ascending within a year.
+#
+# Each year file is its own TSV sorted ascending by id; we just walk
+# the years in reverse so the overall stream is "newest at top".
+
+xrc:mod:lib     cve         data/_index
+
+# Emit every row from every cached year file, newest-first.
+#
+# The producer already stores each cve-YYYY.tsv with rows in
+# descending cve-id order (CVE-2026-99999 first, -0001 last), and
+# the year files are walked in descending year order (2026 → 1999).
+# So a plain `cat` of each file in `ls -r` order produces the
+# expected "newest CVE at the top" stream with zero per-file
+# overhead.
+___x_cmd_cve_la_stream_tsv(){
+    local tag="${X_CMD_CVE_TAG:-github}"
+    local root
+    root="$(___x_cmd_cve_data_root "$tag")"
+    [ -d "$root" ] || return 0
+
+    local fp
+    for fp in $(ls -r "$root"/cve-*.tsv 2>/dev/null); do
+        [ -f "$fp" ] || continue
+        ___x_cmd_cmds cat "$fp"
+    done
+}
+
+# Fill any missing cve-YYYY.tsv files. We walk a known fixed range
+# 1999..current_year directly — no manifest download, no index.tsv.
+# cvelistV5 has shipped CVE records since 1999 and the lower bound
+# isn't going to move; upper bound is just `date +%Y`.
+#
+# First call after a clean install pulls every year (~30MB total xz).
+# Subsequent calls only refresh the current year (1d TTL); older
+# years stay cached for 180d. Each download prints a cve:info line.
+#
+# No flags, no special cases: missing → download. If a year file is
+# already on disk and fresh enough, leave it alone.
+___x_cmd_cve_la_fill_cache(){
+    local tag="${X_CMD_CVE_TAG:-github}"
+    ___x_cmd_cve_data_mkdir "$tag" || return 1
+
+    local current_year
+    current_year="$(command date +%Y)"
+
+    local year fp
+    for year in $(seq 1999 "$current_year"); do
+        fp="$(___x_cmd_cve_data_year_fp "$year" "$tag")"
+
+        # Cache hit: present, non-empty, fresh enough.
+        local ttl=180d
+        [ "$year" = "$current_year" ] && ttl=1d
+        if [ -f "$fp" ] && [ -s "$fp" ] \
+                && ___x_cmd fileage --in "$ttl" "$fp" >/dev/null 2>&1; then
+            continue
+        fi
+
+        # Remove zero-byte leftover so the curl write doesn't get a
+        # misleading "file exists" error.
+        [ -f "$fp" ] && [ ! -s "$fp" ] && rm -f "$fp"
+
+        ___x_cmd_cve_data_ensure_year "$year" "$tag" >/dev/null 2>&1
+    done
+    return 0
+}
+
+# Back-compat alias. Older callers used this name when the function
+# only refreshed current+last year; keep it so anything referencing
+# the old name doesn't break.
+___x_cmd_cve_la_refresh_recent(){
+    ___x_cmd_cve_la_fill_cache
+}

@@ -1,0 +1,213 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/data/_index — manage the local per-year TSV cache.
+#
+# Cache layout (under ___X_CMD_ROOT_DATA/cve/tsv/<tag>/):
+#     index.tsv                  — manifest: year\trows\tfile
+#     cve-YYYY.tsv               — one TSV per year, full row including desc
+#
+# `tag` lets us keep multiple upstream mirrors side by side:
+#   github  → https://raw.githubusercontent.com/x-cmd/cve/main (default)
+#   ghproxy → https://gh-proxy.com/<github>
+# Override with `X_CMD_CVE_TAG=...` env or `--tag`.
+#
+# Helpers:
+#   data/fetch  — curl + x ccmd 1h, parallel HTTP/2 batch fetchers
+#   util        — mtime / now / year primitives
+
+xrc:mod:lib     cve         util data/fetch
+
+# ---------- defaults + paths -----------------------------------------------
+
+___X_CMD_CVE_DATA_DEFAULT_TAG=github
+# Default source: GitHub Releases (xz-compressed, ~85% smaller than raw).
+# The plain raw URL is kept as a fallback for the rare case where the
+# release assets are missing.
+___X_CMD_CVE_DATA_DEFAULT_BASE=https://github.com/x-cmd/cve/releases/download/data
+___X_CMD_CVE_DATA_FALLBACK_BASE=https://raw.githubusercontent.com/x-cmd/cve/main
+
+___x_cmd_cve_data_root(){
+    local tag="${1:-${X_CMD_CVE_TAG:-$___X_CMD_CVE_DATA_DEFAULT_TAG}}"
+    printf '%s/cve/tsv/%s' "$___X_CMD_ROOT_DATA" "$tag"
+}
+
+# Returns a URL for a given filename. The release assets use `.tsv.xz`
+# extension; the fallback uses the raw `.tsv`.
+___x_cmd_cve_data_url(){
+    local tag="${1:-${X_CMD_CVE_TAG:-$___X_CMD_CVE_DATA_DEFAULT_TAG}}"
+    local name="$2"     # e.g. "cve-2024.tsv" or "index.tsv"
+    case "$tag" in
+        github)
+            printf '%s/%s.xz' "$___X_CMD_CVE_DATA_DEFAULT_BASE" "$name"
+            ;;
+        ghproxy)
+            printf 'https://gh-proxy.com/%s/%s.xz' "$___X_CMD_CVE_DATA_DEFAULT_BASE" "$name"
+            ;;
+        raw)
+            # Internal: bypass xz for testing.
+            printf '%s/%s' "$___X_CMD_CVE_DATA_FALLBACK_BASE" "$name"
+            ;;
+        *)
+            # Custom URL prefix or unknown tag — fall back to raw.
+            if [ "${tag#http}" != "$tag" ] || [ "${tag#https}" != "$tag" ]; then
+                printf '%s/%s' "$tag" "$name"
+            else
+                printf '%s/%s.xz' "$___X_CMD_CVE_DATA_DEFAULT_BASE" "$name"
+            fi
+            ;;
+    esac
+}
+
+___x_cmd_cve_data_index_fp(){
+    printf '%s/index.tsv' "$(___x_cmd_cve_data_root "$@")"
+}
+
+___x_cmd_cve_data_year_fp(){
+    local year="${1:?year}"; shift
+    printf '%s/cve-%s.tsv' "$(___x_cmd_cve_data_root "$@")" "$year"
+}
+
+___x_cmd_cve_data_mkdir(){
+    ___x_cmd mkdirp "$(___x_cmd_cve_data_root "$@")"
+}
+
+# ---------- freshness + ensure --------------------------------------------
+
+# Ensure the manifest exists locally. Downloads it if missing or stale
+# (1-day TTL — the manifest is tiny).
+___x_cmd_cve_data_ensure_index(){
+    local tag="${1:-${X_CMD_CVE_TAG:-$___X_CMD_CVE_DATA_DEFAULT_TAG}}"
+    ___x_cmd_cve_data_mkdir "$tag"
+    local fp
+    fp="$(___x_cmd_cve_data_index_fp "$tag")"
+
+    # Cache hit: file present, non-empty, fresher than 1 day.
+    if [ -z "${X_CMD_CVE_FORCE:-}" ] \
+            && [ -f "$fp" ] && [ -s "$fp" ] \
+            && x fileage --in 1d "$fp" 2>/dev/null; then
+        return 0
+    fi
+
+    # Remove a zero-byte leftover (e.g. from a previous failed fetch)
+    # so the curl write below doesn't get a misleading "file exists" error.
+    [ -f "$fp" ] && [ ! -s "$fp" ] && rm -f "$fp"
+
+    ___x_cmd_cve_data_fetch_one "$(___x_cmd_cve_data_url "$tag" index.tsv)" "$fp" \
+    || {
+        cve:warn "Failed to refresh index.tsv (continuing with stale cache if any)"
+        return 1
+    }
+    return 0
+}
+
+# Ensure a year's TSV exists locally. Downloads if missing or stale.
+# TTL rationale:
+#   - 1d   for the current year (rolling churn: new CVEs + REJECTED flips)
+#   - 180d for everything else (older years are essentially frozen —
+#     description / score / affected list rarely change post-publish;
+#     the daily GitHub Release still uploads changes if any occur,
+#     so a force-refresh picks them up promptly).
+___x_cmd_cve_data_ensure_year(){
+    local year="${1:?year}"; shift
+    local tag="${1:-${X_CMD_CVE_TAG:-$___X_CMD_CVE_DATA_DEFAULT_TAG}}"
+    ___x_cmd_cve_data_mkdir "$tag"
+    local fp
+    fp="$(___x_cmd_cve_data_year_fp "$year" "$tag")"
+
+    local current_year
+    current_year="$(___x_cmd_cve_util_year)"
+    local ttl=180d
+    [ "$year" = "$current_year" ] && ttl=1d
+
+    # Cache hit: file present, non-empty, fresher than TTL.
+    if [ -z "${X_CMD_CVE_FORCE:-}" ] \
+            && [ -f "$fp" ] && [ -s "$fp" ] \
+            && x fileage --in "$ttl" "$fp" 2>/dev/null; then
+        return 0
+    fi
+
+    # Remove a zero-byte leftover (e.g. from a previous failed fetch).
+    [ -f "$fp" ] && [ ! -s "$fp" ] && rm -f "$fp"
+
+    ___x_cmd_cve_data_fetch_one "$(___x_cmd_cve_data_url "$tag" "cve-${year}.tsv")" "$fp" \
+    || {
+        cve:warn "Failed to refresh cve-${year}.tsv"
+        return 1
+    }
+    return 0
+}
+
+# ---------- status / update ------------------------------------------------
+
+___x_cmd_cve_data_status(){
+    local tag="${1:-${X_CMD_CVE_TAG:-$___X_CMD_CVE_DATA_DEFAULT_TAG}}"
+    local root
+    root="$(___x_cmd_cve_data_root "$tag")"
+
+    cve:info "cache: $root"
+    cve:info "tag:   $tag"
+    cve:info "base:  $(___x_cmd_cve_data_url "$tag" cve-2024.tsv | sed 's|/cve-2024\.tsv\.xz$||')"
+
+    if [ ! -d "$root" ]; then
+        cve:warn "no cache directory yet — run 'x cve update'"
+        return 0
+    fi
+
+    # Walk the filesystem directly — no manifest needed. List every
+    # cve-YYYY.tsv on disk with its age and row count.
+    cve:info ""
+    cve:info "year      rows   age       file"
+    local now
+    now="$(___x_cmd_cve_util_now)"
+    local fp
+    for fp in $(ls -r "$root"/cve-*.tsv 2>/dev/null); do
+        local file
+        file="$(basename "$fp")"
+        local year="${file#cve-}"
+        year="${year%.tsv}"
+        [ -n "$year" ] || continue
+        local rows
+        rows="$(wc -l < "$fp" 2>/dev/null | tr -d ' ')"
+        local age="$((now - $(___x_cmd_cve_util_mtime "$fp")))s"
+        printf '  %s\t%s\t%s\t%s\n' "$year" "$rows" "$age" "$file"
+    done
+}
+
+___x_cmd_cve_data_update(){
+    local tag="${1:-${X_CMD_CVE_TAG:-$___X_CMD_CVE_DATA_DEFAULT_TAG}}"
+    # Force-refresh every year from 1999 through current. We bypass
+    # the cache TTL by setting X_CMD_CVE_FORCE so this command
+    # actually re-downloads (the whole point of `x cve update`).
+    local current_year
+    current_year="$(command date +%Y)"
+    local year
+    for year in $(seq 1999 "$current_year"); do
+        X_CMD_CVE_FORCE=1 \
+            ___x_cmd_cve_data_ensure_year "$year" "$tag" >/dev/null 2>&1
+    done
+}
+
+# ---------- public dispatcher ---------------------------------------------
+
+___x_cmd_cve_data(){
+    [ $# -gt 0 ] || {
+        ___x_cmd_cve_data_status
+        return
+    }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m cve data "$@" ; return 0 ;;
+        status|info)    ___x_cmd_cve_data_status "$@" ;;
+        update|refresh) ___x_cmd_cve_data_update "$@" ;;
+        root)           ___x_cmd_cve_data_root "$@" ;;
+        index)          ___x_cmd_cve_data_index_fp "$@" ;;
+        year)           ___x_cmd_cve_data_year_fp "$@" ;;
+        base|url)       ___x_cmd_cve_data_url "$@" cve-2024.tsv | sed 's|/cve-2024\.tsv\.xz$||' ;;
+        ensure-index)   ___x_cmd_cve_data_ensure_index "$@" ;;
+        ensure-year)    ___x_cmd_cve_data_ensure_year "$@" ;;
+        ensure-years)   ___x_cmd_cve_data_ensure_years "$@" ;;
+        fetch)          ___x_cmd_cve_data_fetch_one "$@" ;;
+        fetch-parallel) ___x_cmd_cve_data_fetch_parallel "$@" ;;
+        *)              ___x_cmd_cve_data_status "$@" ;;
+    esac
+}

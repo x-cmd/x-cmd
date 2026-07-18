@@ -1,0 +1,57 @@
+# shellcheck shell=dash
+
+# Windows: PowerShell.
+# Backup format: Get-DnsClientServerAddress converted to JSON via ConvertTo-Json.
+___x_cmd_dns_backup___win(){
+    local name="$1"
+    [ -n "$name" ] || N=dns M="Usage: x dns backup <name>" log:ret:64
+
+    local dir
+    dir="$(___x_cmd_dns_backup___dir)"
+    local file="$dir/$name.json"
+    mkdir -p "$dir" 2>/dev/null || N=dns M="Failed to create $dir" log:ret:1
+
+    if ! ___x_cmd hascmd powershell && ! ___x_cmd hascmd pwsh; then
+        N=dns M="PowerShell not found" log:ret:64
+    fi
+
+    dns:info "Backing up PowerShell DNS state to $file"
+    ___x_cmd sudo powershell -NoProfile -Command "Get-DnsClientServerAddress -AddressFamily IPv4,IPv6 | ConvertTo-Json -Depth 4" \
+        > "$file" 2>/dev/null \
+        || N=dns M="Failed to read DNS state" log:ret:1
+
+    dns:info "Backup written: $file"
+}
+
+___x_cmd_dns_restore___win(){
+    local name="$1"
+    [ -n "$name" ] || N=dns M="Usage: x dns restore <name>" log:ret:64
+
+    local dir
+    dir="$(___x_cmd_dns_backup___dir)"
+    local file="$dir/$name.json"
+    [ -f "$file" ] || N=dns M="Backup not found: $file" log:ret:64
+
+    if ! ___x_cmd hascmd powershell && ! ___x_cmd hascmd pwsh; then
+        N=dns M="PowerShell not found" log:ret:64
+    fi
+
+    dns:info "Restoring DNS from $file"
+    # Embed the JSON into a PowerShell script via single-quoted here-string.
+    local json
+    json="$(cat "$file" | tr -d '\r' | sed "s/'/''/g")"
+    ___x_cmd sudo powershell -NoProfile -Command "
+        \$data = ConvertFrom-Json @'
+$json
+'@
+        \$data | ForEach-Object {
+            \$alias = \$_.InterfaceAlias
+            \$v4 = \$_.ServerAddresses | Where-Object { \$_ -match '^[0-9.]+\$' }
+            \$v6 = \$_.ServerAddresses | Where-Object { \$_ -match ':' }
+            if (\$v4) { Set-DnsClientServerAddress -InterfaceAlias \$alias -ServerAddresses \$v4 }
+            if (\$v6) { Set-DnsClientServerAddress -InterfaceAlias \$alias -ServerAddresses \$v6 }
+        }
+    " || N=dns M="Failed to restore DNS" log:ret:1
+
+    dns:info "DNS restored from: $name"
+}

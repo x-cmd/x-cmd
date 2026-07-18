@@ -1,0 +1,256 @@
+#!/bin/sh
+# x-cmd cwe lib/fz/preview — render a single CWE row from the local cache.
+#
+# fzf calls this as `--preview="<path> {1}"` whenever the highlighted
+# row changes. {1} is the first TAB-delimited field of the row.
+#
+# Output is YAML with bold-cyan key tokens (fzf preview is always TTY,
+# so colors are always on; downstream fzf strips the codes when the
+# user picks a row).
+#
+# IMPORTANT: this script can be sourced via xrc:mod:lib too, where $1
+# leaks from the calling context (typically `fz/preview`). Detect which
+# case we're in:
+#   - If $1 looks like a CWE id, fzf called us — use it directly.
+#   - Otherwise discard all positional args (xrc:mod:lib leftover).
+case "$1" in
+    CWE-*) ;;
+    *) shift "$#" ;;
+esac
+id="${1}"
+case "$id" in
+    CWE-*) ;;
+    *) exit 0 ;;
+esac
+
+bare="${id#CWE-}"
+
+# Resolve the cache root. Try several locations.
+tag="${X_CMD_CWE_TAG:-mitre}"
+fp=""
+for root in \
+    "$X_CMD_CWE_DATA_ROOT" \
+    "$___X_CMD_ROOT_DATA/cwe/csv/$tag" \
+    "$HOME/.x-cmd/data/cwe/csv/$tag" \
+    "$HOME/.x-cmd.root/local/data/cwe/csv/$tag"
+do
+    [ -n "$root" ] || continue
+    [ -f "$root/2000.csv" ] && { fp="$root/2000.csv"; break; }
+done
+
+[ -n "$fp" ] || {
+    printf '(not in local cache — run `x cwe update`)\n'
+    exit 0
+}
+
+# Color codes — fzf preview pane is always TTY.
+esc="$(printf '\033')"
+CK="${esc}[1;36m"
+CR="${esc}[0m"
+
+awk -v want="$bare" -v CK="$CK" -v CR="$CR" '
+    function strip(s,    t) {
+        t = s
+        sub(/^"/, "", t)
+        sub(/"$/, "", t)
+        gsub(/""/, "\"", t)
+        sub(/\r$/, "", t)
+        return t
+    }
+    function unmark(s,    t) {
+        t = s
+        gsub(/\\n/, "\n", t)
+        return t
+    }
+
+    # Emit one YAML key/value:
+    #   contains "::"   → list of mappings (one per "::...::" record)
+    #   single-line + no special chars → plain scalar
+    #   single-line + special chars    → double-quoted
+    #   multi-line (no "::")           → block scalar "|"
+    function emit(label, content,    i, n, lines, q, v) {
+        if (content == "") return
+        if (index(content, "::") > 0) {
+            emit_markers(label, content)
+            return
+        }
+        n = split(content, lines, "\n")
+        if (n > 1) {
+            printf "%s%s%s: |\n", CK, label, CR
+            for (i = 1; i <= n; i++) {
+                printf "  %s\n", lines[i]
+            }
+            printf "\n"
+            return
+        }
+        q = needs_quote(content)
+        if (q == "\"") {
+            v = content
+            gsub(/\\/, "\\\\", v)
+            gsub(/"/, "\\\"", v)
+            printf "%s%s%s: \"%s\"\n", CK, label, CR, v
+        } else {
+            printf "%s%s%s: %s\n", CK, label, CR, content
+        }
+    }
+
+    # Emit a MITRE marker block as a YAML list of mappings.
+    function emit_markers(label, value,    KNOWN, nr, i, rec, j, lines, nl, line, eq, key, val, v, has_struct) {
+        KNOWN = "CWE ID|VIEW ID|LANGUAGE NAME|LANGUAGE CLASS|LANGUAGE PREVALENCE|TECHNOLOGY NAME|TECHNOLOGY CLASS|TECHNOLOGY PREVALENCE|TAXONOMY NAME|ENTRY NAME|ENTRY ID|MAPPING FIT|EFFECTIVENESS|DESCRIPTION|ORDINALITY|ORDINAL|STRATEGY|NATURE|PHASE|IMPACT|SCOPE|METHOD|REFERENCE|TYPE|TERM|NOTE|CVE|LINK"
+        printf "%s%s%s:\n", CK, label, CR
+
+        nr = split(value, records, "::")
+        for (i = 1; i <= nr; i++) {
+            rec = records[i]
+            sub(/^:/, "", rec)
+            sub(/:$/, "", rec)
+            if (rec == "") continue
+
+            has_struct = has_known_marker(rec, KNOWN)
+
+            if (!has_struct) {
+                printf "  - %s\n", rec
+                continue
+            }
+
+            printf "  -\n"
+
+            gsub("(" KNOWN "):", "\n&", rec)
+            sub(/^\n/, "", rec)
+            sub(/[ \t\n]+$/, "", rec)
+
+            nl = split(rec, lines, "\n")
+            for (j = 1; j <= nl; j++) {
+                line = lines[j]
+                if (line == "") continue
+                eq = index(line, ":")
+                if (eq == 0) continue
+                key = substr(line, 1, eq - 1)
+                val = substr(line, eq + 1)
+                sub(/^[ \t]+/, "", val)
+                sub(/[ \t:]+$/, "", val)
+                if (val ~ /[":{}\[\],&*!|>%@`]/) {
+                    v = val
+                    gsub(/\\/, "\\\\", v)
+                    gsub(/"/, "\\\"", v)
+                    printf "    %s: \"%s\"\n", key, v
+                } else {
+                    printf "    %s: %s\n", key, val
+                }
+            }
+        }
+    }
+
+    function has_known_marker(rec, KNOWN,    nk, karr, ki, klen) {
+        nk = split(KNOWN, karr, "|")
+        for (ki = 1; ki <= nk; ki++) {
+            klen = length(karr[ki])
+            if (index(rec, ":" karr[ki] ":") > 0) return 1
+            if (substr(rec, 1, klen+1) == (karr[ki] ":")) return 1
+        }
+        return 0
+    }
+
+    function needs_quote(s,    i, c, n) {
+        n = length(s)
+        if (n == 0) return ""
+        c = substr(s, 1, 1)
+        if (index("-?:,[]{}#&*!|>\"%@`", c) > 0) return "\""
+        for (i = 1; i <= n; i++) {
+            c = substr(s, i, 1)
+            if (c == "\"") return "\""
+            if (c == ":" && i < n && substr(s, i+1, 1) == " ") return "\""
+        }
+        return ""
+    }
+
+    NR == 1 { next }
+    {
+        bare1   = substr($0, 1, length(want)+1)
+        quoted1 = substr($0, 1, length(want)+3)
+        if (bare1 != (want ",") && quoted1 != ("\"" want "\",")) next
+
+        line = $0
+        n = length(line)
+        inq = 0
+        f = ""
+        nf = 0
+        delete arr
+        for (i = 1; i <= n; i++) {
+            c = substr(line, i, 1)
+            if (inq) {
+                if (c == "\"") {
+                    if (i < n && substr(line, i+1, 1) == "\"") {
+                        f = f "\""
+                        i++
+                    } else {
+                        inq = 0
+                    }
+                } else {
+                    f = f c
+                }
+            } else {
+                if (c == "\"") {
+                    inq = 1
+                } else if (c == ",") {
+                    nf++
+                    arr[nf] = f
+                    f = ""
+                } else {
+                    f = f c
+                }
+            }
+        }
+        if (f != "" || nf < 23) {
+            nf++
+            arr[nf] = f
+        }
+
+        for (k = nf + 1; k <= 23; k++) arr[k] = ""
+
+        gsub(/^"/, "", arr[1]); gsub(/"$/, "", arr[1])
+        if (arr[1] == "") next
+
+        emit("id",          "CWE-" arr[1])
+        emit("name",        strip(arr[2]))
+        emit("abstraction", strip(arr[3]))
+        emit("status",      strip(arr[4]))
+
+        rel_raw = strip(arr[7])
+        if (rel_raw != "") {
+            n_related = split(rel_raw, rel_ids, /CWE ID:/)
+            related_summary = ""
+            delete seen
+            for (r = 2; r <= n_related; r++) {
+                rid = rel_ids[r]
+                sub(/[^0-9].*/, "", rid)
+                if (rid != "" && !seen[rid]++) {
+                    related_summary = related_summary "CWE-" rid " "
+                }
+            }
+            sub(/[ \t]+$/, "", related_summary)
+            if (related_summary != "") emit("related", related_summary)
+        }
+
+        emit("description",      unmark(strip(arr[5])))
+        emit("extended",         unmark(strip(arr[6])))
+        emit("relationships",    unmark(strip(arr[7])))
+        emit("ordinality",       unmark(strip(arr[8])))
+        emit("platforms",        unmark(strip(arr[9])))
+        emit("background",       unmark(strip(arr[10])))
+        emit("alternate_terms",  unmark(strip(arr[11])))
+        emit("modes",            unmark(strip(arr[12])))
+        emit("exploit_factors",  unmark(strip(arr[13])))
+        emit("likelihood",       unmark(strip(arr[14])))
+        emit("consequences",     unmark(strip(arr[15])))
+        emit("detection",        unmark(strip(arr[16])))
+        emit("mitigations",      unmark(strip(arr[17])))
+        emit("observed",         unmark(strip(arr[18])))
+        emit("functional_areas", unmark(strip(arr[19])))
+        emit("resources",        unmark(strip(arr[20])))
+        emit("taxonomy",         unmark(strip(arr[21])))
+        emit("capec",            unmark(strip(arr[22])))
+        emit("notes",            unmark(strip(arr[23])))
+        exit
+    }
+' "$fp"

@@ -1,0 +1,116 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cwe lib/la/stream — emit every cached CWE row as TSV.
+#
+# Source: the local 2000.csv cache. We don't parse the full row — just
+# the first 5 fields (ID, Name, Abstraction, Status, Description).
+#
+# Each output row is tab-separated:
+#     CWE-79\tCross-site Scripting ('XSS')\tBase\tStable\tThe software...
+#
+# The first line is the header.
+
+xrc:mod:lib     cwe         data/_index
+
+# Column header.
+___x_cmd_cwe_la_stream_header(){
+    printf 'id\tname\tabstraction\tstatus\tdesc\n'
+}
+
+# Stream every cached CWE row as TSV (header first).
+# Falls back to a header-only stream if the cache is empty.
+___x_cmd_cwe_la_stream_tsv(){
+    local tag="${X_CMD_CWE_TAG:-$___X_CMD_CWE_DATA_DEFAULT_TAG}"
+    local csv_fp
+    csv_fp="$(___x_cmd_cwe_data_csv_fp "$tag")"
+
+    ___x_cmd_cwe_la_stream_header
+    [ -f "$csv_fp" ] || return 0
+
+    # Skip the CSV header (first line). Then parse each MITRE row.
+    # MITRE rows are giant single lines; awk splits on tabs which only
+    # appear inside our own stream header. The whole record is $0.
+    ___x_cmd_cmds tail -n +2 "$csv_fp" \
+    | ___x_cmd_cmds awk '
+        function strip(s,    t) {
+            t = s
+            sub(/^"/, "", t)
+            sub(/"$/, "", t)
+            gsub(/""/, "\"", t)
+            sub(/\r$/, "", t)
+            return t
+        }
+        {
+            line = $0
+            n = length(line)
+            inq = 0
+            f = ""
+            out = ""
+            nf = 0
+            i = 1
+            for (i = 1; i <= n; i++) {
+                c = substr(line, i, 1)
+                if (inq) {
+                    if (c == "\"") {
+                        if (i < n && substr(line, i+1, 1) == "\"") {
+                            f = f "\""
+                            i++
+                        } else {
+                            inq = 0
+                        }
+                    } else {
+                        f = f c
+                    }
+                } else {
+                    if (c == "\"") {
+                        inq = 1
+                    } else if (c == ",") {
+                        out = out f "\t"
+                        f = ""
+                        nf++
+                        if (nf >= 5) {
+                            out = out substr(line, i+1)
+                            break
+                        }
+                    } else {
+                        f = f c
+                    }
+                }
+            }
+            if (nf < 5) out = out f
+
+            split(out, arr, "\t")
+            id   = arr[1]
+            name = strip(arr[2])
+            abs  = strip(arr[3])
+            stat = strip(arr[4])
+            desc = strip(arr[5])
+
+            gsub(/^"/, "", id); gsub(/"$/, "", id)
+            if (id == "") next
+
+            gsub(/[[:space:]]+/, " ", desc)
+            if (length(desc) > 90) desc = substr(desc, 1, 87) "..."
+
+            printf "CWE-%s\t%s\t%s\t%s\t%s\n", id, name, abs, stat, desc
+        }
+    '
+}
+
+# Ensure the cache exists. Auto-refresh if older than 30 days.
+___x_cmd_cwe_la_refresh_recent(){
+    local tag="${X_CMD_CWE_TAG:-$___X_CMD_CWE_DATA_DEFAULT_TAG}"
+    ___x_cmd_cwe_data_mkdir "$tag"
+    local csv_fp
+    csv_fp="$(___x_cmd_cwe_data_csv_fp "$tag")"
+
+    if [ ! -f "$csv_fp" ]; then
+        ___x_cmd_cwe_data_ensure "$tag" >/dev/null 2>&1 || return 1
+        return 0
+    fi
+
+    local age=$(( $(___x_cmd_cwe_util_now) - $(___x_cmd_cwe_util_mtime "$csv_fp") ))
+    if [ "$age" -ge 2592000 ]; then
+        ___x_cmd_cwe_data_ensure "$tag" >/dev/null 2>&1 || return 1
+    fi
+    return 0
+}

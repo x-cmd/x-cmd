@@ -1,6 +1,6 @@
 BEGIN{
     OFS=","
-    printf( "%s,%s,%s,%s,%s,%s,%s\n", "Name", "Price", "MarketCap", "VWAP(24Hr)", "Supply", "Volume(24Hr)", "Change(24Hr)")
+    printf( "%s,%s,%s,%s,%s,%s,%s\n", "Name", "Price", "MarketCap", "Change(7d)", "Supply", "Volume(24Hr)", "Change(24Hr)")
 }
 
 function number_parse(item){
@@ -22,12 +22,12 @@ function number_parse(item){
 {
     Price       = $1
     MarketCap   = number_parse($2)
-    VWAP        = $3
+    Change7d    = $3
     Supply      = number_parse($4)
     Volume      = number_parse($5)
     Change      = $6
 
     $1=$2=$3=$4=$5=$6=""
-    printf ( "%s,%.2f,%s,%.2f,%s,%s,%.2f%%\n", substr($0, 7), Price, MarketCap, VWAP, Supply, Volume, Change )
+    printf ( "%s,%.2f,%s,%.2f%%,%s,%s,%.2f%%\n", substr($0, 7), Price, MarketCap, Change7d, Supply, Volume, Change )
 
 }

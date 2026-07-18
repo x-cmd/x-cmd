@@ -1,0 +1,78 @@
+# shellcheck shell=dash
+
+___x_cmd_dns_reset___linux_target(){
+    local conn="$1"; shift
+    [ -n "$conn" ] || N=dns M="Usage: x dns reset <conn>" log:ret:64
+
+    if ! ___x_cmd hascmd nmcli; then
+        N=dns M="nmcli not found" log:ret:64
+    fi
+
+    if ! ___x_cmd sudo nmcli --terse connection show id "$conn" >/dev/null 2>&1; then
+        N=dns M="Connection not found ==> $conn" log:ret:64
+    fi
+
+    dns:info "Resetting DNS to automatic for connection: $conn"
+    ___x_cmd sudo nmcli con mod "$conn" ipv4.dns "" ipv4.ignore-auto-dns no ipv4.method auto \
+        || N=dns M="Failed to reset IPv4 DNS" log:ret:1
+    ___x_cmd sudo nmcli con mod "$conn" ipv6.dns "" ipv6.ignore-auto-dns no \
+        || N=dns M="Failed to reset IPv6 DNS" log:ret:1
+    ___x_cmd sudo nmcli connection up "$conn" \
+        || N=dns M="Failed to bring up connection: $conn" log:ret:1
+    dns:info "DNS reset for connection: $conn"
+}
+
+___x_cmd_dns_reset___linux_nmcli(){
+    local activated
+    activated="$(___x_cmd cmds nmcli -t -f NAME connection show --active 2>/dev/null \
+        | ___x_cmd_cmds_awk -F: '{ print $1 }')"
+    if [ -z "$activated" ]; then
+        dns:warn "No active NetworkManager connection to reset"
+        return
+    fi
+    for c in $activated; do
+        ___x_cmd_dns_reset___linux_target "$c"
+    done
+}
+
+___x_cmd_dns_reset___linux_systemd(){
+    local conf="/etc/systemd/resolved.conf.d/x-cmd-dns.conf"
+    if [ -f "$conf" ]; then
+        dns:info "Removing $conf"
+        ___x_cmd sudo rm -f "$conf" \
+            || N=dns M="Failed to remove $conf" log:ret:1
+    else
+        dns:info "$conf not present; nothing to remove"
+    fi
+
+    if ___x_cmd hascmd systemctl; then
+        dns:info "Restarting systemd-resolved"
+        ___x_cmd sudo systemctl restart systemd-resolved \
+            || N=dns M="Failed to restart systemd-resolved" log:ret:1
+    fi
+    dns:info "System-wide DNS reset"
+}
+
+___x_cmd_dns_reset___linux_file(){
+    dns:warn "Cannot auto-revert /etc/resolv.conf (no backup created by 'x dns set --file')"
+    dns:warn "Edit /etc/resolv.conf manually to restore DHCP / previous settings"
+}
+
+___x_cmd_dns_reset___linux(){
+    local conn=""
+    if [ $# -gt 0 ]; then
+        case "$1" in
+            *:*|*.*.*)  N=dns M="Target is not an IP ==> $1" log:ret:64 ;;
+        esac
+        conn="$1"; shift
+    fi
+
+    if [ -n "$conn" ]; then
+        ___x_cmd_dns_reset___linux_target "$conn"
+        return
+    fi
+
+    local x_
+    ___x_cmd_dns_util___linux_pick_backend_
+    ___x_cmd_dns_reset___linux_"${x_}" "$@"
+}

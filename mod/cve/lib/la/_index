@@ -1,0 +1,67 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/la/_index — `x cve ls` subcommand.
+#
+# Streams every cached CVE row (full year files concatenated) so the
+# caller sees one big chronological view.
+#
+# Before listing, opportunistically refreshes the current year and last
+# year files when they're missing or older than 1 hour — that's where
+# new CVEs actually appear. Older years stay frozen.
+#
+# Output is TTY-aware (modeled after `x eget ls`):
+#   stdout is a TTY  →  interactive fzf picker (preview = full record)
+#   stdout is a pipe →  raw TSV
+# Override with --yml / --tsv / --csv / --json / --table / fz.
+#
+# Helpers live alongside this file:
+#   la/stream   — TSV emission + freshness check
+#   la/fmt      — yml/json/csv/table formatters
+#   fz/_index   — actual fzf picker
+
+xrc:mod:lib     cve         data/_index la/stream la/fmt
+
+# TTY-aware auto dispatch. Mirrors `x eget ls` behavior.
+___x_cmd_cve_la_auto(){
+    if [ -t 1 ]; then
+        ___x_cmd_cve_fz
+    else
+        ___x_cmd_cve_la_stream_tsv
+    fi
+}
+
+# Main dispatcher. By default `x cve ls` == `x cve ls --all`.
+___x_cmd_cve_la(){
+    local mode=auto
+    local refresh=1
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m cve ls "$@" ; return 0 ;;
+            --all|-a)       ;;                          # accepted, default
+            --no-refresh)   refresh=0 ;;
+            --yml)          mode=yml ;;
+            --tsv)          mode=tsv ;;
+            --csv)          mode=csv ;;
+            --json)         mode=json ;;
+            --table)        mode=table ;;
+            fz|--fz)        mode=fz ;;
+            --ghproxy)      X_CMD_CVE_TAG=ghproxy ;;
+            --tag)          shift; X_CMD_CVE_TAG="$1" ;;
+            *)              cve:warn "ignoring arg: $1" ;;
+        esac
+        shift
+    done
+
+    # Sanity refresh: pull this year + last year if they're stale/missing.
+    [ "$refresh" = 1 ] && ___x_cmd_cve_la_refresh_recent
+
+    case "$mode" in
+        auto)        ___x_cmd_cve_la_auto ;;
+        fz)          ___x_cmd_cve_fz ;;
+        yml)         ___x_cmd_cve_la_stream_tsv | ___x_cmd_cve_la_fmt_yml ;;
+        json)        ___x_cmd_cve_la_stream_tsv | ___x_cmd_cve_la_fmt_json ;;
+        csv)         ___x_cmd_cve_la_stream_tsv | ___x_cmd_cve_la_fmt_csv ;;
+        table)       ___x_cmd_cve_la_stream_tsv | ___x_cmd_cve_la_fmt_table ;;
+        tsv|*)       ___x_cmd_cve_la_stream_tsv ;;
+    esac
+}

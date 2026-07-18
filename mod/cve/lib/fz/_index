@@ -1,0 +1,123 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/fz/_index — `x cve fz` subcommand.
+#
+# Interactive fzf picker over every cached CVE row. Modeled after
+# `x eget ls` (lib/ls/ls_install → _installdb_fz):
+#   - TAB-delimited columns (so fzf --delimiter='\t' splits cleanly)
+#   - ANSI-colorized rows
+#   - preview pane calls lib/fz/preview directly (no subshell, no x-cmd)
+#   - on selection, prints the chosen id's full yml block to stdout
+#
+# Before launching fzf, opportunistically refreshes this year + last year
+# files when they're stale (>1h) or missing — same logic as `x cve ls`.
+
+xrc:mod:lib     cve         data/_index la/stream la/fmt
+
+# Ensure every year's cve-YYYY.tsv is on disk (cached or freshly
+# fetched). Same semantics as `x cve ls` — fill any missing year.
+___x_cmd_cve_fz_fill_cache(){
+    ___x_cmd_cve_la_fill_cache
+}
+
+# Real ESC byte. x-cmd exposes this as $___X_CMD_UNSEENCHAR_033 in its
+# environment, which is the right way to embed ANSI escapes in shell
+# scripts that have to survive both bash and dash.
+
+# Build the fzf input stream: a tab-delimited header + ANSI-colorized
+# tab-delimited rows. Tabs between columns are essential — fzf's
+# --delimiter='\t' won't split on spaces.
+#
+# TSV column order (matches _cve_index.py, _CVE_COLUMNS = 9):
+#   $1 cve   $2 year  $3 no    $4 vp
+#   $5 ghsa  $6 score $7 patched $8 cwe
+#   $9 desc
+# We display 6 columns in the picker:
+#   cve · score · ghsa · vendor/product · CWE · description
+# Score is colored by severity bucket (CVSS v3.x thresholds).
+# The CVE id is also colored by the same bucket so the whole id jumps
+# out — GHSA / vp / CWE get their own muted colours.
+___x_cmd_cve_fz_stream(){
+    local esc="$___X_CMD_UNSEENCHAR_033"
+
+    printf '%sCVE%s\t%sSCORE%s\t%sGHSA%s\t%sVP%s\t%sCWE%s\t%sDESC%s\n' \
+        "${esc}[1m" "${esc}[0m" \
+        "${esc}[1m" "${esc}[0m" \
+        "${esc}[1m" "${esc}[0m" \
+        "${esc}[1m" "${esc}[0m" \
+        "${esc}[1m" "${esc}[0m" \
+        "${esc}[2m" "${esc}[0m"
+
+    # Severity buckets (CVSS v3.x).
+    # We deliberately avoid red — many terminals (and fzf themes) map
+    # ANSI red to a colour that drowns out everything else, and 94% of
+    # cvelistV5 rows are unrated. Coloring unrated red turned the whole
+    # picker into a wall of red. Instead:
+    #   unrated (no score)   → dim grey
+    #   9.0–10.0  CRITICAL   → magenta
+    #   7.0–8.9   HIGH       → yellow
+    #   5.0–6.9   MEDIUM     → cyan
+    #   0.1–4.9   LOW        → green
+    # The colouring rules live in lib/awk/fzdata.awk, following the same
+    # layout aur uses (`lib/awk/<name>.awk` invoked via `-f` with an
+    # absolute path). This keeps the awk rules easy to scan without
+    # scrolling through shell scaffolding, and leaves fz/_index purely
+    # as the dispatcher / fzf invoker.
+    ___x_cmd_cve_la_stream_tsv \
+    | ___x_cmd_cmds awk -F '\t' -v esc="$esc" \
+        -f "$___X_CMD_ROOT_MOD/cve/lib/awk/fzdata.awk"
+}
+
+# Top-level dispatcher.
+___x_cmd_cve_fz(){
+    local refresh=1
+    local query=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m cve fz "$@" ; return 0 ;;
+            --no-refresh)   refresh=0 ;;
+            --ghproxy)      X_CMD_CVE_TAG=ghproxy ;;
+            --tag)          shift; X_CMD_CVE_TAG="$1" ;;
+            -q|--query)     shift; query="$1" ;;
+            *)              cve:warn "ignoring arg: $1" ;;
+        esac
+        shift
+    done
+
+    [ "$refresh" = 1 ] && ___x_cmd_cve_fz_fill_cache
+
+    # The preview pane calls lib/fz/preview directly — a self-contained
+    # shell + awk script that grep's the row from the local year file.
+    # This avoids spawning `x cve info` on every cursor move (which would
+    # mean a subshell + x-cmd runtime + another TSV scan per keystroke).
+    local preview_path="$___X_CMD_ROOT_MOD/cve/lib/fz/preview"
+
+    local selection
+    selection="$(
+        ___x_cmd_cve_fz_stream \
+        | ___x_cmd fzf \
+            --ansi --reverse --height='80%' \
+            --tabstop=2 \
+            --query="$query" \
+            --header-lines=1 \
+            --header-border=horizontal \
+            --header-label=' x cve — cached CVEs (unrated grey · critical ≥9 magenta · high ≥7 yellow · medium ≥5 cyan · low green) ' \
+            --delimiter='\t' \
+            --nth=1,2,3,4,5,6 \
+            --preview="sh '$preview_path' {1}" \
+            --preview-window='right:60%:wrap' \
+            --bind='ctrl-w:toggle-preview-wrap' \
+    )"
+
+    # Strip ANSI codes and pull out just the CVE id (first TAB-delimited
+    # field, with trailing whitespace trimmed).
+    [ -n "$selection" ] || return 0
+    selection="$( printf '%s\n' "$selection" \
+        | sed $'s/\033\\[[0-9;]*m//g' \
+        | awk -F '\t' '{ gsub(/[ \t]+$/, "", $1); print $1 }' )"
+
+    [ -n "$selection" ] || return 0
+
+    # Print the full info block for the selected id.
+    X_CMD_CVE_OFFLINE=1 x cve info --yml "$selection"
+}

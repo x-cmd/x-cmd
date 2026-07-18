@@ -1,0 +1,63 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/recent — `x cve recent [N]` subcommand.
+#
+# Show the most recent CVEs by pulling the latest year file (cached) and
+# tailing the last N rows. Per-year TSVs are sorted by cve id, and CVE
+# numbers are issued monotonically, so the last N rows of the latest year
+# are a reasonable proxy for "most recent".
+
+xrc:mod:lib     cve         data/_index
+
+___x_cmd_cve_recent(){
+    local n=20
+    local tag="${X_CMD_CVE_TAG:-}"
+    local explicit_mode=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m cve recent "$@" ; return 0 ;;
+            -n)         shift; n="$1" ;;
+            --tsv)      explicit_mode="tsv" ;;
+            --json)     explicit_mode="json" ;;
+            --csv)      explicit_mode="csv" ;;
+            --yml)      explicit_mode="yml" ;;
+            --ghproxy)  tag="ghproxy" ;;
+            --tag)      shift; tag="$1" ;;
+            *)          n="$1" ;;
+        esac
+        shift
+    done
+
+    [ -n "$tag" ] || tag="${X_CMD_CVE_TAG:-}"
+
+    # Latest year is just `date +%Y` — no manifest needed.
+    local latest_year
+    latest_year="$(command date +%Y)"
+
+    if [ -z "${X_CMD_CVE_OFFLINE:-}" ]; then
+        ___x_cmd_cve_data_ensure_year "$latest_year" "$tag"
+    fi
+
+    local fp
+    fp="$(___x_cmd_cve_data_year_fp "$latest_year" "$tag")"
+    [ -f "$fp" ] || {
+        cve:error "no cached year file for $latest_year"
+        return 1
+    }
+
+    local mode="${explicit_mode:-yml}"
+    local rows
+    # Per-year TSVs are stored newest-id-first, so head — not tail —
+    # gives us the most recent N CVEs.
+    rows="$(head -n "$n" "$fp")"
+
+    if [ "$mode" = "yml" ]; then
+        # Pretty print: id / score / desc.
+        printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r cve year no ghsa score desc; do
+            [ -z "$cve" ] && continue
+            printf '%s\tscore=%s\t%s\n' "$cve" "${score:-—}" "$desc"
+        done
+    else
+        printf '%s\n' "$rows"
+    fi
+}

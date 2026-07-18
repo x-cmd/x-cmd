@@ -1,0 +1,48 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/detail/fetch — upstream JSON fetching.
+#
+# cvelistV5 stores records at:
+#   cves/<year>/<Nxxx>/<id>.json
+# where the bucket name uses 4 digits for numbers < 10000 and 5 digits
+# for numbers >= 10000 (matching the upstream convention).
+
+# Resolve a CVE id to its upstream path under cvelistV5.
+# Args: <cve_id>
+# Output: <year>/<bucket>/<file>.json
+___x_cmd_cve_detail_path(){
+    local id="$1"
+    local year no bucket
+    year="$(printf '%s' "$id" | sed -n 's/^CVE-\([0-9]\{4\}\)-.*/\1/p')"
+    no="$(printf '%s' "$id" | sed -n 's/^CVE-[0-9]\{4\}-\([0-9]\{4,7\}\)$/\1/p')"
+    [ -n "$year" ] && [ -n "$no" ] || return 1
+
+    if [ "$no" -lt 10000 ]; then
+        bucket="$(printf '%s' "$no" | cut -c1)xxx"
+    else
+        bucket="$(printf '%s' "$no" | cut -c1-2)xxx"
+    fi
+    printf 'cves/%s/%s/%s.json' "$year" "$bucket" "$id"
+}
+
+# Fetch the upstream JSON for a CVE id, memoized through `x ccmd 1h`
+# so repeat lookups within an hour are free. Returns the JSON via stdout.
+___x_cmd_cve_detail_fetch(){
+    local id="$1"
+    local path
+    path="$(___x_cmd_cve_detail_path "$id")" || {
+        cve:error "invalid CVE id: $id"
+        return 1
+    }
+    local base="${CVE_DETAIL_BASE:-https://raw.githubusercontent.com/CVEProject/cvelistV5/main}"
+    local url="$base/$path"
+
+    x ccmd 1h -- ___x_cmd curl --fail --location --silent --show-error \
+        --connect-timeout 15 --max-time 60 \
+        "$url"
+}
+
+# Render a single jq filter against a JSON document. Returns empty string
+# on parse failure (jq writes to stderr, which we redirect).
+___x_cmd_cve_detail_jq(){
+    jq -r "$1" <<<"$2" 2>/dev/null
+}

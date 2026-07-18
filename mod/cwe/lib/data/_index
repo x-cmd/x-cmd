@@ -1,0 +1,155 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cwe lib/data/_index — manage the local CWE catalog cache.
+#
+# Cache layout (under ___X_CMD_ROOT_DATA/cwe/csv/<tag>/):
+#     2000.csv              — the full CWE catalog from MITRE, one row per
+#                             entry, fields quoted, descriptions may be long.
+#     2000.csv.zip          — the original zip, kept for re-extraction.
+#
+# `tag` lets us keep multiple upstream mirrors side by side:
+#   mitre   → https://cwe.mitre.org/data/csv/2000.csv.zip (default)
+# Override with `X_CMD_CWE_TAG=...` env or `--tag`.
+#
+# TTL: 30 days — the CWE catalog changes slowly. Force refresh with
+# `X_CMD_CWE_FORCE=1` or `x cwe update`.
+#
+# Helpers:
+#   data/fetch  — curl + x ccmd 30d, zip extraction
+#   util        — mtime / now / year primitives
+
+xrc:mod:lib     cwe         util data/fetch
+
+# ---------- defaults + paths -----------------------------------------------
+
+___X_CMD_CWE_DATA_DEFAULT_TAG=mitre
+___X_CMD_CWE_DATA_DEFAULT_BASE=https://cwe.mitre.org/data/csv
+___X_CMD_CWE_DATA_DEFAULT_FILE=2000.csv.zip
+
+___x_cmd_cwe_data_root(){
+    local tag="${1:-${X_CMD_CWE_TAG:-$___X_CMD_CWE_DATA_DEFAULT_TAG}}"
+    printf '%s/cwe/csv/%s' "$___X_CMD_ROOT_DATA" "$tag"
+}
+
+___x_cmd_cwe_data_base(){
+    local tag="${1:-${X_CMD_CWE_TAG:-$___X_CMD_CWE_DATA_DEFAULT_TAG}}"
+    case "$tag" in
+        mitre)
+            printf '%s' "$___X_CMD_CWE_DATA_DEFAULT_BASE"
+            ;;
+        *)
+            if [ "${tag#http}" != "$tag" ] || [ "${tag#https}" != "$tag" ]; then
+                printf '%s' "$tag"
+            else
+                printf '%s' "$___X_CMD_CWE_DATA_DEFAULT_BASE"
+            fi
+            ;;
+    esac
+}
+
+___x_cmd_cwe_data_zip_fp(){
+    printf '%s/%s' "$(___x_cmd_cwe_data_root "$@")" "$___X_CMD_CWE_DATA_DEFAULT_FILE"
+}
+
+___x_cmd_cwe_data_csv_fp(){
+    printf '%s/2000.csv' "$(___x_cmd_cwe_data_root "$@")"
+}
+
+___x_cmd_cwe_data_mkdir(){
+    ___x_cmd mkdirp "$(___x_cmd_cwe_data_root "$@")"
+}
+
+# ---------- freshness + ensure --------------------------------------------
+
+# Ensure the cached CSV exists locally. Downloads + unzips if missing or
+# stale (30-day TTL).
+___x_cmd_cwe_data_ensure(){
+    local tag="${1:-${X_CMD_CWE_TAG:-$___X_CMD_CWE_DATA_DEFAULT_TAG}}"
+    ___x_cmd_cwe_data_mkdir "$tag"
+
+    local csv_fp zip_fp base
+    csv_fp="$(___x_cmd_cwe_data_csv_fp "$tag")"
+    zip_fp="$(___x_cmd_cwe_data_zip_fp "$tag")"
+    base="$(___x_cmd_cwe_data_base "$tag")"
+
+    if [ -f "$csv_fp" ]; then
+        local age=$(( $(___x_cmd_cwe_util_now) - $(___x_cmd_cwe_util_mtime "$csv_fp") ))
+        if [ "$age" -lt 2592000 ] && [ -z "${X_CMD_CWE_FORCE:-}" ]; then
+            return 0
+        fi
+    fi
+
+    ___x_cmd_cwe_data_fetch_csv "${base}/${___X_CMD_CWE_DATA_DEFAULT_FILE}" "$zip_fp" "$csv_fp" \
+    || {
+        cwe:warn "Failed to refresh CWE catalog (continuing with stale cache if any)"
+        return 1
+    }
+    return 0
+}
+
+# ---------- status / update ------------------------------------------------
+
+___x_cmd_cwe_data_status(){
+    local tag="${1:-${X_CMD_CWE_TAG:-$___X_CMD_CWE_DATA_DEFAULT_TAG}}"
+    local root csv_fp zip_fp
+    root="$(___x_cmd_cwe_data_root "$tag")"
+    csv_fp="$(___x_cmd_cwe_data_csv_fp "$tag")"
+    zip_fp="$(___x_cmd_cwe_data_zip_fp "$tag")"
+
+    cwe:info "cache: $root"
+    cwe:info "tag:   $tag"
+    cwe:info "base:  $(___x_cmd_cwe_data_base "$tag")"
+
+    if [ ! -d "$root" ]; then
+        cwe:warn "no cache directory yet — run 'x cwe update'"
+        return 0
+    fi
+
+    local now age rows
+    now="$(___x_cmd_cwe_util_now)"
+
+    if [ -f "$csv_fp" ]; then
+        age="$((now - $(___x_cmd_cwe_util_mtime "$csv_fp")))s"
+        rows="$(command wc -l < "$csv_fp" 2>/dev/null | tr -d ' ')"
+        cwe:info ""
+        cwe:info "  rows   age       file"
+        printf '  %s\t%s\t%s\n' "${rows:-?}" "$age" "2000.csv"
+    else
+        cwe:warn "no 2000.csv in cache — run 'x cwe update'"
+    fi
+
+    if [ -f "$zip_fp" ]; then
+        age="$((now - $(___x_cmd_cwe_util_mtime "$zip_fp")))s"
+        cwe:info ""
+        cwe:info "  source archive"
+        printf '  %s\t%s\n' "$age" "2000.csv.zip"
+    fi
+}
+
+___x_cmd_cwe_data_update(){
+    local tag="${1:-${X_CMD_CWE_TAG:-$___X_CMD_CWE_DATA_DEFAULT_TAG}}"
+    ___x_cmd_cwe_data_mkdir "$tag"
+    X_CMD_CWE_FORCE=1 ___x_cmd_cwe_data_ensure "$tag"
+}
+
+# ---------- public dispatcher ---------------------------------------------
+
+___x_cmd_cwe_data(){
+    [ $# -gt 0 ] || {
+        ___x_cmd_cwe_data_status
+        return
+    }
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m cwe data "$@" ; return 0 ;;
+        status|info)    ___x_cmd_cwe_data_status "$@" ;;
+        update|refresh) ___x_cmd_cwe_data_update "$@" ;;
+        root)           ___x_cmd_cwe_data_root "$@" ;;
+        csv)            ___x_cmd_cwe_data_csv_fp "$@" ;;
+        zip)            ___x_cmd_cwe_data_zip_fp "$@" ;;
+        base)           ___x_cmd_cwe_data_base "$@" ;;
+        ensure)         ___x_cmd_cwe_data_ensure "$@" ;;
+        fetch)          ___x_cmd_cwe_data_fetch_one "$@" ;;
+        *)              ___x_cmd_cwe_data_status "$@" ;;
+    esac
+}

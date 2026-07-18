@@ -1,0 +1,59 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/external — `x cve <source> <args>` passthrough.
+#
+# Lets you look up a CVE through a different data source without leaving
+# the `x cve` namespace:
+#
+#   x cve shodan CVE-2024-0001   →   x shodan cve CVE-2024-0001
+#   x cve osv   CVE-2024-0001   →   x osv   CVE-2024-0001
+#
+# The mapping table is below — extending it is a one-line change.
+
+# source → where to dispatch.
+# `subcmd` is the literal subcommand to invoke under the upstream module
+# (omit to call the upstream module directly with the rest of the args).
+___X_CMD_CVE_EXTERNAL_TABLE='
+shodan|subcmd=cve
+osv|subcmd=
+'
+
+# Print the mapping table as a list of `<source>\t<subcmd_or_empty>`.
+___x_cmd_cve_external_list(){
+    printf '%s\n' "$___X_CMD_CVE_EXTERNAL_TABLE" | awk -F'|' 'NF == 2 && $1 != "" { print $1 "\t" $2 }'
+}
+
+# Resolve a source name to its subcommand spec. Echoes the subcmd
+# (empty when the upstream module is called directly). Returns 1 if
+# the source isn't in the table.
+___x_cmd_cve_external_resolve(){
+    ___x_cmd_cve_external_list | awk -F'\t' -v src="$1" '$1 == src { print $2; exit 0 } END { if (NR == 0) exit 1 }'
+}
+
+# Main dispatcher.
+#
+# No pre-flight check on whether `x <source>` is installed: we just hand off
+# and let the upstream module produce its own error. Earlier attempts to
+# probe with `x <source> --help` ran into the same problem we're trying to
+# avoid (some x-bash modules auto-enter interactive UI on `--help`),
+# and `x which` only sees modules under the current x-cmd version tree,
+# missing legacy modules at /mod/.
+___x_cmd_cve_external(){
+    [ "$#" -gt 0 ] || {
+        cve:error "usage: x cve <source> <args...>   (sources: $(___x_cmd_cve_external_list | awk -F'\t' '{ printf "%s ", $1 }' | sed 's/ $//'))"
+        return 64
+    }
+
+    local source="$1"; shift
+    local subcmd
+    if ! subcmd="$(___x_cmd_cve_external_resolve "$source")"; then
+        cve:error "unknown external source: $source"
+        cve:info  "known sources: $(___x_cmd_cve_external_list | awk -F'\t' '{ printf "%s ", $1 }' | sed 's/ $//')"
+        return 64
+    fi
+
+    if [ -n "$subcmd" ]; then
+        x "$source" "$subcmd" "$@"
+    else
+        x "$source" "$@"
+    fi
+}

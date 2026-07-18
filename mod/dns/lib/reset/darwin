@@ -1,0 +1,56 @@
+# shellcheck shell=dash
+
+___x_cmd_dns_reset___darwin_target(){
+    local service="$1"; shift
+    [ -n "$service" ] || N=dns M="Usage: x dns reset <service>" log:ret:64
+
+    if ! ___x_cmd cmds networksetup -listallnetworkservices >/dev/null 2>&1; then
+        N=dns M="networksetup not available" log:ret:64
+    fi
+    if ! ___x_cmd cmds networksetup -listallnetworkservices \
+            | ___x_cmd_cmds_awk -v svc="$service" '$0 == svc { found = 1 } END { exit !found }'; then
+        N=dns M="Network service not found ==> $service" log:ret:64
+    fi
+
+    dns:info "Resetting DNS to DHCP for service: $service"
+    ___x_cmd sudo networksetup -setdnsservers "$service" "empty" \
+        || N=dns M="Failed to reset DNS via networksetup" log:ret:1
+
+    ___x_cmd_dns_reload___run --quiet
+
+    dns:info "DNS reset for service: $service"
+    ___x_cmd cmds networksetup -getdnsservers "$service"
+}
+
+___x_cmd_dns_reset___darwin(){
+    local service=""
+    if [ $# -gt 0 ]; then
+        case "$1" in
+            *:*|*.*.*)  N=dns M="Target is not an IP ==> $1" log:ret:64 ;;
+        esac
+        service="$1"; shift
+    fi
+
+    if [ -z "$service" ]; then
+        dns:info "Clearing system-wide DNS via scutil"
+        ___x_cmd sudo scutil --remove "State:/Network/Global/DNS" 2>/dev/null || \
+            ___x_cmd sudo scutil --set "State:/Network/Global/DNS" "" \
+            || N=dns M="Failed to clear global DNS" log:ret:1
+
+        service="$(___x_cmd_dns_set___darwin_default_service)" || {
+            ___x_cmd_dns_reload___run --quiet
+            dns:info "System-wide DNS cleared"
+            return
+        }
+        dns:info "Auto-detected network service: $service"
+    fi
+
+    dns:info "Resetting DNS to DHCP for service: $service"
+    ___x_cmd sudo networksetup -setdnsservers "$service" "empty" \
+        || N=dns M="Failed to reset DNS via networksetup" log:ret:1
+
+    ___x_cmd_dns_reload___run --quiet
+
+    dns:info "DNS reset for service: $service"
+    ___x_cmd cmds networksetup -getdnsservers "$service"
+}

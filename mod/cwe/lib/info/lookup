@@ -1,0 +1,53 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cwe lib/info/lookup — query helpers for `x cwe info`.
+#
+# All functions here are pure: given a csv_path and a normalized id,
+# return the matching fields. No I/O beyond the read.
+
+xrc:mod:lib     cwe         data/_index
+
+# Normalize a CWE-id-like argument: accept either `CWE-79` or the bare
+# `79` shorthand and emit the canonical `79` (bare, used to match the
+# CSV column). Echoes the bare id; returns 1 if it doesn't look like one.
+___x_cmd_cwe_info_normalize(){
+    case "$1" in
+        CWE-*)  printf '%s\n' "${1#CWE-}" ;;
+        [0-9]*) printf '%s\n' "$1" ;;
+        *)      return 1 ;;
+    esac
+}
+
+# Find the row in the cached CSV that matches the given bare id, and
+# print it (verbatim, as one line). Echoes nothing if not found.
+___x_cmd_cwe_info_find_row(){
+    local tag="${1:-${X_CMD_CWE_TAG:-$___X_CMD_CWE_DATA_DEFAULT_TAG}}"
+    local want="$2"
+    local csv_fp
+    csv_fp="$(___x_cmd_cwe_data_csv_fp "$tag")"
+    [ -f "$csv_fp" ] || return 1
+
+    ___x_cmd_cmds awk -v want="$want" '
+        NR == 1 { next }
+        {
+            # MITRE sometimes wraps the id in quotes ("79",) and
+            # sometimes leaves it bare (79,). Handle both.
+            bare   = substr($0, 1, length(want)+1)
+            quoted = substr($0, 1, length(want)+3)
+            if (bare != (want ",") && quoted != ("\"" want "\",")) next
+            print
+            exit
+        }
+    ' "$csv_fp"
+}
+
+# Extract a list of related CWE-IDs from the Related Weaknesses field.
+# The field uses markers like:
+#   ::NATURE:ChildOf:CWE ID:74:VIEW ID:1000:ORDINAL:Primary::
+#   ::NATURE:PeerOf:CWE ID:352:VIEW ID:1000::
+# We extract every "CWE ID:<N>" occurrence.
+___x_cmd_cwe_info_extract_related(){
+    printf '%s\n' "$1" \
+    | ___x_cmd_cmds grep -oE 'CWE ID:[0-9]+' \
+    | ___x_cmd_cmds sed 's/^CWE ID:/CWE-/' \
+    | ___x_cmd_cmds sort -u
+}

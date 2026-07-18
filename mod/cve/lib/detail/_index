@@ -1,0 +1,71 @@
+# shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
+# x-cmd cve lib/detail/_index — `x cve detail <id>...` subcommand.
+#
+# Fetches the FULL upstream record from CVEProject/cvelistV5 (not the
+# slim per-year TSV we maintain). The upstream JSON contains:
+#   - cveMetadata (state, dates, assigner)
+#   - containers.cna.affected (vendor / product / versions / cpes)
+#   - containers.cna.problemTypes (CWE)
+#   - containers.cna.references
+#   - containers.cna.metrics (cvssV4_0 / cvssV3_1 / cvssV3_0 / cvssV2_0 + SSVC)
+#   - containers.cna.descriptions (multi-language)
+#   - containers.cna.impacts (CAPEC)
+#   - containers.cna.solutions / timeline
+#   - containers.adp[] (CISA ADP, github-advisory, etc.)
+#
+# Modes: --yml (default), --tsv, --json
+#
+# Helpers:
+#   detail/fetch   — path resolution, curl with x ccmd 1h, jq wrapper
+#   detail/render  — yml/json/tsv output formatters
+
+xrc:mod:lib     cve         data/_index detail/fetch detail/render
+
+# Top-level dispatcher.
+___x_cmd_cve_detail(){
+    local mode="yml"
+    local ids=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m cve detail "$@" ; return 0 ;;
+            --yml)      mode="yml" ;;
+            --tsv)      mode="tsv" ;;
+            --json)     mode="json" ;;
+            --ghproxy)  CVE_DETAIL_BASE="https://gh-proxy.com/https://raw.githubusercontent.com/CVEProject/cvelistV5/main" ;;
+            *)          ids="${ids:+${ids} }$1" ;;
+        esac
+        shift
+    done
+
+    [ -n "$ids" ] || {
+        cve:error "usage: x cve detail <CVE-ID>...   (e.g. x cve detail CVE-2024-0001)"
+        return 64
+    }
+
+    local id first=1
+    for id in $ids; do
+        # Accept both `CVE-YYYY-NNNN` and the bare `YYYY-NNNN` shorthand.
+        case "$id" in
+            CVE-*-*) ;;
+            [0-9][0-9][0-9][0-9]-[0-9]*) id="CVE-$id" ;;
+            *)  cve:warn "skipping invalid id: $id"; continue ;;
+        esac
+
+        local json
+        if ! json="$(___x_cmd_cve_detail_fetch "$id")"; then
+            cve:warn "$id: failed to fetch from cvelistV5"
+            continue
+        fi
+
+        case "$mode" in
+            json) printf '%s\n' "$json" ;;
+            tsv)  ___x_cmd_cve_detail_render_tsv "$json" "$id" ;;
+            yml|*)
+                [ "$first" = 1 ] || printf '\n---\n\n'
+                ___x_cmd_cve_detail_render_yml "$json" "$id"
+                ;;
+        esac
+        first=0
+    done
+}
