@@ -1,16 +1,56 @@
 ---
 name: skill0
-description: Root index of x-cmd skill0 sub-skills. Defines the OKR-style agent workflow (goal → rule-verified results → execute), skill discovery, and agent tooling preferences. Style: principle-first, concise, delegate specifics to authoritative external sources.
+description: "Root index of x-cmd skill0 sub-skills. Defines the OKR-style agent workflow (goal → rule-verified results → execute), skill discovery, and agent tooling preferences. Style: principle-first, concise, delegate specifics to authoritative external sources."
+x-meta:
+  type: Framework
+  status: stable
+  related: [devloop, skill0-writer, yfm, ontology-database, rule]
+  owner: person:lijunhao
 ---
 
 # Skill0
 
-Skill0 is both the **spec** and the **live prompts** of x-cmd's AI system. It defines how x-cmd agents operate and is loaded as real prompts at runtime — not documentation, but the actual instructions agents execute.
+## Design philosophy
 
-1. **Sub-skills** (agent-browser, lovable, rule, etc.) — self-contained SKILL.md files that teach an agent how to use a tool or follow a convention
-2. **Agent workflow** — OKR-style process, skill discovery, execution preferences — all defined here and used by x-cmd agents in practice
+skill0 is the **zero-skill** — a special class that aggregates
+meta-knowledge across domains (best practices + data/behavioral
+conventions, e.g., rule, score) and reduces its information density by
+design. The LLM continuously absorbs latest knowledge, methodology,
+and chain-of-thought — but data hallucinations have no solution, and
+community/personal skills may be outdated or insecure. skill0 urges
+the LLM to use tools (x rfc, x cve, x wkp, agent-browser) to fetch in
+real time from first-party docs, the network, and the skill community
+based on the current environment.
 
-**Content philosophy**: focus on stable principles. Avoid volatile info (API details, version-specific behavior, tutorials). Curate vetted authoritative links that agents can fetch and use at runtime. See [skill0-writer](skills/skill0-writer/SKILL.md) for conventions including link curation rules.
+Principle: read with understanding → verify via first-party data +
+formal logic → form a personalized skill set + memory.
+
+Convergence: as LLMs absorb more common sense, skill0 thins to
+conventions + source pointers.
+
+## How x-cmd modules use skill0
+
+Skill0 is both the spec and the live prompts of x-cmd's AI system.
+x-cmd's AI modules (e.g., agent, claude, codex) directly reference
+skill0's prompts and files, providing shell-level standard practices
+that complement the methodology.
+
+## Sub-skills
+
+skill0 is a **directed graph** of sub-skills grouped into 4 buckets (`core/`, `data/`, `it/`, `life/`). Pick a starting point by the task shape:
+
+- Goal-driven work — devloop is the orchestrator and drives rule (rule.yml), score (KRs), install (env), agent-browser (visual verify), issue (tracker), repo (sync).
+- Conventions to know before writing — skill0-writer, yfm, ontology-database.
+- Frameworks (process primitives) — rule, score, naming, prompt.
+- Tools, grouped by bucket — single-purpose capabilities:
+    - core/ — install, issue, meme, repo, x-cmd
+    - data/ — ccal, knowledge
+    - it/ — agent-browser, csv, env, git, ip, qr, time, tldr, tsv
+    - life/ — lovable
+
+Relative path from this file: `<bucket>/<slug>/SKILL.md` (no `../`). Example: [devloop](core/devloop/SKILL.md).
+
+The machine-readable catalog (name = `<bucket>/<slug>`, description) lives at [index.tsv](index.tsv), sorted by bucket then by importance within bucket. Skipped from the catalog: `pet` (placeholder per its own description), `core/ai-human-interaction-guide` (README only, no SKILL.md), and 3 empty SKILL.md files (`data/api-less-website`, `life/health`, `life/travel`) — directories exist on disk but content has not been written yet.
 
 ## Agent workflow (OKR)
 

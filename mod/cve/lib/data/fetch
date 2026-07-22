@@ -6,17 +6,14 @@
 # file, not stdout). On a partial download (curl killed by
 # --speed-time), x ccmd happily caches the empty stdout as "successful
 # empty result" and returns it on the next call without ever re-trying
-# the download. The disk cache + 1-day TTL in `data/_index` is enough
+# the download. The disk cache + TTL in `data/_index` is enough
 # memoization for our use case.
 #
-# The daily `data` GitHub Release ships every per-year TSV + the index
-# as xz-compressed assets (~85% smaller than the raw .tsv). We fetch
-# the .xz file to disk, then decompress via `xz -d < src > dst` (stdin/
-# stdout pipe). We do NOT use `xz -d file.tsv.xz` because output naming
-# is implementation-dependent: GNU xz strips `.xz` and restores `.tsv`,
-# but the BSD-derived xz 5.4.x on macOS strips `.xz` and leaves no
-# extension at all (writes to `file`, not `file.tsv`). The stdin/stdout
-# pipe form sidesteps that disagreement and works on every xz.
+# We download .xz files as-is and STREAM them via `xz -dc` when reading.
+# No decompression to disk — saves ~7-10 MB per year × 28 years of
+# duplicate uncompressed data. Callers do:
+#
+#   xz -dc "$fp" | awk -F '\t' '...'
 
 # Build the mirror URL for a github.com asset.
 #   https://github.com/<rest>  ->  https://${host}/${prefix}/<rest>
@@ -40,107 +37,54 @@ ___x_cmd_cve_data_mirror_url(){
     printf 'https://%s/%s/%s' "$host" "$prefix" "${url#https://github.com/}"
 }
 
-# Pick the available xz decompressor. Both forms read from stdin and
-# write to stdout — we use that pipe form, never `xz -d FILE`, because
-# xz's output naming depends on the implementation. GNU writes
-# FILE.tsv, macOS BSD-derived writes FILE (no extension). Errors loudly
-# if neither is found.
-___x_cmd_cve_data_pick_xz(){
-    if command -v xz >/dev/null 2>&1; then
-        printf 'xz -d\n'
-        return 0
-    fi
-    if command -v unxz >/dev/null 2>&1; then
-        printf 'unxz\n'
-        return 0
-    fi
-    cve:error "xz / unxz not found — install xz-utils to decompress releases"
-    return 127
-}
-
-# Fetch a single URL to a file. Two paths:
-#
-#   URL ends in .tsv.xz  →  download to <fp>.tsv.xz, then pipe through
-#              `xz -d` (or `unxz`) into <fp>.tsv. The pipe form avoids
-#              xz's implementation-defined output naming (GNU writes
-#              .tsv, macOS BSD-derived writes no extension). After
-#              success the .tsv.xz file is removed.
-#   anything else → plain `curl -o <fp>`.
-#
-# The caller passes the FINAL destination path (the plain .tsv). We
-# detect compression from the URL, not the fp, so callers don't have
-# to pre-decorate fp with .xz. On github.com stall/error, retry once
-# via the eget.ljh.sh mirror.
+# Fetch a single URL to a file (the destination path is exactly what
+# the caller passes — we don't rename, don't strip extensions, don't
+# run any post-processing). For our use case the URL ends in .tsv.xz
+# and the caller writes it to <cache>/cve-YYYY.tsv.xz. On github.com
+# stall/error, retry once via the eget.ljh.sh mirror.
 ___x_cmd_cve_data_fetch_one(){
     local url="$1"
     local fp="$2"
     local speed_limit="${X_CMD_CVE_SPEED_LIMIT:-50000}"
     local speed_time="${X_CMD_CVE_SPEED_TIME:-2}"
-    local compressed=""
-    case "$url" in
-        *.xz) compressed=1 ;;
-    esac
-
-    # We always write to a .tsv.xz temp file (when compressed) so the
-    # fp we hand to callers remains the plain .tsv path.
-    local dst="$fp"
-    local src="$fp"
-    if [ -n "$compressed" ]; then
-        src="${fp}.xz"
-    fi
 
     # Tell the user something is happening — these files can be
     # 18 MB compressed and stall-prone on github.com, so silence
     # here looks like a hang.
-    cve:info "downloading $(basename "${dst}") ..."
+    cve:info "downloading $(basename "${fp}") ..."
 
+    local err="${fp}.err"
     if ! ___x_cmd curl --fail --location --silent --show-error \
             --connect-timeout 15 --max-time 120 \
             --speed-limit "$speed_limit" \
             --speed-time  "$speed_time" \
-            "$url" -o "$src" 2>"$src.err"; then
+            "$url" -o "$fp" 2>"$err"; then
         # Try the mirror fallback for github.com URLs.
         local mirror
         if mirror="$(___x_cmd_cve_data_mirror_url "$url")"; then
-            cve:info "github.com stalled — retrying $(basename "${dst}") via mirror"
+            cve:info "github.com stalled — retrying $(basename "${fp}") via mirror"
             if ! ___x_cmd curl --fail --location --silent --show-error \
                     --connect-timeout 15 --max-time 120 \
                     --speed-limit "$speed_limit" \
                     --speed-time  "$speed_time" \
-                    "$mirror" -o "$src" 2>"$src.err"; then
-                cve:warn "download failed: $(cat "$src.err" 2>/dev/null)"
-                rm -f "$src" "$src.err"
+                    "$mirror" -o "$fp" 2>"$err"; then
+                cve:warn "download failed: $(cat "$err" 2>/dev/null)"
+                rm -f "$fp" "$err"
                 return 1
             fi
         else
-            cve:warn "download failed: $(cat "$src.err" 2>/dev/null)"
-            rm -f "$src" "$src.err"
+            cve:warn "download failed: $(cat "$err" 2>/dev/null)"
+            rm -f "$fp" "$err"
             return 1
         fi
     fi
-    rm -f "$src.err"
+    rm -f "$err"
 
     # Sanity: a 0-byte file is no good (e.g. previous failed fetch
     # left a touch). Drop and fail.
-    if [ ! -s "$src" ]; then
-        rm -f "$src"
+    if [ ! -s "$fp" ]; then
+        rm -f "$fp"
         return 1
-    fi
-
-    if [ -n "$compressed" ]; then
-        local xzcmd
-        xzcmd="$(___x_cmd_cve_data_pick_xz)" || { rm -f "$src"; return 1; }
-        if ! $xzcmd < "$src" > "$dst.tmp"; then
-            cve:warn "Failed to decompress $src (xz / unxz reported an error)"
-            rm -f "$src" "$dst.tmp"
-            return 1
-        fi
-        if ! mv "$dst.tmp" "$dst"; then
-            cve:warn "Failed to install decompressed $dst"
-            rm -f "$src" "$dst.tmp"
-            return 1
-        fi
-        rm -f "$src"
     fi
 
     return 0
@@ -170,7 +114,7 @@ output = \"${fp}\"
         shift 2
     done
 
-    [ "${#urls[@}" -gt 0 ] || return 0
+    [ "${#urls[@]}" -gt 0 ] || return 0
 
     local help
     help="$(___x_cmd curl --help all 2>/dev/null || true)"
@@ -203,13 +147,9 @@ output = \"${fp}\"
     return "$ret_failures"
 }
 
-# Batch-fetch multiple years in parallel via HTTP/2 multiplexing.
-# Args: <tag>, then year1 [year2 ...]
-# Batch-fetch multiple years. We deliberately do NOT use a parallel
-# curl-config batch here because each asset is .tsv.xz and needs a
-# post-download xz -d step — curl --parallel can't run a per-file
-# post-processing step. Instead, fan out into background jobs that
-# each call fetch_one (which already handles xz correctly).
+# Batch-fetch multiple years in parallel via background jobs (since
+# each asset is independent and curl --parallel can't run a per-file
+# post-processing step).
 # Args: <tag>, then year1 [year2 ...]
 #
 # We fan out into background jobs so multi-year fetches overlap. Each
