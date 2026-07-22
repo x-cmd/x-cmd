@@ -1,20 +1,24 @@
 # shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
-# x-cmd cve lib/data/_index — manage the local per-year TSV cache.
+# x-cmd cve lib/data/_index — manage the local per-year xz cache.
 #
 # Cache layout (under ___X_CMD_ROOT_DATA/cve/tsv/<tag>/):
-#     index.tsv                  — manifest: year\trows\tfile
-#     cve-YYYY.tsv               — one TSV per year, full row including desc
+#     index.tsv.xz               — manifest: year\trows\tfile
+#     cve-YYYY.tsv.xz            — one xz file per year, full row
+#
+# STREAMING: we never decompress to disk. The .xz files are downloaded
+# as-is, and callers stream via `xz -dc "$fp" | awk -F '\t' '...'`. This
+# saves ~7-10 MB of disk per year × 28 years (the prior behavior was
+# to keep both the .tsv.xz and the decompressed .tsv on disk) and
+# removes the implementation-dependent xz output-naming footgun
+# (GNU writes `file.tsv`, macOS BSD-derived writes `file` with no
+# extension).
 #
 # `tag` lets us keep multiple upstream mirrors side by side:
 #   github  → https://raw.githubusercontent.com/x-cmd/cve/main (default)
 #   ghproxy → https://gh-proxy.com/<github>
 # Override with `X_CMD_CVE_TAG=...` env or `--tag`.
-#
-# Helpers:
-#   data/fetch  — curl + x ccmd 1h, parallel HTTP/2 batch fetchers
-#   util        — mtime / now / year primitives
 
-xrc:mod:lib     cve         util data/fetch
+xrc:mod:lib     cve         util
 
 # ---------- defaults + paths -----------------------------------------------
 
@@ -58,16 +62,39 @@ ___x_cmd_cve_data_url(){
 }
 
 ___x_cmd_cve_data_index_fp(){
-    printf '%s/index.tsv' "$(___x_cmd_cve_data_root "$@")"
+    printf '%s/index.tsv.xz' "$(___x_cmd_cve_data_root "$@")"
 }
 
+# Returns the path of the per-year TSV — STORED AS .tsv.xz (xz-only,
+# never decompressed to disk). Callers must stream via xz -dc.
 ___x_cmd_cve_data_year_fp(){
     local year="${1:?year}"; shift
-    printf '%s/cve-%s.tsv' "$(___x_cmd_cve_data_root "$@")" "$year"
+    printf '%s/cve-%s.tsv.xz' "$(___x_cmd_cve_data_root "$@")" "$year"
 }
 
 ___x_cmd_cve_data_mkdir(){
     ___x_cmd mkdirp "$(___x_cmd_cve_data_root "$@")"
+}
+
+# Stream the per-year TSV. Args: <year> <tag?> -- then the rest of
+# args are passed to a shell that reads from a pipeline:
+#
+#   ___x_cmd_cve_data_year_stream 2024 github \
+#       awk -F '\t' '$1 == "CVE-2024-0001"'
+#
+# Reads the .tsv.xz straight to the pipeline via `xz -dc`. Caller
+# never touches the file directly.
+___x_cmd_cve_data_year_stream(){
+    local year="${1:?year}"; shift
+    local tag="${1:-${X_CMD_CVE_TAG:-$___X_CMD_CVE_DATA_DEFAULT_TAG}}"
+    shift 2>/dev/null
+    local fp
+    fp="$(___x_cmd_cve_data_year_fp "$year" "$tag")"
+    [ -f "$fp" ] || {
+        cve:warn "no cached year file for $year (try 'x cve update')"
+        return 1
+    }
+    xz -dc -- "$fp" | "$@"
 }
 
 # ---------- freshness + ensure --------------------------------------------
@@ -99,7 +126,7 @@ ___x_cmd_cve_data_ensure_index(){
     return 0
 }
 
-# Ensure a year's TSV exists locally. Downloads if missing or stale.
+# Ensure a year's xz file exists locally. Downloads if missing or stale.
 # TTL rationale:
 #   - 1d   for the current year (rolling churn: new CVEs + REJECTED flips)
 #   - 180d for everything else (older years are essentially frozen —
@@ -130,7 +157,7 @@ ___x_cmd_cve_data_ensure_year(){
 
     ___x_cmd_cve_data_fetch_one "$(___x_cmd_cve_data_url "$tag" "cve-${year}.tsv")" "$fp" \
     || {
-        cve:warn "Failed to refresh cve-${year}.tsv"
+        cve:warn "Failed to refresh cve-${year}.tsv.xz"
         return 1
     }
     return 0
@@ -153,22 +180,22 @@ ___x_cmd_cve_data_status(){
     fi
 
     # Walk the filesystem directly — no manifest needed. List every
-    # cve-YYYY.tsv on disk with its age and row count.
+    # cve-YYYY.tsv.xz on disk with its age and compressed size.
     cve:info ""
-    cve:info "year      rows   age       file"
+    cve:info "year      size        age       file"
     local now
     now="$(___x_cmd_cve_util_now)"
     local fp
-    for fp in $(ls -r "$root"/cve-*.tsv 2>/dev/null); do
+    for fp in $(ls -r "$root"/cve-*.tsv.xz 2>/dev/null); do
         local file
         file="$(basename "$fp")"
         local year="${file#cve-}"
-        year="${year%.tsv}"
+        year="${year%.tsv.xz}"
         [ -n "$year" ] || continue
-        local rows
-        rows="$(wc -l < "$fp" 2>/dev/null | tr -d ' ')"
+        local size
+        size="$(wc -c < "$fp" 2>/dev/null | tr -d ' ')"
         local age="$((now - $(___x_cmd_cve_util_mtime "$fp")))s"
-        printf '  %s\t%s\t%s\t%s\n' "$year" "$rows" "$age" "$file"
+        printf '  %s\t%s\t%s\t%s\n' "$year" "$size" "$age" "$file"
     done
 }
 
@@ -202,6 +229,7 @@ ___x_cmd_cve_data(){
         root)           ___x_cmd_cve_data_root "$@" ;;
         index)          ___x_cmd_cve_data_index_fp "$@" ;;
         year)           ___x_cmd_cve_data_year_fp "$@" ;;
+        stream)         ___x_cmd_cve_data_year_stream "$@" ;;
         base|url)       ___x_cmd_cve_data_url "$@" cve-2024.tsv | sed 's|/cve-2024\.tsv\.xz$||' ;;
         ensure-index)   ___x_cmd_cve_data_ensure_index "$@" ;;
         ensure-year)    ___x_cmd_cve_data_ensure_year "$@" ;;

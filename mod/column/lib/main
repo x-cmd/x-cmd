@@ -11,6 +11,7 @@ ___x_cmd_column___main(){
 
     local table=0
     local delim=""
+    local csv_mode=0
     local outsep="  "
     local squeeze=1
     local width=""
@@ -26,14 +27,22 @@ ___x_cmd_column___main(){
             -s)             [ $# -ge 2 ] || N=column M="Missing arg for -s" log:ret:64
                             delim="$2" ; shift 2 ;;
 
-            # --tsv: short alias for -s $'\t' (tab-separated).
-            #   If both -s and --tsv given, -s takes precedence.
-            --tsv)          [ -z "$delim" ] && delim=$'\t' ; shift ;;
+            # --tsv: shorthand for -t -s $'\t'. Tabular data almost
+            #   always wants table mode, so enable it automatically.
+            #   If both -s and --tsv given, -s takes precedence
+            #   for the delimiter (but -t is still forced on).
+            --tsv)          [ -z "$delim" ] && delim=$___X_CMD_UNSEENCHAR_HT
+                            table=1
+                            shift ;;
 
-            # --csv: short alias for -s ','. Simple split on comma only —
-            #   does NOT understand quoted fields ("a,b",c stays as one
-            #   column). For quoted-CSV support, pipe through `x csv` first.
-            --csv)          [ -z "$delim" ] && delim=',' ; shift ;;
+            # --csv: read input as CSV (with proper quoted-field
+            #   handling via `x tsv fromcsv`), then process the
+            #   resulting TSV in table mode. Equivalent to:
+            #     ... | x tsv fromcsv | x column -t -s $'\t'
+            --csv)          csv_mode=1
+                            table=1
+                            delim=$___X_CMD_UNSEENCHAR_HT
+                            shift ;;
 
             -o)             [ $# -ge 2 ] || N=column M="Missing arg for -o" log:ret:64
                             outsep="$2" ; shift 2 ;;
@@ -78,7 +87,8 @@ ___x_cmd_column___main(){
     if [ "$table" = 1 ]; then
         ___x_cmd_column___table "$delim" "$outsep" "$squeeze" \
                                "$force_color" "$no_color" \
-                               "$color_per_col" "$underline_every" "$@"
+                               "$color_per_col" "$underline_every" \
+                               "$csv_mode" "$@"
     else
         ___x_cmd_column___fill "$outsep" "$squeeze" "$width" \
                                "$force_color" "$no_color" "$@"
@@ -89,7 +99,8 @@ ___x_cmd_column___table(){
     local delim="$1";    local outsep="$2";  local squeeze="$3"
     local force_color="$4"; local no_color="$5"
     local color_per_col="$6"; local underline_every="$7"
-    shift 7
+    local csv_mode="$8"
+    shift 8
 
     local delim_re delim_was_set
     if [ -z "$delim" ]; then
@@ -145,6 +156,29 @@ ___x_cmd_column___table(){
     local use_csi=0
     if [ "$color" = 1 ] || [ "$every_n" != "0" ] || [ -n "$colcolors" ]; then
         use_csi=1
+    fi
+
+    # --csv: pipe input through `x tsv fromcsv` first to convert
+    # CSV → TSV (properly handles RFC 4180 quoted fields). Then run
+    # the table awk on the converted TSV stream. When files are
+    # given, concatenate them first; when reading from stdin or `-`,
+    # `x tsv fromcsv` reads stdin directly.
+    if [ "$csv_mode" = 1 ]; then
+        if [ "$#" -gt 0 ] && [ "$1" != "-" ]; then
+            cat "$@" | ___x_cmd tsv fromcsv
+        else
+            ___x_cmd tsv fromcsv
+        fi | ___x_cmd_cmds_awk \
+            -v delim_re="$delim_re" \
+            -v outsep="$outsep" \
+            -v squeeze="$squeeze" \
+            -v delim_was_set="$delim_was_set" \
+            -v color="$color" \
+            -v colcolors="$colcolors" \
+            -v every_n="$every_n" \
+            -v use_csi="$use_csi" \
+            -f "$___X_CMD_ROOT_MOD/column/lib/awk/table.awk"
+        return
     fi
 
     ___x_cmd_cmds_awk \

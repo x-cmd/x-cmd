@@ -1,0 +1,187 @@
+# shellcheck shell=dash
+
+___x_cmd_hub_share(){
+    local X_help_cmd='___x_cmd_hub___help share'
+    help:arg-null:parse
+
+    local op="$1"
+    case "$op" in
+        ls|list)      shift; ___x_cmd_hub_share_ls "$@"      ; return ;;
+        rm|delete)    shift; ___x_cmd_hub_share_rm "$@"      ; return ;;
+        update)       shift; ___x_cmd_hub_share_update "$@"  ; return ;;
+    esac
+
+    # Default: create share (backend auto-detects zip by .zip suffix)
+    ___x_cmd_hub_share_create "$@"
+}
+
+___x_cmd_hub_share_create(){
+    local expiresIn=
+    local requireLogin=
+    local file_path=
+    local file_space=
+    local password=
+    local entryPath=
+    local force=
+    local local_file=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --expires|-e)       ___x_cmd_hub_u_parse_duration_ "$2"; expiresIn="$x_"; shift 2 ;;
+            --require-login)    requireLogin=true;    shift ;;
+            --path)             file_path="$2";       shift 2 ;;
+            --space)            file_space="$2";      shift 2 ;;
+            --password)         password="$2";        shift 2 ;;
+            --entry)            entryPath="$2";       shift 2 ;;
+            --force)            force=true;           shift ;;
+            --file)             local_file="$2";      shift 2 ;;
+            *)                  break ;;
+        esac
+    done
+
+    local resp=
+    if [ -n "$local_file" ]; then
+        # Mode A: multipart direct upload (file does not enter the cloud file library).
+        # Backend auto-detects .zip suffix and extracts; otherwise stores as single file.
+        [ -f "$local_file" ] || { ___x_cmd_ui_tf false "File not found: $local_file"; return 1; }
+        resp="$(___x_cmd_hub_u_curl post "/api/v0/file/share" \
+            -F "file=@${local_file}" \
+            ${file_path:+"path=$file_path"} \
+            ${file_space:+"space=$file_space"} \
+            ${expiresIn:+"expiresIn=$expiresIn"} \
+            ${requireLogin:+"requireLogin=true"} \
+            ${password:+"password=$password"} \
+            ${entryPath:+"entryPath=$entryPath"} \
+            ${force:+"force=true"})" || {
+            ___x_cmd_hub_u_handle_resp false "Failed to create share for $local_file"
+            return 1
+        }
+    else
+        # Mode B: JSON + ?res= reference (file must already exist in the cloud)
+        local remotefp="$1"
+        [ -n "$remotefp" ] || { ___x_cmd_ui_tf false "Remote file path or --file is required"; return 1; }
+        remotefp="$(___x_cmd_hub_file_normalize_remotefp "$remotefp")"
+
+        local data
+        data="$(___x_cmd jo dict ${file_path:+"path=$file_path"} ${file_space:+"space=$file_space"} ${expiresIn:+"expiresIn=$expiresIn"} ${requireLogin:+"requireLogin=$requireLogin"} ${password:+"password=$password"} ${entryPath:+"entryPath=$entryPath"} ${force:+"force=$force"})"
+
+        resp="$(___x_cmd_hub_u_curl post "/api/v0/file/share?res=$(___x_cmd url encode "$remotefp")" data)" || {
+            ___x_cmd_hub_u_handle_resp false "Failed to create share for $remotefp"
+            return 1
+        }
+    fi
+
+    ___x_cmd_hub_u_handle_resp true "Share created successfully:"
+    printf "%s" "$resp" | {
+        local id=; local spaceId=; local spaceName=; local filePath=; local url=;
+        local entryFile=; local totalFiles=; local files=
+        ___x_cmd jo env . .id .spaceId .spaceName .filePath .url .entryFile .totalFiles .files
+        if [ -n "$totalFiles" ] || [ -n "$entryFile" ]; then
+            printf "  - Space ID:    %s\n" "$spaceId"
+            printf "  - Space Name:  %s\n" "$spaceName"
+            printf "  - Share URL:   %s\n" "$url"
+            printf "  - Entry file:  %s\n" "$entryFile"
+            printf "  - Total files: %s\n" "$totalFiles"
+            [ -z "$files" ] || printf "  - Files:       %s\n" "$files"
+        else
+            printf "  - ID:         %s\n" "$id"
+            printf "  - Space ID:   %s\n" "$spaceId"
+            printf "  - Space Name: %s\n" "$spaceName"
+            printf "  - File Path:  %s\n" "$filePath"
+            printf "  - Share URL:  %s\n" "$url"
+        fi
+    }
+}
+
+___x_cmd_hub_share_ls(){
+    local X_help_cmd='___x_cmd_hub___help share ls'
+    help:arg:parse
+
+    local json=
+    local page=1
+    local limit=20
+    local space=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json|-j)      json=true;      shift ;;
+            --page|-p)      page="$2";       shift 2 ;;
+            --limit|-l)     limit="$2";      shift 2 ;;
+            --space)        space="$2";      shift 2 ;;
+            *)              break ;;
+        esac
+    done
+
+    local query="page=${page}&limit=${limit}"
+    [ -z "$space" ] || query="${query}&space=$(___x_cmd url encode "$space")"
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl get "/api/v0/file/share/list?${query}")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to list shares:"
+        return 1
+    }
+
+    [ -z "$json" ] || { printf "%s\n" "$resp"; return 0; }
+
+    printf "%s" "$resp" | {
+        local total=;
+        local list=;
+        ___x_cmd jo env . .total .list
+        [ "$total" = "0" ] && { printf "No shares found.\n"; return 0; }
+        printf "Total: %s\n\n" "$total"
+        printf "%s" "$list" | \
+            ___x_cmd jo 2c .id .spaceId .spaceName .filePath .totalFiles .viewCount .expiresAt .createTime | \
+            ___x_cmd csv header --add id spaceId spaceName filePath totalFiles viewCount expiresAt createTime | \
+            ___x_cmd_hub_u_st_tab 10,15,15,25,10,10,20,20
+    }
+}
+
+___x_cmd_hub_share_rm(){
+    local X_help_cmd='___x_cmd_hub___help share rm'
+    help:arg:parse
+
+    local id="$1"
+    [ -n "$id" ] || { ___x_cmd_ui_tf false "File ID is required"; return 1; }
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl delete "/api/v0/file/share/$(___x_cmd url encode "$id")")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to delete share $id"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Share deleted successfully"
+}
+
+___x_cmd_hub_share_update(){
+    local X_help_cmd='___x_cmd_hub___help share update'
+    help:arg:parse
+    local requireLogin=
+    local expiresIn=
+    local password=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --require-login)    requireLogin=true;       shift ;;
+            --expires|-e)       ___x_cmd_hub_u_parse_duration_ "$2"; expiresIn="$x_"; shift 2 ;;
+            --password)         password="$2";            shift 2 ;;
+            --remove-password)  password=null;     shift ;;
+            *)                  break ;;
+        esac
+    done
+
+    local id="$1"
+    [ -n "$id" ] || { ___x_cmd_ui_tf false "File ID is required"; return 1; }
+
+    # Build JSON body
+    [ -n "$requireLogin" ] || [ -n "$expiresIn" ] || [ -n "$password" ] || {
+        ___x_cmd_ui_tf false "At least one option is required (--require-login, --expires, --password, --remove-password)"
+        return 1
+    }
+    local data
+    data="$(___x_cmd jo dict ${requireLogin:+"requireLogin=$requireLogin"} ${expiresIn:+"expiresIn=$expiresIn"} ${password:+"password=$password"})"
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl patch "/api/v0/file/share/$(___x_cmd url encode "$id")" data)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to update share $id"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Share updated successfully"
+}

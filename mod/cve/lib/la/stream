@@ -1,24 +1,22 @@
 # shellcheck shell=sh        disable=SC2039,SC1090,SC3043,SC2263
 # x-cmd cve lib/la/stream — emit every row from every cached year file.
 #
-# Concatenates cve-YYYY.tsv files in year-DESCENDING order so callers
-# (ls, fz) see the newest CVEs first. Within each year, TSV rows are
-# already sorted lexicographically by cve id, so 2024-9999 lands
-# after 2024-0001 — which is correct ascending within a year.
-#
-# Each year file is its own TSV sorted ascending by id; we just walk
-# the years in reverse so the overall stream is "newest at top".
+# Concatenates cve-YYYY.tsv.xz files in year-DESCENDING order so callers
+# (ls, fz) see the newest CVEs first. Each .tsv.xz is streamed
+# through `xz -dc` straight into the output pipe — no disk
+# decompression. Within each year, TSV rows are already sorted
+# lexicographically by cve id, so 2024-9999 lands after 2024-0001 —
+# which is correct ascending within a year.
 
 xrc:mod:lib     cve         data/_index
 
 # Emit every row from every cached year file, newest-first.
 #
-# The producer already stores each cve-YYYY.tsv with rows in
-# descending cve-id order (CVE-2026-99999 first, -0001 last), and
-# the year files are walked in descending year order (2026 → 1999).
-# So a plain `cat` of each file in `ls -r` order produces the
-# expected "newest CVE at the top" stream with zero per-file
-# overhead.
+# The producer stores each cve-YYYY.tsv with rows in descending
+# cve-id order (CVE-2026-99999 first, -0001 last), and the year
+# files are walked in descending year order (2026 → 1999). Each
+# file is streamed via `xz -dc` so the overall output is
+# "newest CVE at the top" with zero on-disk decompression.
 ___x_cmd_cve_la_stream_tsv(){
     local tag="${X_CMD_CVE_TAG:-github}"
     local root
@@ -26,9 +24,9 @@ ___x_cmd_cve_la_stream_tsv(){
     [ -d "$root" ] || return 0
 
     local fp
-    for fp in $(ls -r "$root"/cve-*.tsv 2>/dev/null); do
+    for fp in $(ls -r "$root"/cve-*.tsv.xz 2>/dev/null); do
         [ -f "$fp" ] || continue
-        ___x_cmd_cmds cat "$fp"
+        xz -dc -- "$fp"
     done
 }
 
