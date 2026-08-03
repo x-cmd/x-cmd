@@ -1,11 +1,8 @@
 ---
 name: skill0-writer
 description: Writing conventions for skill0 documents — pyramid structure, line limits, and layout rules.
-x-meta:
-  type: Convention
-  status: stable
-  related: [yfm, naming]
-  owner: person:lijunhao
+metadata:
+  related: "yfm,naming"
 ---
 
 # skill0-writer
@@ -16,17 +13,21 @@ Skill0 documents follow the **pyramid principle**: agents may read only the firs
 
 - **Clarity over brevity.** A short document that gives the wrong answer is worse than a long one that gives the right one.
 - **Security / safety warnings MUST be explicit** — use MUST, NEVER, DO NOT. State caveats as full statements, not parenthetical asides.
+- **Don't elaborate common knowledge.** If a convention word plus one or two sentences conveys the point, stop. The reader already knows what YAML, git, and a cache are; spend the context on what is specific to this repo. Justification is the usual offender — give a rule's reason only when it looks wrong without one. (`sw-1200`)
+- **Tables only for real matrices.** 3+ columns whose rows must be read against each other. A two-column table is a list wearing table syntax — write the list. A dataset belongs in an external `.tsv` beside the doc, linked, so `x tsv` can query it. (`sw-1250`)
 
-## YFM (layer 1, required)
+## YFM — `SKILL.md` only
 
 ```yaml
 ---
-name: <slug>                  # SKILL.md uses directory name; sub-files use <skill>-<purpose>
+name: <slug>                  # must equal the directory name
 description: <1-2 sentence summary an agent uses to decide whether to load>
 ---
 ```
 
-`name` and `description` are load-bearing. Other top-level fields (`title` / `tag` / `link` / `date` / `author`, plus the `x-meta:` block from [yfm](../yfm/SKILL.md)) are optional and add structure for indexing, discovery, and ontology hooks.
+`name` and `description` are load-bearing. Everything else nests under the `metadata:` block from [yfm](../yfm/SKILL.md) as comma-separated scalars — optional, and adds structure for indexing, discovery, and ontology hooks.
+
+**Sub-files carry no YFM.** Only `SKILL.md` is filtered by a loader, so only it needs front matter. Every other file (`references/*`, `usecase/*`, `EXAMPLE.md`, `*.report.md` …) is read directly by an agent that already decided to open it — YFM there is pure token cost, restating a purpose the title and first line already give. Start those files at the `#` heading. Deviating needs a stated reason in the file itself.
 
 For Chinese-localized versions, use a parallel `SKILL.cn.md` (one per skill). Don't mix languages inside a single file.
 
@@ -56,17 +57,9 @@ Implications:
 - **Body** = *how to use it + reference* — examples, schemas, edge
   cases, links to deeper docs.
 
-**Do not duplicate content across the two layers.** Whatever the
-description conveys, the body should *expand on it*, not re-state
-the same surface. The body's leading paragraph in particular must
-not list the same features as the description — the body leads with
-reference, not with a second summary.
+**Do not duplicate content across the two layers.** Whatever the description conveys, the body should *expand on it*, not re-state the same surface. The body's leading paragraph in particular must not list the same features as the description — the body leads with reference, not with a second summary.
 
-A practical test: if you delete the description entirely and read
-only the first 30 lines of the body, the agent should still see what
-the skill does and when to load it. If only the description carries
-that information, the body has nothing to add at the top — move
-the explanation into the body and let description carry the headline.
+A practical test: if you delete the description entirely and read only the first 30 lines of the body, the agent should still see what the skill does and when to load it. If only the description carries that information, the body has nothing to add at the top — move the explanation into the body and let description carry the headline.
 
 ## A skill is a knowledge pack, not a tutorial
 
@@ -76,9 +69,7 @@ A skill body is a **briefing for the LLM**, not a course for a beginner.
 - **Knowledge** lives in x-cmd data tools (`x wkp` / `x rfc` / `x cve`, NVD / MITRE / GHSA) and external sources. The body points; the agent re-fetches.
 - **Framing** is the skill's job: names the problem shape, the convention, the structured output, the x-cmd tool to use.
 
-| Skill carries | Skill does NOT carry |
-|---|---|
-| Solving angle / convention / output shape / source pointer | Capability (LLM has) / static data (rots) / tutorials (use sidecars) |
+A skill carries the solving angle, the convention, the output shape, and source pointers. It does **not** carry capability (the LLM already has it), static data (it rots), or tutorials (use sidecars).
 
 Where specifics are too detailed or too current, push to a sidecar (`references/`, `ANALYTICS.md`) or external always-updated doc.
 
@@ -89,7 +80,7 @@ Collect two types: **root links** (entry points like `llms.txt`, docs index) and
 ## Soft caveats (judgment calls)
 
 - **Sub-files (CLEANUP.md, references/*)** can be longer than SKILL.md but first 20 lines still carry the load (same pyramid).
-- **MUST** keep SKILL.md ↔ sub-file links symmetric — every sub-file (CLEANUP, ANALYTICS, TROUBLESHOOTING, references/*) must be linked from its parent SKILL.md, and SKILL.md must link to each. Enforced by `sw-1000-no-orphan-docs` in [skill0-writer.rule.yml](skill0-writer.rule.yml).
+- **MUST** link to every sub-file from its parent SKILL.md (forward link required). Back-link to parent SKILL.md from a sub-file is **optional** — usecase files reference the parent implicitly by their path. Enforced by `sw-1000-no-orphan-docs` in [skill0-writer.rule.yml](skill0-writer.rule.yml).
 - **Speculation** — state tested facts, or label "untested".
 - **Emojis** unless the skill topic requires them.
 

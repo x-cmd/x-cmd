@@ -1,8 +1,3 @@
----
-name: meme-imagemagick
-description: ImageMagick backend for the meme skill — install (brew/apt/x pixi), usage via Python wrapper / shell script / direct magick command, coordinate conversion from Pillow anchor=mm to ImageMagick -draw left-baseline, and CJK font fallback.
----
-
 # ImageMagick Backend
 
 ## Install
@@ -85,3 +80,7 @@ sudo dnf install google-noto-sans-cjk-fonts
 ```
 
 The script also resolves template filenames with either hyphens or underscores (e.g. `distracted-boyfriend.yml` finds `distracted_boyfriend.yml`).
+
+---
+
+Parent skill: [../SKILL.md](../SKILL.md)

@@ -66,11 +66,13 @@ function draw_navi___paint_null_data( x1, x2, y1, y2,        v){
 }
 
 function draw_navi___paint_body_sel(o, kp, rootkp, x1, x2, y1, y2, is_dim, opt,        s){
-    if (draw_navi_curcol_should_preview(opt) || is_dim) s = painter_vline_ends( x1-1, x2+1, y2 ); y2--
+    if (draw_navi_curcol_should_preview(opt) || is_dim) { s = painter_vline_ends( x1-1, x2+1, y2 ); y2-- }
+    if (y2 < y1 || x2 < x1) return s
     return s draw_navi___paint_sel( o, kp, rootkp, x1, x2, y1, y2, ((draw_navi___paint_is_dim(o, kp)) ? true : is_dim), opt )
 }
 
 function draw_navi___paint_preview( o, kp, x1, x2, y1, y2, opt,            c, r, s, rootkp ){
+    if (x2 < x1 || y2 < y1) return s
     c = opt_get( opt, "cur.col" )
     if ( (r = opt_get( opt, "cur.col.row" )) == "" )   return s
 

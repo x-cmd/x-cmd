@@ -7,15 +7,10 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: networking
-  tags: [ip, geolocation, network, subnet, port-scan, cidr]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: []
-  owner: person:lijunhao
+  category: "networking"
+  tags: "ip,geolocation,network,subnet,port-scan,cidr"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
 ---
 
 
@@ -42,14 +37,12 @@ ip addr show                # Linux
 
 ## What's Available
 
-| Command | Description |
-|---------|-------------|
-| `x ip ls` | List all local IP addresses |
-| `x ip geolite <ip>` | Geolocation via ipinfo.io |
-| `x ip info <ip>` | IP class/type classification |
-| `x ip cidr <cidr>` | CIDR range info |
-| `x ip map <subnet>` | ICMP ping sweep |
-| `x ip tps <host>` | TCP port scan |
+- `x ip ls` — List all local IP addresses
+- `x ip geolite <ip>` — Geolocation via ipinfo.io
+- `x ip info <ip>` — IP class/type classification
+- `x ip cidr <cidr>` — CIDR range info
+- `x ip map <subnet>` — ICMP ping sweep
+- `x ip tps <host>` — TCP port scan
 
 ## Standalone Alternatives
 

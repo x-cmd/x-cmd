@@ -7,15 +7,11 @@ description: |
   Use for "install", "apt", "brew", "eget", "pixi", "package manager", "mirror".
 metadata:
   version: "0.1.0"
-  category: package-management
-  tags: [install, package-manager, eget, env, pixi, apt, brew, mirror]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: [x-cmd, agent-browser, env]
-  owner: person:lijunhao
+  category: "package-management"
+  tags: "install,package-manager,eget,env,pixi,apt,brew,mirror"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
+  related: "x-cmd,agent-browser,env"
 ---
 
 
@@ -25,13 +21,11 @@ Install software any way the system allows. **All x-cmd channels (`x eget`, `x e
 
 ## Choose a channel
 
-| Channel | Best for |
-|---------|----------|
-| `x install` | **Recommended.** One front door — lists every method for a tool, picks the best |
-| `x eget` | Latest binaries straight from upstream repos (GitHub / Codeberg releases) |
-| `x env use` | Runtimes & tools hosted by x-cmd (wraps `x pkg use`) |
-| `x pixi` | conda / pixi-ecosystem packages |
-| `x apt/brew/dnf/pacman` | System package managers (may need sudo) |
+- `x install` — **Recommended.** One front door — lists every method for a tool, picks the best
+- `x eget` — Latest binaries straight from upstream repos (GitHub / Codeberg releases)
+- `x env use` — Runtimes & tools hosted by x-cmd (wraps `x pkg use`)
+- `x pixi` — conda / pixi-ecosystem packages
+- `x apt/brew/dnf/pacman` — System package managers (may need sudo)
 
 ## Prerequisites
 

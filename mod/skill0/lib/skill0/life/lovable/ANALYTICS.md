@@ -1,8 +1,3 @@
----
-name: lovable-analytics
-description: Query traffic and analytics across Lovable projects — visitor counts, pageviews, bounce rate, breakdowns.
----
-
 # Lovable analytics
 
 Part of [lovable SKILL.md](SKILL.md). Full MCP reference: [lovable-mcp-server.md](https://docs.lovable.dev/integrations/lovable-mcp-server.md).

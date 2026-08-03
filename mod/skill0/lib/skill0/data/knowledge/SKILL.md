@@ -7,15 +7,10 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: knowledge
-  tags: [search, hn, wikipedia, ddg, rfc, stack-overflow, knowledge]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: []
-  owner: person:lijunhao
+  category: "knowledge"
+  tags: "search,hn,wikipedia,ddg,rfc,stack-overflow,knowledge"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
 ---
 
 

@@ -1,11 +1,8 @@
 ---
 name: issue
 description: Issue management for devloop — templates for goal, rule.yml, key-results, and issue lifecycle.
-x-meta:
-  type: Tool
-  status: stable
-  related: [devloop, repo]
-  owner: person:lijunhao
+metadata:
+  related: "devloop,repo"
 ---
 
 

@@ -1,42 +1,3 @@
----
-name: x-cmd-install
-type: installation-guide
-version: "0.0.5"
-
-metadata:
-  security_warning: |
-    This skill involves downloading and executing code from remote sources.
-    Review all install scripts before execution in sensitive environments.
-  
-  install_methods:
-    - name: brew
-      command: "brew install x-cmd"
-      verification: signed-bottle
-      risk_level: low
-      recommendation: "preferred for all environments"
-      requires_review: false
-    - name: install-script-review
-      command: "Download, review, then execute"
-      verification: checksum
-      risk_level: medium
-      recommendation: "acceptable with review"
-      requires_review: true
-    - name: install-script-auto
-      command: "curl -fsSL https://get.x-cmd.com | sh"
-      verification: checksum
-      risk_level: high
-      recommendation: "avoid in sensitive environments"
-      requires_review: false
-      warning: "Executes remote code without manual review"
-  
-  security_properties:
-    installation_scope: "user-local (~/.x-cmd.root/)"
-    privilege_required: "none"
-    system_modifications: "none"
-    verification: "SHA256 checksums for all binaries"
-    network_behavior: "downloads only, no upload"
----
-
 # x-cmd Installation Guide
 
 > Security-focused installation options for x-cmd.
@@ -182,3 +143,7 @@ rm -rf ~/.x-cmd.root/
 # Also remove from shell config (~/.bashrc, ~/.zshrc):
 # [ ! -f "$HOME/.x-cmd.root/X" ] || . "$HOME/.x-cmd.root/X"
 ```
+
+---
+
+Parent skill: [../SKILL.md](../SKILL.md)

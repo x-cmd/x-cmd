@@ -1,11 +1,8 @@
 ---
 name: agent-browser
 description: Browser automation via Chrome/Chromium CDP — open, snapshot, click, screenshot. For testing web apps, mobile layouts, and automated interactions without Playwright/Puppeteer.
-x-meta:
-  type: Tool
-  status: stable
-  related: [install, devloop, lovable]
-  owner: person:lijunhao
+metadata:
+  related: "install,devloop,lovable"
 ---
 
 

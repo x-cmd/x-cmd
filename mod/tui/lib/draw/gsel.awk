@@ -49,7 +49,9 @@ function draw_gsel___on_body( o, kp, x1, x2, y1, y2, opt,        r, w, iw, ps, l
     r = x2-x1+1
     w = y2-y1+1
     l = opt_get( opt, "data.maxrow" )
+    if ((r <= 0) || (w <= 0)) return
     iw = int(( (iw = opt_get( opt, "item.width" )) != "" ) ? iw : w )
+    if (iw <= 0) iw = 1
     if ( iw > w ) iw = w
     ps = int( w / iw ) * r
     opt_set( opt, "pagesize", ps )
@@ -68,6 +70,7 @@ function draw_gsel___on_body( o, kp, x1, x2, y1, y2, opt,        r, w, iw, ps, l
 function draw_gsel___on_title(o, kp, x1, x2, y1, y2, opt,        title_val, v, _opt){
     if ( ! change_is(o, kp, "gsel.title") ) return
     change_unset(o, kp, "gsel.title")
+    if (x2 < x1 || y2 < y1) return
     title_val = painter_goto_rel(x1, y1) th( TH_GSEL_TITLE, space_restrict_or_pad_utf8( opt_get( opt, "title.text" ), y2-y1+1) )
     if (opt_get( opt, "filter.enable" )){
         v = opt_get( opt, "filter.text" )
@@ -99,6 +102,7 @@ function draw_gsel___on_footer(o, kp, x1, x2, y1, y2, opt,       v, i, s, p, t){
     if ( ! change_is(o, kp, "gsel.foot") ) return
     change_unset(o, kp, "gsel.foot")
     s = opt_get( opt, "pagesize" )
+    if (s <= 0) return
     i = opt_get( opt, "cur.cell" )
     i = int( ( i - 1 ) / s ) + 1
     p = int( ( opt_get( opt, "data.maxrow" ) - 1 ) / s ) + 1

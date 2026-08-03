@@ -7,15 +7,11 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: documentation
-  tags: [tldr, cheatsheet, help, documentation, examples]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: [git, install]
-  owner: person:lijunhao
+  category: "documentation"
+  tags: "tldr,cheatsheet,help,documentation,examples"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
+  related: "git,install"
 ---
 
 
@@ -42,14 +38,12 @@ tldr tar
 
 ## What's Available
 
-| Command | Description |
-|---------|-------------|
-| `x tldr <cmd>` | Show examples for a command |
-| `x tldr --lang zh <cmd>` | Chinese language |
-| `x tldr --fz` | Interactive fzf search |
-| `x tldr --cat <cmd>` | Raw markdown display |
-| `x tldr --ls` | List all available commands |
-| `x tldr --update` | Update page cache |
+- `x tldr <cmd>` — Show examples for a command
+- `x tldr --lang zh <cmd>` — Chinese language
+- `x tldr --fz` — Interactive fzf search
+- `x tldr --cat <cmd>` — Raw markdown display
+- `x tldr --ls` — List all available commands
+- `x tldr --update` — Update page cache
 
 ## Standalone Alternatives
 

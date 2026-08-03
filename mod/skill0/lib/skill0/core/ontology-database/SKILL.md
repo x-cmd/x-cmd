@@ -1,11 +1,8 @@
 ---
 name: ontology-database
 description: Typed knowledge graph via TSV append-only log — entity CRUD, directed relations, schema validation, multi-hop reasoning. CLI via `x ondb`, protocol readable by AWK/Python/JS/SQLite.
-x-meta:
-  type: Convention
-  status: stable
-  related: [yfm, rule]
-  owner: person:lijunhao
+metadata:
+  related: "yfm,rule"
 ---
 
 
@@ -94,5 +91,5 @@ Directives: `type:Name:{required|forbidden|enum|datetime|ref}:...`, `relation:Re
 
 ## Related
 
-- [yfm](../yfm/SKILL.md) — yfm x-meta is the recommended ingest surface
+- [yfm](../yfm/SKILL.md) — yfm `metadata:` is the recommended ingest surface
 - [rule](../rule/SKILL.md) — schema validation rules live in rule framework

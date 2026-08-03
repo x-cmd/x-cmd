@@ -139,7 +139,8 @@ function draw_form___on_select(o, kp, x1, x2, y1, y2, opt, \
     _color = opt_get( opt, "box.color" )
     _draw_sel_box = painter_box( x1, x2, y1, y2, _color )
     x1++; x2--; y1++; y2--
-    _draw_sel_body = comp_gsel_paint(o, gkp, x1, x2, y1, y2, true, true)
+    if (x1 <= x2 && y1 <= y2)
+        _draw_sel_body = comp_gsel_paint(o, gkp, x1, x2, y1, y2, true, true)
 
     return _draw_sel_box _draw_sel_body
 }

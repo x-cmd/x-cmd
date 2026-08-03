@@ -6,15 +6,13 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: security
-  tags: [cve, vulnerability, nvd, kev, epss, cvelist]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  references:
-  - x-cmd-mod: cve
-  - datasource: https://github.com/x-cmd/cve/releases/download/data/
-  - upstream: https://github.com/CVEProject/cvelistV5
+  category: "security"
+  tags: "cve,vulnerability,nvd,kev,epss,cvelist"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
+  x-cmd-mod: "cve"
+  datasource: "https://github.com/x-cmd/cve/releases/download/data/"
+  upstream: "https://github.com/CVEProject/cvelistV5"
 ---
 
 # cve — skill0

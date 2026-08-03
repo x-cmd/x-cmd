@@ -1,8 +1,3 @@
----
-name: score-template-writer
-description: How to write a good `.score.yml` template for the score framework — comment format, choosing 5-7 dimensions, factor assignment (baseline=2), writing anchored desc, file naming, and anti-patterns.
----
-
 # Score Template Writer
 
 How to write a good `.score.yml` template for the skill0/score framework.
@@ -174,3 +169,7 @@ In template comments, document what conditions should trigger a block:
 - **All factors = 2.** If nothing matters more than anything else, the user doesn't actually have preferences — ask more questions.
 - **Vague desc.** "Good quality" is not a scoring anchor. "Zero defects in 1000-unit batch" is.
 - **No comments.** A template without agent guidance is just a YAML file. Comments are what make it a *template*.
+
+---
+
+Parent skill: [SKILL.md](SKILL.md)

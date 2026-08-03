@@ -7,14 +7,12 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: reference
-  tags: [wikipedia, wiki, encyclopedia, reference, lookup]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  references:
-  - x-cmd-mod: wkp
-  - upstream: https://en.wikipedia.org/w/api.php
+  category: "reference"
+  tags: "wikipedia,wiki,encyclopedia,reference,lookup"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
+  x-cmd-mod: "wkp"
+  upstream: "https://en.wikipedia.org/w/api.php"
 ---
 
 # wikipedia — skill0

@@ -1,8 +1,3 @@
----
-name: rule-vs-score
-description: Rule vs Score — two complementary frameworks. Rule is a quality gate (pass/fail per criterion); score is a ranking (weighted total across candidates). Decision matrix and combined scenarios.
----
-
 # Rule vs Score
 
 Two complementary frameworks for different problems.

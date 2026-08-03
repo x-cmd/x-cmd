@@ -1,11 +1,8 @@
 ---
 name: rule
 description: Rule-based compliance checking — find problems, ensure minimum quality. Pair with `x rule` for the shell workflow; see rule-vs-score.md for when to use rule vs score.
-x-meta:
-  type: Framework
-  status: stable
-  related: [score, naming, ontology-database, devloop]
-  owner: person:lijunhao
+metadata:
+  related: "score,naming,ontology-database,devloop"
 ---
 
 

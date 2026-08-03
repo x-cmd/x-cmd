@@ -7,15 +7,11 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: data-processing
-  tags: [tsv, data, tab, conversion, awk, csv]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: [csv, ontology-database]
-  owner: person:lijunhao
+  category: "data-processing"
+  tags: "tsv,data,tab,conversion,awk,csv"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
+  related: "csv,ontology-database"
 ---
 
 
@@ -41,11 +37,9 @@ awk -F'\t' '$3 > 100 {print}' data.tsv
 
 ## What's Available
 
-| Command | Description |
-|---------|-------------|
-| `x tsv` | Display TSV data |
-| `x tsv --csv` | Convert to CSV |
-| `x tsv awk '{...}'` | AWK-style processing |
+- `x tsv` — Display TSV data
+- `x tsv --csv` — Convert to CSV
+- `x tsv awk '{...}'` — AWK-style processing
 
 ## Standalone Alternatives
 

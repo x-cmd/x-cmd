@@ -7,15 +7,11 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: version-control
-  tags: [git, github, gitlab, codeberg, repo, pr, code-review]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: [repo]
-  owner: person:lijunhao
+  category: "version-control"
+  tags: "git,github,gitlab,codeberg,repo,pr,code-review"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
+  related: "repo"
 ---
 
 
