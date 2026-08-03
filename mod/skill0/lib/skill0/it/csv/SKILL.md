@@ -7,15 +7,11 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: data-processing
-  tags: [csv, data, table, conversion, awk, tsv, json]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: [tsv]
-  owner: person:lijunhao
+  category: "data-processing"
+  tags: "csv,data,table,conversion,awk,tsv,json"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
+  related: "tsv"
 ---
 
 
@@ -45,16 +41,14 @@ for row in reader:
 
 ## What's Available
 
-| Command | Description |
-|---------|-------------|
-| `x csv tab <cols>` | Display selected columns |
-| `x csv awk '{...}'` | AWK-style processing |
-| `x csv tojson` | Convert to JSON |
-| `x csv tojsonl` | Convert to JSON Lines |
-| `x csv totsv` | Convert to TSV |
-| `x csv merge2` | Merge two CSVs by key |
-| `x csv header` | Operate on headers |
-| `x csv app` | Interactive table viewer |
+- `x csv tab <cols>` — Display selected columns
+- `x csv awk '{...}'` — AWK-style processing
+- `x csv tojson` — Convert to JSON
+- `x csv tojsonl` — Convert to JSON Lines
+- `x csv totsv` — Convert to TSV
+- `x csv merge2` — Merge two CSVs by key
+- `x csv header` — Operate on headers
+- `x csv app` — Interactive table viewer
 
 ## Standalone Alternatives
 

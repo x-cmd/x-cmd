@@ -8,15 +8,11 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: image
-  tags: [meme, image, text-overlay, pillow, imagemagick]
-  repository: https://github.com/edwinjhlee/awesome-meme
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: [agent-browser]
-  owner: person:lijunhao
+  category: "image"
+  tags: "meme,image,text-overlay,pillow,imagemagick"
+  repository: "https://github.com/edwinjhlee/awesome-meme"
+  type: "skill0"
+  related: "agent-browser"
 ---
 
 
@@ -54,11 +50,9 @@ python3 scripts/meme_render.py expanding-brain "Copy paste" "Google it" "Read do
 
 ## Font selection
 
-| Text language | Font used |
-|---|---|
-| English / Latin | Impact (default) |
-| Chinese / CJK | PingFang (macOS) / Noto Sans CJK (Linux) |
-| Mixed | Each slot auto-detected independently |
+- English / Latin — Impact (default)
+- Chinese / CJK — PingFang (macOS) / Noto Sans CJK (Linux)
+- Mixed — Each slot auto-detected independently
 
 Impact has no CJK glyphs — Chinese text will be invisible. The renderer auto-detects CJK and falls back to system fonts. On Linux: `apt install fonts-noto-cjk`.
 

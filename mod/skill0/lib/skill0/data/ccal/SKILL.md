@@ -6,14 +6,12 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: calendar
-  tags: [calendar, lunar, chinese, solar-terms, holidays, almanac]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  references:
-  - x-cmd-mod: ccal
-  - datasource: https://codeberg.org/x-cmd/ccal-data/releases/download/latest/ccal-data.tar.xz
+  category: "calendar"
+  tags: "calendar,lunar,chinese,solar-terms,holidays,almanac"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
+  x-cmd-mod: "ccal"
+  datasource: "https://codeberg.org/x-cmd/ccal-data/releases/download/latest/ccal-data.tar.xz"
 ---
 
 # ccal — skill0

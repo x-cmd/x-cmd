@@ -1,8 +1,3 @@
----
-name: meme-pillow
-description: Pillow (PIL) backend for the meme skill — usage via Python wrapper, programmatic API examples, center coordinates with anchor=mm, and CJK font fallback notes (Impact lacks CJK glyphs).
----
-
 # Pillow Backend
 
 ## Usage
@@ -56,3 +51,7 @@ For meme specs that will carry Chinese text, consider:
 - Impact: classic meme font, macOS pre-installed at `/System/Library/Fonts/Supplemental/Impact.ttf`
 - Free alternatives: Google Fonts Anton, Bangers
 - The renderer uses Impact by default for non-CJK text
+
+---
+
+Parent skill: [../SKILL.md](../SKILL.md)

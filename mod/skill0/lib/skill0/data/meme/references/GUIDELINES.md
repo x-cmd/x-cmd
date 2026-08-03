@@ -1,8 +1,3 @@
----
-name: meme-guidelines
-description: Meme skill usage guidelines for AI agents — restraint, low frequency, font selection logic (Impact + CJK fallback), data structure layout, and how to fetch new text memes from the awesome-meme repository.
----
-
 # Guidelines for AI Agents
 
 ## Usage Guidelines
@@ -64,3 +59,7 @@ curl https://raw.githubusercontent.com/edwinjhlee/awesome-meme/main/data/text/zh
 curl https://raw.githubusercontent.com/edwinjhlee/awesome-meme/main/data/text/en/2026.yml
 ```
 Optionally also fetch last year's for classics.
+
+---
+
+Parent skill: [../SKILL.md](../SKILL.md)

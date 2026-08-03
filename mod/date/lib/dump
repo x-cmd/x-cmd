@@ -1,0 +1,391 @@
+
+# dump + helpers moved out of lib/main.
+#
+# ___x_cmd_date_dump{,_}         — main entry
+# ___x_cmd_date_offsetcolonz{,_} — %:z suffix (+HH:MM)
+# ___x_cmd_date_offsetunderscorez_ — %_z suffix (Z/_ + HHMM)
+# ___x_cmd_date_offsetsecond_   — convert ±HHMM offset to seconds
+# ___x_cmd_date_parsegofmt_     — Go reference time format translator
+
+___x_cmd_date_dump(){
+    local x_
+    ___x_cmd_date_dump_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_date_value2second_(){
+    local value=$1
+    local sign=""
+    case "$value" in
+        +*)     sign=+ ; value=${value#?} ;;
+        -*)     sign=- ; value=${value#?} ;;
+        *)      sign=+ ;;
+    esac
+
+    ___x_cmd humantime tosec_ "$value"
+    if [ "$sign" = - ]; then
+        x_=-"$x_"
+    fi
+}
+
+___x_cmd_date_dump_(){
+    local fmt=iso
+    local offset=""
+    local value=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m date epochparser "$@" ; return 0 ;;
+
+            # --fmt %Y-%m-%d %H:%M:%S.%:z'
+            --rfc)      fmt=rfc ;                                       shift ;;
+            # --fmt '%Y-%m-%dT%H:%M:%S.%:z'
+            --iso)      fmt=iso ;                                       shift ;;
+            --iso0)     offset="+0000" ; fmt=iso ;                      shift ;;
+            --email)    fmt='%a, %d %b %Y %H:%M:%S %z' ;                shift ;;
+            --str)      fmt='%Y-%m-%d_%H:%M:%S%z' ;                     shift ;;
+            --vlid)     offset="+0000"; fmt='%y%m%d_%H%M%S' ;           shift ;;
+            --varname)  fmt='%Y_%m_%d_%H_%M_%S%_z' ;                    shift ;;
+            --varname0) offset="+0000"; fmt='%Y_%m_%d_%H_%M_%S%_z' ;    shift ;;
+
+            --second)   fmt=second ;                                    shift ;;
+
+            --fmt)      fmt="$2" ;                                      arg:2:shift ;;
+            --go)       ___x_cmd_date_parsegofmt_ "$2"; fmt="$x_";      arg:2:shift ;;
+            --offset)   offset="$2" ;                                   arg:2:shift ;;
+
+            -v)         value="$2" ;                                    arg:2:shift ;;
+
+            +*)         fmt="${1#'+'}" ;                                shift ;;
+            --)         shift ;;
+            -*)         N=date M="Unknown param -> $1" log:ret:64 ;;
+            *)          break ;;
+        esac
+    done
+
+    local msenable=""
+
+    case "$fmt" in
+        auto)                 fmt=iso ;;
+        *%N*|*%[1-9]N*)       msenable=1 ;;
+    esac
+
+    local epoch="$1"
+    local real=""
+    if [ -z "$epoch" ]; then
+        if [ -z "$msenable" ]; then
+            ___x_cmd epoch get_
+            epoch="$x_"
+            real="000000000"
+        else
+            ___x_cmd epoch real_
+            epoch="${x_%'.'*}"
+            real="${x_#*'.'}"
+        fi
+    else
+        # Strip sub-second portion (we don't expose ms in iso/rfc defaults).
+        case "$epoch" in
+            *.*)    real="${epoch#*.}"
+                    epoch="${epoch%.*}"
+                    ;;
+            *)      real="000000000"
+                    ;;
+        esac
+    fi
+
+    ___x_cmd is int "$epoch"    || N=date M="Fail to parse epoch -> $epoch" log:ret:64
+    ___x_cmd is int "$real"     || N=date M="Fail to parse real -> $real" log:ret:64
+
+    # -v delta: add integer-second offset to the (now-integer) epoch.
+    # fractional part is unaffected — value is always a whole-second delta.
+
+    if [ -z "$value" ]; then
+        [ "$fmt" != second ] || {
+            x_=$epoch
+            return 0
+        }
+    fi
+
+    local year month day hour minute second
+    local epochday _tod _frac
+    local _z _era _doe _yoe _doy _mp _wd _name
+
+    [ -n "$offset" ]    ||  {
+        ___x_cmd tz offset_
+        offset=$x_
+    }
+
+    ___x_cmd_date_offsetsecond_ "$offset"
+    epoch=$((epoch + x_))
+
+    if [ "$epoch" -lt 0 ] && [ "$((epoch % 86400))" -ne 0 ]; then
+        epochday=$((epoch / 86400 - 1))
+    else
+        epochday=$((epoch / 86400))
+    fi
+    _tod=$((epoch - epochday * 86400))
+    second=$((_tod % 60))
+    minute=$((_tod / 60 % 60))
+    hour=$((_tod / 3600))
+
+    _z=$((epochday + 719468))
+    if [ "$_z" -ge 0 ]; then
+        _era=$((_z / 146097))
+    else
+        _era=$(( (_z - 146096) / 146097 ))
+    fi
+    _doe=$((_z - _era * 146097))
+    _yoe=$(( (_doe - _doe/1460 + _doe/36524 - _doe/146096) / 365 ))
+    year=$((_yoe + _era * 400))
+    _doy=$((_doe - (365*_yoe + _yoe/4 - _yoe/100)))
+    _mp=$(( (5*_doy + 2) / 153 ))
+    day=$((_doy - (153*_mp + 2)/5 + 1))
+    if [ "$_mp" -lt 10 ]; then
+        month=$((_mp + 3))
+    else
+        month=$((_mp - 9))
+    fi
+    if [ "$month" -le 2 ]; then
+        year=$((year + 1))
+    fi
+
+    if [ -n "$value" ]; then
+        local x_year
+        local x_month
+        local x_day
+        local x_hour
+        local x_minute
+        local x_second
+
+        ___x_cmd humantime tovar__ "$value"
+
+        year=$(( year + x_year ))
+        month=$(( month + x_month ))
+        day=$(( day + x_day ))
+        hour=$(( hour + x_hour ))
+        minute=$(( minute + x_minute ))
+        second=$(( second + x_second ))
+    fi
+
+    case "$fmt" in
+        rfc)
+            ___x_cmd_date_offsetcolonz_ "$offset"
+            # Inline '%04d-%02d-%02d %02d:%02d:%02d%s' to skip the
+            # $(printf ...) subshell that ___x_cmd printf_ would fork.
+            # No ms — matches `x date rfc` (which uses date +%Y-%m-%d %H:%M:%S%z).
+            while [ "${#year}"   -lt 4 ]; do year="0$year"   ; done
+            case "$month"  in ?) month="0$month"  ;; esac
+            case "$day"    in ?) day="0$day"    ;; esac
+            case "$hour"   in ?) hour="0$hour"   ;; esac
+            case "$minute" in ?) minute="0$minute" ;; esac
+            case "$second" in ?) second="0$second" ;; esac
+            x_="${year}-${month}-${day} ${hour}:${minute}:${second}${x_}"
+            ;;
+        iso)
+            ___x_cmd_date_offsetcolonz_ "$offset"
+            # No ms — matches `x date iso` (date +%Y-%m-%dT%H:%M:%S%z).
+            while [ "${#year}"   -lt 4 ]; do year="0$year"   ; done
+            case "$month"  in ?) month="0$month"  ;; esac
+            case "$day"    in ?) day="0$day"    ;; esac
+            case "$hour"   in ?) hour="0$hour"   ;; esac
+            case "$minute" in ?) minute="0$minute" ;; esac
+            case "$second" in ?) second="0$second" ;; esac
+            x_="${year}-${month}-${day}T${hour}:${minute}:${second}${x_}"
+            ;;
+
+        *)
+            local ans=""
+            while [ -n "$fmt" ]; do
+                case "$fmt" in
+                    '%Y'*)     while [ "${#year}"   -lt 4 ]; do year="0$year"   ; done
+                               ans="${ans}$year"  ; fmt="${fmt#%Y}"  ;;
+                    '%y'*)     while [ "${#year}"   -lt 4 ]; do year="0$year"   ; done
+                               ans="${ans}${year#??}"  ; fmt="${fmt#%y}"  ;;
+                    '%m'*)     case "$month"  in ?) month="0$month"  ;; esac
+                               ans="${ans}$month" ; fmt="${fmt#%m}"  ;;
+                    '%d'*)     case "$day"    in ?) day="0$day"    ;; esac
+                               ans="${ans}$day"   ; fmt="${fmt#%d}"  ;;
+                    '%H'*)     case "$hour"   in ?) hour="0$hour"   ;; esac
+                               ans="${ans}$hour"  ; fmt="${fmt#%H}"  ;;
+                    '%M'*)     case "$minute" in ?) minute="0$minute" ;; esac
+                               ans="${ans}$minute" ; fmt="${fmt#%M}"  ;;
+                    '%S'*)     case "$second" in ?) second="0$second" ;; esac
+                               ans="${ans}$second" ; fmt="${fmt#%S}"  ;;
+
+                    # Weekday / month names: compute lazily, only on demand.
+                    '%a'*)     _wd=$(( ((epochday + 4) % 7 + 7) % 7 ))
+                               case "$_wd" in
+                                   0) _name="Sun" ;; 1) _name="Mon" ;; 2) _name="Tue" ;;
+                                   3) _name="Wed" ;; 4) _name="Thu" ;; 5) _name="Fri" ;;
+                                   6) _name="Sat" ;;
+                               esac
+                               ans="${ans}$_name" ; fmt="${fmt#%a}"  ;;
+                    '%A'*)     _wd=$(( ((epochday + 4) % 7 + 7) % 7 ))
+                               case "$_wd" in
+                                   0) _name="Sunday"    ;; 1) _name="Monday"    ;;
+                                   2) _name="Tuesday"   ;; 3) _name="Wednesday" ;;
+                                   4) _name="Thursday"  ;; 5) _name="Friday"    ;;
+                                   6) _name="Saturday"  ;;
+                               esac
+                               ans="${ans}$_name" ; fmt="${fmt#%A}"  ;;
+                    '%b'*)     case "$month" in
+                                   1) _name="Jan" ;; 2) _name="Feb" ;; 3) _name="Mar" ;;
+                                   4) _name="Apr" ;; 5) _name="May" ;; 6) _name="Jun" ;;
+                                   7) _name="Jul" ;; 8) _name="Aug" ;; 9) _name="Sep" ;;
+                                   10) _name="Oct" ;; 11) _name="Nov" ;; 12) _name="Dec" ;;
+                               esac
+                               ans="${ans}$_name" ; fmt="${fmt#%b}"  ;;
+                    '%B'*)     case "$month" in
+                                   1) _name="January"   ;; 2) _name="February"  ;;
+                                   3) _name="March"     ;; 4) _name="April"     ;;
+                                   5) _name="May"       ;; 6) _name="June"      ;;
+                                   7) _name="July"      ;; 8) _name="August"    ;;
+                                   9) _name="September" ;; 10) _name="October"   ;;
+                                   11) _name="November"  ;; 12) _name="December"  ;;
+                               esac
+                               ans="${ans}$_name" ; fmt="${fmt#%B}"  ;;
+
+                    '%z'*)     ans="${ans}$offset" ; fmt="${fmt#%z}"  ;;
+                    '%:z'*)    ___x_cmd_date_offsetcolonz_ "$offset"
+                               ans="${ans}$x_" ; fmt="${fmt#%:z}" ;;
+
+                    '%_z'*)    ___x_cmd_date_offsetunderscorez_ "$offset"
+                               ans="${ans}$x_" ; fmt="${fmt#%_z}" ;;
+
+                    '%%'*)     ans="${ans}%"      ; fmt="${fmt#%%}"  ;;
+
+                    # Sub-second fractional. $real is the raw fractional string
+                    # captured upstream (from ___x_cmd epoch real_ or input .frac).
+                    # Pad with trailing zeros to 9 digits so %N / %[1-9]N always
+                    # see nanoseconds and printf %.Ns takes the leading digits.
+                    # Note: patterns are unquoted so [1-9] is a glob char class
+                    # (quoted patterns are treated as literal in dash).
+
+                    %N*)       local _r="$real"
+                               while [ "${#_r}" -lt 9 ]; do _r="${_r}0"; done
+                               _r="${_r%"${_r#?????????}"}"
+                               ans="${ans}$_r"
+                               fmt="${fmt#%N}"  ;;
+
+                    %[1-9]N*)  local _n="${fmt#%}"
+                               _n="${_n%%N*}"
+                               local _r=${#real}
+                               if [ "$_r" -eq "$_n" ]; then
+                                    ans="${ans}$real"
+                               elif [ "$_r" -lt "$_n" ]; then
+                                    ans="${ans}$real"
+                                    while [ $((_r+=1)) -le "$_n" ]; do
+                                        ans="${ans}0"
+                                    done
+                               else
+                                    ans="${ans}$real"
+                                    while [ $((_r-=1)) -ge "$_n" ]; do
+                                        ans="${ans%?}"
+                                    done
+                               fi
+                               fmt="${fmt#"%${_n}N"}"  ;;
+                    '%'*)      x_=""; N=date M="Unknown format -> $fmt" log:ret:64  ;;
+
+                    # Literal text up to the next % (preserve the % for next iter).
+                    *'%'*)     ans="${ans}${fmt%%'%'*}"
+                               fmt="${fmt#"${fmt%%'%'*}"}"
+                               ;;
+                    *)         ans="${ans}$fmt"  ; fmt="" ;;
+                esac
+            done
+            x_="$ans"
+            ;;
+    esac
+}
+
+# output +08:00
+___x_cmd_date_offsetcolonz(){
+    local x_
+    ___x_cmd_date_offsetcolonz_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_date_offsetcolonz_(){
+    x_="$1"
+    [ -n "$x_" ] ||  ___x_cmd tz offset_
+    x_="${x_%??}:${x_#???}"
+}
+
+___x_cmd_date_offsetunderscorez_(){
+    x_="$1"
+    [ -n "$x_" ] ||  ___x_cmd tz offset_
+    case "$x_" in
+        -*)     x_="Z"${x_#?} ;;
+        +*)     x_="_"${x_#?} ;;
+    esac
+}
+
+___x_cmd_date_offsetsecond_(){
+    x_="$1"
+    [ -n "$x_" ] ||  ___x_cmd tz offset_
+    local second=${x_#?}
+
+    local hour=${second%??}
+    second=${second#??}
+
+    x_=${x_%????}$(( ${second#0} * 60 + ${hour#0} * 3600 ))
+}
+
+# go format parser
+___x_cmd_date_parsegofmt_(){
+    local _gofmt="${1-}"
+    local _out=""
+    local _rest="$_gofmt"
+
+    while [ -n "$_rest" ]; do
+        case "$_rest" in
+            # 4-digit year (must precede 06)
+            2006*)                   _out="${_out}%Y"      ; _rest="${_rest#2006}"     ;;
+
+            # Month names (longest first)
+            January*)                _out="${_out}%B"      ; _rest="${_rest#January}"  ;;
+            Jan*)                    _out="${_out}%b"      ; _rest="${_rest#Jan}"      ;;
+
+            # Weekday names
+            Monday*)                 _out="${_out}%A"      ; _rest="${_rest#Monday}"   ;;
+            Mon*)                    _out="${_out}%a"      ; _rest="${_rest#Mon}"      ;;
+
+            # Two-digit numeric fields
+            01*)                     _out="${_out}%m"      ; _rest="${_rest#01}"       ;;
+            02*)                     _out="${_out}%d"      ; _rest="${_rest#02}"       ;;
+            03*)                     _out="${_out}%I"      ; _rest="${_rest#03}"       ;;
+            04*)                     _out="${_out}%M"      ; _rest="${_rest#04}"       ;;
+            05*)                     _out="${_out}%S"      ; _rest="${_rest#05}"       ;;
+            06*)                     _out="${_out}%y"      ; _rest="${_rest#06}"       ;;
+            15*)                     _out="${_out}%H"      ; _rest="${_rest#15}"       ;;
+
+            # One-digit unpadded forms
+            1*)                      _out="${_out}%l"      ; _rest="${_rest#1}"        ;;  # 12h unpadded
+            2*)                      _out="${_out}%e"      ; _rest="${_rest#2}"        ;;  # day unpadded
+            3*)                      _out="${_out}%l"      ; _rest="${_rest#3}"        ;;  # alt 12h unpadded
+            4*)                      _out="${_out}%M"      ; _rest="${_rest#4}"        ;;  # minute unpadded
+            5*)                      _out="${_out}%S"      ; _rest="${_rest#5}"        ;;  # second unpadded
+
+            # Time zone tokens
+            -07:00*)                 _out="${_out}%:z"     ; _rest="${_rest#-07:00}"   ;;
+            +07:00*)                 _out="${_out}%:z"     ; _rest="${_rest#+07:00}"   ;;
+            -0700*)                  _out="${_out}%z"      ; _rest="${_rest#-0700}"    ;;
+            +0700*)                  _out="${_out}%z"      ; _rest="${_rest#+0700}"    ;;
+            Z07:00*)                 _out="${_out}Z%:z"    ; _rest="${_rest#Z07:00}"   ;;
+            Z0700*)                  _out="${_out}Z%z"     ; _rest="${_rest#Z0700}"    ;;
+            MST*)                    _out="${_out}%Z"      ; _rest="${_rest#MST}"      ;;
+
+            # AM / PM (case-insensitive)
+            [pP][mM]*)               _out="${_out}%p"      ; _rest="${_rest#??}"       ;;
+
+            # Sub-second fractions (Go-only; emitted as literal since POSIX
+            # %... in this module doesn't preserve ms / us)
+            .000000*)                _out="${_out}.000000" ; _rest="${_rest#.000000}"  ;;
+            .000*)                   _out="${_out}.000"    ; _rest="${_rest#.000}"     ;;
+
+            # Literal pass-through (single char)
+            *)                       _out="${_out}${_rest%"${_rest#?}"}" ; _rest="${_rest#?}" ;;
+        esac
+    done
+
+    x_="$_out"
+}

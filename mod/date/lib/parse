@@ -1,0 +1,183 @@
+
+___x_cmd_date_parse(){
+    local x_
+    ___x_cmd_date_parse_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_date_parse_(){
+    local fmt=""
+    local offset=""
+    local input=""
+    local msenable=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --fmt)    fmt="$2"  ; arg:2:shift ;;
+            --rfc)    fmt=rfc   ; shift ;;
+            --iso)    fmt=iso   ; shift ;;
+            --iso0)   offset="+0000"; fmt=iso ; shift ;;
+            --email)  fmt=email ; shift ;;
+            --go)     ___x_cmd_date_parsegofmt_ "$2"; fmt="$x_" ; arg:2:shift ;;
+            --offset) offset="$2"; arg:2:shift ;;
+            --ms)     msenable=1 ; shift ;;
+            +*)       fmt="${1#'+'}" ; shift ;;
+            --)       shift ;;
+            *)        input="$1"; shift ;;
+        esac
+    done
+
+    [ -n "$input" ] || N=date M="Please provide intput." log:ret:64
+
+    # User explicitly chose a fmt — single attempt.
+    [ "$fmt" != auto ] || fmt=""
+
+    if [ -n "$fmt" ]; then
+        ___x_cmd_date_parse_one_ "$fmt" "$input" || return $?
+        [ -z "$___X_CMD_DATE_PARSE_MODE_OUTPUT" ] || x_="${x_}${___X_CMD_UNSEENCHAR_NEWLINE}${fmt}"
+        return 0
+    fi
+
+    if ___x_cmd is int "$input"; then
+        x_=$input
+        [ -z "$___X_CMD_DATE_PARSE_MODE_OUTPUT" ] || x_="${x_}${___X_CMD_UNSEENCHAR_NEWLINE}second"
+        return 0
+    elif ___x_cmd is float "$input"; then
+        if [ -z "$msenable" ]; then
+            x_=${input%.*}
+            x_="${x_:-0}"
+        fi
+        [ -z "$___X_CMD_DATE_PARSE_MODE_OUTPUT" ] || x_="${x_}${___X_CMD_UNSEENCHAR_NEWLINE}second"
+        return 0
+    fi
+
+    # No fmt given — walk a ladder of common formats.
+    while read -r fmt; do
+        ___x_cmd_date_parse_one_ "$fmt" "$input" || continue
+
+        [ -z "$___X_CMD_DATE_PARSE_MODE_OUTPUT" ] || {
+            x_="${x_}${___X_CMD_UNSEENCHAR_NEWLINE}${fmt}"
+        }
+        return 0
+    done <<A
+iso
+rfc
+email
+%Y-%m-%d
+%Y/%m/%d
+A
+
+    N=date M="Fail to parse -> $input" log:ret:64
+}
+
+___x_cmd_date_parse_one_(){
+    local fmt="$1"
+    local input="$2"
+
+    # Translate named fmt (mirrors dump_'s flag set) to the actual format
+    # string. Anything else in $fmt is taken as a literal fmt string.
+    case "$fmt" in
+        iso)    fmt='%Y-%m-%dT%H:%M:%S%:z' ;;
+        rfc)    fmt='%Y-%m-%d %H:%M:%S%:z' ;;
+        email)  fmt='%a, %d %b %Y %H:%M:%S %z' ;;
+    esac
+
+    local year="" month="" day="" hour="" minute="" second="" offset=""
+    local r_in="$input"
+    local r_fmt="$fmt"
+
+    while [ -n "$r_fmt" ]; do
+        case "$r_fmt" in
+            "%Y"*)      [ "${#r_in}" -ge 4 ] || return 1
+                        year="${r_in%"${r_in#????}"}"
+                        case "$year" in [0-9][0-9][0-9][0-9]) ;; *) return 1 ;; esac
+                        r_in="${r_in#????}"; r_fmt="${r_fmt#"%Y"}" ;;
+            "%m"*)      [ "${#r_in}" -ge 2 ] || return 1
+                        month="${r_in%"${r_in#??}"}"
+                        case "$month" in [0-9][0-9]) ;; *) return 1 ;; esac
+                        r_in="${r_in#??}"; r_fmt="${r_fmt#"%m"}" ;;
+            "%d"*)      [ "${#r_in}" -ge 2 ] || return 1
+                        day="${r_in%"${r_in#??}"}"
+                        case "$day" in [0-9][0-9]) ;; *) return 1 ;; esac
+                        r_in="${r_in#??}"; r_fmt="${r_fmt#"%d"}" ;;
+            "%H"*)      [ "${#r_in}" -ge 2 ] || return 1
+                        hour="${r_in%"${r_in#??}"}"
+                        case "$hour" in [0-9][0-9]) ;; *) return 1 ;; esac
+                        r_in="${r_in#??}"; r_fmt="${r_fmt#"%H"}" ;;
+            "%M"*)      [ "${#r_in}" -ge 2 ] || return 1
+                        minute="${r_in%"${r_in#??}"}"
+                        case "$minute" in [0-9][0-9]) ;; *) return 1 ;; esac
+                        r_in="${r_in#??}"; r_fmt="${r_fmt#"%M"}" ;;
+            "%S"*)      [ "${#r_in}" -ge 2 ] || return 1
+                        second="${r_in%"${r_in#??}"}"
+                        case "$second" in [0-9][0-9]) ;; *) return 1 ;; esac
+                        r_in="${r_in#??}"; r_fmt="${r_fmt#"%S"}" ;;
+            "%:z"*)     [ "${#r_in}" -ge 6 ] || return 1
+                        offset="${r_in%"${r_in#??????}"}"; r_in="${r_in#??????}"; r_fmt="${r_fmt#"%:z"}" ;;
+            "%z"*)      [ "${#r_in}" -ge 5 ] || return 1
+                        offset="${r_in%"${r_in#?????}"}"; r_in="${r_in#?????}"; r_fmt="${r_fmt#"%z"}" ;;
+            "%%"*)      [ "${#r_in}" -ge 1 ] || return 1
+                        r_in="${r_in#?}"; r_fmt="${r_fmt#"%%"}" ;;
+            "%"*)       return 64   ;;     # Unknown format
+            *)          [ "${#r_in}" -ge 1 ] || return 1
+                        local c="${r_fmt%"${r_fmt#?}"}"
+                        [ "${r_in%"${r_in#?}"}" = "$c" ] || return 1
+                        r_in="${r_in#?}"; r_fmt="${r_fmt#?}" ;;
+        esac
+    done
+
+    : "${hour:=0}" "${minute:=0}" "${second:=0}" "${day:=1}"
+
+    # Strip leading zeros so $(( )) doesn't trip dash's octal trap.
+    local _v f
+    for f in year month day hour minute second; do
+        eval "_v=\$$f"
+        while [ "${#_v}" -gt 1 ] && [ "${_v%"${_v#?}"}" = "0" ]; do
+            _v="${_v#?}"
+        done
+        eval "$f=\$_v"
+    done
+
+    # Default offset: ask core, the same way dump does.
+    if [ -z "$offset" ]; then
+        ___x_cmd tz offset_
+        offset="$x_"
+    fi
+
+    # Normalize offset to ±HHMM (strip optional colon between HH and MM).
+    case "$offset" in
+        *":"*) offset="${offset%:*}${offset#*:}" ;;
+    esac
+
+    local sign="${offset%"${offset#?}"}"
+    local o="${offset#?}"
+    local off_h="${o%"${o#??}"}"
+    local off_m="${o#??}"
+    case "$off_h" in 0[0-9]) off_h="${off_h#0}";; esac
+    case "$off_m" in 0[0-9]) off_m="${off_m#0}";; esac
+
+    # Hinnant reverse (civil_from_days).
+    local y_adj m_adj era yoe doy doe days
+    if [ "$month" -le 2 ] 2>/dev/null; then
+        y_adj=$((year - 1))
+        m_adj=$((month + 9))
+    else
+        y_adj=$year
+        m_adj=$((month - 3))
+    fi
+    era=$((y_adj / 400))
+    yoe=$((y_adj - era * 400))
+    doy=$(( (153 * m_adj + 2) / 5 + day - 1 ))
+    doe=$(( yoe * 365 + yoe / 4 - yoe / 100 + doy ))
+    days=$(( doe + era * 146097 - 719468 ))
+
+    # epoch_local = days * 86400 + h*3600 + m*60 + s.
+    # epoch_utc   = epoch_local - offset_seconds.
+    local epoch=$(( days * 86400 + hour * 3600 + minute * 60 + second ))
+    if [ "$sign" = "-" ]; then
+        epoch=$(( epoch + off_h * 3600 + off_m * 60 ))
+    else
+        epoch=$(( epoch - off_h * 3600 - off_m * 60 ))
+    fi
+
+    x_="$epoch"
+}

@@ -1,11 +1,9 @@
 ---
 name: naming
-description: Naming framework for x-cmd modules / commands / subcommands. Subjective + scenario-driven; the skill is a thin shell, NOT a rulebook. Three layers: investigate (goal), naming.<user-task>.yml (OKR + session record, a .rule file), naming.okr-creator.yml (meta-rule that audits the session).
-x-meta:
-  type: Framework
-  status: stable
-  related: [rule, score, ontology-database]
-  owner: person:lijunhao
+description: |
+  Naming framework for x-cmd modules / commands / subcommands. Subjective + scenario-driven; the skill is a thin shell, NOT a rulebook. Three layers: investigate (goal), naming.<user-task>.yml (OKR + session record, a .rule file), naming.okr-creator.yml (meta-rule that audits the session).
+metadata:
+  related: "rule,score,ontology-database"
 ---
 
 
@@ -45,13 +43,11 @@ Naming is **subjective + scenario-driven**. This skill is a **framework**, not a
 
 Before writing anything, answer these questions. Do NOT skip — without answers, the scorer cannot anchor D4 (TRIAL/REAL) or D5 (RUN/TEST).
 
-| Question | Why it matters |
-|---|---|
-| **What is being named?** | module / subcommand / field / variable — different naming form rules apply |
-| **What role does it play?** | anchors the concept (e.g. "trial-run module" → standalone runner, Stage 1 of two-stage test) |
-| **What prior MUST it carry?** | the dominant bare-word sense has to match (e.g. trial-run needs TRIAL+RUN, not REAL+TEST) |
-| **What priors MUST it AVOID?** | unittest pollution (`*test`/`*case`), fake (`*mock`/`*fake`/`*stub`/`*dry`), real deployment (`field*`/`*live*`) |
-| **What archetype fits?** | ship / plane / rocket / factory / abstract — drives D6/D7 |
+- **What is being named?** — module / subcommand / field / variable — different naming form rules apply
+- **What role does it play?** — anchors the concept (e.g. "trial-run module" → standalone runner, Stage 1 of two-stage test)
+- **What prior MUST it carry?** — the dominant bare-word sense has to match (e.g. trial-run needs TRIAL+RUN, not REAL+TEST)
+- **What priors MUST it AVOID?** — unittest pollution (`*test`/`*case`), fake (`*mock`/`*fake`/`*stub`/`*dry`), real deployment (`field*`/`*live*`)
+- **What archetype fits?** — ship / plane / rocket / factory / abstract — drives D6/D7
 
 Output: a one-line goal statement, e.g.
 > "Pick a standalone x-cmd module name for trial-run (Stage 1 of two-stage test) that scores 8.0+ on D1-D7, is self-explanatory at first glance, and survives all red-line / dictionary / length fast-fails."

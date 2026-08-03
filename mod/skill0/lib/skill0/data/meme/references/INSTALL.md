@@ -1,8 +1,3 @@
----
-name: meme-install
-description: Install dependencies for the meme skill — x-cmd (optional), Pillow + PyYAML (Python), ImageMagick (brew/apt), Impact font (Microsoft Core Font), CJK fallback fonts, and open-source alternatives like Anton and Bangers.
----
-
 # Install Dependencies
 
 ## x-cmd (optional)
@@ -82,3 +77,7 @@ mkdir -p ~/.local/share/fonts
 curl -L "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf" -o ~/.local/share/fonts/Anton-Regular.ttf
 fc-cache -f
 ```
+
+---
+
+Parent skill: [../SKILL.md](../SKILL.md)

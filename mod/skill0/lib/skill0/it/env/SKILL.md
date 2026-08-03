@@ -7,15 +7,11 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: package-management
-  tags: [install, package, python, node, go, jq, runtime, env]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: [install, x-cmd]
-  owner: person:lijunhao
+  category: "package-management"
+  tags: "install,package,python,node,go,jq,runtime,env"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
+  related: "install,x-cmd"
 ---
 
 
@@ -47,11 +43,9 @@ x env try python3 script.py
 
 600+ packages including:
 
-| Category | Examples |
-|----------|---------|
-| Languages | python, node, go, bun, java, rust |
-| CLI tools | jq, yq, fzf, himalaya |
-| Dev tools | claude-code, code-server |
+- Languages — python, node, go, bun, java, rust
+- CLI tools — jq, yq, fzf, himalaya
+- Dev tools — claude-code, code-server
 
 ## Key Features
 

@@ -17,18 +17,14 @@ license: Apache-2.0
 compatibility: POSIX Shell (sh/bash/zsh/dash/ash)
 
 metadata:
-  author: Li Junhao
+  author: "Li Junhao"
   version: "1.0.1"
-  category: core
-  tags: [shell, cli, tools, package-management, portable]
-  repository: https://github.com/x-cmd-skill/x-cmd
-  website: https://www.x-cmd.com
-  install_doc: data/install.md
-x-meta:
-  type: Tool
-  status: stable
-  related: [install, env, agent-browser]
-  owner: person:lijunhao
+  category: "core"
+  tags: "shell,cli,tools,package-management,portable"
+  repository: "https://github.com/x-cmd-skill/x-cmd"
+  website: "https://www.x-cmd.com"
+  install_doc: "data/install.md"
+  related: "install,env,agent-browser"
 ---
 
 
@@ -46,11 +42,9 @@ x-meta:
 
 ## Run `x skill lr` to browse 500+ skills
 
-| Command | Purpose |
-|---------|---------|
-| `x skill lr` | List all remote skills (<skill-id><tab><desc>) |
-| `x skill add <skill-id>` | Add skill for next session |
-| `x skill info <skill-id>` | Download and show skill summary and path |
+- `x skill lr` — List all remote skills (<skill-id><tab><desc>)
+- `x skill add <skill-id>` — Add skill for next session
+- `x skill info <skill-id>` — Download and show skill summary and path
 
 **x-mod/<mod>**: Use `x <mod> --help` for more examples. Just add notes to AGENTS.md to reuse.
 
@@ -64,14 +58,12 @@ Entrance for AI agents.
 
 ## Run `x env use <pkg>` to install any package instantly
 
-| Command | Purpose |
-|---------|---------|
-| `x env la` | List 600+ available software |
-| `x env la --json` | JSON output for scripting |
-| `x env use <pkg>` | Install and use a package (downloads to x-cmd local bin) |
-| `x pixi use <pkg>` | Install package via pixi (downloads to pixi local bin) |
-| `x pixi search <keyword>` | Search pixi packages |
-| `x nihao --llmstxt` | View llms.txt |
+- `x env la` — List 600+ available software
+- `x env la --json` — JSON output for scripting
+- `x env use <pkg>` — Install and use a package (downloads to x-cmd local bin)
+- `x pixi use <pkg>` — Install package via pixi (downloads to pixi local bin)
+- `x pixi search <keyword>` — Search pixi packages
+- `x nihao --llmstxt` — View llms.txt
 
 ---
 

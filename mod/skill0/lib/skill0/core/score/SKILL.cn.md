@@ -48,10 +48,8 @@ description: 加权维度评分框架（中文版）— agent 辅助决策。核
 
 ## 两文件模型
 
-| 文件 | 角色 |
-|------|------|
-| `*.score.yml` | 可以复用的评分标准：维度、因子、描述 |
-| `**.score.tsv` | 目标 + 每个维度的分数与证据；第一列为目标名 |
+- `*.score.yml` — 可以复用的评分标准：维度、因子、描述
+- `**.score.tsv` — 目标 + 每个维度的分数与证据；第一列为目标名
 
 如果装了 x-cmd：`x score compute <yml> <scores>` 等价于 `python compute.py`。
 
@@ -116,11 +114,9 @@ total_i = Σ(f_j × score_ij) ÷ Σ(f_j) × 10
 
 ## 文件清单
 
-| 文件 | 用途 |
-|------|------|
-| `SKILL.cn.md` | 中文版。自包含的评分引擎。AI 读取后即可运行完整工作流。 |
-| `SKILL.md` | 英文版。 |
-| `compute.py` | 独立 Python 校验器。`python compute.py <yml> <tsv>` 校验并计算 total + rank。 |
-| `template/*.score.yml` | 模板文件。`x score ls` 列出，`x score init -t <name>` 复制。模板内含 comment 引导 agent 根据用户需求调整标准——格式见 `score-template-writer.md`。 |
-| `rule-vs-score.md` | Rule 与 Score 的区别——什么场景用哪个，各自解决什么问题。 |
-| `score-template-writer.md` | 模板编写指南。怎么写 comment、怎么选维度、怎么定 factor、怎么写出好的 desc。 |
+- `SKILL.cn.md` — 中文版。自包含的评分引擎。AI 读取后即可运行完整工作流。
+- `SKILL.md` — 英文版。
+- `compute.py` — 独立 Python 校验器。`python compute.py <yml> <tsv>` 校验并计算 total + rank。
+- `template/*.score.yml` — 模板文件。`x score ls` 列出，`x score init -t <name>` 复制。模板内含 comment 引导 agent 根据用户需求调整标准——格式见 `score-template-writer.md`。
+- `rule-vs-score.md` — Rule 与 Score 的区别——什么场景用哪个，各自解决什么问题。
+- `score-template-writer.md` — 模板编写指南。怎么写 comment、怎么选维度、怎么定 factor、怎么写出好的 desc。

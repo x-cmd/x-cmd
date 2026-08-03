@@ -1,8 +1,3 @@
----
-name: agent-browser-cleanup
-description: Cleanup accumulated agent-browser data — screenshots, session metadata, Chrome profile cache.
----
-
 # agent-browser cleanup
 
 `close` does not delete any data. Both light and full cleanup are safe —
@@ -46,3 +41,7 @@ rm -rf /tmp/ab-default/
 - `agent-browser --session <name> close` closes the browser but does not delete any files
 - `agent-browser doctor --fix` cleans stale metadata but **reinstalls Chrome** — avoid for routine cleanup
 - Never delete your personal Chrome profile (`~/Library/Application Support/Google/Chrome/`)
+
+---
+
+Parent skill: [SKILL.md](SKILL.md)

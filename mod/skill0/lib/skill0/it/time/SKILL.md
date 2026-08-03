@@ -7,15 +7,10 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: performance
-  tags: [timing, benchmark, performance, measurement, statistics]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: []
-  owner: person:lijunhao
+  category: "performance"
+  tags: "timing,benchmark,performance,measurement,statistics"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
 ---
 
 
@@ -44,13 +39,11 @@ done
 
 ## What's Available
 
-| Command | Description |
-|---------|-------------|
-| `x time <cmd>` | Single run, microsecond precision |
-| `x time getms <cmd>` | Millisecond precision |
-| `x time stress -c N <cmd>` | N runs with full stats |
-| `x time stress -b N <cmd>` | Auto-decide runs within budget |
-| `x time cmp 'c1' 'c2'` | Compare multiple commands |
+- `x time <cmd>` — Single run, microsecond precision
+- `x time getms <cmd>` — Millisecond precision
+- `x time stress -c N <cmd>` — N runs with full stats
+- `x time stress -b N <cmd>` — Auto-decide runs within budget
+- `x time cmp 'c1' 'c2'` — Compare multiple commands
 
 ## Output Formats
 

@@ -1,11 +1,9 @@
 ---
 name: score
-description: Weighted dimension scoring framework for AI agents — "Don't guess. Score." Core idea: understand needs first, draft then iterate, the agent is the analyst. Outputs ranked TSV via `x score compute`.
-x-meta:
-  type: Framework
-  status: stable
-  related: [rule, naming]
-  owner: person:lijunhao
+description: |
+  Weighted dimension scoring framework for AI agents — "Don't guess. Score." Core idea: understand needs first, draft then iterate, the agent is the analyst. Outputs ranked TSV via `x score compute`.
+metadata:
+  related: "rule,naming"
 ---
 
 
@@ -29,10 +27,8 @@ Output: `target, total, rank, block, reason, <dim> (X%), evidence`. Total 0–10
 5. Or: `x score iter -f slogan.score.yml slogan.score.tsv "<feedback>"`
 More examples: [EXAMPLE.md](EXAMPLE.md).
 ## Two-file model
-| File | Role |
-|------|------|
-| `*.score.yml` | Reusable standard: dimensions, factors, descriptions |
-| `**.score.tsv` | Targets + scores + evidence; column 1 = target name |
+- `*.score.yml` — Reusable standard: dimensions, factors, descriptions
+- `**.score.tsv` — Targets + scores + evidence; column 1 = target name
 `x score compute <yml> <tsv>` same as `python compute.py`.
 ## Application scenarios
 1. **Gives agents a decision workflow.** score.yml anchors the agent to a structured process — the agent follows the standard, not the mood of the last message.
@@ -60,14 +56,12 @@ Dimension headers show weight %: `factor ÷ Σ(factor) × 100`.
 | `<dim> (X%)` | computed | Scores per dimension, header shows weight % |
 | `evidence` | input | Facts backing each score |
 ## Scale
-| Score | Meaning |
-|-------|---------|
-| 9–10 | Excellent — fully meets criteria |
-| 7–8 | Good — meets criteria, minor gap |
-| 5–6 | Adequate — direction right, notable miss |
-| 3–4 | Weak — significant gap |
-| 1–2 | Fail — barely addressed |
-| 0 | N/A — not applicable |
+- 9–10 — Excellent — fully meets criteria
+- 7–8 — Good — meets criteria, minor gap
+- 5–6 — Adequate — direction right, notable miss
+- 3–4 — Weak — significant gap
+- 1–2 — Fail — barely addressed
+- 0 — N/A — not applicable
 ## Rules
 1. **Evidence anchoring** — every score MUST have evidence. Facts, not feelings.
 2. **Use the full range** — 5 is midpoint, not default. 0 and 10 are rare but possible.
@@ -75,14 +69,12 @@ Dimension headers show weight %: `factor ÷ Σ(factor) × 100`.
 4. **Targets unique and non-empty** — column 1 every row must have a target name. No duplicates, no blanks.
 5. **Agent reads, reports, decides** — after compute, explain results. Re-score or re-weight as needed.
 ## Files
-| File | Purpose |
-|------|---------|
-| `SKILL.cn.md` | Chinese version |
-| `compute.py` | Validates + computes total + rank |
-| `template/*.score.yml` | 35+ templates. `x score ls` lists, `x score init -t <name>` copies |
-| `EXAMPLE.md` | More usage examples |
-| `rule-vs-score.md` | When to use rule vs score |
-| `score-template-writer.md` | How to write scoring templates |
+- `SKILL.cn.md` — Chinese version
+- `compute.py` — Validates + computes total + rank
+- `template/*.score.yml` — 35+ templates. `x score ls` lists, `x score init -t <name>` copies
+- `EXAMPLE.md` — More usage examples
+- `rule-vs-score.md` — When to use rule vs score
+- `score-template-writer.md` — How to write scoring templates
 
 ## Related
 

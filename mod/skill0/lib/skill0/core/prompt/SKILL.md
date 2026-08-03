@@ -1,11 +1,8 @@
 ---
 name: prompt
 description: Prompt engineering conventions for x-cmd — reuse via template variables, structure rules, safety enforcement patterns.
-x-meta:
-  type: Framework
-  status: stable
-  related: [devloop, rule]
-  owner: person:lijunhao
+metadata:
+  related: "devloop,rule"
 ---
 
 

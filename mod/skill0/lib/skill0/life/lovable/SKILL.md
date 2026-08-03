@@ -1,11 +1,8 @@
 ---
 name: lovable
 description: Lovable MCP tool usage — deploy projects, message agent, test with agent-browser. Minimize credits by delegating to local repo.
-x-meta:
-  type: Tool
-  status: stable
-  related: [agent-browser, prompt, devloop]
-  owner: person:lijunhao
+metadata:
+  related: "agent-browser,prompt,devloop"
 ---
 
 
@@ -19,11 +16,9 @@ claude mcp add --transport http lovable "https://mcp.lovable.dev"
 
 Full MCP reference: [lovable-mcp-server.md](https://docs.lovable.dev/integrations/lovable-mcp-server.md).
 
-| | |
-|---|---|
-| Plan | Pro/Business required |
-| Auth | OAuth browser prompt on first call |
-| Clients | Claude Code, Claude Desktop, ChatGPT, Cursor, VS Code |
+- Plan — Pro/Business required
+- Auth — OAuth browser prompt on first call
+- Clients — Claude Code, Claude Desktop, ChatGPT, Cursor, VS Code
 
 ## Core workflow: local first, save credits
 
@@ -73,12 +68,10 @@ Full usage: see skill0 `agent-browser`.
 
 ## Troubleshooting
 
-| Situation | Action |
-|-----------|--------|
-| Site not updated | `deploy_project` |
-| Code change, local exists | Local → push → deploy |
-| Code change, no local | `send_message` (high credit cost) |
-| Mobile test | `agent-browser set device "iPhone 14"` |
+- Site not updated — `deploy_project`
+- Code change, local exists — Local → push → deploy
+- Code change, no local — `send_message` (high credit cost)
+- Mobile test — `agent-browser set device "iPhone 14"`
 
 For PWA issues, sync problems, and more, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 

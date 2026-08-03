@@ -1,8 +1,3 @@
----
-name: score-example
-description: Additional scoring scenarios for the score framework — feature priority (impact vs cost) and vendor selection (multi-criterion weighted). Not required reading; consult for inspiration.
----
-
 # Examples
 
 Additional scoring scenarios. Not required reading — only consult when you need inspiration for a particular use case.
@@ -74,3 +69,7 @@ target	total	rank	D1	D1_evidence	D2	D2_evidence	D3	D3_evidence
 vendor-alpha	7.17	1	7	$12k/yr, within budget	9	Covers all 5 must-haves	6	48h avg response
 vendor-beta	5.67	2	4	$18k/yr, over budget	7	Covers 3 of 5 must-haves	8	4h avg response
 ```
+
+---
+
+Parent skill: [SKILL.md](SKILL.md)

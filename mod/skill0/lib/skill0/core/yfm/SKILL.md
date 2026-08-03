@@ -1,77 +1,58 @@
 ---
 name: yfm
 description: |
-  YAML front matter (YFM) convention for markdown articles — memory entries, design notes, blog posts, RUNBOOKs, READMEs, any prose an agent or a pipeline may scan.
-  Top-level fields (title, tag, link, date, author) for indexing and discovery. The `x-meta:` block is the x-cmd extension: it carries ontology fields that link the article into x-cmd's knowledge graph via `x ondb`.
-  Apply unless a stricter spec forbids front matter. Helpers: `x yfm` (in design).
+  YAML front matter (YFM) for any markdown article. x-cmd's default is three top-level fields: `tags`, `description`, `memo`. Default borrows the Agent Skills frontmatter shape — see <https://agentskills.io/specification>. The yfm module is a helper: `x yfm ls / init / lint`.
 
-tag: [yfm, front-matter, metadata, ontology, markdown]
-x-meta:
-  type: Convention
-  status: stable
-  related: [skill0-writer, ontology-database]
-  owner: person:lijunhao
+metadata:
+  related: "skill0-writer,ontology-database"
 ---
 
 
 # yfm — skill0
 
-**Two aspects.** This skill teaches AI to do two things on a markdown article:
+## Adopt YFM
 
-1. **Use YFM when allowed.** Add a YAML front matter block to any article an agent, search index, or ontology pipeline may scan — unless a stricter spec forbids it.
-2. **Define `x-meta:` for ontology hooks.** Inside the YFM, reserve a top-level `x-meta:` block with ontology fields that link the article into the knowledge graph via `x ondb`.
+Use YFM for any markdown an agent, index, or ontology pipeline may scan. **Follow the existing dialect if one is already in use** (Agent Skills, Obsidian, Jekyll, Hugo, etc.) — the x-cmd default applies only when no other dialect governs.
 
-A YFM convention for **any markdown article** — memory entries, design notes, blog posts, RUNBOOKs, READMEs. Top-level fields (`title` / `tag` / `link` / `date` / `author`, plus any free-form keys you need) are general; `x-meta:` is the x-cmd extension that ties the article into `x ondb`. SKILL.md are articles too, but they also carry skill0-writer's `name` + `description` (separate, additive).
-
-## When to add YFM
-
-Default behavior is **add YFM** for any markdown an agent, search index, or ontology pipeline may scan. **Skip** when a real restriction is in play:
-
-- A stricter spec governs the file: GitHub repo root `README.md` (fixed-form contract), vendored tool output, Hugo / Jekyll / MDX files whose host format already defines its own front matter.
-- **Markdown lint complains.** This is the most reliable signal that the host environment forbids or restricts front matter. Read the lint error — many projects encode project-specific YFM restrictions in lint rules rather than docs. Skim the relevant `.markdownlint.*` / `remark-*` / `.mdlrc` config to learn the local rules.
-
-## `x-meta:` — ontology fields
-
-`x-meta:` is a reserved **top-level** YFM block for ontology data, ingested by [ontology-database](../ontology-database/SKILL.md) into `x ondb`. The namespace isolates these fields from any other YFM key — no prefix, no rewrite, ingester maps them directly.
-
-| Field | Maps to ondb | Purpose |
-|---|---|---|
-| `type` | entity type | Primary type — `Article`, `Memory`, `Note`, `Decision`, `Runbook`, `Convention` |
-| `related` | `related` relation | Sibling articles / concepts (entity ids) |
-| `supersedes` / `deprecated-by` | `supersedes` / `deprecated-by` | Replacement history (bi-directional) |
-| `status` | enum property | `draft` / `stable` / `deprecated` |
-| `owner` | `owner` property | Author or maintainer entity id |
-| `tag` | `tag` relation | Tags promoted to ondb entities (preferred over flat `tag:`) |
+## The x-cmd default: three fields
 
 ```yaml
-x-meta:
-  type: Memory
-  status: draft
-  related: [memory:2026-07-19-on-xfm-design]
-  owner: person:lijunhao
+---
+tags: [design, front-matter]
+description: One-sentence summary a reader uses to decide whether to open this file.
+memo:
+  2026-07-31T14:30:00+08:00: Cut aliases; renamed third field to memo.
+---
+
+# Title
+
+Body...
 ```
 
-Flat `tag:` (top-level) is for human and agent indexing; `tag` (nested inside `x-meta:`) is for ontology-side graph relations. Both can coexist — `x yfm ingest` reconciles them.
+- **`tags`** — top-level list of slugs `[a-z0-9-]`. Consumer: the collector for ontology indexing.
+- **`description`** — top-level string. One sentence. Not the Agent Skills `description:` (that is a SKILL.md-only requirement, governed by `skill0-writer`).
+- **`memo:`** — top-level map, the file's revision log. Keys are ISO 8601 timestamps (`YYYY-MM-DDTHH:mm:ss±HH:mm`, author's local offset); values are short change-descriptions. Newest first. Omit when no history is worth recording.
 
-## `x yfm` helpers (in design)
+### Applicable scope
 
-The helper module is not yet shipped. Planned subcommands:
+- `<project>/.x-cmd/story/` — extends with `issue:` — see [usecase/story.md](usecase/story.md).
+- GitHub issue / PR bodies — extends with `repo:`, `number:` — see [usecase/git-issue-pr-wiki-markdown-etc.md](usecase/git-issue-pr-wiki-markdown-etc.md).
+- GitHub `README.md` — default fields only.
 
-```
-x yfm lint <file>                       # validate required top-level fields
-x yfm read <file> --field tag            # extract one or more dotted paths
-x yfm inject <file>                      # add YFM block if missing (idempotent)
-x yfm ingest <file> --ondb <dir>         # write x-meta to x ondb
-```
+## Module
 
-## Rules
+The yfm module is a helper. Three commands:
 
-- MUST add standard top-level YFM fields (at minimum `title`) to every agent-indexable markdown unless a stricter spec forbids it.
-- MUST keep ontology fields under the top-level `x-meta:` block.
-- MUST NOT place ontology fields outside `x-meta:`.
-- Treat `date`, `tag`, `link`, `author`, `x-meta` as optional — missing fields are not errors.
+- `x yfm ls [path]` — list YFM blocks; defaults to the current directory
+- `x yfm init [path]` — write an x-cmd-default block into each markdown file under the path
+- `x yfm lint [path]` — check that each YFM block is valid YAML and follows the dialect it claims
 
-## Related
+## Reading foreign front matter
 
-- [skill0-writer](../skill0-writer/SKILL.md) — writer rule enforces YFM layer-1
-- [ontology-database](../ontology-database/SKILL.md) — x-meta ingests into ondb
+The collector ingests many dialects. For the spec the default borrows from, see <https://agentskills.io/specification>. Per-dialect:
+
+- [Agent Skills](usecase/agentskills.md) — `metadata:` is string→string; top level is closed
+- [Obsidian](usecase/obsidian.md) — `tags` / `aliases` / `cssclasses` reserved
+- [Jekyll](usecase/jekyll.md) — list or **space**-separated
+- [Hugo](usecase/hugo.md) — TOML possible; site-configured taxonomy
+

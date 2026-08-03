@@ -1,8 +1,3 @@
----
-name: prompt-reusing
-description: Prompt reuse pattern — placeholders for variables, fragments for logic, data appended at runtime like function arguments.
----
-
 # Prompt reusing
 
 Part of [prompt SKILL.md](SKILL.md).

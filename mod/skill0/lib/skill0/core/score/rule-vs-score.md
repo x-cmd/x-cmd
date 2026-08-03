@@ -1,8 +1,3 @@
----
-name: score-vs-rule
-description: Score vs Rule — score ranks weighted candidates (pick the best); rule gates pass/fail (find problems). Decision matrix for when to use which; many workflows combine both.
----
-
 # Rule vs Score
 
 Two complementary frameworks for different problems.

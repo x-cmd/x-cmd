@@ -1,0 +1,64 @@
+# shellcheck shell=dash
+
+___x_cmd_repo_update(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    case "$1" in
+        -h|--help)      ___x_cmd help -m repo update ; return 0 ;;
+    esac
+
+    while [ $# -gt 0 ]; do
+        ___x_cmd_repo_update_one "$1" || return $?
+        shift
+    done
+}
+
+___x_cmd_repo_update_one(){
+    local id="$1"
+    local main
+    local x_
+
+    ___x_cmd_repo_resolve_ "$id" || return $?
+    main="$x_"
+
+    if [ ! -e "$main" ]; then
+        ___x_cmd_repo_create_bare "$id" "$main"
+        return $?
+    fi
+
+    [ -d "$main" ]  ||  N=repo M="Expecting to be a directory -> $main" log:ret:1
+
+    ___x_cmd_repo_getgitdir_ "$main" || return $?
+
+    if [ -f "$main/.git" ]; then
+        ___x_cmd_repo_update_bare "$x_" "$main"
+    else
+        ___x_cmd git update "$id" "$main"
+    fi
+}
+
+___x_cmd_repo_create_bare(){
+    local id="$1" main="$2"
+    local bare="$___X_CMD_REPO_ROOT/.bare/${main#"$___X_CMD_REPO_ROOT/"}.git"
+
+    mkdir -p "$(dirname "$bare")" || return $?
+
+    ___x_cmd git clone --bare "$id" "$bare" || return $?
+
+    local default
+    default=$(___x_cmd git -C "$bare" symbolic-ref HEAD 2>/dev/null)
+
+    if [ -z "$default" ]; then
+        N=repo M="Cannot determine default branch for -> $id" log:ret:1
+    fi
+
+    ___x_cmd git -C "$bare" worktree add "$main" "$default"
+}
+
+___x_cmd_repo_update_bare(){
+    local bare="$1" main="$2"
+
+    ___x_cmd git -C "$bare" fetch --all --prune || return $?
+
+    ___x_cmd git -C "$main" merge --ff-only "@{u}"
+}

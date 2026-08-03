@@ -1,11 +1,8 @@
 ---
 name: devloop
 description: Goal-driven development loop — define objective, write rules with key-results, verify visually, sync to issue tracker.
-x-meta:
-  type: Framework
-  status: stable
-  related: [rule, score, install, agent-browser, issue, repo, prompt]
-  owner: person:lijunhao
+metadata:
+  related: "rule,score,install,agent-browser,issue,repo,prompt"
 ---
 
 
@@ -76,12 +73,10 @@ See [issue/SKILL.md](../issue/SKILL.md). Minimum: post goal, key-results, rule.y
 
 ## Agent tools
 
-| Tool | Use |
-|------|-----|
-| `x rule scan` | Quick check during iteration |
-| `x rule check` | Full compliance before commit |
-| `agent-browser screenshot` | Visual proof before/after |
-| `gh issue create/comment` | Sync goal + rule.yml to tracker |
+- `x rule scan` — Quick check during iteration
+- `x rule check` — Full compliance before commit
+- `agent-browser screenshot` — Visual proof before/after
+- `gh issue create/comment` — Sync goal + rule.yml to tracker
 
 ## Related
 

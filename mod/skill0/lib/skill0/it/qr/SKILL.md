@@ -7,15 +7,10 @@ description: |
 
 metadata:
   version: "0.1.0"
-  category: encoding
-  tags: [qr, qrcode, barcode, encode, terminal]
-  repository: https://github.com/x-cmd/skill0
-  type: skill0
-x-meta:
-  type: Tool
-  status: stable
-  related: []
-  owner: person:lijunhao
+  category: "encoding"
+  tags: "qr,qrcode,barcode,encode,terminal"
+  repository: "https://github.com/x-cmd/skill0"
+  type: "skill0"
 ---
 
 
@@ -40,11 +35,9 @@ curl -s "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=Hello" -o
 
 ## What's Available
 
-| Mode | Description |
-|------|-------------|
-| Terminal | Display QR in terminal |
-| PNG | Generate PNG file |
-| Pure shell | AWK-based encoding (no deps) |
+- Terminal — Display QR in terminal
+- PNG — Generate PNG file
+- Pure shell — AWK-based encoding (no deps)
 
 ## This skill0 grows
 
