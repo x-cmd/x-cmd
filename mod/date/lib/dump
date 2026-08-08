@@ -105,9 +105,25 @@ ___x_cmd_date_dump_(){
         }
     fi
 
-    local year month day hour minute second
-    local epochday _tod _frac
-    local _z _era _doe _yoe _doy _mp _wd _name
+    if [ -n "$value" ]; then
+        local x_year
+        local x_month
+        local x_day
+        local x_hour
+        local x_minute
+        local x_second
+
+        # Bare number (no unit letter) → raw seconds; otherwise humantime tovar__.
+        # Letters in $value (d/h/m/s/M/y/w) → humantime parses units.
+        case "$value" in
+            *[a-zA-Z]*)  ___x_cmd humantime tovar__ "$value" ;;
+            *)            x_year=0; x_month=0; x_day=0; x_hour=0; x_minute=0; x_second=$value ;;
+        esac
+
+        if [ "${x_year:-0}" -eq 0 ] && [ "${x_month:-0}" -eq 0 ]; then
+            epoch="$(( epoch + (((x_day * 24) + x_hour) * 60 + x_minute) * 60 + x_second ))"
+        fi
+    fi
 
     [ -n "$offset" ]    ||  {
         ___x_cmd tz offset_
@@ -115,7 +131,12 @@ ___x_cmd_date_dump_(){
     }
 
     ___x_cmd_date_offsetsecond_ "$offset"
-    epoch=$((epoch + x_))
+    local offset_second=$x_
+    epoch=$(( epoch + offset_second ))
+
+    local year month day hour minute second
+    local epochday _tod _frac
+    local _z _era _doe _yoe _doy _mp _wd _name
 
     if [ "$epoch" -lt 0 ] && [ "$((epoch % 86400))" -ne 0 ]; then
         epochday=$((epoch / 86400 - 1))
@@ -148,22 +169,46 @@ ___x_cmd_date_dump_(){
         year=$((year + 1))
     fi
 
-    if [ -n "$value" ]; then
-        local x_year
-        local x_month
-        local x_day
-        local x_hour
-        local x_minute
-        local x_second
-
-        ___x_cmd humantime tovar__ "$value"
-
-        year=$(( year + x_year ))
-        month=$(( month + x_month ))
-        day=$(( day + x_day ))
-        hour=$(( hour + x_hour ))
+    # Apply humantime delta: all 6 units added once to civil date, then
+    # single cascade normalize (s → m → h → d, then mo → y, then day overflow).
+    # Order-independent: '+1y+1mo+1d' ≡ '+1d+1mo+1y' (GNU semantics).
+    if [ "${x_year:-0}" -ne 0 ] || [ "${x_month:-0}" -ne 0 ]; then
+        year=$((   year   + x_year ))
+        month=$((  month  + x_month ))
+        day=$((    day    + x_day ))
+        hour=$((   hour   + x_hour ))
         minute=$(( minute + x_minute ))
         second=$(( second + x_second ))
+
+        # Cascade: second → minute → hour → day via mod/div.
+        minute=$(( minute + second / 60 ))
+        second=$(( second % 60 ))
+        hour=$(( hour + minute / 60 ))
+        minute=$(( minute % 60 ))
+        day=$(( day + hour / 24 ))
+        hour=$(( hour % 24 ))
+
+        # Month → year via mod/div (handles negative via mod-adjustment).
+        year=$(( year + (month - 1) / 12 ))
+        local _m_mod=$(( (month - 1) % 12 ))
+        ! [ "$_m_mod" -lt 0 ] || year=$(( year - 1 ))
+        month=$(( (_m_mod + 12) % 12 + 1 ))
+
+        # Day overflow → civil round-trip (handles 365d, 10000d, etc.
+        # in O(1) instead of O(days/30) iterations).
+        ___x_cmd_date_civil2day_ "$year" "$month" "$day"
+        ___x_cmd_date_day2civil__ "$x_"
+        year=$x_year
+        month=$x_month
+        day=$x_day
+    fi
+
+    # --second: convert civil back to epoch via lib/util's tosec_, then
+    # subtract offset (epoch was offset-adjusted before Hinnant forward).
+    if [ "$fmt" = second ]; then
+        ___x_cmd_date_tosec_ "$year" "$month" "$day" "$hour" "$minute" "$second"
+        x_=$(( x_ - offset_second ))
+        return 0
     fi
 
     case "$fmt" in

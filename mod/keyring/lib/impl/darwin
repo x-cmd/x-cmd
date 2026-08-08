@@ -1,0 +1,169 @@
+# shellcheck shell=dash
+
+# macOS / Darwin-specific keychain backend. All paths use Apple
+# `security` CLI tool.
+
+# macOS `security -w` round-trip limitation: when the stored password
+# contains a newline or other non-printable byte, `-w` does NOT echo the
+# raw bytes back — it prints a hex representation instead. So
+#   printf 'line1\nline2' | x keyring set foo
+#   x keyring get foo            #  → "6c696e65310a6c696e6532" (wrong)
+#
+# Workaround: use `-g` (not `-w`) and parse the leading
+# `password: 0xHEX` token, which the CLI always emits when the stored
+# value is a binary blob (regardless of printability). For pure
+# printable UTF-8 passwords, Apple stores them as a CFString and `-g`
+# emits `password: "string"` (no hex) — handle both shapes.
+#
+# The set path is unchanged (`-w`): Apple decides at storage time
+# whether to keep the password as a CFString or a CFData blob.
+#
+# Trade-off: x keyring entries whose password was printable look the
+# same under raw `security -w` as before; entries with non-printable
+# bytes show as hex. That's a property of the macOS CLI — there's no
+# flag for round-tripping arbitrary bytes without parsing `-g` output.
+# The ctypes-based python keyring backend works around this via
+# `SecItemCopyMatching` directly (with codesign + ctypes overhead).
+# Not worth that cost for shell.
+#
+# NB: `security -g` writes the `password:` line to STDERR. Merge stderr
+# when reading, otherwise `2>/dev/null` silently throws the secret away.
+#
+# NUL bytes are out of scope: `$()` truncates at NUL.
+
+# Shared body for keychain_get_ AND iCloud cget_ — both invoke this
+# helper rather than calling each other. Reuses the awk without
+# delegating between the wrappers (each function retains its own
+# identity + dispatcher routing).
+#
+# $3 (optional): explicit keychain db path (-k). iCloud cget passes the
+# iCloud db so we don't accidentally hit a same-named entry in the
+# login keychain. Empty = default search list (login keychain).
+___x_cmd_keyring___darwin_awk_get_(){
+    if [ -n "${3:-}" ]; then
+        set -- -s "$1" -a "$2" -g "$3"
+    else
+        set -- -s "$1" -a "$2" -g
+    fi
+    local data
+    data="$({
+        security find-generic-password "$@" 2>&1 \
+            | awk -f "$___X_CMD_ROOT_MOD/keyring/lib/awk/darwin.decode.awk"
+    })" || return $?
+
+    {
+        local format
+        read -r format
+        case "$format" in
+            binary)     x_="$(___x_cmd_cmds xxd -r -p ; printf "|" )"
+                        x_="${x_%|*}"
+                        ;;
+            string)     x_="$( ___x_cmd_cmds cat )"
+                        ;;
+            *)          return 1 ;;
+        esac
+    } <<A
+$data
+A
+}
+
+___x_cmd_keyring___keychain_get_(){
+    ___x_cmd_keyring___darwin_awk_get_ "$@"
+}
+
+___x_cmd_keyring___keychain_get(){
+    local x_
+    ___x_cmd_keyring___keychain_get_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+# $4 (optional): explicit keychain db path. Empty = default search list
+# (login keychain + auto-added iCloud when enabled); non-empty = write to
+# that specific keychain file (used by cset to target iCloud's db, since
+# -k <icloud-db> is the only way to write to iCloud).
+___x_cmd_keyring___keychain_set(){
+    if [ -n "${4:-}" ]; then
+        security add-generic-password -U -T /usr/bin/security -s "$1" -a "$2" -w "$3" "$4" 2>/dev/null
+    else
+        security add-generic-password -U -T /usr/bin/security -s "$1" -a "$2" -w "$3" 2>/dev/null
+    fi
+}
+
+# $3 (optional): explicit keychain db path. crm passes iCloud db to
+# avoid hitting a same-named entry in the login keychain.
+___x_cmd_keyring___keychain_rm(){
+    if [ -n "${3:-}" ]; then
+        set -- -s "$1" -a "$2" "$3"
+    else
+        set -- -s "$1" -a "$2"
+    fi
+    security delete-generic-password "$@" 2>/dev/null
+}
+# Note: `security delete-generic-password` takes keychain as a
+# positional arg, NOT `-k <path>` (no such flag for delete).
+
+# $3 (optional): explicit keychain db path. cls passes iCloud db to
+# scope the listing to that keychain (no mixing with login entries).
+# Note: `security dump-keychain` takes the keychain as a positional
+# arg, not `-k <path>` (no such flag — unlike find/delete which also
+# take positional paths).
+___x_cmd_keyring___keychain_ls(){
+    local filter="${1:-}"
+    local acct="${2:-}"
+    local kc_path="${3:-}"
+    if [ "$acct" = "*" ]; then
+        acct=""
+    fi
+    if [ -n "$kc_path" ]; then
+        security dump-keychain "$kc_path" 2>/dev/null \
+            | awk -v svc_f="$filter" -v acct_f="$acct" \
+                  -f "$___X_CMD_ROOT_MOD/keyring/lib/awk/darwin.ls.awk"
+    else
+        security dump-keychain 2>/dev/null \
+            | awk -v svc_f="$filter" -v acct_f="$acct" \
+                  -f "$___X_CMD_ROOT_MOD/keyring/lib/awk/darwin.ls.awk"
+    fi
+}
+
+# macOS keychain lock. Per-shell lock: subsequent `security
+# find-generic-password` in this shell requires unlock. Other shells
+# unaffected.
+___x_cmd_keyring___keychain_lock(){
+    if security lock-keychain 2>/dev/null; then
+        printf 'keychain locked (per-shell; subsequent get in this shell requires unlock)\n' >&2
+        return 0
+    fi
+    printf 'keychain lock failed\n' >&2
+    return 1
+}
+
+# macOS keychain unlock. Tty silent prompt or stdin pipe.
+___x_cmd_keyring___keychain_unlock(){
+    local pw=
+    if [ ! -t 0 ]; then
+        pw="$(cat)"
+        case "$pw" in
+            *"
+")
+                pw="${pw%?}"
+                ;;
+        esac
+    else
+        printf 'Keychain password: ' >&2
+        if stty -echo 2>/dev/null; then
+            trap 'stty echo 2>/dev/null; printf "\n" >&2' INT TERM HUP
+            IFS= read -r pw
+            stty echo 2>/dev/null
+            trap - INT TERM HUP
+            printf '\n' >&2
+        else
+            IFS= read -r pw
+        fi
+    fi
+    [ -n "$pw" ] || N=keyring M="empty keychain password rejected" log:ret:64
+    if printf '%s' "$pw" | security unlock-keychain 2>/dev/null; then
+        printf 'keychain unlocked\n' >&2
+    else
+        N=keyring M="keychain unlock failed (wrong password?)" log:ret:1
+    fi
+}

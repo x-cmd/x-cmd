@@ -1,0 +1,331 @@
+# shellcheck shell=dash
+
+___x_cmd log init keyring
+
+# Per-UID namespace helper. Each user's x keyring writes land under
+# namespace "x-cmd-<uid>", so two UIDs sharing the same Mac don't clash
+# on the same service name, and within one UID scripting runs don't
+# collide. Caller may override via `--ns <name>`.
+___x_cmd_keyring_default_user_(){
+    printf '%s\n' "x-cmd-$(id -u 2>/dev/null || echo unknown)"
+}
+
+___x_cmd_keyring___main(){
+    [ "$#" -gt 0 ] || set -- --help
+
+    local op="$1";      shift
+    case "$op" in
+        -h|--help)      ___x_cmd help -m keyring "$@";    return 0 ;;
+        ls|list)        ___x_cmd_keyring_ls              "$@" ;;
+        lock|unlock)    ___x_cmd_keyring_"$op"           "$@" ;;
+
+        get|set|backend|get_)
+                        ___x_cmd_keyring_"$op"           "$@" ;;
+
+        cget|cset|cls|cget_)
+                        ___x_cmd_keyring_"$op"           "$@" ;;
+
+        rm|crm)         ___x_cmd_keyring_"$op"           "$@" ;;
+
+        *)              N=keyring M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+# Arg-parser helper: extracts `--ns <name>` / `--ns=<name>` from the front of
+# "$@" and echoes the resolved namespace name (defaulted). The remaining
+# positionals are NOT modified — callers use the result only.
+___x_cmd_keyring___resolve_namespace_(){
+    local ns=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --ns|--namespace)
+                [ "$#" -ge 2 ] || N=keyring M="--ns requires a value" log:ret:64
+                ns="$2"; shift 2 ;;
+            *)  break ;;
+        esac
+    done
+    if [ -z "$ns" ]; then
+        ns="$(___x_cmd_keyring_default_user_)"
+    fi
+    printf '%s\n' "$ns"
+}
+
+___x_cmd_keyring_ls(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring ls; return 0 ;;
+    esac
+    local filter=""
+    local ns=
+    local all=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --ns|--namespace)
+                [ "$#" -ge 2 ] || N=keyring M="--ns requires a value" log:ret:64
+                ns="$2"; shift 2 ;;
+            -a|--all)
+                all=1; shift ;;
+            --) shift; break ;;
+            -*) N=keyring M="Unknown option -> $1" log:ret:64 ;;
+            *)
+                if [ -z "$filter" ]; then
+                    filter="$1"
+                else
+                    N=keyring M="too many arguments; expected: x keyring ls [--ns <name>] [-a] [<service>]" log:ret:64
+                fi
+                shift
+                ;;
+        esac
+    done
+    if [ "$all" -eq 1 ]; then
+        ns="*"
+    elif [ -z "$ns" ]; then
+        ns="$(___x_cmd_keyring_default_user_)"
+    fi
+
+    local backend;  backend="$(___x_cmd_keyring___active_backend_)"
+    ___x_cmd_keyring___backend_ls_ "$backend" "$filter" "$ns"
+}
+
+# Sentinel-padded return value — sets x_ = password + '|' marker, so
+# callers can strip \${x_%|*} to drop both the marker and any trailing
+# newline that \$() auto-appends. Lets the backend (darwin/windows/
+# icloud) normalise their output shape before reaching the user.
+___x_cmd_keyring_get_(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring get_; return 0 ;;
+    esac
+    local ns=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --ns|--namespace)
+                [ "$#" -ge 2 ] || N=keyring M="--ns requires a value" log:ret:64
+                ns="$2"; shift 2 ;;
+            --) shift; break ;;
+            -*) N=keyring M="Unknown option -> $1" log:ret:64 ;;
+            *)  break ;;
+        esac
+    done
+    [ -z "$ns" ] && ns="$(___x_cmd_keyring_default_user_)"
+
+    local service="${1:?keyring get: <service> required}"
+    shift
+    [ "$#" -eq 0 ] || N=keyring M="too many arguments; expected: x keyring get [--ns <name>] <service>" log:ret:64
+
+    local backend;  backend="$(___x_cmd_keyring___active_backend_)"
+    # rc=1 means "not found" (Windows CredRead ERROR_NOT_FOUND=1168, user
+    # mismatch, etc.); rc=2 means "internal error" (other Win32 codes).
+    x_="$(___x_cmd_keyring___backend_get_ "$backend" "$service" "$ns")" || rc=$?
+}
+
+___x_cmd_keyring_get(){
+    local x_ rc=0
+    ___x_cmd_keyring_get_ "$@" || rc=$?
+
+    if [ -z "$x_" ]; then
+        if [ "$rc" -eq 2 ]; then
+            N=keyring M="internal error reading credential: backend=..." log:ret:1
+        else
+            N=keyring M="password not found" log:ret:1
+        fi
+    fi
+    printf '%s\n' "$x_"
+}
+
+___x_cmd_keyring_set(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring set; return 0 ;;
+    esac
+    local ns=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --ns|--namespace)
+                [ "$#" -ge 2 ] || N=keyring M="--ns requires a value" log:ret:64
+                ns="$2"; shift 2 ;;
+            --) shift; break ;;
+            -*) N=keyring M="Unknown option -> $1" log:ret:64 ;;
+            *)  break ;;
+        esac
+    done
+    [ -z "$ns" ] && ns="$(___x_cmd_keyring_default_user_)"
+
+    local service="${1:?keyring set: <service> required}"
+    shift
+    local password=
+    if [ "$#" -gt 0 ]; then
+        password="$1"
+        shift
+    fi
+    [ "$#" -eq 0 ] || N=keyring M="too many arguments; expected: x keyring set [--ns <name>] <service> [<password>]" log:ret:64
+
+    if [ -z "$password" ]; then
+        if [ ! -t 0 ]; then
+            password="$(cat)"
+            case "$password" in
+                "
+")
+                    password="${password%?}"
+                    ;;
+            esac
+        else
+            printf 'Password for %s in %s: ' "$ns" "$service" >&2
+            if stty -echo 2>/dev/null; then
+                trap 'stty echo 2>/dev/null; printf "\n" >&2' INT TERM HUP
+                IFS= read -r password
+                stty echo 2>/dev/null
+                trap - INT TERM HUP
+                printf '\n' >&2
+            else
+                IFS= read -r password
+            fi
+        fi
+    fi
+    [ -n "$password" ] || N=keyring M="empty password rejected (pipe it: printf '%s' \"\$pw\" | x keyring set <service>)" log:ret:64
+
+    local backend;  backend="$(___x_cmd_keyring___active_backend_)"
+    if ___x_cmd_keyring___backend_set_ "$backend" "$service" "$ns" "$password"; then
+        return 0
+    fi
+    N=keyring M="set failed: backend=$backend service=$service user=$ns" log:ret:1
+}
+
+___x_cmd_keyring_lock(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring lock; return 0 ;;
+        --screen)
+            shift
+            ___x_cmd_keyring___lock_session_ "$@"
+            return $?
+            ;;
+    esac
+    local backend;  backend="$(___x_cmd_keyring___active_backend_)"
+    case "$backend" in
+        keychain)        ___x_cmd_keyring___keychain_lock ;;
+        secret_service|kwallet)
+            # Linux: no keychain-level CLI lock. Daemon-managed (gnome-keyring
+            # / kwalletd5). Kill-the-daemon is destructive (breaks all apps
+            # using it). Use `loginctl lock-session` for clean lock.
+            printf "%s: keychain-level lock is daemon-managed; no CLI primitive. Use DE screensaver.\n" "$backend" >&2
+            return 0
+            ;;
+        windows)         ___x_cmd_keyring___windows_lock ;;
+        null)            printf 'backend=null: nothing to lock\n' >&2; return 0 ;;
+        *)               N=keyring M="Unknown backend for lock: $backend" log:ret:64 ;;
+    esac
+}
+
+# Session lock (user opt-in via --screen). Windows only — do not
+# re-add pmset / loginctl here. macOS / Linux session lock is the
+# user's job (Cmd-Ctrl-Q / Super-L); we don't shadow those commands.
+#
+# DO NOT call from inside a script. Use `x keyring lock --screen` only
+# when you explicitly want session lock.
+___x_cmd_keyring___lock_session_(){
+    local x_="";  ___x_cmd os name_
+    case "$x_" in
+        win)
+            if command -v rundll32.exe >/dev/null 2>&1; then
+                rundll32.exe user32.dll,LockWorkStation
+                printf 'windows: workstation locked (CM remains per-session; full lock needs logoff)\n' >&2
+                return 0
+            fi
+            return 1
+            ;;
+        *)
+            # macOS / Linux: no-op. Use OS-native session lock (Cmd-Ctrl-Q /
+            # Super-L) directly. Don't pretend we wrap it.
+            printf 'session lock is OS-native on this platform; use the OS shortcut (macOS: Cmd-Ctrl-Q, Linux: Super-L)\n' >&2
+            return 0
+            ;;
+    esac
+}
+
+___x_cmd_keyring_rm(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring rm; return 0 ;;
+    esac
+    local ns=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --ns|--namespace)
+                [ "$#" -ge 2 ] || N=keyring M="--ns requires a value" log:ret:64
+                ns="$2"; shift 2 ;;
+            --) shift; break ;;
+            -*) N=keyring M="Unknown option -> $1" log:ret:64 ;;
+            *)  break ;;
+        esac
+    done
+    [ -z "$ns" ] && ns="$(___x_cmd_keyring_default_user_)"
+    local service="${1:?keyring rm: <service> required}"
+    shift
+    [ "$#" -eq 0 ] || N=keyring M="too many arguments; expected: x keyring rm [--ns <name>] <service>" log:ret:64
+
+    local backend;  backend="$(___x_cmd_keyring___active_backend_)"
+    if ___x_cmd_keyring___backend_rm_ "$backend" "$service" "$ns"; then
+        printf 'deleted: service=%s user=%s backend=%s\n' "$service" "$ns" "$backend" >&2
+        return 0
+    fi
+    N=keyring M="rm failed: backend=$backend service=$service user=$ns" log:ret:1
+}
+
+___x_cmd_keyring_unlock(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring unlock; return 0 ;;
+    esac
+    local backend;  backend="$(___x_cmd_keyring___active_backend_)"
+    case "$backend" in
+        keychain)        ___x_cmd_keyring___keychain_unlock ;;
+        secret_service)
+            printf 'secret_service: Secret Service auto-unlocks on user login; no separate unlock needed\n' >&2
+            ;;
+        kwallet)
+            printf 'kwallet: KWallet opens on user login; for explicit unlock use kwalletcli5 / kded module\n' >&2
+            ;;
+        windows)
+            printf 'windows: Credential Manager auto-unlocks on user logon; no CLI unlock primitive\n' >&2
+            ;;
+        null)
+            printf 'backend=null: nothing to unlock\n' >&2
+            ;;
+        *)
+            N=keyring M="Unknown backend for unlock: $backend" log:ret:64
+            ;;
+    esac
+}
+
+# Linux secret_service backend (default Linux). Stays in lib/main
+# because it's the default and is not platform-specific in the
+# impl/ sense (works on any freedesktop Secret Service daemon).
+___x_cmd_keyring___secret_service_get(){
+    secret-tool lookup service "$1" username "$2" 2>/dev/null
+}
+___x_cmd_keyring___secret_service_set(){
+    printf '%s' "$3" | secret-tool store --label="x-cmd keyring" service "$1" username "$2" 2>/dev/null
+}
+___x_cmd_keyring___secret_service_ls(){
+    local filter="${1:-}"
+    local acct="${2:-}"
+    if [ "$acct" = "*" ]; then
+        acct=""
+    fi
+    # shellcheck disable=SC2034  # acct unused but kept for dispatcher-signature consistency
+    if [ -n "$filter" ]; then
+        secret-tool search service "$filter" 2>/dev/null
+    else
+        printf "secret_service: secret-tool has no global enumeration; pass a service name to filter, e.g. 'x keyring ls myservice'\n" >&2
+    fi
+}
+
+___x_cmd_keyring___secret_service_rm(){
+    secret-tool clear service "$1" username "$2" 2>/dev/null
+}
+
+# null backend: disable keyring entirely (CI / sandbox).
+___x_cmd_keyring___null_get(){
+    return 1
+}
+___x_cmd_keyring___null_set(){
+    return 1
+}
+___x_cmd_keyring___null_ls(){
+    return 0
+}
