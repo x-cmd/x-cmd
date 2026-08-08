@@ -1,0 +1,272 @@
+# shellcheck shell=dash
+
+# Windows Credential Manager backend via PowerShell + Win32 advapi32.
+# Requires: PowerShell on PATH (powershell.exe or pwsh.exe).
+# Cold start cost: ~1s per invocation, since Add-Type is re-evaluated
+# each time. Live with it; cross-compile alternative is out of scope.
+
+___x_cmd_keyring___windows_ps_boilerplate_='
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class CredMan {
+    [DllImport("Advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool CredRead(string target, int type, int reservedFlag, out IntPtr CredentialPtr);
+    [DllImport("Advapi32.dll")]
+    public static extern void CredFree(IntPtr cred);
+    [DllImport("Advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool CredWrite([In] ref CREDENTIAL credential, [In] uint flags);
+    [DllImport("Advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool CredDelete(string target, int type, int reservedFlag);
+    [DllImport("Advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool CredEnumerate(string filter, int flag, out uint count, out IntPtr allCredentials);
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    public struct CREDENTIAL {
+        public UInt32 Flags;
+        public UInt32 Type;
+        public string TargetName;
+        public string Comment;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
+        public UInt32 CredentialBlobSize;
+        public IntPtr CredentialBlob;
+        public UInt32 Persist;
+        public UInt32 AttributeCount;
+        public IntPtr Attributes;
+        public string TargetAlias;
+        public string UserName;
+    }
+    public const int CRED_TYPE_GENERIC = 1;
+    public const int CRED_PERSIST_LOCAL_MACHINE = 2;
+}
+"@ -Language CSharp
+'
+
+___x_cmd_keyring___windows_ps_(){
+    if command -v pwsh.exe >/dev/null 2>&1; then
+        printf '%s\n' pwsh.exe
+    elif command -v powershell.exe >/dev/null 2>&1; then
+        printf '%s\n' powershell.exe
+    else
+        return 1
+    fi
+}
+
+# Run a PowerShell script (read from stdin) without a temp file. Reads
+# the script body from stdin, encodes as UTF-16LE + base64, and passes
+# it via `pwsh -EncodedCommand`. This avoids:
+#   - the `pwsh -Command -` (stdin) bug where `Add-Type ... @"..."@`
+#     here-strings are silently dropped (script returns 0 with no output)
+#   - any temp file on disk
+# PowerShell requires -EncodedCommand to be UTF-16LE base64; the Win32
+# command-line limit (~32KB) is plenty for our scripts.
+#
+# Stderr is NOT suppressed: callers may write diagnostic info (Win32 error
+# codes, UTF-8 fallback warnings) via `[Console]::Error.WriteLine` and
+# expect the user to see it. The bash-side wrappers handle their own
+# "empty stdout = not found" semantics via exit codes; they don't need
+# stderr to be quiet.
+#
+# Usage:
+#   ___x_cmd_keyring___windows_run "$ps" <<EOF
+#   $___x_cmd_keyring___windows_ps_boilerplate_
+#   \$var = 'value'   # \$ -> literal $ for PowerShell
+#   ...
+#   EOF
+___x_cmd_keyring___windows_run(){
+    local ps="$1"
+    local encoded
+    encoded="$(cat | iconv -t UTF-16LE | base64 | tr -d '\n')"
+    "$ps" -NoProfile -EncodedCommand "$encoded"
+}
+
+# Sentinel-padded return value — set x_ = password + '|' marker. The
+# trailing '|' lets callers strip \${x_%|*} to drop the marker plus
+# any trailing newline that \$() auto-appends.
+___x_cmd_keyring___windows_get_(){
+    local target="$1"
+    local user="$2"
+    local ps
+    ps="$(___x_cmd_keyring___windows_ps_)" || {
+        printf 'windows: powershell.exe not found on PATH\n' >&2
+        return 1
+    }
+    x_="$(___x_cmd_keyring___windows_run "$ps" <<EOF
+$___x_cmd_keyring___windows_ps_boilerplate_
+\$credPtr = [IntPtr]::Zero
+\$ok = [CredMan]::CredRead('${target}', [CredMan]::CRED_TYPE_GENERIC, 0, [ref]\$credPtr)
+if (-not \$ok) {
+    # Distinguish "not found" (1168 = ERROR_NOT_FOUND, exit 1) from
+    # other Win32 errors (exit 2 with the code on stderr so the bash
+    # wrapper can show a meaningful error instead of "password not found").
+    \$err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    if (\$err -eq 1168) { exit 1 }
+    [Console]::Error.WriteLine("CredRead failed: Win32 error \$err")
+    exit 2
+}
+\$cred = [System.Runtime.InteropServices.Marshal]::PtrToStructure(\$credPtr, [type]'CredMan+CREDENTIAL')
+if ('${user}' -ne '' -and \$cred.UserName -ne '${user}') { exit 1 }
+# Copy blob bytes BEFORE CredFree. CredentialBlob is an IntPtr into native
+# memory that's released by CredFree; reading it after is use-after-free
+# (PtrToStructure only marshals the strings into managed copies, not the blob).
+\$bytes = New-Object byte[] \$cred.CredentialBlobSize
+if (\$cred.CredentialBlobSize -gt 0) {
+    [System.Runtime.InteropServices.Marshal]::Copy(\$cred.CredentialBlob, \$bytes, 0, \$cred.CredentialBlobSize)
+}
+[CredMan]::CredFree(\$credPtr)
+# Decode the blob. We always write UTF-16 LE, but credentials written by
+# Chrome / git / other tools may be UTF-8. Three-way heuristic (jaraco/keyring
+# style):
+#   - null byte ratio > 0.3  -> UTF-16 LE (ASCII interleaved with NULs)
+#   - ratio <= 0.3 + valid UTF-8  -> UTF-8 (foreign tool, fall back)
+#   - ratio <= 0.3 + invalid UTF-8  -> UTF-16 (e.g. CJK, no NULs but not
+#     valid UTF-8 either)
+\$utf8Strict = New-Object System.Text.UTF8Encoding(\$false, \$true)
+\$nulls = 0
+foreach (\$b in \$bytes) { if (\$b -eq 0) { \$nulls++ } }
+\$ratio = if (\$bytes.Length -gt 0) { \$nulls / \$bytes.Length } else { 0 }
+\$isValidUtf8 = \$true
+try { [void]\$utf8Strict.GetString(\$bytes) } catch { \$isValidUtf8 = \$false }
+\$str16 = [System.Text.Encoding]::Unicode.GetString(\$bytes)
+\$str8  = [System.Text.Encoding]::UTF8.GetString(\$bytes)
+if (\$ratio -gt 0.3) {
+    \$str = \$str16
+} elseif (\$isValidUtf8) {
+    \$str = \$str8
+    [Console]::Error.WriteLine("warning: credential decoded as UTF-8 (jaraco/keyring style fallback); consider re-setting with UTF-16 for storage consistency")
+} else {
+    \$str = \$str16
+}
+\$utf8 = [System.Text.Encoding]::UTF8.GetBytes(\$str)
+\$stdout = [System.Console]::OpenStandardOutput()
+\$stdout.Write(\$utf8, 0, \$utf8.Length)
+\$stdout.Flush()
+[Console]::Out.Write('|')
+EOF
+)" || return $?
+    [ -n "$x_" ] || return 1
+    x_="${x_%|*}"
+}
+
+___x_cmd_keyring___windows_get(){
+    local x_
+    ___x_cmd_keyring___windows_get_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_keyring___windows_set(){
+    local target="$1"
+    local user="$2"
+    local password="$3"
+    local ps
+    ps="$(___x_cmd_keyring___windows_ps_)" || {
+        printf 'windows: powershell.exe not found on PATH\n' >&2
+        return 1
+    }
+    # PowerShell single-quote escape: ' -> ''
+    local pw_escaped="${password//\'/\'\'}"
+    ___x_cmd_keyring___windows_run "$ps" <<EOF
+$___x_cmd_keyring___windows_ps_boilerplate_
+\$target = '${target}'
+\$user = '${user}'
+\$password = '${pw_escaped}'
+\$bytes = [System.Text.Encoding]::Unicode.GetBytes(\$password)
+\$blob = [System.Runtime.InteropServices.Marshal]::AllocHGlobal(\$bytes.Length)
+[System.Runtime.InteropServices.Marshal]::Copy(\$bytes, 0, \$blob, \$bytes.Length)
+\$cred = New-Object 'CredMan+CREDENTIAL'
+\$cred.Type = [CredMan]::CRED_TYPE_GENERIC
+\$cred.TargetName = \$target
+\$cred.UserName = \$user
+\$cred.CredentialBlob = \$blob
+\$cred.CredentialBlobSize = \$bytes.Length
+\$cred.Persist = [CredMan]::CRED_PERSIST_LOCAL_MACHINE
+\$ok = [CredMan]::CredWrite([ref]\$cred, 0)
+[System.Runtime.InteropServices.Marshal]::FreeHGlobal(\$blob)
+if (-not \$ok) { exit 1 }
+EOF
+}
+
+___x_cmd_keyring___windows_ls(){
+    local filter="${1:-}"
+    local ns="${2:-}"
+    local ps
+    ps="$(___x_cmd_keyring___windows_ps_)" || {
+        printf 'windows: powershell.exe not found on PATH\n' >&2
+        return 1
+    }
+    # PowerShell: pass a wildcard filter string. CredEnumerate with $null
+    # filter returns FALSE on this Windows build (err=0, undocumented),
+    # so we always supply a string. "*" enumerates everything.
+    local ps_filter
+    if [ -z "$filter" ] || [ "$filter" = "*" ]; then
+        ps_filter="'*'"
+    else
+        # Escape single quotes in filter
+        local filter_escaped="${filter//\'/\'\'}"
+        ps_filter="'${filter_escaped}'"
+    fi
+    ___x_cmd_keyring___windows_run "$ps" <<EOF
+$___x_cmd_keyring___windows_ps_boilerplate_
+\$count = 0
+\$credPtr = [IntPtr]::Zero
+\$filter = ${ps_filter}
+\$ok = [CredMan]::CredEnumerate(\$filter, 0, [ref]\$count, [ref]\$credPtr)
+if (-not \$ok) { exit 1 }
+\$ptrSize = [IntPtr]::Size
+# Same rationale as get(): avoid PowerShell's pipe string encoding. Build
+# the full output in a StringBuilder, then dump as one UTF-8 byte block.
+# [char]9 / [char]10 (tab / newline) instead of PowerShell escape sequences
+# so there are no backticks in this heredoc that bash would mis-parse as
+# command substitution.
+\$sb = New-Object System.Text.StringBuilder
+for (\$i = 0; \$i -lt \$count; \$i++) {
+    # CredEnumerate returns PCREDENTIALW* — pointer to an array of pointers.
+    # Each element is a pointer to a CREDENTIAL. Reading the slot first
+    # and then marshaling the pointed-to struct is required; passing the
+    # slot itself to PtrToStructure dereferences into the wrong memory and
+    # AccessViolations when it follows the embedded string pointers.
+    \$credPtrI = [System.Runtime.InteropServices.Marshal]::ReadIntPtr(\$credPtr, \$i * \$ptrSize)
+    \$cred = [System.Runtime.InteropServices.Marshal]::PtrToStructure(\$credPtrI, [type]'CredMan+CREDENTIAL')
+    # Filter to x-cmd's own namespace (UserName = x-cmd-<uid>) so the
+    # system / MSA / OneDrive creds that also live in Credential Manager
+    # don't show up.
+    if (\$cred.UserName -like 'x-cmd-*') {
+        [void]\$sb.AppendLine(\$cred.TargetName + [char]9 + \$cred.UserName)
+    }
+}
+\$utf8 = [System.Text.Encoding]::UTF8.GetBytes(\$sb.ToString())
+\$stdout = [System.Console]::OpenStandardOutput()
+\$stdout.Write(\$utf8, 0, \$utf8.Length)
+\$stdout.Flush()
+[CredMan]::CredFree(\$credPtr)
+EOF
+}
+
+___x_cmd_keyring___windows_rm(){
+    local target="$1"
+    local user="$2"
+    local ps
+    ps="$(___x_cmd_keyring___windows_ps_)" || {
+        printf 'windows: powershell.exe not found on PATH\n' >&2
+        return 1
+    }
+    ___x_cmd_keyring___windows_run "$ps" <<EOF
+$___x_cmd_keyring___windows_ps_boilerplate_
+\$target = '${target}'
+\$user = '${user}'
+\$ok = [CredMan]::CredDelete(\$target, [CredMan]::CRED_TYPE_GENERIC, 0)
+if (-not \$ok) { exit 1 }
+EOF
+}
+
+___x_cmd_keyring___windows_lock(){
+    # Note: dispatcher in lib/main handles the stderr note inline. This
+    # function is kept for consistency with other backends but does
+    # its own no-op + note.
+    printf 'windows: Credential Manager has no CLI lock; CM is per-login-session. Use `x keyring lock --screen` (Win+L) or logoff.\n' >&2
+    return 1
+}
+
+___x_cmd_keyring___windows_unlock(){
+    printf 'windows: Credential Manager auto-unlocks on user logon; no CLI unlock primitive\n' >&2
+    return 0
+}

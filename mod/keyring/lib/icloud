@@ -1,0 +1,232 @@
+# shellcheck shell=dash
+
+# iCloud Keychain subcommands (cget/cset/cls/crm). Distinct from
+# get/set/ls/rm so users opt in explicitly to Apple's cloud sync.
+
+___x_cmd_keyring_default_icloud_user_(){
+    x_="x-cmd-keyring"
+}
+
+___x_cmd_keyring___icloud_keychain_path_(){
+    ___x_cmd os name_
+    if [ "$x_" != "darwin" ]; then
+        return 1
+    fi
+    local keychain_dir="$HOME/Library/Keychains"
+    if [ -d "$keychain_dir" ]; then
+        local kcdb
+        # shellcheck disable=SC2012  # ls is fine here, we're matching a structural pattern
+        kcdb="$(ls "$keychain_dir" 2>/dev/null | awk -F/ '
+            /^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/ {
+                print "'"$keychain_dir"'/" $0 "/keychain-2.db"
+            }
+        ' | head -1)"
+        if [ -n "$kcdb" ] && [ -f "$kcdb" ]; then
+            x_="$kcdb"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+___x_cmd_keyring_cget_(){
+    ___x_cmd_keyring___darwin_awk_get_ "$1" "$2" "$3"
+}
+
+___x_cmd_keyring_cget(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring cget; return 0 ;;
+    esac
+    local x_="";  ___x_cmd os name_
+    if [ "$x_" != "darwin" ]; then
+        N=keyring M="x keyring cget is macOS-only (iCloud Keychain); not applicable on $x_" log:ret:64
+    fi
+    local ns=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --ns|--namespace)
+                [ "$#" -ge 2 ] || N=keyring M="--ns requires a value" log:ret:64
+                ns="$2"; shift 2 ;;
+            --) shift; break ;;
+            -*) N=keyring M="Unknown option -> $1" log:ret:64 ;;
+            *)  break ;;
+        esac
+    done
+    if [ -z "$ns" ]; then
+        ___x_cmd_keyring_default_icloud_user_
+        ns="$x_"
+    fi
+    local service="${1:?keyring cget: <service> required}"
+    shift
+    [ "$#" -eq 0 ] || N=keyring M="too many arguments; expected: x keyring cget [--ns <name>] <service>" log:ret:64
+
+    ___x_cmd_keyring___icloud_keychain_path_ || {
+        N=keyring M="iCloud Keychain not enabled (no ~/Library/Keychains/<UUID>/keychain-2.db found)" log:ret:1
+    }
+    local icloud="$x_"
+    ___x_cmd_keyring_cget_ "$service" "$ns" "$icloud" || {
+        N=keyring M="password not found: iCloud service=$service user=$ns" log:ret:1
+    }
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_keyring_cset(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring cset; return 0 ;;
+    esac
+    local x_="";  ___x_cmd os name_
+    if [ "$x_" != "darwin" ]; then
+        N=keyring M="x keyring cset is macOS-only (iCloud Keychain); not applicable on $x_" log:ret:64
+    fi
+    local ns=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --ns|--namespace)
+                [ "$#" -ge 2 ] || N=keyring M="--ns requires a value" log:ret:64
+                ns="$2"; shift 2 ;;
+            --) shift; break ;;
+            -*) N=keyring M="Unknown option -> $1" log:ret:64 ;;
+            *)  break ;;
+        esac
+    done
+    if [ -z "$ns" ]; then
+        ___x_cmd_keyring_default_icloud_user_
+        ns="$x_"
+    fi
+
+    local service="${1:?keyring cset: <service> required}"
+    shift
+    local password=
+    if [ "$#" -gt 0 ]; then
+        password="$1"
+        shift
+    fi
+    [ "$#" -eq 0 ] || N=keyring M="too many arguments; expected: x keyring cset [--ns <name>] <service> [<password>]" log:ret:64
+
+    ___x_cmd_keyring___icloud_keychain_path_ || {
+        N=keyring M="iCloud Keychain not enabled (no ~/Library/Keychains/<UUID>/keychain-2.db found)" log:ret:1
+    }
+    local icloud="$x_"
+
+    if [ -z "$password" ]; then
+        if [ ! -t 0 ]; then
+            password="$(cat)"
+            case "$password" in
+                "
+")
+                    password="${password%?}"
+                    ;;
+            esac
+        else
+            printf 'Password for iCloud %s in %s: ' "$ns" "$service" >&2
+            if stty -echo 2>/dev/null; then
+                trap 'stty echo 2>/dev/null; printf "\n" >&2' INT TERM HUP
+                IFS= read -r password
+                stty echo 2>/dev/null
+                trap - INT TERM HUP
+                printf '\n' >&2
+            else
+                IFS= read -r password
+            fi
+        fi
+    fi
+    [ -n "$password" ] || N=keyring M="empty password rejected (pipe it: printf '%s' \"\$pw\" | x keyring cset <service>)" log:ret:64
+
+    # iCloud -U does NOT update existing entries; reuse keychain_set for
+    # the standard path, fall back without -U on iCloud reject.
+    if ___x_cmd_keyring___keychain_set "$service" "$ns" "$password" "$icloud"; then
+        printf 'iCloud keychain updated: service=%s user=%s\n' "$service" "$ns" >&2
+        return 0
+    fi
+    if security add-generic-password -s "$service" -a "$ns" -w "$password" "$icloud" >/dev/null 2>&1; then
+        printf 'iCloud keychain created: service=%s user=%s\n' "$service" "$ns" >&2
+        return 0
+    fi
+    if security find-generic-password -s "$service" -a "$ns" -w 2>/dev/null >/dev/null; then
+        printf 'iCloud keychain entry verified: service=%s user=%s\n' "$service" "$ns" >&2
+        return 0
+    fi
+    N=keyring M="iCloud keychain put failed: service=$service user=$ns" log:ret:1
+}
+
+___x_cmd_keyring_cls(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring cls; return 0 ;;
+    esac
+    local x_="";  ___x_cmd os name_
+    if [ "$x_" != "darwin" ]; then
+        N=keyring M="x keyring cls is macOS-only (iCloud Keychain); not applicable on $x_" log:ret:64
+    fi
+    local filter=""
+    local ns=
+    local all=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --ns|--namespace)
+                [ "$#" -ge 2 ] || N=keyring M="--ns requires a value" log:ret:64
+                ns="$2"; shift 2 ;;
+            -a|--all)
+                all=1; shift ;;
+            --) shift; break ;;
+            -*) N=keyring M="Unknown option -> $1" log:ret:64 ;;
+            *)
+                if [ -z "$filter" ]; then
+                    filter="$1"
+                else
+                    N=keyring M="too many arguments; expected: x keyring cls [--ns <name>] [-a] [<service>]" log:ret:64
+                fi
+                shift
+                ;;
+        esac
+    done
+    if [ "$all" -eq 1 ]; then
+        ns=""
+    elif [ -z "$ns" ]; then
+        ___x_cmd_keyring_default_icloud_user_
+        ns="$x_"
+    fi
+
+    ___x_cmd_keyring___icloud_keychain_path_ || {
+        N=keyring M="iCloud Keychain not enabled" log:ret:1
+    }
+    local icloud="$x_"
+    ___x_cmd_keyring___keychain_ls "$filter" "$ns" "$icloud"
+}
+
+___x_cmd_keyring_crm(){
+    case "$1" in
+        -h|--help) ___x_cmd help -m keyring crm; return 0 ;;
+    esac
+    local x_="";  ___x_cmd os name_
+    if [ "$x_" != "darwin" ]; then
+        N=keyring M="x keyring crm is macOS-only (iCloud Keychain); not applicable on $x_" log:ret:64
+    fi
+    local ns=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --ns|--namespace)
+                [ "$#" -ge 2 ] || N=keyring M="--ns requires a value" log:ret:64
+                ns="$2"; shift 2 ;;
+            --) shift; break ;;
+            -*) N=keyring M="Unknown option -> $1" log:ret:64 ;;
+            *)  break ;;
+        esac
+    done
+    if [ -z "$ns" ]; then
+        ___x_cmd_keyring_default_icloud_user_
+        ns="$x_"
+    fi
+    local service="${1:?keyring crm: <service> required}"
+    shift
+    [ "$#" -eq 0 ] || N=keyring M="too many arguments; expected: x keyring crm [--ns <name>] <service>" log:ret:64
+
+    ___x_cmd_keyring___icloud_keychain_path_ || {
+        N=keyring M="iCloud Keychain not enabled (no ~/Library/Keychains/<UUID>/keychain-2.db found)" log:ret:1
+    }
+    local icloud="$x_"
+    if ___x_cmd_keyring___keychain_rm "$service" "$ns" "$icloud"; then
+        printf 'iCloud keychain deleted: service=%s user=%s\n' "$service" "$ns" >&2
+        return 0
+    fi
+    N=keyring M="iCloud keychain delete failed (entry may not exist): service=$service user=$ns" log:ret:1
+}

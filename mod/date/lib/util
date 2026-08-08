@@ -1,0 +1,90 @@
+# Shared utility functions used by lib/dump (and friends).
+#
+# ___x_cmd_date_tosec_            — Hinnant reverse: civil (y/m/d/h/m/s) → epoch (in x_)
+# ___x_cmd_date_days_in_month_    — days-in-(year, month) for date-overflow normalization
+#
+# Pure POSIX shell, no awk.
+
+# Civil date (year, month, day) → days since 1970-01-01 (in x_).
+# Hinnant civil_from_days inverse, with month adjustment so that
+# March=0, April=1, ..., January=10, February=11 (Y_adj = year if m > 2).
+___x_cmd_date_civil2day_(){
+    local x_year=$1
+    local x_month=$2
+    local x_day=$3
+    local _y_adj _m_adj _era _yoe _doy _doe _days
+    if [ "$x_month" -le 2 ]; then
+        _y_adj=$(( x_year - 1 ))
+        _m_adj=$(( x_month + 9 ))
+    else
+        _y_adj=$x_year
+        _m_adj=$(( x_month - 3 ))
+    fi
+    _era=$(( _y_adj / 400 ))
+    _yoe=$(( _y_adj - _era * 400 ))
+    _doy=$(( (153 * _m_adj + 2) / 5 + x_day - 1 ))
+    _doe=$(( _yoe * 365 + _yoe / 4 - _yoe / 100 + _doy ))
+    _days=$(( _doe + _era * 146097 - 719468 ))
+    x_=$_days
+}
+
+# Days since 1970-01-01 → civil (year, month, day) via x_year/x_month/x_day.
+# Hinnant days_from_civil inverse. Self-consistent with civil2day_ (same
+# 719468 offset).
+___x_cmd_date_day2civil__(){
+    local x_days=$1
+    local _z _era _doe _yoe _y _doy _mp
+    _z=$(( x_days + 719468 ))
+    if [ "$_z" -ge 0 ]; then
+        _era=$(( _z / 146097 ))
+    else
+        _era=$(( (_z - 146096) / 146097 ))
+    fi
+    _doe=$(( _z - _era * 146097 ))
+    _yoe=$(( (_doe - _doe/1460 + _doe/36524 - _doe/146096) / 365 ))
+    _y=$(( _yoe + _era * 400 ))
+    _doy=$(( _doe - (365*_yoe + _yoe/4 - _yoe/100) ))
+    _mp=$(( (5*_doy + 2) / 153 ))
+    x_day=$(( _doy - (153*_mp + 2)/5 + 1 ))
+    if [ "$_mp" -lt 10 ]; then
+        x_month=$(( _mp + 3 ))
+    else
+        x_month=$(( _mp - 9 ))
+    fi
+    if [ "$x_month" -le 2 ]; then
+        x_year=$(( _y + 1 ))
+    else
+        x_year=$_y
+    fi
+}
+
+# Civil date (year, month, day, hour, minute, second) → epoch seconds in x_.
+# Hinnant civil_from_days reverse (uses civil2day_ internally).
+___x_cmd_date_tosec_(){
+    local x_year=$1
+    local x_month=$2
+    local x_day=$3
+    local x_hour=$4
+    local x_minute=$5
+    local x_second=$6
+    ___x_cmd_date_civil2day_ "$x_year" "$x_month" "$x_day"
+    x_=$(( x_ * 86400 + x_hour * 3600 + x_minute * 60 + x_second ))
+}
+
+# Days in (year, month). Sets x_ to 28..31. Feb uses leap-year check.
+# _y=0 means no year context (Feb=28).
+___x_cmd_date_days_in_month_(){
+    local _y=$1 _m=$2
+    case "$_m" in
+        1|3|5|7|8|10|12)  x_=31 ;;
+        4|6|9|11)          x_=30 ;;
+        2)
+            if [ "$_y" = 0 ] || { [ $(( _y % 4 )) -eq 0 ] && { [ $(( _y % 100 )) -ne 0 ] || [ $(( _y % 400 )) -eq 0 ]; }; }; then
+                x_=29
+            else
+                x_=28
+            fi
+            ;;
+        *)  x_=0 ;;
+    esac
+}
