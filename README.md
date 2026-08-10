@@ -384,11 +384,6 @@ See our [License Explanation](https://www.x-cmd.com/start/license).
 - [Contact Us](https://www.x-cmd.com/start/feedback)
 - [Report Bug](https://github.com/x-cmd/x-cmd/issues/new?template=1-bug-report.yml)
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=x-cmd/x-cmd&type=Date)](https://star-history.com/#x-cmd/x-cmd&Date)
-
-
 ## [Poweruser Recommendation](https://x-cmd.com/powercommander)
 
 <!-- Poweruser Recommendation Insert -->
