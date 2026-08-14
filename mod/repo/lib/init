@@ -1,0 +1,55 @@
+# shellcheck shell=dash
+
+___x_cmd_repo_init(){
+    case "${1-}" in
+        -h|--help)  ___x_cmd help -m repo init "$@" ; return 0 ;;
+    esac
+
+    [ $# -gt 0 ] || { ___x_cmd help -m repo init ; return 1 ; }
+
+    local id="$1"
+    local x_
+    ___x_cmd_repo_resolve_ "$id" || return $?
+    local main="$x_"
+    local bare="$___X_CMD_REPO_ROOT/.bare/${main#"$___X_CMD_REPO_ROOT/"}.git"
+
+    [ -d "$bare" ] || N=repo M="No bare at $bare. Run 'x repo $id' first to clone, then 'x repo init $id'." log:ret:1
+
+    if ___x_cmd git -C "$bare" rev-parse --verify HEAD >/dev/null 2>&1; then
+        N=repo M="Already initialized: $bare has commits. Use 'x repo <id>' or 'x repo wt' to manage worktrees." log:ret:1
+    fi
+
+    local name="${id##*/}"
+
+    local bootstrap
+    bootstrap="$___X_CMD_ROOT_TMP/repo/$(x date vlid)"
+    ___x_cmd mkdirp "$bootstrap" || return $?
+
+    local rc=0
+    (
+        cd "$bootstrap" || exit 1
+
+        ___x_cmd git init -q -b main
+        {
+            printf '# %s\n\n' "$name"
+            printf '> Initialized via x repo init.\n\n'
+            printf 'Repository: %s\n' "$id"
+            printf 'Default branch: main\n'
+        } > README.md
+        ___x_cmd git add README.md
+        ___x_cmd git commit -q -m "Initial commit"
+
+        ___x_cmd git remote add origin "$bare"
+
+        # Push is the concurrency point. If another agent already
+        # init'd the bare, this fails with 'non-fast-forward' —
+        # git's default push behavior, no application code needed.
+        ___x_cmd git push -u -q origin main
+    ) || rc=$?
+    rm -rf "$bootstrap"
+    [ "$rc" -eq 0 ] || return "$rc"
+
+    ___x_cmd git -C "$bare" worktree add "$main" main || return $?
+
+    repo:info "Repo init successfully." || :
+}

@@ -18,14 +18,47 @@ ___x_cmd_git_meta_root_(){
     local s="${1:-$PWD}";   s="${s%/}"
     local x_=""
     if ___x_cmd locatefolder_ "${s}" .git/config; then      ___X_CMD_GIT_META_ROOT_="$x_"
+    elif ___x_cmd locatefolder_ "${s}" .git; then          ___X_CMD_GIT_META_ROOT_="$x_"
     else                                                    ___X_CMD_GIT_META_ROOT_=
+        return 1
     fi
 }
 
 ___x_cmd_git_meta_root(){
     local ___X_CMD_GIT_META_ROOT_
-    ___x_cmd_git_meta_root_ "$@"
+    ___x_cmd_git_meta_root_ "$@" || return $?
     printf "%s\n" "$___X_CMD_GIT_META_ROOT_"
+}
+
+___x_cmd_git_meta_gitdir_(){
+    local root="${1:-$___X_CMD_GIT_META_ROOT_}"
+    if [ -f "$root/.git" ]; then
+        local key val
+        while IFS=' ' read -r key val; do
+            [ "$key" = "gitdir:" ] && { ___X_CMD_GIT_META_GITDIR_="$val"; return 0; }
+        done < "$root/.git"
+        ___X_CMD_GIT_META_GITDIR_=$(command git -C "$root" rev-parse --git-dir 2>/dev/null) || {
+            ___X_CMD_GIT_META_GITDIR_=
+            return 1
+        }
+    else
+        ___X_CMD_GIT_META_GITDIR_="$root/.git"
+    fi
+}
+
+___x_cmd_git_meta_common_gitdir_(){
+    local gitdir="${1:-$___X_CMD_GIT_META_GITDIR_}"
+    if [ -f "$gitdir/commondir" ]; then
+        local commondir
+        read -r commondir < "$gitdir/commondir" || return 1
+        if [ "${commondir#/}" = "$commondir" ]; then
+            ___X_CMD_GIT_META_COMMON_GITDIR_="$gitdir/$commondir"
+        else
+            ___X_CMD_GIT_META_COMMON_GITDIR_="$commondir"
+        fi
+    else
+        ___X_CMD_GIT_META_COMMON_GITDIR_="$gitdir"
+    fi
 }
 
 ___x_cmd_git_meta_owner(){
@@ -62,20 +95,40 @@ $1~/^[ \t\b\v]+url[ \t\b\v]+$/{
 }
 
 ___x_cmd_git_meta_config(){
-    local ___X_CMD_GIT_META_ROOT_
+    local ___X_CMD_GIT_META_ROOT_ ___X_CMD_GIT_META_GITDIR_ ___X_CMD_GIT_META_COMMON_GITDIR_
     ___x_cmd_git_meta_root_ "$PWD" || {
         git:error "Cannot locate .git/config"
         return 1
     }
 
-    ___x_cmd_cmds_cat "$___X_CMD_GIT_META_ROOT_/.git/config"
+    ___x_cmd_git_meta_gitdir_ "$___X_CMD_GIT_META_ROOT_" || {
+        git:error "Cannot locate gitdir"
+        return 1
+    }
+
+    ___x_cmd_git_meta_common_gitdir_ "$___X_CMD_GIT_META_GITDIR_" || {
+        git:error "Cannot locate common gitdir"
+        return 1
+    }
+
+    ___x_cmd_cmds_cat "$___X_CMD_GIT_META_COMMON_GITDIR_/config"
 }
 
 ___x_cmd_git_meta_url(){
     local name="${1:-origin}"
-    command git config --worktree --get-regexp "remote\.${name}\.url" | \
-        ___x_cmd_cmds_awk -v code=1 '{
-            print $2; code=0;
+    ___x_cmd_git_meta_config | ___x_cmd_cmds_awk -v name="$name" '
+        BEGIN { in_section=0 }
+        {
+            line=$0
+            gsub(/^[ \t]+|[ \t]+$/, "", line)
         }
-        END{ exit(code); }'
+        line == "[remote \"" name "\"]" { in_section=1; next }
+        line ~ /^\[/ { in_section=0; next }
+        in_section && $1 == "url" && $2 == "=" {
+            print $3
+            found=1
+            exit
+        }
+        END { exit(!found) }
+    '
 }
