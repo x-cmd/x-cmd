@@ -15,13 +15,38 @@ ___x_cmd_repo_update(){
 
 ___x_cmd_repo_update_one(){
     local id="$1"
-    local main
+    local main bare
     local x_
 
     ___x_cmd_repo_resolve_ "$id" || return $?
     main="$x_"
+    bare="$___X_CMD_REPO_ROOT/.bare/${main#"$___X_CMD_REPO_ROOT/"}.git"
 
     if [ ! -e "$main" ]; then
+        # Bare exists and has commits: skip create_bare (which would try
+        # to clone again into the same destination and fail). Just
+        # attach the default worktree.
+        if [ -d "$bare" ] && ___x_cmd git -C "$bare" rev-parse --verify HEAD >/dev/null 2>&1; then
+            local default default_short
+            default=$(___x_cmd git -C "$bare" symbolic-ref HEAD 2>/dev/null)
+            default_short=${default#refs/heads/}
+            if [ -z "$default_short" ]; then
+                N=repo M="Cannot determine default branch for -> $id" log:ret:1
+            fi
+            ___x_cmd git -C "$bare" worktree add "$main" "$default_short" || return $?
+            ___x_cmd_repo_wt_set_upstream "$main" "$default_short" || return $?
+            return 0
+        fi
+
+        # Bare exists but is empty (uninitialized). Refuse with a tip —
+        # 'x repo init' is the explicit way to bootstrap.
+        if [ -d "$bare" ] && ! ___x_cmd git -C "$bare" rev-parse --verify HEAD >/dev/null 2>&1; then
+            N=repo M="Uninitialized: $bare has no commits. Run 'x repo init $id' to bootstrap." log:ret:1
+        fi
+
+        # Bare doesn't exist either: clone it (create_bare also attaches
+        # the worktree for non-empty remotes; for empty, the empty-check
+        # in create_bare fires the uninit tip).
         ___x_cmd_repo_create_bare "$id" "$main"
         return $?
     fi
@@ -41,18 +66,40 @@ ___x_cmd_repo_create_bare(){
     local id="$1" main="$2"
     local bare="$___X_CMD_REPO_ROOT/.bare/${main#"$___X_CMD_REPO_ROOT/"}.git"
 
-    mkdir -p "$(dirname "$bare")" || return $?
+    ___x_cmd mkdirp "$(dirname "$bare")" || return $?
 
     ___x_cmd git clone --bare "$id" "$bare" || return $?
 
-    local default
+    # Empty repository: clone --bare succeeded but the bare has no commits.
+    # 'git worktree add' would fail on the unborn HEAD. Refuse with a tip
+    # pointing to 'x repo init', which is the explicit bootstrap path.
+    # The bare is left in place so the user can run init against it.
+    if ! ___x_cmd git -C "$bare" rev-parse --verify HEAD >/dev/null 2>&1; then
+        N=repo M="Uninitialized: $id is empty. Run 'x repo init $id' to bootstrap." log:ret:1
+    fi
+
+    local default default_short
     default=$(___x_cmd git -C "$bare" symbolic-ref HEAD 2>/dev/null)
+    default_short=${default#refs/heads/}
 
     if [ -z "$default" ]; then
         N=repo M="Cannot determine default branch for -> $id" log:ret:1
     fi
 
-    ___x_cmd git -C "$bare" worktree add "$main" "$default"
+    # Pass the short branch name: 'git worktree add <path> refs/heads/main'
+    # surprisingly checks out a detached HEAD, while '... main' attaches to
+    # the branch.
+    ___x_cmd git -C "$bare" worktree add "$main" "$default_short" || return $?
+
+    # git worktree add does not set up an upstream in this bare-derived
+    # layout (there are no refs/remotes/origin/*), so configure it manually.
+    ___x_cmd_repo_wt_set_upstream "$main" "$default_short" || return $?
+}
+
+___x_cmd_repo_wt_set_upstream(){
+    local wt="$1" branch="$2"
+    ___x_cmd git -C "$wt" config branch."$branch".remote origin
+    ___x_cmd git -C "$wt" config branch."$branch".merge refs/heads/"$branch"
 }
 
 ___x_cmd_repo_update_bare(){
