@@ -3,12 +3,12 @@ name: knowledge
 description: |
   Search Hacker News, Wikipedia, DuckDuckGo, RFC docs, and Stack Exchange from the command line.
   Zero barrier — install x-cmd and start searching.
-  Use for "search", "hn", "hacker news", "wikipedia", "ddg", "duckduckgo", "rfc", "stack overflow".
+  Use for "search", "hn", "hacker news", "wikipedia", "ddgo", "duckduckgo", "rfc", "stack overflow".
 
 metadata:
   version: "0.1.0"
   category: "knowledge"
-  tags: "search,hn,wikipedia,ddg,rfc,stack-overflow,knowledge"
+  tags: "search,hn,wikipedia,ddgo,duckduckgo,rfc,stack-overflow,knowledge"
   repository: "https://github.com/x-cmd/skill0"
   type: "skill0"
 ---
@@ -31,7 +31,7 @@ x hn top
 x wkp "artificial intelligence"
 
 # DuckDuckGo search
-x ddg "rust programming language"
+x ddgo "rust programming language"
 
 # RFC documents
 x rfc 2616
@@ -47,7 +47,7 @@ x se "how to exit vim"
 | `x hn top` | Hacker News | Top 10 trending posts |
 | `x hn new` | Hacker News | Latest submissions |
 | `x wkp <query>` | Wikipedia | Search articles |
-| `x ddg <query>` | DuckDuckGo | Web search |
+| `x ddgo <query>` | DuckDuckGo | Web search |
 | `x rfc <number>` | RFC docs | Read RFC specifications |
 | `x se <query>` | Stack Exchange | Search Q&A |
 
