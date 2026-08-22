@@ -36,6 +36,6 @@ Upstream: `https://en.wikipedia.org/w/api.php` — MediaWiki action API. Sister 
 
 For the questions that go one hop beyond a wikitext summary:
 - `x wkp : <query>` / `x wkp ddgo <query>` — same `x wkp` module, routed via DuckDuckGo's Wikipedia index (handles ambiguous or colloquial queries better than title search)
-- `x ddg <query>` — general web search, useful when Wikipedia has no article but the topic exists on the open web
+- `x ddgo <query>` — general web search, useful when Wikipedia has no article but the topic exists on the open web
 - See the [knowledge](../knowledge/SKILL.md) skill for the broader `x hn` / `x rfc` / `x se` research toolkit
 - `x wkp open <page>` — fall back to the browser when you actually need the rendered page (infoboxes, tables, images)

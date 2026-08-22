@@ -1,0 +1,74 @@
+# shellcheck shell=dash disable=SC2120,SC2016
+
+___x_cmd_agent_should_auto_setup(){
+    [ ! -e "$___X_CMD_ROOT_DATA/agent/preference/no-setup" ]
+}
+
+___x_cmd_agent_tdown(){
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent tdown "$@" ; return 0 ;;
+            *)              N=agent M="Unknown option -> $1" log:ret:64 ;;
+        esac
+    done
+    local nosetupfp="$___X_CMD_ROOT_DATA/agent/preference/no-setup"
+    ___x_cmd touch "$nosetupfp" || N=agent M="Fail to create $nosetupfp" log:ret:1
+
+    local pattern='https://www.x-cmd.com/llms.txt'
+    local dir fp
+
+    while read -r dir fp; do
+        [ -f "$fp" ] || continue
+        ___x_cmd_cmds grep -qF "$pattern" "$fp" 2>/dev/null || continue
+        ___x_cmd_agent_tdown_remove_prompt_ "$fp" "$pattern"
+        local fp_tilde="~${fp#"$HOME"}"
+        agent:info "Removed x-cmd prompt from $fp_tilde"
+    done <<A
+$HOME/.agents $HOME/.agents/AGENTS.md
+$HOME/.claude $HOME/CLAUDE.md
+$HOME/.codex $HOME/.codex/AGENTS.md
+$HOME/.gemini $HOME/.gemini/GEMINI.md
+$HOME/.config/opencode $HOME/.config/opencode/AGENTS.md
+A
+
+    while read -r dir; do
+        [ -e "$dir/skills/skill0" ] || [ -L "$dir/skills/skill0" ] || continue
+        ___x_cmd rmrf "$dir/skills/skill0"
+        local dir_tilde="~${dir#"$HOME"}"
+        agent:info "Removed skill0 symlink from $dir_tilde/skills"
+        [ -d "$dir/skills" ] && ___x_cmd fsiter --dirempty "$dir/skills" && {
+            ___x_cmd rmrf "$dir/skills"
+            agent:info "Removed empty skills directory from $dir_tilde"
+        }
+    done <<A
+$HOME/.agents
+$HOME/.claude
+$HOME/.codex
+$HOME/.config/opencode
+$HOME/.openclaw
+A
+}
+
+___x_cmd_agent_tdown_remove_prompt_(){
+    local fp="$1"
+    local pattern="$2"
+
+    local data=""
+    if [ -e "$fp" ]; then
+        data="$(___x_cmd_cmds cat "$fp")" 2>/dev/null || N=agent M="Fail to read data from $fp" log:ret:1
+    fi
+
+    data="$data" pattern="$pattern" ___x_cmd_cmds awk '
+        BEGIN{
+            data    = ENVIRON["data"]
+            pattern = ENVIRON["pattern"]
+            gsub( /[\n]+$/, "", data )
+            l = split(data, arr, "\n")
+            for (i=1; i<=l; ++i) {
+                if (index( arr[i], pattern ) <= 0) {
+                    print arr[i]
+                }
+            }
+        }
+    '>"$fp"
+}
