@@ -1,0 +1,284 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_repo_card(){
+    local days=90
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m repo card ; return 0 ;;
+            --days)     days="$2" ; shift 2 ;;
+            --days=*)   days="${1#--days=}" ; shift ;;
+            -*)         N=repo M="Unknown flag -> $1 (try --days N)" log:ret:64 ;;
+            *)          break ;;
+        esac
+    done
+
+    [ $# -gt 0 ] || N=repo M="Usage: x repo card [--days N] <id>" log:ret:64
+
+    case "$days" in
+        ''|*[!0-9]*) N=repo M="--days must be a positive integer, got -> $days" log:ret:64 ;;
+    esac
+
+    local id="$1"
+    local owner_repo=""
+
+    case "$id" in *@*) id="${id%@*}" ;; esac
+
+    case "$id" in
+        github.com/*) owner_repo="${id#github.com/}" ;;
+        gh/*)         owner_repo="${id#gh/}" ;;
+        */*)          owner_repo="$id" ;;
+        *)            N=repo M="Invalid repo id -> $id (expect owner/repo)" log:ret:1 ;;
+    esac
+
+    ___x_cmd_repo_card_emit_ "$owner_repo" "$days"
+}
+
+
+___x_cmd_repo_card_emit_(){
+    local owner_repo="$1"
+    local days="$2"
+    local owner="${owner_repo%/*}"
+    local repo="${owner_repo#*/}"
+
+    local gh_token
+    gh_token=$(gh auth token 2>/dev/null) || gh_token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+    if [ -z "$gh_token" ]; then
+        N=repo M="No GitHub token. Run 'gh auth login' or set GH_TOKEN." log:ret:1
+    fi
+
+    # Four windows: 30-day (recent momentum), 90-day (quarter default,
+    # user-overridable via --days), 180-day (half-year), 360-day (year).
+    # Date math is computed once per window and reused in two formats:
+    # ISO timestamp (for /commits?since=) and YYYY-MM-DD (for client-
+    # side comparison against GraphQL date fields like publishedAt[:10]).
+    local days30=30 days90="$days" days180=180 days360=360
+    local date30 date90 date180 date360 date30_short date90_short date180_short date360_short
+    date30=$(date -u -v-"${days30}"d +%Y-%m-%dT00:00:00Z 2>/dev/null) || \
+    date30=$(date -u -d "${days30} days ago" +%Y-%m-%dT00:00:00Z)
+    date90=$(date -u -v-"${days90}"d +%Y-%m-%dT00:00:00Z 2>/dev/null) || \
+    date90=$(date -u -d "${days90} days ago" +%Y-%m-%dT00:00:00Z)
+    date180=$(date -u -v-"${days180}"d +%Y-%m-%dT00:00:00Z 2>/dev/null) || \
+    date180=$(date -u -d "${days180} days ago" +%Y-%m-%dT00:00:00Z)
+    date360=$(date -u -v-"${days360}"d +%Y-%m-%dT00:00:00Z 2>/dev/null) || \
+    date360=$(date -u -d "${days360} days ago" +%Y-%m-%dT00:00:00Z)
+    date30_short=${date30%T*}
+    date90_short=${date90%T*}
+    date180_short=${date180%T*}
+    date360_short=${date360%T*}
+
+    # GraphQL: every static repo field + 16 time-windowed search calls
+    # (mergedPR / openPR / closedIssue / openIssue × 30d / 90d / 180d /
+    # 360d) + defaultBranchRef for the HEAD SHA, all in one round-trip.
+    #
+    # History:
+    # - GraphQL `search(...)` at root level works when aliased (the
+    #   earlier failure was when search was nested inside a
+    #   `repository(...)` selection — that returns 0 silently).
+    # - `defaultBranchRef` is pulled into a separate aliased
+    #   repository query because inlining it alongside a large
+    #   field set hits an undocumented GraphQL cost ceiling.
+    # - `history(since:DATE)` errors when multiple aliased instances
+    #   are on the same level, and even a single instance is
+    #   currently broken on GitHub's backend, so recentCommit goes
+    #   via REST `/commits?since=DATE` below.
+    local query response
+    local gql='query($o:String!,$n:String!,$s1:String!,$s2:String!,$s3:String!,$s4:String!,$s5:String!,$s6:String!,$s7:String!,$s8:String!,$s9:String!,$s10:String!,$s11:String!,$s12:String!,$s13:String!,$s14:String!,$s15:String!,$s16:String!){a:repository(owner:$o,name:$n){description licenseInfo{spdxId} createdAt isArchived homepageUrl forkCount watchers{totalCount} stargazerCount pushedAt stargazers(first:100,orderBy:{field:STARRED_AT,direction:DESC}){edges{starredAt}} forks(first:100,orderBy:{field:CREATED_AT,direction:DESC}){edges{node{createdAt}}} releases(first:100,orderBy:{field:CREATED_AT,direction:DESC}){totalCount nodes{publishedAt}} mentionableUsers{totalCount} issues(states:[OPEN,CLOSED]){totalCount} pullRequests(states:[OPEN,CLOSED]){totalCount} languages(first:100){edges{size node{name}}}} b:repository(owner:$o,name:$n){defaultBranchRef{target{... on Commit{oid committedDate}}}} m30:search(query:$s1,type:ISSUE,first:0){issueCount} m90:search(query:$s2,type:ISSUE,first:0){issueCount} m180:search(query:$s3,type:ISSUE,first:0){issueCount} m360:search(query:$s4,type:ISSUE,first:0){issueCount} op30:search(query:$s5,type:ISSUE,first:0){issueCount} op90:search(query:$s6,type:ISSUE,first:0){issueCount} op180:search(query:$s7,type:ISSUE,first:0){issueCount} op360:search(query:$s8,type:ISSUE,first:0){issueCount} ci30:search(query:$s9,type:ISSUE,first:0){issueCount} ci90:search(query:$s10,type:ISSUE,first:0){issueCount} ci180:search(query:$s11,type:ISSUE,first:0){issueCount} ci360:search(query:$s12,type:ISSUE,first:0){issueCount} oi30:search(query:$s13,type:ISSUE,first:0){issueCount} oi90:search(query:$s14,type:ISSUE,first:0){issueCount} oi180:search(query:$s15,type:ISSUE,first:0){issueCount} oi360:search(query:$s16,type:ISSUE,first:0){issueCount}}'
+    # Build 16 search query strings (4 metrics × 4 windows) — passing
+    # them as full strings (not concatenated via GraphQL + operator)
+    # avoids the > character being treated as a parse terminator.
+    local r="repo:${owner_repo}"
+    local _s1="$r is:pr is:merged created:>$date30_short"
+    local _s2="$r is:pr is:merged created:>$date90_short"
+    local _s3="$r is:pr is:merged created:>$date180_short"
+    local _s4="$r is:pr is:merged created:>$date360_short"
+    local _s5="$r is:pr state:open created:>$date30_short"
+    local _s6="$r is:pr state:open created:>$date90_short"
+    local _s7="$r is:pr state:open created:>$date180_short"
+    local _s8="$r is:pr state:open created:>$date360_short"
+    local _s9="$r is:issue state:closed created:>$date30_short"
+    local _s10="$r is:issue state:closed created:>$date90_short"
+    local _s11="$r is:issue state:closed created:>$date180_short"
+    local _s12="$r is:issue state:closed created:>$date360_short"
+    local _s13="$r is:issue state:open created:>$date30_short"
+    local _s14="$r is:issue state:open created:>$date90_short"
+    local _s15="$r is:issue state:open created:>$date180_short"
+    local _s16="$r is:issue state:open created:>$date360_short"
+
+    query=$(___x_cmd jq -nc --arg o "$owner" --arg n "$repo" \
+        --arg s1 "$_s1" --arg s2 "$_s2" --arg s3 "$_s3" --arg s4 "$_s4" \
+        --arg s5 "$_s5" --arg s6 "$_s6" --arg s7 "$_s7" --arg s8 "$_s8" \
+        --arg s9 "$_s9" --arg s10 "$_s10" --arg s11 "$_s11" --arg s12 "$_s12" \
+        --arg s13 "$_s13" --arg s14 "$_s14" --arg s15 "$_s15" --arg s16 "$_s16" \
+        --arg q "$gql" \
+        '{query:$q, variables:{o:$o,n:$n,s1:$s1,s2:$s2,s3:$s3,s4:$s4,s5:$s5,s6:$s6,s7:$s7,s8:$s8,s9:$s9,s10:$s10,s11:$s11,s12:$s12,s13:$s13,s14:$s14,s15:$s15,s16:$s16}}')
+
+    response=$(curl -sS \
+        -H "Authorization: bearer $gh_token" \
+        -H "Content-Type: application/json" \
+        -d "$query" https://api.github.com/graphql 2>/dev/null) || response=""
+    if [ -z "$response" ]; then
+        N=repo M="GraphQL fetch failed for -> $owner_repo" log:ret:1
+    fi
+
+    # Pull the 16 search counts straight from the GraphQL response —
+    # no REST search calls needed.
+    local merged30 merged90 merged180 merged360 \
+        openpr30 openpr90 openpr180 openpr360 \
+        closei30 closei90 closei180 closei360 \
+        openi30 openi90 openi180 openi360
+    merged30=$(printf '%s' "$response" | ___x_cmd jq -r '.data.m30.issueCount // 0')
+    merged90=$(printf '%s' "$response" | ___x_cmd jq -r '.data.m90.issueCount // 0')
+    merged180=$(printf '%s' "$response" | ___x_cmd jq -r '.data.m180.issueCount // 0')
+    merged360=$(printf '%s' "$response" | ___x_cmd jq -r '.data.m360.issueCount // 0')
+    openpr30=$(printf '%s' "$response" | ___x_cmd jq -r '.data.op30.issueCount // 0')
+    openpr90=$(printf '%s' "$response" | ___x_cmd jq -r '.data.op90.issueCount // 0')
+    openpr180=$(printf '%s' "$response" | ___x_cmd jq -r '.data.op180.issueCount // 0')
+    openpr360=$(printf '%s' "$response" | ___x_cmd jq -r '.data.op360.issueCount // 0')
+    closei30=$(printf '%s' "$response" | ___x_cmd jq -r '.data.ci30.issueCount // 0')
+    closei90=$(printf '%s' "$response" | ___x_cmd jq -r '.data.ci90.issueCount // 0')
+    closei180=$(printf '%s' "$response" | ___x_cmd jq -r '.data.ci180.issueCount // 0')
+    closei360=$(printf '%s' "$response" | ___x_cmd jq -r '.data.ci360.issueCount // 0')
+    openi30=$(printf '%s' "$response" | ___x_cmd jq -r '.data.oi30.issueCount // 0')
+    openi90=$(printf '%s' "$response" | ___x_cmd jq -r '.data.oi90.issueCount // 0')
+    openi180=$(printf '%s' "$response" | ___x_cmd jq -r '.data.oi180.issueCount // 0')
+    openi360=$(printf '%s' "$response" | ___x_cmd jq -r '.data.oi360.issueCount // 0')
+
+    # recentCommit via REST commits?since=DATE. GraphQL history(since)
+    # is currently broken on GitHub's backend and aliasing multiple
+    # history() instances is also broken, so REST is the reliable
+    # path here.
+    local commit30 commit90 commit180 commit360
+    commit30=$(curl -sS -H "Authorization: bearer $gh_token" \
+        "https://api.github.com/repos/${owner_repo}/commits?since=${date30}&per_page=100" \
+        2>/dev/null | ___x_cmd jq 'length')
+    commit90=$(curl -sS -H "Authorization: bearer $gh_token" \
+        "https://api.github.com/repos/${owner_repo}/commits?since=${date90}&per_page=100" \
+        2>/dev/null | ___x_cmd jq 'length')
+    commit180=$(curl -sS -H "Authorization: bearer $gh_token" \
+        "https://api.github.com/repos/${owner_repo}/commits?since=${date180}&per_page=100" \
+        2>/dev/null | ___x_cmd jq 'length')
+    commit360=$(curl -sS -H "Authorization: bearer $gh_token" \
+        "https://api.github.com/repos/${owner_repo}/commits?since=${date360}&per_page=100" \
+        2>/dev/null | ___x_cmd jq 'length')
+
+    local collected_at
+    collected_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    # Single jq pass. Static metrics in github:, every windowed stat
+    # in recent: (grouped by 30d + N), and detail: holds the API-
+    # derived HEAD SHA. No local clone / no git fetch on this path.
+    ___x_cmd jq -r \
+        --argjson merged30 "$merged30" \
+        --argjson merged90 "$merged90" \
+        --argjson merged180 "$merged180" \
+        --argjson merged360 "$merged360" \
+        --argjson openpr30 "$openpr30" \
+        --argjson openpr90 "$openpr90" \
+        --argjson openpr180 "$openpr180" \
+        --argjson openpr360 "$openpr360" \
+        --argjson closei30 "$closei30" \
+        --argjson closei90 "$closei90" \
+        --argjson closei180 "$closei180" \
+        --argjson closei360 "$closei360" \
+        --argjson openi30 "$openi30" \
+        --argjson openi90 "$openi90" \
+        --argjson openi180 "$openi180" \
+        --argjson openi360 "$openi360" \
+        --argjson commit30 "$commit30" \
+        --argjson commit90 "$commit90" \
+        --argjson commit180 "$commit180" \
+        --argjson commit360 "$commit360" \
+        --arg date30_short "$date30_short" \
+        --arg date90_short "$date90_short" \
+        --arg date180_short "$date180_short" \
+        --arg date360_short "$date360_short" \
+        --arg days90 "$days90" \
+        --arg collected_at "$collected_at" \
+        '
+        .data.a as $r
+        | (.data.b.defaultBranchRef.target // {}) as $head
+        | ($r.releases.nodes | map(select(.publishedAt[:10] >= $date30_short)) | length) as $release30
+        | ($r.releases.nodes | map(select(.publishedAt[:10] >= $date90_short)) | length) as $release90
+        | ($r.releases.nodes | map(select(.publishedAt[:10] >= $date180_short)) | length) as $release180
+        | ($r.releases.nodes | map(select(.publishedAt[:10] >= $date360_short)) | length) as $release360
+        | ($r.forks.edges | map(select(.node.createdAt[:10] >= $date30_short)) | length) as $fork30
+        | ($r.forks.edges | map(select(.node.createdAt[:10] >= $date90_short)) | length) as $fork90
+        | ($r.forks.edges | map(select(.node.createdAt[:10] >= $date180_short)) | length) as $fork180
+        | ($r.forks.edges | map(select(.node.createdAt[:10] >= $date360_short)) | length) as $fork360
+        | ($r.stargazers.edges | map(select(.starredAt[:10] >= $date30_short)) | length) as $star30
+        | ($r.stargazers.edges | map(select(.starredAt[:10] >= $date90_short)) | length) as $star90
+        | ($r.stargazers.edges | map(select(.starredAt[:10] >= $date180_short)) | length) as $star180
+        | ($r.stargazers.edges | map(select(.starredAt[:10] >= $date360_short)) | length) as $star360
+        | "github:",
+          "  description: \($r.description // "")",
+          "  license: \($r.licenseInfo.spdxId // "NOASSERTION")",
+          "  homepage: \($r.homepageUrl // "")",
+          "  created: \($r.createdAt[:10] // "?")",
+          "  archived: \($r.isArchived // false)",
+          "  star: \($r.stargazerCount // 0)",
+          "  watcher: \($r.watchers.totalCount // 0)",
+          "  fork: \($r.forkCount // 0)",
+          "  release: \($r.releases.totalCount // 0)",
+          "  contributor: \($r.mentionableUsers.totalCount // 0)",
+          "  pullRequest: \($r.pullRequests.totalCount // 0)",
+          "  issue: \($r.issues.totalCount // 0)",
+          "  lastCommit: \($head.committedDate[:10] // "?")",
+          "  lastRelease: \($r.releases.nodes[0].publishedAt[:10] // "?")",
+          "recent:",
+          "  last30d:",
+          "    since: \($date30_short)",
+          "    star: \($star30)",
+          "    fork: \($fork30)",
+          "    release: \($release30)",
+          "    mergedPR: \($merged30)",
+          "    openPR: \($openpr30)",
+          "    closedIssue: \($closei30)",
+          "    openIssue: \($openi30)",
+          "    commit: \($commit30)",
+          "  last\($days90)d:",
+          "    since: \($date90_short)",
+          "    star: \($star90)",
+          "    fork: \($fork90)",
+          "    release: \($release90)",
+          "    mergedPR: \($merged90)",
+          "    openPR: \($openpr90)",
+          "    closedIssue: \($closei90)",
+          "    openIssue: \($openi90)",
+          "    commit: \($commit90)",
+          "  last180d:",
+          "    since: \($date180_short)",
+          "    star: \($star180)",
+          "    fork: \($fork180)",
+          "    release: \($release180)",
+          "    mergedPR: \($merged180)",
+          "    openPR: \($openpr180)",
+            "    closedIssue: \($closei180)",
+            "    openIssue: \($openi180)",
+            "    commit: \($commit180)",
+          "  last360d:",
+          "    since: \($date360_short)",
+          "    star: \($star360)",
+          "    fork: \($fork360)",
+          "    release: \($release360)",
+          "    mergedPR: \($merged360)",
+          "    openPR: \($openpr360)",
+            "    closedIssue: \($closei360)",
+            "    openIssue: \($openi360)",
+            "    commit: \($commit360)",
+          "detail:",
+          "  head: \($head.oid[:7] // "?")",
+          (if ($r.languages.edges | length) > 0
+           then "language:",
+                ($r.languages.edges | sort_by(-.size)[] | "  \(.node.name): \(.size)"),
+                ($r.languages.edges | map(.size) | add | "totalLine: \(.)")
+           else empty end),
+          (if (.errors // [] | length) > 0
+           then "graphqlErrors:",
+                (.errors | .[] | "  - \(.message // "?")")
+           else empty end),
+          "collectedAt: \($collected_at)"
+    ' <<A
+$response
+A
+
+}
