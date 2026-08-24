@@ -1,0 +1,774 @@
+{
+"#name"
+:
+{
+"ajv"
+:
+null
+,
+"cn"
+:
+"基于 AJV 的超快流式 json-schema 校验工具，运行于 Deno 只读沙箱，支持 json / yml / toml"
+,
+"en"
+:
+"Blazing-fast streaming json-schema validator for json / yml / toml — built on AJV, runs inside a read-only Deno sandbox"
+}
+,
+"#synopsis"
+:
+[
+"x ajv [--all] [validate] -s schema[.json] [-d data.json | file1 [file2 ...]]"
+,
+"x ajv [--all] compile -s schema[.json] | [schema1 [schema2 ...]]"
+,
+"x ajv [--all] migrate -s schema[.json] -o migrated_schema.json"
+,
+"x ajv [--all] test -s schema[.json] -d data[.json] --[in]valid"
+]
+,
+"#desc"
+:
+{
+"cn"
+:
+"基于 Deno + AJV 的 json-schema 高效校验工具：编译一次、批量复用，支持 json / yml / toml，运行在只读沙箱内（仅 --allow-read；migrate 额外授予 --allow-write=<输出>，不授予 --allow-net / --allow-env / --allow-run 等任何额外权限）。支持数据校验、预编译 schema、迁移到 draft-2020-12、对 schema/数据做期望断言；validate / compile 还能从 stdin 流式读取文件路径，格式按后缀 (.json / .yml / .yaml / .toml) 自动识别。"
+,
+"en"
+:
+"Fast json-schema validator powered by Deno + AJV — compile the validator once, reuse it across every file. Supports json / yml / toml data. Runs inside a sandbox (only --allow-read / --allow-write=<output>; no --allow-net / --allow-env / --allow-run) — validate data, pre-compile schemas, migrate drafts to 2020-12, run assertion-style tests; validate/compile stream their file lists from stdin, file format auto-detected by extension (.json / .yml / .yaml / .toml)."
+}
+,
+"#tip"
+:
+[
+{
+"cn"
+:
+"流式处理：validate / compile 是按文件粒度增量推进的——读到一条路径就立刻校验/编译并输出一行 TSV，不会等到所有路径都到齐；stdin 上的路径列表也是按行喂入，无需先攒齐。配合 find / xargs 处理大批量文件很自然。"
+,
+"en"
+:
+"Streaming: validate / compile work file-by-file — each file is read, parsed and validated as soon as its path arrives, and the TSV result line is flushed immediately. stdin path lists are consumed line-by-line too, with no need to buffer them up front. Pairs naturally with find / xargs for bulk processing."
+}
+,
+{
+"cn"
+:
+"validate / compile 无位置参数时，会从 stdin 流式读取文件路径（一行一条）。"
+,
+"en"
+:
+"When no positional files are given, validate / compile stream file paths from stdin (one per line)."
+}
+,
+{
+"cn"
+:
+"解析错误信息自带行号/列号（JSON 的 line/column、YAML/TOML 的 line/column），调试时直接定位。"
+,
+"en"
+:
+"Parser errors include line/column (JSON: position + line/column; YAML/TOML: line/column), so debugging jumps straight to the offending location."
+}
+,
+{
+"cn"
+:
+"运行在 Deno 沙箱里：validate / compile / test 仅授予 --allow-read；migrate 额外授予 --allow-write=<输出文件>。从不授予 --allow-net / --allow-env / --allow-run 等任何额外权限。"
+,
+"en"
+:
+"Runs inside the Deno sandbox: validate / compile / test get only --allow-read; migrate gets --allow-read + --allow-write=<output>. No --allow-net / --allow-env / --allow-run or other extra permissions are ever granted."
+}
+,
+{
+"cn"
+:
+"默认只输出失败行（valid / compiled / pass / migrated 静默）；加 --all 才会把成功行也打出来。适合 CI / 大批量校验——只看哪里炸了。"
+,
+"en"
+:
+"By default only failure rows are printed (valid / compiled / pass / migrated stay silent). Pass --all to also surface success rows. Ideal for CI / bulk runs where you only care about what broke."
+}
+,
+{
+"cn"
+:
+"每次运行结束会在 stderr 输出一个 YAML 风格的 summary，包含 total / 按 result 计数（syntax-error、schema-error、invalid 等）/ 按 format 计数（json / yaml / toml）。"
+,
+"en"
+:
+"At the end of each run a YAML-style summary lands on stderr with total / per-result (syntax-error, schema-error, invalid, …) / per-format (json / yaml / toml) counts."
+}
+]
+,
+"#tldr"
+:
+[
+{
+"cmd"
+:
+"x ajv -s schema.json -d data.json"
+,
+"cn"
+:
+"校验 data.json 是否符合 schema.json"
+,
+"en"
+:
+"Validate data.json against schema.json"
+}
+,
+{
+"cmd"
+:
+"x ajv -s schema.json f1.json f2.json f3.json"
+,
+"cn"
+:
+"批量校验多个数据文件"
+,
+"en"
+:
+"Validate a batch of data files in one pass"
+}
+,
+{
+"cmd"
+:
+"x ajv -s schema.json < paths.txt"
+,
+"cn"
+:
+"从 stdin 读取文件列表（每行一个路径）"
+,
+"en"
+:
+"Read the file list from stdin (one path per line)"
+}
+,
+{
+"cmd"
+:
+"find data/ -name '*.json' | x ajv -s schema.json"
+,
+"cn"
+:
+"把 find 的输出直接接到 stdin 上做校验"
+,
+"en"
+:
+"Pipe find output to stdin for bulk validation"
+}
+,
+{
+"cmd"
+:
+"x ajv compile -s schema.json"
+,
+"cn"
+:
+"预编译 schema.json（语法/关键字检查）"
+,
+"en"
+:
+"Pre-compile schema.json (syntax / keyword check)"
+}
+,
+{
+"cmd"
+:
+"x ajv compile schema1.json schema2.json"
+,
+"cn"
+:
+"批量预编译多个 schema"
+,
+"en"
+:
+"Pre-compile multiple schemas in one pass"
+}
+,
+{
+"cmd"
+:
+"x ajv compile < schemas.txt"
+,
+"cn"
+:
+"从 stdin 读取 schema 文件列表"
+,
+"en"
+:
+"Read the schema file list from stdin"
+}
+,
+{
+"cmd"
+:
+"x ajv migrate -s old.json -o new.json"
+,
+"cn"
+:
+"将 schema 迁移到 draft-2020-12"
+,
+"en"
+:
+"Migrate a schema to draft-2020-12"
+}
+,
+{
+"cmd"
+:
+"x ajv migrate -s draft-04.json -o new.json"
+,
+"cn"
+:
+"将 draft-04 schema 升级到 draft-2020-12（同时把 id 重命名为 $id）"
+,
+"en"
+:
+"Upgrade a draft-04 schema to draft-2020-12 (also renames id -> $id)"
+}
+,
+{
+"cmd"
+:
+"x ajv test -s schema.json -d data.json --valid"
+,
+"cn"
+:
+"断言 data.json 应当通过 schema.json 的校验"
+,
+"en"
+:
+"Assert data.json validates against schema.json"
+}
+,
+{
+"cmd"
+:
+"x ajv test -s schema.json -d data.json --invalid"
+,
+"cn"
+:
+"断言 data.json 应当被 schema.json 拒绝"
+,
+"en"
+:
+"Assert data.json is rejected by schema.json"
+}
+,
+{
+"cmd"
+:
+"x ajv --all -s schema.json data/*.json"
+,
+"cn"
+:
+"显示所有结果（包括成功的），适合排错或汇报"
+,
+"en"
+:
+"Show every row including successes — useful for debugging or reporting"
+}
+,
+{
+"cmd"
+:
+"x ajv -s schema.json data/*.json 2>&1 | tail -5"
+,
+"cn"
+:
+"默认只输出失败 + stderr 末尾的 YAML summary"
+,
+"en"
+:
+"Default behaviour — only failures on stdout, plus the YAML summary on stderr"
+}
+]
+,
+"#subcmd:Apply"
+:
+[
+"validate"
+,
+"compile"
+,
+"migrate"
+,
+"test"
+]
+,
+"validate"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"校验数据文件是否符合 schema（默认子命令）"
+,
+"en"
+:
+"Validate that data conforms to schema (default subcommand)"
+}
+,
+"#tldr"
+:
+[
+{
+"cmd"
+:
+"x ajv -s schema.json -d data.json"
+,
+"cn"
+:
+"默认子命令，可省略 \"validate\""
+,
+"en"
+:
+"Default subcommand, \"validate\" can be omitted"
+}
+,
+{
+"cmd"
+:
+"x ajv validate -s schema.json good.json bad.json"
+,
+"cn"
+:
+"一次校验多个文件，输出 TSV（每行 <file>\\t<valid|invalid>）"
+,
+"en"
+:
+"Validate multiple files in one pass; output is TSV (<file>\\t<valid|invalid>)"
+}
+,
+{
+"cmd"
+:
+"find data/ -name '*.json' | x ajv -s schema.json"
+,
+"cn"
+:
+"从 stdin 流式接收路径，配合 find/xargs 处理大量文件"
+,
+"en"
+:
+"Stream paths from stdin to validate a large set of files (works with find / xargs)"
+}
+,
+{
+"cmd"
+:
+"x ajv -s schema.json < files.txt"
+,
+"cn"
+:
+"从 stdin 读取路径列表（每行一个路径）"
+,
+"en"
+:
+"Read the path list from stdin (one path per line)"
+}
+]
+,
+"-s"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"schema 文件路径"
+,
+"en"
+:
+"Path to the JSON Schema file"
+}
+}
+,
+"-d"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"待校验的数据文件路径（与位置参数等效）"
+,
+"en"
+:
+"Path to a single data file (equivalent to a positional arg)"
+}
+}
+,
+"--all"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"默认输出失败行；加 --all 才会把成功行也打出来。"
+,
+"en"
+:
+"Show every row including successes — by default only failures are printed"
+}
+}
+}
+,
+"compile"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"预编译 schema，检查语法与关键字"
+,
+"en"
+:
+"Pre-compile a schema to surface syntax / keyword errors"
+}
+,
+"#tldr"
+:
+[
+{
+"cmd"
+:
+"x ajv compile -s schema.json"
+,
+"cn"
+:
+"编译 schema.json"
+,
+"en"
+:
+"Compile schema.json"
+}
+,
+{
+"cmd"
+:
+"x ajv compile s1.json s2.json s3.json"
+,
+"cn"
+:
+"批量编译多个 schema"
+,
+"en"
+:
+"Pre-compile multiple schemas in one pass"
+}
+,
+{
+"cmd"
+:
+"find schemas/ -name '*.json' | x ajv compile"
+,
+"cn"
+:
+"把 find 的输出直接接到 stdin 上做批量编译"
+,
+"en"
+:
+"Pipe find output to stdin for bulk compilation"
+}
+,
+{
+"cmd"
+:
+"x ajv compile < schemas.txt"
+,
+"cn"
+:
+"从 stdin 读取 schema 文件列表"
+,
+"en"
+:
+"Read the schema file list from stdin"
+}
+]
+,
+"-s"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"schema 文件路径（与位置参数等效）"
+,
+"en"
+:
+"Path to a single schema file (equivalent to a positional arg)"
+}
+}
+,
+"--all"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"默认输出失败的 schema（成功的 compiled 静默）；加 --all 才会全部输出"
+,
+"en"
+:
+"Default: only schema compile failures; --all shows everything"
+}
+}
+}
+,
+"migrate"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"将 schema 迁移到 draft-2020-12（同时重命名 id -> $id）"
+,
+"en"
+:
+"Migrate a schema to draft-2020-12 (also renames id -> $id)"
+}
+,
+"#tldr"
+:
+[
+{
+"cmd"
+:
+"x ajv migrate -s draft-04.json -o new.json"
+,
+"cn"
+:
+"将 draft-04 schema 升级到 draft-2020-12"
+,
+"en"
+:
+"Upgrade a draft-04 schema to draft-2020-12"
+}
+,
+{
+"cmd"
+:
+"x ajv migrate -s old.json -o new.json"
+,
+"cn"
+:
+"通用迁移: 把 $schema 设为 2020-12 并将 id 重命名为 $id"
+,
+"en"
+:
+"Generic migration: set $schema to 2020-12 and rename id to $id"
+}
+]
+,
+"-s"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"源 schema 文件路径"
+,
+"en"
+:
+"Path to the source schema file"
+}
+}
+,
+"-o"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"输出文件路径"
+,
+"en"
+:
+"Output file path"
+}
+}
+,
+"--all"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"默认只在迁移失败时输出；加 --all 才会显示成功"
+,
+"en"
+:
+"Suppress success — only print if migration fails"
+}
+}
+}
+,
+"test"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"断言数据是否符合预期（--valid 或 --invalid）"
+,
+"en"
+:
+"Assert that data matches expectation (--valid or --invalid)"
+}
+,
+"#tldr"
+:
+[
+{
+"cmd"
+:
+"x ajv test -s schema.json -d data.json --valid"
+,
+"cn"
+:
+"断言数据应当通过校验"
+,
+"en"
+:
+"Assert data is valid"
+}
+,
+{
+"cmd"
+:
+"x ajv test -s schema.json -d data.json --invalid"
+,
+"cn"
+:
+"断言数据应当被拒绝"
+,
+"en"
+:
+"Assert data is rejected"
+}
+,
+{
+"cmd"
+:
+"x ajv test -s schema.json -d bad.json --valid && echo ok"
+,
+"cn"
+:
+"失败时退出码非零，可直接接入 CI"
+,
+"en"
+:
+"Exits non-zero on failure — usable directly as a CI gate"
+}
+]
+,
+"-s"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"schema 文件路径"
+,
+"en"
+:
+"Path to the JSON Schema file"
+}
+}
+,
+"-d"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"数据文件路径"
+,
+"en"
+:
+"Path to the data file"
+}
+}
+,
+"--valid"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"期望数据通过校验"
+,
+"en"
+:
+"Expect data to be valid"
+}
+}
+,
+"--invalid"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"期望数据被拒绝"
+,
+"en"
+:
+"Expect data to be invalid"
+}
+}
+,
+"--all"
+:
+{
+"#desc"
+:
+{
+"cn"
+:
+"默认只在测试失败时输出；加 --all 才会显示 pass"
+,
+"en"
+:
+"Default: silent on pass; --all shows the pass row too"
+}
+}
+}
+}
+
