@@ -363,11 +363,11 @@ null
 ,
 "cn"
 :
-"仓库评分卡: 先 update 克隆，再以一次 GraphQL + git log 收集 stars/lastCommit/lastRelease/release/contributor/pullRequest/issue/languages/totalLines 并以 YAML 输出"
+"仓库评分卡: 1 次 GraphQL（合并 12 个 search 计数）+ 2 次 REST commits，输出 star/lastCommit/lastRelease/release/contributor/pullRequest/issue/language/totalLine + recent(30d/90d/180d/360d) 四段窗口化数据，全程 API"
 ,
 "en"
 :
-"Repo scorecard: update-clones first, then collect stars/lastCommit/lastRelease/release/contributor/pullRequest/issue/languages/totalLines in one GraphQL call + git log and emit as YAML"
+"Repo scorecard: 1 GraphQL (carrying 12 aliased search counts) + 2 REST commits, outputs star/lastCommit/lastRelease/release/contributor/pullRequest/issue/language/totalLine plus four windowed recent:{last30d,last90d,last180d,last360d} blocks, fully API-driven"
 }
 ,
 {
@@ -891,11 +891,11 @@ null
 {
 "cn"
 :
-"为仓库生成 YAML 评分卡：先 update，再以一次 GraphQL + git log 收集数据"
+"为仓库生成 YAML 评分卡：1 次 GraphQL（合并 8 个 search 计数）+ 2 次 REST commits，全程 API，不碰本地 clone"
 ,
 "en"
 :
-"Emit a YAML scorecard for a repo: update first, then collect via one GraphQL query + git log"
+"Emit a YAML scorecard for a repo: 1 GraphQL (carrying 8 aliased search counts) + 2 REST commits, API-only, no local clone touched"
 }
 ,
 "id"
@@ -920,55 +920,91 @@ null
 {
 "cn"
 :
-"与 update 子命令一样，每次调用都会先克隆或拉取最新 ref，再读取 HEAD。所以输出反映本地刚同步过的状态——比 GitHub 的最新推送晚几分钟是正常的。\n"
+"不再触碰本地 clone：head / lastCommit / recentCommit 全部走 GitHub API（GraphQL `defaultBranchRef.target.oid` / `committedDate` 和 REST `/commits?since=DATE`）。这意味着 `x repo card` 在仓库尚未 clone 时也能直接跑，不需要先 `x repo <id>` 拉一份到本地。\n"
 ,
 "en"
 :
-"Like `update`, every call clones or pulls first and then reads HEAD. So the output reflects what was on disk a moment ago — a few minutes behind GitHub's latest push is normal.\n"
+"No local clone dependency: head / lastCommit / recentCommit all come from the GitHub API (GraphQL `defaultBranchRef.target.oid` / `committedDate` and REST `/commits?since=DATE`). This means `x repo card` runs even on repos you haven't cloned yet — no need to `x repo <id>` first.\n"
 }
 ,
 {
 "cn"
 :
-"适合给 install / scorecard 这类场景喂数据：管道里 `x repo card <id> | jq '.languages'` 就能挑出语言构成；`x repo card <id> --yml` 是 YAML，但当前不解析额外 flag，可以直接走管道后处理。\n"
+"适合给 install / scorecard 这类场景喂数据。输出是 YAML（YAML 1.2 是 JSON 的超集对这些字段而言），如果下游要按字段抽取，可以走管道后用 yq 处理；目前没有 `--json` / `--yml` 之类的 flag。\n"
 ,
 "en"
 :
-"Built to feed downstream tooling: `x repo card <id> | jq '.languages'` extracts the language breakdown; `x repo card <id> --yml` is YAML today (no `--yml` flag yet — pipe into a YAML parser).\n"
-}
-]
-,
-"#tip:note"
-:
-[
-{
-"cn"
-:
-"**GitHub 认证**：card 调一次 GraphQL，没有 token 时会落到 60 次/小时的未鉴权额度。优先使用 `gh auth login` 后由 `gh auth token` 提供；也可设置环境变量 `GH_TOKEN` 或 `GITHUB_TOKEN`。\n"
-,
-"en"
-:
-"**GitHub auth**: card issues one GraphQL POST per invocation; without a token you're capped at the 60 req/hour anonymous limit. Token resolution order: `gh auth token`, then `$GH_TOKEN`, then `$GITHUB_TOKEN`.\n"
+"Built to feed downstream tooling. Output is YAML (YAML 1.2 is a JSON superset for these scalar fields). Pipe into yq for field extraction; no `--json` / `--yml` flag yet.\n"
 }
 ,
 {
 "cn"
 :
-"**totalLines 是字节数**：GraphQL 的 `languages.edges[].size` 来自 GitHub 的 linguist，是字节而非行数。字段名保留 `totalLines` 是为了对齐 x-cmd/install#86 的 InstallCardMeta；需要真实行数请另外跑 tokei。\n"
+"卡片分四段：`github:` 是所有静态指标；`recent:` 集中所有窗口化指标，按 last30d、last90d、last180d 和 last360d 两组输出；`detail:` 只放 API 返回的 head；`language:` + `totalLine:` 是 linguist 字节构成。末尾 `collectedAt:` 标明采集时刻。\n"
 ,
 "en"
 :
-"**totalLines is bytes, not lines**: GraphQL's `languages.edges[].size` comes from GitHub's linguist and counts bytes, not source lines. The field is named `totalLines` for parity with the InstallCardMeta schema in x-cmd/install#86; run tokei separately for true line counts.\n"
+"The card has four sections: `github:` for every static metric, `recent:` for every windowed metric grouped by last30d, last90d, last180d, and last360d, `detail:` for the API-derived HEAD ref, `language:` + `totalLine:` for GitHub linguist's byte stats. A final `collectedAt:` line names the moment of emission.\n"
 }
 ,
 {
 "cn"
 :
-"**contributors 是估算**：GitHub GraphQL 不暴露真正的 contributors（`collaborators` 对非管理员返回 FORBIDDEN），所以 card 取的是 `mentionableUsers.totalCount`。org 名下的仓库会把所有 org 成员都算进去——当成上界看就好。\n"
+"**单次调用成本**：3 个 HTTP 请求（1 个 GraphQL + 2 个 REST `/commits`），实测 GraphQL ~1 point / card。完整设计演进在 `story/260824.x-repo-card-graphql-consolidation.md`。\n"
 ,
 "en"
 :
-"**contributors is approximate**: GitHub's GraphQL doesn't expose the real contributors list without admin access (`collaborators` returns FORBIDDEN to read-only callers), so card uses `mentionableUsers.totalCount` as the closest proxy. For org-owned repos this overcounts every org member — treat the field as an upper bound.\n"
+"**Per-call cost**: 3 HTTP requests (1 GraphQL + 2 REST `/commits`), measured ~1 GraphQL point per card. Full design story at `story/260824.x-repo-card-graphql-consolidation.md`.\n"
+}
+,
+{
+"cn"
+:
+"**GitHub 认证**：card 需要 token 才能稳（未鉴权时 GraphQL 降到 60 req/h）。优先使用 `gh auth login` 后由 `gh auth token` 提供；也可设置 `GH_TOKEN` 或 `GITHUB_TOKEN`。\n"
+,
+"en"
+:
+"**GitHub auth**: card needs a token to be reliable (anonymous GraphQL caps at 60 req/h). Token resolution order: `gh auth token`, then `$GH_TOKEN`, then `$GITHUB_TOKEN`.\n"
+}
+,
+{
+"cn"
+:
+"**totalLine 是字节数**：GraphQL 的 `languages.edges[].size` 来自 GitHub 的 linguist，是字节而非行数。字段名保留 `totalLine` 是为了对齐 x-cmd/install#86 的 InstallCardMeta；需要真实行数请另外跑 tokei。\n"
+,
+"en"
+:
+"**totalLine is bytes, not lines**: GraphQL's `languages.edges[].size` comes from GitHub's linguist and counts bytes, not source lines. The field is named `totalLine` for parity with the InstallCardMeta schema in x-cmd/install#86; run tokei separately for true line counts.\n"
+}
+,
+{
+"cn"
+:
+"**contributor 是估算**：GitHub GraphQL 不暴露真正的 contributors（`collaborators` 对非管理员返回 FORBIDDEN），所以 card 取的是 `mentionableUsers.totalCount`。org 名下的仓库会把所有 org 成员都算进去——当成上界看就好。\n"
+,
+"en"
+:
+"**contributor is approximate**: GitHub's GraphQL doesn't expose the real contributors list without admin access (`collaborators` returns FORBIDDEN to read-only callers), so card uses `mentionableUsers.totalCount` as the closest proxy. For org-owned repos this overcounts every org member — treat the field as an upper bound.\n"
+}
+,
+{
+"cn"
+:
+"**recent.star 在大型仓库可能为 0**：GitHub GraphQL 的 `stargazers(orderBy:STARRED_AT, first:100)` 在 star 数 ≥ 几万级别的仓库上会返回空 edges（GitHub 已知 bug）。小仓库（< 几千 star）一般正常。对于 x-cmd 这种几十 star 的项目，star30 / star90 都能正确反映；如果看的是热门仓库，star 字段就直接忽略看其它指标吧。\n"
+,
+"en"
+:
+"**recent.star may be 0 on large repos**: GitHub GraphQL's `stargazers(orderBy:STARRED_AT, first:100)` returns empty edges on repos with tens of thousands of stars (known GitHub bug). Small repos (< a few thousand stars) usually work. For popular repos, ignore the star field and read the others.\n"
+}
+,
+{
+"cn"
+:
+"**recent 字段来源**：recent.star 和 recent.fork 走 GraphQL（`stargazers(first:100)` / `forks(first:100)` 按时间倒序，jq 客户端按 publishedAt / createdAt 过滤）；recent.release 同样在 GraphQL 拿 releases(first:100) 后过滤；recent.mergedPR / recent.openPR / recent.closedIssue / recent.openIssue 走 GraphQL 的 8 个 root-level `search(...)` alias（同一个 query 里），每个返回 issueCount；recent.commit 走 REST `/commits?since=DATE`。所有这些都不依赖本地 clone。\n"
+,
+"en"
+:
+"**recent* sources**: recentStar and recentFork come from GraphQL (`stargazers(first:100)` / `forks(first:100)` filtered client-side by date). recentRelease is filtered from `releases(first:100)` similarly. recentMergedPR / recentOpenPR / recentClosedIssue / recentOpenIssue come from 8 root-level GraphQL `search(...)` aliases in the same query (each returns `issueCount`). recentCommit is REST `/commits?since=DATE`. None of these require a local clone.\n"
 }
 ]
 ,
@@ -982,25 +1018,25 @@ null
 ,
 "cn"
 :
-"基本用法: 输出 YAML 评分卡"
+"基本用法: 输出 YAML 评分卡（默认最近 90 天窗口）"
 ,
 "en"
 :
-"Basic: emit a YAML scorecard"
+"Basic: emit a YAML scorecard (4 fixed windows: 30d / 90d / 180d / 360d)"
 }
 ,
 {
 "cmd"
 :
-"x repo card x-cmd/install | jq '.languages'"
+"x repo card x-cmd/install | yq '.github'"
 ,
 "cn"
 :
-"管道后处理: 用 jq 抽取语言构成或任意字段"
+"抽取 github 段: yq 拿结构化数据"
 ,
 "en"
 :
-"Pipeline post-processing: extract the language breakdown (or any field) with jq"
+"Extract the github section via yq"
 }
 ,
 {
