@@ -1,0 +1,58 @@
+# shellcheck shell=dash
+
+# Linux procps exposes nlwp directly; a single `ps -p <pid>` gives us
+# per-tick cpu, rss, thread count. Children count comes from a separate
+# `ps -e -o ppid=` enumeration, which is cheap enough to do per tick.
+___x_cmd_ps_monitor_linux(){
+    local pid="$1"
+    local count="$2"
+    local i=0
+
+    # shellcheck disable=SC2016
+    while sleep 1; do
+        i=$(( i + 1 ))
+        ___x_cmd_cmds ps -p "$pid" -o pid= >/dev/null 2>&1 || return 0
+
+        # shellcheck disable=SC2016
+        ___x_cmd_cmds ps -p "$pid" -o pcpu=,rss=,nlwp= 2>/dev/null
+        nchild=$( ___x_cmd_cmds ps -e -o ppid= 2>/dev/null \
+            | ___x_cmd_cmds awk -v p="$pid" '$1+0 == p {c++} END {print c+0}' )
+        printf '%s\n' "#tick $nchild"
+
+        if [ "$count" -gt 0 ] && [ "$i" -ge "$count" ]; then
+            break
+        fi
+    done \
+    | ___x_cmd_cmds awk '
+        /^#tick/ {
+            if (cpu_seen) {
+                n++
+                if (n == 1 || cpu   < cpu_min)     cpu_min     = cpu
+                if (n == 1 || cpu   > cpu_max)     cpu_max     = cpu
+                cpu_sum += cpu
+                if (n == 1 || rss   < rss_min)     rss_min     = rss
+                if (n == 1 || rss   > rss_max)     rss_max     = rss
+                rss_sum += rss
+                if (n == 1 || nlwp  > nlwp_max)    nlwp_max    = nlwp
+                if (n == 1 || nchild> nchild_max)  nchild_max  = nchild
+                nlwp_last   = nlwp
+                nchild_last = nchild
+                rss_last    = rss
+                cpu_last    = cpu
+            }
+            cpu_seen = 0; cpu = rss = nlwp = nchild = 0
+            next
+        }
+        {
+            cpu = $1 + 0
+            rss = $2 + 0
+            nlwp = $3 + 0
+            cpu_seen = 1
+        }
+        END {
+            printf "cpu_avg:       %.2f\ncpu_min:       %.2f\ncpu_max:       %.2f\nrss_avg_kb:    %.2f\nrss_min_kb:    %.2f\nrss_max_kb:    %.2f\nthreads:       %d\nthreads_max:   %d\nchildren:      %d\nchildren_max:  %d\nsamples:       %d\n",
+                cpu_sum/n, cpu_min, cpu_max, rss_sum/n, rss_min, rss_max,
+                nlwp_last, nlwp_max, nchild_last, nchild_max, n
+        }
+    '
+}

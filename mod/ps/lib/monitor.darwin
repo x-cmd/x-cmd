@@ -1,0 +1,53 @@
+# shellcheck shell=dash
+
+# macOS: BSD ps has no nlwp. A single `ps -M -p <pid>` call gives one row
+# per thread; the custom -o columns (pcpu, rss) are appended after the
+# default -M columns, so we read the last two fields and skip the header
+# line. Each tick is tagged with `#tick` so awk can fold per-tick sums
+# into per-run running stats.
+___x_cmd_ps_monitor_darwin(){
+    local pid="$1"
+    local count="$2"
+    local i=0
+
+    # shellcheck disable=SC2016
+    while sleep 1; do
+        i=$(( i + 1 ))
+        ___x_cmd_cmds ps -p "$pid" -o pid= >/dev/null 2>&1 || return 0
+
+        ___x_cmd_cmds ps -M -p "$pid" -o "pcpu rss" 2>/dev/null
+        printf '%s\n' "#tick"
+
+        if [ "$count" -gt 0 ] && [ "$i" -ge "$count" ]; then
+            break
+        fi
+    done \
+    | ___x_cmd_cmds awk '
+        /^#tick$/ {
+            if (n_threads > 0) {
+                n++
+                nlwp_last = n_threads
+                if (n == 1 || cpu_total < cpu_min) cpu_min = cpu_total
+                if (n == 1 || cpu_total > cpu_max) cpu_max = cpu_total
+                cpu_sum += cpu_total
+                if (n == 1 || rss         < rss_min) rss_min = rss
+                if (n == 1 || rss         > rss_max) rss_max = rss
+                rss_sum += rss
+                if (n == 1 || n_threads   > nlwp_max) nlwp_max = n_threads
+            }
+            cpu_total = 0; rss = 0; n_threads = 0
+            next
+        }
+        $NF == "RSS" { next }   # header row from ps -M
+        {
+            cpu_total += $(NF-1) + 0
+            if (n_threads == 0) rss = $NF + 0
+            n_threads++
+        }
+        END {
+            printf "cpu_avg:       %.2f\ncpu_min:       %.2f\ncpu_max:       %.2f\nrss_avg_kb:    %.2f\nrss_min_kb:    %.2f\nrss_max_kb:    %.2f\nthreads:       %d\nthreads_max:   %d\nsamples:       %d\n",
+                cpu_sum/n, cpu_min, cpu_max, rss_sum/n, rss_min, rss_max,
+                nlwp_last, nlwp_max, n
+        }
+    '
+}

@@ -9,6 +9,7 @@ ___x_cmd_hub_rag(){
         upload|put)     ___x_cmd_hub_rag_upload "$@" ;;
         list|ls)        ___x_cmd_hub_rag_list "$@"   ;;
         delete|rm)      ___x_cmd_hub_rag_delete "$@" ;;
+        quota)          ___x_cmd_hub_rag_quota "$@"  ;;
         *)              ___x_cmd_hub_rag_ask "${subcmd}" "$@" ;;
     esac
 }
@@ -45,11 +46,13 @@ ___x_cmd_hub_rag_upload(){
     [ -n "$file" ] || { hub:error "Please provide a file path"; return 1; }
     [ -f "$file" ] || { hub:error "File does not exist: $file"; return 1; }
 
+    # 单步：上传即写入索引路径并扣 token，等 AutoRAG 下个 sync 周期可搜
     ___x_cmd_hub_u_curl post /api/v0/ai/knowledge -F "file=@$file" ${force:+"-F"} ${force:+"force=true"} | {
-        local path="" err=""
-        ___x_cmd jo env . .path .err
-        if [ -n "$path" ]; then
-            ___x_cmd_ui_tf true "Uploaded: $path"
+        local msg="" err="" charged=""
+        ___x_cmd jo env . .msg .err tokensCharged=.tokensCharged
+        if [ -n "$msg" ]; then
+            ___x_cmd_ui_tf true "Uploaded and indexed: $file (charged: ${charged:-0} tokens)"
+            ___x_cmd_ui_tf true "Searchable after the next sync cycle"
         else
             ___x_cmd_ui_tf false "Upload failed: ${err:-unknown error}"
             return 1
@@ -58,16 +61,14 @@ ___x_cmd_hub_rag_upload(){
 }
 
 ___x_cmd_hub_rag_list(){
-    local recursive=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)        ___x_cmd_hub___help rag list ; return ;;
-            --recursive|-R)   recursive=true; shift ;;
-            *)            break ;;
+            -h|--help)   ___x_cmd_hub___help rag list ; return ;;
+            *)           break ;;
         esac
     done
 
-    ___x_cmd_hub_u_curl get /api/v0/ai/knowledge ${recursive:+"recursive=true"} | {
+    ___x_cmd_hub_u_curl get /api/v0/ai/knowledge | {
         local files="" err=""
         ___x_cmd jo env . .files .err
         if [ -n "$err" ]; then
@@ -79,12 +80,10 @@ ___x_cmd_hub_rag_list(){
 }
 
 ___x_cmd_hub_rag_delete(){
-    local recursive=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help)        ___x_cmd_hub___help rag delete ; return ;;
-            --recursive|-r)   recursive=true; shift ;;
-            *)                break ;;
+            -h|--help)  ___x_cmd_hub___help rag delete ; return ;;
+            *)          break ;;
         esac
     done
     local filename="$1"
@@ -92,10 +91,24 @@ ___x_cmd_hub_rag_delete(){
 
     local url_path
     url_path="/api/v0/ai/knowledge/$(___x_cmd url encode "$filename")"
-    if ___x_cmd_hub_u_curl delete "$url_path" ${recursive:+"recursive=true"}; then
+    if ___x_cmd_hub_u_curl delete "$url_path"; then
         ___x_cmd_ui_tf true "Deleted: $filename"
     else
         ___x_cmd_ui_tf false "Failed to delete: $filename"
         return 1
     fi
+}
+
+# --- quota ---
+
+___x_cmd_hub_rag_quota(){
+    ___x_cmd_hub_u_curl get /api/v0/ai/quota | {
+        local err="" used="" limit="" reset=""
+        ___x_cmd jo env . .err tokensUsed=.tokensUsed tokenLimit=.tokenLimit resetAt=.resetAt
+        if [ -n "$err" ]; then
+            ___x_cmd_ui_tf false "Failed to get quota: $err"
+            return 1
+        fi
+        ___x_cmd_ui_tf true "RAG quota: ${used:-0} / ${limit:-0} tokens (resets at ${reset:-unknown})"
+    }
 }
