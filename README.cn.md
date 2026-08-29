@@ -696,8 +696,8 @@ x-cmd 是一个非常有趣和实用的工具。过去各种 CLI 工具分散在
 <td width="500px">
 <p align="center">
 <br>
-<a href="https://dusays.com/768/"><kbd><img alt="杜老师's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-dusays.webp"></kbd></a><br>
-<a href="https://dusays.com/768/">杜老师</a>
+<a href="https://dusays.com/archives/768/"><kbd><img alt="杜老师's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-dusays.webp"></kbd></a><br>
+<a href="https://dusays.com/archives/768/">杜老师</a>
 <br>
 </p>
 <samp>

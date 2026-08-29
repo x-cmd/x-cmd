@@ -695,8 +695,8 @@ x-cmd is an incredibly interesting and practical tool. In the past, various CLI 
 <td width="500px">
 <p align="center">
 <br>
-<a href="https://dusays.com/768/"><kbd><img alt="TeacherDu's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-dusays.webp"></kbd></a><br>
-<a href="https://dusays.com/768/">TeacherDu</a>
+<a href="https://dusays.com/archives/768/"><kbd><img alt="TeacherDu's avatar" width="60" src="https://www.x-cmd.com/data-image/avatar/avatar-dusays.webp"></kbd></a><br>
+<a href="https://dusays.com/archives/768/">TeacherDu</a>
 <br>
 </p>
 <samp>
