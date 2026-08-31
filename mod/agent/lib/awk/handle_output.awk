@@ -54,6 +54,7 @@ function record_and_exit( code, stderr_msg,    fp ){
 }
 
 function handle_response_stream_json( s,           o ){
+    if (( HARNESS == "codex" ) && ( s ~ "^Reading additional input from stdin" )) return
     if ( s ~ "^\\[EXITCODE\\] ([0-9]+) *$" ) {
         stdout_log_debug_if_enabled("EXITCODE", substr(s, 12))
         record_and_exit( int(substr(s, 12)), "" )
