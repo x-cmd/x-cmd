@@ -1,15 +1,25 @@
 # shellcheck shell=dash disable=SC2016
 
 ___x_cmd_repo_card(){
+    local days=90
+    local mode=auto
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)  ___x_cmd help -m repo card ; return 0 ;;
-            -*)         N=repo M="Unknown flag -> $1" log:ret:64 ;;
+            --days)     days="$2" ; shift 2 ;;
+            --days=*)   days="${1#--days=}" ; shift ;;
+            --tty|--yml|--auto)
+                        mode=${1#--}; shift ;;
+            -*)         N=repo M="Unknown flag -> $1 (try --days N)" log:ret:64 ;;
             *)          break ;;
         esac
     done
 
-    [ $# -gt 0 ] || N=repo M="Usage: x repo card <id>" log:ret:64
+    [ $# -gt 0 ] || N=repo M="Usage: x repo card [--days N] <id>" log:ret:64
+
+    case "$days" in
+        ''|*[!0-9]*) N=repo M="--days must be a positive integer, got -> $days" log:ret:64 ;;
+    esac
 
     local id="$1"
     local owner_repo=""
@@ -17,26 +27,41 @@ ___x_cmd_repo_card(){
     case "$id" in *@*) id="${id%@*}" ;; esac
 
     case "$id" in
-        https://github.com/*)
-                      owner_repo="${id#"https://github.com/"}" ;;
-        git@github.com:*)
-                      owner_repo="${id#"git@github.com:"}" ;;
         github.com/*) owner_repo="${id#github.com/}" ;;
         gh/*)         owner_repo="${id#gh/}" ;;
         */*)          owner_repo="$id" ;;
         *)            N=repo M="Invalid repo id -> $id (expect owner/repo)" log:ret:1 ;;
     esac
 
-    owner_repo="${owner_repo%".git"}"
-
-    ___x_cmd_repo_card_emit_ "$owner_repo"
+    # ___x_cmd ccmd 1h -- ___x_cmd_repo_card_emit_"$mode" "$owner_repo" "$days"
+    # Note: ccmd 1h is a 1-hour result cache, not a wrapper. It caches
+    # the function's stdout for 1h, which breaks when different inputs
+    # (e.g. running x repo card for two different repos) hit the same
+    # cached output. Call the emit function directly.
+    ___x_cmd_repo_card_emit_"$mode" "$owner_repo" "$days"
 }
 
 
-___x_cmd_repo_card_emit_(){
+___x_cmd_repo_card_emit_auto(){
+    if [ -t 1 ]; then
+        ___x_cmd_repo_card_emit_tty "$1" "$2"
+    else
+        ___x_cmd_repo_card_emit_yml "$1" "$2"
+    fi
+}
+
+
+___x_cmd_repo_card_emit_tty(){
+    ___x_cmd_repo_card_emit_yml "$1" "$2" | ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/repo/lib/awk/card.awk"
+}
+
+___x_cmd_repo_card_emit_yml(){
+    ___x_cmd ccmd 3h -- ___x_cmd_repo_card_emit_yml___inner "$@"
+}
+
+___x_cmd_repo_card_emit_yml___inner(){
     local owner_repo="$1"
-    owner_repo="${owner_repo%%#*}"
-    owner_repo="${owner_repo%%\?*}"
+    local days="$2"
     local owner="${owner_repo%/*}"
     local repo="${owner_repo#*/}"
 
@@ -46,6 +71,15 @@ ___x_cmd_repo_card_emit_(){
         N=repo M="No GitHub token. Run 'gh auth login' or set GH_TOKEN." log:ret:1
     fi
 
+    # Four windows: 30-day (recent momentum), 90-day (quarter default,
+    # user-overridable via --days), 180-day (half-year), 360-day (year).
+    # Date math goes through `x date` (x-cmd's date module) instead of
+    # the system `date` binary, so we don't need the macOS-vs-Linux
+    # dual-syntax fallback (`-v-` / `-d "N days ago"`). One
+    # `x date timestamp` gives the current epoch; subtracting 30/90/180/360
+    # days in seconds gives the cutoff timestamps, and `x date dump`
+    # formats each into YYYY-MM-DD for client-side comparison against
+    # GraphQL date fields like publishedAt[:10].
 
     local x_
     ___x_cmd epoch get_
@@ -60,9 +94,42 @@ ___x_cmd_repo_card_emit_(){
     ___x_cmd date dump_ --fmt '%Y-%m-%d' $ts90; date90=$x_
     ___x_cmd date dump_ --fmt '%Y-%m-%d' $ts180; date180=$x_
     ___x_cmd date dump_ --fmt '%Y-%m-%d' $ts360; date360=$x_
+    local days90="$days"
 
-    local query response
-    local gql='query($o:String!,$n:String!,$s1:String!,$s2:String!,$s3:String!,$s4:String!,$s5:String!,$s6:String!,$s7:String!,$s8:String!,$s9:String!,$s10:String!,$s11:String!,$s12:String!,$s13:String!,$s14:String!,$s15:String!,$s16:String!){a:repository(owner:$o,name:$n){description licenseInfo{spdxId} createdAt isArchived homepageUrl forkCount watchers{totalCount} stargazerCount pushedAt releases(first:100,orderBy:{field:CREATED_AT,direction:DESC}){totalCount nodes{publishedAt tagName name}} mentionableUsers{totalCount} issues(states:[OPEN,CLOSED]){totalCount} pullRequests(states:[OPEN,CLOSED]){totalCount} languages(first:100){edges{size node{name}}}} b:repository(owner:$o,name:$n){defaultBranchRef{target{... on Commit{oid committedDate}}}} m30:search(query:$s1,type:ISSUE,first:0){issueCount} m90:search(query:$s2,type:ISSUE,first:0){issueCount} m180:search(query:$s3,type:ISSUE,first:0){issueCount} m360:search(query:$s4,type:ISSUE,first:0){issueCount} op30:search(query:$s5,type:ISSUE,first:0){issueCount} op90:search(query:$s6,type:ISSUE,first:0){issueCount} op180:search(query:$s7,type:ISSUE,first:0){issueCount} op360:search(query:$s8,type:ISSUE,first:0){issueCount} ci30:search(query:$s9,type:ISSUE,first:0){issueCount} ci90:search(query:$s10,type:ISSUE,first:0){issueCount} ci180:search(query:$s11,type:ISSUE,first:0){issueCount} ci360:search(query:$s12,type:ISSUE,first:0){issueCount} oi30:search(query:$s13,type:ISSUE,first:0){issueCount} oi90:search(query:$s14,type:ISSUE,first:0){issueCount} oi180:search(query:$s15,type:ISSUE,first:0){issueCount} oi360:search(query:$s16,type:ISSUE,first:0){issueCount}}'
+    # GraphQL: every static repo field + 16 time-windowed search calls
+    # (mergedPR / openPR / closedIssue / openIssue × 30d / 90d / 180d /
+    # 360d) + defaultBranchRef for the HEAD SHA, all in one round-trip.
+    #
+    # History:
+    # - GraphQL `search(...)` at root level works when aliased (the
+    #   earlier failure was when search was nested inside a
+    #   `repository(...)` selection — that returns 0 silently).
+    # - `defaultBranchRef` is pulled into a separate aliased
+    #   repository query because inlining it alongside a large
+    #   field set hits an undocumented GraphQL cost ceiling.
+    # - `history(since:DATE)` errors when multiple aliased instances
+    #   are on the same level, and even a single instance is
+    #   currently broken on GitHub's backend, so recentCommit goes
+    #   via REST `/commits?since=DATE` below.
+    local query response card_jq
+    # No recentStar / recentFork: GitHub's GraphQL `stargazers` /
+    # `forks` connections are capped at first:100 with no time-series
+    # summary endpoint (unlike commits which have /stats/commit_activity).
+    # For popular repos this undercounts by 1-2 orders of magnitude.
+    # The total counts (star: ... / fork: ...) in the popularity:
+    # section are exact (stargazerCount / forkCount), so dropping the
+    # deltas is honest: the card shows "this repo has 115k stars" but
+    # not "X stars in 30 days". Story: .x-cmd/story/260824.recentstar-fork-cap.md
+    #
+    # All jq filter logic lives in lib/awk/card.jq as named
+    # functions (card_query / card_search_counts / card_commit_counts
+    # / card_yaml); this shell function just feeds it inputs and
+    # reads back outputs.
+    card_jq_dir="${___X_CMD_ROOT_MOD}/repo/lib/awk"
+
+    # Build 16 search query strings (4 metrics × 4 windows) — passing
+    # them as full strings (not concatenated via GraphQL + operator)
+    # avoids the > character being treated as a parse terminator.
     local r="repo:${owner_repo}"
     local _s1="$r is:pr is:merged created:>$date30"
     local _s2="$r is:pr is:merged created:>$date90"
@@ -81,15 +148,20 @@ ___x_cmd_repo_card_emit_(){
     local _s15="$r is:issue state:open created:>$date180"
     local _s16="$r is:issue state:open created:>$date360"
 
-    query=$(___x_cmd jq -nc --arg o "$owner" --arg n "$repo" \
+    query=$(___x_cmd jq -nc -L "$card_jq_dir" \
+        --arg o "$owner" --arg n "$repo" \
         --arg s1 "$_s1" --arg s2 "$_s2" --arg s3 "$_s3" --arg s4 "$_s4" \
         --arg s5 "$_s5" --arg s6 "$_s6" --arg s7 "$_s7" --arg s8 "$_s8" \
         --arg s9 "$_s9" --arg s10 "$_s10" --arg s11 "$_s11" --arg s12 "$_s12" \
         --arg s13 "$_s13" --arg s14 "$_s14" --arg s15 "$_s15" --arg s16 "$_s16" \
-        --arg q "$gql" \
-        '{query:$q, variables:{o:$o,n:$n,s1:$s1,s2:$s2,s3:$s3,s4:$s4,s5:$s5,s6:$s6,s7:$s7,s8:$s8,s9:$s9,s10:$s10,s11:$s11,s12:$s12,s13:$s13,s14:$s14,s15:$s15,s16:$s16}}')
+        'include "card";
+         card_query($o; $n;
+                    $s1;  $s2;  $s3;  $s4;
+                    $s5;  $s6;  $s7;  $s8;
+                    $s9;  $s10; $s11; $s12;
+                    $s13; $s14; $s15; $s16)')
 
-    response=$(curl -sSL \
+    response=$(curl -sS \
         -H "Authorization: bearer $gh_token" \
         -H "Content-Type: application/json" \
         -d "$query" https://api.github.com/graphql 2>/dev/null) || response=""
@@ -97,27 +169,12 @@ ___x_cmd_repo_card_emit_(){
         N=repo M="GraphQL fetch failed for -> $owner_repo" log:ret:1
     fi
 
+    # Pull all 16 search counts from the GraphQL response in a single
+    # jq call (instead of 16 separate invocations). The filter emits
+    # one value per line in a fixed order; the heredoc + read block
+    # below parses them into the named variables.
     local data
-    data=$(___x_cmd jq -r '
-        [
-            .data.m30.issueCount // 0,
-            .data.m90.issueCount // 0,
-            .data.m180.issueCount // 0,
-            .data.m360.issueCount // 0,
-            .data.op30.issueCount // 0,
-            .data.op90.issueCount // 0,
-            .data.op180.issueCount // 0,
-            .data.op360.issueCount // 0,
-            .data.ci30.issueCount // 0,
-            .data.ci90.issueCount // 0,
-            .data.ci180.issueCount // 0,
-            .data.ci360.issueCount // 0,
-            .data.oi30.issueCount // 0,
-            .data.oi90.issueCount // 0,
-            .data.oi180.issueCount // 0,
-            .data.oi360.issueCount // 0
-        ] | .[] | tostring
-    ' <<A
+    data=$(___x_cmd jq -r -L "$card_jq_dir" 'include "card"; card_search_counts' <<A
 $response
 A
 )
@@ -146,22 +203,39 @@ A
 $data
 A
 
-    local commit_raw commit_data
-    commit_raw=$(curl -sSL -H "Authorization: bearer $gh_token" \
-        "https://api.github.com/repos/${owner_repo}/stats/commit_activity" 2>/dev/null)
-    commit_data=$(printf '%s' "$commit_raw" | ___x_cmd jq -r '
-            (if (type == "array" and length > 0)
-             then [.[].days] | add // []
-             else [0,0,0,0,0,0,0,0,0,0,0,0,0]
-             end) as $total |
-            ($total | length) as $len |
-            [
-                ($total[$len - 30:] | add // 0),
-                ($total[$len - 90:] | add // 0),
-                ($total[$len - 180:] | add // 0),
-                ($total[$len - 360:] | add // 0)
-            ] | .[] | tostring
-        ')
+    # recentCommit via /stats/commit_activity. This endpoint returns
+    # daily commit counts for the last 52 weeks (no 100-cap) and is
+    # public (no admin scope required). GitHub caches it for ~1h.
+    # One call gets all 4 windows (30/90/180/360 days) via a single
+    # jq filter that sums the tail of the flattened days array.
+    #
+    # GitHub computes this asynchronously: on a cold cache it answers 202
+    # with an empty body or {}, and card_commit_counts then honestly reports
+    # 0 for every window. Without a retry that silently turns "stats not
+    # ready" into "no commits" — and the ccmd 3h result cache above pins the
+    # bogus zeros for the next three hours. So retry until the body is an
+    # array, but only for the not-ready shape: a `message` field means a real
+    # 404/403 (archived, fork, blocked, or empty repo) that will never become
+    # an array, and retrying it just burns 6s per repo.
+    local commit_raw commit_data attempt
+    commit_raw=""
+    attempt=0
+    while [ "$attempt" -lt 3 ]; do
+        attempt=$((attempt + 1))
+        commit_raw=$(curl -sS -H "Authorization: bearer $gh_token" \
+            "https://api.github.com/repos/${owner_repo}/stats/commit_activity" 2>/dev/null)
+        case "$(printf '%s' "$commit_raw" | ___x_cmd jq -r 'if type == "array" then "ok" elif type == "object" and has("message") then "dead" else "wait" end' 2>/dev/null)" in
+            ok)   break ;;
+            dead) commit_raw=""; break ;;
+        esac
+        commit_raw=""
+        [ "$attempt" -lt 3 ] && sleep 3
+    done
+    if [ -z "$commit_raw" ]; then
+        repo:warn "no commit_activity for $owner_repo; recording commit: 0"
+        commit_raw='[]'
+    fi
+    commit_data=$(printf '%s' "$commit_raw" | ___x_cmd jq -r -L "$card_jq_dir" 'include "card"; card_commit_counts')
     local commit30 commit90 commit180 commit360
     {
         read -r commit30
@@ -175,7 +249,10 @@ A
     local collected_at
     collected_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-    ___x_cmd jq -r \
+    # Single jq pass. Static metrics in github:, every windowed stat
+    # in recent: (grouped by 30d + N), and detail: holds the API-
+    # derived HEAD SHA. No local clone / no git fetch on this path.
+    ___x_cmd jq -r -L "$card_jq_dir" \
         --argjson merged30 "$merged30" \
         --argjson merged90 "$merged90" \
         --argjson merged180 "$merged180" \
@@ -200,77 +277,16 @@ A
         --arg date90 "$date90" \
         --arg date180 "$date180" \
         --arg date360 "$date360" \
+        --arg days90 "$days90" \
         --arg collected_at "$collected_at" \
-        '
-        .data.a // {} as $r
-        | (.data.b.defaultBranchRef // {}) as $branch
-        | ($branch.target // {}) as $head
-        | ($r.releases.nodes // [] | map(select(.publishedAt[:10] >= $date30)) | length) as $release30
-        | ($r.releases.nodes // [] | map(select(.publishedAt[:10] >= $date90)) | length) as $release90
-        | ($r.releases.nodes // [] | map(select(.publishedAt[:10] >= $date180)) | length) as $release180
-        | ($r.releases.nodes // [] | map(select(.publishedAt[:10] >= $date360)) | length) as $release360
-        | "github:",
-          "  description: \($r.description // "")",
-          "  license: \($r.licenseInfo.spdxId // "NOASSERTION")",
-          "  homepage: \($r.homepageUrl // "")",
-          "  created: \($r.createdAt[:10] // "?")",
-          "  lastCommit: \($head.committedDate[:10] // "?")",
-          "  lastRelease: \($r.releases.nodes[0].publishedAt[:10] // "?")",
-          "  latestVersion: \($r.releases.nodes[0].tagName // $r.releases.nodes[0].name // "")",
-          "  archived: \($r.isArchived // false)",
-          "  star: \($r.stargazerCount // 0)",
-          "  watcher: \($r.watchers.totalCount // 0)",
-          "  fork: \($r.forkCount // 0)",
-          "  release: \($r.releases.totalCount // 0)",
-          "  contributor: \($r.mentionableUsers.totalCount // 0)",
-          "  pullRequest: \($r.pullRequests.totalCount // 0)",
-          "  issue: \($r.issues.totalCount // 0)",
-          (if ($r.languages.edges // [] | length) > 0
-           then "language:",
-                ($r.languages.edges // [] | sort_by(-.size)[] | "  \(.node.name): \(.size)"),
-                ($r.languages.edges // [] | map(.size) | add | "totalLine: \(.)")
-           else empty end),
-          "detail:",
-          "  head: \($head.oid[:7] // "?")",
-          "recent:",
-          "  last30d:",
-          "    since: \($date30)",
-          "    release: \($release30)",
-          "    mergedPR: \($merged30)",
-          "    openPR: \($openpr30)",
-          "    closedIssue: \($closei30)",
-          "    openIssue: \($openi30)",
-          "    commit: \($commit30)",
-          "  last90d:",
-          "    since: \($date90)",
-          "    release: \($release90)",
-          "    mergedPR: \($merged90)",
-          "    openPR: \($openpr90)",
-          "    closedIssue: \($closei90)",
-          "    openIssue: \($openi90)",
-          "    commit: \($commit90)",
-          "  last180d:",
-          "    since: \($date180)",
-          "    release: \($release180)",
-          "    mergedPR: \($merged180)",
-          "    openPR: \($openpr180)",
-            "    closedIssue: \($closei180)",
-            "    openIssue: \($openi180)",
-            "    commit: \($commit180)",
-          "  last360d:",
-          "    since: \($date360)",
-          "    release: \($release360)",
-          "    mergedPR: \($merged360)",
-          "    openPR: \($openpr360)",
-            "    closedIssue: \($closei360)",
-            "    openIssue: \($openi360)",
-            "    commit: \($commit360)",
-          (if (.errors // [] | length) > 0
-           then "graphqlErrors:",
-                (.errors | .[] | "  - \(.message // "?")")
-           else empty end),
-          "collectedAt: \($collected_at)"
-    ' <<A
+        'include "card";
+         card_yaml($merged30;  $merged90;  $merged180;  $merged360;
+                  $openpr30;  $openpr90;  $openpr180;  $openpr360;
+                  $closei30;  $closei90;  $closei180;  $closei360;
+                  $openi30;   $openi90;   $openi180;   $openi360;
+                  $commit30;  $commit90;  $commit180;  $commit360;
+                  $date30;    $date90;    $date180;    $date360;
+                  $days90;    $collected_at)' <<A
 $response
 A
 

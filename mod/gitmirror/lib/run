@@ -1,0 +1,47 @@
+# x gitmirror run [-n N]
+#
+# Read a TSV stream from stdin and dispatch each line to x gitmirror sync.
+#
+# TSV schema (one mirror per line):
+#   <src>\t<target1>\t<target2>\t...
+#
+# Pipe example:
+#   yml | x yml y2j | x jq -r '.mirrors[]? | [.src]+.targets | @tsv' | x gitmirror run
+
+___x_cmd_gitmirror_run(){
+    local n=1
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -n)         n="$2" ; arg:2:shift ;;
+            -h|--help)  ___x_cmd help -m gitmirror run ; return 0 ;;
+            *)          break ;;
+        esac
+    done
+
+    if [ "$n" -le 1 ]; then
+        ___x_cmd_gitmirror_run_dispatch
+        return $?
+    fi
+
+    ___x_cmd job failfast init "$n"
+    ___x_cmd job failfast put ___x_cmd_gitmirror_run_dispatch | {
+        ___x_cmd job failfast fini
+    }
+}
+
+# Worker: read stdin line by line, dispatch each TSV row to sync.
+# Return the highest exit code across all rows (so callers see partial
+# failures instead of getting silent rc=0 when only some mirrors fail).
+___x_cmd_gitmirror_run_dispatch(){
+    local max_rc=0 rc
+    while IFS=$'\t' read -r src t1 t2 t3 t4 t5 t6 t7 t8; do
+        [ -n "$src" ] || continue
+        set -- "$src" "$t1" "$t2" "$t3" "$t4" "$t5" "$t6" "$t7" "$t8"
+        # Trim trailing empty fields so sync sees only real targets.
+        while [ "$#" -gt 1 ] && [ -z "${!#}" ]; do set -- "${@:1:$(( $# - 1 ))}"; done
+        x gitmirror sync "$@"
+        rc=$?
+        [ "$rc" -gt "$max_rc" ] && max_rc=$rc
+    done
+    return "$max_rc"
+}

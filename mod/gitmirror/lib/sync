@@ -1,0 +1,103 @@
+
+___x_cmd_gitmirror_sync(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local n=1
+    local pipe=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -n)             n="$2" ; arg:2:shift ;;
+            --pipe)         pipe=1 ; shift ;;
+            -h|--help)      ___x_cmd help -m gitmirror sync ; return 0 ;;
+            *)              break ;;
+        esac
+    done
+
+    if [ "$n" -le 1 ]; then
+        if [ -n "$pipe" ]; then
+            local line
+            while read -r line; do
+                [ -n "$line" ] || continue
+                ___x_cmd_gitmirror_sync_work_fromline "$line"
+            done
+        else
+            local repo_sync_arg=""
+
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --)     eval "___x_cmd_gitmirror_sync_work $repo_sync_arg" ; repo_sync_arg=""; shift ;;
+                    *)      arg:add repo_sync_arg "$1" ; shift ;;
+                esac
+            done
+
+            [ -z "$repo_sync_arg" ] || eval "___x_cmd_gitmirror_sync_work $repo_sync_arg"
+        fi
+        return $?
+    fi
+
+    ___x_cmd job failfast init "$n"
+
+    {
+        if [ -n "$pipe" ]; then
+            local line
+            while read -r line; do
+                [ -n "$line" ] || continue
+                ___x_cmd job failfast put ___x_cmd_gitmirror_sync_work_fromline "$line"
+            done
+        else
+            local repo_sync_arg=""
+
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --)     eval "___x_cmd job failfast put ___x_cmd_gitmirror_sync_work $repo_sync_arg" ; repo_sync_arg=""; shift ;;
+                    *)      arg:add repo_sync_arg "$1" ; shift ;;
+                esac
+            done
+            [ -z "$repo_sync_arg" ] || eval "___x_cmd job failfast put ___x_cmd_gitmirror_sync_work $repo_sync_arg"
+        fi
+    } | {
+        ___x_cmd job failfast fini
+    }
+}
+
+___x_cmd_gitmirror_sync_work(){
+    local PWD
+    local OLDPWD
+    local x_
+
+    local source="$1" ; shift
+    [ -n "$source" ] || return 2
+
+    # bare clone (if missing) + fetch (no merge) + print bare path
+    x_=$(x repo barefetch "$source") || return $?
+
+    ___x_cmd_inner_cd "$x_" || return $?
+
+    # --mirror pushes every ref + deletes remote extras — true mirror
+    # semantics. Fall back to --mirror -f when the remote rejects
+    # (non-ff, e.g. someone force-pushed to the target).
+    local target
+    [ "$#" -gt 0 ] || set -- origin
+    for target in "$@"; do
+        if x git push --mirror "$target"; then
+            :
+        else
+            x:warn "gitmirror: mirror push rejected, retrying force"
+            x git push --mirror -f "$target" || return $?
+        fi
+    done
+}
+
+___x_cmd_gitmirror_sync_work_fromline(){
+    local x_
+    ___x_cmd line from_ "$1"; set -- ""; shift
+
+    local line
+    while read -r line; do
+        [ -n "$line" ] || continue
+        set -- "$@" "$line"
+    done <<A
+$x_
+A
+    ___x_cmd_gitmirror_sync_work "$@"
+}
