@@ -197,7 +197,7 @@ function openai_gen_msgtool_from_creq( msgtool_obj, session_dir, chatid, hist_se
 }
 
 function openai_req_from_creq(session_dir, chatid, hist_session_dir,
-    creq_dir, msgtool_obj, last_msgtool_obj, cache_msg, cache_tool, _msgtool, _model, _maxtoken_keyname, _maxtoken, _seed, _temperature, _jsonmode, _ctx, is_stream, _data_str, _stream_str, _reason_eddort){
+    creq_dir, msgtool_obj, last_msgtool_obj, cache_msg, cache_tool, _msgtool, _model, _maxtoken_keyname, _maxtoken, _seed, _temperature, _jsonmode, _ctx, is_stream, _data_str, _stream_str, _reason_eddort, _thinking, _is_reasoning_env){
 
     openai_gen_msgtool_from_creq(msgtool_obj, session_dir, chatid, hist_session_dir)
     openai_gen_last_msgtool_from_creq(msgtool_obj, last_msgtool_obj, session_dir, chatid, hist_session_dir)
@@ -220,10 +220,18 @@ function openai_req_from_creq(session_dir, chatid, hist_session_dir,
     #   in some case, _maxtoken is 0, but it is not a valid value for openai.
     #   in openai, 'max_tokens' is now deprecated in favor of 'max_completion_tokens', and is not compatible with o1 series models.
 
+    _is_reasoning_env = ENVIRON[ "is_reasoning" ] ""
+
     if ( PROVIDER_NAME == "openai" ) {
         _maxtoken_keyname = "\"max_completion_tokens\""
-        if ( _model ~ "^(gpt-5|o)" ) {
+        if (( _model ~ "^(gpt-5|o)" ) && ( _is_reasoning_env != "0" )) {
             _reason_eddort  = "low" # medium high
+        }
+    } else if ( PROVIDER_NAME == "minimax" ) {
+        if ( _is_reasoning_env == "1" ) {
+            _thinking = "\"thinking\": { \"type\": \"adaptive\" }"
+        } else if ( _is_reasoning_env == "0" ) {
+            _thinking = "\"thinking\": { \"type\": \"disabled\" }"
         }
     } else {
         _maxtoken_keyname = "\"max_tokens\""
@@ -247,8 +255,9 @@ function openai_req_from_creq(session_dir, chatid, hist_session_dir,
     _ctx            = (_ctx != "") ? "\"num_ctx\": " _ctx "," : ""
     _jsonmode       = (_jsonmode) ? "\"response_format\": { \"type\": \"json_object\" }," : ""
     _reason_eddort  = (_reason_eddort) ? "\"reasoning_effort\": " jqu( _reason_eddort ) "," : ""
+    _thinking       = (_thinking) ? _thinking "," : ""
 
-    _data_str = "{ " _model _msgtool _jsonmode _maxtoken _seed _temperature _ctx _reason_eddort _stream_str " }"
+    _data_str = "{ " _model _msgtool _jsonmode _maxtoken _seed _temperature _ctx _reason_eddort _thinking _stream_str " }"
 
     return _data_str
 }

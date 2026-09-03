@@ -61,31 +61,34 @@ ___x_cmd_gitmirror_sync(){
 }
 
 ___x_cmd_gitmirror_sync_work(){
-    local PWD
-    local OLDPWD
-    local x_
+    (
+        local x_
 
-    local source="$1" ; shift
-    [ -n "$source" ] || return 2
+        local source="$1" ; shift
+        [ -n "$source" ] || return 2
 
-    # bare clone (if missing) + fetch (no merge) + print bare path
-    x_=$(x repo barefetch "$source") || return $?
+        [ "$#" -gt 0 ] || N=gitmirror M="Please provide dst repo list." log:ret:64
 
-    ___x_cmd_inner_cd "$x_" || return $?
+        # bare clone (if missing) + fetch (no merge) + print bare path
+        x_=$(___x_cmd repo barefetch "$source") || return $?
 
-    # --mirror pushes every ref + deletes remote extras — true mirror
-    # semantics. Fall back to --mirror -f when the remote rejects
-    # (non-ff, e.g. someone force-pushed to the target).
-    local target
-    [ "$#" -gt 0 ] || set -- origin
-    for target in "$@"; do
-        if x git push --mirror "$target"; then
-            :
-        else
-            x:warn "gitmirror: mirror push rejected, retrying force"
-            x git push --mirror -f "$target" || return $?
-        fi
-    done
+        ___x_cmd_inner_cd "$x_" || return $?
+
+        local target
+
+        while [ $# -gt 0 ]; do
+            target="$1" ; shift
+            [ -n "$target" ] || { x:warn "gitmirror: skipping empty target"; continue; }
+            ___x_cmd git push --mirror "$target"
+
+            case "$?" in
+                130)    return 130 ;;
+                0)      ;;
+                *)      x:warn "gitmirror: mirror push rejected, retrying force"
+                        ___x_cmd git push --mirror -f "$target" || return $?
+            esac
+        done
+    )
 }
 
 ___x_cmd_gitmirror_sync_work_fromline(){

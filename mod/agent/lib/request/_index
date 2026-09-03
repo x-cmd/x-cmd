@@ -1,6 +1,6 @@
 # shellcheck shell=dash disable=2120
 
-xrc:mod:lib     agent       request/workspace request/util
+xrc:mod:lib     agent       request/workspace request/util request/x-chat
 
 ___x_cmd_agent_request(){
     # local retry=1
@@ -182,7 +182,10 @@ ____X_CMD_AGENT_ERR_SIGINT=130
 ___x_cmd_agent_request___run(){
     agent:info "Sending request to harness '$harness'"
     ___x_cmd_agent_request___run_validate || return $?
-    ___x_cmd retry -i 3 -m 3 ___x_cmd_agent_request___run_attempt
+    case "$harness" in
+        x-chat) ___x_cmd_agent_request___run_attempt ;;
+        *)      ___x_cmd retry -i 3 -m 3 ___x_cmd_agent_request___run_attempt ;;
+    esac
 }
 
 ___x_cmd_agent_request___run_validate(){
@@ -242,6 +245,14 @@ ___x_cmd_agent_request___run_validate(){
                     return 1
                 }
                 ;;
+        x-chat)
+                ___x_cmd chat --isready >/dev/null 2>&1 || {
+                    agent:warn \
+                        --tip "x chat init" \
+                        "x chat is not ready"
+                    return "$____X_CMD_AGENT_ERR_AUTHFAILURE"
+                }
+                ;;
     esac
 }
 
@@ -295,7 +306,7 @@ ___x_cmd_agent_request___run_attempt(){
 
     # Any other failure: back up the current workspace session id so that the
     # next retry will create a brand-new persistent session.
-    if [ -n "$workspace" ] && [ "$is_new_workspace_session" != "1" ]; then
+    if [ "$harness" != "x-chat" ] && [ -n "$workspace" ] && [ "$is_new_workspace_session" != "1" ]; then
         agent:warn "Request failed (exit $ret), backing up current workspace session for retry with a new one"
         ___x_cmd_agent_request___invalidate_current_session_
     fi
@@ -371,7 +382,7 @@ ___x_cmd_agent_request___run_exec(){(
         user_session_cwd="$PWD"
 
         case "$harness" in
-            claude|claude-*|kimi-cli)
+            claude|claude-*|kimi-cli|x-chat)
                 if [ "$is_session_first" = "1" ]; then
                     real_session_id="$( ___x_cmd uuid )"
                     session_dir="$session_metadata_dir/$real_session_id"
@@ -539,6 +550,16 @@ ___x_cmd_agent_request___run_exec(){(
                 --prompt "$content" < /dev/null
                 printf "%s\n" "[EXITCODE] $?"
             } | ___x_cmd_agent_request___handle_output kimi-cli "$output_format" "$is_session_first" "$user_session_cwd" "$save_session_id_file" "$session_output_dir"
+            ret=$?
+            ___x_cmd_agent_request___finalize_session_
+            return $ret
+            ;;
+        x-chat)
+            if [ -n "$workspace" ]; then
+                set -- --session "$real_session_id"
+            fi
+
+            ___x_cmd_agent_request___run_exec_x_chat "$@" "$content" < /dev/null
             ret=$?
             ___x_cmd_agent_request___finalize_session_
             return $ret
