@@ -1,0 +1,212 @@
+# shellcheck shell=dash
+
+___x_cmd_todo___root(){
+    printf "%s\n" "${___X_CMD_ROOT_DATA:-"$HOME/.x-cmd.root/local/data"}/todo"
+}
+
+___x_cmd_todo___newid(){
+    printf "%s.%s\n" "$(date +%Y%m%d%H%M%S)" "$$"
+}
+
+___x_cmd_todo___main(){
+    [ "$#" -gt 0 ] || set -- --help
+
+    local op="$1"; shift
+    case "$op" in
+        -h|--help)  ___x_cmd_todo___help "$@" ; return 0 ;;
+        add|list|done|archive|restore|rm|show)
+                    "___x_cmd_todo_$op" "$@" ;;
+        *)          N=todo M="Unknown subcmd -> $op" log:ret:64 ;;
+    esac
+}
+
+___x_cmd_todo___help(){
+    cat <<EOF
+Usage: x todo <subcmd> [options]
+
+  add <name> [--priority low|normal|high] [--note <text>]  create a task
+  list [--all|--archived|--trash]                          list tasks (TSV)
+  done <id>         mark an active task as done (archive with reason=done)
+  archive <id> [--reason <text>]                           archive an active task
+  restore <id>      move a task from archive/trash back to active
+  rm <id> [--force] move a task to trash; --force deletes it
+  show <id>         show one task's full record
+
+State machine: active -> archived -> trash. Each task is one plain-text
+file under \$___X_CMD_ROOT_DATA/todo/<status>/<id>.
+EOF
+}
+
+___x_cmd_todo_add(){
+    local priority="normal" note=""
+    local name=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --priority)         priority="$2" ; arg:2:shift ;;
+            --note)             note="$2"     ; arg:2:shift ;;
+            --)                 shift ; break ;;
+            -*)                 N=todo M="Unknown option -> $1" log:ret:64 ;;
+            *)                  name="$name $1" ; shift ;;
+        esac
+    done
+    while [ $# -gt 0 ]; do
+        name="$name $1" ; shift
+    done
+    name="${name# }"
+
+    [ -n "$name" ] || { x:error "task name required" ; return 64 ; }
+
+    case "$priority" in
+        low|normal|high) ;;
+        *) N=todo M="Invalid priority -> $priority (low|normal|high)" log:ret:64 ;;
+    esac
+
+    local root; root="$(___x_cmd_todo___root)"
+    ___x_cmd mkdirp "$root/active"
+
+    local id; id="$(___x_cmd_todo___newid)"
+    {
+        printf "name: %s\n" "$name"
+        printf "priority: %s\n" "$priority"
+        printf "created: %s\n" "$(date +%s)"
+        [ -z "$note" ] || printf "note: %s\n" "$note"
+    } >"$root/active/$id"
+    printf "%s\n" "$id"
+}
+
+___x_cmd_todo_list(){
+    local scope="active"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --all)      scope="all" ; shift ;;
+            --archived) scope="archived" ; shift ;;
+            --trash)    scope="trash" ; shift ;;
+            *)          N=todo M="Unknown option -> $1" log:ret:64 ;;
+        esac
+    done
+
+    local root; root="$(___x_cmd_todo___root)"
+    local d f
+    for d in active archived trash; do
+        case "$scope" in
+            all|"$d") ;;
+            *) continue ;;
+        esac
+        [ -d "$root/$d" ] || continue
+        for f in "$root/$d"/*; do
+            [ -f "$f" ] || continue
+            ___x_cmd_todo___print_row "$d" "$f"
+        done
+    done
+}
+
+___x_cmd_todo___print_row(){
+    local status="$1" file="$2" id
+    id="$(basename "$file")"
+    awk -v id="$id" -v status="$status" '
+        {
+            i = index($0, ": ");
+            if (i <= 0) next;
+            k = substr($0, 1, i - 1);
+            v = substr($0, i + 2);
+            if      (k == "name")     name     = v;
+            else if (k == "priority") priority = v;
+            else if (k == "created")  created  = v;
+        }
+        END { printf "%s\t%s\t%s\t%s\t%s\n", id, priority, created, status, name }
+    ' "$file"
+}
+
+___x_cmd_todo___move_to_archived(){
+    local id="$1" reason="$2"
+    local root; root="$(___x_cmd_todo___root)"
+
+    local src="$root/active/$id"
+    [ -f "$src" ] || { x:error "task not found or not active: $id" ; return 1 ; }
+
+    ___x_cmd mkdirp "$root/archived"
+    mv "$src" "$root/archived/$id"
+    local tmp="$root/archived/.$id.$$"
+    {
+        sed '/^finished: /d; /^reason: /d' "$root/archived/$id"
+        printf "finished: %s\n" "$(date +%s)"
+        printf "reason: %s\n" "$reason"
+    } >"$tmp"
+    mv "$tmp" "$root/archived/$id"
+}
+
+___x_cmd_todo_done(){
+    ___x_cmd_todo___move_to_archived "$1" "done"
+}
+
+___x_cmd_todo_archive(){
+    local reason="archived" id=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --reason)  reason="$2" ; arg:2:shift ;;
+            -*)        N=todo M="Unknown option -> $1" log:ret:64 ;;
+            *)         id="$1" ; shift ;;
+        esac
+    done
+    ___x_cmd_todo___move_to_archived "$id" "$reason"
+}
+
+___x_cmd_todo_restore(){
+    local id="$1"
+    local root; root="$(___x_cmd_todo___root)"
+
+    local src=""
+    [ -f "$root/trash/$id" ]    && src="$root/trash/$id"
+    [ -n "$src" ] || { [ -f "$root/archived/$id" ] && src="$root/archived/$id" ; }
+
+    [ -n "$src" ] || { x:error "task not found in archive/trash: $id" ; return 1 ; }
+
+    ___x_cmd mkdirp "$root/active"
+    sed '/^finished: /d; /^reason: /d' "$src" >"$root/active/$id"
+    rm -f "$src"
+}
+
+___x_cmd_todo_rm(){
+    local force=0 id=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --force) force=1 ; shift ;;
+            -*)      N=todo M="Unknown option -> $1" log:ret:64 ;;
+            *)       id="$1" ; shift ;;
+        esac
+    done
+
+    local root; root="$(___x_cmd_todo___root)"
+
+    local src="" d
+    for d in active archived trash; do
+        [ -f "$root/$d/$id" ] && { src="$root/$d/$id" ; break ; }
+    done
+
+    [ -n "$src" ] || { x:error "task not found: $id" ; return 1 ; }
+
+    if [ "$force" -eq 1 ]; then
+        rm -f "$src"
+    else
+        ___x_cmd mkdirp "$root/trash"
+        mv "$src" "$root/trash/$id"
+    fi
+}
+
+___x_cmd_todo_show(){
+    local id="$1"
+    local root; root="$(___x_cmd_todo___root)"
+
+    local src="" d
+    for d in active archived trash; do
+        [ -f "$root/$d/$id" ] && { src="$root/$d/$id" ; break ; }
+    done
+
+    [ -n "$src" ] || { x:error "task not found: $id" ; return 1 ; }
+
+    printf "id: %s\n" "$id"
+    printf "status: %s\n" "$d"
+    ___x_cmd rat "$src"
+}
