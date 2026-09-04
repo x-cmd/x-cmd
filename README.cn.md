@@ -30,7 +30,7 @@
 
 ## [介绍](https://cn.x-cmd.com)
 
-X-CMD（读作 "X Command"）是一个为 POSIX shell（bash、zsh、ash、dash）设计的现代工具库 —— 让 shell 拥有媲美 Python 标准库的强大能力。
+X-CMD 是一个为 POSIX shell（bash、zsh、ash、dash）设计的现代工具库 —— 让 shell 拥有媲美 Python 标准库的强大能力。
 
 <table>
 <tbody>

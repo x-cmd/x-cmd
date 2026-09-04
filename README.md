@@ -16,7 +16,7 @@ English | [中文](README.cn.md) | [Source Code](https://github.com/x-cmd/x-cmd/
 
 ## [Introduction](https://x-cmd.com)
 
-X-CMD (pronounced as "*X Command*") is a modern toolkit for POSIX shell (bash, zsh, ash, dash) — designed to make shell as powerful as Python's standard library.
+X-CMD is a modern toolkit for POSIX shell (bash, zsh, ash, dash) — designed to make shell as powerful as Python's standard library.
 
 <table>
 <tbody>
