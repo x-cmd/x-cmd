@@ -15,6 +15,24 @@ function fmtbytes(b,    u) {
     u = b >= 1073741824 ? "GB" : (b >= 1048576 ? "MB" : "KB")
     return sprintf("%.0f " u, b / (u == "GB" ? 1073741824 : (u == "MB" ? 1048576 : 1024)))
 }
+# Build "(4P + 6E)" suffix from perflevel names. Names vary by chip
+# (Performance / Efficiency / Super / etc.) and perflevel0 may be either
+# type — we detect by keyword, not by index.
+function cores_suffix(    p, e, nl) {
+    p = 0; e = 0
+    if (p0name) {
+        nl = tolower(p0name)
+        if (nl ~ /efficiency/)      e += p0cpu
+        else if (nl ~ /performance|super/) p += p0cpu
+    }
+    if (p1name) {
+        nl = tolower(p1name)
+        if (nl ~ /efficiency/)      e += p1cpu
+        else if (nl ~ /performance|super/) p += p1cpu
+    }
+    if (p + e == 0) return ""
+    return sprintf(" (%dP + %dE)", p, e)
+}
 function fmthz(h) {
     if (h >= 1000000000) return sprintf("%.2f GHz", h / 1000000000)
     if (h >= 1000000) return sprintf("%.0f MHz", h / 1000000)
@@ -69,7 +87,7 @@ END {
     if (cmodel)   pc("model", cmodel)
     if (stepping) pc("stepping", stepping)
     # Cache
-    if (cores)    pc("cpu cores", cores)
+    if (cores)    pc("cpu cores", cores cores_suffix())
     if (cache)    pc("cache size", cache " KB")
     if (!simple) {
         if (cacheline) pc("cache line size", cacheline " B")

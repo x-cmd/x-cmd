@@ -1,0 +1,80 @@
+# shellcheck shell=dash
+
+# x repo cardrender - render a stored card YAML through card.awk (and loc
+# through loc.awk if the file also carries a loc tail).
+#
+# `x repo card` always pays a fresh GitHub round-trip and a tokei scan.
+# Useful when the user just wants to look at a snapshot someone else
+# collected, compare two snapshots from different times, or render a
+# card from CI output without re-fetching anything.
+#
+# Accepts a path (the common case: a file under x-cmd-install/<repo>/data/)
+# or `-` for stdin. Multiple YAML documents in one file (separated by
+# `---`) are routed to the right renderer by the document's first
+# top-level key: about:/timeline:/popularity:/recent:/total: -> card;
+# path:/loc:/locTotal:/locPath: -> loc; anything else is passed through.
+
+___x_cmd_repo_cardrender(){
+    local mode=auto src=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m repo cardrender ; return 0 ;;
+            --tty|--yml|--auto)
+                        mode=${1#--}; shift ;;
+            -)          src="-"; shift ;;
+            -*)         N=repo M="Unknown flag -> $1" log:ret:64 ;;
+            *)          src="$1"; shift ;;
+        esac
+    done
+
+    [ -n "$src" ] || N=repo M="Usage: x repo cardrender <path|->" log:ret:64
+
+    case "$src" in
+        -)      ___x_cmd_repo_cardrender_render /dev/stdin "$mode" ;;
+        *)      [ -r "$src" ] || N=repo M="Cannot read -> $src" log:ret:1
+                ___x_cmd_repo_cardrender_render "$src" "$mode" ;;
+    esac
+}
+
+___x_cmd_repo_cardrender_render(){
+    local src="$1" mode="$2"
+    local awk_mod="${___X_CMD_ROOT_MOD}/repo/lib/awk"
+    local tmpdir
+
+    case "$mode" in
+        tty)
+            tmpdir=$(mktemp -d)
+            awk -v d="$tmpdir" 'BEGIN{n=0}
+                /^---$/        { n++; next }
+                { print > (d "/doc_" n) }
+                END { print n + 1 > (d "/count") }
+            ' "$src"
+
+            local i count first
+            count=$(cat "$tmpdir/count")
+            for i in $(seq 0 $((count - 1))); do
+                [ -s "$tmpdir/doc_$i" ] || continue
+                first=$(awk 'NF && !/^[ \t]/ { sub(/:.*/, ""); print; exit }' "$tmpdir/doc_$i")
+                case "$first" in
+                    about|timeline|popularity|language|recent|total)
+                        ___x_cmd_cmds awk -f "$awk_mod/card.awk" "$tmpdir/doc_$i" ;;
+                    path|loc|locTotal|locPath)
+                        ___x_cmd_cmds awk -f "$awk_mod/loc.awk" "$tmpdir/doc_$i" ;;
+                    date|repo|scorecard|checks)
+                        ___x_cmd_cmds awk -f "$awk_mod/scorecard.awk" "$tmpdir/doc_$i" ;;
+                esac
+            done
+            rm -rf "$tmpdir"
+            ;;
+        yml)
+            cat "$src"
+            ;;
+        auto)
+            if [ -t 1 ]; then
+                ___x_cmd_repo_cardrender_render "$src" tty
+            else
+                ___x_cmd_repo_cardrender_render "$src" yml
+            fi
+            ;;
+    esac
+}

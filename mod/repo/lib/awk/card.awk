@@ -68,8 +68,25 @@ BEGIN {
                    in_window = ""
                    next
                  }
+# total: carries the same six metrics as a recent: window, over the repo's
+# whole history, so it rides the same table as one more row — registered
+# here as a pseudo-window named "total" and rendered last because card_yaml
+# emits this section after recent:.
+/^total:$/      { section = "total"
+                   in_window = "total"
+                   add_window("total")
+                   next
+                 }
 /^graphqlErrors:/ { next }
 /^  - /          { next }
+
+section == "total" {
+    if (match($0, /^  [a-zA-Z]+: /)) {
+        key = substr($0, 3, RLENGTH - 4)
+        win_metric["total", key] = substr($0, RSTART + RLENGTH) + 0
+    }
+    next
+}
 
 section == "about" {
     # description: literal block scalar `|` from card_yaml. The header
@@ -163,8 +180,7 @@ section == "language" {
     if (match($0, /^  last[0-9]+[a-z]:$/)) {
         win = substr($0, 3, RLENGTH - 3)
         in_window = win
-        n_windows++
-        recent_windows = (recent_windows == "" ? win : recent_windows "|" win)
+        add_window(win)
     } else if (in_window != "" && match($0, /^    [a-zA-Z]+: /)) {
         key = substr($0, 5, RLENGTH - 6)
         val = substr($0, RSTART + RLENGTH) + 0
@@ -208,8 +224,8 @@ END {
     print "      Forks:        " BG fmt(g_sub["fork"])        RST
     print "      Releases:     " BG fmt(g_sub["release"])     RST
     print "      Contributors: " BG fmt(g_sub["contributor"]) RST
-    print "      Pull reqs:    " BG fmt(g_sub["pullRequest"]) RST
-    print "      Issues:       " BG fmt(g_sub["issue"])       RST
+    print "      Pull reqs:    " BG fmt(g_sub["pullRequest"]) RST (g_sub["pullRequest"] == "0" ? "" : BD " (Merged " fmt(win_metric["total", "mergedPR"]) " + Open " fmt(win_metric["total", "openPR"]) " + Reject " fmt(g_sub["pullRequest"] + 0 - win_metric["total", "mergedPR"] - win_metric["total", "openPR"]) ")" RST)
+    print "      Issues:       " BG fmt(g_sub["issue"])       RST (g_sub["issue"] == "0" ? "" : BD " (Open " fmt(win_metric["total", "openIssue"]) " + Closed " fmt(win_metric["total", "closedIssue"]) ")" RST)
     if (g_sub["archived"] == "true") {
         print "      " BC "ARCHIVED" RST
     }
@@ -223,13 +239,13 @@ END {
         }
         for (i = 0; i < lang_count; i++) {
             pct = (total_line > 0) ? (lang_bytes[i] * 100.0 / total_line) : 0
-            printf "      %-" maxlen "s  " BG "%10d bytes" RST "  " BD "%5.1f%%" RST "\n", lang_name[i], lang_bytes[i], pct
+            printf "      %-" maxlen "s  " BG "%12s KB" RST "  " BD "%5.1f%%" RST "\n", lang_name[i], fmtkb(lang_bytes[i]), pct
         }
         print ""
     }
 
     if (n_windows > 0) {
-        print BC "  RECENT ACTIVITY" RST
+        print BC "  ACTIVITY" RST
         n = split(recent_windows, ws, "|")
         n_metrics = split("release|mergedPR|openPR|closedIssue|openIssue|commit", metric_list, "|")
         maxwinlen = 0
@@ -281,8 +297,30 @@ function fmt(s,    out, i, len, c, n) {
     return out
 }
 
+# Bytes -> KB with one decimal and a thousands-separated integer part.
+# Display only: the YAML keeps raw byte counts so `yq` consumers still get
+# the exact linguist figure. 1 KB = 1024 bytes. A file smaller than ~51
+# bytes renders as 0.0 KB rather than being rounded up to a lie.
+function fmtkb(b,    kb, ip, fp) {
+    kb = b / 1024.0
+    ip = int(kb)
+    fp = int((kb - ip) * 10 + 0.5)
+    if (fp >= 10) { ip++; fp = 0 }
+    return fmt(ip) "." fp
+}
+
 function strrep(s, n,    i, out) {
     out = ""
     for (i = 0; i < n; i++) out = out s
     return out
+}
+
+# Register a table row, ignoring repeats. `--days 60` makes card_yaml emit
+# last60d once (the shell de-duplicates the window set), but a stale or
+# hand-fed YAML with a duplicate block would otherwise print the row twice.
+function add_window(w) {
+    if (w in seen_win) return
+    seen_win[w] = 1
+    n_windows++
+    recent_windows = (recent_windows == "" ? w : recent_windows "|" w)
 }

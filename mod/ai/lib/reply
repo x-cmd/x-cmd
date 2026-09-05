@@ -1,0 +1,64 @@
+# shellcheck shell=dash disable=SC2034
+
+# x ai reply [--persona NAME] <text...>
+#
+# Draft a reply to `<text>` in the chosen persona (default: helpful assistant).
+# Use `-`/`--pipe` to append stdin as a <STDIN> section. Local mirror of x-cmd-action/ai/reply.
+
+___x_cmd_ai_reply(){
+    [ "$#" -gt 0 ] || set -- --help
+
+    local persona="helpful assistant" format=
+    local target=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)          ___x_cmd help -m ai reply ; return ;;
+            --persona|--as)     persona="$2";       arg:2:shift ;;
+            --yml|--yaml)       format="yml" ; shift ;;
+            --json|-j)          format="json" ; shift ;;
+            --)                 shift;              break ;;
+            -|--pipe)           is_pipe=1 ;         shift ;;
+            -*)                 N=ai M="Unknown flag -> $1" log:ret:64 ;;
+            *)                  break ;;
+        esac
+    done
+
+    local content=""
+    local IFS=" "
+    [ "$#" -le 0 ] || content="$*"
+    if [ "$is_pipe" = "1" ]; then
+        local stdin_content
+        stdin_content="$( ___x_cmd_cmds cat )" || return $?
+        [ -z "$stdin_content" ] || {
+            content="${content:+"${content}${___X_CMD_UNSEENCHAR_NEWLINE}${___X_CMD_UNSEENCHAR_NEWLINE}"}<STDIN>
+${stdin_content}
+</STDIN>"
+        }
+    fi
+
+    [ -n "$content" ] || N=ai M="No content to reply to. Provide text as argument or use '-' to read from stdin." log:ret:64
+
+    local prompt="You are a $persona. Draft a reply to the text below.
+The content may mix argument text with a <STDIN> section — treat it all as one message to reply to.
+Rules:
+- Be concise (at most 120 words).
+- Do not invent facts; ask a short follow-up question if something is unclear.
+- Match the language of the original text.
+- Keep the tone friendly.
+- Format the reply in Markdown.
+
+---
+$content
+"
+
+    ai:debug --m:prompt "$prompt"
+    local response
+    response="$( ___x_cmd ask --quick "$prompt" )" || return $?
+
+    case "${format:-md}" in
+        yml)  printf 'persona: %s\nreply: |\n  %s\n' "$persona" "$(printf '%s' "$response" | ___x_cmd_cmds sed 's/^/  /')" ;;
+        json) ___x_cmd jo dist "persona=$persona" "reply=$response" ;;
+        *)    printf '%s\n' "$response" ;;
+    esac
+}
