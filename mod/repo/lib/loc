@@ -1,0 +1,79 @@
+# shellcheck shell=dash
+
+___x_cmd_repo_loc(){
+    local mode=auto
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m repo loc ; return 0 ;;
+            --tty|--yml|--auto)
+                        mode=${1#--}; shift ;;
+            -*)         N=repo M="Unknown flag -> $1 (try --tty / --yml)" log:ret:64 ;;
+            *)          break ;;
+        esac
+    done
+
+    [ $# -gt 0 ] || N=repo M="Usage: x repo loc [--tty|--yml] <id>" log:ret:64
+
+    ___x_cmd_repo_loc_emit_"$mode" "$1"
+}
+
+___x_cmd_repo_loc_emit_auto(){
+    if [ -t 1 ]; then
+        ___x_cmd_repo_loc_emit_tty "$@"
+    else
+        ___x_cmd_repo_loc_emit_yml "$@"
+    fi
+}
+
+___x_cmd_repo_loc_emit_tty(){
+    ___x_cmd_repo_loc_emit_yml "$@" | ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/repo/lib/awk/loc.awk"
+}
+
+___x_cmd_repo_loc_emit_yml(){
+    ___x_cmd_repo_loc___render "$1" loc_yaml
+}
+
+___x_cmd_repo_loc_emit_yml_embed(){
+    ___x_cmd_repo_loc___render "$1" loc_yaml_embed
+}
+
+___x_cmd_repo_loc___render(){
+    local id="$1"
+    local shape="$2"
+    local x_
+    local stale=false
+
+    case "$id" in
+        *@*)    : ;;
+        *)      ___x_cmd_repo_resolve_ "$id" 2>/dev/null || true
+                if [ -z "$x_" ] || [ ! -d "$x_" ]; then
+                    ___x_cmd_repo_update_one "$id" >/dev/null 2>&1 \
+                        || stale=true
+                fi ;;
+    esac
+
+    ___x_cmd_repo_resolve_ "$id" || return $?
+    local path="$x_"
+
+    [ -d "$path" ] || N=repo M="No working tree at -> $path (try 'x repo update $id')" log:ret:1
+
+    local tokei_json
+    tokei_json=$(___x_cmd tokei -o json "$path" 2>/dev/null) || tokei_json=""
+    [ -n "$tokei_json" ] || N=repo M="tokei produced no output for -> $path" log:ret:1
+
+    local collected_at
+    ___x_cmd epoch get_
+    ___x_cmd date dump_ --fmt '%Y-%m-%dT%H:%M:%SZ' "$x_"
+    collected_at="$x_"
+
+    case "$shape" in
+        loc_yaml_embed)
+            printf '%s' "$tokei_json" | ___x_cmd jq -r -L "${___X_CMD_ROOT_MOD}/repo/lib/awk" \
+                --arg path "$path" --argjson stale "$stale" \
+                'include "loc"; loc_yaml_embed($path; $stale)' ;;
+        *)
+            printf '%s' "$tokei_json" | ___x_cmd jq -r -L "${___X_CMD_ROOT_MOD}/repo/lib/awk" \
+                --arg path "$path" --arg collected_at "$collected_at" --argjson stale "$stale" \
+                'include "loc"; loc_yaml($path; $collected_at; $stale)' ;;
+    esac
+}

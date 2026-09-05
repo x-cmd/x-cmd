@@ -1,0 +1,56 @@
+# shellcheck shell=dash
+
+# Fetch the latest project card snapshot for a software from
+# x-cmd-install-stat, render it through `x repo cardrender`, and (for
+# --info) prepend the local install recipe.
+#
+# URL layout (one YAML file per software, multi-document: card + scorecard):
+#   https://raw.githubusercontent.com/x-cmd-install/x-cmd-install-stat/refs/heads/main/stat/<software>/latest.card.yml
+#
+# The fetch is wrapped in `x ccmd 1d --` so fzf preview keystrokes (and
+# repeated CLI calls) hit the cache instead of GitHub raw every time.
+
+___x_cmd_install_report(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    local fmt=auto
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m install --report "$@"; return 0 ;;
+            --tty|--yml)
+                        fmt="${1#--}";  shift ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$1" ] || { install:error "Please provide a software name"; return 1; }
+    ___x_cmd_install_report___render "$fmt" "$@"
+}
+
+___x_cmd_install_report___render(){
+    local fmt="$1"; shift
+    local software="$1"; [ -n "$software" ] || return 1
+
+    local url="https://raw.githubusercontent.com/x-cmd-install/x-cmd-install-stat/refs/heads/main/stat/${software}/latest.card.yml"
+    ___x_cmd ccmd 1d -- curl -fsSL "$url" 2>/dev/null \
+        | ___x_cmd repo cardrender - "--$fmt"
+}
+
+___x_cmd_install_info(){
+    [ $# -gt 0 ]    ||  set -- --help
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m install --info "$@"; return 0 ;;
+            *)          break ;;
+        esac
+    done
+
+    [ -n "$1" ] || { install:error "Please provide a software name"; return 1; }
+
+    # Local install recipe first, then the project card snapshot.
+    # --tty is forced: --info is a display command, so the card must render
+    # even when stdout is a pipe (e.g. fzf preview pane).
+    ___x_cmd install --printinfo "$@"
+    ___x_cmd install --report --tty "$@"
+}

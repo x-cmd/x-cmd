@@ -1,0 +1,43 @@
+# shellcheck shell=dash disable=SC2034
+
+# x ai translate [--to LANG] [--from LANG] [--yml] [path|@-]
+#
+# Translate the contents of a file (or stdin) to `--to` (default: en).
+# Local mirror of x-cmd-action/ai/translate.
+
+___x_cmd_ai_translate(){
+    local to_lang="en" from_lang="auto" format=
+    local target=
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m ai translate ; return ;;
+            --to)                to_lang="$2";       arg:2:shift ;;
+            --from)              from_lang="$2";     arg:2:shift ;;
+            --yml|--yaml)        format="yml" ; shift ;;
+            --json|-j)           format="json" ; shift ;;
+            --)                  shift; target="$*"; break ;;
+            -*)                  N=ai M="Unknown flag -> $1" log:ret:64 ;;
+            *)                   target="$1"; shift ;;
+        esac
+    done
+
+    local body
+    body="$(___x_cmd_ai___read_input "${target:-"-"}")"
+
+    local prompt="Translate the following text into ${to_lang}. Preserve Markdown structure, code blocks, and placeholders verbatim. Output ONLY the translated text, with no preamble.
+
+---- ORIGINAL (${from_lang}) ----
+${body}
+---- TRANSLATED (${to_lang}) ----"
+
+    ai:debug --m:prompt "$prompt"
+    local response
+    response="$( ___x_cmd ask --quick "$prompt" )" || return $?
+
+    case "$format" in
+        yml)  printf 'to: %s\nfrom: %s\ntext: |\n  %s\n' "$to_lang" "$from_lang" "$(printf '%s' "$response" | ___x_cmd_cmds sed 's/^/  /')" ;;
+        json) ___x_cmd jo dict "to=$to_lang" "from=$from_lang" "text=$response" ;;
+        *)    printf '%s\n' "$response" ;;
+    esac
+}

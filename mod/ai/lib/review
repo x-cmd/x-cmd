@@ -1,0 +1,138 @@
+# shellcheck shell=dash disable=SC2034
+
+# x ai review [--yml|--yaml|--json|--md|--tsv] [--staged] [--branch BRANCH] [--max-lines N] [path|@-]
+#
+# With no target, reviews the unstaged working-tree diff (falls back to --cached).
+#
+# Sends code (file/dir/diff/staged/branch range) to the configured AI via
+# `x ask --quick` and prints a structured review: Overall / Security /
+# Style / Suggestions / Summary. Local mirror of x-cmd-action/ai/review.
+
+___x_cmd_ai_review(){
+    local format= max_lines=1500
+    local staged= branch=
+    local target=
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m ai review ; return ;;
+            --yml|--yaml)        format="yml" ; shift ;;
+            --json|-j)           format="json" ; shift ;;
+            --md|--markdown)     format="md" ; shift ;;
+            --tsv|-t)            format="tsv" ; shift ;;
+            --staged)            staged="1" ; shift ;;
+            --branch)            branch="$2";        arg:2:shift ;;
+            --max-lines)         max_lines="$2";     arg:2:shift ;;
+            --)                  shift; target="$*"; break ;;
+            -*)                  N=ai M="Unknown flag -> $1" log:ret:64 ;;
+            *)                   target="$1"; shift ;;
+        esac
+    done
+
+    local diff
+    diff="$(___x_cmd_ai_review___gather_diff "${target:-}" "${staged}" "${branch}" "${max_lines}")" || return 1
+    [ -n "$diff" ] || N=ai M="No diff content to review (working tree clean?)" log:ret:0
+
+    local prompt
+    prompt="$(___x_cmd_ai___review_system_prompt)
+
+$diff"
+
+    ai:debug --m:prompt "$prompt"
+    local response
+    response="$( ___x_cmd ask --quick "$prompt" )" || return $?
+
+    case "${format:-md}" in
+        json) printf '%s\n' "$response" ;;
+        yml)  printf '%s' "$response" | ___x_cmd_ai___format_yml ;;
+        tsv)  printf '%s' "$response" | ___x_cmd_ai___format_tsv ;;
+        *)    printf '%s\n' "$response" ;;
+    esac
+}
+
+# Collect a unified diff string. Tries, in order:
+#   1. explicit target path (file/dir contents)
+#   2. --staged (git diff --cached)
+#   3. --branch BRANCH (git diff BRANCH...HEAD)
+#   4. default: git diff (working tree, fallback to --cached)
+___x_cmd_ai_review___gather_diff(){
+    local target="$1" staged="$2" branch="$3" max_lines="$4"
+
+    if [ -n "$target" ]; then
+        if [ -f "$target" ]; then
+            printf '%s\n\n---- FILE: %s ----\n' "FILE REVIEW" "$target"
+            ___x_cmd_cmds cat -- "$target" | ___x_cmd_cmds head -n "${max_lines}"
+            return 0
+        fi
+        if [ -d "$target" ]; then
+            printf '%s\n\n---- DIRECTORY: %s ----\n' "DIRECTORY REVIEW" "$target"
+            ___x_cmd_cmds find "$target" -maxdepth 4 -type f \
+                \( -name "*.sh" -o -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.go" -o -name "*.rs" -o -name "*.yml" -o -name "*.yaml" -o -name "*.json" -o -name "*.md" \) \
+                | ___x_cmd_cmds head -n 20 | while IFS= read -r f; do
+                    printf '\n### %s ###\n' "$f"
+                    ___x_cmd_cmds cat -- "$f"
+                done | ___x_cmd_cmds head -n "${max_lines}"
+            return 0
+        fi
+    fi
+
+    if ! command -v git >/dev/null 2>&1 || ! ___x_cmd_cmds git rev-parse --git-dir >/dev/null 2>&1; then
+        ai:warn "Not in a git repo and no file target — nothing to review."
+        return 1
+    fi
+
+    local raw
+    if [ -n "$staged" ]; then
+        raw="$(___x_cmd_cmds git diff --cached --unified=3)"
+    elif [ -n "$branch" ]; then
+        raw="$(___x_cmd_cmds git diff "${branch}...HEAD" --unified=3)"
+    else
+        raw="$(___x_cmd_cmds git diff --unified=3)"
+        if [ -z "$raw" ]; then
+            raw="$(___x_cmd_cmds git diff --cached --unified=3)"
+            staged="1"
+        fi
+    fi
+
+    if [ -z "$raw" ]; then
+        ai:info "No changes to review."
+        return 0
+    fi
+
+    local lines
+    lines="$(printf '%s' "$raw" | ___x_cmd_cmds wc -l | ___x_cmd_cmds awk '{print $1}')"
+    if [ "$lines" -gt "${max_lines:-1500}" ]; then
+        ai:info "Diff is $lines lines, truncating to ${max_lines}."
+        raw="$(printf '%s' "$raw" | ___x_cmd_cmds head -n "${max_lines}")"
+        raw="${raw}
+
+(... truncated, ${lines} total lines)"
+    fi
+
+    if [ -n "$staged" ]; then
+        printf 'STAGED DIFF\n\n%s\n' "$raw"
+    else
+        printf 'WORKING TREE DIFF\n\n%s\n' "$raw"
+    fi
+}
+
+___x_cmd_ai___review_system_prompt(){
+    ___x_cmd_cmds cat <<'EOF'
+You are a senior code reviewer. Output EXACTLY this structure (no preamble):
+
+## Overall
+<one-line verdict: LGTM | NEEDS WORK | BLOCKING>
+
+## Security
+<bullet list of security issues, or 'No issues found.'>
+
+## Style
+<bullet list of style issues, or 'No issues found.'>
+
+## Suggestions
+<bullet list of optional improvements, or 'None.'>
+
+## Summary
+<2-3 line summary of the change>
+EOF
+}

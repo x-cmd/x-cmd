@@ -1,0 +1,136 @@
+# shellcheck shell=dash disable=SC2034
+
+# x ai commit [--check|--generate]
+#
+# `--check`    Validate Conventional Commits format on commits in branch range.
+# `--generate` Draft a Conventional Commits subject from staged diff.
+# (Default subcmd: auto — generate if anything is staged, else check.)
+# Local mirror of x-cmd-action/ai/commit.
+
+___x_cmd_ai_commit(){
+    [ "$#" -gt 0 ] || set -- --generate
+    local mode= format=
+    local limit=50
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m ai commit ; return ;;
+            --check)             mode="check" ; shift ;;
+            --generate|--gen)    mode="generate" ; shift ;;
+            --auto)              mode="" ; shift ;;
+            --yml|--yaml)        format="yml" ; shift ;;
+            --json|-j)           format="json" ; shift ;;
+            --limit)             limit="$2";      arg:2:shift ;;
+            *)                   N=ai M="Unknown flag -> $1" log:ret:64 ;;
+        esac
+    done
+
+    if [ -z "$mode" ]; then
+        if ___x_cmd_cmds git rev-parse --git-dir >/dev/null 2>&1; then
+            if [ -n "$(___x_cmd_cmds git diff --cached --name-only 2>/dev/null)" ]; then
+                mode="generate"
+            else
+                mode="check"
+            fi
+        else
+            mode="check"
+        fi
+    fi
+
+    case "$mode" in
+        check)        ___x_cmd_ai_commit___check "$format" "$limit" ;;
+        generate)     ___x_cmd_ai_commit___generate "$format" ;;
+        *)            N=ai M="Unknown mode -> $mode" log:ret:64 ;;
+    esac
+}
+
+# Conventional Commits subject pattern.
+___x_cmd_ai_commit___pattern='^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\([a-zA-Z0-9_-]+\))?!?: .+'
+
+# Short hash helper (dash has no ${var:N:M}).
+___x_cmd_ai___short_hash(){
+    local h="$1"
+    while [ "${#h}" -gt 7 ]; do
+        h="${h%?}"
+    done
+    printf "%s" "$h"
+}
+
+___x_cmd_ai_commit___check(){
+    local format="$1" limit="$2"
+
+    local range=
+    for ref in "origin/main...HEAD" "main...HEAD" "master...HEAD"; do
+        range="$(___x_cmd_cmds git log "${ref}" --pretty=format:'%H|%s' --max-count="$limit" 2>/dev/null)"
+        if [ -n "$range" ]; then break; fi
+    done
+
+    if [ -z "$range" ]; then
+        ai:info "No commits to check (no upstream range found)."
+        return 0
+    fi
+
+    local invalid=0 invalid_list= ok_count=0
+    local hash subject short
+    while IFS='|' read -r hash subject; do
+        if [ -z "$hash" ]; then continue; fi
+        short="$(___x_cmd_ai___short_hash "$hash")"
+        if printf '%s' "$subject" | ___x_cmd_cmds grep -qE "$___x_cmd_ai_commit___pattern"; then
+            ok_count=$((ok_count + 1))
+        else
+            invalid=$((invalid + 1))
+            invalid_list="${invalid_list}- ${short}: ${subject}
+"
+            ai:warn "INVALID: ${short}: $subject"
+        fi
+    done <<-END_OF_INPUT
+$range
+END_OF_INPUT
+
+    if [ "$invalid" -eq 0 ]; then
+        ai:info "All scanned commits match Conventional Commits."
+        return 0
+    fi
+
+    ai:warn "$invalid commits fail Conventional Commits. Asking AI for suggestions..."
+
+    local prompt="Review the following commit messages and propose a Conventional Commits compliant subject for each. Output as: \`hash\`: \`type(scope)\`: \`subject\` — one per line.
+
+Invalid list:
+${invalid_list}"
+
+    ai:debug --m:prompt "$prompt"
+    local suggestions
+    suggestions="$( ___x_cmd ask --quick "$prompt" )" || return $?
+
+    case "$format" in
+        yml)  printf 'invalid_count: %s\nsuggestions: |\n  %s\n' "$invalid" "$(printf '%s' "$suggestions" | ___x_cmd_cmds sed 's/^/  /')" ;;
+        json) ___x_cmd jo dict "invalid=$invalid" "suggestions=$suggestions" ;;
+        *)    printf '%s\n' "$suggestions" ;;
+    esac
+}
+
+___x_cmd_ai_commit___generate(){
+    local format="$1"
+
+    local diff
+    diff="$(___x_cmd_cmds git diff --cached --unified=3 | ___x_cmd_cmds head -c 60000)"
+    [ -n "$diff" ] || N=ai M="No staged changes. Stage with \`git add\` first." log:ret:1
+
+    local prompt="Write a Conventional Commits subject (max 72 chars) for the staged diff below.
+
+Output ONLY the subject — no quotes, no preamble, no code fences.
+${diff}"
+
+    ai:debug --m:prompt "$prompt"
+    local subject
+    subject="$( ___x_cmd ask --quick "$prompt" )" || return $?
+
+    subject="$(printf '%s' "$subject" | ___x_cmd_ai___clean)"
+
+    case "$format" in
+        yml)  printf 'subject: %s\n' "$subject" ;;
+        json) ___x_cmd jo dict "subject=$subject" ;;
+        *)    printf '%s\n' "$subject" ;;
+    esac
+}

@@ -63,7 +63,9 @@ BEGIN {
 
     if (output_mode == "path") {
         print fp
-        if (search_name != "") exit 0
+        # Drain remaining input before exiting, so upstream producers
+        # (e.g. shell printf loops) don't hit SIGPIPE / broken pipe.
+        if (search_name != "") { while ((getline) > 0); exit 0 }
     } else if (output_mode == "yml") {
         print cmdname ":"
         print "  fp: " fp

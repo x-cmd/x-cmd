@@ -1,0 +1,63 @@
+# shellcheck shell=dash disable=SC2034
+
+# x ai triage [--yml|--json|--md] [--labels LABELS] [path|@-]
+#
+# Read an issue/PR body (file or stdin) and produce a triage verdict:
+# priority, area, suggested labels, blocking concerns.
+# Local mirror of x-cmd-action/ai/triage.
+
+___x_cmd_ai_triage(){
+    [ "$#" -gt 0 ] || { ___x_cmd help -m ai triage ; return; }
+
+    local format= candidate_labels= target=
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m ai triage ; return ;;
+            --yml|--yaml)        format="yml" ; shift ;;
+            --json|-j)           format="json" ; shift ;;
+            --md|--markdown)     format="md" ; shift ;;
+            --labels)            candidate_labels="$2"; arg:2:shift ;;
+            -)                   target="$1"; shift ;;
+            --)                  shift; target="$*"; break ;;
+            -*)                  N=ai M="Unknown flag -> $1" log:ret:64 ;;
+            *)                   target="$1"; shift ;;
+        esac
+    done
+
+    local body
+    body="$(___x_cmd_ai___read_input "${target:-"-"}")"
+    [ -n "$body" ] || N=ai M="Empty input." log:ret:1
+
+    local labels="${candidate_labels:-bug,enhancement,docs,question,security,performance,chore}"
+
+    local prompt="Triage the following issue/PR. Output EXACTLY:
+
+## Priority
+<P0 | P1 | P2 | P3>
+
+## Area
+<component name>
+
+## Labels
+<comma-separated, choose from: ${labels}>
+
+## Blocking
+<concerns or 'None.'>
+
+## TL;DR
+<one sentence>
+
+Candidate labels: ${labels}
+${body}"
+
+    ai:debug --m:prompt "$prompt"
+    local response
+    response="$( ___x_cmd ask --quick "$prompt" )" || return $?
+
+    case "${format:-md}" in
+        yml)  printf '%s' "$response" | ___x_cmd_ai___format_yml ;;
+        json) printf '%s' "$response" | ___x_cmd_ai___format_json ;;
+        *)    printf '%s\n' "$response" ;;
+    esac
+}

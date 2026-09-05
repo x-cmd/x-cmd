@@ -1,0 +1,72 @@
+# shellcheck shell=dash
+
+# Shared helpers for `x ai`. No config lives here — `x ai` delegates all
+# provider/key/harness state to `x agent`.
+
+# Trim leading/trailing whitespace and strip simple code fences / quotes
+# that the AI sometimes wraps around its output.
+___x_cmd_ai___clean(){
+    ___x_cmd_cmds sed -e 's/^```[a-zA-Z]*$//' -e 's/^```$//' -e 's/^"//' -e 's/"$//' \
+        -e "s/^'//" -e "s/'\$//" \
+    | ___x_cmd_cmds awk '{$1=$1};1'
+}
+
+# Read prompt content from a file path, stdin ("-"), or pass through text.
+___x_cmd_ai___read_input(){
+    local src="$1"
+    if [ -z "$src" ] || [ "$src" = "-" ]; then
+        ___x_cmd_cmds cat
+    elif [ -f "$src" ]; then
+        ___x_cmd_cmds cat -- "$src"
+    else
+        printf "%s" "$src"
+    fi
+}
+
+# Wraps stdin user content with a system prompt. Output is NOT quoted JSON
+# — `x agent request` accepts plain prompt text.
+___x_cmd_ai___compose_prompt(){
+    local system="$1"
+    if [ -n "$system" ]; then
+        printf '%s\n\n---\n\n%s' "$system" "$(___x_cmd_cmds cat)"
+    else
+        ___x_cmd_cmds cat
+    fi
+}
+
+# Crude parser: turn `## Heading\n<body>` blocks into flat YAML.
+___x_cmd_ai___format_yml(){
+    ___x_cmd_cmds awk '
+        /^## / {
+            gsub(/^## /, "")
+            key = $0; sub(/[ \t\b\v\n]*$/, "", key);
+            gsub(/[ \t\b\v\n]+/, "_", key); key = tolower(key);
+            printf "%s: |\n", key; next
+        }
+        { if (NF) printf "  %s\n", $0; else printf "\n" }
+    '
+}
+
+# Crude parser: turn `## Heading\n<body>` blocks into a flat JSON object.
+___x_cmd_ai___format_json(){
+    ___x_cmd_cmds awk '
+        function esc(s){ gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); return s }
+        BEGIN{ printf "{" }
+        /^## / {
+            if (section) printf "\"%s\":\"%s\",\n", section, esc(body)
+            gsub(/^## /, "", $0); key = $0; gsub(/[ \t\b\v\n]+/, "_", key); key = tolower(key)
+            section = key; body = ""
+            next
+        }
+        { if (NF) body = body (body ? " " : "") $0 }
+        END {
+            if (section) printf "\"%s\":\"%s\"\n", section, esc(body)
+            print "}"
+        }
+    '
+}
+
+# Crude parser: turn `## Heading\n<body>` blocks into flat TSV (section, line).
+___x_cmd_ai___format_tsv(){
+    ___x_cmd_cmds awk 'BEGIN{print "section\tline"} /^## /{section=$2; next} NF{ line=$0; sub(/\r$/, "", line); gsub(/\t/, "\\t", line); printf "%s\t%s\n", section, line }'
+}

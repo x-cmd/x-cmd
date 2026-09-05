@@ -1,0 +1,43 @@
+# shellcheck shell=dash disable=SC2034
+
+# x ai request [--system PROMPT] [--harness NAME] [--json] [text]
+#
+# Low-level escape hatch — passthrough to `x agent request`. Use this when
+# you want the raw AI response (including any preamble / thinking).
+# For a clean one-shot answer, prefer `x ask --quick` directly.
+
+___x_cmd_ai_request(){
+    [ "$#" -gt 0 ] || { ___x_cmd help -m ai request ; return; }
+
+    local system= harness= as_json=
+    local target=
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m ai request ; return ;;
+            --system)            system="$2";     arg:2:shift ;;
+            --harness)           harness="$2";    arg:2:shift ;;
+            --json)              as_json="1" ; shift ;;
+            -)                   target="$1"; shift ;;
+            --file|-f)           shift
+                                ___x_cmd agent request ${harness:+--harness "$harness"} ${as_json:+--json} ${system:+--system "$system"} --file "$1" "$(___x_cmd_cmds cat)"
+                                return $? ;;
+            --)                  shift; target="$*"; break ;;
+            -*)                  N=ai M="Unknown flag -> $1" log:ret:64 ;;
+            *)                   target="$target $1"; shift ;;
+        esac
+    done
+    target="$(printf '%s' "$target" | ___x_cmd_cmds awk '{$1=$1};1')"
+
+    local prompt="${target:-}"
+    if [ "$prompt" = "-" ] || [ -z "$prompt" ]; then
+        prompt="$(___x_cmd_cmds cat)"
+    fi
+    [ -n "$prompt" ] || N=ai M="Empty prompt." log:ret:1
+
+    if [ -n "$system" ]; then
+        prompt="$(printf '%s\n\n---\n\n%s' "$system" "$prompt")"
+    fi
+
+    ___x_cmd agent request ${as_json:+--json} ${harness:+--harness "$harness"} "$prompt"
+}

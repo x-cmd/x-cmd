@@ -3,11 +3,14 @@
 ___x_cmd_repo_card(){
     local days=90
     local mode=auto
+    local verbose=0
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)  ___x_cmd help -m repo card ; return 0 ;;
             --days)     days="$2" ; shift 2 ;;
             --days=*)   days="${1#--days=}" ; shift ;;
+            -v|--verbose)
+                        verbose=1; shift ;;
             --tty|--yml|--auto)
                         mode=${1#--}; shift ;;
             -*)         N=repo M="Unknown flag -> $1 (try --days N)" log:ret:64 ;;
@@ -15,7 +18,7 @@ ___x_cmd_repo_card(){
         esac
     done
 
-    [ $# -gt 0 ] || N=repo M="Usage: x repo card [--days N] <id>" log:ret:64
+    [ $# -gt 0 ] || N=repo M="Usage: x repo card [--days N] [--verbose] <id>" log:ret:64
 
     case "$days" in
         ''|*[!0-9]*) N=repo M="--days must be a positive integer, got -> $days" log:ret:64 ;;
@@ -38,24 +41,44 @@ ___x_cmd_repo_card(){
     # the function's stdout for 1h, which breaks when different inputs
     # (e.g. running x repo card for two different repos) hit the same
     # cached output. Call the emit function directly.
-    ___x_cmd_repo_card_emit_"$mode" "$owner_repo" "$days"
+    ___x_cmd_repo_card_emit_"$mode" "$owner_repo" "$days" "$verbose"
 }
 
 
 ___x_cmd_repo_card_emit_auto(){
     if [ -t 1 ]; then
-        ___x_cmd_repo_card_emit_tty "$1" "$2"
+        ___x_cmd_repo_card_emit_tty "$@"
     else
-        ___x_cmd_repo_card_emit_yml "$1" "$2"
+        ___x_cmd_repo_card_emit_yml "$@"
     fi
 }
 
 
+# --verbose delegates wholesale to `x repo loc` rather than reimplementing
+# the count: the TTY path pipes card's API YAML through card.awk and then
+# hands off to loc's own renderer, so the CODE table exists in exactly one
+# place. Without --verbose neither branch touches disk.
 ___x_cmd_repo_card_emit_tty(){
-    ___x_cmd_repo_card_emit_yml "$1" "$2" | ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/repo/lib/awk/card.awk"
+    local owner_repo="$1" days="$2" verbose="${3:-0}"
+    ___x_cmd_repo_card_emit_yml___api "$owner_repo" "$days" \
+        | ___x_cmd_cmds awk -f "$___X_CMD_ROOT_MOD/repo/lib/awk/card.awk" || return $?
+    [ "$verbose" = 1 ] && ___x_cmd_repo_loc_emit_tty "$owner_repo"
+    return 0
 }
 
 ___x_cmd_repo_card_emit_yml(){
+    local owner_repo="$1" days="$2" verbose="${3:-0}"
+    ___x_cmd_repo_card_emit_yml___api "$owner_repo" "$days" || return $?
+    [ "$verbose" = 1 ] && ___x_cmd_repo_loc_emit_yml_embed "$owner_repo"
+    return 0
+}
+
+# The API half, and the only half worth caching: it costs a GraphQL
+# round-trip plus a REST call, and a 3h-old star count is fine. The loc
+# half stays outside the cache — it reads a local clone the user may have
+# just edited. Keeping them separate also means the cache key needs no
+# verbose bit, so `card` and `card --verbose` share one cached response.
+___x_cmd_repo_card_emit_yml___api(){
     ___x_cmd ccmd 3h -- ___x_cmd_repo_card_emit_yml___inner "$@"
 }
 
@@ -71,34 +94,66 @@ ___x_cmd_repo_card_emit_yml___inner(){
         N=repo M="No GitHub token. Run 'gh auth login' or set GH_TOKEN." log:ret:1
     fi
 
-    # Four windows: 30-day (recent momentum), 90-day (quarter default,
-    # user-overridable via --days), 180-day (half-year), 360-day (year).
+    # Six windows: 30-day (recent momentum), 60-day, 90-day (quarter
+    # default, user-overridable via --days), 180-day (half-year), 360-day
+    # (year) and 720-day (two years). `sort -n -u` both orders them and
+    # collapses the duplicate that --days 30 / 60 / 180 / 360 / 720 would
+    # otherwise produce, so the window count is 6 normally and 7 when
+    # --days names a value outside the fixed set.
+    #
     # Date math goes through `x date` (x-cmd's date module) instead of
     # the system `date` binary, so we don't need the macOS-vs-Linux
     # dual-syntax fallback (`-v-` / `-d "N days ago"`). One
-    # `x date timestamp` gives the current epoch; subtracting 30/90/180/360
-    # days in seconds gives the cutoff timestamps, and `x date dump`
-    # formats each into YYYY-MM-DD for client-side comparison against
-    # GraphQL date fields like publishedAt[:10].
+    # `x epoch get_` gives the current epoch; subtracting N days in
+    # seconds gives the cutoff timestamp, and `x date dump_` formats it
+    # into YYYY-MM-DD for client-side comparison against GraphQL date
+    # fields like publishedAt[:10].
 
     local x_
     ___x_cmd epoch get_
     local now_ts="$x_"
 
-    local ts30=$(( now_ts - 30  * 86400 )) \
-          ts90=$(( now_ts - 90  * 86400 )) \
-          ts180=$(( now_ts - 180 * 86400 )) \
-          ts360=$(( now_ts - 360 * 86400 ))
-    local date30 date90 date180 date360
-    ___x_cmd date dump_ --fmt '%Y-%m-%d' $ts30; date30=$x_
-    ___x_cmd date dump_ --fmt '%Y-%m-%d' $ts90; date90=$x_
-    ___x_cmd date dump_ --fmt '%Y-%m-%d' $ts180; date180=$x_
-    ___x_cmd date dump_ --fmt '%Y-%m-%d' $ts360; date360=$x_
-    local days90="$days"
+    local win_list w
+    win_list=$(printf '%s\n' 30 60 "$days" 180 360 720 | sort -n -u)
+    # Four parallel search-string lists, one per metric, each in window
+    # order. They're concatenated metric-major below because card_yaml
+    # indexes the flat result array as [metric * W + window].
+    #
+    # `while read` over a heredoc rather than `for w in $win_list`: zsh
+    # doesn't field-split unquoted parameters, so the `for` form hands the
+    # whole newline-joined list to the loop body in one go and the
+    # arithmetic below dies with "operator expected". x-cmd is sourced as a
+    # shell function in interactive zsh, so this path has to survive both.
+    # The heredoc (not a pipe) keeps the accumulators in this shell.
+    local r="repo:${owner_repo}"
+    local label_lines="" date_lines="" win_lines=""
+    local s_merged="" s_openpr="" s_closei="" s_openi="" d
+    while read -r w; do
+        [ -n "$w" ] || continue
+        ___x_cmd date dump_ --fmt '%Y-%m-%d' $(( now_ts - w * 86400 ))
+        d="$x_"
+        label_lines="${label_lines}last${w}d
+"
+        date_lines="${date_lines}${d}
+"
+        win_lines="${win_lines}${w}
+"
+        s_merged="${s_merged}${r} is:pr is:merged created:>${d}
+"
+        s_openpr="${s_openpr}${r} is:pr state:open created:>${d}
+"
+        s_closei="${s_closei}${r} is:issue state:closed created:>${d}
+"
+        s_openi="${s_openi}${r} is:issue state:open created:>${d}
+"
+    done <<A
+$win_list
+A
+    local search_lines="${s_merged}${s_openpr}${s_closei}${s_openi}"
 
-    # GraphQL: every static repo field + 16 time-windowed search calls
-    # (mergedPR / openPR / closedIssue / openIssue × 30d / 90d / 180d /
-    # 360d) + defaultBranchRef for the HEAD SHA, all in one round-trip.
+    # GraphQL: every static repo field + one aliased search per
+    # (metric, window) pair + defaultBranchRef for the HEAD SHA and the
+    # all-time commit count, all in one round-trip.
     #
     # History:
     # - GraphQL `search(...)` at root level works when aliased (the
@@ -109,9 +164,10 @@ ___x_cmd_repo_card_emit_yml___inner(){
     #   field set hits an undocumented GraphQL cost ceiling.
     # - `history(since:DATE)` errors when multiple aliased instances
     #   are on the same level, and even a single instance is
-    #   currently broken on GitHub's backend, so recentCommit goes
-    #   via REST `/commits?since=DATE` below.
-    local query response card_jq
+    #   currently broken on GitHub's backend, so windowed commit
+    #   counts go via REST below. Unfiltered `history{totalCount}`
+    #   is fine and feeds the `total:` commit figure.
+    local query response
     # No recentStar / recentFork: GitHub's GraphQL `stargazers` /
     # `forks` connections are capped at first:100 with no time-series
     # summary endpoint (unlike commits which have /stats/commit_activity).
@@ -127,39 +183,18 @@ ___x_cmd_repo_card_emit_yml___inner(){
     # reads back outputs.
     card_jq_dir="${___X_CMD_ROOT_MOD}/repo/lib/awk"
 
-    # Build 16 search query strings (4 metrics × 4 windows) — passing
-    # them as full strings (not concatenated via GraphQL + operator)
-    # avoids the > character being treated as a parse terminator.
-    local r="repo:${owner_repo}"
-    local _s1="$r is:pr is:merged created:>$date30"
-    local _s2="$r is:pr is:merged created:>$date90"
-    local _s3="$r is:pr is:merged created:>$date180"
-    local _s4="$r is:pr is:merged created:>$date360"
-    local _s5="$r is:pr state:open created:>$date30"
-    local _s6="$r is:pr state:open created:>$date90"
-    local _s7="$r is:pr state:open created:>$date180"
-    local _s8="$r is:pr state:open created:>$date360"
-    local _s9="$r is:issue state:closed created:>$date30"
-    local _s10="$r is:issue state:closed created:>$date90"
-    local _s11="$r is:issue state:closed created:>$date180"
-    local _s12="$r is:issue state:closed created:>$date360"
-    local _s13="$r is:issue state:open created:>$date30"
-    local _s14="$r is:issue state:open created:>$date90"
-    local _s15="$r is:issue state:open created:>$date180"
-    local _s16="$r is:issue state:open created:>$date360"
+    # The newline-delimited lists built above become JSON arrays here, so
+    # everything downstream is indexed rather than named — adding a window
+    # is a one-token change to the `printf` above.
+    local searches labels dates wins
+    searches=$(printf '%s' "$search_lines" | ___x_cmd jq -R -s 'split("\n") | map(select(length > 0))')
+    labels=$(printf '%s' "$label_lines"  | ___x_cmd jq -R -s 'split("\n") | map(select(length > 0))')
+    dates=$(printf '%s' "$date_lines"    | ___x_cmd jq -R -s 'split("\n") | map(select(length > 0))')
+    wins=$(printf '%s' "$win_lines"      | ___x_cmd jq -R -s 'split("\n") | map(select(length > 0) | tonumber)')
 
     query=$(___x_cmd jq -nc -L "$card_jq_dir" \
-        --arg o "$owner" --arg n "$repo" \
-        --arg s1 "$_s1" --arg s2 "$_s2" --arg s3 "$_s3" --arg s4 "$_s4" \
-        --arg s5 "$_s5" --arg s6 "$_s6" --arg s7 "$_s7" --arg s8 "$_s8" \
-        --arg s9 "$_s9" --arg s10 "$_s10" --arg s11 "$_s11" --arg s12 "$_s12" \
-        --arg s13 "$_s13" --arg s14 "$_s14" --arg s15 "$_s15" --arg s16 "$_s16" \
-        'include "card";
-         card_query($o; $n;
-                    $s1;  $s2;  $s3;  $s4;
-                    $s5;  $s6;  $s7;  $s8;
-                    $s9;  $s10; $s11; $s12;
-                    $s13; $s14; $s15; $s16)')
+        --arg o "$owner" --arg n "$repo" --argjson searches "$searches" \
+        'include "card"; card_query($o; $n; $searches)')
 
     response=$(curl -sS \
         -H "Authorization: bearer $gh_token" \
@@ -169,39 +204,15 @@ ___x_cmd_repo_card_emit_yml___inner(){
         N=repo M="GraphQL fetch failed for -> $owner_repo" log:ret:1
     fi
 
-    # Pull all 16 search counts from the GraphQL response in a single
-    # jq call (instead of 16 separate invocations). The filter emits
-    # one value per line in a fixed order; the heredoc + read block
-    # below parses them into the named variables.
-    local data
-    data=$(___x_cmd jq -r -L "$card_jq_dir" 'include "card"; card_search_counts' <<A
+    # Pull every search count from the GraphQL response in one jq call as a
+    # JSON array, in the same metric-major order the queries were built.
+    local search_count counts
+    search_count=$(printf '%s' "$searches" | ___x_cmd jq 'length')
+    counts=$(___x_cmd jq -c -L "$card_jq_dir" --argjson cnt "$search_count" \
+        'include "card"; card_search_counts($cnt)' <<A
 $response
 A
 )
-    local merged30 merged90 merged180 merged360 \
-        openpr30 openpr90 openpr180 openpr360 \
-        closei30 closei90 closei180 closei360 \
-        openi30 openi90 openi180 openi360
-    {
-        read -r merged30
-        read -r merged90
-        read -r merged180
-        read -r merged360
-        read -r openpr30
-        read -r openpr90
-        read -r openpr180
-        read -r openpr360
-        read -r closei30
-        read -r closei90
-        read -r closei180
-        read -r closei360
-        read -r openi30
-        read -r openi90
-        read -r openi180
-        read -r openi360
-    } <<A
-$data
-A
 
     # recentCommit via /stats/commit_activity. This endpoint returns
     # daily commit counts for the last 52 weeks (no 100-cap) and is
@@ -235,59 +246,69 @@ A
         repo:warn "no commit_activity for $owner_repo; recording commit: 0"
         commit_raw='[]'
     fi
-    commit_data=$(printf '%s' "$commit_raw" | ___x_cmd jq -r -L "$card_jq_dir" 'include "card"; card_commit_counts')
-    local commit30 commit90 commit180 commit360
-    {
-        read -r commit30
-        read -r commit90
-        read -r commit180
-        read -r commit360
-    } <<A
-$commit_data
+    commit_data=$(printf '%s' "$commit_raw" | ___x_cmd jq -c -L "$card_jq_dir" --argjson wins "$wins" \
+        'include "card"; card_commit_counts($wins)')
+
+    # card_commit_counts leaves a null for any window past the endpoint's
+    # 364-day horizon (i.e. 720d). Fill those from REST /commits?since=,
+    # counting via the Link header's last-page number rather than paging
+    # the commits themselves — one HEAD request regardless of repo size.
+    local i=0 cnt
+    while read -r w; do
+        [ -n "$w" ] || continue
+        if [ "$w" -gt 364 ]; then
+            ___x_cmd date dump_ --fmt '%Y-%m-%d' $(( now_ts - w * 86400 ))
+            ___x_cmd_repo_card__commit_since "$owner_repo" "$x_" "$gh_token"
+            cnt="$x_"
+            commit_data=$(printf '%s' "$commit_data" | ___x_cmd jq -c \
+                --argjson i "$i" --argjson v "$cnt" '.[$i] = $v')
+        fi
+        i=$((i + 1))
+    done <<A
+$win_list
 A
 
     local collected_at
     collected_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-    # Single jq pass. Static metrics in github:, every windowed stat
-    # in recent: (grouped by 30d + N), and detail: holds the API-
-    # derived HEAD SHA. No local clone / no git fetch on this path.
+    # Single jq pass. Static metrics in github:, every windowed stat in
+    # recent: (one block per window label), all-time figures in total:,
+    # and detail: holds the API-derived HEAD SHA. No local clone / no git
+    # fetch on this path.
     ___x_cmd jq -r -L "$card_jq_dir" \
-        --argjson merged30 "$merged30" \
-        --argjson merged90 "$merged90" \
-        --argjson merged180 "$merged180" \
-        --argjson merged360 "$merged360" \
-        --argjson openpr30 "$openpr30" \
-        --argjson openpr90 "$openpr90" \
-        --argjson openpr180 "$openpr180" \
-        --argjson openpr360 "$openpr360" \
-        --argjson closei30 "$closei30" \
-        --argjson closei90 "$closei90" \
-        --argjson closei180 "$closei180" \
-        --argjson closei360 "$closei360" \
-        --argjson openi30 "$openi30" \
-        --argjson openi90 "$openi90" \
-        --argjson openi180 "$openi180" \
-        --argjson openi360 "$openi360" \
-        --argjson commit30 "$commit30" \
-        --argjson commit90 "$commit90" \
-        --argjson commit180 "$commit180" \
-        --argjson commit360 "$commit360" \
-        --arg date30 "$date30" \
-        --arg date90 "$date90" \
-        --arg date180 "$date180" \
-        --arg date360 "$date360" \
-        --arg days90 "$days90" \
+        --argjson labels "$labels" \
+        --argjson dates "$dates" \
+        --argjson counts "$counts" \
+        --argjson commits "$commit_data" \
         --arg collected_at "$collected_at" \
         'include "card";
-         card_yaml($merged30;  $merged90;  $merged180;  $merged360;
-                  $openpr30;  $openpr90;  $openpr180;  $openpr360;
-                  $closei30;  $closei90;  $closei180;  $closei360;
-                  $openi30;   $openi90;   $openi180;   $openi360;
-                  $commit30;  $commit90;  $commit180;  $commit360;
-                  $date30;    $date90;    $date180;    $date360;
-                  $days90;    $collected_at)' <<A
+         card_yaml($labels; $dates; $counts; $commits; null; $collected_at)' <<A
 $response
 A
 
+}
+
+
+# Count commits since a date via REST, using the Link header's rel="last"
+# page number with per_page=1 — that number IS the commit count, so a repo
+# with 40k commits costs one request instead of 400. GitHub omits Link
+# entirely when the result fits on one page, in which case the body length
+# (0 or 1) is the answer.
+___x_cmd_repo_card__commit_since(){
+    local url="https://api.github.com/repos/$1/commits?since=$2T00:00:00Z&per_page=1"
+    local n
+    n=$(curl -sSI -H "Authorization: bearer $3" "$url" 2>/dev/null \
+        | ___x_cmd_cmds awk 'tolower($1) == "link:" {
+              if (match($0, /[?&]page=[0-9]+>; rel="last"/)) {
+                  s = substr($0, RSTART, RLENGTH)
+                  sub(/^[?&]page=/, "", s); sub(/>.*$/, "", s)
+                  print s
+              }
+          }')
+    case "$n" in
+        ''|*[!0-9]*)
+            n=$(curl -sS -H "Authorization: bearer $3" "$url" 2>/dev/null \
+                | ___x_cmd jq 'if type == "array" then length else 0 end' 2>/dev/null) || n=0 ;;
+    esac
+    x_="${n:-0}"
 }

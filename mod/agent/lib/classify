@@ -1,0 +1,79 @@
+# shellcheck shell=dash
+
+# `x agent classify` -- classify content into one of the given categories using LLM.
+#
+# Usage:
+#   x agent classify --category <name> <description>... [-|--pipe] [content]
+#   echo "content" | x agent classify --category <name> <description>... -
+#
+# A leading `-` (or `--pipe`, before content) means read from stdin.
+#
+# Output: two sections -- category (oneline) followed by reason (multiline, markdown).
+
+___x_cmd_agent_classify(){
+    local x_
+    ___x_cmd_agent_classify_ "$@" || return $?
+    printf "%s\n" "$x_"
+}
+
+___x_cmd_agent_classify_(){
+    [ "$#" -gt 0 ] || set -- --help
+
+    local is_pipe=""
+    local category_list="category${___X_CMD_UNSEENCHAR_HT}description${___X_CMD_UNSEENCHAR_NEWLINE}"
+    category_list="${category_list}UNKNOWN${___X_CMD_UNSEENCHAR_HT}You should provide possible categories in order in the reason.${___X_CMD_UNSEENCHAR_NEWLINE}"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)      ___x_cmd help -m agent classify "$@" ; return 0 ;;
+
+            --category)
+                [ $# -ge 3 ] || N=agent M="Expect argument following --category" log:ret:64
+                category_list="${category_list}${2}${___X_CMD_UNSEENCHAR_HT}${3}${___X_CMD_UNSEENCHAR_NEWLINE}"
+                shift 3
+                ;;
+            -|--pipe)       is_pipe=1 ;                           shift ;;
+            --)             shift; break ;;
+            *)              break ;;
+        esac
+    done
+
+    # Content: positional args; stdin is appended as a <STDIN> block when a leading `-` is given
+    local content=""
+    local IFS=" "
+    [ "$#" -le 0 ] || content="$*"
+    if [ "$is_pipe" = "1" ]; then
+        local stdin_content
+        stdin_content="$(___x_cmd_cmds cat)" || return $?
+        [ -z "$stdin_content" ] || {
+            content="${content:+"${content}${___X_CMD_UNSEENCHAR_NEWLINE}${___X_CMD_UNSEENCHAR_NEWLINE}"}<STDIN>
+${stdin_content}
+</STDIN>"
+        }
+    fi
+    [ -n "$content" ] || N=agent M="No content to classify. Provide text as argument or use '-' to read from stdin." log:ret:64
+
+    local prompt="You are a classifier. Classify the content into exactly ONE category from the table below.
+
+Categories (TSV: category<TAB>description):
+${category_list}
+
+Output requirements:
+1. Reply with EXACTLY two sections and nothing else:
+CATEGORY: <exactly one category name from the table>
+REASON: <markdown reasoning, may span multiple lines>
+2. The CATEGORY line must be the FIRST line.
+3. If no category fits, use UNKNOWN and list the possible categories in likelihood order within REASON.
+
+Content to classify:
+${content}"
+
+    agent:debug --m:prompt "$prompt"
+
+    local response
+    response="$(___x_cmd ask --quick "$prompt")" || return $?
+
+    # Give back two section
+    # category -- oneline
+    # reason -- multipleline, markdown
+    x_="$response"
+}

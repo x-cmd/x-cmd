@@ -33,11 +33,12 @@ ___x_cmd_cpu_info(){
     fi
 }
 
-___x_cmd_cpu_info_macos(){
-    local simple="${1:-}"
-    local tty=""
-    ___x_cmd_is_stdout2tty && tty=1
-    {
+# Capture macOS sysctl data once, set X_CPU_* env vars for downstream scripts,
+# and emit the same data to stdout (for awk to consume).
+# Idempotent — repeated calls just re-run sysctl; downstream Python reads env vars.
+___x_cmd_cpu_macos_capture(){
+    local data
+    data=$({
         ___x_cmd_cmds sysctl \
             hw.logicalcpu hw.ncpu hw.physicalcpu hw.memsize \
             hw.cpufrequency_max hw.cpufrequency_min \
@@ -67,7 +68,28 @@ ___x_cmd_cpu_info_macos(){
             machdep.cpu.model machdep.cpu.stepping machdep.cpu.core_count \
             machdep.cpu.cache.size machdep.cpu.features machdep.cpu.extfeatures \
             2>/dev/null
-    } | ___x_cmd_cmds_awk -v simple="$simple" -v tty="$tty" -f "$___X_CMD_ROOT_MOD/cpu/lib/awk/info_macos.awk"
+    })
+    # Set env vars for downstream Python scripts. Map only the fields they need.
+    local line key val
+    while IFS= read -r line; do
+        key="${line%%: *}"
+        val="${line#*: }"
+        case "$key" in
+            hw.perflevel0.name)        export X_CPU_PERFLEVEL0_NAME="$val" ;;
+            hw.perflevel0.physicalcpu) export X_CPU_PERFLEVEL0_COUNT="$val" ;;
+            hw.perflevel1.name)        export X_CPU_PERFLEVEL1_NAME="$val" ;;
+            hw.perflevel1.physicalcpu) export X_CPU_PERFLEVEL1_COUNT="$val" ;;
+        esac
+    done <<< "$data"
+    printf '%s\n' "$data"
+}
+
+___x_cmd_cpu_info_macos(){
+    local simple="${1:-}"
+    local tty=""
+    ___x_cmd_is_stdout2tty && tty=1
+    ___x_cmd_cpu_macos_capture \
+        | ___x_cmd_cmds_awk -v simple="$simple" -v tty="$tty" -f "$___X_CMD_ROOT_MOD/cpu/lib/awk/info_macos.awk"
     # Apple Silicon: sysctl returns 0 for frequency, use IOKit pmgr instead
     [ "$simple" ] || ___x_cmd_cpu_info_macos_freq "$tty"
 }
@@ -99,7 +121,15 @@ ___x_cmd_cpu_stat(){
 ___x_cmd_cpu_stat_macos(){
     local tty=""
     ___x_cmd_is_stdout2tty && tty=1
+    # Populate X_CPU_PERFLEVEL* env vars so cpu_stat.py doesn't need its own sysctl call.
+    # Discard the data on stdout (only env vars matter here).
+    ___x_cmd_cpu_macos_capture >/dev/null
+    # Original: per-core user/sys + aggregate via top. Stable on all macOS versions.
     ___x_cmd_cmds python3 "$___X_CMD_ROOT_MOD/cpu/lib/py/cpu_stat.py" "$tty" 2>/dev/null
+    # Optional: per-cluster (E/P) idle residency via libIOReport (private API).
+    # Silent on failure (API change, channel renamed, dylib missing) — never affects
+    # the user/sys output above.
+    ___x_cmd_cmds python3 "$___X_CMD_ROOT_MOD/cpu/lib/py/cpu_io_idle.py" "$tty" 2>/dev/null
 }
 
 ___x_cmd_cpu_stat_linux(){

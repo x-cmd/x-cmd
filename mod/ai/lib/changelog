@@ -1,0 +1,74 @@
+# shellcheck shell=dash disable=SC2034
+
+# x ai changelog [--yml] [--since TAG] [path|@-]
+#
+# Walk commits since `--since TAG` (default: last tag) in the current repo,
+# group them by Conventional Commits type, and let the AI draft a
+# Keep-A-Changelog entry. Local mirror of x-cmd-action/ai/changelog.
+
+___x_cmd_ai_changelog(){
+    local format= since= target=
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              ___x_cmd help -m ai changelog ; return ;;
+            --yml|--yaml)        format="yml" ; shift ;;
+            --json|-j)           format="json" ; shift ;;
+            --md|--markdown)     format="md" ; shift ;;
+            --since|--from)      since="$2";         arg:2:shift ;;
+            --)                  shift; target="$*"; break ;;
+            -*)                  N=ai M="Unknown flag -> $1" log:ret:64 ;;
+            *)                   target="$1"; shift ;;
+        esac
+    done
+
+    local log
+    if [ -n "${target:-}" ]; then
+        [ -f "$target" ] || N=ai M="Not a filepath -> $target" log:ret:1
+        log="$(___x_cmd_cmds cat -- "$target")" || return $?
+    else
+        log="$(___x_cmd_ai_changelog___commits "${since}")"
+    fi
+    [ -n "$log" ] || N=ai M="No commit log to summarize." log:ret:1
+
+    local prompt="Convert the following Conventional Commits log into a Keep-A-Changelog entry (## Added / ## Changed / ## Fixed / ## Removed). Keep it terse — one line per commit grouped under the right heading. Output ONLY the changelog entry.
+
+${log}"
+
+    ai:debug --m:prompt "$prompt"
+    local response
+    response="$( ___x_cmd ask --quick "$prompt" )" || return $?
+
+    case "${format:-md}" in
+        yml)  printf 'entry: |\n  %s\n' "$(printf '%s' "$response" | ___x_cmd_cmds sed 's/^/  /')" ;;
+        json) ___x_cmd jo dict "entry=$response" ;;
+        *)    printf '%s\n' "$response" ;;
+    esac
+}
+
+___x_cmd_ai_changelog___commits(){
+    local since="$1"
+
+    ___x_cmd_cmds git rev-parse --git-dir >/dev/null 2>&1 || {
+        ai:warn "Not in a git repo."
+        return 1
+    }
+
+    if [ -z "$since" ]; then
+        since="$(___x_cmd_cmds git describe --tags --abbrev=0 2>/dev/null)"
+        if [ -z "$since" ]; then
+            ai:info "No prior tag, using all commits."
+            since="$(___x_cmd_cmds git rev-list --max-parents=0 HEAD | ___x_cmd_cmds tail -n1)"
+        fi
+    fi
+
+    local range="${since}..HEAD"
+    local log
+    log="$(___x_cmd_cmds git log "${range}" --pretty=format:'%h %s' 2>/dev/null)"
+    if [ -z "$log" ]; then
+        ai:info "No commits in range ${range}."
+        return 0
+    fi
+
+    printf '%s\n' "$log"
+}

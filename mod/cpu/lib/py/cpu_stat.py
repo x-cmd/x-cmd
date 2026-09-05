@@ -4,7 +4,7 @@
 # Outputs in the same "%-25s: %s" format.
 # Usage: python3 <this_file> [tty]
 
-import ctypes, ctypes.util, subprocess, sys, time, re
+import ctypes, ctypes.util, os, subprocess, sys, time, re
 
 tty = len(sys.argv) > 1 and sys.argv[1] == "1"
 
@@ -56,6 +56,45 @@ def get_per_core_ticks():
 
 c1, ncores = get_per_core_ticks()
 if c1:
+    # Build per-core E/P label list from perflevel data.
+    # Names vary by chip generation ("Efficiency" / "Performance" / "Super" / ...);
+    # we map them to short labels by keyword. Layout (which perflevel comes first)
+    # also varies, so the order follows whatever sysctl returns.
+    #
+    # Prefer env vars set by ___x_cmd_cpu_macos_capture (avoids re-running sysctl).
+    # Fall back to a direct sysctl call if env vars are missing (e.g., script
+    # invoked outside the dispatcher).
+    core_labels = [""] * ncores
+    p0n = os.environ.get("X_CPU_PERFLEVEL0_NAME", "")
+    p0c = os.environ.get("X_CPU_PERFLEVEL0_COUNT", "")
+    p1n = os.environ.get("X_CPU_PERFLEVEL1_NAME", "")
+    p1c = os.environ.get("X_CPU_PERFLEVEL1_COUNT", "")
+    if not (p0n and p0c and p1n and p1c):
+        try:
+            r = subprocess.run(
+                ["sysctl", "-n",
+                 "hw.perflevel0.name", "hw.perflevel0.physicalcpu",
+                 "hw.perflevel1.name", "hw.perflevel1.physicalcpu"],
+                capture_output=True, text=True, timeout=2
+            )
+            parts = r.stdout.strip().split("\n")
+            if len(parts) >= 4:
+                p0n = parts[0]; p0c = parts[1]
+                p1n = parts[2]; p1c = parts[3]
+        except Exception:
+            pass
+    if p0n and p0c and p1n and p1c:
+        try:
+            c0 = int(p0c); c1c = int(p1c)
+            def short(name):
+                nl = name.lower()
+                if "efficiency" in nl: return "E"
+                if "performance" in nl or "super" in nl: return "P"
+                return name[:3].strip() or "?"
+            core_labels = [short(p0n)] * c0 + [short(p1n)] * c1c
+        except Exception:
+            pass  # leave labels empty on parse error
+
     time.sleep(1)
     c2, _ = get_per_core_ticks()
     if c2:
@@ -63,12 +102,16 @@ if c1:
             d = [c2[core][i] - c1[core][i] for i in range(CPU_STATE_MAX)]
             t = sum(d)
             if t > 0:
-                # On Apple Silicon: d[3](idle)=0, idle is in system(d[2])
-                # user=d[0], nice=d[1], system_active = total - user - nice - idle
-                # Since idle=0 in ticks, we treat system as the remainder
+                # On Apple Silicon: d[3](idle)=0 AND idle is folded into d[2] (system).
+                # So sys here is "real_sys + idle" combined; idle cannot be separated
+                # from this API. nice is also unreported in the per-core line for brevity.
                 user_pct = d[0] / t * 100
-                nice_pct = d[1] / t * 100
                 sys_pct  = d[2] / t * 100
-                p(f"core {core:2d}",
-                  f"user={user_pct:5.1f}% sys={sys_pct:5.1f}%",
+                # Apple Silicon: append "(E)" or "(P)" label by perflevel mapping
+                # Intel or unknown: no label
+                lbl = ""
+                if core < len(core_labels) and core_labels[core]:
+                    lbl = f" ({core_labels[core]})"
+                p(f"core {core:2d}{lbl}",
+                  f"user={user_pct:5.1f}% sys+idle={sys_pct:5.1f}%",
                   "36")
