@@ -16,14 +16,6 @@ ___X_CMD_EGET_TMP="$___X_CMD_ROOT_TMP/eget"
 ___X_CMD_EGET_DATA="$___X_CMD_ROOT_DATA/eget"
 ___x_cmd mkdirp "${___X_CMD_EGET_DATA}" "${___X_CMD_EGET_TMP}"
 
-# Newline constant for list accumulators in detect/extract. $NL is NOT a
-# shell builtin (dash has no such variable); left unset, expressions like
-# ${list:+$NL} join entries with NO separator, so multi-entry candidate
-# lists collapse into one mangled line whose basename is the last file —
-# breaking Tier-1 name matching on multi-binary archives.
-NL='
-'
-
 ___x_cmd_eget___main(){
     [ "$#" -gt 0 ] || set -- --help
 
@@ -33,7 +25,10 @@ ___x_cmd_eget___main(){
         --version|-v)       ___x_cmd_eget___version; return 0 ;;
         snap)               ___x_cmd_eget_snap "$@"; return ;;
         ls|list)            ___x_cmd_eget_ls "$@"; return ;;
+        lsasset)            ___x_cmd_eget_subcmd_lsasset "$@"; return ;;
+        lsassetmap)         ___x_cmd_eget_subcmd_lsassetmap "$@"; return ;;
         resolve)            ___x_cmd_eget_resolve "$@"; return ;;
+        detect-scoring2)   ___x_cmd_eget_subcmd_detect_scoring2 "$@"; return ;;
         detect-test)        ___x_cmd_eget_subcmd_detect_test "$@"; return ;;
         detect-orig)        ___x_cmd_eget_subcmd_detect_orig "$@"; return ;;
         which)              ___x_cmd_eget_which "$@"; return ;;
@@ -84,6 +79,38 @@ ___x_cmd_eget_subcmd_detect_test(){
     local asset_name="${_pick%%
 *}"
     printf "\n[scoring] Selected: %s\n" "$asset_name"
+}
+
+# detect-scoring2 — run detect using BISCORING (bidirectional
+# cross-platform scoring) algorithm. Same shape as detect-test
+# but uses the scoring2 algo that excludes fallbacks the
+# current platform wasn't designed for.
+___x_cmd_eget_subcmd_detect_scoring2(){
+    # Run detect using scoring2 algorithm, print result
+    local _target="" _system="" _tag=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -s|--system) shift; _system="$1" ;;
+            -t|--tag)    shift; _tag="$1" ;;
+            *)           _target="$1" ;;
+        esac
+        shift
+    done
+    [ -z "$_target" ] && { N=eget M="Usage: x eget detect-scoring2 <owner/repo> [-s system] [-t tag]" log:ret:64; return; }
+    [ -z "$_system" ] && {
+        ___x_cmd os name_;  local osname="$x_"
+        ___x_cmd os arch_;  local osarch="$x_"
+        _system="${osname}/${osarch}"
+    }
+
+    ___X_CMD_EGET_VERBOSE="1" ___X_CMD_EGET_DETECT_MODE="scoring2"
+    ___x_cmd_eget_resolve_ "$_target" "github" "$_tag" "$_system" "" "0" "0" || {
+        N=eget M="No asset found" log:ret:1; return;
+    }
+    local _pick="$x_"
+    local asset_name="${_pick%%
+*}"
+    printf "\n[scoring2] Selected: %s\n" "$asset_name"
 }
 
 ___x_cmd_eget_subcmd_detect_orig(){
@@ -160,6 +187,227 @@ ___x_cmd_eget_subcmd_html(){
         N=eget M="html: failed to fetch release info for $target" log:ret:1; return
     }
     printf "%s" "$json" | ___x_cmd jq .
+}
+
+# lsasset — print a repo's release assets as unified JSON. Backs onto
+# ___x_cmd_eget_api_release_unified_, so the output shape is identical
+# whether the data came from the JSON API or the GitHub HTML fallback.
+# Use it for piping into jq / x-cmd tooling, or as a debug view of what
+# the download flow would see.
+# Mirrors `x eget html` in CLI shape (--tag, target) but goes through the
+# unified entry point instead of the HTML scraper directly.
+#
+# Output formats (default = json):
+#   --json  the raw GitHub release object (default for backward compat)
+#   --tsv   a flat name\turl\tsize\tdigest table (pipe-friendly, matches
+#           the input shape ___x_cmd_eget_detect_* consume)
+#   --yml   wrapped under eget/release (sibling of lsassetmap's
+#           eget/platform/<6 platforms>, since lsasset returns ONE
+#           release object instead of 6 per-platform entries)
+#   --tty   pipe tsv through `x column --tsv` for an aligned table
+#   --auto  tty → --tty, non-tty → --json
+#
+# --no-fallback: skip the HTML page fallback when the JSON API
+# fails. Useful for tools that need the API's exact shape (digest,
+# size, prerelease flag) — the HTML scrape loses all three.
+___x_cmd_eget_subcmd_lsasset(){
+    case "${1:-}" in -h|--help) ___x_cmd help -m eget lsasset; return 0 ;; esac
+
+    local target="" _tag="" _pre_release="0" _forge="github" _no_fallback="0"
+    local fmt=auto
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -t|--tag)         shift; _tag="$1" ;;
+            --pre-release)    _pre_release="1" ;;
+            --no-fallback)    _no_fallback="1" ;;
+            --json|--tsv|--yml|--tty|--auto)
+                              fmt="${1#--}" ;;
+            -*)               N=eget M="lsasset: unknown option: $1" log:ret:64; return ;;
+            *)                [ -z "$target" ] && target="$1" || { N=eget M="lsasset: unexpected argument: $1" log:ret:64; return; } ;;
+        esac
+        shift
+    done
+
+    [ -n "$target" ] || { N=eget M="lsasset: missing target (user/repo)" log:ret:64; return; }
+    case "$target" in
+        */*) ;;
+        *)    N=eget M="lsasset: invalid target format: $target (expected user/repo)" log:ret:64; return ;;
+    esac
+
+    local owner="${target%%/*}" repo="${target#*/}"
+    local json
+    if _no_fallback=1; then
+        # Bypass ___x_cmd_eget_api_release_unified_'s HTML page fallback.
+        # Direct API call only — useful when the caller needs fields the
+        # HTML scrape doesn't expose (digest, size, prerelease flag).
+        if ! json="$( ___x_cmd_eget_api_release "$_forge" "$owner" "$repo" "$_tag" "$_pre_release" "0" 2>/dev/null )"; then
+            N=eget M="lsasset: failed to fetch release info for $target (check repo / tag, network, or run 'x eget rate')" log:ret:1
+            return
+        fi
+    else
+        if ! json="$( ___x_cmd_eget_api_release_unified_ "$_forge" "$owner" "$repo" "$_tag" "$_pre_release" "0" )"; then
+            N=eget M="lsasset: failed to fetch release info for $target (check repo / tag, network, or run 'x eget rate')" log:ret:1
+            return
+        fi
+    fi
+
+    ___x_cmd_eget_subcmd_lsasset___"$fmt" "$json"
+}
+
+# Default: pretty-printed JSON. Backward-compatible with the
+# original lsasset behavior (which piped through `x jq .`).
+___x_cmd_eget_subcmd_lsasset___json(){
+    printf "%s" "$1" | ___x_cmd jq .
+}
+
+# Flat asset table for piping. Same column order as
+# detect_*'s expected input (name\turl\tsize\tdigest).
+___x_cmd_eget_subcmd_lsasset___tsv(){
+    printf "name\turl\tsize\tdigest\n"
+    printf "%s" "$1" | ___x_cmd jq -r '.assets[] | [.name, .browser_download_url, (.size // 0 | tostring), (.digest // "")] | @tsv'
+}
+
+# Wrap the full release object under eget/release. The shape
+# parallels lsassetmap's eget/platform/<6 platforms>: lsassetmap
+# has 6 platform keys (a mapping of best-candidate per platform),
+# lsasset has a single `release` key holding the whole GitHub
+# release JSON. Both share the eget envelope so stat consumers
+# see a uniform "eget:" top-level across the two subcommands. The
+# collectedAt timestamp is captured once on the shell side via
+# x date dump_ → $x_.
+___x_cmd_eget_subcmd_lsasset___yml(){
+    # Compose the full envelope as a JSON object first (yq handles
+    # arbitrary nesting cleanly when the source is JSON), then let
+    # yq do the JSON→YAML conversion in one pass. This avoids
+    # fragile post-hoc indentation patching — yq computes the
+    # indent for each level from the input depth.
+    local x_
+    x date dump_
+    local _collected_at="$x_"
+
+    # Wrap the release object under eget/release. The shell-quoting
+    # here is intentional: we need the JSON literal to contain the
+    # unparsed $1 as a sub-object, not the shell to interpolate it.
+    # printf with %s keeps $1 byte-exact.
+    local _envelope
+    _envelope="$( printf '{"eget":{"collectedAt":"%s","release":%s}}' \
+        "$_collected_at" "$1" )"
+
+    printf '%s' "$_envelope" | yq -P -I 0 .
+}
+
+___x_cmd_eget_subcmd_lsasset___auto(){
+    if [ -t 1 ]; then
+        ___x_cmd_eget_subcmd_lsasset___tty "$1"
+    else
+        ___x_cmd_eget_subcmd_lsasset___json "$1"
+    fi
+}
+
+___x_cmd_eget_subcmd_lsasset___tty(){
+    ___x_cmd_eget_subcmd_lsasset___tsv "$1" | ___x_cmd column --tsv
+}
+
+# lsassetmap — print the per-platform best-candidate map as TSV
+# for the latest release. Same shape as `lsasset` but each line
+# is one platform (darwin/arm64, darwin/amd64, linux/arm64,
+# linux/amd64, win/arm64, win/amd64) instead of every asset.
+# Empty platform (no candidate clears THRESHOLD) emits a row
+# with only the platform column populated, so 6 rows always.
+# Independent diagnostic — does NOT affect how `download`,
+# `use`, `snap`, `resolve`, etc. pick assets for the local
+# system.
+___x_cmd_eget_subcmd_lsassetmap(){
+    case "${1:-}" in -h|--help) ___x_cmd help -m eget lsassetmap; return 0 ;; esac
+
+    local target="" _tag="" _pre_release="0" _forge="github"
+
+    local fmt=auto
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -t|--tag)         shift; _tag="$1" ;;
+            --pre-release)    _pre_release="1" ;;
+            --json|--tsv|--yml|--tty|--auto)
+                              fmt="${1#--}"  ;;
+
+            -*)               N=eget M="lsassetmap: unknown option: $1" log:ret:64; return ;;
+            *)                [ -z "$target" ] && target="$1" || { N=eget M="lsassetmap: unexpected argument: $1" log:ret:64; return; } ;;
+        esac
+        shift
+    done
+
+    [ -n "$target" ] || { N=eget M="lsassetmap: missing target (user/repo)" log:ret:64; return; }
+    case "$target" in
+        */*) ;;
+        *)    N=eget M="lsassetmap: invalid target format: $target (expected user/repo)" log:ret:64; return ;;
+    esac
+
+    local owner="${target%%/*}" repo="${target#*/}"
+
+    ___x_cmd_eget_subcmd_lsassetmap___"$fmt"
+}
+
+___x_cmd_eget_subcmd_lsassetmap___yml(){
+    # Map output (platform\tname\turl\tsize\tscore, 6 rows) → YAML,
+    # wrapped under an `eget:` parent so it slots into latest.card.yml
+    # as a 4th segment (sibling of about/timeline/scorecard). The
+    # collectedAt timestamp is set here (one shell-side `date`) so
+    # batch runs over many repos get one consistent stamp per output.
+    # Reshape logic lives in lib/awk/lsassetmap_yml.awk.
+    # Capture once on the shell side so a batch of N repos (one
+    # `x eget lsassetmap` call each) can be reasoned about as a single
+    # point-in-time snapshot. x-cmd convention: a function ending in `_`
+    # writes its return to `$x_` instead of stdout (faster than
+    # command-substitution, no subshell fork). `x date dump_` gives
+    # the current local time in ISO format.
+    local x_
+    x date dump_
+    local _collected_at="$x_"
+    ___x_cmd_eget_subcmd_lsassetmap___tsv | \
+        awk -v AWK_COLLECTED_AT="$_collected_at" \
+            -f "$___X_CMD_ROOT_MOD/eget/lib/awk/lsassetmap_yml.awk"
+}
+
+___x_cmd_eget_subcmd_lsassetmap___json(){
+    # Same reshape as yml but JSON. size/score are emitted as numbers
+    # when set. Reshape lives in lib/jq/lsassetmap_tojson.jq.
+    ___x_cmd_eget_subcmd_lsassetmap___tsv | ___x_cmd jq -Rrs -f "$___X_CMD_ROOT_MOD/eget/lib/jq/lsassetmap_tojson.jq"
+}
+
+___x_cmd_eget_subcmd_lsassetmap___auto(){
+    if [ -t 1 ]; then
+        ___x_cmd_eget_subcmd_lsassetmap___tty
+    else
+        ___x_cmd_eget_subcmd_lsassetmap___tsv
+    fi
+}
+
+___x_cmd_eget_subcmd_lsassetmap___tty(){
+    # x column is itself TTY-aware (header gets inverse-video on tty,
+    # no escape codes on pipe), so --tsv is enough — no separate
+    # flag to flip color on/off. Pipe forces tsv mode (vs auto's
+    # 6-row fallback) so the human eye sees the table even when
+    # stdout happens to be a tty.
+    ___x_cmd_eget_subcmd_lsassetmap___tsv | ___x_cmd column --tsv
+}
+
+___x_cmd_eget_subcmd_lsassetmap___tsv(){
+    # Fetch the same release JSON lsasset uses.
+    local json
+    if ! json="$( ___x_cmd_eget_api_release_unified_ "$_forge" "$owner" "$repo" "$_tag" "$_pre_release" "0" )"; then
+        N=eget M="lsassetmap: failed to fetch release info for $target" log:ret:1
+        return
+    fi
+
+    # Reshape to the asset TSV select_ feeds to detect.
+    local assets_tsv
+    assets_tsv="$( printf "%s" "$json" | ___x_cmd jq -r '.assets[] | "\(.name)\t\(.browser_download_url)\t\(.size)\t\(.digest // "")"' )"
+
+    # Header + 6 platform rows.
+    printf "platform\tname\turl\tsize\tscore\n"
+    ___x_cmd_eget_detect_map "$assets_tsv" "any" "" "$repo"
 }
 
 ___x_cmd_eget_subcmd_extract(){
