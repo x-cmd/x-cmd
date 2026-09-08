@@ -89,36 +89,16 @@ section == "total" {
 }
 
 section == "about" {
-    # description: literal block scalar `|` from card_yaml. The header
-    # line is `  description:` followed by `  |` on the next line, then
-    # each continuation line indented 4 spaces. Collect continuation
-    # lines until we hit a line at the parent (2-space) indent — that
-    # terminates the block and the line is the next key.
-    if ($0 == "  description:") {
-        in_desc = 1
-        desc_lines = ""
-        next
-    }
-    if (in_desc) {
-        if (match($0, /^    /)) {
-            line = substr($0, 5)   # strip 4-space indent
-            desc_lines = (desc_lines == "" ? line : desc_lines "\n" line)
-            next
-        } else {
-            # Out of block. Trim YAML's trailing newline and store.
-            sub(/\n$/, "", desc_lines)
-            g_sub["description"] = desc_lines
-            in_desc = 0
-            # Fall through to handle this line as a normal key.
-        }
-    }
-    # license, homepage, head, archived, latestVersion, collectedAt
+    # description, license, homepage, head, archived, latestVersion,
+    # collectedAt — any of these may arrive quoted by card_yaml (description
+    # and latestVersion both go through @json). json_unquote strips the
+    # wrapping `"..."` and reverses JSON escapes, and is a no-op for
+    # bare scalars, so a single path handles both shapes.
     if (match($0, /^  [a-zA-Z][a-zA-Z0-9]*: /)) {
         key = substr($0, 3, RLENGTH - 4)
         val = substr($0, RSTART + RLENGTH)
         if (key in g_sub) {
-            gsub(/^"|"$/, "", val)
-            g_sub[key] = val
+            g_sub[key] = json_unquote(val)
         }
     }
     next
@@ -130,8 +110,7 @@ section == "timeline" {
         key = substr($0, 3, RLENGTH - 4)
         val = substr($0, RSTART + RLENGTH)
         if (key in g_sub) {
-            gsub(/^"|"$/, "", val)
-            g_sub[key] = val
+            g_sub[key] = json_unquote(val)
         }
     }
     next
@@ -144,8 +123,7 @@ section == "popularity" {
         key = substr($0, 3, RLENGTH - 4)
         val = substr($0, RSTART + RLENGTH)
         if (key in g_sub) {
-            gsub(/^"|"$/, "", val)
-            g_sub[key] = val
+            g_sub[key] = json_unquote(val)
         }
     }
     next
@@ -323,4 +301,35 @@ function add_window(w) {
     seen_win[w] = 1
     n_windows++
     recent_windows = (recent_windows == "" ? w : recent_windows "|" w)
+}
+
+# Reverse jq's `@json` quoting on a YAML double-quoted scalar. Strips the
+# wrapping `"..."` and undoes the JSON short escapes (\" \\ \/ \n \r \t
+# \b \f). Non-ASCII content passes through unchanged because jq leaves
+# UTF-8 bytes alone in @json (only control chars get \uXXXX escapes, and
+# those are rare in repo descriptions).
+function json_unquote(s,    n, i, c, c2, out) {
+    if (length(s) < 2 || substr(s, 1, 1) != "\"" || substr(s, length(s), 1) != "\"")
+        return s
+    s = substr(s, 2, length(s) - 2)
+    n = length(s)
+    out = ""
+    i = 1
+    while (i <= n) {
+        c = substr(s, i, 1)
+        if (c == "\\" && i < n) {
+            c2 = substr(s, i + 1, 1)
+            if (c2 == "\"") { out = out "\""; i += 2; continue }
+            if (c2 == "\\") { out = out "\\"; i += 2; continue }
+            if (c2 == "/")  { out = out "/";  i += 2; continue }
+            if (c2 == "n")  { out = out "\n"; i += 2; continue }
+            if (c2 == "r")  { out = out "\r"; i += 2; continue }
+            if (c2 == "t")  { out = out "\t"; i += 2; continue }
+            if (c2 == "b")  { out = out "\b"; i += 2; continue }
+            if (c2 == "f")  { out = out "\f"; i += 2; continue }
+        }
+        out = out c
+        i++
+    }
+    return out
 }

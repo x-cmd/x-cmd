@@ -147,26 +147,18 @@ def card_commit_counts($wins):
 def card_yaml($labels; $dates; $counts; $commits; $commit_total; $collected_at):
 
     # YAML output policy:
-    # - description is emitted as a literal block scalar (`|`). jq strings
-    #   can contain `\n`, `:`, `"`, `?` — any of those breaks a bare scalar
-    #   AND requires ugly backslash escaping in a double-quoted form. A
-    #   literal block preserves the newlines exactly and never interprets
-    #   a single character, so no escaping is needed.
-    # - Other short string fields (license, homepage, head, dates, version,
-    #   collectedAt) are bare scalars — they don't contain `:` or `?` in
-    #   practice (spdxId, dates, hex SHAs).
+    # - description is emitted as a single-line YAML double-quoted scalar
+    #   via `@json`. The JSON escape set (\" \\ \n \r \t \b \f) is a
+    #   subset of YAML's double-quoted escapes, so the result parses the
+    #   same in any YAML 1.2 reader. Multi-line content collapses to
+    #   `\n` escapes; card.awk reverses them via `json_unquote` when
+    #   rendering to the TTY.
+    # - Other short string fields (license, homepage, head, dates,
+    #   version, collectedAt) are bare scalars — they don't contain `:`
+    #   or `?` in practice (spdxId, dates, hex SHAs).
     # - Missing values render as empty after the colon (which the parser
     #   reads as null, distinct from "?" or `"?"`).
     # - Numeric fields stay unquoted so downstream can compare / sum.
-    #
-    # literal: stream a YAML literal block (`|`) for the current string.
-    # Comma-separated outputs (`header_line, content_lines...`) so each
-    # emits as a separate document line. Empty / null -> just the header
-    # with one indented space; the parser reads that as an empty string.
-    def literal:
-        if . == null or . == "" then "  |", "    "
-        else "  |", (. | split("\n") | .[] | "    " + .)
-        end;
 
     ($labels | length) as $W
     | .data.a as $r
@@ -174,13 +166,12 @@ def card_yaml($labels; $dates; $counts; $commits; $commit_total; $collected_at):
     | ($branch.target // {}) as $head
     | ($r.releases.nodes // []) as $rel
     | "about:",
-      "  description:",
-      ($r.description // "" | . | literal),
+      "  description: \($r.description // "" | @json)",
       "  license: \($r.licenseInfo.spdxId // "NOASSERTION")",
       "  homepage: \($r.homepageUrl // "")",
       "  head: \($head.oid[:7] // "")",
       "  archived: \($r.isArchived // false)",
-      "  latestVersion: \($rel[0].tagName // $rel[0].name // "")",
+      "  latestVersion: \($rel[0].tagName // $rel[0].name // "" | @json)",
       "  collectedAt: \($collected_at)",
       "timeline:",
       "  created: \($r.createdAt[:10] // "")",

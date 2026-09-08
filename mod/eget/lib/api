@@ -67,6 +67,51 @@ ___x_cmd_eget_api_release(){
     fi
 }
 
+# Unified release-data fetcher. Wraps ___x_cmd_eget_api_release with the
+# GitHub HTML fallback so callers (select_, lsasset, ...) get a single
+# entry point that always emits the same shape:
+#   {tag_name, assets:[{name, browser_download_url, size, digest}]}
+# — whether the data came from the JSON API or the scraped release page.
+#
+# Release *selection* (tag vs. latest, pre-release inclusion) stays inside
+# ___x_cmd_eget_api_release; this function only owns the transport choice.
+#
+# Args: forge owner repo tag pre_release source
+# Stdout: release JSON on success. Stderr: nothing from underlying curl.
+# Returns: 0 on success; non-zero on total failure. Callers should diagnose
+# (e.g. via ___x_cmd_eget_api_is_ratelimited for rate-limit hints).
+#
+# Implementation note: we can't reliably distinguish 4xx (404 / 403) from
+# transient network failures here — `x ccmd` normalizes curl's exit code
+# to 1 — so we always try the HTML fallback when the API fails. For
+# definitive errors the fallback page also 404s, so this loop still
+# returns failure. Callers get a clean "failed to fetch" instead of a
+# mid-stream "API unavailable" message that doesn't apply to 4xx cases.
+___x_cmd_eget_api_release_unified_(){
+    local forge="$1" owner="$2" repo="$3" tag="$4" pre_release="$5" source="$6"
+    local json
+
+    # Suppress curl's stderr — it leaks "HTTP 404" / "HTTP 403" lines that
+    # look like noise to end users. We report errors ourselves with cleaner
+    # diagnostics (and rate-limit hints via ___x_cmd_eget_api_is_ratelimited).
+    if json="$( ___x_cmd_eget_api_release "$forge" "$owner" "$repo" "$tag" "$pre_release" "$source" 2>/dev/null )"; then
+        printf "%s" "$json"
+        return 0
+    fi
+
+    # Try the GitHub HTML page as a fallback (issue #33). For 4xx the page
+    # also 404s and we return failure below; for transient issues (network
+    # blip, 5xx, rate limit) this is where we recover.
+    [ "$forge" = "github" ] || return 1
+
+    if json="$( ___x_cmd_eget_api_release_html "$forge" "$owner" "$repo" "$tag" 2>/dev/null )"; then
+        printf "%s" "$json"
+        return 0
+    fi
+
+    return 1
+}
+
 # HTML fallback for GitHub release discovery. Used when the API is
 # rate-limited (Issue #33) — the releases page and expanded_assets view
 # are much more leniently throttled than api.github.com, and the actual
