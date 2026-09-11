@@ -1,0 +1,350 @@
+# shellcheck shell=dash
+xrc ourl
+
+# OrcaRouter model catalogue.
+#
+# The single source of truth for the model list is
+#   GET <inference origin>/v1/models
+# and, when a capability is selected,
+#   GET <inference origin>/v1/models?capability=<capability>
+# fetched with the user's own Bearer key so the list reflects the models that
+# workspace can actually call.
+#
+# A verified cold-start seed is kept ONLY for the case where live discovery
+# fails; when live discovery succeeds its result is authoritative and the seed
+# is not mixed in.
+#
+# Capability filters are derived from catalogue metadata alone -- never from a
+# model's name. Records that declare nothing fail closed.
+
+# Bounds: a catalogue response must not be able to consume unbounded memory or
+# advertise routes this client cannot speak.
+___X_CMD_ORCAROUTER_MODEL_MAX_ITEMS=500
+___X_CMD_ORCAROUTER_MODEL_TIMEOUT=20
+
+___x_cmd_orcarouter_model(){
+    [ $# -gt 0 ]    ||      set - ls
+
+    local op="$1";  shift
+    case "$op" in
+        ls|set|get)
+            ___x_cmd_orcarouter_model_"$op" "$@"
+            ;;
+        -h|--help)
+            ___x_cmd help -m orcarouter model "$@"
+            ;;
+        *)
+            N=orcarouter M="Not support [subcmd=$op]" log:ret:64
+    esac
+}
+
+___x_cmd_orcarouter_model_set(){
+    local model="$1"
+    [ -n "$model" ] || orcarouter:error "Please provide a model name"
+
+    ___x_cmd_orcarouter_cfg set model="$model" || return $?
+    orcarouter:info "The default model has been set as $model"
+}
+
+___x_cmd_orcarouter_model_get(){
+    local model=""
+    ___x_cmd_orcarouter_cur model:=  2>/dev/null
+    printf "%s\n" "$model"
+}
+
+# --- capability selection ----------------------------------------------------
+
+# NORMALISED CAPABILITY and MODALITY are exported to the parser below.
+___x_cmd_orcarouter_model___resolve_capability(){
+    NORMALISED_CAP=chat
+    NORMALISED_MODALITY=
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --chat)         NORMALISED_CAP=chat ;;
+            --embedding)    NORMALISED_CAP=embedding ;;
+            --image)        NORMALISED_CAP=image ;;
+            --video)        NORMALISED_CAP=video ;;
+            --rerank)       NORMALISED_CAP=rerank ;;
+            --vision)       NORMALISED_CAP=chat; NORMALISED_MODALITY=image ;;
+            --multimodal)   NORMALISED_CAP=chat; NORMALISED_MODALITY="${2:-image}"; shift ;;
+            --audio)        NORMALISED_CAP=chat; NORMALISED_MODALITY=audio ;;
+            --file)         NORMALISED_CAP=chat; NORMALISED_MODALITY=file ;;
+            --capability)   NORMALISED_CAP="${2:-chat}"; shift ;;
+            --modality)     NORMALISED_MODALITY="${2:-}"; shift ;;
+        esac
+        shift
+    done
+}
+
+___x_cmd_orcarouter_model_ls(){
+    local format=app
+
+    ___x_cmd_orcarouter_model___resolve_capability "$@"
+
+    # Strip the capability flags; what remains is the output-format selector.
+    local rest=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --chat|--embedding|--image|--video|--rerank|--vision|--audio|--file) ;;
+            --multimodal|--capability|--modality)   shift ;;
+            *)  rest="${rest} $1" ;;
+        esac
+        shift
+    done
+    set -- $rest
+
+    local op="${1:---app}"
+    case "$op" in
+        --csv)      format=csv       ;;
+        --app)      format=app       ;;
+        -j|--json)  format=json      ;;
+        -y|--yml)   format=yml       ;;
+        -h|--help)  ___x_cmd help -m orcarouter model ls  "$@"; return ;;
+        *)          N=orcarouter M="Not support [option=$op]" log:ret:64; return 64 ;;
+    esac
+
+    "___x_cmd_orcarouter_model_ls___${format}"
+}
+
+___x_cmd_orcarouter_model_ls___app(){
+    if ! { ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; }; then
+        ___x_cmd_orcarouter_model_ls___csv "$@"
+        return $?
+    fi
+
+    local ___X_CMD_CSV_APP_DATA_CURROW=
+    local data; data="$( ___x_cmd_orcarouter_model_ls___csv )" || ourl:data:ret
+    ___x_cmd_pipevar    data    ___x_cmd csv --app --return line
+
+    if [ -n "$___X_CMD_CSV_APP_DATA_CURROW" ] ; then
+        local select_id="${___X_CMD_CSV_APP_DATA_CURROW%%,*}"
+        local id=""
+        orcarouter:info "Select model -> $select_id"
+        ___x_cmd ui select id "What to do NEXT" \
+        "set default model: $select_id"    \
+        "EXIT"     || return $?
+
+        case "$id" in
+            1)  ___x_cmd_orcarouter_model_set "$select_id" ;;
+            2)
+                orcarouter:info "EXIT [code=0]"
+                return 0 ;;
+        esac
+    fi
+}
+
+___x_cmd_orcarouter_model_ls___csv(){
+    local data; data="$( ___x_cmd_orcarouter_model_ls_tsv )" || ourl:data:ret
+    printf "%s" "$data" | ___x_cmd_orcarouter_model_ls___tsv2csv
+}
+___x_cmd_orcarouter_model_ls___json(){
+    local data; data="$( ___x_cmd_orcarouter_model_ls_tsv )" || ourl:data:ret
+    printf "%s" "$data" | ___x_cmd_orcarouter_model_ls___tsv2json | ___x_cmd jo fmt
+}
+___x_cmd_orcarouter_model_ls___yml(){
+    local data; data="$( ___x_cmd_orcarouter_model_ls_tsv )" || ourl:data:ret
+    printf "%s" "$data" | ___x_cmd_orcarouter_model_ls___tsv2json | ___x_cmd j2y
+}
+
+___x_cmd_orcarouter_model_ls___tsv2csv(){
+    ___x_cmd_cmds_awk -F'\t' 'BEGIN{
+        OFS=","
+        print "Id","Name","ContextLength","InputModalities","OutputModalities","EndpointTypes","Source"
+    }
+    {
+        for (i = 1; i <= 7; i++) {
+            v = $i
+            gsub(/"/, "\"\"", v)
+            if (v ~ /[",]/) v = "\"" v "\""
+            $i = v
+        }
+        print $1,$2,$3,$4,$5,$6,$7
+    }'
+}
+
+___x_cmd_orcarouter_model_ls___tsv2json(){
+    ___x_cmd_cmds_awk -F'\t' '
+    function esc(s) { gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); return s }
+    BEGIN{ printf "[" }
+    {
+        if (NR>1) printf ","
+        printf "{\"id\":\"%s\",\"name\":\"%s\",\"context_length\":\"%s\",\"input_modalities\":\"%s\",\"output_modalities\":\"%s\",\"supported_endpoint_types\":\"%s\",\"source\":\"%s\"}", esc($1),esc($2),esc($3),esc($4),esc($5),esc($6),esc($7)
+    }
+    END{ printf "]\n" }'
+}
+
+# Fetches and filters, emitting TSV. Falls back to the verified seed when live
+# discovery fails, marking every row as a fallback so the degradation is
+# visible rather than silent.
+___x_cmd_orcarouter_model_ls_tsv(){
+    ___x_cmd_orcarouter_model_ls_tsv_live && return 0
+
+    orcarouter:warn "Live model discovery failed; showing the verified fallback catalogue."
+    orcarouter:warn "The list may be incomplete or out of date. Run 'x orcarouter model ls' again to retry."
+    ___x_cmd_orcarouter_model_ls_tsv_seed
+}
+
+___x_cmd_orcarouter_model_ls_tsv_live(){
+    local apikey=""; apikey="$(___x_cmd_orcarouter_cred_key_raw)"
+    [ -n "$apikey" ] || {
+        orcarouter:error "No OrcaRouter credential configured, so the live model catalogue cannot be read."
+        orcarouter:warn "Set one up ==>  x orcarouter --cfg apikey=<your api key>"
+        orcarouter:warn "Or sign in   ==>  x orcarouter connect"
+        return 1
+    }
+
+    local api_base=""; api_base="$(___x_cmd_orcarouter_util_api_base_v1)"
+    ___x_cmd_orcarouter_util_require_origin "inference" "$api_base" || return 1
+
+    local url="${api_base}/models"
+    case "$NORMALISED_CAP" in
+        chat|embedding|image|video|rerank) url="${url}?capability=${NORMALISED_CAP}" ;;
+    esac
+
+    # Body and status are captured separately so a bounded, non-2xx or empty
+    # response can never be mistaken for a catalogue.
+    local tmp_dir=""; tmp_dir="$(___x_cmd_orcarouter_util_attempt_dir)"
+    local body_file="${tmp_dir}/models.$$"
+    local status=""
+    status="$(___x_cmd curl -sS \
+        --max-time "$___X_CMD_ORCAROUTER_MODEL_TIMEOUT" \
+        -H "Authorization: Bearer $apikey" \
+        -o "$body_file" -w '%{http_code}' \
+        "$url" 2>/dev/null)"
+
+    if [ "$status" = "401" ] || [ "$status" = "403" ]; then
+        # Terminal for this credential generation. Reuses the exact-generation
+        # rule; no refresh is attempted, because there is no refresh grant.
+        ___x_cmd_orcarouter_cred_mark_reauth "$(___x_cmd_orcarouter_cred_generation)"
+        ___x_cmd rmrf "$body_file" 2>/dev/null
+        return 1
+    fi
+    [ "$status" = "200" ] || {
+        ___x_cmd rmrf "$body_file" 2>/dev/null
+        return 1
+    }
+
+    local out=""
+    out="$(___x_cmd_orcarouter_model___json2rows < "$body_file" | ___x_cmd_orcarouter_model_parse)"
+    ___x_cmd rmrf "$body_file" 2>/dev/null
+
+    [ -n "$out" ] || return 1
+    printf "%s\n" "$out"
+    return 0
+}
+
+# Normalises each catalogue record into one flat "|"-separated line. Anything
+# the parser sees is metadata the service actually declared; nothing is inferred
+# from a model's name.
+___x_cmd_orcarouter_model___json2rows(){
+    ___x_cmd jq -r '
+        .data[]? |
+        [
+            (.id // ""),
+            ((.name // "") | gsub("\\|"; "/") | gsub("[\\r\\n\\t]"; " ")),
+            ((.context_length // "") | tostring),
+            ((.architecture.input_modalities // []) | join(",")),
+            ((.architecture.output_modalities // []) | join(",")),
+            ((.supported_endpoint_types // []) | join(","))
+        ] | join("|")
+    ' 2>/dev/null
+}
+
+# Parses a /v1/models body into TSV, applying the capability rules.
+___x_cmd_orcarouter_model_parse(){
+    ___x_cmd_cmds_awk \
+        -v cap="$NORMALISED_CAP" \
+        -v modality="$NORMALISED_MODALITY" \
+        -v maxitems="$___X_CMD_ORCAROUTER_MODEL_MAX_ITEMS" '
+    function arr_has(arr, needle,   n, i, parts) {
+        if (arr == "") return 0
+        n = split(arr, parts, ",")
+        for (i = 1; i <= n; i++) if (parts[i] == needle) return 1
+        return 0
+    }
+    BEGIN {
+        FS = "\t"
+        OFS = "\t"
+        TEXT["openai"]=1; TEXT["anthropic"]=1; TEXT["gemini"]=1; TEXT["openai-response"]=1
+        NONTEXT["image-generation"]=1; NONTEXT["openai-video"]=1; NONTEXT["jina-rerank"]=1
+        count = 0
+    }
+    # Records are read as one flat object per entry: the extractor below emits
+    # "id|name|ctx|in|out|ep" per line.
+    {
+        if (count >= maxitems) next
+        split($0, f, "|")
+        id=f[1]; name=f[2]; ctx=f[3]; im=f[4]; om=f[5]; ep=f[6]
+        if (id == "") next
+
+        keep = 0
+        if (cap == "embedding") {
+            keep = arr_has(ep, "embeddings")
+        } else if (cap == "image") {
+            keep = arr_has(ep, "image-generation")
+        } else if (cap == "video") {
+            keep = arr_has(ep, "openai-video")
+        } else if (cap == "rerank") {
+            keep = arr_has(ep, "jina-rerank")
+        } else {
+            # text chat: must speak at least one text endpoint, and must not be
+            # a non-text-only model. No `switch` here: the x-cmd awk is mawk,
+            # which does not implement it.
+            n = split(ep, eps, ",")
+            has_text = 0; has_other = 0
+            for (i = 1; i <= n; i++) {
+                if (eps[i] in TEXT) has_text = 1
+                if (!(eps[i] in NONTEXT)) has_other = 1
+            }
+            keep = has_text && has_other
+            # multimodal: additionally require the declared input modality.
+            # A record that declares no architecture fails closed.
+            if (keep && modality != "") keep = arr_has(im, modality)
+        }
+        if (!keep) next
+
+        count++
+        print id, name, ctx, im, om, ep, "api"
+    }'
+}
+
+# --- verified cold-start seed ------------------------------------------------
+#
+# Re-verified against the live catalogue on 2026-09-11. Used only when live
+# discovery fails. Modality metadata is preserved so a multimodal filter does
+# not accidentally widen or narrow incorrectly.
+___x_cmd_orcarouter_model_ls_tsv_seed(){
+    local mod="$NORMALISED_MODALITY"
+    [ "$NORMALISED_CAP" = "chat" ] || return 0
+
+    # openai/gpt-5.5 -- live catalogue reports file,image,text
+    ___x_cmd_orcarouter_model_seed_row_if "$mod" "file,image,text" \
+        "openai/gpt-5.5" "OpenAI: GPT-5.5" "" "file,image,text" "text" "openai,openai-response"
+    # anthropic/claude-opus-4.8 -- text,image,file @ 1000000
+    ___x_cmd_orcarouter_model_seed_row_if "$mod" "text,image,file" \
+        "anthropic/claude-opus-4.8" "Anthropic: Claude Opus 4.8" "1000000" "text,image,file" "text" "openai,anthropic,openai-response"
+    # google/gemini-3.5-flash -- text,image,video,file,audio @ 1048576
+    ___x_cmd_orcarouter_model_seed_row_if "$mod" "text,image,video,file,audio" \
+        "google/gemini-3.5-flash" "Google: Gemini 3.5 Flash" "1048576" "text,image,video,file,audio" "text" "openai,gemini"
+    # deepseek/deepseek-v4-pro -- text only @ 1048576
+    ___x_cmd_orcarouter_model_seed_row_if "$mod" "text" \
+        "deepseek/deepseek-v4-pro" "DeepSeek: DeepSeek V4 Pro" "1048576" "text" "text" "openai,openai-response"
+    # orcarouter/auto -- router alias, declares no modality upstream
+    if [ -z "$mod" ]; then
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+            "orcarouter/auto" "OrcaRouter: Auto" "" "" "" "openai,openai-response,anthropic,gemini" "seed"
+    fi
+}
+
+___x_cmd_orcarouter_model_seed_row_if(){
+    local want_mod="$1"; local have_mods="$2"
+    shift 2
+    if [ -n "$want_mod" ]; then
+        case ",${have_mods}," in
+            *",${want_mod},"*) ;;
+            *) return 0 ;;
+        esac
+    fi
+    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" "$1" "$2" "$3" "$4" "$5" "$6" "seed"
+}

@@ -1,0 +1,177 @@
+# shellcheck shell=dash
+
+# Shared helpers for the OrcaRouter provider: origin resolution, origin policy,
+# and the PKCE crypto primitives (base64url + SHA-256).
+#
+# No third-party dependency is introduced for either: every platform x-cmd
+# already supports ships `openssl` (wrapped as `___x_cmd openssl`) and a
+# POSIX `base64`.
+
+# --- Origins -----------------------------------------------------------------
+#
+# Authentication and inference live on different public origins:
+#
+#   auth      https://www.orcarouter.ai      (authorize + code exchange)
+#   inference https://api.orcarouter.ai/v1   (chat, model catalogue)
+#
+# They are never derived from one another by rewriting a hostname or blindly
+# appending /v1. Precedence, explicit first:
+#
+#   config value  >  ORCA_<PURPOSE>_BASE_URL  >  ORCA_BASE_URL  >  default
+
+___x_cmd_orcarouter_util_auth_base(){
+    # `authbase:=` assigns into a dynamically-scoped `authbase`, per cfgy.
+    local authbase=
+    ___x_cmd_orcarouter_cur authbase:= 2>/dev/null
+    local v="$authbase"
+    [ -n "$v" ] || v="${ORCA_AUTH_BASE_URL:-}"
+    [ -n "$v" ] || v="${ORCA_BASE_URL:-}"
+    [ -n "$v" ] || v="$___X_CMD_ORCAROUTER_DEFAULT_AUTH_ENDPOINT"
+    ___x_cmd_orcarouter_util_strip_slash "$v"
+}
+
+___x_cmd_orcarouter_util_api_base(){
+    # `endpoint:=` assigns into a dynamically-scoped `endpoint`, per cfgy.
+    local endpoint=
+    ___x_cmd_orcarouter_cur endpoint:= 2>/dev/null
+    local v="$endpoint"
+    [ -n "$v" ] || v="${ORCA_API_BASE_URL:-}"
+    [ -n "$v" ] || v="${ORCA_BASE_URL:-}"
+    [ -n "$v" ] || v="$___X_CMD_ORCAROUTER_DEFAULT_ENDPOINT"
+    ___x_cmd_orcarouter_util_strip_slash "$v"
+}
+
+# Inference lives under /v1 on the relay; accept a base that already carries it
+# so a self-hosted ORCA_BASE_URL copied from the docs does not become /v1/v1.
+___x_cmd_orcarouter_util_api_base_v1(){
+    local b=""; b="$(___x_cmd_orcarouter_util_api_base)"
+    case "$b" in
+        */v1)   printf "%s\n" "$b"          ;;
+        *)      printf "%s\n" "$b/v1"       ;;
+    esac
+}
+
+___x_cmd_orcarouter_util_strip_slash(){
+    local v="$1"
+    while [ "${v%/}" != "$v" ]; do v="${v%/}"; done
+    printf "%s\n" "$v"
+}
+
+# Loopback HTTP is allowed for local development; every other origin must be
+# HTTPS. This mirrors the service's own callback_url rule.
+___x_cmd_orcarouter_util_origin_allowed(){
+    local url="$1"
+    case "$url" in
+        https://*)  return 0 ;;
+        http://localhost|http://localhost/*|http://localhost:*)     return 0 ;;
+        http://127.0.0.1|http://127.0.0.1/*|http://127.0.0.1:*)     return 0 ;;
+        'http://[::1]'|'http://[::1]/*'|'http://[::1]:'*)           return 0 ;;
+        *)          return 1 ;;
+    esac
+}
+
+___x_cmd_orcarouter_util_require_origin(){
+    local purpose="$1" url="$2"
+    ___x_cmd_orcarouter_util_origin_allowed "$url" && return 0
+    orcarouter:error "Refusing non-HTTPS $purpose origin [$url]: only HTTPS is accepted for remote origins (plain HTTP is permitted for loopback development)."
+    return 1
+}
+
+# --- PKCE crypto -------------------------------------------------------------
+
+# 64 hex chars -> base64url without padding.
+# Built from pure shell arithmetic so it works on a bare POSIX shell with no
+# python/perl/xxd present.
+___x_cmd_orcarouter_util_b64url_hex(){
+    local hex="$1"
+    [ -n "$hex" ] || return 1
+    local n=0 i=0 out=""
+    out="$( (
+        i=0
+        while [ "$i" -lt "${#hex}" ]; do
+            p="$(printf "%s" "$hex" | cut -c$((i + 1))-$((i + 2)))"
+            printf "\\$(printf "%03o" "$((16#$p))")"
+            i=$((i + 2))
+        done
+    ) | base64 | tr -d '\n=' | tr '+/' '-_' )" || return 1
+    printf "%s\n" "$out"
+}
+
+# base64 -> base64url without padding (used for random byte strings).
+___x_cmd_orcarouter_util_b64url_of_b64(){
+    printf "%s" "$1" | tr -d '\n=' | tr '+/' '-_'
+}
+
+___x_cmd_orcarouter_util_sha256_b64url(){
+    local s="$1"
+    [ -n "$s" ] || return 1
+    local hex=""
+    hex="$(___x_cmd_str_sha256 "$s")" || return 1
+    [ -n "$hex" ] || return 1
+    ___x_cmd_orcarouter_util_b64url_hex "$hex"
+}
+
+# $1 = number of random bytes to draw from the platform CSPRNG.
+# Reads /dev/urandom first; falls back to `openssl rand`. Never derived from
+# time, pid, hostname or any other guessable value.
+___x_cmd_orcarouter_util_rand_b64url(){
+    local n="${1:-32}"
+    local raw=""
+    if [ -r /dev/urandom ]; then
+        raw="$(___x_cmd_cmds dd if=/dev/urandom bs=1 count="$n" 2>/dev/null | base64 | tr -d '\n')"
+    fi
+    if [ -z "$raw" ]; then
+        raw="$(___x_cmd openssl rand -base64 "$n" 2>/dev/null | tr -d '\n')"
+    fi
+    [ -n "$raw" ] || return 1
+    ___x_cmd_orcarouter_util_b64url_of_b64 "$raw"
+}
+
+# --- In-flight PKCE attempts -------------------------------------------------
+#
+# A verifier must stay inside this process boundary until it is exchanged: it
+# is written to a 0600 file owned by the user, never to a URL, a log or an
+# error message, and it is removed as soon as the attempt terminates.
+
+___x_cmd_orcarouter_util_attempt_dir(){
+    local d="${___X_CMD_ROOT_TMP}/orcarouter"
+    [ -d "$d" ] || ___x_cmd mkdirp "$d" 2>/dev/null
+    chmod 700 "$d" 2>/dev/null
+    printf "%s\n" "$d"
+}
+
+# --- Misc --------------------------------------------------------------------
+
+___x_cmd_orcarouter_util_now(){
+    date +%s
+}
+
+# Constant-time string equality. The comparison deliberately does not stop at
+# the first differing byte, so it leaks no information about how far a guess
+# matched. State is a CSRF token: a mismatched state must abort the attempt
+# before the code is used.
+___x_cmd_orcarouter_util_ct_eq(){
+    local a="$1"; local b="$2"
+    [ "${#a}" -eq "${#b}" ] || return 1
+    [ -n "$a" ] || return 1
+    local i=0 diff=0 ca=cb
+    while [ "$i" -lt "${#a}" ]; do
+        ca="$(printf "%s" "$a" | cut -c$((i + 1)))"
+        cb="$(printf "%s" "$b" | cut -c$((i + 1)))"
+        if [ "$ca" != "$cb" ]; then
+            diff=1
+        fi
+        i=$((i + 1))
+    done
+    [ "$diff" -eq 0 ]
+}
+
+# True when the argument is a non-empty, syntactically plausible OrcaRouter key.
+# This is a shape check only, NOT a validity check: an sk-orca- prefix is no
+# proof that a credential works, so the first real request establishes that.
+___x_cmd_orcarouter_util_key_shape_ok(){
+    case "$1" in
+        sk-orca-*)  [ "${#1}" -ge 16 ] ;;
+        *)          return 1 ;;
+    esac
+}

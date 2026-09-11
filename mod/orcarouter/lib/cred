@@ -1,0 +1,161 @@
+# shellcheck shell=dash
+
+# The credential seam for OrcaRouter.
+#
+# Two adapters produce a credential and hand it to ___x_cmd_orcarouter_cred_apply:
+#
+#   API-key adapter  mod/orcarouter/lib/cfg        (apikey=<sk-orca-...>)
+#   PKCE adapter     mod/orcarouter/lib/connect    (x orcarouter connect)
+#
+# Everything downstream -- the chat transport, the model catalogue, the
+# Claude Code harness, the agent provider catalogs -- reads the credential
+# through this file and never learns which adapter produced it. Authentication
+# logic is not duplicated per entry point.
+#
+# Storage is the project's existing config store (cfgy), the same one every
+# other provider uses. No new secret store is introduced.
+
+# The raw key. Callers must not print this.
+#
+# Resolution order: the project's config store (populated by either adapter),
+# then the environment. Existing x-cmd users already keep provider keys in the
+# environment, so the env path is honoured rather than forcing a config write.
+___x_cmd_orcarouter_cred_key_raw(){
+    # cfgy's `name:=` form assigns into a dynamically-scoped variable literally
+    # named `name`, so this local must carry that exact name.
+    local apikey=
+    ___x_cmd_orcarouter_cur apikey:= 2>/dev/null
+    [ -n "$apikey" ] || apikey="${ORCAROUTER_API_KEY:-}"
+    [ -n "$apikey" ] || apikey="${ORCA_KEY:-}"
+    printf "%s" "$apikey"
+}
+
+___x_cmd_orcarouter_cred_source(){
+    local credsrc=
+    ___x_cmd_orcarouter_cur credsrc:= 2>/dev/null
+    local s="$credsrc"
+    if [ -z "$s" ]; then
+        # Present without a stored record => it came from the environment.
+        if [ -n "${ORCAROUTER_API_KEY:-}" ] || [ -n "${ORCA_KEY:-}" ]; then
+            s=env
+        elif [ -n "$(___x_cmd_orcarouter_cred_key_raw)" ]; then
+            s=apikey
+        fi
+    fi
+    printf "%s" "$s"
+}
+
+___x_cmd_orcarouter_cred_generation(){
+    local credgen=
+    ___x_cmd_orcarouter_cur credgen:= 2>/dev/null
+    printf "%s" "${credgen:-0}"
+}
+
+___x_cmd_orcarouter_cred_needs_reauth(){
+    local needsreauth=
+    ___x_cmd_orcarouter_cur needsreauth:= 2>/dev/null
+    [ "$needsreauth" = "1" ]
+}
+
+# Show only enough of the key to recognise it. Never the whole value.
+___x_cmd_orcarouter_cred_mask(){
+    local k="$1"
+    [ -n "$k" ] || { printf "%s" ""; return 0; }
+    if [ "${#k}" -le 12 ]; then
+        printf "%s" "****"
+    else
+        printf "%s...%s" "$(printf "%s" "$k" | cut -c1-8)" "$(printf "%s" "$k" | cut -c$(( ${#k} - 3 ))- )"
+    fi
+}
+
+# Both adapters land here. $1 = key, $2 = source (apikey|pkce), $3 = granted scope.
+# A successful apply always clears the reauth marker and issues a NEW generation,
+# so a failure belonging to the previous credential can no longer touch this one.
+___x_cmd_orcarouter_cred_apply(){
+    local key="$1"; local source="$2"; local scope="$3"
+    [ -n "$key" ] || { orcarouter:error "No credential to store."; return 1; }
+    orcarouter:debug "Storing OrcaRouter credential (source=$source mask=$(___x_cmd_orcarouter_cred_mask "$key"))"
+
+    local gen=0
+    gen="$(___x_cmd_orcarouter_cred_generation)"
+    case "$gen" in ''|*[!0-9]*) gen=0 ;; esac
+    gen=$((gen + 1))
+
+    ___x_cmd_orcarouter_cfg___invoke \
+        set apikey="$key" credsrc="$source" credgen="$gen" needsreauth= reauthgen= \
+        ${scope:+scope="$scope"} >/dev/null 2>&1 || {
+        orcarouter:error "Failed to save the OrcaRouter credential to the local config."
+        return 1
+    }
+    return 0
+}
+
+# Terminal reauthentication. ONLY the exact credential generation that made the
+# rejected request may be marked. A late 401 from an old generation must never
+# invalidate a credential the user has since replaced.
+___x_cmd_orcarouter_cred_mark_reauth(){
+    local rejected_gen="$1"
+    local cur_gen=""
+    cur_gen="$(___x_cmd_orcarouter_cred_generation)"
+
+    if [ -n "$rejected_gen" ] && [ "$rejected_gen" != "$cur_gen" ]; then
+        orcarouter:debug "Ignoring stale 401 from generation [$rejected_gen]; current is [$cur_gen]."
+        return 0
+    fi
+
+    ___x_cmd_orcarouter_cfg___invoke \
+        set needsreauth=1 reauthgen="$cur_gen" >/dev/null 2>&1
+
+    orcarouter:error "The OrcaRouter credential for this account was rejected (HTTP 401)."
+    orcarouter:warn "It has been marked as needing reauthentication and will not be used again."
+    orcarouter:warn "Sign in again with ==>  x orcarouter connect"
+    orcarouter:warn "Or paste a fresh key ==>  x orcarouter --cfg apikey=<your api key>"
+    return 0
+}
+
+# Used by the chat path. A durable OrcaRouter key is NOT a refresh token: there
+# is no refresh endpoint and nothing here attempts a refresh grant. A 401 is
+# terminal for this credential generation.
+___x_cmd_orcarouter_cred_handle_401(){
+    local gen="$1"
+    ___x_cmd_orcarouter_cred_mark_reauth "$gen"
+}
+
+# Clear the credential. Deliberately explicit: nothing silently deletes a
+# stored secret on a transient failure.
+___x_cmd_orcarouter_cred_clear(){
+    ___x_cmd_orcarouter_cfg___invoke \
+        set apikey= credsrc= credgen= needsreauth= reauthgen= >/dev/null 2>&1
+    orcarouter:info "The stored OrcaRouter credential has been removed."
+}
+
+___x_cmd_orcarouter_cred_status(){
+    local k=""; k="$(___x_cmd_orcarouter_cred_key_raw)"
+    if [ -z "$k" ]; then
+        orcarouter:info "OrcaRouter: no credential configured."
+        orcarouter:info "  Paste a key : x orcarouter --cfg apikey=<sk-orca-...>"
+        orcarouter:info "  Sign in     : x orcarouter connect"
+        return 0
+    fi
+
+    local src=""; src="$(___x_cmd_orcarouter_cred_source)"
+    local gen=""; gen="$(___x_cmd_orcarouter_cred_generation)"
+    local scope=""; ___x_cmd_orcarouter_cur scope:= 2>/dev/null
+    : "${scope:=}"
+
+    orcarouter:info "OrcaRouter credential: $(___x_cmd_orcarouter_cred_mask "$k")"
+    case "$src" in
+        pkce)   orcarouter:info "  Source     : OAuth 2.0 + PKCE account login" ;;
+        apikey) orcarouter:info "  Source     : API key" ;;
+        *)      orcarouter:info "  Source     : (unknown)" ;;
+    esac
+    orcarouter:info "  Generation : ${gen:-0}"
+    [ -n "$scope" ] && orcarouter:info "  Scope      : $scope"
+
+    if ___x_cmd_orcarouter_cred_needs_reauth; then
+        orcarouter:warn "  State      : NEEDS REAUTHENTICATION -- run 'x orcarouter connect' again."
+        return 1
+    fi
+    orcarouter:info "  State      : ok"
+    return 0
+}
