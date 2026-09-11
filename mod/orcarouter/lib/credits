@@ -1,0 +1,49 @@
+# shellcheck shell=dash
+xrc ourl
+
+___x_cmd_orcarouter_credits(){
+    local format=yml
+    local op="$1";
+    case "$op" in
+        -j|--json)  shift; format=json      ;;
+        -y|--yml)   shift; format=yml       ;;
+        -h|--help)  shift; ___x_cmd help -m orcarouter credits "$@"; return ;;
+    esac
+
+    ___x_cmd_orcarouter_credits_"${format}" "$@"
+}
+
+___x_cmd_orcarouter_credits_yml(){
+    local data; data="$( ___x_cmd_orcarouter_credits_raw )" || ourl:data:ret
+    ___x_cmd_pipevar data ___x_cmd j2y
+}
+
+___x_cmd_orcarouter_credits_json(){
+    local data; data="$( ___x_cmd_orcarouter_credits_raw )" || ourl:data:ret
+    ___x_cmd_pipevar data ___x_cmd jo fmt
+}
+
+# Reports the credential lifecycle state. OrcaRouter has no documented public
+# credit-balance endpoint, so this deliberately does not invent one: it reports
+# what is locally known about the credential instead of making a billing call.
+___x_cmd_orcarouter_credits_raw(){
+    local k=""; k="$(___x_cmd_orcarouter_cred_key_raw)"
+    [ -n "$k" ] || {
+        orcarouter:error "No OrcaRouter credential configured."
+        orcarouter:warn "Set one up ==>  x orcarouter --cfg apikey=<your api key>"
+        return 1
+    }
+
+    local src=""; src="$(___x_cmd_orcarouter_cred_source)"
+    local gen=""; gen="$(___x_cmd_orcarouter_cred_generation)"
+    local state="ok"
+    ___x_cmd_orcarouter_cred_needs_reauth && state="needs_reauth"
+
+    ___x_cmd jq -n \
+        --arg key "$(___x_cmd_orcarouter_cred_mask "$k")" \
+        --arg source "${src:-unknown}" \
+        --arg generation "${gen:-0}" \
+        --arg state "$state" \
+        --arg console "$___X_CMD_ORCAROUTER_AUTHORIZED_APPS_URL" \
+        '{key: $key, source: $source, generation: $generation, state: $state, console: $console}'
+}
