@@ -1,0 +1,61 @@
+# shellcheck shell=dash
+
+# Run Claude Code against the OrcaRouter gateway.
+#
+# OrcaRouter speaks the Anthropic wire format as well as the OpenAI one (the
+# catalogue advertises `anthropic` in supported_endpoint_types for the Anthropic
+# family), so Claude Code can be pointed at the inference origin directly. The
+# shared adapter appends /v1, so x_url carries the bare origin.
+
+___x_cmd_claude_orcarouter(){
+    local op="$1"
+    case "$op" in
+        -h|--help)      ___x_cmd help -m claude orcarouter; return 0 ;;
+        --cfg)          ___x_cmd orcarouter "$@";     return $? ;;
+        --)             shift ;;
+    esac
+
+    claude:provider:fetch:init
+    ___x_cmd_claude_orcarouter___fetch_   || return $?
+
+    ANTHROPIC_API_KEY="" API_TIMEOUT_MS="$x_timeout"        \
+        ___x_cmd_claude_other___use     orcarouter                \
+        "$x_url" "$x_apikey" "$x_model" "$x_fastmodel" "$x_nonessential_traffic" "$x_effortlevel" "$@"
+}
+
+___x_cmd_claude_orcarouter___fetch_(){
+    local model=""
+    local apikey=""
+    local endpoint=
+
+    ___x_cmd orcarouter --cur apikey:=  model:=  endpoint:= 2>/dev/null
+
+    [ -n "$apikey" ] || {
+        claude:warn \
+            --tip1 'x orcarouter connect'                            \
+            --tip2 'x orcarouter --cfg apikey=<YOUR-API-KEY>'        \
+            "Please set up an OrcaRouter credential."
+
+        if ___x_cmd_runmode_allow_manual; then
+            ___x_cmd orcarouter --cfg || return $?
+            ___x_cmd orcarouter --cur apikey:=    endpoint:= 2>/dev/null
+        fi
+        [ -n "$apikey" ] || N=claude M="Failed to retrieve the OrcaRouter credential. Please check your configuration." log:ret:1
+    }
+
+    endpoint="$(___x_cmd_orcarouter_util_api_base)"
+    ___x_cmd_orcarouter_util_require_origin "inference" "$endpoint" || return 1
+
+    x_url="$endpoint"
+    x_apikey="$apikey"
+
+    # Claude Code is an Anthropic-format client, so default to a model that
+    # advertises the `anthropic` endpoint type rather than an OpenAI-only one.
+    x_model="${model}"
+    [ -n "$x_model" ] || x_model="anthropic/claude-opus-4.8"
+
+    x_fastmodel="${x_model}"
+    x_effortlevel=auto
+
+    x_timeout="${API_TIMEOUT_MS:-"3000000"}"
+}

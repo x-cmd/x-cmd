@@ -1,0 +1,281 @@
+# shellcheck shell=dash
+
+# OAuth 2.0 + PKCE account login for OrcaRouter -- the PKCE adapter of the
+# credential seam in mod/orcarouter/lib/cred.
+#
+# Flow B (out-of-band code), per the OrcaRouter integration guide.
+#
+# Why B and not A (loopback redirect) or C (device grant):
+#   x-cmd is a portable shell library that runs wherever the user's shell runs
+#   -- a login shell, an SSH session, a container, a CI runner. It ships no
+#   HTTP listener primitive and cannot assume nc/socat exists, so Flow A's
+#   "listen on 127.0.0.1:<port>" is not uniformly available. Flow B needs no
+#   listening socket and no pre-registered redirect URI, and it degrades
+#   gracefully: on a machine with no browser the user simply opens the printed
+#   URL elsewhere and pastes the code back. Flow C is an additional capability
+#   and is deliberately not implemented here.
+#
+# PKCE properties enforced below:
+#   * verifier and state are drawn fresh from the platform CSPRNG per attempt;
+#   * challenge is base64url(sha256(verifier)) with no padding, method S256;
+#   * the verifier never leaves this process except in the exchange request
+#     body -- it is not in the authorize URL, not in a log, not in an error;
+#   * the code is single-use with a 10 minute TTL, so the attempt is bounded.
+
+___x_cmd_orcarouter_connect(){
+    local X_help_cmd='___x_cmd help -m orcarouter connect'; help:arg:parse
+
+    local force=0
+    case "$1" in
+        --force|-f)     force=1; shift ;;
+    esac
+
+    ___x_cmd_orcarouter_connect___run "$force" "$@"
+}
+
+___x_cmd_orcarouter_connect___run(){
+    local force="${1:-0}"
+
+    # A PKCE-issued key is durable: reuse it until OrcaRouter revokes it.
+    # Re-authorizing on every launch would burn the 10 keys/user/24h budget and
+    # lock the user out. --force is the explicit way to mint a new one.
+    if [ "$force" != "1" ] && [ -n "$(___x_cmd_orcarouter_cred_key_raw)" ] \
+        && ! ___x_cmd_orcarouter_cred_needs_reauth; then
+        orcarouter:info "An OrcaRouter credential is already stored; reusing it."
+        orcarouter:info "Run 'x orcarouter connect --force' to authorize again,"
+        orcarouter:info "or 'x orcarouter disconnect' to remove it first."
+        return 0
+    fi
+
+    local auth_base=""; auth_base="$(___x_cmd_orcarouter_util_auth_base)"
+    ___x_cmd_orcarouter_util_require_origin "authentication" "$auth_base" || return 1
+
+    local scope=""; ___x_cmd_orcarouter_cur scope:= 2>/dev/null
+    scope="${scope:-api}"
+    case "$scope" in
+        api|connector) ;;
+        *)  orcarouter:error "Unsupported scope [$scope]: OrcaRouter accepts 'api' or 'connector'."
+            return 64 ;;
+    esac
+
+    # 1. Fresh verifier + state + S256 challenge, from the CSPRNG.
+    local verifier=""; local challenge=""; local state=""
+    verifier="$(___x_cmd_orcarouter_util_rand_b64url 32)" || {
+        orcarouter:error "Could not read from a cryptographic random source."
+        return 1
+    }
+    [ -n "$verifier" ] || { orcarouter:error "Empty PKCE verifier generated."; return 1; }
+    challenge="$(___x_cmd_orcarouter_util_sha256_b64url "$verifier")" || {
+        orcarouter:error "Could not compute the S256 code challenge."
+        return 1
+    }
+    state="$(___x_cmd_orcarouter_util_rand_b64url 16)"
+
+    # Record the attempt. The verifier is written 0600 and removed on every
+    # terminal path; it is never echoed.
+    local attempt_dir=""; local attempt_file=""
+    attempt_dir="$(___x_cmd_orcarouter_util_attempt_dir)"
+    attempt_file="${attempt_dir}/attempt.$$"
+    ( umask 077; printf "%s\n%s\n%s\n" "$verifier" "$state" "$(___x_cmd_orcarouter_util_now)" > "$attempt_file" ) 2>/dev/null
+
+    ___x_cmd_orcarouter_connect___cleanup(){
+        [ -n "$attempt_file" ] && ___x_cmd rmrf "$attempt_file" 2>/dev/null
+    }
+    trap '___x_cmd_orcarouter_connect___cleanup' EXIT HUP INT TERM
+
+    # 2. Authorize URL. callback_url=oob is asked for explicitly; S256 is
+    #    mandatory for a code a human can read off a screen.
+    local url=""
+    url="${auth_base}${___X_CMD_ORCAROUTER_AUTHORIZE_PATH}"
+    url="${url}?callback_url=oob"
+    url="${url}&code_challenge=${challenge}"
+    url="${url}&code_challenge_method=S256"
+    url="${url}&state=${state}"
+    url="${url}&app_name=$(___x_cmd_orcarouter_connect___urlencode "$___X_CMD_ORCAROUTER_APP_NAME")"
+    url="${url}&scope=${scope}"
+
+    printf "\n" >&2
+    orcarouter:info "Authorize x-cmd in your browser, then paste the code back here:"
+    printf "\n    %s\n\n" "$url" >&2
+
+    if ___x_cmd_runmode_allow_manual 2>/dev/null; then
+        # stdin is detached: on a headless host the platform opener may fall
+        # back to a text browser (or to package auto-install), and either would
+        # otherwise swallow the authorization code the user is about to paste.
+        ___x_cmd open "$url" </dev/null >/dev/null 2>&1 \
+            || orcarouter:warn "Could not open a browser automatically; open the URL above yourself."
+    fi
+
+    local code=""
+    printf "Code: " >&2
+    IFS= read -r code 2>/dev/null || {
+        orcarouter:error "No authorization code provided."
+        return 1
+    }
+    # Strip pasted whitespace and any trailing CR. A small local trim is used
+    # deliberately: ___x_cmd_str_trim reads stdin when given no argument, which
+    # would consume the code rather than clean it.
+    code="$(printf '%s' "$code" | ___x_cmd_cmds_awk '{ sub(/\r$/, ""); gsub(/^[ \t]+|[ \t]+$/, ""); print; exit }')"
+    [ -n "$code" ] || {
+        orcarouter:error "No authorization code provided."
+        return 1
+    }
+
+    # Re-read the attempt record and verify the state still matches before the
+    # code is redeemed. This is the CSRF check: a clobbered, raced, or
+    # substituted attempt is refused rather than exchanged.
+    local recorded_state=""
+    recorded_state="$(___x_cmd_cmds_awk 'NR==2{print; exit}' "$attempt_file" 2>/dev/null)"
+    if ! ___x_cmd_orcarouter_util_ct_eq "$recorded_state" "$state"; then
+        orcarouter:error "State mismatch: this authorization attempt is not the one that was started."
+        orcarouter:warn "Refusing to exchange the code. Start again with 'x orcarouter connect --force'."
+        return 1
+    fi
+
+    # Bound the attempt: an authorization code is single-use with a 10 minute
+    # TTL, so a stale attempt is abandoned rather than sent.
+    local started=""; local now=""
+    started="$(___x_cmd_cmds_awk 'NR==3{print; exit}' "$attempt_file" 2>/dev/null)"
+    now="$(___x_cmd_orcarouter_util_now)"
+    case "$started" in
+        ''|*[!0-9]*) ;;
+        *)
+            if [ $((now - started)) -gt "$___X_CMD_ORCAROUTER_AUTH_CODE_TTL_SECONDS" ]; then
+                orcarouter:error "This authorization attempt has expired (over ${___X_CMD_ORCAROUTER_AUTH_CODE_TTL_SECONDS}s old)."
+                orcarouter:warn "Start a new one with 'x orcarouter connect --force'."
+                return 1
+            fi
+            ;;
+    esac
+
+    # 3. Exchange. The verifier travels only in this request body, to the AUTH
+    #    origin -- never to the inference origin, never as a query parameter.
+    local resp=""; local status=""
+    resp="$(___x_cmd_orcarouter_connect___exchange "$auth_base" "$code" "$verifier" "$scope")"
+    status="${resp##*$'\n'}"
+    resp="${resp%$'\n'*}"
+
+    if [ "$status" != "200" ]; then
+        ___x_cmd_orcarouter_connect___explain_failure "$status" "$resp"
+        return 1
+    fi
+
+    local key=""; local granted_scope=""
+    key="$(___x_cmd_orcarouter_connect___json_str "$resp" key)"
+    granted_scope="$(___x_cmd_orcarouter_connect___json_str "$resp" scope)"
+
+    [ -n "$key" ] || {
+        orcarouter:error "The authorization response did not contain a key."
+        return 1
+    }
+
+    # Read back the GRANTED scope; it may be narrower than what we asked for.
+    if [ -n "$granted_scope" ] && [ "$granted_scope" != "$scope" ]; then
+        orcarouter:warn "Granted scope is \"$granted_scope\", not the requested \"$scope\"."
+        orcarouter:warn "This workspace role does not permit the wider grant; continuing with the granted scope."
+    fi
+    case "${granted_scope:-api}" in
+        api|connector) ;;
+        *)  orcarouter:warn "Unexpected granted scope \"$granted_scope\"; the credential may not be usable." ;;
+    esac
+
+    ___x_cmd_orcarouter_cred_apply "$key" pkce "$granted_scope" || return $?
+
+    ___x_cmd_orcarouter_connect___cleanup
+    trap - EXIT HUP INT TERM
+
+    orcarouter:info "Connected. OrcaRouter credential stored as $(___x_cmd_orcarouter_cred_mask "$key")."
+    orcarouter:info "It is a durable key: it will be reused until you revoke it at"
+    orcarouter:info "  $___X_CMD_ORCAROUTER_AUTHORIZED_APPS_URL"
+    return 0
+}
+
+___x_cmd_orcarouter_connect___urlencode(){
+    local s="$1" out="" i=0 c=""
+    while [ "$i" -lt "${#s}" ]; do
+        c="$(printf "%s" "$s" | cut -c$((i + 1)))"
+        case "$c" in
+            [A-Za-z0-9.~_-])    out="${out}${c}" ;;
+            ' ')                out="${out}%20" ;;
+            *)                  out="${out}$(printf "%%%02X" "'$c")" ;;
+        esac
+        i=$((i + 1))
+    done
+    printf "%s" "$out"
+}
+
+___x_cmd_orcarouter_connect___exchange(){
+    local auth_base="$1"; local code="$2"; local verifier="$3"; local scope="$4"
+
+    local body=""
+    body="$(___x_cmd jq -n \
+        --arg code "$code" \
+        --arg verifier "$verifier" \
+        '{code: $code, code_verifier: $verifier, code_challenge_method: "S256"}' 2>/dev/null)"
+
+    [ -n "$body" ] || {
+        orcarouter:error "Could not build the exchange request body."
+        return 1
+    }
+
+    ___x_cmd curl -sS -X POST \
+        "${auth_base}${___X_CMD_ORCAROUTER_EXCHANGE_PATH}" \
+        -H 'Content-Type: application/json' \
+        --data "$body" \
+        -w '\n%{http_code}' 2>/dev/null
+}
+
+# Map the documented exchange failures onto an actionable message. Nothing from
+# the response body is echoed when it could carry a credential.
+___x_cmd_orcarouter_connect___explain_failure(){
+    local status="$1"
+    case "$status" in
+        400)    orcarouter:error "Authorization rejected (400): the code challenge method was not recognised, or it differs from the one sent at authorize time."
+                orcarouter:warn "Retry with 'x orcarouter connect --force'." ;;
+        403)    orcarouter:error "Authorization rejected (403): the code is unknown, expired, already used, or the verifier did not match."
+                orcarouter:warn "Codes are single-use with a 10 minute lifetime. Retry with 'x orcarouter connect --force'." ;;
+        429)    orcarouter:error "Authorization refused (429): too many keys have been issued for this account recently."
+                orcarouter:warn "OrcaRouter allows 10 PKCE-issued keys per user per 24 hours. Reuse the stored key, or wait before retrying." ;;
+        "")     orcarouter:error "The authorization exchange did not complete: no response from the authentication origin."
+                orcarouter:warn "Check your network and the authentication endpoint, then retry." ;;
+        *)      orcarouter:error "The authorization exchange failed with HTTP $status."
+                orcarouter:warn "Retry with 'x orcarouter connect --force'; if it persists, check the OrcaRouter status." ;;
+    esac
+    return 1
+}
+
+# Minimal extractor for the flat string fields this flow needs, so the
+# credential path does not depend on a jq binary being downloadable.
+___x_cmd_orcarouter_connect___json_str(){
+    local json="$1"; local field="$2"
+    printf "%s" "$json" | ___x_cmd_cmds_awk -v f="$field" '
+    {
+        line = $0
+        pat = "\"" f "\"[ \t]*:[ \t]*\""
+        if (match(line, pat)) {
+            rest = substr(line, RSTART + RLENGTH)
+            if (match(rest, /[^"\\]/)) {
+                rest = substr(rest, RSTART)
+                out = ""
+                n = length(rest)
+                for (i = 1; i <= n; i++) {
+                    c = substr(rest, i, 1)
+                    if (c == "\\") { i++; out = out substr(rest, i, 1); continue }
+                    if (c == "\"") break
+                    out = out c
+                }
+                print out
+                exit
+            }
+        }
+    }'
+}
+
+# Explicit sign-out. Removes the stored credential; never runs silently on a
+# transient failure.
+___x_cmd_orcarouter_disconnect(){
+    local X_help_cmd='___x_cmd help -m orcarouter disconnect'; help:arg:parse
+    ___x_cmd_orcarouter_cred_status 2>/dev/null
+    ___x_cmd_orcarouter_cred_clear
+    return 0
+}
