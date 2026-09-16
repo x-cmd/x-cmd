@@ -1,4 +1,3 @@
-#!/usr/bin/awk -f
 #
 # x-cmd cve lib/awk/fzdata.awk — TSV → ANSI-colored fzf stream.
 #

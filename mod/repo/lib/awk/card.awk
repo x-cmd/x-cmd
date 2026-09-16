@@ -42,8 +42,12 @@ BEGIN {
     g_sub["head"]         = ""
     g_sub["created"]      = ""
     g_sub["lastCommit"]   = ""
-    g_sub["lastRelease"]  = ""
-    g_sub["latestVersion"] = ""
+    g_sub["lastVersion"]      = ""
+    g_sub["lastRelease"]      = ""
+    g_sub["lastPrerelease"]   = ""
+    g_sub["latestVersion"]    = ""
+    g_sub["latestRelease"]    = ""
+    g_sub["latestPrerelease"] = ""
     g_sub["archived"]     = "false"
     g_sub["star"]         = "0"
     g_sub["watcher"]      = "0"
@@ -90,10 +94,11 @@ section == "total" {
 
 section == "about" {
     # description, license, homepage, head, archived, latestVersion,
-    # collectedAt — any of these may arrive quoted by card_yaml (description
-    # and latestVersion both go through @json). json_unquote strips the
-    # wrapping `"..."` and reverses JSON escapes, and is a no-op for
-    # bare scalars, so a single path handles both shapes.
+    # latestRelease, latestPrerelease, collectedAt — any of these may
+    # arrive quoted by card_yaml (description, latestVersion,
+    # latestRelease, latestPrerelease all go through @json). json_unquote
+    # strips the wrapping `"..."` and reverses JSON escapes, and is a
+    # no-op for bare scalars, so a single path handles both shapes.
     if (match($0, /^  [a-zA-Z][a-zA-Z0-9]*: /)) {
         key = substr($0, 3, RLENGTH - 4)
         val = substr($0, RSTART + RLENGTH)
@@ -105,7 +110,7 @@ section == "about" {
 }
 
 section == "timeline" {
-    # created, lastCommit, lastRelease, latestVersion
+    # created, lastCommit, lastVersion, lastRelease, lastPrerelease
     if (match($0, /^  [a-zA-Z][a-zA-Z0-9]*: /)) {
         key = substr($0, 3, RLENGTH - 4)
         val = substr($0, RSTART + RLENGTH)
@@ -182,6 +187,14 @@ END {
     if (ver != "") {
         print "      Latest ver:    " ver
     }
+    rel = g_sub["latestRelease"]
+    if (rel != "") {
+        print "      Latest rel:    " rel
+    }
+    pre = g_sub["latestPrerelease"]
+    if (pre != "") {
+        print "      Latest pre:    " pre
+    }
     if (g_sub["head"] != "") {
         print "      Head:          " g_sub["head"]
     }
@@ -193,7 +206,15 @@ END {
     print BC "  TIMELINE" RST
     print "      Created:       " BY g_sub["created"]            RST
     print "      Last commit:   " BY g_sub["lastCommit"]         RST
-    print "      Last release:  " BY g_sub["lastRelease"]        RST
+    if (g_sub["lastVersion"] != "") {
+        print "      Last ver:      " BY g_sub["lastVersion"]      RST
+    }
+    if (g_sub["lastRelease"] != "") {
+        print "      Last release:  " BY g_sub["lastRelease"]      RST
+    }
+    if (g_sub["lastPrerelease"] != "") {
+        print "      Last pre:      " BY g_sub["lastPrerelease"]   RST
+    }
     print ""
 
     print BC "  POPULARITY" RST
