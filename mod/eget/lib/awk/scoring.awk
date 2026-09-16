@@ -1,4 +1,4 @@
-#!/usr/bin/awk -f
+
 # eget asset scoring — single-pass awk implementation.
 #
 # Run as: awk -f share.awk -f scoring.awk

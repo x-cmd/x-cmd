@@ -1,4 +1,4 @@
-#!/usr/bin/awk -f
+
 # eget recommend — diagnostic fallback when strict scoring2 has no
 # designed-for asset for the target platform.
 #
@@ -32,11 +32,11 @@ BEGIN {
 
     n_platforms = 6
     platforms[1] = "darwin/arm64"
-    platforms[2] = "darwin/amd64"
+    platforms[2] = "darwin/x64"
     platforms[3] = "linux/arm64"
-    platforms[4] = "linux/amd64"
+    platforms[4] = "linux/x64"
     platforms[5] = "win/arm64"
-    platforms[6] = "win/amd64"
+    platforms[6] = "win/x64"
 
     OS_HIT = 20; OS_MISS = -20
     ARCH_HIT = 15; ARCH_MISS = -15

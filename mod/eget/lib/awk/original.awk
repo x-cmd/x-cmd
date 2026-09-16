@@ -1,4 +1,4 @@
-#!/usr/bin/awk -f
+
 # eget asset detection — original tier algorithm (zyedidia/eget style).
 #
 # Run as: awk -f share.awk -f original.awk

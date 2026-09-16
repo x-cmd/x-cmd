@@ -50,7 +50,14 @@ def card_query($o; $n; $searches):
           + "a:repository(owner:$o,name:$n){"
           + "description licenseInfo{spdxId} createdAt isArchived homepageUrl"
           + " forkCount watchers{totalCount} stargazerCount pushedAt"
-          + " releases(first:100,orderBy:{field:CREATED_AT,direction:DESC}){totalCount nodes{publishedAt tagName name}}"
+          # `isPrerelease` / `isDraft` are pulled so card_yaml can split the
+          # list into "latest" (GitHub's /releases/latest: non-prerelease,
+          # non-draft, most recently created) and "latest prerelease"
+          # (most recently created prerelease). Without these, latestVersion
+          # tracked whatever release happened to land in the first 100 by
+          # CREATED_AT — often a pre-release tag — which disagreed with the
+          # "latest" badge users see on the GitHub release page.
+          + " releases(first:100,orderBy:{field:CREATED_AT,direction:DESC}){totalCount nodes{publishedAt tagName name isPrerelease isDraft}}"
           + " mentionableUsers{totalCount}"
           + " issues(states:[OPEN,CLOSED]){totalCount}"
           # MERGED must be listed explicitly: a merged PR is not in the
@@ -129,7 +136,8 @@ def card_commit_counts($wins):
 
 # Render a YAML block per section. Sections in the order they're emitted:
 #   github:     description / license / homepage / archived
-#   timeline:   created / lastCommit / lastRelease / latestVersion
+#               latestVersion / latestRelease / latestPrerelease
+#   timeline:   created / lastCommit / lastVersion / lastRelease / lastPrerelease
 #   popularity: star / watcher / fork / release / contributor /
 #               pullRequest / issue
 #   language:   sorted by size desc; totalBytes appended (sum of language
@@ -165,6 +173,18 @@ def card_yaml($labels; $dates; $counts; $commits; $commit_total; $collected_at):
     | (.data.b.defaultBranchRef // {}) as $branch
     | ($branch.target // {}) as $head
     | ($r.releases.nodes // []) as $rel
+    # Three views onto the same release list, all ordered CREATED_AT desc:
+    #   $rel[0]   — most recent release of any kind (stable, prerelease, or
+    #               draft whose tagName is set). Drives `latestVersion` /
+    #               `lastVersion`.
+    #   $stable   — non-prerelease, non-draft only. Drives `latestRelease`
+    #               / `lastRelease` and matches GitHub's /releases/latest
+    #               semantics (the "latest" badge on the release page).
+    #   $pre      — prerelease only. Drives `latestPrerelease` /
+    #               `lastPrerelease`.
+    # An empty slice yields an empty scalar; card.awk hides those lines.
+    | ($rel | map(select(.isPrerelease == false and .isDraft == false))) as $stable
+    | ($rel | map(select(.isPrerelease == true)))                       as $pre
     | "about:",
       "  description: \($r.description // "" | @json)",
       "  license: \($r.licenseInfo.spdxId // "NOASSERTION")",
@@ -172,11 +192,15 @@ def card_yaml($labels; $dates; $counts; $commits; $commit_total; $collected_at):
       "  head: \($head.oid[:7] // "")",
       "  archived: \($r.isArchived // false)",
       "  latestVersion: \($rel[0].tagName // $rel[0].name // "" | @json)",
+      "  latestRelease: \($stable[0].tagName // $stable[0].name // "" | @json)",
+      "  latestPrerelease: \($pre[0].tagName // $pre[0].name // "" | @json)",
       "  collectedAt: \($collected_at)",
       "timeline:",
       "  created: \($r.createdAt[:10] // "")",
       "  lastCommit: \($head.committedDate[:10] // "")",
-      "  lastRelease: \($rel[0].publishedAt[:10] // "")",
+      "  lastVersion: \($rel[0].publishedAt[:10] // "")",
+      "  lastRelease: \($stable[0].publishedAt[:10] // "")",
+      "  lastPrerelease: \($pre[0].publishedAt[:10] // "")",
       "popularity:",
       "  star: \($r.stargazerCount // 0)",
       "  watcher: \($r.watchers.totalCount // 0)",

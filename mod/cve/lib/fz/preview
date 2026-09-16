@@ -1,4 +1,4 @@
-#!/bin/sh
+# shellcheck shell=sh
 # x-cmd cve lib/fz/preview — render a single CVE row from the local cache.
 #
 # fzf calls this as `--preview="<path> {1}"` whenever the highlighted
@@ -36,6 +36,12 @@ case "$tag" in
     github|ghproxy|'') tag=github ;;
 esac
 
+# Resolve the per-year cache. Storage is xz-only (see lib/data/_index:
+# "STORED AS .tsv.xz (xz-only, never decompressed to disk)") — we
+# stream via `xz -dc` so the preview never touches the (often stale)
+# legacy decompressed .tsv that may still be on disk from older
+# installs. `fp` here is the xz file path; the awk calls below pipe
+# from `xz -dc -- "$fp"` instead of reading the file directly.
 fp=""
 for root in \
     "$X_CMD_CVE_DATA_ROOT" \
@@ -44,11 +50,11 @@ for root in \
     "$HOME/.x-cmd.root/local/data/cve/tsv/$tag"
 do
     [ -n "$root" ] || continue
-    [ -f "$root/cve-${year}.tsv" ] && { fp="$root/cve-${year}.tsv"; break; }
+    [ -f "$root/cve-${year}.tsv.xz" ] && { fp="$root/cve-${year}.tsv.xz"; break; }
 done
 
 [ -n "$fp" ] || {
-    printf '(not in local cache — run `x cve update`)\n'
+    printf "(not in local cache — run \`x cve update\`)\n"
     exit 0
 }
 
@@ -64,8 +70,6 @@ GREY="${ESC}[90m"
 YELLOW="${ESC}[33m"
 BLUE="${ESC}[34m"
 GREEN="${ESC}[32m"
-RED="${ESC}[31m"
-BRED="${ESC}[1;31m"
 
 # Severity colors match lib/fz/_index (no red — see comment there):
 #   unrated (no score)   → dim grey
@@ -93,10 +97,10 @@ score_color() {
 #   $1 cve   $2 year  $3 no    $4 vp
 #   $5 ghsa  $6 score $7 patched $8 cwe
 #   $9 desc
-score=$(awk -F '\t' -v target="$id" '$1 == target { print $6; exit }' "$fp")
+score=$(xz -dc -- "$fp" | awk -F '\t' -v target="$id" '$1 == target { print $6; exit }')
 c=$(score_color "$score")
 
-awk -F '\t' -v target="$id" \
+xz -dc -- "$fp" | awk -F '\t' -v target="$id" \
     -v score_color="$c" \
     -v score_reset="$R" \
     -v grey="$GREY" \
@@ -116,4 +120,4 @@ awk -F '\t' -v target="$id" \
         exit
     }
     END { if (!found) print "(id not in this year — may have been moved)" }
-' "$fp"
+'
