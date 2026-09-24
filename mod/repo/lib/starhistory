@@ -1,0 +1,193 @@
+# shellcheck shell=dash disable=SC2016
+# x repo starhistory — output TSV <date>\t<count> for star history.
+#
+# Owner repo: full walk stargazers, group by starredAt date, max index per date.
+# Non-owner: forward polling — single row with current stargazer_count.
+# See .x-cmd/story/260919.x-repo-starhistory.md for design rationale.
+
+___x_cmd_repo_starhistory(){
+    case "${1-}" in
+        -h|--help)  ___x_cmd help -m repo starhistory ; return 0 ;;
+    esac
+
+    local rebuild=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --rebuild)  rebuild=1; shift ;;
+            -*)         N=repo M="Unknown flag -> $1 (try --rebuild)" log:ret:64 ;;
+            *)          break ;;
+        esac
+    done
+
+    [ $# -gt 0 ] || N=repo M="Usage: x repo starhistory [--rebuild] <id>" log:ret:64
+
+    local id="$1"
+    case "$id" in *@*) id="${id%@*}" ;; esac
+
+    local owner_repo=""
+    case "$id" in
+        github.com/*) owner_repo="${id#github.com/}" ;;
+        gh/*)         owner_repo="${id#gh/}" ;;
+        */*)          owner_repo="$id" ;;
+        *)            N=repo M="Invalid repo id -> $id (expect owner/repo)" log:ret:1 ;;
+    esac
+
+    local token
+    token=$(___x_cmd_repo_starhistory__token) || return $?
+
+    local file="${___X_CMD_REPO_ROOT:-$HOME/.x-repo}/.stat/${owner_repo}/star.tsv"
+
+    if [ -f "$file" ] && [ "$rebuild" = 0 ]; then
+        ___x_cmd_repo_starhistory__append "$owner_repo" "$file" "$token" || return $?
+    else
+        ___x_cmd_repo_starhistory__rebuild "$owner_repo" "$file" "$token" || return $?
+    fi
+
+    cat "$file"
+}
+
+___x_cmd_repo_starhistory__token(){
+    local t
+    t=$(gh auth token 2>/dev/null) || t="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+    if [ -z "$t" ]; then
+        N=repo M="No GitHub token. Run 'gh auth login' or set GH_TOKEN." log:ret:1
+    fi
+    printf '%s\n' "$t"
+}
+
+# Append mode: fetch current stargazer_count, merge into file (dedup by date, keep max).
+___x_cmd_repo_starhistory__append(){
+    local owner_repo="$1" file="$2" token="$3"
+
+    local today count
+    today=$(date -u +%Y%m%d)
+    count=$(___x_cmd_repo_starhistory__total "$owner_repo" "$token") || return $?
+
+    local dir
+    dir=$(dirname "$file")
+    mkdir -p "$dir" || return $?
+
+    # Read existing rows into a var BEFORE opening the file for write.
+    # (Read/write of the same file in a pipeline is undefined under dash.)
+    local existing=""
+    if [ -f "$file" ]; then
+        existing=$(tail -n +2 "$file")
+    fi
+
+    {
+        printf 'date\tcount\n'
+        printf '%s\n' "$existing"
+        printf '%s\t%s\n' "$today" "$count"
+    } | sort -t "$(printf '\t')" -k1,1 \
+      | awk -F'\t' '
+            $1 == "date" { next }                            # skip header row
+            $1 == prev { if ($2+0 > max+0) max = $2; next }
+            { if (prev != "") print prev "\t" max; prev = $1; max = $2 }
+            END { if (prev != "") print prev "\t" max }
+        ' \
+      | { printf 'date\tcount\n'; cat; } > "$file"
+}
+
+# Rebuild mode: walk all stargazers, group by date, take max index per date.
+# Falls back to single-row forward polling if first page is empty (non-owner repo).
+___x_cmd_repo_starhistory__rebuild(){
+    local owner_repo="$1" file="$2" token="$3"
+
+    local dir
+    dir=$(dirname "$file")
+    mkdir -p "$dir" || return $?
+
+    local tmp
+    tmp=$(mktemp -d) || return $?
+
+    local page=1
+    local index_base=0
+    local first_page_count=0
+    : > "$tmp/raw.tsv"
+
+    while :; do
+        local resp
+        resp=$(curl -sS -H "Authorization: bearer $token" \
+                  -H "Accept: application/vnd.github.star+json" \
+                  "https://api.github.com/repos/${owner_repo}/stargazers?per_page=100&page=${page}" 2>/dev/null) || break
+
+        # Detect response shape: array of objects with starred_at, or empty array.
+        # A non-array response ({"message": "...", ...}) means 403 / 404 / etc.
+        local shape
+        shape=$(printf '%s' "$resp" | jq -r 'if type == "array" then
+                                              if length == 0 then "empty"
+                                              elif .[0] | type == "object" and has("starred_at") then "ok"
+                                              else "no-timestamps" end
+                                           elif type == "object" and has("message") then "dead"
+                                           else "wait" end' 2>/dev/null)
+
+        case "$shape" in
+            ok)   ;;
+            empty)
+                if [ "$page" = 1 ]; then
+                    # First page empty — either no stars or non-owner. Fall back.
+                    rm -rf "$tmp"
+                    ___x_cmd_repo_starhistory__append "$owner_repo" "$file" "$token"
+                    return $?
+                fi
+                break
+                ;;
+            no-timestamps)
+                # Got stars but no timestamps — likely non-owner / old API behavior. Fall back.
+                rm -rf "$tmp"
+                ___x_cmd_repo_starhistory__append "$owner_repo" "$file" "$token"
+                return $?
+                ;;
+            dead|wait|*)
+                # First-page hard error (404/403/blocked). Treat as non-owner
+                # / permission-insufficient and fall back to forward polling.
+                if [ "$page" = 1 ]; then
+                    rm -rf "$tmp"
+                    ___x_cmd_repo_starhistory__append "$owner_repo" "$file" "$token"
+                    return $?
+                fi
+                rm -rf "$tmp"
+                N=repo M="stargazers fetch failed for -> $owner_repo (shape: $shape)" log:ret:1
+                ;;
+        esac
+
+        first_page_count=$(printf '%s' "$resp" | jq 'length')
+
+        # Emit date\tindex rows for this page.
+        printf '%s' "$resp" | jq -r --argjson start "$index_base" \
+            'to_entries[] | "\(.value.starred_at[:10] | gsub("-"; ""))\t\($start + .key + 1)"' \
+          >> "$tmp/raw.tsv"
+
+        index_base=$((index_base + first_page_count))
+        page=$((page + 1))
+
+        # Sanity ceiling — protects against pagination loops.
+        [ "$page" -le 50000 ] || break
+    done
+
+    # Group by date (col 1), keep max index (col 2). Output sorted by date.
+    {
+        printf 'date\tcount\n'
+        sort -t "$(printf '\t')" -k1,1 "$tmp/raw.tsv" \
+          | awk -F'\t' '
+                $1 != prev {
+                    if (prev != "") print prev "\t" max
+                    prev = $1
+                    max = $2 + 0
+                    next
+                }
+                { if ($2 + 0 > max) max = $2 + 0 }
+                END { if (prev != "") print prev "\t" max }
+            '
+    } > "$file"
+
+    rm -rf "$tmp"
+}
+
+# Forward polling fallback: fetch current stargazer_count for today.
+___x_cmd_repo_starhistory__total(){
+    local owner_repo="$1" token="$2"
+    curl -sS -H "Authorization: bearer $token" \
+        "https://api.github.com/repos/${owner_repo}" 2>/dev/null \
+      | jq -r '.stargazers_count // 0'
+}

@@ -6,7 +6,7 @@ ___x_cmd_hub_org_member(){
 
     local op="$1"
     case "$op" in
-        ls|add|rm) shift
+        ls|rm|role) shift
             "___x_cmd_hub_org_member_$op" "$@"                 ;;
         *) ___x_cmd_hub_u_subcmd_invalid org member "$@"       ;;
     esac
@@ -19,12 +19,12 @@ ___x_cmd_hub_org_member_ls(){
     local org=
     while [ $# -gt 0 ]; do
         case "$1" in
-            --org)      shift; org="$1"; shift ;;
-            *)          break ;;
+            --org)  org="$2"; shift 2 ;;
+            *)      break ;;
         esac
     done
+    [ -n "$org" ] || M='Please provide --org <org>' arg:ret:64
 
-    [ -n "$org" ] || M='Please provide --org <org>"' arg:ret:64
     local resp=; resp="$(___x_cmd_hub_u_curl get "/api/v0/org/$org/member")" || {
         ___x_cmd_hub_u_handle_resp false "Failed to list members of $org"
         return 1
@@ -33,45 +33,20 @@ ___x_cmd_hub_org_member_ls(){
     printf "%s" "$resp" | ___x_cmd jo
 }
 
-___x_cmd_hub_org_member_add(){
-    local X_help_cmd='___x_cmd_hub___help org member add'
-    help:arg-null:parse
-
-    local org=; local user=
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --org)      shift; org="$1"; shift ;;
-            *)          break ;;
-        esac
-    done
-
-    [ -n "$org" ] || M='Please provide --org <org>"' arg:ret:64
-    [ $# -gt 0 ]  || M='Please provide <user>"' arg:ret:64
-    user="$1"; shift
-
-    local resp=; resp="$(___x_cmd_hub_u_curl post "/api/v0/org/$org/member" -- "username=$user")" || {
-        ___x_cmd_hub_u_handle_resp false "Failed to add member '$user' to '$org'"
-        return 1
-    }
-
-    ___x_cmd_hub_u_handle_resp true "Added member '$user' to '$org'"
-}
-
 ___x_cmd_hub_org_member_rm(){
     local X_help_cmd='___x_cmd_hub___help org member rm'
     help:arg-null:parse
 
-    local org=; local user=
+    local org=
     while [ $# -gt 0 ]; do
         case "$1" in
-            --org)      shift; org="$1"; shift ;;
-            *)          break ;;
+            --org)  org="$2"; shift 2 ;;
+            *)      break ;;
         esac
     done
-
-    [ -n "$org" ] || M='Please provide --org <org>"' arg:ret:64
-    [ $# -gt 0 ]  || M='Please provide <user>"' arg:ret:64
-    user="$1"; shift
+    [ -n "$org" ] || M='Please provide --org <org>' arg:ret:64
+    [ $# -gt 0 ] || M='Please provide <username>' arg:ret:64
+    local user="$1"; shift
 
     local resp; resp="$(___x_cmd_hub_u_curl delete "/api/v0/org/$org/member/$user")" || {
         ___x_cmd_hub_u_handle_resp false "Failed to remove member '$user' from '$org'"
@@ -79,4 +54,33 @@ ___x_cmd_hub_org_member_rm(){
     }
 
     ___x_cmd_hub_u_handle_resp true "Removed member '$user' from '$org'"
+}
+
+# 改角色（admin+；不能动 owner；admin 只能 owner 动）
+___x_cmd_hub_org_member_role(){
+    local X_help_cmd='___x_cmd_hub___help org member role'
+    help:arg-null:parse
+
+    local org=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --org)  org="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$org" ] || M='Please provide --org <org>' arg:ret:64
+    [ $# -gt 1 ] || M='Please provide <username> <role: admin|member|guest>' arg:ret:64
+    local user="$1"; local role="$2"; shift 2
+
+    case "$role" in
+        admin|member|guest)  ;;
+        *) M='Role must be admin|member|guest' arg:ret:64 ;;
+    esac
+
+    local resp; resp="$(___x_cmd_hub_u_curl patch "/api/v0/org/$org/member/$user" -- "role=${role}")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to set role of '$user' in '$org'"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Role of '$user' in '$org' set to '$role'"
 }

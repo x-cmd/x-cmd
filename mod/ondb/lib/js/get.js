@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import { Ondb } from './ondb_core.js';
 
 let eid = '';

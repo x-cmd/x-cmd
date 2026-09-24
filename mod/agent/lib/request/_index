@@ -25,6 +25,7 @@ ___x_cmd_agent_request(){
     local is_debug=""
     local timeout_secs="3000"
     local skill_dirlist=""
+    local toolmode="all"
 
     [ "$#" -gt 0 ] || set -- --help
     while [ $# -gt 0 ]; do
@@ -53,6 +54,7 @@ ___x_cmd_agent_request(){
             # --retry)        retry="$2" ; arg:2:shift ;;
             --skill-dir)    skill_dirlist="${skill_dirlist}${NL}${2}" ;
                             arg:2:shift ;;
+            --tool)         toolmode="$2" ;                     arg:2:shift ;;
 
             --)             shift; break ;;
             *)              break ;;
@@ -78,6 +80,13 @@ ___x_cmd_agent_request(){
     fi
 
     ___x_cmd_agent_harness_validate "$harness" || return $?
+
+    toolmode="${toolmode:-all}"
+    case "$toolmode" in
+        all|read-only|read-write) ;;
+        *)  agent:error "Unknown --tool value: '$toolmode' (expected: all, read-only, read-write)"
+            return 64 ;;
+    esac
 
     if [ -n "$pipe" ]; then
         content="${content}
@@ -182,6 +191,12 @@ ____X_CMD_AGENT_ERR_SIGINT=130
 ___x_cmd_agent_request___run(){
     agent:info "Sending request to harness '$harness'"
     ___x_cmd_agent_request___run_validate || return $?
+    if [ "${toolmode:-all}" != "all" ]; then
+        case "$harness" in
+            x-chat|claude|claude-*) ;;
+            *)  agent:debug "Harness '$harness' does not support --tool restriction, ignoring (all tools allowed)" ;;
+        esac
+    fi
     case "$harness" in
         x-chat) ___x_cmd_agent_request___run_attempt ;;
         *)      ___x_cmd retry -i 3 -m 3 ___x_cmd_agent_request___run_attempt ;;
@@ -431,11 +446,17 @@ ___x_cmd_agent_request___run_exec(){(
                 set -- "$@" --settings '{"alwaysThinkingEnabled": false}'
             fi
 
+            local claude_allowed_tools=""
+            case "$toolmode" in
+                all)    claude_allowed_tools="Write,Read,Edit,Bash(x *),Bash(x-cmd *),Bash(source ~/.x-cmd.root/X *),Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)" ;;
+                *)      claude_allowed_tools="$(___x_cmd_agent_request___toolmode_tools_ claude "$toolmode")" ;;
+            esac
+
             {
                 IS_SANDBOX=1 ___x_cmd timeout "$timeout_secs" x-cmd claude "$claude_subcmd" "$@" \
                 --verbose --output-format stream-json \
                 --dangerously-skip-permissions \
-                --allowedTools "Write,Read,Edit,Bash(x *),Bash(x-cmd *),Bash(source ~/.x-cmd.root/X *),Bash(git add *),Bash(git commit *),Bash(git diff *),Bash(git log *),Bash(git status),Bash(git status *),Bash(git push *),Bash(git pull *),Bash(git fetch *),Bash(git checkout *),Bash(git branch *),Bash(git stash *),Bash(git merge *),Bash(git tag *),Bash(npm *),Bash(pytest)" \
+                --allowedTools "$claude_allowed_tools" \
                 ${reference_workspace:+--add-dir "$reference_workspace"} \
                 --print "$content" < /dev/null
                 printf "%s\n" "[EXITCODE] $?"
@@ -605,6 +626,18 @@ ___x_cmd_agent_request___invalidate_current_session_(){
     ___x_cmd mkdirp "$invalid_dir"
 
     ___x_cmd mv "$current_file" "$invalid_dir/$invalid_session_id.$ts"
+}
+
+# Coarse tool mode -> per-harness native tool list
+# read-only:  read/search only, no file modification, no command execution
+# read-write: read-only + file modification, no command execution
+___x_cmd_agent_request___toolmode_tools_(){
+    case "$1:$2" in
+        x-chat:read-only)       printf '%s' "readfile,findgrep,diffv4a,get_x_cmd_help,gg,histsum,update_stats" ;;
+        x-chat:read-write)      printf '%s' "readfile,findgrep,diffv4a,get_x_cmd_help,gg,histsum,update_stats,writefile,create_temp" ;;
+        claude:read-only)       printf '%s' "Read,Glob,Grep" ;;
+        claude:read-write)      printf '%s' "Read,Write,Edit,Glob,Grep" ;;
+    esac
 }
 
 ___x_cmd_agent_request___cursor_runcmd(){

@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 /**
  * ondb core: parse TSV and provide query methods.
  * Optimized for bun runtime.
