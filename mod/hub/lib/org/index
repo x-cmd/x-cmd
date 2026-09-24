@@ -1,6 +1,9 @@
 # shellcheck shell=dash
 
 xrc:mod:lib  hub   org/member
+xrc:mod:lib  hub   org/invite
+xrc:mod:lib  hub   org/sub
+xrc:mod:lib  hub   org/audit
 
 ___x_cmd_hub_org(){
     local X_help_cmd='___x_cmd_hub___help org'
@@ -11,31 +14,60 @@ ___x_cmd_hub_org(){
     case "$op" in
         -h|--help)      ___x_cmd help -m hub org    "$@" ;;
 
-        # TODO: remove _ls_name ...
-        ls|_ls_name|create|rm|member)
+        ls|create|cancel|rm|delete|leave|usage|member|invite|sub|audit|_ls_name)
                         ___x_cmd_hub_org_"$op"      "$@" ;;
-        *)
-                        ___x_cmd_hub_u_subcmd_invalid file "$op" "$@" ;;
+        *)              ___x_cmd_hub_u_subcmd_invalid org "$op" "$@" ;;
     esac
 }
 
+# 创建组织（纯付费）：名字锁 + 付款预占 + PayPro 结账链接
 ___x_cmd_hub_org_create(){
     local X_help_cmd='___x_cmd_hub___help org create'
     help:arg-null:parse
 
-    local orgname="$1"
-    hub:info "Organization names on x-cmd hub will default to having the prefix 'o-' added. "
+    local seats=5
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --seats|-s)    seats="$2";  shift 2 ;;
+            *)             break ;;
+        esac
+    done
 
-    resp="$(___x_cmd_hub_u_curl post /api/v0/org -- "name=${orgname}")" || {
-        ___x_cmd_hub_u_handle_resp false "Failed to create org $1"
+    case "${1:-}" in -h|--help) ___x_cmd help -m hub org create; return 0 ;; esac
+    [ $# -gt 0 ] || M='Please provide <orgname>' arg:ret:64
+    local orgname="$1"; shift
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl post /api/v0/org/prepare -- "name=${orgname}" "seats=${seats}")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to prepare org '$orgname'"
         return 1
     }
 
     printf "%s" "$resp" | {
-        local name=
-        ___x_cmd jo env . .name
-        ___x_cmd_hub_u_handle_resp true "Org $name created"
+        local outTradeNo=; local checkoutUrl=; local nameLockExpiresIn=
+        ___x_cmd jo env . .outTradeNo .checkoutUrl .nameLockExpiresIn
+        ___x_cmd_hub_u_handle_resp true "Org '$orgname' prepared (seats=$seats). Complete payment to activate:"
+        printf "  - Checkout URL:  %s\n" "$checkoutUrl"
+        printf "  - Trade No:      %s\n" "$outTradeNo"
+        printf "  - Name lock:     %s seconds (cancel with: x hub org cancel %s)\n" "$nameLockExpiresIn" "$outTradeNo"
     }
+}
+
+# 取消付款预占（释放名字锁）
+___x_cmd_hub_org_cancel(){
+    local X_help_cmd='___x_cmd_hub___help org cancel'
+    help:arg-null:parse
+
+    [ $# -gt 0 ] || M='Please provide <outTradeNo>' arg:ret:64
+    local outTradeNo="$1"; shift
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl delete "/api/v0/org/prepare/$outTradeNo")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to cancel prepare '$outTradeNo'"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Prepare '$outTradeNo' cancelled, name lock released"
 }
 
 ___x_cmd_hub_org_ls(){
@@ -50,28 +82,74 @@ ___x_cmd_hub_org_ls(){
     printf "%s" "$resp" | ___x_cmd jo
 }
 
+# 补全专用：仅输出组织名（file 补全的 res 前缀建议用）
 ___x_cmd_hub_org__ls_name(){
-    local X_help_cmd='___x_cmd_hub___help org _ls_name'
-    help:arg:parse
+    local resp=; resp="$(___x_cmd_hub_u_curl get /api/v0/org)" || return 1
+    printf "%s" "$resp" | ( ___x_cmd jo env '1.orgs.*' '.name' -- 'printf "%s\n" "$name"' )
+}
 
-    local resp=; resp="$(___x_cmd_hub_u_curl get /api/v0/org)" || {
-        ___x_cmd_hub_u_handle_resp false "Failed to list orgs"
+# 组织详情（含席位/配额/成员数/我的角色）
+___x_cmd_hub_org_usage(){
+    local X_help_cmd='___x_cmd_hub___help org usage'
+    help:arg-null:parse
+
+    case "${1:-}" in -h|--help) ___x_cmd help -m hub org usage; return 0 ;; esac
+    [ $# -gt 0 ] || M='Please provide <orgname>' arg:ret:64
+    local org="$1"; shift
+
+    local resp=; resp="$(___x_cmd_hub_u_curl get "/api/v0/org/$org")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to get org '$org'"
         return 1
     }
 
-    printf "%s" "$resp" | ( ___x_cmd jo env .\* .name -- 'printf "%s\n" "$name"' )
+    printf "%s" "$resp" | ___x_cmd jo
+
+    # admin+ 追加看板增量（usage 403 时静默跳过——低角色无权限）
+    ___x_cmd_hub_u_curl get "/api/v0/org/$org/usage" 2>/dev/null | {
+        local error="" su="" ru="" rupl="" ma="" tm="" tb=""
+        ___x_cmd jo env . .error su=.storage.used ru=.rag.used rupl=.rag.uploads ma=.members.active tm=.traffic.month tb=.traffic.bytes
+        [ -z "$error" ] || return 0
+        printf "\n--- usage (admin) ---\n"
+        printf "  storage : %s bytes\n" "${su:-0}"
+        printf "  rag     : %s tokens / %s uploads\n" "${ru:-0}" "${rupl:-0}"
+        printf "  members : %s active\n" "${ma:-0}"
+        printf "  traffic : %s, %s bytes\n" "${tm:-0}" "${tb:-0}"
+    } || true
 }
 
 ___x_cmd_hub_org_rm(){
     local X_help_cmd='___x_cmd_hub___help org rm'
     help:arg-null:parse
 
-    local name="$1"
+    [ $# -gt 0 ] || M='Please provide <orgname>' arg:ret:64
+    local name="$1"; shift
 
     local resp=; resp="$(___x_cmd_hub_u_curl delete "/api/v0/org/$name")" || {
-        ___x_cmd_hub_u_handle_resp false "Failed to delete org $1"
+        ___x_cmd_hub_u_handle_resp false "Failed to delete org '$name'"
         return 1
     }
 
-    ___x_cmd_hub_u_handle_resp true "Org $name deleted"
+    ___x_cmd_hub_u_handle_resp true "Org '$name' deleted"
+}
+
+___x_cmd_hub_org_delete(){
+    local X_help_cmd='___x_cmd_hub___help org delete'
+    help:arg-null:parse
+    ___x_cmd_hub_org_rm "$@"
+}
+
+# 自助退出（owner 不能退，只能删团队）
+___x_cmd_hub_org_leave(){
+    local X_help_cmd='___x_cmd_hub___help org leave'
+    help:arg-null:parse
+
+    [ $# -gt 0 ] || M='Please provide <orgname>' arg:ret:64
+    local org="$1"; shift
+
+    local resp=; resp="$(___x_cmd_hub_u_curl post "/api/v0/org/$org/leave")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to leave org '$org'"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Left org '$org'"
 }

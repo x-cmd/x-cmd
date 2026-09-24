@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """ondb core: parse TSV and provide query methods."""
 import sys
 

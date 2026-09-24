@@ -15,30 +15,36 @@ ___x_cmd_hub_rag(){
 }
 
 ___x_cmd_hub_rag_ask(){
-    local scope=""
+    local scope="" org=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)      ___x_cmd_hub___help rag ask ; return ;;
             --scope)        scope="$2"; shift 2 ;;
+            --org)          org="$2"; shift 2 ;;
             *)              break ;;
         esac
     done
     local question="$*"
     [ -n "$question" ] || { hub:error "Please provide a question"; return 1; }
 
+    # org 仅对 knowledge 有效（后端 400 兜底）；scope 明确为非 knowledge 时省略 org 免误报
+    if [ -n "$org" ] && [ -n "$scope" ] && [ "$scope" != "knowledge" ]; then
+        org=""
+    fi
     local body
-    body="$(___x_cmd jo dict question="$question" ${scope:+"scope=$scope"})"
+    body="$(___x_cmd jo dict question="$question" ${scope:+"scope=$scope"} ${org:+"org=$org"})"
     ___x_cmd_hub_u_curl post /api/v0/ai/rag -H "Content-Type: application/json" --data-binary "$body"
 }
 
 # --- upload / list / delete ---
 
 ___x_cmd_hub_rag_upload(){
-    local force=""
+    local force="" org=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)  ___x_cmd_hub___help rag upload ; return ;;
             --force|-f) force=true; shift ;;
+            --org)      org="$2"; shift 2 ;;
             *)          break ;;
         esac
     done
@@ -47,7 +53,7 @@ ___x_cmd_hub_rag_upload(){
     [ -f "$file" ] || { hub:error "File does not exist: $file"; return 1; }
 
     # 单步：上传即写入索引路径并扣 token，等 AutoRAG 下个 sync 周期可搜
-    ___x_cmd_hub_u_curl post /api/v0/ai/knowledge -F "file=@$file" ${force:+"-F"} ${force:+"force=true"} | {
+    ___x_cmd_hub_u_curl post "/api/v0/ai/knowledge${org:+"?org=$org"}" -F "file=@$file" ${force:+"-F"} ${force:+"force=true"} | {
         local msg="" err="" charged=""
         ___x_cmd jo env . .msg .err tokensCharged=.tokensCharged
         if [ -n "$msg" ]; then
@@ -61,14 +67,16 @@ ___x_cmd_hub_rag_upload(){
 }
 
 ___x_cmd_hub_rag_list(){
+    local org=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)   ___x_cmd_hub___help rag list ; return ;;
+            --org)       org="$2"; shift 2 ;;
             *)           break ;;
         esac
     done
 
-    ___x_cmd_hub_u_curl get /api/v0/ai/knowledge | {
+    ___x_cmd_hub_u_curl get "/api/v0/ai/knowledge${org:+"?org=$org"}" | {
         local files="" err=""
         ___x_cmd jo env . .files .err
         if [ -n "$err" ]; then
@@ -80,9 +88,11 @@ ___x_cmd_hub_rag_list(){
 }
 
 ___x_cmd_hub_rag_delete(){
+    local org=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -h|--help)  ___x_cmd_hub___help rag delete ; return ;;
+            --org)      org="$2"; shift 2 ;;
             *)          break ;;
         esac
     done
@@ -90,7 +100,7 @@ ___x_cmd_hub_rag_delete(){
     [ -n "$filename" ] || { hub:error "Please provide a filename"; return 1; }
 
     local url_path
-    url_path="/api/v0/ai/knowledge/$(___x_cmd url encode "$filename")"
+    url_path="/api/v0/ai/knowledge/$(___x_cmd url encode "$filename")${org:+"?org=$org"}"
     if ___x_cmd_hub_u_curl delete "$url_path"; then
         ___x_cmd_ui_tf true "Deleted: $filename"
     else
@@ -102,13 +112,29 @@ ___x_cmd_hub_rag_delete(){
 # --- quota ---
 
 ___x_cmd_hub_rag_quota(){
-    ___x_cmd_hub_u_curl get /api/v0/ai/quota | {
-        local err="" used="" limit="" reset=""
-        ___x_cmd jo env . .err tokensUsed=.tokensUsed tokenLimit=.tokenLimit resetAt=.resetAt
-        if [ -n "$err" ]; then
-            ___x_cmd_ui_tf false "Failed to get quota: $err"
+    local org=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd_hub___help rag quota ; return ;;
+            --org)      org="$2"; shift 2 ;;
+            *)          break ;;
+        esac
+    done
+
+    ___x_cmd_hub_u_curl get "/api/v0/ai/quota${org:+"?org=$org"}" | {
+        local error="" plan="" used="" limit="" upl="" uplimit="" reset=""
+        # 错误体字段为 error；个人（RagQuotaResp）与团队（OrgQuotaResp）字段名一致
+        ___x_cmd jo env . error=.error plan=.plan used=.tokensUsed \
+            tlim=.tokenLimit uplcnt=.uploadCount ulimit=.uploadLimit reset=.resetAt
+        if [ -n "$error" ]; then
+            ___x_cmd_ui_tf false "Failed to get quota: $error"
             return 1
         fi
-        ___x_cmd_ui_tf true "RAG quota: ${used:-0} / ${limit:-0} tokens (resets at ${reset:-unknown})"
+        limit="${tlim:-0}"; upl="${uplcnt:-0}"; uplimit="${ulimit:-0}"
+        if [ "$plan" = "team" ]; then
+            ___x_cmd_ui_tf true "Team RAG quota: ${used:-0} / ${limit} tokens, ${upl} / ${uplimit} uploads (resets at ${reset:-unknown})"
+        else
+            ___x_cmd_ui_tf true "RAG quota: ${used:-0} / ${limit} tokens, ${upl} / ${uplimit} uploads (resets at ${reset:-unknown})"
+        fi
     }
 }

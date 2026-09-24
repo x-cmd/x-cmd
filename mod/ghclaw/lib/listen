@@ -1,0 +1,165 @@
+# shellcheck shell=dash disable=SC2016
+
+# x ghclaw listen [--repo <owner/repo> | --org <org> | --user <name>] [--interval <human-time>]
+#   Start a background worker polling the GitHub events timeline into the
+#   target's MQ file. Manage with 'x ghclaw ls' / 'x ghclaw stop <target>'.
+
+___x_cmd_ghclaw___listen(){
+    local x_=""
+    local target="" kind="" interval=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --repo)     kind=repo;  target="$2"; shift 2 ;;
+            --org)      kind=org;   target="$2"; shift 2 ;;
+            --user)     kind=user;  target="$2"; shift 2 ;;
+            --interval) interval="$2"; shift 2 ;;
+            -h|--help)  ___x_cmd help -m ghclaw listen "$@";      return 0 ;;
+            --)         shift; break ;;
+            *)          [ -z "$target" ] || N=ghclaw M="Unexpected argument -> $1 (expect --repo|--org|--user <target> [--interval <human-time>])" log:ret:64
+                        target="$1"; shift ;;
+        esac
+    done
+    [ -n "$target" ] || N=ghclaw M="Missing target (owner/repo, or --repo/--org/--user <name>)" log:ret:64
+    if [ "$kind" = repo ]; then
+        case "$target" in
+            */|/*|*/*/*)   N=ghclaw M="--repo expects exactly <owner>/<repo> -> $target" log:ret:64 ;;
+            */*)            ;;
+            *)              N=ghclaw M="--repo expects <owner>/<repo> -> $target" log:ret:64 ;;
+        esac
+    fi
+
+    [ -n "$kind" ] || N=ghclaw M="Missing kind option: --repo <owner/repo> | --org <org> | --user <name>" log:ret:64
+
+    # GitHub names are case-insensitive; keep one state/worker/MQ per target
+    target="$(___x_cmd str lower "$target")"
+
+    # resolve the interval here (fail fast on bad input); the worker gets plain seconds
+    if [ -n "$interval" ]; then
+        ___x_cmd humantime tosec_ "$interval" || N=ghclaw M="Invalid interval -> $interval" log:ret:64
+        case "$x_" in
+            ''|*[!0-9]*|0)  N=ghclaw M="Invalid interval -> $interval (expect positive seconds, e.g. 30s, 1min, 2h30m)" log:ret:64 ;;
+        esac
+        interval="$x_"
+    else
+        interval=60
+    fi
+
+    local ns="ghclaw-default-worker" name="listen-$target"
+    if ___x_cmd worker isalive --ns "$ns" --name "$name"; then
+        ghclaw:info "[LISTEN] already listening: $target ($kind) — worker '$name' is alive"
+    else
+        ghclaw:info "[LISTEN] starting listen worker (ns=$ns, name=$name, interval=$interval)"
+        ___x_cmd worker run --ns "$ns" --name "$name" -- ___x_cmd_ghclaw___listen_pollevents "$kind" "$target" "$interval" || {
+            N=ghclaw M="Failed to start listen worker -> $name" log:ret:1
+        }
+    fi
+
+    ghclaw:info "[LISTEN] MQ file: $___X_CMD_ROOT_TMP/ghclaw/events/data/$target/.mq/MQ.CURRENT/data.tsv"
+    ghclaw:info "[LISTEN] events land there even if nothing consumes them; read it from any tool"
+    ghclaw:info --manage "x ghclaw ls" \
+                --consume "x ghclaw consume --$kind $target" \
+                --stop "x ghclaw stop $target" \
+                "[LISTEN] watching $target ($kind) in the background"
+}
+
+# Worker body spawned by x ghclaw listen: ___x_cmd_ghclaw___listen_pollevents <kind> <target> <seconds>
+___x_cmd_ghclaw___listen_pollevents(){
+    local kind="$1" target="$2" interval="${3:-60}"
+    [ -n "$kind" ]   || N=ghclaw M="Missing kind (repo|org|user)" log:ret:64
+    [ -n "$target" ] || N=ghclaw M="Missing target" log:ret:64
+    case "$interval" in
+        ''|*[!0-9]*|0)  N=ghclaw M="Invalid interval seconds -> $interval" log:ret:64 ;;
+    esac
+
+    local x_=""
+
+    local url
+    case "$kind" in
+        repo)   url="https://api.github.com/repos/$target/events?per_page=100" ;;
+        org)    url="https://api.github.com/orgs/$target/events?per_page=100" ;;
+        user)   url="https://api.github.com/users/$target/events?per_page=100" ;;
+        *)      N=ghclaw M="Unknown kind -> $kind (repo|org|user)" log:ret:64 ;;
+    esac
+
+    # a fresh listener replays the timeline from scratch
+    local state_dir="$___X_CMD_ROOT_TMP/ghclaw/events/data/$target/.state"
+    [ ! -d "$state_dir" ] || ___x_cmd rmrf "$state_dir"
+    ghclaw:info "[POLL] cleared previous state for $target"
+
+    x_=; ___x_cmd date timestamp_
+    ___x_cmd_cmds sleep $(( interval - (x_ % interval) )) || {
+        ghclaw:error "[POLL] initial sleep interrupted or failed"
+        return 130
+    }
+
+    while true; do
+        x_=; ___x_cmd date timestamp_
+        ___x_cmd_ghclaw___listen_fetchevents "$target" "$url"
+        ___x_cmd_cmds sleep $(( interval - (x_ % interval) )) || {
+            ghclaw:error "[POLL] poll-cycle sleep interrupted or failed"
+            return 130
+        }
+    done
+}
+
+# One cycle: fetch the events timeline, keep only what the cursor hasn't seen.
+___x_cmd_ghclaw___listen_fetchevents(){
+    local target="$1" url="$2"
+    [ -n "$target" ] || N=ghclaw M="Missing <owner>/<repo> or <org>" log:ret:64
+    [ -n "$url" ]    || N=ghclaw M="Missing url" log:ret:64
+
+    local token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+    [ -n "$token" ] || ___x_cmd gh --cur token:= 2>/dev/null
+    [ -n "$token" ] || N=ghclaw M="GH_TOKEN required" log:ret:64
+
+    local data_dir="$___X_CMD_ROOT_TMP/ghclaw/events/data"
+    local state_dir="$data_dir/$target/.state"
+    local mqfp="$data_dir/$target/.mq/MQ.CURRENT/data.tsv"
+    ___x_cmd mkdirp "$state_dir" || return $?
+
+    local etag_file="$state_dir/etag"   lms_file="$state_dir/lms"
+    local cursor_file="$state_dir/cursor"
+    local etag="" lms="" current_id=""
+    [ ! -s "$etag_file" ]   || read -r etag  < "$etag_file"
+    [ ! -s "$lms_file" ]    || read -r lms   < "$lms_file"
+    [ ! -s "$cursor_file" ] || read -r current_id   < "$cursor_file"
+
+    local hdr="$state_dir/hdr" body="$state_dir/body" code
+    code="$(___x_cmd curl -sS -o "$body" -D "$hdr" -w '%{http_code}' \
+        -H "Authorization: Bearer $token" \
+        -H 'Accept: application/vnd.github+json' \
+        ${etag:+-H} ${etag:+"If-None-Match: $etag"} \
+        ${lms:+-H} ${lms:+"If-Modified-Since: $lms"} \
+        -- "$url" 2>/dev/null)" || code=000
+
+    case "$code" in
+        304)    ghclaw:debug "304 unchanged for $target" ;;
+
+        200)    # persist validators for the next conditional request
+                ___x_cmd_cmds awk -v etag_f="$etag_file" -v lms_f="$lms_file" '
+                    function grab(   v) { v=$0; sub(/\r$/,"",v); sub(/^[^:]*:[ \t]*/,"",v); return v }
+                    {   line = tolower($0)
+                        if (line ~ /^etag:/)            { print grab() > etag_f;  next }
+                        if (line ~ /^last-modified:/)   { print grab() > lms_f            }
+                    }
+                ' <"$hdr"
+
+                # one awk pass: cursor-dedup + per-event json file + MQ.tsv
+                # append + logging (first-boot info / gap warn inside awk)
+
+                ___x_cmd mkdirp "$data_dir" || return
+
+                ___x_cmd awk0 -m j/json -m j/jiter \
+                    -v target="$target" \
+                    -v mqfp="$mqfp" \
+                    -v current_id="$current_id" \
+                    -v dir="$data_dir" \
+                    -v cursor_fp="$cursor_file" \
+                    -f "$___X_CMD_ROOT_MOD/ghclaw/lib/awk/events.awk" < "$body"
+                ;;
+
+        *)      ghclaw:debug "HTTP $code (skipped) for $target" ;;
+    esac
+
+    ___x_cmd rmrf "$hdr" "$body"
+}

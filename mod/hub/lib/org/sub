@@ -1,0 +1,96 @@
+# shellcheck shell=dash
+
+# 团队订阅：查看（含用量看板数据）/ 升档（返回 PayPro 结账链接）/ 取消自动续费
+
+___x_cmd_hub_org_sub(){
+    local X_help_cmd='___x_cmd_hub___help org sub'
+    help:arg-null:parse
+
+    [ $# -gt 0 ] || { ___x_cmd help -m hub org sub; return 0; }
+    local op="$1"; shift
+    case "$op" in
+        ls|upgrade|cancel)
+            "___x_cmd_hub_org_sub_$op" "$@"                     ;;
+        *) ___x_cmd_hub_u_subcmd_invalid org sub "$@"           ;;
+    esac
+}
+
+___x_cmd_hub_org_sub_ls(){
+    local X_help_cmd='___x_cmd_hub___help org sub ls'
+    help:arg-null:parse
+
+    local org=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --org)  org="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$org" ] || M='Please provide --org <org>' arg:ret:64
+
+    local resp=; resp="$(___x_cmd_hub_u_curl get "/api/v0/org/$org/subscription")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to get subscription of $org"
+        return 1
+    }
+
+    printf "%s" "$resp" | ___x_cmd jo
+}
+
+# 创建/升档：返回结账链接，付款后 webhook 自动认领（宽限期升档 = 延期 + seats 覆写）
+___x_cmd_hub_org_sub_upgrade(){
+    local X_help_cmd='___x_cmd_hub___help org sub upgrade'
+    help:arg-null:parse
+
+    local org=; local seats=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --org)          org="$2";   shift 2 ;;
+            --seats|-s)     seats="$2"; shift 2 ;;
+            *)              break ;;
+        esac
+    done
+    [ -n "$org" ]   || M='Please provide --org <org>' arg:ret:64
+    [ -n "$seats" ] || M='Please provide --seats <5|10|20|50>' arg:ret:64
+    case "$seats" in 5|10|20|50) ;; *) M='Seats must be 5|10|20|50' arg:ret:64 ;; esac
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl post "/api/v0/org/$org/subscription" -- "seats=${seats}")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to create upgrade order for '$org'"
+        return 1
+    }
+
+    printf "%s" "$resp" | {
+        local outTradeNo=; local checkoutUrl=
+        ___x_cmd jo env . .outTradeNo .checkoutUrl
+        ___x_cmd_hub_u_handle_resp true "Upgrade order created for '$org' (seats=$seats). Complete payment:"
+        printf "  - Checkout URL:  %s\n" "$checkoutUrl"
+        printf "  - Trade No:      %s\n" "$outTradeNo"
+    }
+}
+
+# 取消自动续费（hub 代理 PayPro Terminate；团队用到到期，数据保留）
+___x_cmd_hub_org_sub_cancel(){
+    local X_help_cmd='___x_cmd_hub___help org sub cancel'
+    help:arg-null:parse
+
+    local org=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --org)  org="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$org" ] || M='Please provide --org <org>' arg:ret:64
+
+    local resp=; resp="$(___x_cmd_hub_u_curl post "/api/v0/org/$org/subscription/cancel")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to cancel subscription of '$org' (if this keeps failing, cancel in PayPro dashboard)"
+        return 1
+    }
+
+    printf "%s" "$resp" | {
+        local expiresAt=
+        ___x_cmd jo env . .expiresAt
+        ___x_cmd_hub_u_handle_resp true "Subscription cancelled. Team remains active until expiry:"
+        printf "  %s\n" "$expiresAt"
+    }
+}

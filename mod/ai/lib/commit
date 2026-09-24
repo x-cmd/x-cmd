@@ -1,15 +1,16 @@
 # shellcheck shell=dash disable=SC2034
 
-# x ai commit [--check|--generate]
+# x ai commit [--check|--generate] [--full] [--limit N]
 #
 # `--check`    Validate Conventional Commits format on commits in branch range.
 # `--generate` Draft a Conventional Commits subject from staged diff.
+#              With `--full`, draft the complete message (subject + body).
 # (Default subcmd: auto — generate if anything is staged, else check.)
 # Local mirror of x-cmd-action/ai/commit.
 
 ___x_cmd_ai_commit(){
     [ "$#" -gt 0 ] || set -- --generate
-    local mode= format=
+    local mode= format= full=
     local limit=50
 
     while [ $# -gt 0 ]; do
@@ -18,6 +19,7 @@ ___x_cmd_ai_commit(){
             --check)             mode="check" ; shift ;;
             --generate|--gen)    mode="generate" ; shift ;;
             --auto)              mode="" ; shift ;;
+            --full)              full="1" ; shift ;;
             --yml|--yaml)        format="yml" ; shift ;;
             --json|-j)           format="json" ; shift ;;
             --limit)             limit="$2";      arg:2:shift ;;
@@ -39,7 +41,7 @@ ___x_cmd_ai_commit(){
 
     case "$mode" in
         check)        ___x_cmd_ai_commit___check "$format" "$limit" ;;
-        generate)     ___x_cmd_ai_commit___generate "$format" ;;
+        generate)     ___x_cmd_ai_commit___generate "$format" "$full" ;;
         *)            N=ai M="Unknown mode -> $mode" log:ret:64 ;;
     esac
 }
@@ -111,22 +113,42 @@ ${invalid_list}"
 }
 
 ___x_cmd_ai_commit___generate(){
-    local format="$1"
+    local format="$1" full="$2"
 
     local diff
     diff="$(___x_cmd_cmds git diff --cached --unified=3 | ___x_cmd_cmds head -c 60000)"
     [ -n "$diff" ] || N=ai M="No staged changes. Stage with \`git add\` first." log:ret:1
 
-    local prompt="Write a Conventional Commits subject (max 72 chars) for the staged diff below.
+    local prompt subject
+    if [ -n "$full" ]; then
+        prompt="Write a Conventional Commits compliant message for the following diff.
+
+Output EXACTLY in this format (no other text):
+
+<type>(<scope>): <subject>
+
+<body explaining what and why, wrapped at 72 chars>
+
+Rules:
+- type: feat | fix | docs | style | refactor | perf | test | chore | build | ci | revert
+- scope: optional, in parens, lowercase, no spaces
+- subject: imperative mood, no period, < 72 chars
+- body: optional, separated by a blank line
+${diff}"
+        ai:debug --m:prompt "$prompt"
+        subject="$( ___x_cmd ask --quick "$prompt" )" || return $?
+        # Full message: strip only code fences / wrapping quotes — keep
+        # the body's line breaks and indentation intact.
+        subject="$(printf '%s' "$subject" | ___x_cmd_cmds sed -e 's/^\`\`\`[a-zA-Z]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/\'$//" | ___x_cmd_cmds sed -e 's/[[:space:]]*$//')"
+    else
+        prompt="Write a Conventional Commits subject (max 72 chars) for the staged diff below.
 
 Output ONLY the subject — no quotes, no preamble, no code fences.
 ${diff}"
-
-    ai:debug --m:prompt "$prompt"
-    local subject
-    subject="$( ___x_cmd ask --quick "$prompt" )" || return $?
-
-    subject="$(printf '%s' "$subject" | ___x_cmd_ai___clean)"
+        ai:debug --m:prompt "$prompt"
+        subject="$( ___x_cmd ask --quick "$prompt" )" || return $?
+        subject="$(printf '%s' "$subject" | ___x_cmd_ai___clean)"
+    fi
 
     case "$format" in
         yml)  printf 'subject: %s\n' "$subject" ;;

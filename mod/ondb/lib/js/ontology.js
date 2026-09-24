@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 /**
  * ondb JavaScript library - entry point.
  * 

@@ -23,13 +23,14 @@
 
 BEGIN {
     if (ENVIRON["NO_COLOR"] != "") {
-        BC = BY = BG = BD = RST = ""
+        BC = BY = BG = BD = BR = RST = ""
     } else {
         E = "\033" "["
         BC = E "1;36m"
         BY = E "1;33m"
         BG = E "1;32m"
         BD = E "2m"
+        BR = E "1;31m"
         RST = E "0m"
     }
 
@@ -176,13 +177,41 @@ END {
     n = BC "=============================================================" RST
     print ""
     print n
-    print BC "  " g_sub["description"] " / " (g_sub["license"] != "NOASSERTION" ? g_sub["license"] : "") RST
+
+    # compute_stale / days_since — STUB. The real heuristic (see
+    # x-bash/x-cmd#22) is staged:
+    #   stage 1: trigger when 360d release == 0 AND 360d mergedPR == 0
+    #   stage 2: add lastCommit-time check
+    # Approach will be supplied separately — NOT mktime (gawk-only)
+    # and NOT a hand-rolled days_since (BSD-awk unfriendly; the
+    # cmds/awk dispatch isn't guaranteed to be gawk). Both functions
+    # return constants now so the call site compiles but never fires.
+    # (Stubs live at file scope, after END closes — function defs inside
+    # an action block are illegal under POSIX awk.)
+
+    # Header banner: description + license, then any lifecycle flags.
+    # Archived is rendered red; stale is rendered yellow but only when
+    # the repo is NOT archived — an archived repo is stale by definition,
+    # so showing both would just be noise. Stale = last commit > 365d ago
+    # AND no recent release AND every recent[] row's release / mergedPR /
+    # commit metric is 0. The "no recent activity" check reads
+    # win_metric[win, "release"|"mergedPR"|"commit"] across all windows.
+    banner_tail = ""
+    if (g_sub["archived"] == "true") {
+        banner_tail = banner_tail " " BR "[ARCHIVED]" RST
+    } else if (compute_stale() == 1) {
+        banner_tail = banner_tail " " BY "[STALE]" RST
+    }
+    print BC "  " g_sub["description"] " / " (g_sub["license"] != "NOASSERTION" ? g_sub["license"] : "") banner_tail RST
     print n
     print ""
 
     print BC "  ABOUT" RST
     print "      License:       " (g_sub["license"] != "NOASSERTION" ? g_sub["license"] : "-")
     print "      Homepage:      " (g_sub["homepage"] == "" ? "-" : g_sub["homepage"])
+    if (g_sub["archived"] == "true") {
+        print BR "      Archived:      yes" RST
+    }
     ver = g_sub["latestVersion"]
     if (ver != "") {
         print "      Latest ver:    " ver
@@ -218,13 +247,13 @@ END {
     print ""
 
     print BC "  POPULARITY" RST
-    print "      Stars:        " BG fmt(g_sub["star"])        RST
-    print "      Watchers:     " BG fmt(g_sub["watcher"])     RST
-    print "      Forks:        " BG fmt(g_sub["fork"])        RST
-    print "      Releases:     " BG fmt(g_sub["release"])     RST
-    print "      Contributors: " BG fmt(g_sub["contributor"]) RST
-    print "      Pull reqs:    " BG fmt(g_sub["pullRequest"]) RST (g_sub["pullRequest"] == "0" ? "" : BD " (Merged " fmt(win_metric["total", "mergedPR"]) " + Open " fmt(win_metric["total", "openPR"]) " + Reject " fmt(g_sub["pullRequest"] + 0 - win_metric["total", "mergedPR"] - win_metric["total", "openPR"]) ")" RST)
-    print "      Issues:       " BG fmt(g_sub["issue"])       RST (g_sub["issue"] == "0" ? "" : BD " (Open " fmt(win_metric["total", "openIssue"]) " + Closed " fmt(win_metric["total", "closedIssue"]) ")" RST)
+    print "      Stars:         " BG fmt(g_sub["star"])        RST
+    print "      Watchers:      " BG fmt(g_sub["watcher"])     RST
+    print "      Forks:         " BG fmt(g_sub["fork"])        RST
+    print "      Releases:      " BG fmt(g_sub["release"])     RST
+    print "      Contributors:  " BG fmt(g_sub["contributor"]) RST
+    print "      Pull reqs:     " BG fmt(g_sub["pullRequest"]) RST (g_sub["pullRequest"] == "0" ? "" : BD " (Merged " fmt(win_metric["total", "mergedPR"]) " + Open " fmt(win_metric["total", "openPR"]) " + Reject " fmt(g_sub["pullRequest"] + 0 - win_metric["total", "mergedPR"] - win_metric["total", "openPR"]) ")" RST)
+    print "      Issues:        " BG fmt(g_sub["issue"])       RST (g_sub["issue"] == "0" ? "" : BD " (Open " fmt(win_metric["total", "openIssue"]) " + Closed " fmt(win_metric["total", "closedIssue"]) ")" RST)
     if (g_sub["archived"] == "true") {
         print "      " BC "ARCHIVED" RST
     }
@@ -354,3 +383,39 @@ function json_unquote(s,    n, i, c, c2, out) {
     }
     return out
 }
+
+# compute_stale / days_since — STUB. Real heuristic lives at
+# x-bash/x-cmd issue #22 and is staged:
+#   stage 1: trigger when 360d release == 0 AND 360d mergedPR == 0
+#   stage 2: add lastCommit-time check
+# Approach will be supplied separately — NOT mktime (gawk-only)
+# and NOT a hand-rolled days_since (BSD-awk unfriendly; the
+# cmds/awk dispatch isn't guaranteed to be gawk). Both functions
+# return constants now so the call site compiles but never fires.
+function days_since(from, to,    junk) { return -1 }
+function compute_stale(    junk) { return 0 }
+
+# TODO(x-bash/x-cmd#22): add testcase records for these two repos once
+# the staged heuristic is wired up. They exercise the two distinct
+# signals the banner renders:
+#
+#   archive — owner-marked read-only project.
+#     x repo card --tty GangZhuo/BaiduPCS
+#     Banner: description + " [ARCHIVED]" in red
+#     ABOUT:  "Archived: yes" line in red
+#     about.archived (YAML) == true; POPULARITY trailing ARCHIVED badge
+#     is also expected (kept for backward compatibility).
+#
+#   stale — active-but-stopped project (no release / merge / commit in
+#   any window for >1y, owner has not marked the repo archived).
+#     x repo card --tly zyedidia/eget
+#     Banner: description + " [STALE]" in bold yellow
+#     ABOUT:  no archive line (false == false).
+#     about.archived (YAML) == false. lastCommit > 1y before
+#     collectedAt; every recent[] window has release=0 / mergedPR=0
+#     / commit=0.
+#
+# Once compute_stale() is no longer a stub, add fixture-driven shell
+# tests under .x-cmd/test/card_archive.sh + card_stale.sh (next to
+# detect.sh / pick.sh) asserting the banner / ABOUT substrings.
+# Format follows eget/.x-cmd/test/detect.sh: x test unit <script>.

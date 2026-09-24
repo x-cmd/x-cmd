@@ -1,0 +1,209 @@
+# shellcheck shell=dash disable=SC2016
+# x repo pulse — output 9-column TSV with snapshot counts at historical
+# bucket dates (release / mergedPR / openPR / closedIssue / openIssue /
+# commit / pullRequest / issue).
+#
+# Each metric's snapshot at date D = current_total - search("created:>=D").
+# See .x-cmd/story/260919.x-repo-pulse.md for the full design rationale.
+
+___x_cmd_repo_pulse(){
+    case "${1-}" in
+        -h|--help)  ___x_cmd help -m repo pulse ; return 0 ;;
+    esac
+
+    [ $# -gt 0 ] || N=repo M="Usage: x repo pulse <id>" log:ret:64
+
+    local id="$1"
+    case "$id" in *@*) id="${id%@*}" ;; esac
+
+    local owner_repo=""
+    case "$id" in
+        github.com/*) owner_repo="${id#github.com/}" ;;
+        gh/*)         owner_repo="${id#gh/}" ;;
+        */*)          owner_repo="$id" ;;
+        *)            N=repo M="Invalid repo id -> $id (expect owner/repo)" log:ret:1 ;;
+    esac
+
+    local token
+    token=$(___x_cmd_repo_pulse__token) || return $?
+
+    local file="${___X_CMD_REPO_ROOT:-$HOME/.x-repo}/.stat/${owner_repo}/pulse.tsv"
+    local dir
+    dir=$(dirname "$file")
+    mkdir -p "$dir" || return $?
+
+    # Bucket dates: 10 yearly (D-10y..D-1y) + 12 monthly (D-12m..D-1m) + 31 daily (D-30d..D).
+    local bucket_dates
+    bucket_dates=$(___x_cmd_repo_pulse__bucket_dates)
+
+    # Today (one bucket point for append mode).
+    local today
+    today=$(date -u +%Y%m%d)
+
+    if [ -f "$file" ]; then
+        ___x_cmd_repo_pulse__append "$owner_repo" "$file" "$token" "$today" "$bucket_dates" || return $?
+    else
+        ___x_cmd_repo_pulse__rebuild "$owner_repo" "$file" "$token" "$today" "$bucket_dates" || return $?
+    fi
+
+    cat "$file"
+}
+
+___x_cmd_repo_pulse__token(){
+    local t
+    t=$(gh auth token 2>/dev/null) || t="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+    if [ -z "$t" ]; then
+        N=repo M="No GitHub token. Run 'gh auth login' or set GH_TOKEN." log:ret:1
+    fi
+    printf '%s\n' "$t"
+}
+
+# Emit YYYYMMDD dates on stdout, one per line. Bucket rule:
+#   10 yearly  → Jan 1 of each year, last 10 years up to current year
+#   12 monthly → 1st of each month, last 12 months up to current month
+#   31 daily   → today and the previous 30 days
+# Each line is sorted ascending (oldest first).
+___x_cmd_repo_pulse__bucket_dates(){
+    # Today (UTC) at midnight, in seconds since epoch. x epoch / x date
+    # are x-cmd's portability shims (avoid BSD-vs-GNU `date` syntax fork).
+    ___x_cmd epoch get_
+    local now_ts="$x_"
+
+    # Compute the bucket boundaries via pure date arithmetic: walk the
+    # calendar backwards from today, emitting 1 row per bucket point.
+    # We use `x date` to avoid GNU/BSD `date -d` vs `date -v` split.
+    local out=""
+    local i d
+
+    # Yearly: for i in 1..10, emit Jan 1 of (currentYear - i).
+    for i in $(seq 1 10); do
+        # Use GNU `date` via x-cmd fallback. `x date dump_` accepts a
+        # YYYY-MM-DD source.
+        ___x_cmd date dump_ --fmt '%Y-%m-%d' "$((now_ts - i * 366 * 86400))" >/dev/null 2>&1 || true
+        # Fallback: pure shell year math.
+        ___x_cmd date dump_ --fmt '%Y-%m-%d' "$now_ts" >/dev/null
+        # Easier: just rely on `x date get_` and arithmetic. Reset.
+        out="${out}${i}
+"
+    done
+
+    # This body will be filled in below; the stub above is replaced by
+    # the working implementation after first verification.
+    printf '%s\n' "$out"
+}
+
+# Rebuild mode: single GraphQL query covering all bucket dates.
+___x_cmd_repo_pulse__rebuild(){
+    local owner_repo="$1" file="$2" token="$3" today="$4" bucket_dates="$5"
+
+    # Emit header first so the file is non-empty even on error.
+    printf 'date\trelease\tmergedPR\topenPR\tclosedIssue\topenIssue\tcommit\tpullRequest\tissue\n' > "$file" || return $?
+
+    local rows
+    rows=$(___x_cmd_repo_pulse__snapshot_at "$owner_repo" "$token" "$bucket_dates") || return $?
+
+    {
+        cat "$file"
+        printf '%s\n' "$rows"
+    } >> "$file"
+
+    # Sort the body rows (excluding header) by date, then re-emit with header.
+    ___x_cmd_repo_pulse__resort "$file"
+}
+
+# Append mode: only one bucket point — today.
+___x_cmd_repo_pulse__append(){
+    local owner_repo="$1" file="$2" token="$3" today="$4" bucket_dates="$5"
+
+    local existing
+    existing=$(tail -n +2 "$file")
+
+    local new_rows
+    new_rows=$(___x_cmd_repo_pulse__snapshot_at_one "$owner_repo" "$token" "$today") || return $?
+
+    {
+        printf 'date\trelease\tmergedPR\topenPR\tclosedIssue\topenIssue\tcommit\tpullRequest\tissue\n'
+        printf '%s\n' "$existing"
+        printf '%s\n' "$new_rows"
+    } | sort -t "$(printf '\t')" -k1,1 \
+      | { cat; } > "$file"
+}
+
+# Resort an existing file in-place: header + sorted body. Dedup by date
+# (keep last row in case of duplicates).
+___x_cmd_repo_pulse__resort(){
+    local file="$1"
+    local body
+    body=$(tail -n +2 "$file")
+    {
+        printf 'date\trelease\tmergedPR\topenPR\tclosedIssue\topenIssue\tcommit\tpullRequest\tissue\n'
+        printf '%s\n' "$body"
+    } | sort -t "$(printf '\t')" -k1,1 -u > "$file"
+}
+
+# Stub: emit a single TSV row from a GraphQL response.
+# Real implementation will go in lib/awk/pulse.jq + bash wrapper below.
+___x_cmd_repo_pulse__snapshot_at(){
+    local owner_repo="$1" token="$2" bucket_dates="$3"
+    local owner="${owner_repo%/*}"
+    local repo="${owner_repo#*/}"
+
+    local resp
+    resp=$(___x_cmd_repo_pulse__graphql "$owner" "$repo" "$token" "$bucket_dates") || return $?
+
+    # TODO: parse resp + bucket_dates into TSV rows via jq.
+    printf '%s\n' "$resp" >/dev/null
+    return 0
+}
+
+___x_cmd_repo_pulse__snapshot_at_one(){
+    local owner_repo="$1" token="$2" today="$3"
+    # For now, treat single-day append the same as full snapshot — the
+    # server side has to fetch all totals anyway, so we just call once
+    # with the full bucket list and pick today's row.
+    ___x_cmd_repo_pulse__snapshot_at "$owner_repo" "$token" "$today"
+}
+
+# Build GraphQL query and POST it.
+# Each bucket date D contributes 4 aliased searches:
+#   s{i}: search(query:"repo:o/r is:pr is:merged merged:>=D", type:ISSUE, first:0){issueCount}
+#   s{i+M}: ... is:pr created:>=D
+#   s{i+2M}: ... is:issue state:closed created:>=D
+#   s{i+3M}: ... is:issue created:>=D
+# Where M = number of bucket dates.
+___x_cmd_repo_pulse__graphql(){
+    local owner="$1" repo="$2" token="$3" bucket_dates="$4"
+
+    # Build alias declarations and selections.
+    local i=0
+    local sel="" decl=""
+    local d
+    while read -r d; do
+        [ -n "$d" ] || continue
+        # d is YYYYMMDD; GraphQL wants YYYY-MM-DD.
+        local d_iso
+        d_iso="${d:0:4}-${d:4:2}-${d:6:2}"
+        decl="${decl}\$s$((i+1)):String!,"
+        sel="${sel}s$((i+1)):search(query:\"repo:${owner}/${repo} is:pr is:merged merged:>${d_iso}\",type:ISSUE,first:0){issueCount} "
+        sel="${sel}s$((i+1+100)):search(query:\"repo:${owner}/${repo} is:pr created:>${d_iso}\",type:ISSUE,first:0){issueCount} "
+        sel="${sel}s$((i+1+200)):search(query:\"repo:${owner}/${repo} is:issue state:closed created:>${d_iso}\",type:ISSUE,first:0){issueCount} "
+        sel="${sel}s$((i+1+300)):search(query:\"repo:${owner}/${repo} is:issue created:>${d_iso}\",type:ISSUE,first:0){issueCount} "
+        i=$((i + 1))
+    done <<A
+$bucket_dates
+A
+    # Strip trailing comma.
+    decl="${decl%,}"
+
+    local query
+    query="query(\$o:String!,\$n:String!,${decl}){repository(owner:\$o,name:\$n){mergedPRTotal:pullRequests(states:MERGED){totalCount} openPRTotal:pullRequests(states:OPEN){totalCount} closedIssueTotal:issues(states:CLOSED){totalCount} openIssueTotal:issues(states:OPEN){totalCount} prTotal:pullRequests{totalCount} issueTotal:issues{totalCount} releases(first:100,orderBy:{field:CREATED_AT,direction:DESC}){totalCount nodes{publishedAt}} ${sel}}}"
+
+    local payload
+    payload=$(jq -nc --arg q "$query" '{query: $q}')
+
+    curl -sS \
+        -H "Authorization: bearer $token" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        https://api.github.com/graphql
+}

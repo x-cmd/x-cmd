@@ -1,4 +1,3 @@
-#!/bin/sh
 # shellcheck shell=dash
 # onDB example.sh — end-to-end smoke test
 # Usage: sh lib/example.sh [--use-sqlite]

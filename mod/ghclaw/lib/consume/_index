@@ -1,0 +1,96 @@
+# shellcheck shell=dash
+
+xrc:mod:lib     ghclaw   consume/reply consume/triage
+
+# x ghclaw consume [--repo <owner/repo> | --org <org> | --user <name>] <target>
+#   Tail the target's MQ file and dispatch each event to ___consume_watchevent.
+#   The MQ is append-only — external tools can read it with their own cursor.
+___x_cmd_ghclaw___consume(){
+    local target=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --repo|--org|--user)    target="$2"; shift 2 ;;
+            --interval)             shift 2 ;;      # only meaningful for listen; accepted so 'run' can pass "$@" through
+            -h|--help)              ___x_cmd help -m ghclaw consume "$@";   return 0 ;;
+            --)                     shift; break ;;
+            *)                      [ -n "$target" ] && break
+                                    target="$1"; shift ;;
+        esac
+    done
+    [ -n "$target" ] || N=ghclaw M="Missing target (or --repo/--org/--user <name>)" log:ret:64
+    target="$(___x_cmd str lower "$target")"
+
+    local mq="$___X_CMD_ROOT_TMP/ghclaw/events/data/$target/.mq"
+    [ -d "$mq" ] || ghclaw:warn --check "x ghclaw ls" \
+        "[CONSUME] MQ not found yet: $mq (no events so far?)"
+
+    ghclaw:info "[CONSUME] tailing MQ for $target: $mq"
+    local exitcode=0
+    (
+        trap '' INT
+
+        ___X_CMD_TAILER_HANDLE="${___X_CMD_GHCLAW_TAILER_HANDLE:-"___x_cmd_ghclaw___consume_watchevent"}" \
+        ___x_cmd tailer run "$mq"
+    ) || {
+        exitcode="$?"
+        ghclaw:warn "[CONSUME] tailer loop exited (code=$exitcode)"
+    }
+
+    ghclaw:debug "[CONSUME] stopping tailer: $mq"
+    ___x_cmd tailer stop "$mq" 2>/dev/null
+    return "$exitcode"
+}
+
+# Peel a MQ.tsv row into namespaced globals (x_mq_*): the 9 fixed leading
+# columns plus x_mq_tail (col 10 onward; "" when absent). MQ contract:
+# TAB-separated, no bare TAB inside a column, empty column = empty string.
+# Returns 1 when the line has no TAB.
+___x_cmd_ghclaw___mq_peel(){
+    local rest="$1"  ht="$___X_CMD_UNSEENCHAR_HT"
+    case "$rest" in
+        *"$ht"*)    ;;
+        *)          return 1 ;;
+    esac
+    x_mq_created_at="${rest%%"$ht"*}";     rest="${rest#*"$ht"}"
+    x_mq_eid="${rest%%"$ht"*}";            rest="${rest#*"$ht"}"
+    x_mq_etype="${rest%%"$ht"*}";          rest="${rest#*"$ht"}"
+    x_mq_action="${rest%%"$ht"*}";         rest="${rest#*"$ht"}"
+    x_mq_repo="${rest%%"$ht"*}";           rest="${rest#*"$ht"}"
+    x_mq_actor="${rest%%"$ht"*}";          rest="${rest#*"$ht"}"
+    x_mq_number="${rest%%"$ht"*}";         rest="${rest#*"$ht"}"
+    x_mq_title="${rest%%"$ht"*}";          rest="${rest#*"$ht"}"
+    x_mq_detail="$rest";                    x_mq_tail=""
+    case "$rest" in
+        *"$ht"*)    x_mq_detail="${rest%%"$ht"*}";   x_mq_tail="${rest#*"$ht"}" ;;
+    esac
+}
+
+# tailer callback: peel each MQ.tsv line ONCE, apply the shared coarse
+# guards, then dispatch by etype/action to the per-event handlers (which
+# just read the x_mq_* globals — no re-peel, no re-filter). Default =
+# log + triage + @x keyword auto-reply. External code can override the
+# whole callback via ___X_CMD_GHCLAW_TAILER_HANDLE (see story 260921).
+___x_cmd_ghclaw___consume_watchevent(){
+    local msg="$1"
+    ghclaw:info "[WATCHEVENT] $msg"
+
+    ___x_cmd_ghclaw___mq_peel "$msg" || return 0
+    [ -n "$x_mq_number" ] || return 0
+    case "$x_mq_actor" in
+        *"[bot]")   ghclaw:debug "[WATCHEVENT] skip bot actor: $x_mq_actor";   return 0 ;;
+    esac
+
+    case "$x_mq_etype/$x_mq_action" in
+        IssuesEvent/opened)
+            # Triage first: it is cheap (classify + labels) and should land
+            # on the issue timeline before the (potentially long) AI reply
+            # next to it.
+            ___x_cmd_ghclaw___triage_dispatch || true
+            ___x_cmd_ghclaw___reply_dispatch  || true
+            ;;
+        IssueCommentEvent/created)
+            ___x_cmd_ghclaw___reply_dispatch  || true
+            ;;
+    esac
+}
+

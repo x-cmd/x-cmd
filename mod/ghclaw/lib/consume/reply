@@ -1,0 +1,146 @@
+# shellcheck shell=dash disable=SC2016
+
+___x_cmd_ghclaw___reply_dispatch(){
+    # Called by ___consume_watchevent only for IssuesEvent/opened and
+    # IssueCommentEvent/created; the peel + bot/number guards are already
+    # done there — the x_mq_* globals (lib/consume/_index) are set on entry.
+    local ht="$___X_CMD_UNSEENCHAR_HT"
+
+    # Coarse filter on the MQ line alone (zero file IO); body is always
+    # the LAST trailing column. IssuesEvent: tail = body;
+    # IssueCommentEvent: tail = comment_id \t body. Legacy rows without
+    # trailing columns are skipped (not replayed). ──
+    local body=""  comment_id=""
+    case "$x_mq_etype" in
+        IssuesEvent)         body="$x_mq_tail" ;;
+        IssueCommentEvent)   case "$x_mq_tail" in
+                                 *"$ht"*)    comment_id="${x_mq_tail%%"$ht"*}"
+                                             body="${x_mq_tail#*"$ht"}" ;;
+                                 *)          return 0 ;;
+                             esac ;;
+    esac
+    [ -n "$body" ] || return 0
+
+    # Loop-guard 2: never reply to our own reply (ghclaw footer marks it)
+    case "$body" in
+        *"Replied by ghclaw"*)   ghclaw:debug "[REPLY] skip own reply on $x_mq_repo#$x_mq_number";   return 0 ;;
+    esac
+
+    # ── Strict word-boundary keyword match (glob form): the char before
+    #    and after @x, if any, must be a non-word char — so `a@x.com`,
+    #    `@xy`, `xx@x2` do NOT trigger. "$keyword" is quoted -> literal match,
+    #    safe even if the keyword contains * ? [.
+    #    NOTE: the negated class must be written INLINE — zsh does not
+    #    re-interpret a variable's expanded value as a pattern.
+    local keyword="${GHCLAW_REPLY_KEYWORD:-@x}"
+    case "$body" in
+        "$keyword"                                \
+        |"$keyword"[!a-zA-Z0-9_-]*                \
+        |*[!a-zA-Z0-9_-]"$keyword"                \
+        |*[!a-zA-Z0-9_-]"$keyword"[!a-zA-Z0-9_-]* )
+            ;;                                                  # hit
+        *)
+            ghclaw:debug "[REPLY] keyword '$keyword' not in $x_mq_repo#$x_mq_number ($x_mq_etype), skip"
+            return 0 ;;
+    esac
+
+    # ── Pre-check gh readiness (binary + token prep, see util) so we
+    #     never burn an AI call that can't be posted ──
+    ___x_cmd_ghclaw___prepare_gh_cli || {
+        ghclaw:warn "[REPLY] gh CLI unavailable or no token, skipped $x_mq_repo#$x_mq_number"
+        return 0
+    }
+
+    # ── Loop-guard 3: an existing :eyes: means already handled (idempotent
+    #     marker surviving a listen restart/replay). Granularity = the
+    #     trigger itself: on the COMMENT for IssueCommentEvent, on the ISSUE
+    #     for IssuesEvent — so a later @x comment on the same issue still
+    #     gets its own reply. ──
+    local react_path
+    if [ -n "$comment_id" ]; then
+        react_path="repos/$x_mq_repo/issues/comments/$comment_id/reactions"
+    else
+        react_path="repos/$x_mq_repo/issues/$x_mq_number/reactions"
+    fi
+    local existing
+    existing="$(___x_cmd_ghclaw___gh api "$react_path" --jq '[.[] | select(.content == "eyes")] | length' 2>/dev/null)" || existing=0
+    case "$existing" in ''|*[!0-9]*)    existing=0 ;; esac
+    if [ "$existing" -gt 0 ]; then
+        ghclaw:info "[REPLY] $x_mq_repo#$x_mq_number${comment_id:+/comment $comment_id} already has :eyes:, skipping (replay?)"
+        return 0
+    fi
+
+    ghclaw:info "[REPLY] '$keyword' matched on $x_mq_repo#$x_mq_number ($x_mq_etype by $x_mq_actor) — drafting"
+
+    # ── Build the prompt (repo description best-effort; language follows
+    #     the body text) ──
+    local lang=en
+    if printf '%s' "${x_mq_title}${body}" | grep -qE '[一-龥]'; then
+        lang=zh-CN
+    fi
+    local repo_desc
+    repo_desc="$(___x_cmd_ghclaw___gh api "repos/$x_mq_repo" --jq '.description // ""' 2>/dev/null)" || repo_desc=""
+
+    # ── Committed to reply: NOW reverse-lookup the event file for issue
+    #     context ──
+    local issue_body=""
+    if [ "$x_mq_etype" = IssueCommentEvent ]; then
+        local fp="$___X_CMD_ROOT_TMP/ghclaw/events/data/$x_mq_repo/$x_mq_etype.$x_mq_eid.json"
+        issue_body="$(___x_cmd jq -r '.payload.issue.body // ""' < "$fp" 2>/dev/null)" || issue_body=""
+    fi
+
+    local prompt
+    if [ "$x_mq_etype" = IssueCommentEvent ]; then
+        prompt="User language: $lang
+
+Repository: $x_mq_repo
+Repository description: ${repo_desc:-n/a}
+
+Issue #$x_mq_number: $x_mq_title
+
+$issue_body
+
+Comment by the user:
+$body"
+    else
+        prompt="User language: $lang
+
+Repository: $x_mq_repo
+Repository description: ${repo_desc:-n/a}
+
+Issue #$x_mq_number: $x_mq_title
+
+$body"
+    fi
+
+    # ── Draft with AI (provider/credentials resolved inside x ai reply) ──
+    local response rc=0
+    response="$(___x_cmd ai reply "$prompt")" || rc=$?
+    [ "$rc" = 0 ] || ghclaw:warn "[REPLY] x ai reply failed (rc=$rc) on $x_mq_repo#$x_mq_number"
+    # strip progress/log lines that may leak onto stdout
+    response="$(printf '%s' "$response" | grep -vE '^-[[:space:]]*[✓✗WIE]\||exitcode:' 2>/dev/null || printf '%s' "$response")"
+    local reply_text
+    reply_text="$(printf '%s' "$response" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' 2>/dev/null || printf '%s' "$response")"
+    case "$reply_text" in
+        ""|___ASK_FAILED___*)
+            ghclaw:warn "[REPLY] AI returned empty/failed on $x_mq_repo#$x_mq_number, skipped"
+            return 0 ;;
+    esac
+
+    # ── Post :eyes: reaction (idempotency marker) + the comment ──
+    if ___x_cmd_ghclaw___gh api -X POST "$react_path" -f content=eyes >/dev/null 2>&1; then
+        ghclaw:info "[REPLY] reacted :eyes: on $x_mq_repo#$x_mq_number"
+    else
+        ghclaw:debug "[REPLY] reaction failed on $x_mq_repo#$x_mq_number (continue to comment)"
+    fi
+
+    local comment="$reply_text
+
+<sub>Replied by ghclaw</sub>"
+    if ___x_cmd_ghclaw___gh api -X POST "repos/$x_mq_repo/issues/$x_mq_number/comments" -f body="$comment" >/dev/null 2>&1; then
+        ghclaw:info "[REPLY] posted reply on $x_mq_repo#$x_mq_number"
+    else
+        ghclaw:warn "[REPLY] failed to comment on $x_mq_repo#$x_mq_number"
+    fi
+    return 0
+}

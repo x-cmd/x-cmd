@@ -74,21 +74,34 @@
 }
 
 {
-    x:info "TestCase -> ondb file mode (-f)"
+    x:info "TestCase -> ondb rejects -f flag (directory-only mode)"
     tdir="$(mktemp -d)"
     tfile="$tdir/test.tsv"
     : > "$tfile"
-    x ondb add -f "$tfile" --type Test --name X --id x1
-    result="$(x ondb ls -f "$tfile" | grep -c x1)"
-    x assert === "$result" "1" || return $?
+    # After commit 52c65d2 the `-f` flag was removed; only --datadir / -d
+    # is accepted. Verify `-f` is now treated as an unknown option.
+    x ondb add -f "$tfile" --type Test --name X --id x1 2>/dev/null
+    x assert true [ $? -ne 0 ] || return $?
     x rmrf "$tdir"
 }
 
 {
-    x:info "TestCase -> ondb schema"
+    x:info "TestCase -> ondb schema (write schema.tsv directly, validate)"
     tdir="$(mktemp -d)"
-    x ondb schema add -d "$tdir" type required Task name,status
-    result="$(x ondb schema ls -d "$tdir" | grep -c 'Task')"
-    x assert === "$result" "1" || return $?
+    # After commit 59c50e3 the `x ondb schema add` CLI was removed;
+    # schema.tsv is written directly. Verify the protocol path:
+    # write schema, add an entity that violates it, expect validate to flag.
+    cat > "$tdir/schema.tsv" << 'EOF'
+type	Task	required	name
+type	Task	enum	status	open,done
+EOF
+    x ondb add -d "$tdir" --type Task --name T --id t1 status=open
+    x ondb add -d "$tdir" --type Task --id t2 2>/dev/null
+    out="$(x ondb validate -d "$tdir" 2>&1)"
+    if ! printf '%s\n' "$out" | grep -q 't2.*missing required.*name'; then
+        echo "validate output:"
+        printf '%s\n' "$out"
+        return 1
+    fi
     x rmrf "$tdir"
 }

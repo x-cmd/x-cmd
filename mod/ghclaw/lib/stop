@@ -1,0 +1,70 @@
+# shellcheck shell=dash disable=SC2016
+
+# x ghclaw stop [--repo <owner/repo> | --org <org> | --user <name>] <target> | --all [--purge]
+#   kind flags are accepted for symmetry with listen (only the target locates
+#   the worker); --interval is ignored so 'run' can pass "$@" through.
+#   Default keeps MQ/state on disk; --purge also removes them for a clean
+#   restart.
+___x_cmd_ghclaw___stop(){
+    local x_=""
+    local purge=0 all=0 target=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --repo|--org|--user)    target="$2"; shift 2 ;;
+            --interval)             shift 2 ;;
+            --purge)    purge=1; shift ;;
+            --all)      all=1;   shift ;;
+            -h|--help)  ___x_cmd help -m ghclaw stop "$@";      return 0 ;;
+            --)         shift; break ;;
+            *)          target="$1"; shift ;;
+        esac
+    done
+
+    local ns="ghclaw-default-worker"
+    local data_dir="$___X_CMD_ROOT_TMP/ghclaw/events/data"
+
+    if [ "$all" = 1 ]; then
+        local out name pid fp stime state
+        out="$(___x_cmd worker ls --ns "$ns" --tsv 2>/dev/null)" || out=""
+        if [ -z "$out" ]; then
+            ghclaw:info --start "x ghclaw listen --repo <owner/repo> [--interval 1min]" \
+                        "[STOP] no active listeners (ns=$ns)"
+            return 0
+        fi
+        while IFS="$___X_CMD_UNSEENCHAR_HT" read -r name pid fp stime state; do
+            case "$name" in listen-*) ;; *) continue ;; esac
+            if ___x_cmd worker stop --ns "$ns" --name "$name" 2>/dev/null; then
+                ghclaw:info "[STOP] stopped $name"
+            else
+                ghclaw:warn "[STOP] failed to stop $name"
+            fi
+            if [ "$purge" = 1 ]; then
+                ___x_cmd_ghclaw___workertarget_ "$name"
+                ___x_cmd rmrf "$data_dir/$x_/.state" "$data_dir/$x_/.mq"
+                ghclaw:info "[STOP] purged state+MQ for $x_"
+            fi
+        done <<A
+$out
+A
+        return 0
+    fi
+
+    [ -n "$target" ] || N=ghclaw M="Missing target (or use --all)" log:ret:64
+    target="$(___x_cmd str lower "$target")"
+
+    local name="listen-$target"
+    if ___x_cmd worker isalive --ns "$ns" --name "$name"; then
+        if ___x_cmd worker stop --ns "$ns" --name "$name" 2>/dev/null; then
+            ghclaw:info "[STOP] stopped $name"
+        else
+            N=ghclaw M="Failed to stop worker -> $name" log:ret:1
+        fi
+    else
+        ghclaw:info "[STOP] $name is not running"
+    fi
+
+    if [ "$purge" = 1 ]; then
+        ___x_cmd rmrf "$data_dir/$target/.state" "$data_dir/$target/.mq"
+        ghclaw:info "[STOP] purged state+MQ for $target"
+    fi
+}

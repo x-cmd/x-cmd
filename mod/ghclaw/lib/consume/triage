@@ -1,0 +1,149 @@
+# shellcheck shell=dash disable=SC2016
+
+# AI issue triage on IssuesEvent(opened): classify with `x ai triage`
+# constrained to the repo's existing label vocabulary (seed a fixed starter
+# taxonomy once on zero-label repos), post a triage comment, then apply the
+# matching labels (AI-suggested names are never auto-created).
+# Skip when: the issue already has labels (human-classified), or a triage
+# comment already exists (replay/retry).
+# Reference: x-cmd-action/ai triage.sh. Design notes: story 260923.
+___x_cmd_ghclaw___triage_dispatch(){
+    # Called by ___consume_watchevent only for IssuesEvent/opened; the peel
+    # + bot/number guards are already done there — the x_mq_* globals
+    # (lib/consume/_index) are set on entry. tail = full issue body: everything
+    # needed to classify is already on the MQ line; zero file IO before
+    # this point.
+    local repo="$x_mq_repo"  number="$x_mq_number"  \
+          title="$x_mq_title"  body="$x_mq_tail"
+
+    [ -n "${title}${body}" ] || return 0
+
+    # ── Pre-check gh readiness (see util) so we never burn an AI call ──
+    ___x_cmd_ghclaw___prepare_gh_cli || {
+        ghclaw:warn "[TRIAGE] gh CLI unavailable or no token, skipped $repo#$number"
+        return 0
+    }
+
+    # ── Already labeled? A human (or an issue template) classified it —
+    #     an AI verdict would be redundant. ──
+    local nlabels
+    nlabels="$(___x_cmd_ghclaw___gh api "repos/$repo/issues/$number" \
+        --jq '.labels | length' 2>/dev/null)" || nlabels=0
+    case "$nlabels" in ''|*[!0-9]*)    nlabels=0 ;; esac
+    if [ "$nlabels" -gt 0 ]; then
+        ghclaw:info "[TRIAGE] $repo#$number already has labels, skipping (human-classified)"
+        return 0
+    fi
+
+    # ── Loop-guard: a 'Triaged by ghclaw' comment survives listen
+    #     restarts/replays (the triage comment IS the idempotency marker) ──
+    local triaged
+    triaged="$(___x_cmd_ghclaw___gh api "repos/$repo/issues/$number/comments?per_page=50" \
+        --jq '[.[] | select(.body | contains("Triaged by ghclaw"))] | length' 2>/dev/null)" || triaged=0
+    case "$triaged" in ''|*[!0-9]*)    triaged=0 ;; esac
+    if [ "$triaged" -gt 0 ]; then
+        ghclaw:info "[TRIAGE] $repo#$number already triaged, skipping (replay?)"
+        return 0
+    fi
+
+    ghclaw:info "[TRIAGE] $repo#$number opened — classifying with x ai triage"
+
+    # ── Resolve the repo's label vocabulary BEFORE classifying, and hand it
+    #     to x ai triage --labels so the AI only picks labels that EXIST.
+    #     Zero-label repo: seed a fixed starter taxonomy once — aligned with
+    #     the x ai triage defaults, human-curated, never AI-named. This is
+    #     the ONLY place labels get created: AI-suggested names are never
+    #     auto-created, so no near-duplicate label proliferation.
+    #     (Only the first 100 repo labels are considered — enough for
+    #     typical repos.) ──
+    local existing_names
+    existing_names="$(___x_cmd_ghclaw___gh api "repos/$repo/labels?per_page=100" \
+        --jq '.[].name' 2>/dev/null)" || existing_names=""
+    if [ -z "$existing_names" ]; then
+        ghclaw:info "[TRIAGE] $repo has no labels — seeding starter taxonomy"
+        local starter="bug enhancement docs question security performance chore"  s
+        for s in $starter; do
+            ___x_cmd_ghclaw___gh api -X POST "repos/$repo/labels" -f name="$s" >/dev/null 2>&1 || true
+        done
+        existing_names="$(___x_cmd_ghclaw___gh api "repos/$repo/labels?per_page=100" \
+            --jq '.[].name' 2>/dev/null)" || existing_names=""
+        [ -n "$existing_names" ] || \
+            ghclaw:warn "[TRIAGE] label seeding failed on $repo (permission?), apply will no-op"
+    fi
+    local existing_lc label_vocab
+    existing_lc="$(printf '%s\n' "$existing_names" | tr '[:upper:]' '[:lower:]')"
+    label_vocab="$(printf '%s\n' "$existing_names" | tr '\n' ',')"
+    label_vocab="${label_vocab%,}"
+
+    # ── Classify (prompt built into x ai; constrained to the repo vocab ──
+    set --
+    [ -z "$label_vocab" ] || set -- --labels "$label_vocab"
+    local response rc=0
+    response="$(printf 'Issue #%s: %s\n\n%s' "$number" "$title" "$body" \
+        | ___x_cmd ai triage --json "$@")" || rc=$?
+    # strip progress/log lines that may leak onto stdout (JSON must stay clean)
+    response="$(printf '%s' "$response" | grep -vE '^-[[:space:]]*[✓✗WIE]\||exitcode:' 2>/dev/null || printf '%s' "$response")"
+    if [ "$rc" != 0 ] || [ -z "$response" ]; then
+        ghclaw:warn "[TRIAGE] x ai triage failed (rc=$rc) on $repo#$number"
+        return 0
+    fi
+
+    local priority area labels tldr
+    priority="$(printf '%s' "$response" | ___x_cmd jq -r '.priority // "unknown"' 2>/dev/null)" || priority=unknown
+    area="$(printf '%s' "$response" | ___x_cmd jq -r '.area // "unknown"' 2>/dev/null)"     || area=unknown
+    labels="$(printf '%s' "$response" | ___x_cmd jq -r '.labels // ""' 2>/dev/null)"       || labels=""
+    tldr="$(printf '%s' "$response" | ___x_cmd jq -r '.tldr // ""' 2>/dev/null)"           || tldr=""
+    # tolerate array-shaped labels (one per line) as well as comma strings
+    labels="$(printf '%s' "$labels" | tr '\n' ',')"
+
+    local comment="🤖 **ai triage**
+
+**Priority:** $priority · **Area:** $area
+
+**TL;DR:** ${tldr:-n/a}
+
+**Suggested labels:** ${labels:-none}
+
+<sub>Triaged by ghclaw</sub>"
+    if ___x_cmd_ghclaw___gh api -X POST "repos/$repo/issues/$number/comments" -f body="$comment" >/dev/null 2>&1; then
+        ghclaw:info "[TRIAGE] posted triage comment on $repo#$number"
+    else
+        ghclaw:warn "[TRIAGE] failed to comment on $repo#$number"
+    fi
+
+    # ── Apply labels: reuse the vocab resolved above, NEVER create from
+    #     AI-suggested names (free-form creation would proliferate
+    #     near-duplicate labels). Case-insensitive match so "Bug" still
+    #     lands on the canonical "bug". ──
+    [ -n "$labels" ] || return 0
+    [ -n "$existing_names" ] || { ghclaw:debug "[TRIAGE] no labels in $repo, skip labeling"; return 0; }
+
+    local rest_labels="$labels"  l  lc  canon  lineno  applied=""
+    set --
+    while [ -n "$rest_labels" ]; do
+        l="${rest_labels%%,*}"
+        if [ "$l" = "$rest_labels" ]; then    rest_labels=""
+        else                                  rest_labels="${rest_labels#*,}"
+        fi
+        l="$(printf '%s' "$l" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' 2>/dev/null)" || true
+        [ -n "$l" ] || continue
+        lc="$(printf '%s' "$l" | tr '[:upper:]' '[:lower:]')"
+        # canonical spelling = the repo's own casing at the match position
+        lineno="$(printf '%s\n' "$existing_lc" | grep -nxF -- "$lc" | head -n 1 | cut -d: -f1)"
+        if [ -z "$lineno" ]; then
+            ghclaw:debug "[TRIAGE] label '$l' not in $repo, dropped (never auto-create)"
+            continue
+        fi
+        canon="$(printf '%s\n' "$existing_names" | sed -n "${lineno}p")"
+        set -- "$@" -f "labels[]=$canon"
+        applied="${applied}${canon},"
+    done
+    if [ "$#" -gt 0 ]; then
+        if ___x_cmd_ghclaw___gh api -X POST "repos/$repo/issues/$number/labels" "$@" >/dev/null 2>&1; then
+            ghclaw:info "[TRIAGE] labeled $repo#$number: ${applied%,}"
+        else
+            ghclaw:warn "[TRIAGE] failed to apply labels on $repo#$number"
+        fi
+    fi
+    return 0
+}

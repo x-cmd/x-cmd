@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Compact TSV log: output current state as snapshot TSV."""
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))

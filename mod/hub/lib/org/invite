@@ -1,0 +1,104 @@
+# shellcheck shell=dash
+
+# 邀请制成员管理：发起（返回可转发链接）/ 列 pending / 撤销。取代旧的按 username 直加。
+
+___x_cmd_hub_org_invite(){
+    local X_help_cmd='___x_cmd_hub___help org invite'
+    help:arg-null:parse
+
+    local op="${1:-send}"
+    case "$op" in
+        ls|revoke) shift
+            "___x_cmd_hub_org_invite_$op" "$@"                   ;;
+        # send 是字面子命令需 shift；其余（--org / 邮箱打头）按发起处理
+        send)      shift
+            "___x_cmd_hub_org_invite_send" "$@"                  ;;
+        *)          "___x_cmd_hub_org_invite_send" "$@"          ;;
+    esac
+}
+
+# 发起邀请：邮件送达 + 链接即凭证（不校验邮箱与账号一致），72h 内有效
+___x_cmd_hub_org_invite_send(){
+    local X_help_cmd='___x_cmd_hub___help org invite'
+    help:arg-null:parse
+
+    # 位置参数（email）与选项顺序无关；--role 取紧随其后的值
+    local org=; local role=; local email=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --org)      org="$2";   shift 2 ;;
+            --role|-r)  role="$2";  shift 2 ;;
+            -h|--help)  ___x_cmd help -m hub org invite; return 0 ;;
+            *)          if [ -z "$email" ]; then email="$1"; shift; else
+                            M='Unexpected argument' N=hub log:ret:64
+                        fi ;;
+        esac
+    done
+    [ -n "$org" ]   || M='Please provide --org <org>' arg:ret:64
+    [ -n "$email" ] || M='Please provide <email>' arg:ret:64
+
+    [ -z "$role" ] || case "$role" in
+        admin|member|guest)  ;;
+        *) M='Role must be admin|member|guest' arg:ret:64 ;;
+    esac
+
+    local data
+    data="$(___x_cmd jo dict "email=${email}" ${role:+"role=${role}"})"
+
+    local resp=
+    resp="$(___x_cmd_hub_u_curl post "/api/v0/org/$org/invite" data)" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to invite '$email' to '$org'"
+        return 1
+    }
+
+    printf "%s" "$resp" | {
+        local link=
+        ___x_cmd jo env . .link
+        ___x_cmd_hub_u_handle_resp true "Invitation sent to '$email'${role:+ (role=$role)}. Forward this link (valid 72h):"
+        printf "  %s\n" "$link"
+    }
+}
+
+___x_cmd_hub_org_invite_ls(){
+    local X_help_cmd='___x_cmd_hub___help org invite ls'
+    help:arg-null:parse
+
+    local org=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --org)  org="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$org" ] || M='Please provide --org <org>' arg:ret:64
+
+    local resp=; resp="$(___x_cmd_hub_u_curl get "/api/v0/org/$org/invite")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to list invites of $org"
+        return 1
+    }
+
+    printf "%s" "$resp" | ___x_cmd jo
+}
+
+___x_cmd_hub_org_invite_revoke(){
+    local X_help_cmd='___x_cmd_hub___help org invite revoke'
+    help:arg-null:parse
+
+    local org=
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --org)  org="$2"; shift 2 ;;
+            *)      break ;;
+        esac
+    done
+    [ -n "$org" ] || M='Please provide --org <org>' arg:ret:64
+    [ $# -gt 0 ]  || M='Please provide <email>' arg:ret:64
+    local email="$1"; shift
+
+    local resp=; resp="$(___x_cmd_hub_u_curl delete "/api/v0/org/$org/invite/$(___x_cmd url encode "$email")")" || {
+        ___x_cmd_hub_u_handle_resp false "Failed to revoke invite of '$email'"
+        return 1
+    }
+
+    ___x_cmd_hub_u_handle_resp true "Invitation of '$email' revoked"
+}
