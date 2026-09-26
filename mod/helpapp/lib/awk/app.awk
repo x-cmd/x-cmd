@@ -240,7 +240,7 @@ function user_helpdoc_paint( x1, x2, y1, y2, is_ctrl_help,      rootkp, w, _res)
 }
 
 function user_paint( x1, x2, y1, y2,        w ){
-    if ((y2 - y2) < 110) w = 42
+    if ((y2 - y1 + 1) < 110) w = 42
     else w = 45
     if (! comp_statusline_isfullscreen(o, STATUSLINE_KP)) {
         ctrl_help = ctrl_sw_get(o, APPKP)
