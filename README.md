@@ -1059,3 +1059,8 @@ As the head of sales and operations, my core responsibility is to ensure that th
 </tr>
 </table>
 <!-- Poweruser Recommendation End -->
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=x-cmd/x-cmd&type=date&legend=bottom-right)](https://www.star-history.com/?repos=x-cmd%2Fx-cmd&type=date&legend=bottom-right)
+
