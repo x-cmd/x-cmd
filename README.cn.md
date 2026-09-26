@@ -1060,3 +1060,7 @@ x-cmd 将常见的系统与网络操作封装为更安全、易用的命令，�
 </tr>
 </table>
 <!-- Poweruser Recommendation End -->
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=x-cmd/x-cmd&type=date&legend=bottom-right)](https://www.star-history.com/?repos=x-cmd%2Fx-cmd&type=date&legend=bottom-right)
