@@ -385,6 +385,10 @@ l@x-cmd.com<br>
 - [联系我们](https://cn.x-cmd.com/start/feedback)
 - [反馈缺陷](https://github.com/x-cmd/x-cmd/issues/new?template=1-bug-report.yml)
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=x-cmd/x-cmd&type=date&legend=bottom-right)](https://www.star-history.com/?repos=x-cmd%2Fx-cmd&type=date&legend=bottom-right)
+
 ## [承蒙 Power Commander 厚爱](https://cn.x-cmd.com/powercommander)
 
 <!-- Poweruser Recommendation Insert -->
