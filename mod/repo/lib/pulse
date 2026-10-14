@@ -32,11 +32,10 @@ ___x_cmd_repo_pulse(){
     dir=$(dirname "$file")
     mkdir -p "$dir" || return $?
 
-    # Bucket dates: 10 yearly (D-10y..D-1y) + 12 monthly (D-12m..D-1m) + 31 daily (D-30d..D).
+    # Bucket dates: 10 yearly + 12 monthly + 31 daily = 53 bucket points.
     local bucket_dates
-    bucket_dates=$(___x_cmd_repo_pulse__bucket_dates)
+    bucket_dates=$(___x_cmd_repo_pulse__bucket_dates) || return $?
 
-    # Today (one bucket point for append mode).
     local today
     today=$(date -u +%Y%m%d)
 
@@ -58,152 +57,360 @@ ___x_cmd_repo_pulse__token(){
     printf '%s\n' "$t"
 }
 
-# Emit YYYYMMDD dates on stdout, one per line. Bucket rule:
-#   10 yearly  → Jan 1 of each year, last 10 years up to current year
-#   12 monthly → 1st of each month, last 12 months up to current month
-#   31 daily   → today and the previous 30 days
-# Each line is sorted ascending (oldest first).
+# Emit YYYYMMDD bucket dates on stdout, oldest first.
+#
+# Rule:
+#   10 yearly  → Jan 1 of each year, last 10 years up to (but not including) current year
+#   12 monthly → 1st of each month, last 12 months up to (but not including) current month
+#   31 daily   → today and the previous 30 days (today inclusive)
+#
+# Implementation note: pure POSIX shell date arithmetic. The x-cmd
+# `date` module is sourced at runtime to avoid GNU/BSD `date -d` /
+# `-v` syntax fork.
 ___x_cmd_repo_pulse__bucket_dates(){
-    # Today (UTC) at midnight, in seconds since epoch. x epoch / x date
-    # are x-cmd's portability shims (avoid BSD-vs-GNU `date` syntax fork).
-    ___x_cmd epoch get_
-    local now_ts="$x_"
+    local today
+    today=$(date -u +%Y%m%d)
 
-    # Compute the bucket boundaries via pure date arithmetic: walk the
-    # calendar backwards from today, emitting 1 row per bucket point.
-    # We use `x date` to avoid GNU/BSD `date -d` vs `date -v` split.
-    local out=""
-    local i d
+    # Split today into Y/M/D components via cut (POSIX-portable; dash
+    # does not support ${var:0:4} substring).
+    local y0 m0 d0
+    y0=$(printf '%s' "$today" | cut -c1-4)
+    m0=$(printf '%s' "$today" | cut -c5-6)
+    d0=$(printf '%s' "$today" | cut -c7-8)
+    # Strip leading zeros for arithmetic. POSIX `$(( 09 ))` errors and
+    # dash doesn't support bash's 10# base prefix; convert via expr.
+    y0=$(expr "$y0" + 0)
+    m0=$(expr "$m0" + 0)
+    d0=$(expr "$d0" + 0)
 
-    # Yearly: for i in 1..10, emit Jan 1 of (currentYear - i).
-    for i in $(seq 1 10); do
-        # Use GNU `date` via x-cmd fallback. `x date dump_` accepts a
-        # YYYY-MM-DD source.
-        ___x_cmd date dump_ --fmt '%Y-%m-%d' "$((now_ts - i * 366 * 86400))" >/dev/null 2>&1 || true
-        # Fallback: pure shell year math.
-        ___x_cmd date dump_ --fmt '%Y-%m-%d' "$now_ts" >/dev/null
-        # Easier: just rely on `x date get_` and arithmetic. Reset.
-        out="${out}${i}
+    local out="" d y m
+
+    # Yearly: Jan 1 of (y0-10) .. (y0-1).
+    y=$((y0 - 10))
+    while [ "$y" -lt "$y0" ]; do
+        d=$(printf '%04d%02d%02d' "$y" 1 1)
+        out="${out}${d}
 "
+        y=$((y + 1))
     done
 
-    # This body will be filled in below; the stub above is replaced by
-    # the working implementation after first verification.
+    # Monthly: 1st of (current_month - 11) .. (current_month - 1).
+    # Compute as absolute month offset (year*12 + month) to handle year
+    # rollover cleanly.
+    local am_start am_end am ay am_m
+    am_start=$((y0 * 12 + m0 - 12))
+    am_end=$((y0 * 12 + m0 - 1))
+    am=$am_start
+    while [ "$am" -le "$am_end" ]; do
+        ay=$((am / 12))
+        am_m=$((am % 12 + 1))
+        d=$(printf '%04d%02d%02d' "$ay" "$am_m" 1)
+        out="${out}${d}
+"
+        am=$((am + 1))
+    done
+
+    # Daily: today and the previous 30 days. Compute via epoch to keep
+    # month rollover correct. Dash does NOT support `seq 30 -1 0`, so
+    # use a manual counter loop.
+    local now_ts
+    now_ts=$(date -u +%s 2>/dev/null || date -u +%s)
+    local i ts d
+    i=30
+    while [ "$i" -ge 0 ]; do
+        ts=$((now_ts - i * 86400))
+        d=$(date -u -r "$ts" +%Y%m%d 2>/dev/null || date -u -d "@$ts" +%Y%m%d 2>/dev/null)
+        out="${out}${d}
+"
+        i=$((i - 1))
+    done
+
     printf '%s\n' "$out"
 }
 
-# Rebuild mode: single GraphQL query covering all bucket dates.
+# Rebuild: full GraphQL → all 53 rows.
 ___x_cmd_repo_pulse__rebuild(){
     local owner_repo="$1" file="$2" token="$3" today="$4" bucket_dates="$5"
 
-    # Emit header first so the file is non-empty even on error.
-    printf 'date\trelease\tmergedPR\topenPR\tclosedIssue\topenIssue\tcommit\tpullRequest\tissue\n' > "$file" || return $?
-
-    local rows
-    rows=$(___x_cmd_repo_pulse__snapshot_at "$owner_repo" "$token" "$bucket_dates") || return $?
-
-    {
-        cat "$file"
-        printf '%s\n' "$rows"
-    } >> "$file"
-
-    # Sort the body rows (excluding header) by date, then re-emit with header.
-    ___x_cmd_repo_pulse__resort "$file"
-}
-
-# Append mode: only one bucket point — today.
-___x_cmd_repo_pulse__append(){
-    local owner_repo="$1" file="$2" token="$3" today="$4" bucket_dates="$5"
-
-    local existing
-    existing=$(tail -n +2 "$file")
-
-    local new_rows
-    new_rows=$(___x_cmd_repo_pulse__snapshot_at_one "$owner_repo" "$token" "$today") || return $?
-
-    {
-        printf 'date\trelease\tmergedPR\topenPR\tclosedIssue\topenIssue\tcommit\tpullRequest\tissue\n'
-        printf '%s\n' "$existing"
-        printf '%s\n' "$new_rows"
-    } | sort -t "$(printf '\t')" -k1,1 \
-      | { cat; } > "$file"
-}
-
-# Resort an existing file in-place: header + sorted body. Dedup by date
-# (keep last row in case of duplicates).
-___x_cmd_repo_pulse__resort(){
-    local file="$1"
-    local body
-    body=$(tail -n +2 "$file")
-    {
-        printf 'date\trelease\tmergedPR\topenPR\tclosedIssue\topenIssue\tcommit\tpullRequest\tissue\n'
-        printf '%s\n' "$body"
-    } | sort -t "$(printf '\t')" -k1,1 -u > "$file"
-}
-
-# Stub: emit a single TSV row from a GraphQL response.
-# Real implementation will go in lib/awk/pulse.jq + bash wrapper below.
-___x_cmd_repo_pulse__snapshot_at(){
-    local owner_repo="$1" token="$2" bucket_dates="$3"
     local owner="${owner_repo%/*}"
     local repo="${owner_repo#*/}"
 
     local resp
     resp=$(___x_cmd_repo_pulse__graphql "$owner" "$repo" "$token" "$bucket_dates") || return $?
 
-    # TODO: parse resp + bucket_dates into TSV rows via jq.
-    printf '%s\n' "$resp" >/dev/null
-    return 0
+    # Count buckets to compute alias indexes.
+    local M
+    M=$(printf '%s\n' "$bucket_dates" | awk 'NF' | wc -l | tr -d ' ')
+    M=$((M + 0))
+
+    local rows
+    rows=$(printf '%s' "$resp" | ___x_cmd_repo_pulse__rows "$bucket_dates" "$M") || return $?
+
+    {
+        printf 'date\trelease\tmergedPR\topenPR\tclosedIssue\topenIssue\tcommit\tpullRequest\tissue\n'
+        printf '%s\n' "$rows"
+    } > "$file"
 }
 
-___x_cmd_repo_pulse__snapshot_at_one(){
-    local owner_repo="$1" token="$2" today="$3"
-    # For now, treat single-day append the same as full snapshot — the
-    # server side has to fetch all totals anyway, so we just call once
-    # with the full bucket list and pick today's row.
-    ___x_cmd_repo_pulse__snapshot_at "$owner_repo" "$token" "$today"
+# Append: only emit today's row. The full GraphQL is still required
+# (totals + aliases are needed to compute the snapshot), but we
+# filter the row helper output to just $today.
+___x_cmd_repo_pulse__append(){
+    local owner_repo="$1" file="$2" token="$3" today="$4" bucket_dates="$5"
+
+    local existing
+    existing=$(tail -n +2 "$file" 2>/dev/null)
+
+    local owner="${owner_repo%/*}"
+    local repo="${owner_repo#*/}"
+
+    local resp
+    resp=$(___x_cmd_repo_pulse__graphql "$owner" "$repo" "$token" "$bucket_dates") || return $?
+
+    local M
+    M=$(printf '%s\n' "$bucket_dates" | awk 'NF' | wc -l | tr -d ' ')
+    M=$((M + 0))
+
+    # Pull only today's row out of the row helper. `grep` on a fixed
+    # YYYYMMDD is exact and stable.
+    local today_row
+    today_row=$(printf '%s' "$resp" | ___x_cmd_repo_pulse__rows "$bucket_dates" "$M" \
+        | awk -F'\t' -v d="$today" '$1 == d { print; exit }')
+
+    if [ -z "$today_row" ]; then
+        # today's bucket isn't in the list (e.g. user ran pulse late and
+        # the daily bucket rolled forward). Just refresh the existing
+        # file with the same data — re-emit it untouched.
+        return 0
+    fi
+
+    # Append: keep existing rows that aren't today, plus today's row.
+    # Use a group command `{ ... }` so dash accepts the pipeline; bare
+    # `$( ... | sort )` triggers a parse error on dash.
+    local body
+    body=$(
+        {
+            printf '%s\n' "$existing" | awk -F'\t' -v d="$today" '$1 != d'
+            printf '%s\n' "$today_row"
+        } | sort -t "$(printf '\t')" -k1,1 -u
+    )
+
+    {
+        printf 'date\trelease\tmergedPR\topenPR\tclosedIssue\topenIssue\tcommit\tpullRequest\tissue\n'
+        printf '%s\n' "$body"
+    } > "$file"
+}
+
+# Convert a GraphQL response + the bucket date list into sorted TSV rows.
+# Args:
+#   stdin  : GraphQL JSON response
+#   $1     : bucket_dates (newline-separated YYYYMMDD)
+#   $2     : M (bucket count, so we can compute alias indexes)
+# Output: TSV rows on stdout, one per bucket date, sorted ascending.
+#
+# Implementation:
+#   1. One jq call pulls totals + aliases into a flat key\tvalue stream.
+#   2. The shell loop emits one TSV row per bucket date by reading
+#      the alias map. We do a single jq call per row for the per-bucket
+#      release count (counting < date requires a list scan over up to
+#      100 publishedAt values).
+#   3. Snapshot = total - delta. Floor at 0 to keep counts monotonic.
+___x_cmd_repo_pulse__rows(){
+    local bucket_dates="$1" M="$2"
+    local resp
+    resp=$(cat)
+
+    # Pull totals + every aliased search count into a TSV stream of
+    # key\tvalue pairs. Total keys (including the 6 totals + N*4 alias
+    # entries) collapse to roughly 200+ rows for 53 bucket dates.
+    local kv
+    kv=$(printf '%s' "$resp" | jq -r '
+        .data.repository as $r
+        | [
+            ["mergedPRTotal",     ($r.mergedPRTotal.totalCount // 0)],
+            ["openPRTotal",       ($r.openPRTotal.totalCount // 0)],
+            ["closedIssueTotal",  ($r.closedIssueTotal.totalCount // 0)],
+            ["openIssueTotal",    ($r.openIssueTotal.totalCount // 0)],
+            ["prTotal",           ($r.prTotal.totalCount // 0)],
+            ["issueTotal",        ($r.issueTotal.totalCount // 0)],
+            ($r | to_entries[] | select(.key | startswith("s"))
+                 | [.key, (.value.issueCount // 0)])
+          ]
+        | .[] | "\(.[0])\t\(.[1])"
+    ')
+
+    # Lookup helper: print value for $1 key from kv stream, or 0.
+    lookup() {
+        printf '%s\n' "$kv" | awk -F'\t' -v k="$1" '$1 == k { print $2; found = 1; exit } END { if (!found) print 0 }'
+    }
+
+    local mergedTotal openPRTotal closedIssueTotal openIssueTotal prTotal issueTotal
+    mergedTotal=$(lookup mergedPRTotal)
+    openPRTotal=$(lookup openPRTotal)
+    closedIssueTotal=$(lookup closedIssueTotal)
+    openIssueTotal=$(lookup openIssueTotal)
+    prTotal=$(lookup prTotal)
+    issueTotal=$(lookup issueTotal)
+
+    # For each bucket date, compute 8 metric values via lookup + a
+    # single jq call for the release count (which depends on the
+    # date).
+    local idx=0 d d_iso d_y d_m d_d s1 s2 s3 s4 v1 v2 v3 v4
+    local relCount m1 m2 m3 m5 m7 m8
+    while read -r d; do
+        [ -n "$d" ] || continue
+        d_y=$(printf '%s' "$d" | cut -c1-4)
+        d_m=$(printf '%s' "$d" | cut -c5-6)
+        d_d=$(printf '%s' "$d" | cut -c7-8)
+        d_iso="${d_y}-${d_m}-${d_d}"
+        idx=$((idx + 1))
+
+        s1="s${idx}"
+        s2="s$((idx + M))"
+        s3="s$((idx + 2 * M))"
+        s4="s$((idx + 3 * M))"
+
+        v1=$(lookup "$s1")
+        v2=$(lookup "$s2")
+        v3=$(lookup "$s3")
+        v4=$(lookup "$s4")
+
+        # Release count: paginate(100) → released before date D.
+        relCount=$(printf '%s' "$resp" | jq -r --arg di "$d_iso" \
+            '[.data.repository.releases.nodes // [] | .[].publishedAt[:10] | select(. < $di)] | length')
+
+        # Snapshots, floored at 0.
+        # openPR / openIssue at D = count of currently-open PRs / issues
+        # created by D. Re-fetch from JSON (alias s{4M+idx+1} / s{5M+idx+1}).
+        v5=$(lookup "s$((idx + 4 * M))")
+        v6=$(lookup "s$((idx + 5 * M))")
+
+        m1=$relCount
+        m2=$((mergedTotal - v1)); [ "$m2" -lt 0 ] && m2=0
+        m3=$v5
+        m4=$((closedIssueTotal - v3)); [ "$m4" -lt 0 ] && m4=0
+        m5=$v6
+        m6=0  # commit placeholder
+        m7=$((prTotal - v2)); [ "$m7" -lt 0 ] && m7=0
+        m8=$((issueTotal - v4)); [ "$m8" -lt 0 ] && m8=0
+
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$d" "$m1" "$m2" "$m3" "$m4" "$m5" "$m6" "$m7" "$m8"
+    done <<A
+$bucket_dates
+A
 }
 
 # Build GraphQL query and POST it.
-# Each bucket date D contributes 4 aliased searches:
-#   s{i}: search(query:"repo:o/r is:pr is:merged merged:>=D", type:ISSUE, first:0){issueCount}
-#   s{i+M}: ... is:pr created:>=D
-#   s{i+2M}: ... is:issue state:closed created:>=D
-#   s{i+3M}: ... is:issue created:>=D
-# Where M = number of bucket dates.
+# Search can't live inside `repository {}` — it's a top-level field
+# only — so we bundle 53*N aliased searches at query root.
+#
+# GitHub rejects queries > ~16KB with 502 Bad Gateway. To stay under
+# the limit we split into N round-trips, each carrying 53 aliases.
+#
+# Snapshot math per metric at date D:
+#   mergedPR     = current_mergedPR_total - search("is:pr is:merged merged:>D")
+#   openPR       = (search("is:pr created:<=D") - merged before D - closed-not-merged before D)
+#                ≈ (search("is:pr created:<=D") - search("is:pr is:merged merged:<=D") - search("is:pr state:closed closed:<=D"))
+#                  Simplified: openPR ≈ search("is:pr state:open created:<=D")
+#                  (An OPEN PR can only become OPEN after creation; if
+#                  it's still open at time T, it must have been created
+#                  by T and not closed by T.)
+#   closedIssue  = current_closedIssue_total - search("is:issue state:closed created:>D")
+#   openIssue    = search("is:issue state:open created:<=D")   (same logic)
+#   commit       = 0 placeholder; /stats/commit_activity is wired separately
+#   pullRequest  = current_total - search("is:pr created:>D")
+#   issue        = current_total - search("is:issue created:>D")
+#   release      = count(releases where publishedAt < D) — paginated first 100
+#
+# Alias groups (6 round-trips for the 6 different search variants):
+#   round 1 (mergedPR >):   s1 .. s{M}
+#   round 2 (PR created >): s1 .. s{M}    → reindexed to s{M+1}..s{2M}
+#   round 3 (closed issue created >): s1..s{M}  → s{2M+1}..s{3M}
+#   round 4 (issue created >):         s1..s{M}  → s{3M+1}..s{4M}
+#   round 5 (PR open created <=):      s1..s{M}  → s{4M+1}..s{5M}
+#   round 6 (issue open created <=):   s1..s{M}  → s{5M+1}..s{6M}
+# Repo metadata + releases piggyback on round 1 only.
 ___x_cmd_repo_pulse__graphql(){
     local owner="$1" repo="$2" token="$3" bucket_dates="$4"
 
-    # Build alias declarations and selections.
-    local i=0
-    local sel="" decl=""
-    local d
+    local M
+    M=$(printf '%s\n' "$bucket_dates" | awk 'NF' | wc -l | tr -d ' ')
+    M=$((M + 0))
+
+    local decl="\$o:String!,\$n:String!"
+
+    # Build per-round search selections. Each round uses the same
+    # bucket list with a different filter — see the docstring above.
+    local i=0 sel_round1="" sel_round2="" sel_round3="" sel_round4="" sel_round5="" sel_round6=""
+    local d d_y d_m d_d d_iso
     while read -r d; do
         [ -n "$d" ] || continue
-        # d is YYYYMMDD; GraphQL wants YYYY-MM-DD.
-        local d_iso
-        d_iso="${d:0:4}-${d:4:2}-${d:6:2}"
-        decl="${decl}\$s$((i+1)):String!,"
-        sel="${sel}s$((i+1)):search(query:\"repo:${owner}/${repo} is:pr is:merged merged:>${d_iso}\",type:ISSUE,first:0){issueCount} "
-        sel="${sel}s$((i+1+100)):search(query:\"repo:${owner}/${repo} is:pr created:>${d_iso}\",type:ISSUE,first:0){issueCount} "
-        sel="${sel}s$((i+1+200)):search(query:\"repo:${owner}/${repo} is:issue state:closed created:>${d_iso}\",type:ISSUE,first:0){issueCount} "
-        sel="${sel}s$((i+1+300)):search(query:\"repo:${owner}/${repo} is:issue created:>${d_iso}\",type:ISSUE,first:0){issueCount} "
+        d_y=$(printf '%s' "$d" | cut -c1-4)
+        d_m=$(printf '%s' "$d" | cut -c5-6)
+        d_d=$(printf '%s' "$d" | cut -c7-8)
+        d_iso="${d_y}-${d_m}-${d_d}"
+        sel_round1="${sel_round1}s$((i+1)):search(query:\"repo:${owner}/${repo} is:pr is:merged merged:>${d_iso}\",type:ISSUE,first:0){issueCount} "
+        sel_round2="${sel_round2}s$((i+1)):search(query:\"repo:${owner}/${repo} is:pr created:>${d_iso}\",type:ISSUE,first:0){issueCount} "
+        sel_round3="${sel_round3}s$((i+1)):search(query:\"repo:${owner}/${repo} is:issue state:closed created:>${d_iso}\",type:ISSUE,first:0){issueCount} "
+        sel_round4="${sel_round4}s$((i+1)):search(query:\"repo:${owner}/${repo} is:issue created:>${d_iso}\",type:ISSUE,first:0){issueCount} "
+        sel_round5="${sel_round5}s$((i+1)):search(query:\"repo:${owner}/${repo} is:pr state:open created:<=${d_iso}\",type:ISSUE,first:0){issueCount} "
+        sel_round6="${sel_round6}s$((i+1)):search(query:\"repo:${owner}/${repo} is:issue state:open created:<=${d_iso}\",type:ISSUE,first:0){issueCount} "
         i=$((i + 1))
     done <<A
 $bucket_dates
 A
-    # Strip trailing comma.
-    decl="${decl%,}"
 
-    local query
-    query="query(\$o:String!,\$n:String!,${decl}){repository(owner:\$o,name:\$n){mergedPRTotal:pullRequests(states:MERGED){totalCount} openPRTotal:pullRequests(states:OPEN){totalCount} closedIssueTotal:issues(states:CLOSED){totalCount} openIssueTotal:issues(states:OPEN){totalCount} prTotal:pullRequests{totalCount} issueTotal:issues{totalCount} releases(first:100,orderBy:{field:CREATED_AT,direction:DESC}){totalCount nodes{publishedAt}} ${sel}}}"
+    # Round 1: repo metadata + releases + mergedPR searches. The repository
+    # fields use $o/$n variables; the search() query strings are
+    # literals (GitHub's GraphQL spec does NOT allow search() args to be
+    # variables, so we inline the owner/repo).
+    local q1="query(${decl}){repository(owner:\$o,name:\$n){mergedPRTotal:pullRequests(states:MERGED){totalCount} openPRTotal:pullRequests(states:OPEN){totalCount} closedIssueTotal:issues(states:CLOSED){totalCount} openIssueTotal:issues(states:OPEN){totalCount} prTotal:pullRequests{totalCount} issueTotal:issues{totalCount} releases(first:100,orderBy:{field:CREATED_AT,direction:DESC}){totalCount nodes{publishedAt}}} ${sel_round1}}"
 
-    local payload
-    payload=$(jq -nc --arg q "$query" '{query: $q}')
+    # Rounds 2-6: pure search round-trips. No variables needed because
+    # owner/repo are inlined into the search query strings.
+    local q2="query{${sel_round2}}"
+    local q3="query{${sel_round3}}"
+    local q4="query{${sel_round4}}"
+    local q5="query{${sel_round5}}"
+    local q6="query{${sel_round6}}"
 
-    curl -sS \
-        -H "Authorization: bearer $token" \
-        -H "Content-Type: application/json" \
-        -d "$payload" \
-        https://api.github.com/graphql
+    # Round 1 needs variables for the repository(owner:$o, name:$n) call.
+    # Rounds 2-6 do not.
+    local p1 p2 p3 p4 p5 p6
+    p1=$(jq -nc --arg q "$q1" --arg o "$owner" --arg n "$repo" '{query: $q, variables: {o: $o, n: $n}}')
+    p2=$(jq -nc --arg q "$q2" '{query: $q}')
+    p3=$(jq -nc --arg q "$q3" '{query: $q}')
+    p4=$(jq -nc --arg q "$q4" '{query: $q}')
+    p5=$(jq -nc --arg q "$q5" '{query: $q}')
+    p6=$(jq -nc --arg q "$q6" '{query: $q}')
+
+    local r1 r2 r3 r4 r5 r6
+    r1=$(curl -sS -H "Authorization: bearer $token" -H "Content-Type: application/json" -d "$p1" https://api.github.com/graphql)
+    r2=$(curl -sS -H "Authorization: bearer $token" -H "Content-Type: application/json" -d "$p2" https://api.github.com/graphql)
+    r3=$(curl -sS -H "Authorization: bearer $token" -H "Content-Type: application/json" -d "$p3" https://api.github.com/graphql)
+    r4=$(curl -sS -H "Authorization: bearer $token" -H "Content-Type: application/json" -d "$p4" https://api.github.com/graphql)
+    r5=$(curl -sS -H "Authorization: bearer $token" -H "Content-Type: application/json" -d "$p5" https://api.github.com/graphql)
+    r6=$(curl -sS -H "Authorization: bearer $token" -H "Content-Type: application/json" -d "$p6" https://api.github.com/graphql)
+
+    # Merge: data.repository = (repo metadata from r1, no sN) + (s1..s{M} from r1) + (s{M+1}..s{6M} from r2..r6, reindexed).
+    jq -n \
+        --argjson r1 "$r1" --argjson r2 "$r2" --argjson r3 "$r3" --argjson r4 "$r4" --argjson r5 "$r5" --argjson r6 "$r6" --argjson m "$M" '
+        ($r1.data.repository // {}) as $rep
+        | {
+            data: {
+                repository: (
+                    ($rep | with_entries(select(.key | startswith("s") | not)))
+                    + (reduce range(0; $m) as $i ({}; . + {
+                          ("s" + ($i + 1 | tostring)):             ($r1.data["s" + ($i + 1 | tostring)] // {}),
+                          ("s" + ($m + 1 + $i | tostring)):       ($r2.data["s" + ($i + 1 | tostring)] // {}),
+                          ("s" + (2*$m + 1 + $i | tostring)):     ($r3.data["s" + ($i + 1 | tostring)] // {}),
+                          ("s" + (3*$m + 1 + $i | tostring)):     ($r4.data["s" + ($i + 1 | tostring)] // {}),
+                          ("s" + (4*$m + 1 + $i | tostring)):     ($r5.data["s" + ($i + 1 | tostring)] // {}),
+                          ("s" + (5*$m + 1 + $i | tostring)):     ($r6.data["s" + ($i + 1 | tostring)] // {})
+                      }))
+                )
+            }
+          }
+        '
 }
