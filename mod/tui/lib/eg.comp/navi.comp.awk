@@ -36,7 +36,7 @@ function navi_statusline_filter(o, kp){
     comp_statusline_data_put( o, kp, "enter", "Close filter", "Press '/' to close filter items" )
 }
 
-function navi_statusline_add( o, kp, v, s, l ){
+function navi_statusline_add( o, kp, v, s, l,       i ){
     o[ kp, "statusline", "custom" L ] = i = o[ kp, "statusline", "custom" L ] + 1
     o[ kp, "statusline", "custom", i ] = v
     o[ kp, "statusline", "custom", v, "short-help" ] = s

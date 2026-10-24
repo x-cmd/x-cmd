@@ -16,6 +16,9 @@ function advise_error(msg){
 #
 # Returns: Formatted string ready for shell completion
 function comp_advise_str_style(v, d,      _res){
+    # Flatten tab/newline/CR in desc into spaces, so it won't break the
+    # completion record formats (\002-separated stream, zsh ':' format)
+    gsub(/[\t\n\r\f\v]/, " ", d)
     if ( ___X_CMD_SHELL == "zsh" ){
         gsub(":", "\\:", v)
         if ((d != "") && ( ADVISE_WITHOUT_DESC != 1 ))  _res = v ":" d

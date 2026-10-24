@@ -188,12 +188,12 @@ ___x_cmd_umami_site_stat(){
         esac
     done
 
-    # If no mode flag found, use default (tty gets --app, pipe gets --json)
+    # If no mode flag found, use default (tty gets --app, pipe gets --tsv)
     if [ -z "$has_mode" ]; then
         if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; then
             op="--app"
         else
-            op="--json"
+            op="--tsv"
         fi
     fi
 
@@ -206,10 +206,8 @@ ___x_cmd_umami_site_stat(){
         esac
     done
 
-    # If no args left after removing mode flags, use website name
-    if [ -z "$new_args" ]; then
-        set -- x-cmd
-    else
+    # If no args left after removing mode flags, keep empty (will error if needed)
+    if [ -n "$new_args" ]; then
         set -- $new_args
     fi
 
@@ -217,6 +215,7 @@ ___x_cmd_umami_site_stat(){
         --app)        ___x_cmd_umami_site_stat___app   "$@" ;;
         --raw)        ___x_cmd_umami_site_stat___raw   "$@" ;;
         --json)       ___x_cmd_umami_site_stat___json  "$@" ;;
+        --tsv)        ___x_cmd_umami_site_stat___tsv    "$@" ;;
         -h|--help)    ___x_cmd help -m umami site stat        "$@" ;;
         *)            ___x_cmd_umami_site_stat___raw   "$op" "$@" ;;
     esac
@@ -234,6 +233,7 @@ ___x_cmd_umami_site_stat___raw(){
     # Re-parse any remaining options that may have come after website_id
     while [ "$#" -gt 0 ]; do
         case "$1" in
+            --app|--raw|--json|--tsv) shift ;;
             --startAt)
                 key="${1#--}"
                 [ -n "$2" ] || M="Provide a $key" N=umami log:ret:1
@@ -292,19 +292,61 @@ ___x_cmd_umami_site_stat___tsv(){
 # https://umami.is/docs/api/website-stats#get-/api/websites/:websiteid/metrics
 ___x_cmd_umami_site_metric(){
     [ "$#" -gt 0 ] || set -- --app
-    local op="$1"; shift
+
+    # Check if --app, --raw, or --json is in arguments
+    local op="--app"
+    local has_mode=
+    for _arg in "$@"; do
+        case "$_arg" in
+            --app|--raw|--json) has_mode=1; op="$_arg"; break ;;
+        esac
+    done
+
+    # If no mode flag found, use auto mode (tty -> --app, pipe -> --tsv)
+    if [ -z "$has_mode" ]; then
+        if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual; then
+            op="--app"
+        else
+            op="--tsv"
+        fi
+    fi
+
+    # Build new args without mode flags
+    local new_args=""
+    for _arg in "$@"; do
+        case "$_arg" in
+            --app|--raw|--json) ;;
+            *) new_args="${new_args}${new_args:+ }$_arg" ;;
+        esac
+    done
+
+    eval "set -- $new_args"
+
     case "$op" in
         --app)        ___x_cmd_umami_site_metric___app   "$@" ;;
         --raw)        ___x_cmd_umami_site_metric___raw   "$@" ;;
         --json)       ___x_cmd_umami_site_metric___json  "$@" ;;
+        --tsv)        ___x_cmd_umami_site_metric___tsv    "$@" ;;
         -h|--help)    ___x_cmd help -m umami site metric        "$@" ;;
         *)            ___x_cmd_umami_site_metric___raw   "$op" "$@" ;;
     esac
 }
 
+___x_cmd_umami_site_metric___tsv(){
+    printf "path\tcount\n"
+    ___x_cmd_umami_site_metric___raw "$@" \
+        | tr '{' '\n' \
+        | grep '"x"' \
+        | sed 's/.*"x":"\([^"]*\)".*"y":\([0-9]*\).*/\1\t\2/'
+}
+
 ___x_cmd_umami_site_metric___raw(){
     local arg=;local key=;
-    local _start=; local _end=;
+    local _start=; local _end=; local _type=;
+    local _website_id=;
+    local _seen_type=;
+
+    # First pass: parse all options that come before website_id
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --startAt)
@@ -324,6 +366,7 @@ ___x_cmd_umami_site_metric___raw(){
                 [ -n "$2" ] || M="Provide a $key" N=umami log:ret:1
                 arg="${arg}&${key}=${2}"
                 _type=1
+                _seen_type=1
                 shift 2;;
             --referrer|--title|--host|--os|--brower|\
             --device|--country|--region|--city|\
@@ -332,19 +375,26 @@ ___x_cmd_umami_site_metric___raw(){
                 [ -n "$2" ] || M="Provide a $key" N=umami log:ret:1
                 arg="${arg}&${key}=${2}"
                 shift 2;;
+            -*)
+                shift ;;
             *)
+                # First non-option argument is website_id
+                _website_id="$1"
+                shift
                 break ;;
         esac
     done
-    [ -n "$_start" ] || arg="startAt=$(___x_cmd_umami___date -15)&${arg}"
-    [ -n "$_end" ]   || arg="endAt=$(___x_cmd_umami___date)&${arg}"
-    [ -n "$_type" ]  || M="Provide a type" N=umami log:ret:1
-    arg="?${arg}"
 
-    # Parse website_id first
-    local _website_id="$1";  [ -n "$_website_id" ] || M='Provide a websiteID'   N=umami log:ret:1
+    # If website_id was not captured yet, parse remaining args
+    if [ -z "$_website_id" ]; then
+        if [ "$#" -gt 0 ]; then
+            _website_id="$1"
+            shift
+        fi
+    fi
+
+    [ -n "$_website_id" ] || M='Provide a websiteID'   N=umami log:ret:1
     ___x_cmd_umami___transform_website_id || return
-    shift
 
     # Re-parse any remaining options that may have come after website_id
     while [ "$#" -gt 0 ]; do
@@ -354,10 +404,16 @@ ___x_cmd_umami_site_metric___raw(){
                 key="${1#--}"
                 [ -n "$2" ] || M="Provide a $key" N=umami log:ret:1
                 arg="${arg}&${key}=${2}"
+                [ "$key" = "type" ] && _seen_type=1
                 shift 2;;
             *)  shift ;;
         esac
     done
+
+    [ -n "$_start" ] || arg="startAt=$(___x_cmd_umami___date -15)&${arg}"
+    [ -n "$_end" ]   || arg="endAt=$(___x_cmd_umami___date)&${arg}"
+    [ -n "$_seen_type" ]  || M="Provide a type" N=umami log:ret:1
+    arg="?${arg}"
 
     ___x_cmd_umami_api get "$___X_CMD_UMAMI___API_ENDPOINT/${_website_id}/metrics${arg}"
 }
@@ -370,12 +426,7 @@ ___x_cmd_umami_site_metric___app(){
     if ___x_cmd_is_stdout2tty && ___x_cmd_runmode_allow_manual ; then
         ___x_cmd_umami_site_metric___raw "$@" | ___x_cmd jo fmt | ___x_cmd csv app
     else
-        # Pipe output uses tsv by default
-        printf "path\tcount\n"
-        ___x_cmd_umami_site_metric___raw "$@" \
-            | tr '{' '\n' \
-            | grep '"x"' \
-            | sed 's/.*"x":"\([^"]*\)".*"y":\([0-9]*\).*/\1\t\2/'
+        ___x_cmd_umami_site_metric___tsv "$@"
     fi
 }
 # EndSection
