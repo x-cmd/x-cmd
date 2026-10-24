@@ -1,5 +1,35 @@
 # shellcheck shell=zsh
 
+# Completion registrations made while compsys is not initialized yet
+# (compinit is deferred to the first Tab press, and running compinit at
+# registration time would cost ~200ms). Each entry is a
+# "comp_func<US>cmd" string. ___x_cmd_advise_load_complete appends to it
+# whenever compdef is missing; it is replayed by
+# ___x_cmd_advise___zsh_compdef_flush.
+typeset -ga ___X_CMD_ADVISE_ZSH_COMPDEF_PENDING
+
+___x_cmd_advise___zsh_compdef_flush(){
+    [ "${#___X_CMD_ADVISE_ZSH_COMPDEF_PENDING[@]}" -gt 0 ] || return 0
+
+    # Something is pending but compsys is still down: initialize it now.
+    # This covers configurations where rcload deliberately skips prepare
+    # (e.g. autoload=never) while the user registered a custom completion
+    # with `x advise init`.
+    if ! ___x_cmd hascmd compdef; then
+        ___x_cmd_advise___prepare || return 1
+    fi
+
+    local IFS="$___X_CMD_UNSEENCHAR_002"
+    local item comp_func comp_name
+    for item in "${___X_CMD_ADVISE_ZSH_COMPDEF_PENDING[@]}"; do
+        comp_func="${item%%"$IFS"*}"
+        comp_name="${item#*"$IFS"}"
+        compdef "$comp_func" "$comp_name"
+    done
+
+    ___X_CMD_ADVISE_ZSH_COMPDEF_PENDING=()
+}
+
 ___x_cmd_advise_run(){
     xrc:mod:lib advise  helper
     setopt aliases

@@ -96,9 +96,26 @@ ___x_cmd_advise___get_completion_function(){
 
 ___x_cmd_advise_load_complete(){
     [ -z "$___X_CMD_ADVISE_PREPARE_FAILED" ] || return $?
+    if [ -n "$BASH_VERSION" ] && [ -z "$___X_CMD_ADVISE_PREPARED" ]; then
+        ___x_cmd_advise___prepare || return 1
+    fi
     local comp_func="$1"; shift
     advise:debug --comp_func "$comp_func" --comp_name "$*" "load complete"
-    if [ -n "$ZSH_VERSION" ]; then                      compdef "$comp_func" "$@"
+    if [ -n "$ZSH_VERSION" ]; then
+        if ___x_cmd hascmd compdef; then
+            # compsys is up: drain anything queued before it was initialized,
+            # then register directly
+            ___x_cmd_advise___zsh_compdef_flush
+            compdef "$comp_func" "$@"
+        else
+            # compsys is not initialized yet (compinit is deferred to the
+            # first Tab press): queue the registration for the flush.
+            typeset -ga ___X_CMD_ADVISE_ZSH_COMPDEF_PENDING
+            local name
+            for name in "$@"; do
+                ___X_CMD_ADVISE_ZSH_COMPDEF_PENDING+=( "${comp_func}${___X_CMD_UNSEENCHAR_002}${name}" )
+            done
+        fi
     elif [[ "$BASH_VERSION" =~ (^3.*|^4.[0-3]) ]]; then complete -o nospace -F "$comp_func" "$@"
     else                                                complete -o nospace -o nosort -F "$comp_func" "$@"
     fi

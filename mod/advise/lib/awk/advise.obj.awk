@@ -3,7 +3,8 @@
 # Populated by aobj_cal_rest_argc_maxmin, used by aobj_get_id_by_name
 BEGIN{
     # Set default language based on environment
-    if ((___X_CMD_LANG == "cn") || (___X_CMD_LANG == "zh" )) ___X_CMD_LANG = "cn"
+    # 'cn' and 'zh' both mean Chinese, normalize to 'zh'
+    if ((___X_CMD_LANG == "cn") || (___X_CMD_LANG == "zh" )) ___X_CMD_LANG = "zh"
     else ___X_CMD_LANG = "en"
 
     ___X_CMD_LANG = jqu(___X_CMD_LANG);
@@ -18,6 +19,8 @@ function aobj_get_value_with_local_language(o, kp, language){
 # Builds keypath with language fallback logic
 function aobj_get_kp_with_local_language(o, kp, language){
     if (! aobj_is_null(o, kp SUBSEP language)) return kp SUBSEP language
+    # Chinese data may use "zh" (new) or "cn" (legacy)
+    if ((language == "\"zh\"") && ! aobj_is_null(o, kp SUBSEP "\"cn\"")) return kp SUBSEP "\"cn\""
     return kp SUBSEP "\"en\""
 }
 

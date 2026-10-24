@@ -31,11 +31,11 @@ function expand_dict(o, kp,        i, l, msg, key, delarr, delnum, val, j, val_l
         }
         else if (key ~ "^\"#") {
             val = o[ kp, key ]
-            if (val == "{") jdict_rm(o, kp SUBSEP key, RM_DATA_LANG)
+            if (val == "{") rm_data_lang(o, kp SUBSEP key)
             else if (val == "[") {
                 val_l = o[ kp, key L ]
                 for (j=1; j<=val_l; ++j){
-                    jdict_rm(o, kp SUBSEP key SUBSEP "\"" j "\"", RM_DATA_LANG)
+                    rm_data_lang(o, kp SUBSEP key SUBSEP "\"" j "\"")
                 }
             }
         }
@@ -94,6 +94,10 @@ function trim_obj_of_args(o, argstr,            args, argl, kp, nextkp, i, delnu
         }
     }
 }
+function rm_data_lang(o, kp,      i){
+    for (i=1; i<=RM_DATA_LANG_L; ++i) jdict_rm(o, kp, RM_DATA_LANG[i])
+}
+
 BEGIN{
     RESERVED_FIELD  = ENVIRON[ "RESERVED_FIELD" ]
     IS_DFS          = ENVIRON[ "IS_DFS" ]
@@ -101,9 +105,14 @@ BEGIN{
     ARGSTR          = ENVIRON[ "ARGSTR" ]
     DATA_LANG       = ENVIRON[ "DATA_LANG" ]
     if ((DATA_LANG == "cn") || (DATA_LANG =="zh")) {
-        RM_DATA_LANG = "\"en\""
+        # Chinese output: keep 'cn'/'zh', remove 'en'
+        RM_DATA_LANG[1] = "\"en\""
+        RM_DATA_LANG_L  = 1
     } else {
-        RM_DATA_LANG = "\"cn\""
+        # English output: remove both 'cn' and 'zh'
+        RM_DATA_LANG[1] = "\"cn\""
+        RM_DATA_LANG[2] = "\"zh\""
+        RM_DATA_LANG_L  = 2
     }
 }
 
