@@ -27,11 +27,15 @@ function advise_get_ref_and_group(obj, kp, subcmd_group, option_group, flag_grou
 #   lenv   - Local environment table (tracks set options)
 #   obj    - The advise object
 #   kp     - Keypath to generate candidates for
-function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k, l, v, _option_id, _cand_key, _cand_l, _cand_kp, _is_cand_nospace, _desc, _arr_value, _arr_valuel, _keypath ) {
+function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k, l, v, _option_id, _cand_key, _cand_l, _cand_kp, _is_cand_nospace, _desc, _arr_value, _arr_valuel, _keypath, _child_idx, _cont_l, _opt_key ) {
     l = aobj_len(obj, kp)
+    # Array elements are stored under QUOTED indices ("\"1\"", "\"2\"", ...),
+    # object children under bare numeric indices - hence the index switch below
+    _is_arr = ( aobj_get(obj, kp) == "[" )
 
     for (i=1; i<=l; ++i) {
-        _option_id = aobj_get(obj, kp SUBSEP i)
+        _child_idx = _is_arr ? ("\"" i "\"") : i
+        _option_id = aobj_get(obj, kp SUBSEP _child_idx)
 
         # Handle static candidate definitions (#cand)
         if ( _option_id == "\"#cand\"" ) {
@@ -75,35 +79,55 @@ function advise_get_candidate_code( curval, genv, lenv, obj, kp,        i, j, k,
             }
         }
 
+        # v1: option entries live inside #option/#option:Category containers
+        if ( aobj_is_option_container_key(_option_id) ) {
+            _cont_l = aobj_len(obj, kp SUBSEP _option_id)
+            for (j=1; j<=_cont_l; ++j) {
+                _opt_key = aobj_get(obj, kp SUBSEP _option_id SUBSEP j)
+                if ( _opt_key ~ "^\"#" ) continue
+                advise_get_candidate_code___item( curval, genv, lenv, obj, kp, _option_id SUBSEP _opt_key, _opt_key, _option_id SUBSEP _opt_key, true )
+            }
+            continue
+        }
+
         # Skip special metadata keys
         if ( _option_id ~ "^\"#" ) continue
 
-        # Get description and handle aliases (e.g., "h|help")
-        _desc = aobj_get_description(obj, kp SUBSEP _option_id)
-        _arr_valuel = split( juq( _option_id ), _arr_value, "|" )
-        for ( j=1; j<=_arr_valuel; ++j) {
-            v = _arr_value[j]
+        # Layer-level key - in v1 every such key is a subcommand
+        advise_get_candidate_code___item( curval, genv, lenv, obj, kp, _option_id, _option_id, _option_id, false )
+    }
+}
 
-            # Filter by prefix
-            if ((curval != "") && (index(v, curval) != 1)) continue
+# Emits completion candidates for one entry (option or subcommand):
+#   item_suffix - entry keypath relative to kp (container entries include the container segment)
+#   item_key    - the entry key itself, used for alias splitting (e.g., "h|help")
+#   lenv_key    - key used in the local env table (parse stores container SUBSEP entry)
+#   is_option   - true for entries inside #option containers
+function advise_get_candidate_code___item( curval, genv, lenv, obj, kp, item_suffix, item_key, lenv_key, is_option,        j, v, _desc, _arr_value, _arr_valuel ){
+    # Get description and handle aliases (e.g., "h|help")
+    _desc = aobj_get_description(obj, kp SUBSEP item_suffix)
+    _arr_valuel = split( juq( item_key ), _arr_value, "|" )
+    for ( j=1; j<=_arr_valuel; ++j) {
+        v = _arr_value[j]
 
-            # Skip if already set and not multiple
-            if ( ! aobj_is_multiple(obj, kp SUBSEP _option_id) && (lenv[ _option_id ] != "")) continue
+        # Filter by prefix
+        if ((curval != "") && (index(v, curval) != 1)) continue
 
-            # Don't show options if curval is empty (unless subcommand)
-            if (( curval == "" ) && ( v ~ "^-" ))
-                if ( ! aobj_is_subcmd(obj, kp SUBSEP _option_id ) ) continue
+        # Skip if already set and not multiple
+        if ( ! aobj_is_multiple(obj, kp SUBSEP item_suffix) && (lenv[ lenv_key ] != "")) continue
 
-            # Don't show long options if curval is just "-"
-            if (( curval == "-" ) && ( v ~ "^--." )) continue
+        # Don't show options if curval is empty (subcommands are always shown)
+        if (( curval == "" ) && ( v ~ "^-" ) && is_option) continue
 
-            # Store candidate
-            if (aobj_is_nospace(obj, kp SUBSEP _option_id)) {
-                jdict_put( CAND, "NOSPACE", jqu(v), jqu(_desc) )
-                continue
-            }
-            jdict_put( CAND, "CODE", jqu(v), jqu(_desc) )
+        # Don't show long options if curval is just "-"
+        if (( curval == "-" ) && ( v ~ "^--." )) continue
+
+        # Store candidate
+        if (aobj_is_nospace(obj, kp SUBSEP item_suffix)) {
+            jdict_put( CAND, "NOSPACE", jqu(v), jqu(_desc) )
+            continue
         }
+        jdict_put( CAND, "CODE", jqu(v), jqu(_desc) )
     }
 }
 
@@ -133,6 +157,10 @@ function advise_complete___generic_value( curval, genv, lenv, obj, kp,         _
 # Sets keypath to the option and delegates to generic handler
 function advise_complete_option_value( curval, genv, lenv, obj, obj_prefix, option_id, arg_nth ){
     CAND[ "KEYPATH" ] = obj_prefix SUBSEP option_id
+    # Array-valued option (`--color: [red, green]`): candidates are the array
+    # elements on the option node itself, not under a "#nth" slot
+    if ( aobj_get(obj, obj_prefix SUBSEP option_id) == "[" )
+        return advise_complete___generic_value( curval, genv, lenv, obj, obj_prefix SUBSEP option_id )
     return advise_complete___generic_value( curval, genv, lenv, obj, obj_prefix SUBSEP option_id SUBSEP "\"#" arg_nth "\"")
 }
 
@@ -158,7 +186,7 @@ function advise_complete_argument_value( curval, genv, lenv, obj, obj_prefix, nt
 # - All required options are already set
 #
 # Otherwise, shows error about missing required options
-function advise_complete_option_name_or_argument_value( curval, genv, lenv, obj, obj_prefix,          i, k, l, _required_options ){
+function advise_complete_option_name_or_argument_value( curval, genv, lenv, obj, obj_prefix,          i, j, k, l, cl, ck, _required_options ){
 
     # Determine if we should show options or arguments
     if ( ( curval == "" ) || ( curval ~ /^-/ ) || (aobj_option_all_set( lenv, obj, obj_prefix ))) {
@@ -168,13 +196,18 @@ function advise_complete_option_name_or_argument_value( curval, genv, lenv, obj,
     }
 
     # Check for missing required options
+    # v1: required options live inside #option/#option:Category containers
     l = aobj_len(obj, obj_prefix)
     for (i=1; i<=l; ++i) {
         k = aobj_get(obj, obj_prefix SUBSEP i)
-        if (k ~ "^\"[^-]") continue           # Skip non-options
-        if ( aobj_is_subcmd(obj, obj_prefix SUBSEP k ) ) continue
-        if ( ! aobj_is_required(obj, obj_prefix SUBSEP k) ) continue
-        if ( lenv[ k ] == "" ) _required_options = (_required_options == "") ? k : _required_options ", " k
+        if ( ! aobj_is_option_container_key(k) ) continue
+        cl = aobj_len(obj, obj_prefix SUBSEP k)
+        for (j=1; j<=cl; ++j) {
+            ck = aobj_get(obj, obj_prefix SUBSEP k SUBSEP j)
+            if ( ck ~ "^\"#" ) continue
+            if ( ! aobj_is_required(obj, obj_prefix SUBSEP k SUBSEP ck) ) continue
+            if ( lenv[ k SUBSEP ck ] == "" ) _required_options = (_required_options == "") ? ck : _required_options ", " ck
+        }
     }
     if (_required_options != "")
         return advise_error("Required options [ " _required_options " ] should be set")

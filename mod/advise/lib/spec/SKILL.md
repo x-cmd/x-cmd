@@ -20,6 +20,7 @@ name: x-cmd-advise
 |-----------|------|
 | **Options first** | In all examples (synopsis, tldr, desc), options MUST precede arguments. `x mod --opt arg` ✅, `x mod arg --opt` ❌ |
 | **Root-level subcmds** | Subcommands are defined at root, NOT wrapped under `<subcmd>:` |
+| **Options in `<option>`** | Options/flags live under `<option>` (or `<option:Category>`), NOT flat with subcmds. Entry with `<1>`/… args = option, without = flag. No `<flag>` field |
 | **Preserve order** | Never reorder subcmd aliases. `c|cp|copy` stays `c|cp|copy` |
 | **No builtin help** | `-h|--help` is handled by code; do NOT declare it in advise |
 | **Efficiency modules** | Only `assert`, `is`, `str` are efficiency modules. Mark with `<meta>: <subcmd-help>: disable`. All TLDR at root only. |
@@ -57,7 +58,8 @@ name: x-cmd-advise
   - subcmd1
   - subcmd2
 
-# Subcommands at ROOT level
+# Subcommands at ROOT level - every plain key at a layer is a subcommand.
+# Options/flags go inside the <option> container (sibling of subcmds):
 subcmd1:
   <desc>:
     cn: ...
@@ -65,8 +67,13 @@ subcmd1:
   <1>:                        # Positional arg
     <desc>: ...
     <exec>: ___x_cmd_advise__file
-  --option|-o:
-    <desc>: ...
+  <option>:
+    --option|-o:               # option (has <1> arg below)
+      <desc>: ...
+      <1>:
+        <desc>: ...
+    --verbose|-v:              # flag (no <N> args)
+      <desc>: ...
 ```
 
 **Required fields**: `<name>`, `<synopsis>`, `<desc>`, `<tldr>` (minimum 3).
@@ -88,6 +95,7 @@ subcmd1:
 | Error | Fix |
 |-------|-----|
 | `<subcmd>:` wrapper | Define subcmds at root level |
+| Options flat with `-` prefix (v0 style) | Move them under an `<option>:` container |
 | Changed alias order | Keep original: `c|cp|copy` not `c|copy|cp` |
 | `<synopsis>` in subcmd | Use `<1>`, `<2>`, `<n>` in subcmds; `<synopsis>` is module-only |
 | Efficiency TLDR in subcmd | Move all TLDR to root for assert/is/str |
@@ -184,4 +192,6 @@ x advise spec lint            # validate and render
 x advise ls                   # list loaded advise files
 x advise cat <name>           # view advise.jso content
 x advise which <name>         # path to advise.jso
+x advise preview --file <jso> --query "checkout "  # preview completion candidates (query = words after the command name; trailing space = completing an empty word)
+x advise preview --file <jso> --lang zh --query "checkout " --query "chec"  # language + multiple queries
 ```

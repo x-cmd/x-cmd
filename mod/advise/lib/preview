@@ -1,0 +1,75 @@
+# shellcheck shell=sh disable=SC2034,SC3043
+
+# Preview the completion candidates of an advise jso file
+#
+# Usage:
+#   x advise preview --file <advise-jso-file> [--lang <code>] [--query <q> ...]
+#
+# Options:
+#   --file <path>    advise jso file to preview (required)
+#   --lang <code>    language of candidate descriptions (default: en)
+#   --query <string> one query; repeatable. Each query is a string of
+#                    space-separated words, simulating words already typed
+#                    AFTER the command name (just like COMP_WORDS without its
+#                    first element). Rules (exact, no quoting conventions):
+#                      - words are split on single spaces; '\ ' escapes a
+#                        literal space inside a word
+#                      - the LAST word is the one being completed
+#                      - a query ending with a space (or an empty query)
+#                        completes an empty word
+#                    Without any --query, the very first word is completed.
+#
+# Example: simulate completing `git checkout <TAB>` ->
+#   x advise preview --file git/advise.jso --query "checkout "
+#   x advise preview --file git/advise.jso --lang zh \
+#       --query "checkout " --query "chec"
+#
+# Output: per query, one '#<n>: <words>' header line (the completing word
+# shown as '' when empty) followed by '<cmd>\t<desc>' candidate lines.
+# Dynamic exec candidates cannot run in this preview - they are shown as
+# '[exec] <shell command>' lines instead.
+___x_cmd_advise_preview(){
+    local filepath="" lang="en" joined=""
+    local U001="$___X_CMD_UNSEENCHAR_001"
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)  ___x_cmd help -m advise preview; return 0 ;;
+            --file)     shift; filepath="${1-}" ;;
+            --lang)     shift; lang="${1-}" ;;
+            --query)    shift; joined="${joined:+$joined$U001}${1-}" ;;
+            *)
+                N=advise M="preview: unknown argument => $1 (use --file <path> / --lang <code> / --query <string>)" log:ret:64 ;;
+        esac
+        shift
+    done
+
+    [ -n "$filepath" ] || N=advise M="Please provide the advise jso file path (--file <path>)" log:ret:64
+    [ -f "$filepath" ] || {
+        advise:error "advise preview: jso file not found => $filepath"
+        return 64
+    }
+    [ -n "$lang" ] || N=advise M="preview: --lang requires a non-empty language code" log:ret:64
+
+    # Runs the same awk libraries as ___x_cmd_advise___get_result_from_awk_,
+    # but advise.preview.awk prints '<cmd>\t<desc>' directly in one pass
+    # instead of emitting shell assignments.
+    < "$filepath" \
+    ___X_CMD_ADVISE_DEV_MOD="$___X_CMD_ADVISE_DEV_MOD" \
+    ARGSTRS="$joined" \
+    ___x_cmd_cmds_awk \
+        -v ___X_CMD_ROOT_ADV="$___X_CMD_ROOT_ADV" \
+        -v ___X_CMD_ADVISE_MAN_XCMD_FOLDER="$___X_CMD_ADVISE_MAN_XCMD_FOLDER" \
+        -v ___X_CMD_LANG="$lang" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/json.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jiter.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jop.awk" \
+        -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise.obj.awk"   \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise.util.awk"  \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise.share.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.complete.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.parse_argument.awk" \
+        -f "$___X_CMD_ROOT_MOD/advise/lib/awk/advise.preview.awk"
+}

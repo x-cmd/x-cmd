@@ -65,10 +65,14 @@ function comp_helpdoc_unit_line(ls, lw, li, rs, rw, ri,     o, _right_indent, _r
     return comp_str_trim_right( _res )
 }
 
-function generate___cmd_doc_str( obj, kp, v,         _str, _synopsis_str){
-    _str = juq(v)
+function generate___cmd_doc_str( obj, kp, v,         _str, _synopsis_str, _display_v){
     # gsub("\\|", ",", _str)
     _synopsis_str = aobj_get_special_value(obj, kp SUBSEP v, "synopsis")
+    # v1: option/flag group values may be FULL keypaths (container SUBSEP
+    # entry) - the display name is the entry segment (the last one)
+    _display_v = v
+    if ( index(_display_v, SUBSEP) > 0 ) sub(".*" SUBSEP, "", _display_v)
+    _str = juq(_display_v)
     if ( (! aobj_str_is_null(_synopsis_str)) && (_synopsis_str != "[")) _str = _str " " aobj_uq( _synopsis_str )
     return _str
 }

@@ -110,7 +110,7 @@ function comp_advise_get_ref_adv_jso_filepath( str ) {
     else if (match(str, "^x-cmd-advise://")) {
         str = substr( str, RLENGTH+1 )
         if ( str ~ "/" ) return ___X_CMD_ADVISE_MAN_XCMD_FOLDER "/" str
-        return ___X_CMD_ADVISE_MAN_XCMD_FOLDER "/" str "/advise.t.jso"
+        return ___X_CMD_ADVISE_MAN_XCMD_FOLDER "/" str "/advise.jso"
     }
     return str
 }

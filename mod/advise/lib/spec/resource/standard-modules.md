@@ -94,8 +94,9 @@ subcmd1:
 <synopsis>:
   - x <module> [options]
 
---option1:
-  <desc>: ...
+<option>:
+  --option1:
+    <desc>: ...
 ```
 
 ### 3.3 效率模块模式（assert、str）
