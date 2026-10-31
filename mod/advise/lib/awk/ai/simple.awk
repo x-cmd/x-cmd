@@ -25,7 +25,9 @@ function expand_dict(o, kp,        i, l, msg, key, delarr, delnum, val, j, val_l
             delarr[++delnum] = key
             continue
         }
-        else if ( (IS_DFS != 1) && (aobj_is_option(o, kp SUBSEP key) || ((key ~ "^\"-") && (!aobj_is_subcmd(o, kp SUBSEP key)))) ) {
+        # v1: option entries live inside #option/#option:Category containers;
+        # they are dropped from the AI context unless DFS mode keeps everything
+        else if ( (IS_DFS != 1) && (index(kp, SUBSEP "\"#option") > 0) ) {
             delarr[++delnum] = key
             continue
         }
@@ -94,8 +96,15 @@ function trim_obj_of_args(o, argstr,            args, argl, kp, nextkp, i, delnu
         }
     }
 }
-function rm_data_lang(o, kp,      i){
-    for (i=1; i<=RM_DATA_LANG_L; ++i) jdict_rm(o, kp, RM_DATA_LANG[i])
+function rm_data_lang(o, kp,      i, l, key, delnum, delarr){
+    l = o[ kp L ]
+    for (i=1; i<=l; ++i) {
+        key = o[ kp, i ]
+        if (( key ~ "^\"[a-z][a-z]\"$" ) && (key != KEEP_LANG)) {
+            delarr[ ++delnum ] = key
+        }
+    }
+    for (i=1; i<=delnum; ++i) jdict_rm(o, kp, delarr[ i ])
 }
 
 BEGIN{
@@ -104,16 +113,9 @@ BEGIN{
     IS_FAILFAST     = ENVIRON[ "IS_FAILFAST" ]
     ARGSTR          = ENVIRON[ "ARGSTR" ]
     DATA_LANG       = ENVIRON[ "DATA_LANG" ]
-    if ((DATA_LANG == "cn") || (DATA_LANG =="zh")) {
-        # Chinese output: keep 'cn'/'zh', remove 'en'
-        RM_DATA_LANG[1] = "\"en\""
-        RM_DATA_LANG_L  = 1
-    } else {
-        # English output: remove both 'cn' and 'zh'
-        RM_DATA_LANG[1] = "\"cn\""
-        RM_DATA_LANG[2] = "\"zh\""
-        RM_DATA_LANG_L  = 2
-    }
+    # Keep only the target language, remove every other language-code key
+    # found in the data nodes
+    KEEP_LANG       = "\"" DATA_LANG "\""
 }
 
 { if ($0 != "") jiparse_after_tokenize(o, $0); }

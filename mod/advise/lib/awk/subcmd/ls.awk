@@ -18,8 +18,8 @@ function advise_gen_subcmd_list( obj, kp, arr,          msg, i, l, k, uqk, uqkl,
     for (i=1; i<=l; ++i){
         k = obj[ kp, i ]
         uqk = juq( k )
+        # v1: plain layer keys are subcommands; options live in #option containers
         if ( uqk ~ "^#|^\\$" ) continue
-        else if (( uqk ~ "^-" ) && (!aobj_is_subcmd(obj, kp SUBSEP k))) continue
         uqkl = split(uqk, _, "|")
         for (j=1; j<=uqkl; ++j){
             arr[ ++arrl ] = _[j]

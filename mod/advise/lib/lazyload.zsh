@@ -31,6 +31,11 @@ ___x_cmd_advise___lazyload(){
         [ "$orig" = "___x_cmd_advise_lazy_tab" ] && orig=expand-or-complete
 
         ___x_cmd_advise___rcload
+        # compsys may still be down (rcload configs that skip prepare,
+        # e.g. autoload=never while the user ran `x advise init`):
+        # initialize it now so this Tab press actually dispatches to the
+        # completions registered in _comps.
+        ___x_cmd hascmd compdef || ___x_cmd_advise___prepare
         # Restore the original binding only if rcload hasn't changed it
         if [ "$(bindkey '^I' 2>/dev/null)" = '"^I" ___x_cmd_advise_lazy_tab' ]; then
             bindkey '^I' "$orig"

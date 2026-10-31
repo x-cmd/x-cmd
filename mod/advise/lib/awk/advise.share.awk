@@ -60,7 +60,11 @@ function comp_advise_push_group_of_value(o, kp, arr_group, group_name, value,   
         return
     }
 
-    arr_group[ 0 ] = group_name
+    # v1: several untagged named groups may coexist on one layer (one per
+    # <option:Category> container). Only ADVISE_NULL_TAG keeps the flat
+    # index 0; named groups are pushed like tag groups so all of them render.
+    if ( group_name == ADVISE_NULL_TAG )         arr_group[ 0 ] = group_name
+    else if ( arr_group[ group_name L ] == 0 )   arr_push( arr_group, group_name )
     arr_group[ group_name ] = "["
     jlist_put(arr_group, group_name, value)
 }
@@ -73,10 +77,15 @@ function comp_advise_parse_has_tag(o, kp, key,          _keypath){
 }
 
 # Parses groups from an object at keypath
-# Categorizes items into subcmd_group, option_group, flag_group
-function comp_advise_parse_group(o, kp, subcmd_group, option_group, flag_group,         i, l, v, s, k){
+# v1 structure:
+#   - plain layer keys                       -> subcmd_group
+#   - #subcmd:Category (reference arrays)    -> subcmd_group (display grouping)
+#   - #option / #option:Category containers  -> entries with args go to
+#     option_group, entries without args go to flag_group
+function comp_advise_parse_group(o, kp, subcmd_group, option_group, flag_group,         i, j, l, cl, v, s, k, ck){
     l = aobj_len( o, kp )
 
+    # Subcommand display groups (#subcmd:Category reference arrays)
     for (i=1; i<=l; ++i){
         v = aobj_get( o, kp SUBSEP i )
         s = juq(v)
@@ -84,24 +93,32 @@ function comp_advise_parse_group(o, kp, subcmd_group, option_group, flag_group, 
             k = jqu(substr( s, RLENGTH + 1 ))
             comp_advise_push_group_of_obj(o, kp SUBSEP v, subcmd_group, k)
         }
-        else if ( match(s, "^#option:") ) {
-            k = jqu(substr( s, RLENGTH + 1 ))
-            comp_advise_push_group_of_obj(o, kp SUBSEP v, option_group, k)
-        }
-        else if ( match(s, "^#flag:") ) {
-            k = jqu(substr( s, RLENGTH + 1 ))
-            comp_advise_push_group_of_obj(o, kp SUBSEP v, flag_group, k)
-        }
     }
 
     for (i=1; i<=l; ++i){
         v = aobj_get( o, kp SUBSEP i )
-        if ( v ~ "^\"#" ) continue
-        else if (aobj_is_option(o, kp SUBSEP v) || ((v ~ "^\"-") && (!aobj_is_subcmd(o, kp SUBSEP v)))) {
-            if (aobj_get_optargc( o, kp, v ) > 0) comp_advise_push_group_of_value( o, kp, option_group, ADVISE_NULL_TAG, v)
-            else comp_advise_push_group_of_value( o, kp, flag_group, ADVISE_NULL_TAG, v )
+        s = juq(v)
+
+        # Option containers: entries become option (has args) or flag groups.
+        # Values are stored as the full layer-relative keypath
+        # (container SUBSEP entry) so dev-tag removal addresses the right node.
+        if ( s == "#option" || s ~ "^#option:" ) {
+            k = (s == "#option") ? ADVISE_NULL_TAG : jqu( substr(s, 9) )
+            cl = aobj_len( o, kp SUBSEP v )
+            for (j=1; j<=cl; ++j){
+                ck = aobj_get( o, kp SUBSEP v SUBSEP j )
+                if ( ck ~ "^\"#" ) continue
+                if (aobj_get_optargc( o, kp SUBSEP v, ck ) > 0)
+                    comp_advise_push_group_of_value( o, kp, option_group, k, v SUBSEP ck )
+                else
+                    comp_advise_push_group_of_value( o, kp, flag_group, k, v SUBSEP ck )
+            }
+            continue
         }
-        else comp_advise_push_group_of_value( o, kp, subcmd_group, ADVISE_NULL_TAG, v )
+
+        # Skip special metadata keys - every other layer key is a subcommand
+        if ( v ~ "^\"#" ) continue
+        comp_advise_push_group_of_value( o, kp, subcmd_group, ADVISE_NULL_TAG, v )
     }
 }
 

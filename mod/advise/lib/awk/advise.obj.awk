@@ -2,10 +2,11 @@
 # Keys: obj_prefix, name -> option/subcommand ID
 # Populated by aobj_cal_rest_argc_maxmin, used by aobj_get_id_by_name
 BEGIN{
-    # Set default language based on environment
-    # 'cn' and 'zh' both mean Chinese, normalize to 'zh'
-    if ((___X_CMD_LANG == "cn") || (___X_CMD_LANG == "zh" )) ___X_CMD_LANG = "zh"
-    else ___X_CMD_LANG = "en"
+    # 'cn' and 'zh' both mean Chinese, normalize to 'zh'; empty defaults to
+    # 'en'. Any other language code passes through - desc lookup falls back
+    # to "en" for data missing that language.
+    if ((___X_CMD_LANG == "cn") ) ___X_CMD_LANG = "zh"
+    if (___X_CMD_LANG == "")      ___X_CMD_LANG = "en"
 
     ___X_CMD_LANG = jqu(___X_CMD_LANG);
 }
@@ -28,12 +29,13 @@ function aobj_get_kp_with_local_language(o, kp, language){
 # Handles patterns like: #1, #2, #n, #n|...
 #
 # Results stored in: obj[obj_prefix, L "restargc__min"] and obj[obj_prefix, L "restargc__max"]
-function aobj_cal_rest_argc_maxmin( obj, obj_prefix,       i, j, k, l, _min, _max, _arr, _arrl ){
+function aobj_cal_rest_argc_maxmin( obj, obj_prefix,       i, j, k, l, _min, _max, _arr, _arrl, _q2k, _cl, _ck ){
     _min = 0
     _max = 0
     l = obj[ obj_prefix L ]
     for (i=1; i<=l; ++i) {
-        k = juq(obj[ obj_prefix, i ])
+        _q2k = obj[ obj_prefix, i ]
+        k = juq(_q2k)
 
         # #n or #n|... means unlimited args
         if (k ~ "^#n(([|].+))?$") {
@@ -41,17 +43,30 @@ function aobj_cal_rest_argc_maxmin( obj, obj_prefix,       i, j, k, l, _min, _ma
             continue
         }
 
+        # Option containers (#option, #option:Category) hold option entries.
+        # NAME_ID maps each alias to the FULL keypath from the layer
+        # (container key SUBSEP entry key) so that option ids stay unique
+        # across containers and resolve to the entry node directly.
+        if ( aobj_is_option_container_key(_q2k) ) {
+            _cl = obj[ obj_prefix SUBSEP _q2k L ]
+            for (j=1; j<=_cl; ++j) {
+                _ck = obj[ obj_prefix SUBSEP _q2k, j ]
+                if (_ck ~ "^\"#") continue
+                aobj_name_id_register( obj_prefix, _ck, _q2k )
+            }
+            continue
+        }
+
         # Skip other special keys starting with #
         if (k ~ "^#[a-zA-Z]") continue
 
         # Build NAME_ID lookup for aliases (e.g., "h|help")
-        _arrl = split(k, _arr, "|")
-        for (j=1; j<=_arrl; ++j) NAME_ID[ obj_prefix, _arr[j] ] = jqu(k)
+        aobj_name_id_register( obj_prefix, _q2k )
 
         # Extract number from #1, #2, etc.
         if (k ~ "^#[0-9]+") {
             k = int( substr(k, 2) )
-            if (aobj_is_required( obj, obj_prefix SUBSEP obj[ obj_prefix, i ] ) ) {
+            if (aobj_is_required( obj, obj_prefix SUBSEP _q2k ) ) {
                 if (_min < k) _min = k
             }
             if (_max < k) _max = k
@@ -61,28 +76,44 @@ function aobj_cal_rest_argc_maxmin( obj, obj_prefix,       i, j, k, l, _min, _ma
     obj[ obj_prefix, L "restargc__max" ] = _max
 }
 
+# Registers a key (quoted) and its aliases in the NAME_ID lookup
+# e.g. "-h|--help" registers both '-h' and '--help' -> '"-h|--help"'
+# Optional q2container_prefix makes the lookup value the FULL keypath
+# (container SUBSEP entry) for option entries inside #option containers.
+function aobj_name_id_register( obj_prefix, q2key, q2container_prefix,      _k, _j, _arrl, _arr ){
+    _k = juq(q2key)
+    _arrl = split(_k, _arr, "|")
+    if (q2container_prefix != "") q2key = q2container_prefix SUBSEP q2key
+    for (_j=1; _j<=_arrl; ++_j) NAME_ID[ obj_prefix, _arr[_j] ] = q2key
+}
+
 # Checks if all required options are set in the local environment
-function aobj_option_all_set( lenv_table, obj, obj_prefix,  i, l, k ){
+# Only option entries inside #option/#option:Category containers are checked
+function aobj_option_all_set( lenv_table, obj, obj_prefix,  i, j, l, cl, k, ck ){
     l = obj[ obj_prefix L ]
     for (i=1; i<=l; ++i) {
         k = obj[ obj_prefix, i ]
-        if (k ~ "^\"[^-]") continue           # Skip non-options
-        if ( aobj_is_subcmd(obj, obj_prefix SUBSEP k) ) continue
-
-        if ( aobj_is_required(obj, obj_prefix SUBSEP k) ) {
-            if ( lenv_table[ k ] == "" )  return false
+        if ( ! aobj_is_option_container_key(k) ) continue
+        cl = obj[ obj_prefix SUBSEP k L ]
+        for (j=1; j<=cl; ++j) {
+            ck = obj[ obj_prefix SUBSEP k, j ]
+            if ( ck ~ "^\"#" ) continue
+            if ( aobj_is_required(obj, obj_prefix SUBSEP k SUBSEP ck) ) {
+                if ( lenv_table[ k SUBSEP ck ] == "" )  return false
+            }
         }
     }
     return true
 }
 
 # Determines if an ID represents a subcommand
+# v1: option ids resolved by NAME_ID are FULL keypaths (container SUBSEP
+# entry, always containing SUBSEP); subcommand ids are plain layer keys.
 # Returns the ID if it's a subcommand, empty otherwise
 function aobj_get_subcmdid_by_id( obj, obj_prefix, id ){
-    if ( aobj_is_option(obj, obj_prefix SUBSEP id) ) return
-    if ( juq(id) ~ /^[^-]/) return id
-    if ( aobj_is_subcmd(obj, obj_prefix SUBSEP id) ) return id
-    return
+    if ( id == "" )         return
+    if ( index(id, SUBSEP) ) return    # option entry inside a #option container
+    return id
 }
 
 # Looks up an option/subcommand ID by its name
@@ -102,12 +133,11 @@ function aobj_is_multiple( obj, kp ){
     return (obj[ kp, "\"#multiple\"" ] == "true" )
 }
 
-function aobj_is_subcmd( obj, kp ){
-    return (obj[ kp, "\"#subcmd\"" ] == "true" )
-}
-
-function aobj_is_option( obj, kp ){
-    return (obj[ kp, "\"#option\"" ] == "true")
+# Checks whether a layer key (quoted) is an option container:
+#   "#option"           - ungrouped options
+#   "#option:Category"  - named option group for display
+function aobj_is_option_container_key( q2key ){
+    return (( q2key == "\"#option\"" ) || ( q2key ~ "^\"#option:" ))
 }
 
 function aobj_is_nospace( obj, kp ){
@@ -132,10 +162,10 @@ function aobj_get_optargc( obj, obj_prefix, option_id,  _res, i, l, v ){
     for (i=1; i<100; ++i) {
         if (obj[ obj_prefix, jqu("#" i) ] == "") break
     }
-    if (i != 1 ) return obj[ obj_prefix, option_id L "argc" ] = --i
+    if (i != 1 ) return obj[ obj_prefix L "argc" ] = --i
     else {
         # Check structure: "[" means array of candidates
-        if ( obj[ obj_prefix ] == "[") return obj[ obj_prefix L "argc" ] = ( obj[ obj_prefix, option_id L ] > 0 )
+        if ( obj[ obj_prefix ] == "[") return obj[ obj_prefix L "argc" ] = ( obj[ obj_prefix L ] > 0 )
 
         # Check for exec/regex patterns which imply 1 argument
         l = obj[ obj_prefix L]

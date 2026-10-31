@@ -57,7 +57,12 @@ function env_table_set( key, keypath, value, genv_table, lenv_table ){
 #   - 0 if option not found
 function parse_args_to_env___option( obj, obj_prefix, args, argl, optarg_id, arg_idx, genv_table, lenv_table,
     _optargc, k ){
-    if (optarg_id == "") return false
+    # Return protocol:
+    #   0            - optarg_id is empty (caller treats the token as unknown)
+    #   arg_idx      - option consumed (flag, or all values eaten); value is
+    #                  the index of the next unconsumed token
+    #   > argl       - completion was triggered for an option value
+    if (optarg_id == "") return 0
 
     # Get the number of arguments this option expects
     _optargc = aobj_get_optargc( obj, obj_prefix, optarg_id )
@@ -77,8 +82,10 @@ function parse_args_to_env___option( obj, obj_prefix, args, argl, optarg_id, arg
         }
         # Store the argument value in environment tables
         env_table_set( optarg_id, obj_prefix SUBSEP optarg_id SUBSEP k, args[ arg_idx++ ], genv_table, lenv_table )
-        # Handle nospace arguments (e.g., -I/path) that may have changed argl
-        if ( parse_trim_args( obj, obj_prefix, args, arg_idx ) ) argl = args[ L ]
+        # Handle nospace arguments (e.g., -I/path) that may change argl.
+        # Only valid after the LAST expected value: for k < _optargc the next
+        # token is still a value and must never be nospace-split.
+        if (( k == _optargc ) && parse_trim_args( obj, obj_prefix, args, arg_idx )) argl = args[ L ]
     }
     return arg_idx
 }
@@ -95,36 +102,52 @@ function parse_args_to_env___option( obj, obj_prefix, args, argl, optarg_id, arg
 # Returns:
 #   true if nospace argument was found and split
 #   false otherwise
-function parse_trim_args( obj, kp, args, id,          v, k, i, j, l, n, nl, _, num, argl, tf ){
+function parse_trim_args( obj, kp, args, id,          v, k, i, j, l, cl, tf ){
     if ( (tf = args[ id, "fixed" ]) != "" ) return tf
     v = args[ id ]
     l = aobj_len(obj, kp)
 
-    # Check each nospace option to see if current arg matches its prefix
+    # Check each nospace option to see if current arg matches its prefix.
+    # v1: options live inside #option/#option:Category containers.
     for (i=1; i<=l; ++i){
         k = aobj_get(obj, kp SUBSEP i)
-        if ( ! aobj_is_nospace(obj, kp SUBSEP k) ) continue
-
-        CAND[ kp, k, "IS_NOSPACE" ] = true
-        nl = split(juq(k), _, "|")
-        for (n=1; n<=nl; ++n){
-            # Check if argument starts with this option prefix
-            if (match(v, "^" _[n])) {
-                CAND[ kp, k, "PREFIX" ] = _[n]
-                CAND[ "NOSPACE_NUM" ] ++
-
-                # Split the nospace arg: -I/path -> -I, /path
-                args[ id ] = substr(v, 1, RLENGTH)
-                argl = args[ L ] = args[ L ] + 1
-                num = id + 1
-                # Shift remaining args to make room
-                for (j=argl; j>num; --j) args[ j ] = args[ j - 1 ]
-                args[ num ] = substr(v, RLENGTH+1)
-                return ( args[ id, "fixed" ] = true )
-            }
+        if ( aobj_is_option_container_key(k) ) {
+            cl = aobj_len(obj, kp SUBSEP k)
+            for (j=1; j<=cl; ++j)
+                if ( parse_trim_args___try(obj, kp, k SUBSEP aobj_get(obj, kp SUBSEP k SUBSEP j), kp SUBSEP k SUBSEP aobj_get(obj, kp SUBSEP k SUBSEP j), v, args, id) )
+                    return ( args[ id, "fixed" ] = true )
+            continue
         }
+        if ( parse_trim_args___try(obj, kp, k, kp SUBSEP k, v, args, id) )
+            return ( args[ id, "fixed" ] = true )
     }
     return ( args[ id, "fixed" ] = false )
+}
+
+# Tries to match one option (node at node_kp) against the nospace arg v.
+# cand_kp + rel key is where CAND bookkeeping is written (layer-relative).
+function parse_trim_args___try( obj, cand_kp, k, node_kp, v, args, id,      nl, n, _, num, argl, j ){
+    if ( ! aobj_is_nospace(obj, node_kp) ) return false
+
+    CAND[ cand_kp, k, "IS_NOSPACE" ] = true
+    nl = split(juq(k), _, "|")
+    for (n=1; n<=nl; ++n){
+        # Check if argument starts with this option prefix
+        if (match(v, "^" _[n])) {
+            CAND[ cand_kp, k, "PREFIX" ] = _[n]
+            CAND[ "NOSPACE_NUM" ] ++
+
+            # Split the nospace arg: -I/path -> -I, /path
+            args[ id ] = substr(v, 1, RLENGTH)
+            argl = args[ L ] = args[ L ] + 1
+            num = id + 1
+            # Shift remaining args to make room
+            for (j=argl; j>num; --j) args[ j ] = args[ j - 1 ]
+            args[ num ] = substr(v, RLENGTH+1)
+            return true
+        }
+    }
+    return false
 }
 
 # Main argument parsing function
@@ -177,7 +200,9 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
         }
 
         # Handle long options (--option)
-        if (aobj_is_option( obj, obj_prefix SUBSEP _arg_id ) || (arg ~ /^--/)) {
+        # v1: a resolved id containing SUBSEP is an option entry (full keypath
+        # inside a #option container); unknown --args are treated as options too
+        if (( index(_arg_id, SUBSEP) ) || (arg ~ /^--/)) {
             j = parse_args_to_env___option( obj, obj_prefix, args, argl, _arg_id, i, genv_table, lenv_table )
             argl = args[ L ]
             if (j > argl) return true       # Completion triggered
@@ -232,7 +257,7 @@ function parse_args_to_env( args, obj, obj_prefix,              genv_table, lenv
     # Collect remaining positional arguments (currently unused but kept for future validation)
     # for (j=1; int(i+j-1) < argl; ++j) rest_arg[ j ] = args[ i+j-1 ]
     # _rest_argc = j - 1
-    _rest_argc = (i >= argl) ? 0 : (argl - i - 1)
+    _rest_argc = (i >= argl) ? 0 : (argl - i)
 
     # Determine what to complete
     arg = args[ argl ]

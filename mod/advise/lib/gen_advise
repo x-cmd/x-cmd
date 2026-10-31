@@ -2,13 +2,15 @@
 # ___X_CMD_ADVISE_GEN_ADVISE_INDEX_FIELDS='useparam
 
 ___X_CMD_ADVISE_GEN_ADV_ERREXIT="${___X_CMD_UNSEENCHAR_001}${___X_CMD_UNSEENCHAR_002}${___X_CMD_UNSEENCHAR_003}"
-# useparam,name,synopsis,desc,exec,tldr,other,setup,tip,demo,subcmd,option,flag,[0-9]+,n
+# useparam,name,synopsis,desc,exec,tldr,other,setup,tip,demo,subcmd,option,[0-9]+,n
 ___x_cmd_advise_gen_advise(){
     local op="$1"
     case "$op" in
-        useparam|exec|parse_adv_data|merge_awk)
-           shift; ___x_cmd_advise_gen_advise__"$op" "$@" ;;
-        *) ___x_cmd_advise_gen_advise__main "$@" ;;
+        --help|-h)
+            shift; ___x_cmd help -m advise gen_advise ; return ;;
+        useparam|exec|parse_adv_data|merge_awk|yml2jso)
+            shift; ___x_cmd_advise_gen_advise__"$op" "$@" ;;
+        *)  ___x_cmd_advise_gen_advise__main "$@" ;;
     esac
 }
 
@@ -57,6 +59,9 @@ ___x_cmd_advise_gen_advise__parse_adv_data(){
     local mod_path="$2"
     [ -n "$mod_name" ] || N=advise M="Please provide mod name" log:ret:64
     [ -d "$mod_path" ] || N=advise M="Unexisted directory of path. [path=$mod_path]" log:ret:64
+    # Dev mode keeps every language; normal mode keeps only 'en' and 'zh'
+    local lang_list="en,zh"
+    [ -n "$build_dev" ] && lang_list="all"
     local adv_data="$mod_path/adv/data"
     local res_data="$___X_CMD_ROOT_ADV/$mod_name/data"
     local res_cookbook="$___X_CMD_ROOT_CODE/cookbook/mod/$mod_name"
@@ -72,7 +77,7 @@ ___x_cmd_advise_gen_advise__parse_adv_data(){
             *.yml)
                     ___x_cmd ensurefp "$res_data/${tagfile%.yml*}.jso"
                     advise:debug "Generate $mod_name data/${tagfile%.yml*}.jso from adv/data/$tagfile"
-                    < "$datafile" ___x_cmd scotty yml y2j | ___x_cmd_advise_gen_advise__merge_awk "$build_dev" > "$res_data/${tagfile%.yml*}.jso"
+                    < "$datafile" ___x_cmd scotty yml y2j | ___x_cmd_advise_gen_advise__merge_awk "$lang_list" "$build_dev" > "$res_data/${tagfile%.yml*}.jso"
                     ;;
             */desc.*md)
                     [ -n "$build_dev" ] || {
@@ -96,20 +101,21 @@ ___x_cmd_advise_gen_advise__parse_adv_data(){
     done
 }
 
+# $1: language list to keep in the localized dicts: comma-separated language
+#     codes (e.g. "en", "en,zh"), or "all" to keep every language.
+#     Default: all
+# $2: non-empty = dev mode: also keep the dev-only fields (#case/#web/#abstract)
 ___x_cmd_advise_gen_advise__merge_awk(){
+    local lang_list="${1:-all}"
     local X_CMD_ADVISE_FILTER_FIELD=
-    local X_CMD_ADVISE_LANG_FILTER=
-    [ -n "$1" ] || {
+    [ -n "$2" ] || {
         X_CMD_ADVISE_FILTER_FIELD="case
 web
 abstract"
-        # In normal mode, only 'en'/'cn'/'zh' are packaged, other languages are removed
-        # ('cn' and 'zh' both mean Chinese)
-        X_CMD_ADVISE_LANG_FILTER=1
     }
 
     X_CMD_ADVISE_FILTER_FIELD="$X_CMD_ADVISE_FILTER_FIELD" \
-    X_CMD_ADVISE_LANG_FILTER="$X_CMD_ADVISE_LANG_FILTER" \
+    X_CMD_ADVISE_LANG_FILTER="$lang_list" \
     ___x_cmd_cmds_awk \
     -v X_CMD_ADVISE_ERREXIT="$___X_CMD_ADVISE_GEN_ADV_ERREXIT" \
     -f "$___X_CMD_ROOT_MOD/awk/lib/core.awk"    \
@@ -118,6 +124,76 @@ abstract"
     -f "$___X_CMD_ROOT_MOD/awk/lib/j/jcp.awk"   \
     -f "$___X_CMD_ROOT_MOD/advise/lib/awk/gen.advise/build_merge.awk"
 }
+
+# Section: yml2jso
+# Convert a yml file or an advise directory to jso file(s) in normal mode
+___x_cmd_advise_gen_advise__yml2jso(){
+    local lang="en,zh"
+    case "$1" in
+        --lang)     [ $# -ge 2 ] || N=advise M="--lang requires a language list (e.g. en, zh, or all)" log:ret:64
+                    lang="$2"; shift 2 ;;
+    esac
+    local X_help_cmd; X_help_cmd='___x_cmd help -m advise gen_advise yml2jso' help:arg:parse
+    local input="$1"
+    local output="$2"
+    [ -n "$input" ]  || N=advise M="Please provide input yml file or directory path" log:ret:64
+    [ -n "$output" ] || N=advise M="Please provide output jso file or directory path" log:ret:64
+
+    if [ -f "$input" ]; then
+        ___x_cmd_advise_gen_advise__yml2jso_file "$input" "$output" "$lang"
+    elif [ -d "$input" ]; then
+        ___x_cmd_advise_gen_advise__yml2jso_dir "$input" "$output" "$lang"
+    else
+        N=advise M="Unexisted input path. [path=$input]" log:ret:64
+    fi
+}
+
+___x_cmd_advise_gen_advise__yml2jso_file(){
+    local input="$1"
+    local output="$2"
+    local lang="${3:-en,zh}"
+    local tmp="$output.tmp"
+    ___x_cmd ensurefp "$tmp" || return $?
+    advise:debug "Convert $input => $output"
+    ___x_cmd scotty yml y2j "$input" > "$tmp" || {
+        ___x_cmd rmrf "$tmp" "$output"
+        advise:error "Fail to convert $input yml to json"
+        return 1
+    }
+    < "$tmp" ___x_cmd_advise_gen_advise__merge_awk "$lang" > "$output" || {
+        ___x_cmd rmrf "$tmp" "$output"
+        advise:error "Fail to convert $input to $output"
+        return 1
+    }
+    ___x_cmd rmrf "$tmp"
+}
+
+___x_cmd_advise_gen_advise__yml2jso_dir(){
+    local input="$1"
+    local output="$2"
+    local lang="${3:-en,zh}"
+    ___x_cmd rmrf "$output"
+    ___x_cmd mkdirp "$output" || return $?
+    ___x_cmd_cmds find "$input" -type f -name 'advise.util.sh' 2>/dev/null | {
+        local util_file=; while read -r util_file; do
+            ___x_cmd ensurefp "$output/${util_file#"$input"/}" || return 1
+            ___x_cmd_cmds_cp "$util_file" "$output/${util_file#"$input"/}" || return 1
+        done
+    }
+
+    ___x_cmd_cmds find "$input" -type f -name '*.yml' 2>/dev/null | ___x_cmd job foreach '
+        line="${1#"$input"/}"
+        ___x_cmd_advise_gen_advise__yml2jso_file "$input/$line" "$output/${line%.yml}.jso" "$lang" || return 1
+    '
+    # ___x_cmd_cmds find "$input" -type f -name '*.yml' 2>/dev/null | {
+    #     local line=; while read -r line; do
+    #         line="${line#"$input"/}"
+    #         ___x_cmd_advise_gen_advise__yml2jso_file "$input/$line" "$output/${line%.yml}.jso" "$lang" || return 1
+    #     done
+    # }
+}
+
+# EndSection
 
 ___x_cmd_advise_gen_advise__main(){
     local build_dev=
@@ -129,6 +205,9 @@ ___x_cmd_advise_gen_advise__main(){
     local mod_path="$2"
     [ -n "$mod_name" ] || N=advise M="Please provide mod name" log:ret:64
     [ -d "$mod_path" ] || N=advise M="Unexisted directory of path. [path=$mod_path]" log:ret:64
+    # Dev mode keeps every language; normal mode keeps only 'en' and 'zh'
+    local lang_list="en,zh"
+    [ -n "$build_dev" ] && lang_list="all"
 
     local adv_dir="$mod_path/adv"
     local index_yml="$adv_dir/index.yml"
@@ -162,7 +241,7 @@ ___x_cmd_advise_gen_advise__main(){
                 [ "$?" = 0 ] || printf "%s\n" "$___X_CMD_ADVISE_GEN_ADV_ERREXIT"
             fi
         }
-    } | ___x_cmd_advise_gen_advise__merge_awk "$build_dev" > "$resource/advise.jso"
+    } | ___x_cmd_advise_gen_advise__merge_awk "$lang_list" "$build_dev" > "$resource/advise.jso"
     local exit_code="$?"
 
     if [ "$exit_code" -eq 0 ]; then

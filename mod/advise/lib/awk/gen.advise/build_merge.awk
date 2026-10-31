@@ -5,9 +5,15 @@ BEGIN{
     Q2_TLDR = "\"#tldr\""
     arr_cut( FILTER_FIELD, ENVIRON[ "X_CMD_ADVISE_FILTER_FIELD" ], "\n" )
     Q2_EN = "\"en\""
-    Q2_CN = "\"cn\""
     Q2_ZH = "\"zh\""
+    # LANG_FILTER: comma-separated language codes to keep (e.g. "en", "en,zh"),
+    # or "all"/empty to keep every language
     LANG_FILTER = ENVIRON[ "X_CMD_ADVISE_LANG_FILTER" ]
+    if ((LANG_FILTER != "") && (LANG_FILTER != "all")) {
+        arr_cut( _langs, LANG_FILTER, "," )
+        for (_i in _langs)  LANGS_SET[ "\"" _langs[_i] "\"" ] = 1
+        LANG_FILTER_ON = 1
+    }
 }
 
 {
@@ -63,15 +69,15 @@ function parse_special_fields_dict( o, kp,        i, l, key ){
     l = FILTER_FIELD[ L ]
     for (i=1; i<=l; ++i) jdict_rm(o, kp, "\"#"FILTER_FIELD[i]"\"")
 
-    # In normal mode, remove all languages except 'en', 'cn' and 'zh'
-    # ('cn' and 'zh' both mean Chinese)
-    # Only filter dicts containing 'en', 'cn' or 'zh' (localized dict), to avoid removing
+    # Keep only the languages in LANGS_SET (e.g. "en,zh") when the lang
+    # filter is on
+    # Only filter dicts containing 'en' or 'zh' (localized dict), to avoid removing
     # normal keys like subcmd 'ls'/'rm' or cand 'on'/'off'
-    if ((LANG_FILTER == 1) && (jdict_has(o, kp, Q2_EN) || jdict_has(o, kp, Q2_CN) || jdict_has(o, kp, Q2_ZH))) {
+    if ((LANG_FILTER_ON == 1) && (jdict_has(o, kp, Q2_EN) || jdict_has(o, kp, Q2_ZH))) {
         l = o[ kp L ]
         for (i=l; i>=1; --i){
             key = o[ kp, i ]
-            if ((key == Q2_EN) || (key == Q2_CN) || (key == Q2_ZH))  continue
+            if (key in LANGS_SET)  continue
             if (key ~ /^"[a-z]{2}(-[a-zA-Z0-9]{1,8})?"$/)    jdict_rm(o, kp, key)
         }
     }

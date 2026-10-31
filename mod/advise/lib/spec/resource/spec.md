@@ -1,12 +1,14 @@
 # X-CMD Advise Specification
 
-> **版本**: v0
+> **版本**: v1
 > **状态**: 当前规范
 > **适用范围**: X-CMD 模块开发
 >
-> **v1 升级预告**（待实现）:
-> - 引入 `<option>` 字段明确标识选项，而非依赖 `-` 前缀判断
-> - 当前选项默认写法（以 `-` 开头）将变为显式 `<option>:` 包裹
+> **v1 变更**（相对 v0）:
+> - 选项统一收在 `<option>` 字段下，与子命令平铺的层级默认都是子命令
+> - 不再有 `<flag>` 字段：条目下带 `<1>`/`<2>`/… 参数的是 option（带参），否则是 flag
+> - 废除 `<option>: true` / `<subcmd>: true` 标记，类型完全由结构推导
+> - 不兼容 v0 写法（选项以 `-` 开头平铺在层级中）
 
 ---
 
@@ -531,8 +533,9 @@ app:
     <exec>: ...
   <2>:                            # 第2个位置参数（可选）
   <n>:                            # 剩余参数（可选）
-  --option|-o:                    # 选项定义（以 - 开头自动识别为选项）
-    <desc>: ...
+  <option>:                      # 选项统一定义在 <option> 容器下
+    --option|-o:
+      <desc>: ...
 ```
 
 **⚠️ 重要说明**：
@@ -644,53 +647,69 @@ is-int:
 
 ## 五、选项定义
 
-### 5.1 v0 规则：以 `-` 开头自动识别为选项
+### 5.1 `<option>` 容器：选项统一定义
+
+选项（option）和开关（flag）统一定义在层级的 `<option>` 字段下。与子命令同级的普通键**默认都是子命令**（只有子命令需要递进加载和搜索），选项必须收进 `<option>` 容器。
 
 ```yaml
 <subcmd>:
-  --json|-j:
-    <desc>:
-      cn: JSON 格式输出
-      en: Output in JSON format
-  --verbose|-v:
-    <desc>:
-      cn: 详细输出
-      en: Verbose output
+  <option>:
+    --json|-j:                    # flag：条目下没有 <1>/… 参数
+      <desc>:
+        cn: JSON 格式输出
+        en: Output in JSON format
+    --verbose|-v:
+      <desc>:
+        cn: 详细输出
+        en: Verbose output
 ```
 
-### 5.2 v1 升级预告：显式 `<option>` 字段
+**option 与 flag 的判断**：条目下带有 `<1>`/`<2>`/… 参数子字段的是 option（带参选项），没有参数子字段的是 flag（开关）。没有独立的 `<flag>` 字段。
 
-> **v1 升级计划**:
-> - 引入 `<option>` 字段替代 `-` 前缀判断
-> - 使选项定义更明确、更易理解
->
-> ```yaml
-> # v1 预期语法
-> <subcmd>:
->   <option>:
->     --json|-j:
->       <desc>:
->         cn: JSON 格式输出
->         en: Output in JSON format
-> ```
+**层级规则**：
+- 模块根层级和每个子命令层级都可以有自己的 `<option>`，互不影响
+- `<option>` 容器内只允许放选项条目（以 `-` 开头的键），不允许 `<exec>`/`<cand>` 等其它字段
+- 旧的 `-` 前缀平铺写法（v0）不再支持：平铺的 `-` 开头键会被当作子命令名
+
+### 5.2 `<option:Category>`：选项分组（可选）
+
+同级写多个 `<option:Category>` 容器即分组展示，与 `<subcmd:Category>` 语法对称：
+
+```yaml
+<subcmd>:
+  <option:Output>:
+    --json|-j:
+      <desc>: JSON 格式输出
+    --yaml|-y:
+      <desc>: YAML 格式输出
+  <option:Filter>:
+    --grep|-g:
+      <desc>: 过滤内容
+  <option>:                      # 无分组的选项
+    --verbose|-v:
+      <desc>: 详细输出
+```
 
 ### 5.3 选项参数定义
 
+option 的参数用 `<1>`/`<2>`/… 定义，支持 `<exec>`/`<cand>` 补全：
+
 ```yaml
 <subcmd>:
-  --config|-c:
-    <desc>:
-      cn: 配置文件路径
-      en: Config file path
-    <1>:
+  <option>:
+    --config|-c:
       <desc>:
-        cn: 文件路径
-        en: File path
-      <exec>: ___x_cmd_advise__file      # 文件补全
-      <cand>:                            # 或静态候选项
-        - config.yml
-        - config.yaml
-        - config.json
+        cn: 配置文件路径
+        en: Config file path
+      <1>:
+        <desc>:
+          cn: 文件路径
+          en: File path
+        <exec>: ___x_cmd_advise__file      # 文件补全
+        <cand>:                            # 或静态候选项
+          - config.yml
+          - config.yaml
+          - config.json
 ```
 
 ---
@@ -1033,11 +1052,11 @@ git:
 | **真实字段名** | `<name\|desc\|tldr>` | `<name>`, `<desc>`, `<tldr>`, `<synopsis>`, `<tip>` | YAML 源文件的实际字段名，尖括号是语法标识 | ✅ **是** |
 | **变量占位符** | `<变量描述>` | `<module>`, `<name-of-subcmd>`, `<args>` | 表示此处应填入实际值的占位符 | ❌ **否** |
 | **特殊标记** | `<subcmd:分类名>` | `<subcmd:View>`, `<subcmd:Edit>` | 仅用于 help 显示的分类标记 | ✅ **是** |
-| **v1 新增字段** | `<option>` | `<option>:` | 显式声明选项（替代 `-` 前缀） | ✅ **是**（v1） |
+| **选项字段** | `<option>` / `<option:Category>` | `<option>:` | 显式声明选项与开关（替代 `-` 前缀平铺） | ✅ **是**（v1） |
 
 **核心规则（必须牢记）**:
 
-1. **真实的 YAML 字段**: `<name>`, `<desc>`, `<tldr>`, `<synopsis>`, `<tip>`, `<meta>`, `<1>-<n>`, `<exec>`, `<cand>`, `<regex>`, `<option>`（v1）
+1. **真实的 YAML 字段**: `<name>`, `<desc>`, `<tldr>`, `<synopsis>`, `<tip>`, `<meta>`, `<1>-<n>`, `<exec>`, `<cand>`, `<regex>`, `<option>` / `<option:Category>`（v1）
 2. **变量占位符**: `<module>`, `<name-of-subcmd>`, `<args>`, `<默认子命令名>`
 3. **不存在 `<subcmd>` 字段**: 子命令直接在根级别定义
 
@@ -1113,18 +1132,20 @@ c|cp|copy|--cp|-c:      # 保持原始设计
 ```yaml
 # ❌ 错误 - 选项/子命令级别不能使用 <synopsis>
 schd:
-  -i|--interval:
-    <synopsis>: <interval>    # ❌ 不能在选项级别使用 synopsis
-    <desc>:
-      en: Interval between executions
-      cn: 执行间隔
+  <option>:
+    -i|--interval:
+      <synopsis>: <interval>    # ❌ 不能在选项级别使用 synopsis
+      <desc>:
+        en: Interval between executions
+        cn: 执行间隔
 
 # ✅ 正确 - 选项级别只用 <desc>
 schd:
-  -i|--interval:
-    <desc>:
-      en: Interval between executions
-      cn: 执行间隔
+  <option>:
+    -i|--interval:
+      <desc>:
+        en: Interval between executions
+        cn: 执行间隔
 ```
 
 ### 9.4 效率模块的 TLDR 位置错误
@@ -1178,8 +1199,9 @@ is-int:
 # ❌ 错误 - -h|--help 是内置的，不需要定义
 cat:
   <desc>: Display content
-  -h|--help:        # ❌ 不要定义，会冲突
-    <desc>: Show help
+  <option>:
+    -h|--help:        # ❌ 不要定义，会冲突
+      <desc>: Show help
 
 # ✅ 正确 - 代码中处理 -h|--help
 # lib/main 中：
@@ -1714,37 +1736,38 @@ x advise spec show --standard-modules
 | `<cand>` | array | 静态候选项 |
 | `<ref>` | string | 引用其他 advise |
 | `<regex>` | object | 正则匹配规则 |
-| `<option>` | object | **v1 新增**：显式选项定义（替代 `-` 前缀） |
+| `<option>` | object | 选项容器：统一定义 option（带参）与 flag（无参） |
+| `<option:Category>` | object | 选项分组容器（展示分组，可选） |
 
 ---
 
-## 附录 B: v1 升级预告
+## 附录 B: v0 → v1 迁移说明
 
-### B.1 `<option>` 字段（计划中）
-
-当前 v0 使用 `-` 前缀识别选项：
+v0 使用 `-` 前缀平铺识别选项：
 
 ```yaml
-# v0 - 以 - 开头自动识别为选项
+# v0（已废弃）- 以 - 开头平铺，与 subcmd 同级
 <subcmd>:
   --json|-j:
     <desc>: JSON output
 ```
 
-v1 将引入 `<option>` 字段：
+v1 要求选项收进 `<option>` 容器：
 
 ```yaml
-# v1（预期）- 显式 <option> 包裹
+# v1（当前）- 显式 <option> 包裹
 <subcmd>:
   <option>:
     --json|-j:
       <desc>: JSON output
 ```
 
-**目的**: 使选项定义更明确，消除歧义。
+**迁移要点**:
+- 层级中所有以 `-` 开头的选项键，移动到 `<option>` 下
+- 删除 `<option>: true` / `<subcmd>: true` 标记（类型由结构推导）
+- 没有 `<flag>` 字段：条目下无 `<1>`/… 参数的即 flag，无需迁移动作
 
 ---
-
-*本文档版本: v0*
+*本文档版本: v1*
 *创建: 2026-05-04*
-*最后更新: 2026-05-14*
+*最后更新: 2026-10-27*
