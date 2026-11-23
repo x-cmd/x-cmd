@@ -33,6 +33,11 @@ function touch(){
 }
 
 function ___x_cmd____rcpwsh_get_msysbash(){
+    param(
+        [Parameter(Mandatory=$false)]
+        [switch]$ProbeOnly
+    )
+
     if ($env:___X_CMD_RCPWSH_MSYSBASH_PATH) {
         return $env:___X_CMD_RCPWSH_MSYSBASH_PATH
     } else {
@@ -55,6 +60,7 @@ function ___x_cmd____rcpwsh_get_msysbash(){
         }
 
         if (-not $msysbash_found) {
+            if ($ProbeOnly) { return "" }
             $xbatfile = "$HOME\x-cmd.bat"
             if (-not (Test-Path $xbatfile -PathType Leaf)) {
                 $xbaturl = "https://get.x-cmd.com/x-cmd.bat"
@@ -160,7 +166,7 @@ function ___x_cmd___rcpwsh_addp_append(){
 
 function ___x_cmd___rcpwsh_addpifd(){
     if (Test-Path $args[0] -PathType Container){
-        ___x_cmd___rcpwsh_addp_prepend $args[1]
+        ___x_cmd___rcpwsh_addp_prepend $args[0]
     }
 }
 
@@ -199,6 +205,14 @@ ___x_cmd___rcpwsh_addpifh  bun      "$HOME\.bun\bin"
 ___x_cmd___rcpwsh_addpifh  npm      "$HOME\.npm\bin"
 ___x_cmd___rcpwsh_addpython
 
+try {
+    $___x_cmd_pwsh_bash_fp = ___x_cmd____rcpwsh_get_msysbash -ProbeOnly
+    $Global:___X_CMD_RCPWSH_MSYSBASH = $___x_cmd_pwsh_bash_fp
+    if (-not [string]::IsNullOrEmpty($___x_cmd_pwsh_bash_fp) -and (Test-Path $___x_cmd_pwsh_bash_fp -PathType Leaf)) {
+        ___x_cmd___rcpwsh_addp_append (Split-Path -Parent $___x_cmd_pwsh_bash_fp)
+    }
+} catch {}
+
 
 $env:___X_CMD_CD_RELM_0 = ___x_cmd___rcpwsh_path_win_to_linux $(Get-Location).Path
 $env:OLDPWD = $env:___X_CMD_CD_RELM_0
@@ -208,7 +222,7 @@ function ___x_cmd(){
     $env:___X_CMD_REAL_CALLER_SHELL = $Global:___X_CMD_REAL_CALLER_SHELL
     $env:___X_CMD_XBINEXP_FP = "$HOME\.x-cmd.root\local\data\xbinexp\pwsh\$($PID)_$((Get-Random ))"
 
-    if (-not $env:OLDPWD) {
+    if ($env:OLDPWD) {
         $env:___X_CMD_XBINEXP_INITENV_OLDPWD = ___x_cmd___rcpwsh_path_win_to_linux $env:OLDPWD
     } else {
         $env:___X_CMD_XBINEXP_INITENV_OLDPWD = ___x_cmd___rcpwsh_path_win_to_linux $(Get-Location).Path
@@ -274,7 +288,7 @@ function ___x_cmd_cd {
             "^-b$|^-f$" {
                 ___x_cmd cd $args[0] $args[1]
                 if (-not $?) { return $LASTEXITCODE }
-                $args = $args[2..($args.Count - 1)]
+                if ($args.Count -gt 2) { $args = $args[2..($args.Count - 1)] } else { $args = @() }
             }
             "^-.*" {
                 ___x_cmd cd @args
@@ -370,11 +384,34 @@ if (-not $IsInteractive) {
         }
     }
 
-    if (Test-Path "$HOME\.x-cmd.root\local\cache\advise\addon\complete.ps1" -PathType Leaf) {
-        try {
-            . "$HOME\.x-cmd.root\local\cache\advise\addon\complete.ps1"
-        } catch {
-            Write-Host "- E|x: Failed to load the complete code"
+    if ($env:___X_CMD_ADVISE_ACTIVATION_ON_NON_POSIX_SHELL -ne "0") {
+        $___x_cmd_advise_bootcode_fp = "$HOME\.x-cmd.root\local\cache\advise\bootcode\v0.0.0.ps1"
+        $___x_cmd_advise_bootcode_loaded = $false
+        if (Test-Path $___x_cmd_advise_bootcode_fp -PathType Leaf) {
+            try {
+                . $___x_cmd_advise_bootcode_fp
+                $___x_cmd_advise_bootcode_loaded = $true
+            } catch {
+                Write-Host "- E|x: Failed to load the cached advise completion code, regenerating ..."
+            }
+        }
+
+        if (-not $___x_cmd_advise_bootcode_loaded) {
+            try {
+                New-Item -ItemType Directory -Force (Split-Path -Parent $___x_cmd_advise_bootcode_fp) | Out-Null
+                x advise complete pwsh code | Out-File -Encoding utf8 $___x_cmd_advise_bootcode_fp
+                . $___x_cmd_advise_bootcode_fp
+            } catch {
+                Write-Host "- E|x: Failed to generate or load the advise completion code"
+            }
+        }
+
+        if (Test-Path "$HOME\.x-cmd.root\local\cache\advise\addon\complete.ps1" -PathType Leaf) {
+            try {
+                . "$HOME\.x-cmd.root\local\cache\advise\addon\complete.ps1"
+            } catch {
+                Write-Host "- E|x: Failed to load the complete code"
+            }
         }
     }
 }

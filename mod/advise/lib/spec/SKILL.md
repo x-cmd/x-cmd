@@ -32,9 +32,9 @@ name: x-cmd-advise
 
 ```yaml
 <name>:
-  <modname>:
-  cn: 中文名
-  en: English name
+  <modname>:                # 唯一裸 key = 模块名，显示名挂其值下
+    zh: 中文名
+    en: English name
 
 <synopsis>:                 # MODULE level only
   - x <mod> [subcmd] [options]:

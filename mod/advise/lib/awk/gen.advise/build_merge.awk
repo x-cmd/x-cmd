@@ -8,6 +8,11 @@ BEGIN{
     Q2_ZH = "\"zh\""
     # LANG_FILTER: comma-separated language codes to keep (e.g. "en", "en,zh"),
     # or "all"/empty to keep every language
+    # Known language codes: only keys in this set are treated as languages
+    # when filtering, so two-letter non-language keys (e.g. "on", "go") survive
+    arr_cut( _langs_all, "en,zh,de,es,fr,it,pt,ru,uk,ja,ko,cs,pl,ro,tr,vi,th,id", "," )
+    for (_i in _langs_all)  LANG_ALL_SET[ "\"" _langs_all[_i] "\"" ] = 1
+
     LANG_FILTER = ENVIRON[ "X_CMD_ADVISE_LANG_FILTER" ]
     if ((LANG_FILTER != "") && (LANG_FILTER != "all")) {
         arr_cut( _langs, LANG_FILTER, "," )
@@ -78,7 +83,7 @@ function parse_special_fields_dict( o, kp,        i, l, key ){
         for (i=l; i>=1; --i){
             key = o[ kp, i ]
             if (key in LANGS_SET)  continue
-            if (key ~ /^"[a-z]{2}(-[a-zA-Z0-9]{1,8})?"$/)    jdict_rm(o, kp, key)
+            if (key in LANG_ALL_SET)    jdict_rm(o, kp, key)
         }
     }
 }
