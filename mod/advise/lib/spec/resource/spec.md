@@ -95,11 +95,13 @@ Advise 与以下三个操作紧密关联：
 
 ### 3.1 `<name>` - 模块名称
 
+模块名是 `<name>` 中唯一的裸 key，多语言显示名挂在它的值下。即使模块名与语言码相同（如 `ja`）也不会冲突：
+
 ```yaml
 <name>:
   <module_name>:        # 模块名（如 host、assert）
-  cn: 中文名称           # 中文显示名
-  en: English Name      # 英文显示名
+    zh: 中文名称         # 中文显示名
+    en: English Name    # 英文显示名
 ```
 
 ### 3.2 `<meta>` - 元数据配置
@@ -812,8 +814,8 @@ module/
 # 主文件 bwh/adv/index.yml
 <name>:
   bwh:
-  cn: BandwagonHost VPS 管理器
-  en: BandwagonHost VPS Manager
+    zh: BandwagonHost VPS 管理器
+    en: BandwagonHost VPS Manager
 
 current:
   <desc>: 查看或修改当前 VPS 配置
@@ -1214,8 +1216,8 @@ cat:
 # ❌ 错误 - 效率模块没有标记 <subcmd-help>: disable
 <name>:
   str:
-  cn: 字符串处理
-  en: String manipulation
+    zh: 字符串处理
+    en: String manipulation
 # 没有 <meta>: <subcmd-help>: disable
 
 # ✅ 正确
@@ -1326,8 +1328,8 @@ fz:
 
 <name>:
   assert:
-  cn: 测试断言
-  en: Test assertion
+    zh: 测试断言
+    en: Test assertion
 
 <synopsis>:
   - x assert <operator> <args...>:
@@ -1407,8 +1409,8 @@ is-set:
 
 <name>:
   str:
-  cn: 字符串处理工具
-  en: String manipulation tool
+    zh: 字符串处理工具
+    en: String manipulation tool
 
 <synopsis>:
   - x str <subcmd> <args>:
@@ -1559,7 +1561,7 @@ git diff HEAD -- adv/index.yml | grep -E "^[-+].*|"
 
 ### 12.2 必需字段
 
-- [ ] `<name>` 包含 module_name、cn、en
+- [ ] `<name>` 包含 module_name 及挂在其值下的 zh、en 显示名
 - [ ] `<synopsis>` 至少有一个用法示例
 - [ ] `<desc>` 包含 cn 和 en
 - [ ] `<tldr>` 至少 3 个示例（简单）或 8+（复杂）
@@ -1724,7 +1726,7 @@ x advise spec show --standard-modules
 
 | 字段 | 类型 | 用途 |
 |------|------|------|
-| `<name>` | object | 模块名称（cn, en） |
+| `<name>` | object | 模块名称及多语言显示名 |
 | `<meta>` | object | 元数据（default-subcmd, <subcmd-help>） |
 | `<synopsis>` | array | 命令用法示例（仅模块级别） |
 | `<desc>` | object | 描述（cn, en） |

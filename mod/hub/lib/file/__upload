@@ -29,12 +29,32 @@ ___x_cmd_hub_file___upload_file(){
         }
 
         hub:debug "Upload $url"
-        <"$localfp" ___x_cmd_hub_file___encrypt_file "$filekey" \
-            | ___x_cmd curl -X PUT -sSfL "$url"  -H "Content-Type: application/octet-stream" --data-binary @- || {
+        local resp_path="$___X_CMD_HUB_TMP/upload_resp.$$"
+        local http_code=
+        http_code="$(<"$localfp" ___x_cmd_hub_file___encrypt_file "$filekey" \
+            | ___x_cmd curl -X PUT -sSL "$url" -H "Content-Type: application/octet-stream" --data-binary @- -o "$resp_path" -w '%{http_code}')" || {
+            ___x_cmd_rmrf "$resp_path" 2>/dev/null
             ___x_cmd_ui_tf false "Failed to put $localfp to $remotefp" >&2
             return 1
         }
-
-        ___x_cmd_ui_tf true "Upload $localfp to $remotefp"
+        case "$http_code" in
+            2*) ___x_cmd_ui_tf true "Upload $localfp to $remotefp"
+                ___x_cmd_rmrf "$resp_path" 2>/dev/null ;;
+            413)
+                # 存储配额不足：服务端返回 {error, used, limit, fileSize}
+                local err=; local used=; local limit=
+                <"$resp_path" ___x_cmd jo env . err=.error used=.used limit=.limit
+                ___x_cmd_rmrf "$resp_path" 2>/dev/null
+                ___x_cmd_ui_tf false "Failed to put $localfp to $remotefp: ${err:-storage quota exceeded}" >&2
+                [ -z "$used" ] || ___x_cmd_ui_tf false "storage used: $(___x_cmd_hub_u_unit_suffixes "$used") / limit: $(___x_cmd_hub_u_unit_suffixes "$limit")" >&2
+                ___x_cmd_ui_tf false "Delete unused files or upgrade your plan: https://hub.x-cmd.com/billing" >&2
+                return 1 ;;
+            *)
+                local err=
+                <"$resp_path" ___x_cmd jo env . err=.error
+                ___x_cmd_rmrf "$resp_path" 2>/dev/null
+                ___x_cmd_ui_tf false "Failed to put $localfp to $remotefp${err:+: $err}" >&2
+                return 1 ;;
+        esac
     }
 }

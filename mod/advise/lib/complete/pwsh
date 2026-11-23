@@ -1,0 +1,127 @@
+# shellcheck shell=bash disable=2016,2034
+
+___x_cmd_advise_complete_pwsh(){
+    local op="$1"
+    case "$op" in
+        code|normal)
+                shift; ___x_cmd_advise_complete_pwsh___"$op" "$@" ;;
+        x-cmd)  shift; ___x_cmd_advise_complete_pwsh___x_cmd "$@" ;;
+        *)      N=advise M="advise complete pwsh not support this [option=$op]" log:ret:64 ;;
+    esac
+}
+
+
+___x_cmd_advise_complete_pwsh___normal(){
+    local cur=""
+    [ "$#" -gt 1 ] && cur="${*: -1}"
+    local COMP_WORDS=("$@");    local COMP_LINE="$*"
+    local COMP_CWORD="$#";      COMP_CWORD=$((COMP_CWORD-1))
+
+    local x_;   ___x_cmd_advise___main __run_filepath_ "$1" || return $?
+    shift;
+    ___x_cmd_advise_complete___gen_wordlist \
+        "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.compgen_wordlist.pwsh.awk" \
+        "$x_" "$@"
+}
+
+___x_cmd_advise_complete_pwsh___x_cmd(){
+    local cur=""
+    [ "$#" -gt 1 ] && cur="${*: -1}"
+    local COMP_WORDS=("$@");    local COMP_LINE="$*"
+    local COMP_CWORD="$#";      COMP_CWORD=$((COMP_CWORD-1))
+
+    local x_;   ___x_cmd_advise___main __run_filepath_ x-cmd "$1" || return $?
+    shift;
+    ___x_cmd_advise_complete___gen_wordlist \
+        "$___X_CMD_ROOT_MOD/advise/lib/awk/advise/advise.compgen_wordlist.pwsh.awk" \
+        "$x_" "$@"
+}
+
+# x advise complete pwsh code | Invoke-Expression
+___x_cmd_advise_complete_pwsh___code(){
+    cat <<'___X_CMD_ADVISE_COMPLETE_PWSH_CODE_EOF'
+using namespace System.Management.Automation
+using namespace System.Management.Automation.Language
+
+Function ___x_cmd_advise_run_pwsh___inner {
+    param($func, $wordToComplete, $commandAst, $cursorPosition)
+    $commandElements = $commandAst.CommandElements
+
+    # double quoted value works but seems single quoted needs some fixing (e.g. "example 'acti" -> "example acti")
+    $elems = @()
+    foreach ($_ in $commandElements) {
+      if ($_.Extent.StartOffset -gt $cursorPosition) {
+          break
+      }
+      $t = $_.Extent.Text
+      if ($_.Extent.EndOffset -gt $cursorPosition) {
+          $t = $t.Substring(0, $_.Extent.Text.get_Length() - ($_.Extent.EndOffset - $cursorPosition))
+      }
+
+      if ($t.StartsWith("'")){
+        $t = $t.Substring(1)
+      }
+      if ($t.get_Length() -gt 0 -and $t.Substring($t.get_Length()-1) -eq "'"){
+        $t = $t.Substring(0,$t.get_Length()-1)
+      }
+      if ($t.get_Length() -eq 0){
+        $t = '""'
+      }
+      $elems += $t
+    }
+
+    $bashExe = $Global:___X_CMD_RCPWSH_MSYSBASH
+    if ([string]::IsNullOrEmpty($bashExe)) { $bashExe = 'bash' }
+    $output = $(
+      if (!$wordToComplete) {
+        & $bashExe "$HOME/.x-cmd.root/bin/___x_cmdexe" advise complete pwsh $func $($elems| ForEach-Object {$_}) '' 2>$null
+      } else {
+        & $bashExe "$HOME/.x-cmd.root/bin/___x_cmdexe" advise complete pwsh $func $($elems| ForEach-Object {$_}) 2>$null
+      }
+    )
+
+    $completions = @()
+    if ($output) {
+      $json = ConvertFrom-Json -InputObject $output
+      $items = if ($json -is [System.Array]) { $json } else { @($json) }
+      foreach ($item in $items) {
+        $completions += [CompletionResult]::new($item.CompletionText, $item.ListItemText, [CompletionResultType]::ParameterValue, $item.ToolTip)
+      }
+    }
+
+    if ($completions.count -eq 0) {
+      return
+    }
+
+    $completions
+}
+
+$_x_cmd_advise_pwsh_completer_normal = {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    ___x_cmd_advise_run_pwsh___inner normal $wordToComplete $commandAst $cursorPosition
+}
+
+$_x_cmd_advise_pwsh_completer_x_cmd = {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    ___x_cmd_advise_run_pwsh___inner x-cmd $wordToComplete $commandAst $cursorPosition
+}
+___X_CMD_ADVISE_COMPLETE_PWSH_CODE_EOF
+
+    local x_=; ___x_cmd_advise_autoload_get_ || return 0
+    local autoload_op="$x_"
+    if [ "$autoload_op" != never ]; then
+        {
+            printf "%s\n" "x"
+        } | ___x_cmd_advise_complete_pwsh___code_inner normal
+
+        [ "$autoload_op" = "x" ] || ___x_cmd_advise_man_ls x-cmd | ___x_cmd_advise_complete_pwsh___code_inner x-cmd
+    fi
+}
+
+___x_cmd_advise_complete_pwsh___code_inner(){
+    local func="$1";    func="${func//-/_}"
+    local l=
+    while read -r l; do
+        printf "%s\n" "Register-ArgumentCompleter -Native -CommandName '$l' -ScriptBlock \$_x_cmd_advise_pwsh_completer_$func"
+    done
+}

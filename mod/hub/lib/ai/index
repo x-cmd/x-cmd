@@ -9,6 +9,7 @@ ___x_cmd_hub_ai(){
         -h|--help)      ___x_cmd help -m hub ai ; return  ;;
         chat)           ___x_cmd_hub_ai_chat "$@"     ;;
         agent)          ___x_cmd_hub_ai_agent "$@"    ;;
+        usage)          ___x_cmd_hub_ai_usage "$@"    ;;
         convo)          ___x_cmd_hub_ai_convo "$@"  ;;
         *)              ___x_cmd_hub_ai_chat "${subcmd}" "$@"     ;;
     esac
@@ -63,33 +64,28 @@ ___x_cmd_hub_ai___fzf(){
 }
 
 ___x_cmd_hub_ai_agent(){
-    [ $# -gt 0 ] || { ___x_cmd_hub___help ai agent ; return;}
-    local task="$1"
-    case "$task" in
-        -h|--help) ___x_cmd_hub___help ai agent ; return  ;;
+    # AI agent 已下线（2026-10-21）：沙箱为纯计算环境，不再提供内置 AI
+    ___x_cmd_ui_tf false "x hub ai agent has been retired. The sandbox no longer provides built-in AI." >&2
+    ___x_cmd_ui_tf false "Bring your own AI key (e.g. export DEEPSEEK_API_KEY=...) and run your AI tool yourself." >&2
+    return 1
+}
+
+___x_cmd_hub_ai_usage(){
+    case "$1" in
+        -h|--help) ___x_cmd_hub___help ai usage ; return  ;;
     esac
     local service_token
     service_token="$(___x_cmd_hub_service_verify_)" || return 1
-    local ___X_CMD_OTHER_SERVICE_URL="https://agent.x-cmd.com"
-    ___x_cmd_hub_u_curl post /api/eci/execute -H "X-Service-Authorization: Bearer $service_token" -- "task=$task" | (
-        local success
-        local stdout
-        local ossurls
-        local stderr
-        ___x_cmd jo env . .success stdout=.data.stdout stderr=.data.stderr  ossurls=.data.file
-        if [ "$success" = "true" ];then
-            printf "%s\n" "$stdout"
-            # file 字段兼容：旧 agent 返回 OSS 完整 URL；agent-cf 返回相对路径（ai-tasks/filename）
-            # 相对路径时提示用户经 hub 文件系统获取（x hub file download me:ai-tasks/filename）
-            if [ -n "$ossurls" ]; then
-                case "$ossurls" in
-                    https://*|http://*) printf "%s" "Download task file: ${ossurls}" ;;
-                    *)                  printf "%s" "Task file saved to: me:${ossurls} (download: x hub file download me:${ossurls})" ;;
-                esac
-            fi
-            return 0
-        fi
-        [ -z "$stderr" ] || printf "%s" "$stderr"
-        return 1
+    local ___X_CMD_OTHER_SERVICE_URL="${___X_CMD_AGENT_CF_URL:-https://agent.x-cmd.com}"
+    ___x_cmd_hub_u_curl get /api/eci/usage -H "X-Service-Authorization: Bearer $service_token" | (
+        local plan=; local usedMin=; local limitMin=; local windowStart=; local active=; local climit=
+        ___x_cmd jo env . plan=.data.plan usedMin=.data.usedMin limitMin=.data.limitMin \
+            windowStart=.data.windowStart active=.data.concurrency.active climit=.data.concurrency.limit
+        [ -n "$plan" ] || { ___x_cmd_hub_u_handle_resp false "Failed to get sandbox usage:" ; return 1 ; }
+        ___x_cmd_hub_u_handle_resp true "Sandbox usage:" \
+            "plan: $plan" \
+            "window start: $windowStart" \
+            "usage: ${usedMin:-0} min / ${limitMin:-0} min" \
+            "concurrency: ${active:-0} / ${climit:-0}"
     )
 }

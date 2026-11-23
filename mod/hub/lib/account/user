@@ -120,23 +120,24 @@ ___x_cmd_hub_account_upgrade(){
     local X_help_cmd='___x_cmd_hub___help account upgrade'
     help:arg:parse
 
-    local plan=; local type="wechat"
+    local plan="pro"; local interval="month"; local type="paypro"
     while [ $# -gt 0 ] ; do
         case "$1" in
-            --plan)     plan=true; shift ;;
-            --type)     type="$2"; shift 2 ;;
+            --plan)     [ $# -ge 2 ] || { hub:error "Missing value for --plan" ; return 1 ; } ; plan="$2"; shift 2 ;;
+            --interval) [ $# -ge 2 ] || { hub:error "Missing value for --interval" ; return 1 ; } ; interval="$2"; shift 2 ;;
+            --type)     [ $# -ge 2 ] || { hub:error "Missing value for --type" ; return 1 ; } ; type="$2"; shift 2 ;;
             *) break ;;
         esac
     done
 
-    if [ -z "$plan" ] ; then
-        ___x_cmd ui yesno "Upgrade account plan to pro?" || return 1
-        plan="pro"
-    fi
+    case "$plan" in starter|pro) ;; *) hub:error "Invalid plan: $plan (starter|pro)" ; return 1 ;; esac
+    case "$interval" in month|year) ;; *) hub:error "Invalid interval: $interval (month|year)" ; return 1 ;; esac
+    case "$type" in paypro|wechat) ;; *) hub:error "Invalid type: $type (paypro|wechat)" ; return 1 ;; esac
+    [ "$type" = "wechat" ] && { hub:error "WeChat payment is not available yet (use --type paypro)" ; return 1 ; }
 
-    ___x_cmd_hub_u_curl post /api/v0/payment -- plan type | {
+    ___x_cmd_hub_u_curl post /api/v0/payment -- "plan=$plan" "interval=$interval" "type=$type" | {
         local url=; local id=; local msg=
-        ___x_cmd jo env . url=.codeUrl .id .msg
+        ___x_cmd jo env . url=.codeUrl .id msg=.error
         [ -n "$url" ] || {
             ___x_cmd_hub_u_handle_resp false "Failed to upgrade account plan:"
             return 1
@@ -153,7 +154,7 @@ ___x_cmd_hub_account_upgrade(){
 
         ___x_cmd_hub_u_curl get "/api/v0/payment/$id" | {
             local pay_status=; local msg=
-            ___x_cmd jo env . .msg pay_status=.status
+            ___x_cmd jo env . msg=.error pay_status=.status
             [ "$pay_status" = "success" ] || {
                 ___x_cmd_hub_u_handle_resp false "Failed to upgrade account plan:"
                 return 1
